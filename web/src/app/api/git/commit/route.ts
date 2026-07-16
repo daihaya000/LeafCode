@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from "next/server";
+import { assertAllowedDirectory } from "@/lib/allowlist";
+import { runGit } from "@/lib/git";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const SAFE_MSG = /^[\s\S]{1,2000}$/;
+
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => null)) as {
+    directory?: string;
+    message?: string;
+    paths?: string[];
+    all?: boolean;
+  } | null;
+
+  if (!body?.directory || !body.message?.trim()) {
+    return NextResponse.json(
+      { error: "directory and message are required" },
+      { status: 400 },
+    );
+  }
+
+  if (!SAFE_MSG.test(body.message)) {
+    return NextResponse.json({ error: "invalid commit message" }, { status: 400 });
+  }
+
+  const check = assertAllowedDirectory(body.directory);
+  if (!check.ok) {
+    return NextResponse.json({ error: check.error }, { status: check.status });
+  }
+
+  // Stage
+  if (body.all || !body.paths?.length) {
+    const add = await runGit(check.path, ["add", "-A"]);
+    if (add.code !== 0) {
+      return NextResponse.json(
+        { error: add.stderr.trim() || "git add failed" },
+        { status: 500 },
+      );
+    }
+  } else {
+    for (const p of body.paths) {
+      if (p.includes("..") || p.startsWith("-")) {
+        return NextResponse.json({ error: `unsafe path: ${p}` }, { status: 400 });
+      }
+    }
+    const add = await runGit(check.path, ["add", "--", ...body.paths]);
+    if (add.code !== 0) {
+      return NextResponse.json(
+        { error: add.stderr.trim() || "git add failed" },
+        { status: 500 },
+      );
+    }
+  }
+
+  const commit = await runGit(check.path, [
+    "commit",
+    "-m",
+    body.message.trim(),
+  ]);
+  if (commit.code !== 0) {
+    return NextResponse.json(
+      {
+        error: commit.stderr.trim() || commit.stdout.trim() || "git commit failed",
+        stdout: commit.stdout,
+      },
+      { status: 500 },
+    );
+  }
+
+  const log = await runGit(check.path, ["log", "-1", "--oneline"]);
+  return NextResponse.json({
+    ok: true,
+    summary: log.stdout.trim() || commit.stdout.trim(),
+  });
+}
