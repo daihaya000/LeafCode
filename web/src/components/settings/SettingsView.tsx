@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Star, Trash2 } from "lucide-react";
+import { CommandPalette } from "@/components/CommandPalette";
 import { Badge, Button, ThemeToggle, timeAgo } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import type { HealthDto, ProjectDto } from "@/lib/types";
@@ -102,6 +103,7 @@ export function SettingsView() {
 
   return (
     <div className="min-h-dvh">
+      <CommandPalette />
       <header className="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
           <Link

@@ -11,9 +11,20 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
+import { CommandPalette } from "@/components/CommandPalette";
 import { Badge, Button, DiffStat, Spinner, ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto, TaskStatus, TaskSummary } from "@/lib/types";
+
+type ModelOption = { value: string; label: string; group: string };
+
+type ProviderResponse = {
+  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
+  connected: string[];
+  default: Record<string, string>;
+};
+
+type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
 
 const ISOLATIONS = [
   { value: "git_worktree", label: "Worktree（分離）" },
@@ -59,6 +70,10 @@ export function HomeView() {
   const [error, setError] = useState<string | null>(null);
   const [newProjectPath, setNewProjectPath] = useState("");
   const [addingProject, setAddingProject] = useState(false);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [agents, setAgents] = useState<string[]>([]);
+  const [model, setModel] = useState("");
+  const [agent, setAgent] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
 
@@ -82,6 +97,40 @@ export function HomeView() {
     } catch {
       /* keep previous list */
     }
+  }, []);
+
+  // Model / agent options (engine-global; failures are non-fatal)
+  useEffect(() => {
+    fetch("/api/opencode/provider", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<ProviderResponse>) : null))
+      .then((data) => {
+        if (!data) return;
+        const connected = new Set(data.connected ?? []);
+        const options: ModelOption[] = [];
+        for (const p of data.all ?? []) {
+          if (connected.size > 0 && !connected.has(p.id)) continue;
+          for (const [mid, m] of Object.entries(p.models ?? {})) {
+            options.push({
+              value: `${p.id}::${mid}`,
+              label: m.name || mid,
+              group: p.name || p.id,
+            });
+          }
+        }
+        setModelOptions(options);
+      })
+      .catch(() => undefined);
+    fetch("/api/opencode/agent", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<AgentResponse>) : null))
+      .then((data) => {
+        if (!data) return;
+        setAgents(
+          data
+            .filter((a) => a.mode !== "subagent" && !a.hidden)
+            .map((a) => a.name),
+        );
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -113,17 +162,20 @@ export function HomeView() {
     setSubmitting(true);
     setError(null);
     try {
+      const [providerID, modelID] = model ? model.split("::") : [];
       const data = await sendJson<{ taskId: string }>("POST", "/api/tasks", {
         projectId,
         prompt: text,
         isolation,
+        ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+        ...(agent ? { agent } : {}),
       });
       router.push(`/task/${data.taskId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
     }
-  }, [prompt, projectId, isolation, submitting, router]);
+  }, [prompt, projectId, isolation, model, agent, submitting, router]);
 
   const addProject = useCallback(async () => {
     const p = newProjectPath.trim();
@@ -169,6 +221,7 @@ export function HomeView() {
 
   return (
     <div className="min-h-dvh">
+      <CommandPalette />
       <header className="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
           <div className="flex items-center gap-2 font-semibold tracking-tight">
@@ -249,6 +302,40 @@ export function HomeView() {
                   </option>
                 ))}
               </select>
+              {modelOptions.length > 0 && (
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="h-9 max-w-40 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                >
+                  <option value="">モデル: 既定</option>
+                  {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
+                    <optgroup key={group} label={group}>
+                      {modelOptions
+                        .filter((o) => o.group === group)
+                        .map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
+              {agents.length > 0 && (
+                <select
+                  value={agent}
+                  onChange={(e) => setAgent(e.target.value)}
+                  className="h-9 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                >
+                  <option value="">エージェント: 既定</option>
+                  {agents.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              )}
               <div className="flex-1" />
               <Button
                 variant="primary"

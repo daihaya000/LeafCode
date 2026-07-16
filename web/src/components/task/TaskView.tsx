@@ -23,6 +23,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
+import { CommandPalette } from "@/components/CommandPalette";
 import { StatusBadge } from "@/components/home/HomeView";
 import { Button, Spinner, ThemeToggle, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";
@@ -236,6 +237,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex h-dvh flex-col">
+      <CommandPalette directory={task.directory} onFile={openFileInDiff} />
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <Link

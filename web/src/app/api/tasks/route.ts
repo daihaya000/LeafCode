@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
     isolation?: string;
     baseBranch?: string;
     title?: string;
+    model?: { providerID?: string; modelID?: string };
+    agent?: string;
   } | null;
 
   const prompt = body?.prompt?.trim();
@@ -67,10 +69,20 @@ export async function POST(req: NextRequest) {
       "/session",
       { method: "POST", body: { title } },
     );
+    const promptBody: Record<string, unknown> = {
+      parts: [{ type: "text", text: prompt }],
+    };
+    if (body.model?.providerID && body.model.modelID) {
+      promptBody.model = {
+        providerID: body.model.providerID,
+        modelID: body.model.modelID,
+      };
+    }
+    if (body.agent?.trim()) promptBody.agent = body.agent.trim();
     await ocServer(
       workspace.absolute_path,
       `/session/${session.id}/prompt_async`,
-      { method: "POST", body: { parts: [{ type: "text", text: prompt }] } },
+      { method: "POST", body: promptBody },
     );
     bindSession(workspace.id, session.id, title);
     touchProjectOpened(workspace.project_id);
