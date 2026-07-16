@@ -124,6 +124,34 @@ function TodoPanel({
   );
 }
 
+const SIDE_WIDTH_KEY = "webui.sidepanel.width";
+const SIDE_DEFAULT = 520;
+const SIDE_MIN = 280;
+const SIDE_MAX = 900;
+
+function clampSideWidth(n: number) {
+  return Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(n)));
+}
+
+function loadSideWidth(): number {
+  try {
+    const raw = localStorage.getItem(SIDE_WIDTH_KEY);
+    if (!raw) return SIDE_DEFAULT;
+    const n = Number(raw);
+    return Number.isFinite(n) ? clampSideWidth(n) : SIDE_DEFAULT;
+  } catch {
+    return SIDE_DEFAULT;
+  }
+}
+
+function saveSideWidth(n: number) {
+  try {
+    localStorage.setItem(SIDE_WIDTH_KEY, String(clampSideWidth(n)));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function TaskView({ taskId }: { taskId: string }) {
   const router = useRouter();
   const { setExtras } = useShellExtras();
@@ -134,6 +162,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sidePanel, setSidePanel] = useState<"diff" | "files" | "pty" | "graph">(
     "diff",
   );
+  const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
+  const [sideResizing, setSideResizing] = useState(false);
+  const [isLg, setIsLg] = useState(false);
+  const sideDragRef = useRef<{ x: number; w: number } | null>(null);
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -154,6 +186,44 @@ export function TaskView({ taskId }: { taskId: string }) {
     task?.directory ?? null,
     task?.sessionId ?? null,
   );
+
+  useEffect(() => {
+    setSideWidth(loadSideWidth());
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setIsLg(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    if (!sideResizing) return;
+    const onMove = (e: PointerEvent) => {
+      const start = sideDragRef.current;
+      if (!start) return;
+      setSideWidth(clampSideWidth(start.w + (start.x - e.clientX)));
+    };
+    const onUp = () => {
+      setSideResizing(false);
+      sideDragRef.current = null;
+      setSideWidth((w) => {
+        saveSideWidth(w);
+        return w;
+      });
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [sideResizing]);
 
   useEffect(() => {
     setAccessMode(readAccessMode());
@@ -1015,16 +1085,42 @@ export function TaskView({ taskId }: { taskId: string }) {
           </div>
         </div>
 
-        {/* Diff pane */}
+        {/* Diff / files / graph / pty pane */}
         <div
           className={cx(
-            "min-h-0 min-w-0 flex-col border-border",
+            "relative min-h-0 min-w-0 flex-col border-border",
             diffVisible ? "flex flex-1" : "hidden",
             showDiff
-              ? "lg:flex lg:w-[46%] lg:max-w-[720px] lg:flex-none lg:border-l"
+              ? "lg:flex lg:flex-none lg:border-l"
               : "lg:hidden",
           )}
+          style={showDiff && isLg ? { width: sideWidth } : undefined}
         >
+          {showDiff && isLg && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="右パネル幅を調整"
+              aria-valuenow={sideWidth}
+              aria-valuemin={SIDE_MIN}
+              aria-valuemax={SIDE_MAX}
+              title="ドラッグで幅を変更（ダブルクリックでリセット）"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                sideDragRef.current = { x: e.clientX, w: sideWidth };
+                setSideResizing(true);
+              }}
+              onDoubleClick={() => {
+                setSideWidth(SIDE_DEFAULT);
+                saveSideWidth(SIDE_DEFAULT);
+              }}
+              className={cx(
+                "absolute top-0 left-0 z-10 hidden h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none lg:block",
+                "hover:bg-accent/40 active:bg-accent/60",
+                sideResizing && "bg-accent/50",
+              )}
+            />
+          )}
           {sidePanel === "diff" && (
             <div className="flex min-h-0 w-full flex-1 flex-col">
               <DiffPane
