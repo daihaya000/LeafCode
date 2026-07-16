@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { listQuickAccess } from "@/lib/quickaccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ function samePath(a: string, b: string): boolean {
 
 /**
  * List directories for in-browser project picker.
- * Default (no path): user home folder.
+ * Default (no path): user home folder + Quick Access shortcuts.
  */
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get("path");
@@ -82,16 +83,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "not a directory" }, { status: 400 });
   }
 
-  // Stop "上へ" at the user home folder
   const parentDir = path.dirname(resolved);
   const parent =
     samePath(resolved, home) || parentDir === resolved ? null : parentDir;
+  const atHome = samePath(resolved, home);
 
   try {
     const entries = listDirs(resolved);
+    const quickAccess = atHome ? await listQuickAccess() : [];
     return NextResponse.json({
       path: resolved,
       parent,
+      quickAccess,
       entries,
     });
   } catch (err) {

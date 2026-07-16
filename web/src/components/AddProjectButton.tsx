@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Folder,
   FolderPlus,
+  Star,
   X,
 } from "lucide-react";
 import { Button, Spinner, cx } from "@/components/ui";
@@ -16,6 +17,7 @@ type DirEntry = { name: string; path: string };
 type DirList = {
   path: string | null;
   parent: string | null;
+  quickAccess?: DirEntry[];
   entries: DirEntry[];
   error?: string;
 };
@@ -40,6 +42,7 @@ export function AddProjectButton({
   const [cwd, setCwd] = useState<string | null>(null);
   const [parent, setParent] = useState<string | null>(null);
   const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [quickAccess, setQuickAccess] = useState<DirEntry[]>([]);
   const [manualPath, setManualPath] = useState("");
 
   const load = useCallback(async (dir: string | null) => {
@@ -51,10 +54,12 @@ export function AddProjectButton({
       setCwd(data.path);
       setParent(data.parent);
       setEntries(data.entries ?? []);
+      setQuickAccess(data.quickAccess ?? []);
       if (data.path) setManualPath(data.path);
     } catch (err) {
       setError(err instanceof Error ? err.message : "一覧取得に失敗しました");
       setEntries([]);
+      setQuickAccess([]);
     } finally {
       setLoading(false);
     }
@@ -158,28 +163,66 @@ export function AddProjectButton({
                 <div className="flex justify-center py-12">
                   <Spinner />
                 </div>
-              ) : entries.length === 0 ? (
-                <p className="px-4 py-10 text-center text-sm text-faint">
-                  サブフォルダがありません
-                </p>
               ) : (
-                <ul className="py-1">
-                  {entries.map((e) => (
-                    <li key={e.path}>
-                      <button
-                        type="button"
-                        onClick={() => void load(e.path)}
-                        className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
-                      >
-                        <Folder className="h-4.5 w-4.5 shrink-0 text-muted" />
-                        <span className="min-w-0 flex-1 truncate text-sm">
-                          {e.name}
-                        </span>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  {quickAccess.length > 0 && (
+                    <div className="border-b border-border pb-1">
+                      <p className="px-3 py-2 text-[11px] font-semibold tracking-wide text-faint uppercase">
+                        クイックアクセス
+                      </p>
+                      <ul>
+                        {quickAccess.map((e) => (
+                          <li key={`qa-${e.path}`}>
+                            <button
+                              type="button"
+                              onClick={() => void load(e.path)}
+                              className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
+                            >
+                              <Star className="h-4 w-4 shrink-0 fill-warning text-warning" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm">
+                                  {e.name}
+                                </span>
+                                <span className="block truncate font-mono text-[10px] text-faint">
+                                  {e.path}
+                                </span>
+                              </span>
+                              <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {entries.length === 0 ? (
+                    <p className="px-4 py-10 text-center text-sm text-faint">
+                      サブフォルダがありません
+                    </p>
+                  ) : (
+                    <ul className="py-1">
+                      {quickAccess.length > 0 && (
+                        <li className="px-3 py-2 text-[11px] font-semibold tracking-wide text-faint uppercase">
+                          このフォルダ
+                        </li>
+                      )}
+                      {entries.map((e) => (
+                        <li key={e.path}>
+                          <button
+                            type="button"
+                            onClick={() => void load(e.path)}
+                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
+                          >
+                            <Folder className="h-4.5 w-4.5 shrink-0 text-muted" />
+                            <span className="min-w-0 flex-1 truncate text-sm">
+                              {e.name}
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </div>
 
