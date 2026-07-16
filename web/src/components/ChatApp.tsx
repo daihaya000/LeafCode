@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DiffPanel } from "@/components/DiffPanel";
 
 type Health = {
   webui: { ok: boolean };
@@ -74,6 +75,7 @@ export function ChatApp({
   const [permission, setPermission] = useState<PermissionRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -379,6 +381,14 @@ export function ChatApp({
                 </button>
               )}
               <h1 className="text-xl font-semibold tracking-tight">OpenCode WebUI</h1>
+              <button
+                type="button"
+                disabled={!directory}
+                onClick={() => setShowDiff((v) => !v)}
+                className="min-h-10 rounded-md bg-white/10 px-3 text-sm hover:bg-white/15 disabled:opacity-40"
+              >
+                {showDiff ? "Hide Diff" : "Diff"}
+              </button>
             </div>
             <p className="text-sm text-white/55">
               {workspaceLabel ? `${workspaceLabel} · ` : ""}
@@ -467,6 +477,14 @@ export function ChatApp({
             ))}
             <div ref={bottomRef} />
           </div>
+
+          {showDiff && directory && (
+            <DiffPanel
+              directory={directory}
+              sessionId={sessionId}
+              onClose={() => setShowDiff(false)}
+            />
+          )}
 
           {permission && (
             <div className="border-t border-amber-500/40 bg-amber-950/50 px-4 py-4">

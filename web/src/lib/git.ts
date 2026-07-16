@@ -69,3 +69,24 @@ export async function removeWorktree(input: {
     throw new Error(result.stderr.trim() || "git worktree remove failed");
   }
 }
+
+export async function gitStatus(cwd: string): Promise<string> {
+  const result = await runGit(cwd, ["status", "--short"]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || "git status failed");
+  }
+  return result.stdout;
+}
+
+/** Unstaged + staged unified diff (no pager). */
+export async function gitDiff(cwd: string): Promise<string> {
+  const staged = await runGit(cwd, ["diff", "--cached"]);
+  const unstaged = await runGit(cwd, ["diff"]);
+  if (staged.code !== 0 && unstaged.code !== 0) {
+    throw new Error(
+      staged.stderr.trim() || unstaged.stderr.trim() || "git diff failed",
+    );
+  }
+  const parts = [staged.stdout.trim(), unstaged.stdout.trim()].filter(Boolean);
+  return parts.join("\n\n") || "";
+}
