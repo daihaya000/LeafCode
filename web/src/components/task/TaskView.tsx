@@ -393,6 +393,20 @@ export function TaskView({ taskId }: { taskId: string }) {
     stream.questions.length,
   ]);
 
+  const restoreToComposer = useCallback((text: string) => {
+    setInput(text);
+    stickRef.current = true;
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      el.focus();
+      const len = text.length;
+      el.setSelectionRange(len, len);
+    });
+  }, []);
+
   const openFileInDiff = useCallback((path: string) => {
     setFocusFile(path);
     setShowDiff(true);
@@ -516,6 +530,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                 directory={task.directory}
                 sessionId={task.sessionId}
                 lastUserMessageId={lastRevertMessageId}
+                messages={stream.visibleMessages}
+                onRestoreText={restoreToComposer}
                 onDone={() => {
                   void stream.resync();
                   setDiffKey((k) => k + 1);
@@ -700,6 +716,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                           messageId={m.info.id}
                           messages={stream.visibleMessages}
                           disabled={working}
+                          onRestoreText={restoreToComposer}
                           onDone={() => {
                             void stream.resync();
                             setDiffKey((k) => k + 1);

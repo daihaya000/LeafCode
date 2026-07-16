@@ -20,29 +20,6 @@ export async function revertMessage(
   });
 }
 
-/**
- * Keep `anchorMessageId` visible; undo everything after it.
- *
- * OpenCode without partID snaps revert to the preceding user message and
- * would hide the anchor. Passing the *next* message + its first partID
- * avoids that snap-back.
- */
-export async function revertAfterMessage(
-  directory: string,
-  sessionId: string,
-  anchorMessageId: string,
-  messages: MessageWithParts[],
-) {
-  const idx = messages.findIndex((m) => m.info.id === anchorMessageId);
-  if (idx < 0) throw new Error("対象メッセージが見つかりません");
-  const next = messages[idx + 1];
-  if (!next) {
-    throw new Error("このメッセージより後に巻き戻す内容がありません");
-  }
-  const partID = next.parts[0]?.id;
-  await revertMessage(directory, sessionId, next.info.id, partID);
-}
-
 export async function unrevertSession(directory: string, sessionId: string) {
   await ocJson(`/session/${sessionId}/unrevert`, directory, {
     method: "POST",
@@ -50,16 +27,50 @@ export async function unrevertSession(directory: string, sessionId: string) {
   });
 }
 
+/** Collect plain text from a user message for the composer. */
+export function messagePlainText(msg: MessageWithParts | undefined): string {
+  if (!msg) return "";
+  return msg.parts
+    .filter((p) => p.type === "text" && p.text?.trim())
+    .map((p) => p.text!.trim())
+    .join("\n\n");
+}
+
+/**
+ * Undo from this user message onward (message is hidden), return its text
+ * so the caller can put it in the composer.
+ */
+export async function revertUserMessageToComposer(
+  directory: string,
+  sessionId: string,
+  messageId: string,
+  messages: MessageWithParts[],
+): Promise<string> {
+  const msg = messages.find((m) => m.info.id === messageId);
+  if (!msg) throw new Error("対象メッセージが見つかりません");
+  if (msg.info.role !== "user") {
+    throw new Error("ユーザーメッセージのみ入力欄に戻せます");
+  }
+  const text = messagePlainText(msg);
+  if (!text) throw new Error("戻すテキストがありません");
+  // Inclusive revert: hide this message and everything after
+  await revertMessage(directory, sessionId, messageId);
+  return text;
+}
+
 export function SessionActions({
   directory,
   sessionId,
   lastUserMessageId,
+  messages,
+  onRestoreText,
   onDone,
 }: {
   directory: string;
   sessionId: string;
-  /** Last user turn to undo entirely (prompt + reply). */
   lastUserMessageId?: string | null;
+  messages: MessageWithParts[];
+  onRestoreText?: (text: string) => void;
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState<"compact" | "revert" | "unrevert" | null>(
@@ -110,7 +121,7 @@ export function SessionActions({
         size="icon"
         title={
           lastUserMessageId
-            ? "直前のターンを取り消す（入力とその返答）"
+            ? "直前の入力を下の欄に戻して巻き戻す"
             : "巻き戻すターンがありません"
         }
         busy={busy === "revert"}
@@ -120,13 +131,18 @@ export function SessionActions({
             if (!lastUserMessageId) throw new Error("messageID がありません");
             if (
               !window.confirm(
-                "直前の入力とその返答を取り消しますか？\n（そのターンのメッセージは消えます）",
+                "直前の入力を下の入力欄に戻し、その返答以降を巻き戻しますか？",
               )
             ) {
               return "cancelled";
             }
-            // No partID: OpenCode snaps to this user message and hides it + after
-            await revertMessage(directory, sessionId, lastUserMessageId);
+            const text = await revertUserMessageToComposer(
+              directory,
+              sessionId,
+              lastUserMessageId,
+              messages,
+            );
+            onRestoreText?.(text);
             return "ok";
           })
         }
@@ -160,13 +176,14 @@ export function SessionActions({
   );
 }
 
-/** Keep this message; undo everything after it. */
+/** Put this user comment into the composer and revert from here onward. */
 export function MessageRevertButton({
   directory,
   sessionId,
   messageId,
   messages,
   disabled,
+  onRestoreText,
   onDone,
 }: {
   directory: string;
@@ -174,38 +191,34 @@ export function MessageRevertButton({
   messageId: string;
   messages: MessageWithParts[];
   disabled?: boolean;
+  onRestoreText?: (text: string) => void;
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const idx = messages.findIndex((m) => m.info.id === messageId);
-  const hasAfter = idx >= 0 && idx < messages.length - 1;
 
   return (
     <button
       type="button"
-      disabled={disabled || busy || !hasAfter}
-      title={
-        hasAfter
-          ? "このメッセージは残し、これより後を巻き戻す"
-          : "このメッセージより後がありません"
-      }
+      disabled={disabled || busy}
+      title="このコメントを入力欄に戻して巻き戻す"
       onClick={() => {
         void (async () => {
           if (
             !window.confirm(
-              "このメッセージは残し、これより後の会話と変更を巻き戻しますか？",
+              "このコメントを下の入力欄に戻し、ここ以降を巻き戻しますか？",
             )
           ) {
             return;
           }
           setBusy(true);
           try {
-            await revertAfterMessage(
+            const text = await revertUserMessageToComposer(
               directory,
               sessionId,
               messageId,
               messages,
             );
+            onRestoreText?.(text);
             onDone?.();
           } catch (err) {
             window.alert(
@@ -219,7 +232,7 @@ export function MessageRevertButton({
       className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-faint hover:bg-surface-2 hover:text-muted disabled:opacity-40"
     >
       <RotateCcw className={busy ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
-      これより後を巻き戻し
+      入力欄に戻す
     </button>
   );
 }
