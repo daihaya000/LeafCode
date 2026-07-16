@@ -44,6 +44,13 @@ async function main() {
     if (!res.ok) throw new Error(`${res.status}`);
   });
 
+  await check("branches", async () => {
+    const u = new URL(`${BASE}/api/git/branches`);
+    u.searchParams.set("directory", ROOT);
+    const res = await fetch(u);
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  });
+
   await check("config write blocked", async () => {
     const res = await fetch(`${BASE}/api/opencode/config`, {
       method: "PATCH",

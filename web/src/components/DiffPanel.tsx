@@ -10,6 +10,12 @@ type DiffPayload = {
   sessionDiffError: string | null;
 };
 
+type BranchInfo = {
+  current: string;
+  branches: string[];
+  defaultTarget: string | null;
+};
+
 export function DiffPanel({
   directory,
   sessionId,
@@ -20,11 +26,27 @@ export function DiffPanel({
   onClose: () => void;
 }) {
   const [data, setData] = useState<DiffPayload | null>(null);
+  const [branches, setBranches] = useState<BranchInfo | null>(null);
+  const [mergeTarget, setMergeTarget] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [merging, setMerging] = useState(false);
   const [commitResult, setCommitResult] = useState<string | null>(null);
+  const [mergeResult, setMergeResult] = useState<string | null>(null);
+
+  const loadBranches = useCallback(async () => {
+    if (!directory) return;
+    const u = new URL("/api/git/branches", window.location.origin);
+    u.searchParams.set("directory", directory);
+    const res = await fetch(u.toString(), { cache: "no-store" });
+    const body = await res.json();
+    if (!res.ok) return;
+    const info = body as BranchInfo;
+    setBranches(info);
+    setMergeTarget((prev) => prev || info.defaultTarget || "");
+  }, [directory]);
 
   const load = useCallback(async () => {
     if (!directory) return;
@@ -41,12 +63,13 @@ export function DiffPanel({
         return;
       }
       setData(body as DiffPayload);
+      await loadBranches();
     } catch (err) {
       setError(err instanceof Error ? err.message : "diff failed");
     } finally {
       setLoading(false);
     }
-  }, [directory, sessionId]);
+  }, [directory, sessionId, loadBranches]);
 
   useEffect(() => {
     void load();
@@ -82,6 +105,40 @@ export function DiffPanel({
     }
   };
 
+  const merge = async (into: "current" | "branch") => {
+    if (!directory || !mergeTarget.trim()) return;
+    setMerging(true);
+    setError(null);
+    setMergeResult(null);
+    try {
+      const res = await fetch("/api/git/merge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          directory,
+          branch: mergeTarget.trim(),
+          into,
+          noFf: true,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(
+          body.conflict
+            ? `Merge conflict — resolve in an external tool. ${body.error ?? ""}`
+            : (body.error ?? `merge failed: ${res.status}`),
+        );
+        return;
+      }
+      setMergeResult(body.summary || `merged ${body.merged} → ${body.into}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "merge failed");
+    } finally {
+      setMerging(false);
+    }
+  };
+
   const sessionText =
     data?.sessionDiff == null
       ? ""
@@ -92,9 +149,9 @@ export function DiffPanel({
   const hasChanges = Boolean(data?.status?.trim() || data?.diff?.trim());
 
   return (
-    <div className="flex max-h-[50dvh] flex-col border-t border-white/10 bg-[#0a0e12]">
+    <div className="flex max-h-[55dvh] flex-col border-t border-white/10 bg-[#0a0e12]">
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-        <span className="text-sm font-medium">Diff / Commit</span>
+        <span className="text-sm font-medium">Diff / Commit / Merge</span>
         <div className="flex gap-2">
           <button
             type="button"
@@ -131,10 +188,50 @@ export function DiffPanel({
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
+        <span className="text-xs text-white/45">
+          {branches ? `on ${branches.current}` : "branch…"}
+        </span>
+        <select
+          className="min-h-11 min-w-[10rem] flex-1 rounded-md border border-white/15 bg-black/30 px-2 text-sm"
+          value={mergeTarget}
+          onChange={(e) => setMergeTarget(e.target.value)}
+        >
+          <option value="">Select branch</option>
+          {(branches?.branches ?? [])
+            .filter((b) => b !== branches?.current)
+            .map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+        </select>
+        <button
+          type="button"
+          disabled={merging || !mergeTarget || hasChanges}
+          title={hasChanges ? "Commit or stash first" : undefined}
+          onClick={() => void merge("current")}
+          className="min-h-11 rounded-md bg-sky-700 px-3 text-sm disabled:opacity-40"
+        >
+          Merge into current
+        </button>
+        <button
+          type="button"
+          disabled={merging || !mergeTarget || hasChanges}
+          onClick={() => void merge("branch")}
+          className="min-h-11 rounded-md bg-sky-900 px-3 text-sm disabled:opacity-40"
+        >
+          Merge current into target
+        </button>
+      </div>
+
       <div className="overflow-y-auto px-3 py-2 text-xs leading-relaxed">
         {error && <p className="mb-2 text-red-300">{error}</p>}
         {commitResult && (
           <p className="mb-2 text-emerald-300">Committed: {commitResult}</p>
+        )}
+        {mergeResult && (
+          <p className="mb-2 text-sky-300">Merged: {mergeResult}</p>
         )}
         {data?.gitError && (
           <p className="mb-2 text-amber-200">git: {data.gitError}</p>
