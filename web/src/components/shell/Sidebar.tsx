@@ -8,6 +8,7 @@ import {
   FolderGit2,
   Plus,
   Settings,
+  Star,
   Trash2,
 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
@@ -148,6 +149,44 @@ export function Sidebar({
     }
   };
 
+  const toggleFavorite = async (p: ProjectDto, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await sendJson("PATCH", "/api/projects", {
+        id: p.id,
+        favorite: !p.favorite,
+      });
+      notifyTasksChanged();
+      await refresh();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const removeProject = async (p: ProjectDto, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      !window.confirm(
+        `プロジェクト「${p.name}」を削除しますか？\n関連タスク / worktree も削除されます。`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await sendJson("DELETE", "/api/projects", undefined, { id: p.id });
+      notifyTasksChanged();
+      await refresh();
+      if (activeTaskId) {
+        const still = tasks.find((t) => t.id === activeTaskId);
+        if (!still || still.projectId === p.id) router.push("/");
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "削除に失敗しました");
+    }
+  };
+
   const nav = (href: string) => {
     onClose();
     router.push(href);
@@ -215,26 +254,47 @@ export function Sidebar({
               const open = expanded.has(p.id);
               const children = tasksByProject.get(p.id) ?? [];
               return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => toggleProject(p.id)}
-                    className="flex w-full cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text"
-                  >
-                    <ChevronRight
-                      className={cx(
-                        "h-3.5 w-3.5 shrink-0 transition-transform",
-                        open && "rotate-90",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1 truncate">
-                      {p.favorite ? "★ " : ""}
-                      {p.name}
-                    </span>
-                    <span className="tabular-nums text-[10px] text-faint">
-                      {children.length}
-                    </span>
-                  </button>
+                <li key={p.id} className="group/project">
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleProject(p.id)}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text"
+                    >
+                      <ChevronRight
+                        className={cx(
+                          "h-3.5 w-3.5 shrink-0 transition-transform",
+                          open && "rotate-90",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      <span className="tabular-nums text-[10px] text-faint">
+                        {children.length}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      title="お気に入り"
+                      onClick={(e) => void toggleFavorite(p, e)}
+                      className="hidden shrink-0 rounded-md p-1 text-faint hover:bg-surface-2 group-hover/project:inline-flex"
+                    >
+                      <Star
+                        className={
+                          p.favorite
+                            ? "h-3 w-3 fill-warning text-warning"
+                            : "h-3 w-3"
+                        }
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      title="プロジェクトを削除"
+                      onClick={(e) => void removeProject(p, e)}
+                      className="hidden shrink-0 rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger group-hover/project:inline-flex"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
                   {open && (
                     <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
                       {children.length === 0 ? (
@@ -263,6 +323,7 @@ export function Sidebar({
                                       task.status === "working" &&
                                         "animate-pulse bg-working",
                                       task.status === "ready" && "bg-success",
+                                      task.status === "merged" && "bg-success",
                                       task.status === "error" && "bg-danger",
                                       (task.status === "idle" ||
                                         task.status === "unknown") &&

@@ -21,6 +21,7 @@ import {
 import { cx } from "@/components/ui";
 import type { Part, ToolState } from "@/lib/types";
 import { Markdown } from "./Markdown";
+import { NestedAgentPanel } from "./NestedAgentPanel";
 
 function toolIcon(tool: string) {
   const t = tool.toLowerCase();
@@ -148,11 +149,24 @@ function toolLabel(tool: string): string {
   return tool;
 }
 
-const ToolPartView = memo(function ToolPartView({ part }: { part: Part }) {
-  const [open, setOpen] = useState(false);
+const ToolPartView = memo(function ToolPartView({
+  part,
+  directory,
+  rootSessionId,
+}: {
+  part: Part;
+  directory?: string | null;
+  rootSessionId?: string | null;
+}) {
   const state = part.state;
   const status = state?.status ?? "pending";
   const tool = part.tool ?? "tool";
+  const isTaskTool = tool.toLowerCase() === "task" || tool.toLowerCase().includes("task");
+  const nestedActive =
+    isTaskTool &&
+    (status === "running" || status === "pending") &&
+    Boolean(directory && rootSessionId);
+  const [open, setOpen] = useState(nestedActive);
   const Icon = toolIcon(tool);
   const summary = toolSummary(tool, state);
   const fields = useMemo(
@@ -167,8 +181,14 @@ const ToolPartView = memo(function ToolPartView({ part }: { part: Part }) {
   const preview =
     status === "completed" && niceOutput
       ? niceOutput.replace(/\s+/g, " ").slice(0, 100)
-      : "";
-  const hasDetail = fields.length > 0 || Boolean(niceOutput) || Boolean(rawOutput);
+      : nestedActive
+        ? "サブエージェント実行中…"
+        : "";
+  const hasDetail =
+    fields.length > 0 ||
+    Boolean(niceOutput) ||
+    Boolean(rawOutput) ||
+    nestedActive;
 
   return (
     <div
@@ -213,6 +233,13 @@ const ToolPartView = memo(function ToolPartView({ part }: { part: Part }) {
           />
         )}
       </button>
+      {nestedActive && directory && rootSessionId && (
+        <NestedAgentPanel
+          directory={directory}
+          parentSessionId={rootSessionId}
+          active={nestedActive}
+        />
+      )}
       {open && (
         <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border bg-surface px-3 py-3">
           {fields.length > 0 && (
@@ -283,10 +310,14 @@ export const PartView = memo(function PartView({
   part,
   role,
   onFileClick,
+  directory,
+  rootSessionId,
 }: {
   part: Part;
   role: "user" | "assistant";
   onFileClick?: (path: string) => void;
+  directory?: string | null;
+  rootSessionId?: string | null;
 }) {
   switch (part.type) {
     case "text": {
@@ -304,7 +335,13 @@ export const PartView = memo(function PartView({
     case "reasoning":
       return <ReasoningView text={part.text ?? ""} />;
     case "tool":
-      return <ToolPartView part={part} />;
+      return (
+        <ToolPartView
+          part={part}
+          directory={directory}
+          rootSessionId={rootSessionId}
+        />
+      );
     case "file": {
       const name = part.filename ?? "file";
       return (

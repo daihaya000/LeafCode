@@ -10,6 +10,7 @@ const STATUS_META: Record<
   idle: { label: "クリーン", tone: "neutral" },
   error: { label: "エラー", tone: "danger" },
   orphaned: { label: "要復旧", tone: "warning" },
+  merged: { label: "マージ済", tone: "success" },
   unknown: { label: "不明", tone: "neutral" },
 };
 

@@ -33,6 +33,9 @@ export function HomeView() {
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
+  const [mode, setMode] = useState<"code" | "ask" | "plan">("code");
+  const [baseBranch, setBaseBranch] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
@@ -140,6 +143,46 @@ export function HomeView() {
     );
   }, [refreshProjects, refreshEngine]);
 
+  useEffect(() => {
+    if (agents.length === 0) return;
+    if (mode === "ask") {
+      const a =
+        agents.find((n) => /ask|explore/i.test(n)) ?? agents[0] ?? "";
+      setAgent(a);
+    } else if (mode === "plan") {
+      const a =
+        agents.find((n) => /plan/i.test(n)) ??
+        agents.find((n) => /ask/i.test(n)) ??
+        agents[0] ??
+        "";
+      setAgent(a);
+    } else if (agents.includes("build")) {
+      setAgent("build");
+    }
+  }, [mode, agents]);
+
+  useEffect(() => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project?.rootPath || isolation === "current_folder") {
+      setBranches([]);
+      setBaseBranch("");
+      return;
+    }
+    void (async () => {
+      try {
+        const info = await getJson<{
+          branches: string[];
+          defaultTarget: string | null;
+          current: string;
+        }>("/api/git/branches", { directory: project.rootPath });
+        setBranches(info.branches ?? []);
+        setBaseBranch((cur) => cur || info.defaultTarget || info.current || "");
+      } catch {
+        setBranches([]);
+      }
+    })();
+  }, [projectId, projects, isolation]);
+
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -158,6 +201,7 @@ export function HomeView() {
         projectId,
         prompt: text,
         isolation,
+        ...(baseBranch ? { baseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(agent ? { agent } : {}),
       });
@@ -167,7 +211,7 @@ export function HomeView() {
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
     }
-  }, [prompt, projectId, isolation, model, agent, submitting, router]);
+  }, [prompt, projectId, isolation, baseBranch, model, agent, submitting, router]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -215,6 +259,18 @@ export function HomeView() {
                 ))}
               </select>
               <select
+                value={mode}
+                onChange={(e) =>
+                  setMode(e.target.value as "code" | "ask" | "plan")
+                }
+                className="h-9 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                title="作業モード"
+              >
+                <option value="code">Code</option>
+                <option value="ask">Ask</option>
+                <option value="plan">Plan</option>
+              </select>
+              <select
                 value={isolation}
                 onChange={(e) => setIsolation(e.target.value)}
                 className="h-9 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
@@ -225,6 +281,20 @@ export function HomeView() {
                   </option>
                 ))}
               </select>
+              {branches.length > 0 && isolation !== "current_folder" && (
+                <select
+                  value={baseBranch}
+                  onChange={(e) => setBaseBranch(e.target.value)}
+                  className="h-9 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  title="ベースブランチ"
+                >
+                  {branches.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              )}
               {modelOptions.length > 0 && (
                 <select
                   value={model}

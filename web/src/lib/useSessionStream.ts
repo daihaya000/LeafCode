@@ -33,6 +33,7 @@ type Action =
   | { kind: "status"; status: SessionStatus }
   | { kind: "permissionAsked"; request: PermissionRequest }
   | { kind: "permissionReplied"; requestId: string }
+  | { kind: "permissionsSynced"; requests: PermissionRequest[] }
   | { kind: "questionAsked"; request: QuestionRequest }
   | { kind: "questionsSynced"; requests: QuestionRequest[] }
   | { kind: "questionReplied"; requestId: string }
@@ -109,6 +110,8 @@ function reducer(state: StreamState, action: Action): StreamState {
         ...state,
         permissions: state.permissions.filter((p) => p.id !== action.requestId),
       };
+    case "permissionsSynced":
+      return { ...state, permissions: action.requests };
     case "questionAsked": {
       if (state.questions.some((q) => q.id === action.request.id)) return state;
       return { ...state, questions: [...state.questions, action.request] };
@@ -151,6 +154,55 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         directory,
       );
       if (statuses[sid]) dispatch({ kind: "status", status: statuses[sid] });
+
+      // Recover todos
+      try {
+        const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
+        if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
+      } catch {
+        /* non-fatal */
+      }
+
+      // Recover pending permissions
+      try {
+        const pending = await ocJson<
+          | Array<{
+              id: string;
+              sessionID: string;
+              permission?: string;
+              action?: string;
+              patterns?: string[];
+              resources?: string[];
+            }>
+          | { data?: Array<Record<string, unknown>> }
+        >("/permission", directory);
+        const list = Array.isArray(pending)
+          ? pending
+          : Array.isArray((pending as { data?: unknown[] })?.data)
+            ? ((pending as { data: Array<Record<string, unknown>> }).data)
+            : [];
+        dispatch({
+          kind: "permissionsSynced",
+          requests: list
+            .filter((p) => String(p.sessionID ?? "") === sid)
+            .map((p) => ({
+              id: String(p.id),
+              version: "v1" as const,
+              sessionID: String(p.sessionID),
+              permission: String(
+                (p as { permission?: string }).permission ??
+                  (p as { action?: string }).action ??
+                  "permission",
+              ),
+              patterns: ((p as { patterns?: string[] }).patterns ??
+                (p as { resources?: string[] }).resources ??
+                []) as string[],
+              receivedAt: Date.now(),
+            })),
+        });
+      } catch {
+        /* non-fatal */
+      }
 
       // Recover pending questions missed while disconnected
       try {

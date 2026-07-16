@@ -13,13 +13,16 @@ import {
   ArrowUp,
   Check,
   ChevronRight,
+  CircleAlert,
   Copy,
+  FolderTree,
   GitBranch,
   ListTodo,
   Loader2,
   PanelRight,
   RefreshCw,
   Square,
+  Terminal,
   Trash2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -30,9 +33,13 @@ import { getJson, ocJson, sendJson } from "@/lib/client";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
+import { FileTreePanel } from "./FileTreePanel";
 import { PartView } from "./PartView";
 import { PermissionCard } from "./PermissionCard";
+import { PtyPanel } from "./PtyPanel";
 import { QuestionCard } from "./QuestionCard";
+import { SessionActions } from "./SessionActions";
+import { SessionSwitcher } from "./SessionSwitcher";
 
 type ModelOption = { value: string; label: string; group: string };
 
@@ -44,9 +51,19 @@ type ProviderResponse = {
 
 type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
 
-function TodoPanel({ todos }: { todos: Todo[] }) {
-  const [open, setOpen] = useState(false);
+function TodoPanel({
+  todos,
+  forceOpen,
+}: {
+  todos: Todo[];
+  forceOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(Boolean(forceOpen));
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
   const done = todos.filter((t) => t.status === "completed").length;
+  const active = todos.filter((t) => t.status === "in_progress").length;
   if (todos.length === 0) return null;
   return (
     <div className="rounded-xl border border-border bg-surface">
@@ -57,6 +74,11 @@ function TodoPanel({ todos }: { todos: Todo[] }) {
       >
         <ListTodo className="h-3.5 w-3.5" />
         プラン {done}/{todos.length}
+        {active > 0 && (
+          <span className="rounded-full bg-working/15 px-1.5 py-0.5 text-[10px] text-working">
+            進行中 {active}
+          </span>
+        )}
         <ChevronRight
           className={cx("h-3 w-3 transition-transform", open && "rotate-90")}
         />
@@ -64,17 +86,24 @@ function TodoPanel({ todos }: { todos: Todo[] }) {
       {open && (
         <ul className="space-y-1 border-t border-border px-3 py-2">
           {todos.map((t, i) => (
-            <li key={i} className="flex items-start gap-2 text-xs">
+            <li
+              key={t.id ?? `${t.content ?? "todo"}-${i}`}
+              className="flex items-start gap-2 text-xs"
+            >
               {t.status === "completed" ? (
                 <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
               ) : t.status === "in_progress" ? (
                 <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-working" />
+              ) : t.status === "cancelled" ? (
+                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-faint" />
               ) : (
                 <span className="mt-1 ml-0.5 h-2 w-2 shrink-0 rounded-full border border-faint" />
               )}
               <span
                 className={cx(
-                  t.status === "completed" ? "text-faint line-through" : "text-muted",
+                  t.status === "completed" || t.status === "cancelled"
+                    ? "text-faint line-through"
+                    : "text-muted",
                 )}
               >
                 {t.content}
@@ -94,6 +123,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<"chat" | "diff">("chat");
   const [showDiff, setShowDiff] = useState(true);
+  const [sidePanel, setSidePanel] = useState<"diff" | "files" | "pty">("diff");
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -230,6 +260,30 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const working = stream.status !== null && stream.status.type !== "idle";
 
+  const currentTool = useMemo(() => {
+    for (let i = stream.messages.length - 1; i >= 0; i--) {
+      const parts = stream.messages[i]?.parts ?? [];
+      for (let j = parts.length - 1; j >= 0; j--) {
+        const p = parts[j];
+        if (
+          p?.type === "tool" &&
+          (p.state?.status === "running" || p.state?.status === "pending")
+        ) {
+          const tool = p.tool ?? "tool";
+          const title = p.state?.title ?? tool;
+          return title;
+        }
+      }
+    }
+    return null;
+  }, [stream.messages]);
+
+  const todoBadge = useMemo(() => {
+    if (stream.todos.length === 0) return null;
+    const done = stream.todos.filter((t) => t.status === "completed").length;
+    return `${done}/${stream.todos.length}`;
+  }, [stream.todos]);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text) return;
@@ -305,6 +359,26 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [task, refreshTask]);
 
+  // Tab title notification for approvals / working
+  useEffect(() => {
+    const base = task?.title ? `${task.title} · OpenCode` : "OpenCode WebUI";
+    if (stream.permissions.length > 0 || stream.questions.length > 0) {
+      document.title = `(要確認) ${base}`;
+    } else if (working) {
+      document.title = `(実行中) ${base}`;
+    } else {
+      document.title = base;
+    }
+    return () => {
+      document.title = "OpenCode WebUI";
+    };
+  }, [
+    task?.title,
+    working,
+    stream.permissions.length,
+    stream.questions.length,
+  ]);
+
   const openFileInDiff = useCallback((path: string) => {
     setFocusFile(path);
     setShowDiff(true);
@@ -366,6 +440,17 @@ export function TaskView({ taskId }: { taskId: string }) {
           <div className="flex items-center gap-2">
             <h1 className="truncate text-sm font-semibold">{task.title}</h1>
             <StatusBadge status={working ? "working" : task.status} />
+            {working && currentTool && (
+              <span className="hidden max-w-[12rem] truncate text-xs text-working sm:inline">
+                {currentTool}
+              </span>
+            )}
+            {todoBadge && (
+              <span className="hidden items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted sm:inline-flex">
+                <ListTodo className="h-3 w-3" />
+                {todoBadge}
+              </span>
+            )}
             {stream.connection === "reconnecting" && (
               <span className="hidden text-xs text-warning sm:inline">再接続中…</span>
             )}
@@ -405,6 +490,21 @@ export function TaskView({ taskId }: { taskId: string }) {
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
+          {task.sessionId && (
+            <>
+              <SessionSwitcher
+                workspaceId={task.id}
+                directory={task.directory}
+                currentSessionId={task.sessionId}
+                onSwitch={() => void refreshTask()}
+              />
+              <SessionActions
+                directory={task.directory}
+                sessionId={task.sessionId}
+                onDone={() => void stream.resync()}
+              />
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -416,9 +516,45 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
+            title="ファイルツリー"
+            className={cx(
+              "hidden lg:inline-flex",
+              showDiff && sidePanel === "files" && "bg-surface-2 text-text",
+            )}
+            onClick={() => {
+              setShowDiff(true);
+              setSidePanel("files");
+            }}
+          >
+            <FolderTree className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="ターミナル"
+            className={cx(
+              "hidden lg:inline-flex",
+              showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
+            )}
+            onClick={() => {
+              setShowDiff(true);
+              setSidePanel("pty");
+            }}
+          >
+            <Terminal className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             title="Diff パネル"
-            className={cx("hidden lg:inline-flex", showDiff && "bg-surface-2 text-text")}
-            onClick={() => setShowDiff((v) => !v)}
+            className={cx(
+              "hidden lg:inline-flex",
+              showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
+            )}
+            onClick={() => {
+              setShowDiff((v) => (sidePanel === "diff" ? !v : true));
+              setSidePanel("diff");
+            }}
           >
             <PanelRight className="h-4 w-4" />
           </Button>
@@ -477,6 +613,15 @@ export function TaskView({ taskId }: { taskId: string }) {
               </Button>
             </div>
           ) : (
+            <>
+              {task.status === "merged" && (
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-success/30 bg-success-bg px-4 py-2 text-sm text-success">
+                  <span>マージ済み — worktree を削除できます</span>
+                  <Button variant="danger" size="sm" onClick={() => void removeTask()}>
+                    クリーンアップ
+                  </Button>
+                </div>
+              )}
             <div
               ref={scrollRef}
               onScroll={onScroll}
@@ -496,8 +641,18 @@ export function TaskView({ taskId }: { taskId: string }) {
                         part={p}
                         role={m.info.role}
                         onFileClick={openFileInDiff}
+                        directory={task.directory}
+                        rootSessionId={task.sessionId}
                       />
                     ))}
+                    {m.info.role === "assistant" &&
+                      typeof m.info.cost === "number" &&
+                      m.info.cost > 0 && (
+                        <p className="text-[10px] text-faint">
+                          cost ${m.info.cost.toFixed(4)}
+                          {m.info.modelID ? ` · ${m.info.modelID}` : ""}
+                        </p>
+                      )}
                     {m.info.error?.data?.message && (
                       <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
                         {m.info.error.data.message}
@@ -525,17 +680,20 @@ export function TaskView({ taskId }: { taskId: string }) {
                     <Loader2 className="h-4 w-4 animate-spin text-working" />
                     {stream.status?.type === "retry"
                       ? `リトライ中… ${stream.status.message ?? ""}`
-                      : "作業中…"}
+                      : currentTool
+                        ? `${currentTool}…`
+                        : "作業中…"}
                   </div>
                 )}
               </div>
             </div>
+            </>
           )}
 
           {/* Composer */}
           <div className="shrink-0 border-t border-border bg-surface px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
-              <TodoPanel todos={stream.todos} />
+              <TodoPanel todos={stream.todos} forceOpen={working} />
               {sendError && (
                 <p className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger">
                   {sendError}
@@ -642,13 +800,35 @@ export function TaskView({ taskId }: { taskId: string }) {
               : "lg:hidden",
           )}
         >
-          <DiffPane
-            directory={task.directory}
-            refreshKey={diffKey}
-            focusFile={focusFile}
-            onFocusHandled={() => setFocusFile(null)}
-            onMutated={() => void refreshTask()}
-          />
+          {sidePanel === "diff" && (
+            <DiffPane
+              directory={task.directory}
+              workspaceId={task.id}
+              refreshKey={diffKey}
+              focusFile={focusFile}
+              onFocusHandled={() => setFocusFile(null)}
+              onMutated={() => void refreshTask()}
+            />
+          )}
+          {sidePanel === "files" && (
+            <div className="hidden min-h-0 w-full flex-1 lg:flex">
+              <FileTreePanel
+                root={task.directory}
+                onFile={(p) => {
+                  const rel = p.startsWith(task.directory)
+                    ? p.slice(task.directory.length).replace(/^[\\/]/, "")
+                    : p;
+                  openFileInDiff(rel.replace(/\\/g, "/"));
+                  setSidePanel("diff");
+                }}
+              />
+            </div>
+          )}
+          {sidePanel === "pty" && (
+            <div className="hidden min-h-0 w-full flex-1 lg:flex">
+              <PtyPanel directory={task.directory} />
+            </div>
+          )}
         </div>
       </div>
     </div>

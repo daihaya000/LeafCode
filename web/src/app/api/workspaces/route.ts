@@ -96,3 +96,22 @@ export async function DELETE(req: NextRequest) {
     throw err;
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  const body = (await req.json().catch(() => null)) as {
+    id?: string;
+    status?: "active" | "merging" | "archived" | "orphaned";
+  } | null;
+  if (!body?.id || !body.status) {
+    return NextResponse.json(
+      { error: "id and status are required" },
+      { status: 400 },
+    );
+  }
+  const { getWorkspace, setWorkspaceStatus } = await import("@/lib/db");
+  if (!getWorkspace(body.id)) {
+    return NextResponse.json({ error: "workspace not found" }, { status: 404 });
+  }
+  setWorkspaceStatus(body.id, body.status);
+  return NextResponse.json({ ok: true, id: body.id, status: body.status });
+}

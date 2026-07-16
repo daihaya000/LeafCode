@@ -20,6 +20,7 @@ import {
 import { Button, DiffStat, Spinner, cx } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import type { DiffFile, DiffFilesPayload } from "@/lib/types";
+import { tintCodeLine } from "@/lib/difftint";
 
 const MAX_LINES_PER_FILE = 500;
 
@@ -33,6 +34,7 @@ function FileDiffBlock({
   file,
   expanded,
   selected,
+  sideBySide,
   onToggle,
   onSelect,
   anchorRef,
@@ -40,6 +42,7 @@ function FileDiffBlock({
   file: DiffFile;
   expanded: boolean;
   selected: boolean;
+  sideBySide: boolean;
   onToggle: () => void;
   onSelect: (v: boolean) => void;
   anchorRef?: (el: HTMLDivElement | null) => void;
@@ -102,6 +105,40 @@ function FileDiffBlock({
               {hunk.lines.map((line, li) => {
                 if (rendered >= MAX_LINES_PER_FILE) return null;
                 rendered += 1;
+                if (sideBySide) {
+                  if (line.t === "-") {
+                    return (
+                      <div
+                        key={li}
+                        className="grid grid-cols-2 bg-diff-del-bg text-diff-del-text"
+                      >
+                        <div className="border-r border-border px-2 whitespace-pre">
+                          -{line.text || " "}
+                        </div>
+                        <div className="px-2" />
+                      </div>
+                    );
+                  }
+                  if (line.t === "+") {
+                    return (
+                      <div
+                        key={li}
+                        className="grid grid-cols-2 bg-diff-add-bg text-diff-add-text"
+                      >
+                        <div className="border-r border-border px-2" />
+                        <div className="px-2 whitespace-pre">+{line.text || " "}</div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={li} className="grid grid-cols-2 text-muted">
+                      <div className="border-r border-border px-2 whitespace-pre">
+                        {line.text || " "}
+                      </div>
+                      <div className="px-2 whitespace-pre">{line.text || " "}</div>
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={li}
@@ -115,7 +152,11 @@ function FileDiffBlock({
                     <span className="w-4 shrink-0 select-none">
                       {line.t === " " ? "" : line.t}
                     </span>
-                    <span>{line.text || " "}</span>
+                    <span
+                      dangerouslySetInnerHTML={{
+                        __html: tintCodeLine(line.text || " ", file.path),
+                      }}
+                    />
                   </div>
                 );
               })}
@@ -134,12 +175,14 @@ function FileDiffBlock({
 
 export function DiffPane({
   directory,
+  workspaceId,
   refreshKey,
   focusFile,
   onFocusHandled,
   onMutated,
 }: {
   directory: string;
+  workspaceId?: string;
   refreshKey: number;
   focusFile?: string | null;
   onFocusHandled?: () => void;
@@ -156,6 +199,8 @@ export function DiffPane({
   const [mergeTarget, setMergeTarget] = useState("");
   const [prTitle, setPrTitle] = useState("");
   const [prAvailable, setPrAvailable] = useState<boolean | null>(null);
+  const [sideBySide, setSideBySide] = useState(false);
+  const [filter, setFilter] = useState<"all" | "tracked" | "untracked">("all");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRefs = useRef(new Map<string, HTMLDivElement>());
@@ -228,7 +273,12 @@ export function DiffPane({
     onFocusHandled?.();
   }, [focusFile, payload, onFocusHandled]);
 
-  const files = useMemo(() => payload?.files ?? [], [payload]);
+  const files = useMemo(() => {
+    const all = payload?.files ?? [];
+    if (filter === "untracked") return all.filter((f) => f.untracked);
+    if (filter === "tracked") return all.filter((f) => !f.untracked);
+    return all;
+  }, [payload, filter]);
   const hasChanges = files.length > 0;
   const selectedPaths = useMemo(
     () => files.filter((f) => !deselected[f.path]).map((f) => f.path),
@@ -281,6 +331,12 @@ export function DiffPane({
         "/api/git/merge",
         { directory, branch: mergeTarget, into, noFf: true },
       );
+      if (into === "branch" && workspaceId) {
+        await sendJson("PATCH", "/api/workspaces", {
+          id: workspaceId,
+          status: "archived",
+        }).catch(() => undefined);
+      }
       return res.summary || `マージしました: ${res.merged} → ${res.into}`;
     });
 
@@ -305,6 +361,24 @@ export function DiffPane({
           <DiffStat additions={payload.additions} deletions={payload.deletions} />
         )}
         <span className="flex-1" />
+        <select
+          value={filter}
+          onChange={(e) =>
+            setFilter(e.target.value as "all" | "tracked" | "untracked")
+          }
+          className="h-8 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none"
+        >
+          <option value="all">すべて</option>
+          <option value="tracked">tracked</option>
+          <option value="untracked">untracked</option>
+        </select>
+        <Button
+          variant={sideBySide ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setSideBySide((v) => !v)}
+        >
+          並列
+        </Button>
         <Button
           variant={panel === "commit" ? "secondary" : "ghost"}
           size="sm"
@@ -482,6 +556,7 @@ export function DiffPane({
             file={f}
             expanded={Boolean(expanded[f.path])}
             selected={!deselected[f.path]}
+            sideBySide={sideBySide}
             onToggle={() =>
               setExpanded((prev) => ({ ...prev, [f.path]: !prev[f.path] }))
             }

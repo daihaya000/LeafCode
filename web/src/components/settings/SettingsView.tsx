@@ -40,9 +40,10 @@ export function SettingsView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [mcpStatus, setMcpStatus] = useState<string>("未取得");
 
   const refresh = useCallback(async () => {
-    const [h, p, r, o, a] = await Promise.allSettled([
+    const [h, p, r, o, a, m] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
@@ -51,6 +52,10 @@ export function SettingsView() {
         { scan: "1" },
       ),
       getJson<AccessInfo>("/api/access"),
+      fetch("/api/opencode/mcp", { cache: "no-store" }).then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json();
+      }),
     ]);
     if (h.status === "fulfilled") setHealth(h.value);
     if (p.status === "fulfilled") setProjects(p.value.projects ?? []);
@@ -60,6 +65,23 @@ export function SettingsView() {
       setStray(o.value.stray ?? []);
     }
     if (a.status === "fulfilled") setAccess(a.value);
+    if (m.status === "fulfilled") {
+      const raw = m.value;
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as { data?: unknown[] })?.data)
+          ? (raw as { data: unknown[] }).data
+          : raw && typeof raw === "object"
+            ? Object.keys(raw as object)
+            : [];
+      setMcpStatus(
+        list.length > 0
+          ? `${list.length} 件（読取のみ・接続変更は CLI/Desktop）`
+          : "MCP サーバーなし / 未接続",
+      );
+    } else {
+      setMcpStatus("取得不可（エンジン未起動または未対応）");
+    }
   }, []);
 
   useEffect(() => {
@@ -89,6 +111,15 @@ export function SettingsView() {
         id: p.id,
         favorite: !p.favorite,
       });
+    });
+
+  const removeProject = (p: ProjectDto) =>
+    guard(async () => {
+      const ok = window.confirm(
+        `プロジェクト「${p.name}」を削除しますか？\n関連タスク / worktree も削除されます。`,
+      );
+      if (!ok) return;
+      await sendJson("DELETE", "/api/projects", undefined, { id: p.id });
     });
 
   const addRoot = () =>
@@ -247,6 +278,15 @@ export function SettingsView() {
                     }
                   />
                 </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  title="プロジェクトを削除"
+                  onClick={() => void removeProject(p)}
+                  className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </li>
             ))}
             {projects.length === 0 && (
@@ -286,6 +326,20 @@ export function SettingsView() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-muted">MCP（読取）</h2>
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+            {mcpStatus}
+          </p>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-muted">Remote Workspace</h2>
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+            未実装（501）。VPN + ローカルパスで代替してください。
+          </p>
         </section>
 
         {(orphans.length > 0 || stray.length > 0) && (

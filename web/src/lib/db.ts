@@ -273,3 +273,21 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   return row;
 }
+
+export function getProject(id: string): ProjectRow | undefined {
+  return getDb().prepare("SELECT * FROM projects WHERE id = ?").get(id) as
+    | ProjectRow
+    | undefined;
+}
+
+/** Remove project row. Caller must destroy workspaces first. */
+export function deleteProject(id: string): ProjectRow | undefined {
+  const row = getProject(id);
+  if (!row) return undefined;
+  getDb().prepare("DELETE FROM projects WHERE id = ?").run(id);
+  return row;
+}
+
+export function removeAllowedRoot(rootPath: string): void {
+  getDb().prepare("DELETE FROM allowed_roots WHERE path = ?").run(rootPath);
+}

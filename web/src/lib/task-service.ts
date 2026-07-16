@@ -68,6 +68,7 @@ function toTask(
 ): TaskSummary {
   let status: TaskStatus;
   if (ws.status === "orphaned") status = "orphaned";
+  else if (ws.status === "archived") status = "merged";
   else if (sessionStatus && sessionStatus.type !== "idle") status = "working";
   else if (binding && !engineOk) status = "unknown";
   else if (stat.files > 0) status = "ready";

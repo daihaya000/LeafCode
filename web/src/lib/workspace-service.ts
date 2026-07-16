@@ -6,9 +6,13 @@ import {
   WorkspaceRow,
   addAllowedRoot,
   createWorkspace,
+  deleteProject,
   deleteWorkspace,
   getDb,
   getWorkspace,
+  listProjects,
+  listWorkspaces,
+  removeAllowedRoot,
   setWorkspaceStatus,
 } from "./db";
 import { addWorktree, removeWorktree } from "./git";
@@ -179,4 +183,50 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
 
   deleteWorkspace(id);
   return row;
+}
+
+/** Destroy all workspaces for a project, then delete the project row. */
+export async function destroyProject(projectId: string): Promise<{
+  destroyed: number;
+  orphaned: number;
+  errors: string[];
+}> {
+  const project = getDb()
+    .prepare("SELECT * FROM projects WHERE id = ?")
+    .get(projectId) as { id: string; root_path: string } | undefined;
+  if (!project) throw new ServiceError("project not found", 404);
+
+  const workspaces = listWorkspaces(projectId);
+  let destroyed = 0;
+  let orphaned = 0;
+  const errors: string[] = [];
+
+  for (const ws of workspaces) {
+    try {
+      await destroyWorkspace(ws.id);
+      destroyed += 1;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${ws.display_name}: ${msg}`);
+      const still = getWorkspace(ws.id);
+      if (still?.status === "orphaned") orphaned += 1;
+    }
+  }
+
+  const remaining = listWorkspaces(projectId);
+  if (remaining.length > 0) {
+    throw new ServiceError(
+      `プロジェクトを削除できません。残タスク ${remaining.length} 件（${errors.join("; ") || "orphan"}）`,
+      409,
+    );
+  }
+
+  deleteProject(projectId);
+
+  const others = listProjects().filter((p) => p.root_path === project.root_path);
+  if (others.length === 0) {
+    removeAllowedRoot(project.root_path);
+  }
+
+  return { destroyed, orphaned, errors };
 }

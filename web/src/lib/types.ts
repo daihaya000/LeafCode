@@ -102,6 +102,7 @@ export type TaskStatus =
   | "idle"
   | "error"
   | "orphaned"
+  | "merged"
   | "unknown";
 
 export type TaskSummary = {

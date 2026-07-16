@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { listProjects, upsertProject } from "@/lib/db";
 import { realPathOrResolved } from "@/lib/allowlist";
+import { destroyProject, ServiceError } from "@/lib/workspace-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,4 +101,24 @@ export async function PATCH(req: NextRequest) {
       createdAt: row.created_at,
     },
   });
+}
+
+export async function DELETE(req: NextRequest) {
+  const id =
+    req.nextUrl.searchParams.get("id") ||
+    ((await req.json().catch(() => null)) as { id?: string } | null)?.id;
+
+  if (!id) {
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
+  }
+
+  try {
+    const result = await destroyProject(id);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof ServiceError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
 }
