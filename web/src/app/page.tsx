@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ChatApp } from "@/components/ChatApp";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "OpenCode WebUI",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <ChatApp />;
+  return <AppShell />;
 }

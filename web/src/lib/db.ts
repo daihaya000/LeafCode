@@ -212,3 +212,24 @@ export function bindSession(
     )
     .run(workspaceId, opencodeSessionId, title, new Date().toISOString());
 }
+
+export function getWorkspace(id: string): WorkspaceRow | undefined {
+  return getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as
+    | WorkspaceRow
+    | undefined;
+}
+
+export function setWorkspaceStatus(
+  id: string,
+  status: WorkspaceRow["status"],
+): void {
+  getDb().prepare("UPDATE workspaces SET status = ? WHERE id = ?").run(status, id);
+}
+
+export function deleteWorkspace(id: string): WorkspaceRow | undefined {
+  const row = getWorkspace(id);
+  if (!row) return undefined;
+  getDb().prepare("DELETE FROM session_bindings WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
+  return row;
+}

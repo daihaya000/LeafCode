@@ -52,8 +52,16 @@ async function ocFetch(
   });
 }
 
-export function ChatApp() {
-  const [directory, setDirectory] = useState("");
+export function ChatApp({
+  initialDirectory = "",
+  workspaceLabel,
+  onBack,
+}: {
+  initialDirectory?: string;
+  workspaceLabel?: string;
+  onBack?: () => void;
+}) {
+  const [directory, setDirectory] = useState(initialDirectory);
   const [roots, setRoots] = useState<string[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -70,6 +78,10 @@ export function ChatApp() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const engineOk = health?.opencode.ok ?? false;
+
+  useEffect(() => {
+    if (initialDirectory) setDirectory(initialDirectory);
+  }, [initialDirectory]);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -356,9 +368,21 @@ export function ChatApp() {
       <header className="border-b border-white/10 px-4 py-3">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">OpenCode WebUI</h1>
+            <div className="mb-1 flex items-center gap-2">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="min-h-10 rounded-md bg-white/10 px-3 text-sm hover:bg-white/15"
+                >
+                  Launcher
+                </button>
+              )}
+              <h1 className="text-xl font-semibold tracking-tight">OpenCode WebUI</h1>
+            </div>
             <p className="text-sm text-white/55">
-              Phase 0 · {statusLabel}
+              {workspaceLabel ? `${workspaceLabel} · ` : ""}
+              Phase 0–1 · {statusLabel}
               {health?.opencode.version ? ` · OC ${health.opencode.version}` : ""}
             </p>
           </div>

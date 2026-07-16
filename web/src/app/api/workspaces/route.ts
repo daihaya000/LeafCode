@@ -127,3 +127,55 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+
+export async function DELETE(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
+  }
+
+  const { deleteWorkspace, getDb, setWorkspaceStatus } = await import("@/lib/db");
+  const { removeWorktree } = await import("@/lib/git");
+
+  const row = getDb()
+    .prepare("SELECT * FROM workspaces WHERE id = ?")
+    .get(id) as
+    | {
+        id: string;
+        project_id: string;
+        isolation: string;
+        worktree_path: string | null;
+        absolute_path: string;
+      }
+    | undefined;
+
+  if (!row) {
+    return NextResponse.json({ error: "workspace not found" }, { status: 404 });
+  }
+
+  const project = getDb()
+    .prepare("SELECT root_path FROM projects WHERE id = ?")
+    .get(row.project_id) as { root_path: string } | undefined;
+
+  if (row.isolation === "git_worktree" && row.worktree_path && project) {
+    try {
+      await removeWorktree({
+        repoRoot: project.root_path,
+        worktreePath: row.worktree_path,
+        force: true,
+      });
+    } catch {
+      setWorkspaceStatus(id, "orphaned");
+      return NextResponse.json(
+        {
+          error: "git worktree remove failed; marked orphaned",
+          status: "orphaned",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  deleteWorkspace(id);
+  return NextResponse.json({ ok: true });
+}
