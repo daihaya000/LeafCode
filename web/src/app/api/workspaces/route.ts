@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { createTemporaryCopy, removeTemporaryCopy } from "@/lib/copy";
+import { detectDevcontainer } from "@/lib/devcontainer";
 import {
   addAllowedRoot,
   createWorkspace,
@@ -15,7 +16,11 @@ import { addWorktree, removeWorktree } from "@/lib/git";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Isolation = "current_folder" | "git_worktree" | "temporary_copy";
+type Isolation =
+  | "current_folder"
+  | "git_worktree"
+  | "temporary_copy"
+  | "devcontainer";
 
 function slugBranch(name: string): string {
   const base = name
@@ -60,7 +65,8 @@ export async function POST(req: NextRequest) {
   if (
     isolation !== "current_folder" &&
     isolation !== "git_worktree" &&
-    isolation !== "temporary_copy"
+    isolation !== "temporary_copy" &&
+    isolation !== "devcontainer"
   ) {
     return NextResponse.json({ error: "invalid isolation" }, { status: 400 });
   }
@@ -83,7 +89,9 @@ export async function POST(req: NextRequest) {
       ? "Worktree session"
       : isolation === "temporary_copy"
         ? "Temp copy session"
-        : path.basename(project.root_path));
+        : isolation === "devcontainer"
+          ? "Dev Container (host)"
+          : path.basename(project.root_path));
 
   let absolutePath = body.absolutePath
     ? path.resolve(body.absolutePath)
@@ -91,6 +99,19 @@ export async function POST(req: NextRequest) {
   let worktreePath: string | undefined;
   const baseBranch: string | undefined = body.baseBranch;
   const workspaceId = crypto.randomUUID();
+  let note: string | undefined;
+
+  if (isolation === "devcontainer") {
+    const info = detectDevcontainer(project.root_path);
+    if (!info.present) {
+      return NextResponse.json(
+        { error: info.message },
+        { status: 400 },
+      );
+    }
+    absolutePath = path.resolve(project.root_path);
+    note = info.message;
+  }
 
   if (isolation === "git_worktree") {
     const branch = body.branch?.trim() || slugBranch(displayName);
@@ -156,6 +177,7 @@ export async function POST(req: NextRequest) {
       status: row.status,
       createdAt: row.created_at,
     },
+    note,
   });
 }
 

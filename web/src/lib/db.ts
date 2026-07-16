@@ -17,7 +17,7 @@ export type WorkspaceRow = {
   project_id: string;
   display_name: string;
   absolute_path: string;
-  isolation: "current_folder" | "git_worktree" | "temporary_copy";
+  isolation: "current_folder" | "git_worktree" | "temporary_copy" | "devcontainer";
   base_branch: string | null;
   worktree_path: string | null;
   status: "active" | "merging" | "archived" | "orphaned";
@@ -178,7 +178,7 @@ export function createWorkspace(input: {
   projectId: string;
   displayName: string;
   absolutePath: string;
-  isolation: "current_folder" | "git_worktree" | "temporary_copy";
+  isolation: "current_folder" | "git_worktree" | "temporary_copy" | "devcontainer";
   baseBranch?: string;
   worktreePath?: string;
 }): WorkspaceRow {

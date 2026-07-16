@@ -15,7 +15,11 @@ export type Workspace = {
   projectId: string;
   displayName: string;
   absolutePath: string;
-  isolation: "current_folder" | "git_worktree" | "temporary_copy";
+  isolation:
+    | "current_folder"
+    | "git_worktree"
+    | "temporary_copy"
+    | "devcontainer";
   status: string;
   createdAt: string;
 };
@@ -31,7 +35,7 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
   const [rootPath, setRootPath] = useState("");
   const [sessionName, setSessionName] = useState("");
   const [isolation, setIsolation] = useState<
-    "current_folder" | "git_worktree" | "temporary_copy"
+    "current_folder" | "git_worktree" | "temporary_copy" | "devcontainer"
   >("git_worktree");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -309,6 +313,15 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
                   onChange={() => setIsolation("temporary_copy")}
                 />
                 Temp Copy
+              </label>
+              <label className="flex min-h-11 items-center gap-2">
+                <input
+                  type="radio"
+                  name="iso"
+                  checked={isolation === "devcontainer"}
+                  onChange={() => setIsolation("devcontainer")}
+                />
+                Dev Container
               </label>
             </div>
             <button

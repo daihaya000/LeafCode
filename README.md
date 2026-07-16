@@ -1,46 +1,50 @@
 # OpenCode WebUI
 
-OpenCode CLI（`opencode serve`）を実行エンジンにした、独自 Web UI（Workspace Manager）。本体はフォークしない。
-
-## 正本ドキュメント
-
-| 文書 | 役割 |
-|------|------|
-| [`architecture.md`](./architecture.md) | 企画・アーキテクチャの正本 |
-| [`MEMORY.md`](./MEMORY.md) | 設計判断・実装状況の要約 |
-| [`docs/opencode/`](./docs/opencode/) | OpenCode OpenAPI スナップショット（VERSION + openapi.json） |
+OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manager Web UI。本体はフォークしない。
 
 ## 起動（Windows）
 
-1. PATH に `opencode` があること（現状スナップショット: **1.17.11**）
-2. リポジトリ直下で `start-webui.bat` を実行
-3. タスクトレイ常駐後、ブラウザで `http://127.0.0.1:3000`
+1. PATH に `opencode`（推奨スナップショット: `docs/opencode/VERSION`）
+2. `start-webui.bat`
+3. トレイ常駐後、ブラウザが `http://127.0.0.1:3000` を開く（`OPENCODE_WEBUI_NO_BROWSER=1` で抑制可）
 
-初回は `web/` / `host/` の `npm install` が走ります。
+## 正本
 
-## 開発構成
+| 文書 | 役割 |
+|------|------|
+| [`architecture.md`](./architecture.md) | 企画・アーキテクチャ |
+| [`MEMORY.md`](./MEMORY.md) | 実装状況メモ |
+| [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
+
+## 構成
 
 | パス | 役割 |
 |------|------|
-| `web/` | Next.js BFF + チャット UI |
-| `host/` | トレイ常駐ホスト（opencode + Next 起動） |
-| `start-webui.bat` | 起動入口 |
+| `web/` | Next.js BFF + UI |
+| `host/` | トレイ常駐（opencode + Next） |
+| `scripts/smoke-api.mjs` | API スモーク |
 
-## Phase 0 の使い方（最短）
-
-1. UI 上部の Directory に作業フォルダを入力 → **Allow**（allowlist 登録）
-2. **New** でセッション作成
-3. メッセージ送信（SSE で更新、権限要求時は承認 UI）
-
-DB: `%APPDATA%/opencode-webui/webui.db`
-
-## ロードマップ
+## 実装済み機能
 
 | Phase | 内容 |
 |-------|------|
-| 0 | トレイ + BFF プロキシ + チャット + 権限承認（実装中） |
-| 1 | Workspace / worktree 並列 |
-| 2 | Commit / Merge / Cleanup |
-| 3 | temporary_copy / DevContainer 等 |
+| 0 | BFF プロキシ / SSE / 権限承認 / allowlist / トレイ |
+| 1 | Project Launcher / worktree / Diff / orphan / Files(Ctrl+P) / SessionBinding |
+| 2 | Commit / Merge / PR(`gh` 任意) |
+| 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
 
-詳細は [`architecture.md`](./architecture.md) §8。
+## 最短フロー
+
+1. Launcher でプロジェクト追加
+2. Isolation を選んで Create & Open
+3. New セッション → チャット / 承認
+4. Diff → Commit → Merge（または Create PR）
+
+## 開発
+
+```bat
+cd web && npm install && npm run dev
+```
+
+別ターミナルで `opencode serve --hostname 127.0.0.1 --port 4096`。  
+スモーク: WebUI 起動後に `node scripts/smoke-api.mjs`
