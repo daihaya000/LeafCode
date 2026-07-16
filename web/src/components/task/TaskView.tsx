@@ -515,7 +515,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <SessionActions
                 directory={task.directory}
                 sessionId={task.sessionId}
-                lastMessageId={lastRevertMessageId}
+                lastUserMessageId={lastRevertMessageId}
                 onDone={() => {
                   void stream.resync();
                   setDiffKey((k) => k + 1);
@@ -698,6 +698,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                           directory={task.directory}
                           sessionId={task.sessionId}
                           messageId={m.info.id}
+                          messages={stream.visibleMessages}
                           disabled={working}
                           onDone={() => {
                             void stream.resync();

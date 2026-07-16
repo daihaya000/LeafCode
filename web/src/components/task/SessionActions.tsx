@@ -4,6 +4,7 @@ import { useState } from "react";
 import { RotateCcw, RotateCw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ocJson } from "@/lib/client";
+import type { MessageWithParts } from "@/lib/types";
 
 export async function revertMessage(
   directory: string,
@@ -19,6 +20,29 @@ export async function revertMessage(
   });
 }
 
+/**
+ * Keep `anchorMessageId` visible; undo everything after it.
+ *
+ * OpenCode without partID snaps revert to the preceding user message and
+ * would hide the anchor. Passing the *next* message + its first partID
+ * avoids that snap-back.
+ */
+export async function revertAfterMessage(
+  directory: string,
+  sessionId: string,
+  anchorMessageId: string,
+  messages: MessageWithParts[],
+) {
+  const idx = messages.findIndex((m) => m.info.id === anchorMessageId);
+  if (idx < 0) throw new Error("対象メッセージが見つかりません");
+  const next = messages[idx + 1];
+  if (!next) {
+    throw new Error("このメッセージより後に巻き戻す内容がありません");
+  }
+  const partID = next.parts[0]?.id;
+  await revertMessage(directory, sessionId, next.info.id, partID);
+}
+
 export async function unrevertSession(directory: string, sessionId: string) {
   await ocJson(`/session/${sessionId}/unrevert`, directory, {
     method: "POST",
@@ -29,13 +53,13 @@ export async function unrevertSession(directory: string, sessionId: string) {
 export function SessionActions({
   directory,
   sessionId,
-  lastMessageId,
+  lastUserMessageId,
   onDone,
 }: {
   directory: string;
   sessionId: string;
-  /** Message to revert from (OpenCode requires messageID). */
-  lastMessageId?: string | null;
+  /** Last user turn to undo entirely (prompt + reply). */
+  lastUserMessageId?: string | null;
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState<"compact" | "revert" | "unrevert" | null>(
@@ -85,23 +109,24 @@ export function SessionActions({
         variant="ghost"
         size="icon"
         title={
-          lastMessageId
-            ? "直前のターンを巻き戻し"
-            : "巻き戻すメッセージがありません"
+          lastUserMessageId
+            ? "直前のターンを取り消す（入力とその返答）"
+            : "巻き戻すターンがありません"
         }
         busy={busy === "revert"}
-        disabled={busy !== null || !lastMessageId}
+        disabled={busy !== null || !lastUserMessageId}
         onClick={() =>
           void run("revert", async () => {
-            if (!lastMessageId) throw new Error("messageID がありません");
+            if (!lastUserMessageId) throw new Error("messageID がありません");
             if (
               !window.confirm(
-                "このメッセージ以降の会話と変更を巻き戻しますか？",
+                "直前の入力とその返答を取り消しますか？\n（そのターンのメッセージは消えます）",
               )
             ) {
               return "cancelled";
             }
-            await revertMessage(directory, sessionId, lastMessageId);
+            // No partID: OpenCode snaps to this user message and hides it + after
+            await revertMessage(directory, sessionId, lastUserMessageId);
             return "ok";
           })
         }
@@ -135,32 +160,52 @@ export function SessionActions({
   );
 }
 
-/** Inline control on a timeline message. */
+/** Keep this message; undo everything after it. */
 export function MessageRevertButton({
   directory,
   sessionId,
   messageId,
+  messages,
   disabled,
   onDone,
 }: {
   directory: string;
   sessionId: string;
   messageId: string;
+  messages: MessageWithParts[];
   disabled?: boolean;
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const idx = messages.findIndex((m) => m.info.id === messageId);
+  const hasAfter = idx >= 0 && idx < messages.length - 1;
+
   return (
     <button
       type="button"
-      disabled={disabled || busy}
-      title="ここから巻き戻す"
+      disabled={disabled || busy || !hasAfter}
+      title={
+        hasAfter
+          ? "このメッセージは残し、これより後を巻き戻す"
+          : "このメッセージより後がありません"
+      }
       onClick={() => {
         void (async () => {
-          if (!window.confirm("このメッセージ以降を巻き戻しますか？")) return;
+          if (
+            !window.confirm(
+              "このメッセージは残し、これより後の会話と変更を巻き戻しますか？",
+            )
+          ) {
+            return;
+          }
           setBusy(true);
           try {
-            await revertMessage(directory, sessionId, messageId);
+            await revertAfterMessage(
+              directory,
+              sessionId,
+              messageId,
+              messages,
+            );
             onDone?.();
           } catch (err) {
             window.alert(
@@ -174,7 +219,7 @@ export function MessageRevertButton({
       className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-faint hover:bg-surface-2 hover:text-muted disabled:opacity-40"
     >
       <RotateCcw className={busy ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
-      巻き戻し
+      これより後を巻き戻し
     </button>
   );
 }
