@@ -5,8 +5,6 @@ import {
   ChevronRight,
   Folder,
   FolderPlus,
-  HardDrive,
-  Home,
   X,
 } from "lucide-react";
 import { Button, Spinner, cx } from "@/components/ui";
@@ -151,7 +149,7 @@ export function AddProjectButton({
                 上へ
               </button>
               <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint">
-                {cwd ?? "（ドライブ / ホーム）"}
+                {cwd ?? "…"}
               </p>
             </div>
 
@@ -166,34 +164,21 @@ export function AddProjectButton({
                 </p>
               ) : (
                 <ul className="py-1">
-                  {entries.map((e) => {
-                    const isRoot =
-                      !cwd &&
-                      (e.path.endsWith(":\\") ||
-                        e.path === "/" ||
-                        e.name.startsWith("ホーム"));
-                    return (
-                      <li key={e.path}>
-                        <button
-                          type="button"
-                          onClick={() => void load(e.path)}
-                          className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
-                        >
-                          {isRoot && e.path.match(/^[A-Za-z]:\\$/) ? (
-                            <HardDrive className="h-4.5 w-4.5 shrink-0 text-muted" />
-                          ) : e.name.startsWith("ホーム") ? (
-                            <Home className="h-4.5 w-4.5 shrink-0 text-muted" />
-                          ) : (
-                            <Folder className="h-4.5 w-4.5 shrink-0 text-muted" />
-                          )}
-                          <span className="min-w-0 flex-1 truncate text-sm">
-                            {e.name}
-                          </span>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-                        </button>
-                      </li>
-                    );
-                  })}
+                  {entries.map((e) => (
+                    <li key={e.path}>
+                      <button
+                        type="button"
+                        onClick={() => void load(e.path)}
+                        className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
+                      >
+                        <Folder className="h-4.5 w-4.5 shrink-0 text-muted" />
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {e.name}
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
