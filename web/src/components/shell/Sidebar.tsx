@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronRight,
   FolderGit2,
+  GitBranch,
   Plus,
   Settings,
   Star,
@@ -63,6 +64,19 @@ function saveWidth(n: number) {
   } catch {
     /* ignore */
   }
+}
+
+/** Compact branch / isolation label for the task list. */
+function sidebarBranchLabel(task: TaskSummary): string {
+  if (task.isolation === "temporary_copy") return "一時コピー";
+  if (task.isolation === "devcontainer") return "Dev Container";
+  if (!task.branch) {
+    return task.isolation === "current_folder" ? "HEAD" : "—";
+  }
+  if (task.isolation === "git_worktree" && task.branch.startsWith("webui/")) {
+    return task.branch.slice("webui/".length);
+  }
+  return task.branch;
 }
 
 export function Sidebar({
@@ -400,6 +414,19 @@ export function Sidebar({
                                   </span>
                                   <span className="shrink-0 text-[10px] text-faint">
                                     {timeAgo(task.updatedAt)}
+                                  </span>
+                                </div>
+                                <div
+                                  className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-faint"
+                                  title={
+                                    task.branch
+                                      ? `${task.isolation}: ${task.branch}`
+                                      : task.isolation
+                                  }
+                                >
+                                  <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                                  <span className="min-w-0 truncate font-mono">
+                                    {sidebarBranchLabel(task)}
                                   </span>
                                 </div>
                               </button>

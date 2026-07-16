@@ -17,6 +17,7 @@ import {
   setWorkspaceStatus,
 } from "./db";
 import { addWorktree, removeWorktree, runGit } from "./git";
+import { makeWorktreeBranchName } from "./workspace-branch";
 
 export type Isolation =
   | "current_folder"
@@ -32,14 +33,7 @@ export class ServiceError extends Error {
   }
 }
 
-function slugBranch(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9._/-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return `webui/${base || "ws"}-${Date.now().toString(36)}`;
-}
+export { makeWorktreeBranchName } from "./workspace-branch";
 
 export function isIsolation(value: unknown): value is Isolation {
   return (
@@ -95,7 +89,13 @@ export async function provisionWorkspace(input: {
   }
 
   if (isolation === "git_worktree") {
-    const branch = input.branch?.trim() || slugBranch(displayName);
+    const branch =
+      input.branch?.trim() ||
+      makeWorktreeBranchName({
+        displayName,
+        workspaceId,
+        baseBranch: input.baseBranch,
+      });
     const wtDir = path.join(
       project.root_path,
       ".webui-worktrees",
