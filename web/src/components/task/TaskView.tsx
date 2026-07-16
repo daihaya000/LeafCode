@@ -38,7 +38,7 @@ import { PartView } from "./PartView";
 import { PermissionCard } from "./PermissionCard";
 import { PtyPanel } from "./PtyPanel";
 import { QuestionCard } from "./QuestionCard";
-import { SessionActions } from "./SessionActions";
+import { SessionActions, MessageRevertButton } from "./SessionActions";
 import { SessionSwitcher } from "./SessionSwitcher";
 
 type ModelOption = { value: string; label: string; group: string };
@@ -284,6 +284,20 @@ export function TaskView({ taskId }: { taskId: string }) {
     return `${done}/${stream.todos.length}`;
   }, [stream.todos]);
 
+  // Prefer last user message for header revert (undo that turn + after)
+  const lastRevertMessageId = useMemo(() => {
+    const msgs = stream.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m?.info.role === "user" && m.info.id) return m.info.id;
+    }
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const id = msgs[i]?.info.id;
+      if (id) return id;
+    }
+    return null;
+  }, [stream.messages]);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text) return;
@@ -501,6 +515,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <SessionActions
                 directory={task.directory}
                 sessionId={task.sessionId}
+                lastMessageId={lastRevertMessageId}
                 onDone={() => void stream.resync()}
               />
             </>
@@ -634,7 +649,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </div>
                 )}
                 {timeline.map((m) => (
-                  <div key={m.info.id} className="flex flex-col gap-2">
+                  <div key={m.info.id} className="group/msg flex flex-col gap-2">
                     {m.parts.map((p) => (
                       <PartView
                         key={p.id}
@@ -645,6 +660,17 @@ export function TaskView({ taskId }: { taskId: string }) {
                         rootSessionId={task.sessionId}
                       />
                     ))}
+                    {m.info.role === "user" && task.sessionId && (
+                      <div className="flex justify-end opacity-0 transition-opacity group-hover/msg:opacity-100">
+                        <MessageRevertButton
+                          directory={task.directory}
+                          sessionId={task.sessionId}
+                          messageId={m.info.id}
+                          disabled={working}
+                          onDone={() => void stream.resync()}
+                        />
+                      </div>
+                    )}
                     {m.info.role === "assistant" &&
                       typeof m.info.cost === "number" &&
                       m.info.cost > 0 && (
