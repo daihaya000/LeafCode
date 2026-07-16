@@ -39,7 +39,6 @@ export function HomeView() {
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
-  const [mode, setMode] = useState<"code" | "ask" | "plan">("code");
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [baseBranch, setBaseBranch] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
@@ -155,24 +154,6 @@ export function HomeView() {
   }, [refreshProjects, refreshEngine]);
 
   useEffect(() => {
-    if (agents.length === 0) return;
-    if (mode === "ask") {
-      const a =
-        agents.find((n) => /ask|explore/i.test(n)) ?? agents[0] ?? "";
-      setAgent(a);
-    } else if (mode === "plan") {
-      const a =
-        agents.find((n) => /plan/i.test(n)) ??
-        agents.find((n) => /ask/i.test(n)) ??
-        agents[0] ??
-        "";
-      setAgent(a);
-    } else if (agents.includes("build")) {
-      setAgent("build");
-    }
-  }, [mode, agents]);
-
-  useEffect(() => {
     const project = projects.find((p) => p.id === projectId);
     if (!project?.rootPath || isolation === "current_folder") {
       setBranches([]);
@@ -269,18 +250,6 @@ export function HomeView() {
                   </option>
                 ))}
               </select>
-              <select
-                value={mode}
-                onChange={(e) =>
-                  setMode(e.target.value as "code" | "ask" | "plan")
-                }
-                className="h-9 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
-                title="作業モード"
-              >
-                <option value="code">Code</option>
-                <option value="ask">Ask</option>
-                <option value="plan">Plan</option>
-              </select>
               <AccessModeSelect
                 value={accessMode}
                 onChange={(m) => {
@@ -338,10 +307,17 @@ export function HomeView() {
                   value={agent}
                   onChange={(e) => setAgent(e.target.value)}
                   className="h-9 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  title="エージェント（OpenCode agent）"
                 >
                   {agents.map((a) => (
                     <option key={a} value={a}>
-                      {a}
+                      {a === "build"
+                        ? "build（Code）"
+                        : a === "plan"
+                          ? "plan（Plan）"
+                          : /ask|explore/i.test(a)
+                            ? `${a}（Ask）`
+                            : a}
                     </option>
                   ))}
                 </select>
