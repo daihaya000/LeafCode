@@ -11,10 +11,12 @@ import {
 export function AppShell() {
   const [view, setView] = useState<"launcher" | "chat">("launcher");
   const [directory, setDirectory] = useState<string>("");
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [workspaceLabel, setWorkspaceLabel] = useState<string>("");
 
   const openWorkspace = (ws: Workspace, project: Project) => {
     setDirectory(ws.absolutePath);
+    setWorkspaceId(ws.id);
     setWorkspaceLabel(`${project.name} / ${ws.displayName}`);
     setView("chat");
   };
@@ -30,6 +32,7 @@ export function AppShell() {
   return (
     <ChatApp
       initialDirectory={directory}
+      workspaceId={workspaceId}
       workspaceLabel={workspaceLabel}
       onBack={() => setView("launcher")}
     />

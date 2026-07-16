@@ -56,10 +56,12 @@ async function ocFetch(
 
 export function ChatApp({
   initialDirectory = "",
+  workspaceId = null,
   workspaceLabel,
   onBack,
 }: {
   initialDirectory?: string;
+  workspaceId?: string | null;
   workspaceLabel?: string;
   onBack?: () => void;
 }) {
@@ -308,6 +310,16 @@ export function ChatApp({
       const sess = (await res.json()) as Session;
       setSessionId(sess.id);
       setTimeline([]);
+      if (workspaceId) {
+        await fetch(`/api/workspaces/${workspaceId}/sessions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            opencodeSessionId: sess.id,
+            title: sess.title || "WebUI session",
+          }),
+        });
+      }
       await refreshSessions();
     } finally {
       setBusy(false);
@@ -317,6 +329,17 @@ export function ChatApp({
   const selectSession = async (id: string) => {
     setSessionId(id);
     await loadMessages(id);
+    if (workspaceId) {
+      const sess = sessions.find((s) => s.id === id);
+      await fetch(`/api/workspaces/${workspaceId}/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          opencodeSessionId: id,
+          title: sess?.title || "Session",
+        }),
+      });
+    }
   };
 
   const sendPrompt = async (e: FormEvent) => {

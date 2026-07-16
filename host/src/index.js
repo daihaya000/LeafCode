@@ -203,6 +203,18 @@ async function isHttpUp(url) {
   }
 }
 
+async function waitUntilReady(url, label, attempts = 60) {
+  for (let i = 0; i < attempts; i += 1) {
+    if (await isHttpUp(url)) {
+      log(`${label} is ready`);
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  error(`${label} did not become ready in time (${url})`);
+  return false;
+}
+
 function procRunning(proc) {
   return proc != null && proc.exitCode == null && !proc.killed;
 }
@@ -293,7 +305,7 @@ function formatStatus(name, proc, httpUp) {
 
 async function refreshStatusMenu() {
   const [opencodeUp, webUp] = await Promise.all([
-    isHttpUp(OPENCODE_URL),
+    isHttpUp(`${OPENCODE_URL}/global/health`),
     isHttpUp(WEBUI_URL),
   ]);
 
@@ -418,12 +430,17 @@ async function main() {
 
   systray
     .ready()
-    .then(() => {
+    .then(async () => {
       log('Tray host ready');
       setInterval(() => {
         refreshStatusMenu().catch(() => {});
       }, 5000);
-      refreshStatusMenu().catch(() => {});
+      await refreshStatusMenu();
+      const webReady = await waitUntilReady(WEBUI_URL, 'WebUI');
+      await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode');
+      if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+        openBrowser(WEBUI_URL);
+      }
     })
     .catch((err) => {
       removeLock();
