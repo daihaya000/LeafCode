@@ -1,28 +1,46 @@
 # OpenCode WebUI
 
-OpenCode CLI（`opencode serve`）を実行エンジンにした、独自 Web UI（Workspace Manager）の企画・実装リポジトリ。OpenCode 本体はフォークしない。
+OpenCode CLI（`opencode serve`）を実行エンジンにした、独自 Web UI（Workspace Manager）。本体はフォークしない。
 
 ## 正本ドキュメント
 
 | 文書 | 役割 |
 |------|------|
 | [`architecture.md`](./architecture.md) | 企画・アーキテクチャの正本 |
-| [`MEMORY.md`](./MEMORY.md) | 設計判断・レビュー結果の要約メモ |
+| [`MEMORY.md`](./MEMORY.md) | 設計判断・実装状況の要約 |
+| [`docs/opencode/`](./docs/opencode/) | OpenCode OpenAPI スナップショット（VERSION + openapi.json） |
 
-実装コードは Phase 0 着手後に追加する。現状は設計文書が中心。
+## 起動（Windows）
 
-## 一言でいうと
+1. PATH に `opencode` があること（現状スナップショット: **1.17.11**）
+2. リポジトリ直下で `start-webui.bat` を実行
+3. タスクトレイ常駐後、ブラウザで `http://127.0.0.1:3000`
 
-複数エージェントを **Git Worktree 等で隔離**しつつ、モバイルでも承認・Diff ができる Workspace Manager。
+初回は `web/` / `host/` の `npm install` が走ります。
 
-## ロードマップ（要約）
+## 開発構成
+
+| パス | 役割 |
+|------|------|
+| `web/` | Next.js BFF + チャット UI |
+| `host/` | トレイ常駐ホスト（opencode + Next 起動） |
+| `start-webui.bat` | 起動入口 |
+
+## Phase 0 の使い方（最短）
+
+1. UI 上部の Directory に作業フォルダを入力 → **Allow**（allowlist 登録）
+2. **New** でセッション作成
+3. メッセージ送信（SSE で更新、権限要求時は承認 UI）
+
+DB: `%APPDATA%/opencode-webui/webui.db`
+
+## ロードマップ
 
 | Phase | 内容 |
 |-------|------|
-| 0 着手前 | D6 / D2 / D4、SSE スパイク、allowlist、二重起動方針 |
-| 0 | トレイ常駐 + BFF プロキシ + チャット + 権限承認 |
-| 1 | Project / Workspace / worktree 並列 |
+| 0 | トレイ + BFF プロキシ + チャット + 権限承認（実装中） |
+| 1 | Workspace / worktree 並列 |
 | 2 | Commit / Merge / Cleanup |
 | 3 | temporary_copy / DevContainer 等 |
 
-詳細と完了条件は [`architecture.md`](./architecture.md) §8 を参照。
+詳細は [`architecture.md`](./architecture.md) §8。

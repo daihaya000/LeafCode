@@ -1,0 +1,13 @@
+{
+  "name": "opencode-webui-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Windows system tray host for OpenCode WebUI",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "systray2": "^2.1.4"
+  }
+}

@@ -1,0 +1,33 @@
+import { NextResponse } from "next/server";
+import { OPENCODE_BASE_URL } from "@/lib/opencode";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  let opencode: { ok: boolean; version?: string; error?: string } = {
+    ok: false,
+  };
+  try {
+    const res = await fetch(`${OPENCODE_BASE_URL}/global/health`, {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { healthy?: boolean; version?: string };
+      opencode = { ok: Boolean(body.healthy), version: body.version };
+    } else {
+      opencode = { ok: false, error: `status ${res.status}` };
+    }
+  } catch (err) {
+    opencode = {
+      ok: false,
+      error: err instanceof Error ? err.message : "unreachable",
+    };
+  }
+
+  return NextResponse.json({
+    webui: { ok: true },
+    opencode,
+    opencodeBaseUrl: OPENCODE_BASE_URL,
+  });
+}
