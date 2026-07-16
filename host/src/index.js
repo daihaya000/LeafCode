@@ -8,7 +8,18 @@ import {
 } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import SysTray from 'systray2';
+import SysTrayImport from 'systray2';
+
+// systray2 CJS interop: default.default is the constructor under Node ESM
+const SysTray =
+  SysTrayImport?.default?.default ||
+  SysTrayImport?.default ||
+  SysTrayImport;
+if (typeof SysTray !== 'function') {
+  throw new Error(
+    `systray2 import failed (got ${typeof SysTrayImport}). Reinstall host deps: cd host && npm install`,
+  );
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HOST_DIR = join(__dirname, '..');
@@ -101,15 +112,118 @@ function findOpencode() {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const line = output
+    const lines = output
       .trim()
       .split(/\r?\n/)
-      .find((entry) => entry.trim().length > 0);
-    if (!line) throw new Error('empty where.exe result');
-    return line.trim();
-  } catch {
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    // Prefer real binary over npm shim (.cmd / extensionless)
+    const exe = lines.find((p) => /\.exe$/i.test(p));
+    if (exe) return exe;
+
+    const cmd = lines.find((p) => /\.cmd$/i.test(p));
+    if (cmd) {
+      const siblingExe = join(
+        dirname(cmd),
+        'node_modules',
+        'opencode-ai',
+        'bin',
+        'opencode.exe',
+      );
+      if (existsSync(siblingExe)) return siblingExe;
+      return cmd;
+    }
+
+    if (lines[0]) {
+      const siblingExe = join(
+        dirname(lines[0]),
+        'node_modules',
+        'opencode-ai',
+        'bin',
+        'opencode.exe',
+      );
+      if (existsSync(siblingExe)) return siblingExe;
+      return lines[0];
+    }
+    throw new Error('empty where.exe result');
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('opencode not found')) {
+      throw err;
+    }
     throw new Error('opencode not found on PATH. Install OpenCode CLI first.');
   }
+}
+
+function spawnOpencode(opencodePath) {
+  const useShell = /\.(cmd|bat)$/i.test(opencodePath);
+  opencodeProc = spawn(
+    opencodePath,
+    ['serve', '--hostname', '127.0.0.1', '--port', String(OPENCODE_PORT)],
+    {
+      cwd: REPO_ROOT,
+      shell: useShell,
+      stdio: 'pipe',
+      windowsHide: true,
+    },
+  );
+
+  opencodeProc.on('error', (err) => {
+    error(`OpenCode spawn error: ${err.message}`);
+  });
+
+  opencodeProc.stdout?.on('data', (chunk) => {
+    process.stdout.write(`[opencode] ${chunk}`);
+  });
+  opencodeProc.stderr?.on('data', (chunk) => {
+    process.stderr.write(`[opencode] ${chunk}`);
+  });
+  opencodeProc.on('exit', (code, signal) => {
+    if (!quitting) {
+      log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
+    }
+    opencodeProc = null;
+    refreshStatusMenu();
+  });
+}
+
+function spawnWeb() {
+  const hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
+  const useProd =
+    process.env.OPENCODE_WEBUI_MODE === 'prod' ||
+    (process.env.OPENCODE_WEBUI_MODE !== 'dev' && hasBuild);
+
+  const npmArgs = useProd
+    ? ['run', 'start', '--', '--hostname', '127.0.0.1', '--port', String(WEBUI_PORT)]
+    : ['run', 'dev', '--', '--hostname', '127.0.0.1', '--port', String(WEBUI_PORT)];
+
+  log(`Starting WebUI (${useProd ? 'production' : 'dev'}) in ${WEB_DIR}`);
+  // On Windows, npm is a .cmd shim — must use shell:true
+  webProc = spawn('npm', npmArgs, {
+    cwd: WEB_DIR,
+    shell: true,
+    stdio: 'pipe',
+    windowsHide: true,
+    env: process.env,
+  });
+
+  webProc.on('error', (err) => {
+    error(`WebUI spawn error: ${err.message}`);
+  });
+
+  webProc.stdout?.on('data', (chunk) => {
+    process.stdout.write(`[webui] ${chunk}`);
+  });
+  webProc.stderr?.on('data', (chunk) => {
+    process.stderr.write(`[webui] ${chunk}`);
+  });
+  webProc.on('exit', (code, signal) => {
+    if (!quitting) {
+      log(`WebUI exited (code=${code}, signal=${signal ?? 'none'})`);
+    }
+    webProc = null;
+    refreshStatusMenu();
+  });
 }
 
 function ensureDataDir() {
@@ -219,61 +333,6 @@ function procRunning(proc) {
   return proc != null && proc.exitCode == null && !proc.killed;
 }
 
-function spawnOpencode(opencodePath) {
-  opencodeProc = spawn(
-    opencodePath,
-    ['serve', '--hostname', '127.0.0.1', '--port', String(OPENCODE_PORT)],
-    {
-      cwd: REPO_ROOT,
-      shell: true,
-      stdio: 'pipe',
-      windowsHide: true,
-    },
-  );
-
-  opencodeProc.stdout?.on('data', (chunk) => {
-    process.stdout.write(`[opencode] ${chunk}`);
-  });
-  opencodeProc.stderr?.on('data', (chunk) => {
-    process.stderr.write(`[opencode] ${chunk}`);
-  });
-  opencodeProc.on('exit', (code, signal) => {
-    if (!quitting) {
-      log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
-    }
-    opencodeProc = null;
-    refreshStatusMenu();
-  });
-}
-
-function spawnWeb() {
-  webProc = spawn(
-    'npm',
-    ['run', 'dev', '--', '--hostname', '127.0.0.1', '--port', String(WEBUI_PORT)],
-    {
-      cwd: WEB_DIR,
-      shell: true,
-      stdio: 'pipe',
-      windowsHide: true,
-      env: process.env,
-    },
-  );
-
-  webProc.stdout?.on('data', (chunk) => {
-    process.stdout.write(`[webui] ${chunk}`);
-  });
-  webProc.stderr?.on('data', (chunk) => {
-    process.stderr.write(`[webui] ${chunk}`);
-  });
-  webProc.on('exit', (code, signal) => {
-    if (!quitting) {
-      log(`WebUI exited (code=${code}, signal=${signal ?? 'none'})`);
-    }
-    webProc = null;
-    refreshStatusMenu();
-  });
-}
-
 async function startChildren() {
   const plan = await resolvePortPlan();
   if (plan.startOpencode) {
@@ -282,7 +341,6 @@ async function startChildren() {
     spawnOpencode(opencodePath);
   }
   if (plan.startWeb) {
-    log(`Starting WebUI in ${WEB_DIR}`);
     spawnWeb();
   }
   await refreshStatusMenu();
@@ -424,6 +482,21 @@ async function main() {
     removeLock();
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
+  }
+
+  const headless = process.env.OPENCODE_WEBUI_HEADLESS === '1';
+
+  if (headless) {
+    log('Headless mode (no tray). Ctrl+C to quit.');
+    setInterval(() => {
+      refreshStatusMenu().catch(() => {});
+    }, 5000);
+    const webReady = await waitUntilReady(WEBUI_URL, 'WebUI');
+    await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode');
+    if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+      openBrowser(WEBUI_URL);
+    }
+    return;
   }
 
   createTray();

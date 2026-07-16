@@ -4,9 +4,21 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ## 起動（Windows）
 
-1. PATH に `opencode`（推奨スナップショット: `docs/opencode/VERSION`）
-2. `start-webui.bat`
-3. トレイ常駐後、ブラウザが `http://127.0.0.1:3000` を開く（`OPENCODE_WEBUI_NO_BROWSER=1` で抑制可）
+1. PATH に `opencode`
+2. `start-webui.bat`（初回は web build あり）
+3. トレイ常駐後、`http://127.0.0.1:3000` が開く
+
+トラブル時:
+
+```bat
+cd host
+set OPENCODE_WEBUI_HEADLESS=1
+set OPENCODE_WEBUI_NO_BROWSER=1
+set OPENCODE_WEBUI_MODE=prod
+node src\index.js
+```
+
+ログに `WebUI is ready` / `OpenCode is ready` が出れば OK。
 
 ## 正本
 

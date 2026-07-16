@@ -1,11 +1,52 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-if not exist "web\node_modules" (
-  echo Installing web dependencies...
+
+echo [OpenCode WebUI] Starting...
+
+if not exist "web\node_modules\" (
+  echo [OpenCode WebUI] Installing web dependencies...
   pushd web
   call npm install
+  if errorlevel 1 (
+    echo [OpenCode WebUI] npm install failed in web\
+    pause
+    exit /b 1
+  )
   popd
 )
+
+if not exist "web\.next\BUILD_ID" (
+  echo [OpenCode WebUI] Building web ^(first run^)...
+  pushd web
+  call npm run build
+  if errorlevel 1 (
+    echo [OpenCode WebUI] web build failed
+    pause
+    exit /b 1
+  )
+  popd
+)
+
+if not exist "host\node_modules\" (
+  echo [OpenCode WebUI] Installing host dependencies...
+  pushd host
+  call npm install
+  if errorlevel 1 (
+    echo [OpenCode WebUI] npm install failed in host\
+    pause
+    exit /b 1
+  )
+  popd
+)
+
+set OPENCODE_WEBUI_MODE=prod
 cd host
-if not exist node_modules call npm install
-node src/index.js
+node src\index.js
+set ERR=%ERRORLEVEL%
+if not "%ERR%"=="0" (
+  echo [OpenCode WebUI] Host exited with code %ERR%
+  pause
+  exit /b %ERR%
+)
+endlocal
