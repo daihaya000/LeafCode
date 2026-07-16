@@ -25,6 +25,7 @@ node src\index.js
 | 文書 | 役割 |
 |------|------|
 | [`architecture.md`](./architecture.md) | 企画・アーキテクチャ |
+| [`docs/improvement-plan.md`](./docs/improvement-plan.md) | 改善・開発計画（UI/UX を Codex に寄せる） |
 | [`MEMORY.md`](./MEMORY.md) | 実装状況メモ |
 | [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
 
