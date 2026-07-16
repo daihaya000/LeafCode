@@ -42,16 +42,17 @@ node src\index.js
 | Phase | 内容 |
 |-------|------|
 | 0 | BFF プロキシ / SSE / 権限承認 / allowlist / トレイ |
-| 1 | Project Launcher / worktree / Diff / orphan / Files(Ctrl+P) / SessionBinding |
+| 1 | worktree / Diff / orphan / SessionBinding |
 | 2 | Commit / Merge / PR(`gh` 任意) |
 | 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
+| UI-0〜3 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ）※ [docs/improvement-plan.md](./docs/improvement-plan.md) |
 
 ## 最短フロー
 
-1. Launcher でプロジェクト追加
-2. Isolation を選んで Create & Open
-3. New セッション → チャット / 承認
-4. Diff → Commit → Merge（または Create PR）
+1. ホームの composer にタスクを記述（初回はプロジェクト追加）
+2. Project / Isolation を選んで送信 → タスク詳細へ自動遷移
+3. タイムラインで進行を確認・権限を承認（必要なら停止）
+4. Diff ペインで確認 → Commit → Merge（または PR 作成）
 
 ## リモート（任意）
 

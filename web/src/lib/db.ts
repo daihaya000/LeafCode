@@ -222,6 +222,37 @@ export function bindSession(
     .run(workspaceId, opencodeSessionId, title, new Date().toISOString());
 }
 
+export type WorkspaceJoinedRow = WorkspaceRow & {
+  project_name: string;
+  project_root: string;
+};
+
+export function listWorkspacesJoined(): WorkspaceJoinedRow[] {
+  return getDb()
+    .prepare(
+      `SELECT w.*, p.name AS project_name, p.root_path AS project_root
+       FROM workspaces w JOIN projects p ON p.id = w.project_id
+       ORDER BY w.created_at DESC`,
+    )
+    .all() as WorkspaceJoinedRow[];
+}
+
+/** Latest session binding per workspace. */
+export function latestBindings(): Map<string, SessionBindingRow> {
+  const rows = getDb()
+    .prepare(`SELECT * FROM session_bindings ORDER BY updated_at ASC`)
+    .all() as SessionBindingRow[];
+  const map = new Map<string, SessionBindingRow>();
+  for (const row of rows) map.set(row.workspace_id, row);
+  return map;
+}
+
+export function touchProjectOpened(projectId: string): void {
+  getDb()
+    .prepare(`UPDATE projects SET last_opened_at = ? WHERE id = ?`)
+    .run(new Date().toISOString(), projectId);
+}
+
 export function getWorkspace(id: string): WorkspaceRow | undefined {
   return getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as
     | WorkspaceRow

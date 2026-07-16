@@ -21,6 +21,9 @@ const HOP_BY_HOP = new Set([
   "upgrade",
   "host",
   "content-length",
+  // fetch() already decompressed the body — forwarding these corrupts responses
+  "content-encoding",
+  "accept-encoding",
 ]);
 
 async function proxy(
