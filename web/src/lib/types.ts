@@ -69,6 +69,27 @@ export type PermissionRequest = {
   receivedAt: number;
 };
 
+export type QuestionOption = {
+  label: string;
+  description: string;
+};
+
+export type QuestionInfo = {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+};
+
+export type QuestionRequest = {
+  id: string;
+  version: "v1" | "v2";
+  sessionID: string;
+  questions: QuestionInfo[];
+  receivedAt: number;
+};
+
 export type Todo = {
   id?: string;
   content?: string;

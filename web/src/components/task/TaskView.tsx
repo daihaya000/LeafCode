@@ -32,6 +32,7 @@ import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { PartView } from "./PartView";
 import { PermissionCard } from "./PermissionCard";
+import { QuestionCard } from "./QuestionCard";
 
 type ModelOption = { value: string; label: string; group: string };
 
@@ -219,7 +220,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (stickRef.current) {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     }
-  }, [stream.messages, stream.permissions, stream.status]);
+  }, [stream.messages, stream.permissions, stream.questions, stream.status]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -511,7 +512,15 @@ export function TaskView({ taskId }: { taskId: string }) {
                     onReply={stream.replyPermission}
                   />
                 ))}
-                {working && (
+                {stream.questions.map((q) => (
+                  <QuestionCard
+                    key={q.id}
+                    request={q}
+                    onReply={stream.replyQuestion}
+                    onReject={stream.rejectQuestion}
+                  />
+                ))}
+                {working && stream.questions.length === 0 && (
                   <div className="flex items-center gap-2 text-sm text-muted">
                     <Loader2 className="h-4 w-4 animate-spin text-working" />
                     {stream.status?.type === "retry"

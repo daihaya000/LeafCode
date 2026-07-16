@@ -59,6 +59,9 @@ function toolSummary(tool: string, state: ToolState | undefined): string {
       "サブエージェント"
     );
   }
+  if (t === "question") {
+    return asString(input.question) ?? asString(input.header) ?? "回答待ち";
+  }
   if (t.includes("bash") || t.includes("shell")) {
     return (
       asString(input.description) ?? asString(input.command)?.slice(0, 120) ?? tool
@@ -137,6 +140,7 @@ function inputFields(tool: string, input: Record<string, unknown> | undefined): 
 function toolLabel(tool: string): string {
   const t = tool.toLowerCase();
   if (t === "task") return "サブエージェント";
+  if (t === "question") return "確認";
   if (t.includes("bash") || t.includes("shell")) return "コマンド";
   if (t.includes("read")) return "読取";
   if (t.includes("write") || t.includes("edit")) return "編集";

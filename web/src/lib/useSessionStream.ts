@@ -7,6 +7,8 @@ import type {
   MessageWithParts,
   Part,
   PermissionRequest,
+  QuestionInfo,
+  QuestionRequest,
   SessionStatus,
   Todo,
 } from "./types";
@@ -17,6 +19,7 @@ type StreamState = {
   messages: MessageWithParts[];
   status: SessionStatus | null;
   permissions: PermissionRequest[];
+  questions: QuestionRequest[];
   todos: Todo[];
   connection: ConnectionState;
   sessionError: string | null;
@@ -30,6 +33,9 @@ type Action =
   | { kind: "status"; status: SessionStatus }
   | { kind: "permissionAsked"; request: PermissionRequest }
   | { kind: "permissionReplied"; requestId: string }
+  | { kind: "questionAsked"; request: QuestionRequest }
+  | { kind: "questionsSynced"; requests: QuestionRequest[] }
+  | { kind: "questionReplied"; requestId: string }
   | { kind: "todos"; todos: Todo[] }
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "sessionError"; message: string | null };
@@ -38,6 +44,7 @@ const initialState: StreamState = {
   messages: [],
   status: null,
   permissions: [],
+  questions: [],
   todos: [],
   connection: "connecting",
   sessionError: null,
@@ -102,6 +109,17 @@ function reducer(state: StreamState, action: Action): StreamState {
         ...state,
         permissions: state.permissions.filter((p) => p.id !== action.requestId),
       };
+    case "questionAsked": {
+      if (state.questions.some((q) => q.id === action.request.id)) return state;
+      return { ...state, questions: [...state.questions, action.request] };
+    }
+    case "questionsSynced":
+      return { ...state, questions: action.requests };
+    case "questionReplied":
+      return {
+        ...state,
+        questions: state.questions.filter((q) => q.id !== action.requestId),
+      };
     case "todos":
       return { ...state, todos: action.todos };
     case "connection":
@@ -133,6 +151,38 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         directory,
       );
       if (statuses[sid]) dispatch({ kind: "status", status: statuses[sid] });
+
+      // Recover pending questions missed while disconnected
+      try {
+        const pending = await ocJson<
+          | Array<{
+              id: string;
+              sessionID: string;
+              questions: QuestionInfo[];
+            }>
+          | { data?: Array<{ id: string; sessionID: string; questions: QuestionInfo[] }> }
+        >("/question", directory);
+        const list = Array.isArray(pending)
+          ? pending
+          : Array.isArray(pending?.data)
+            ? pending.data
+            : [];
+        dispatch({
+          kind: "questionsSynced",
+          requests: list
+            .filter((q) => q.sessionID === sid)
+            .map((q) => ({
+              id: q.id,
+              version: "v1" as const,
+              sessionID: q.sessionID,
+              questions: q.questions ?? [],
+              receivedAt: Date.now(),
+            })),
+        });
+      } catch {
+        /* non-fatal: SSE will deliver question.asked */
+      }
+
       dispatch({ kind: "sessionError", message: null });
     } catch (err) {
       dispatch({
@@ -237,6 +287,33 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         if (requestId) dispatch({ kind: "permissionReplied", requestId });
         return;
       }
+      if (type === "question.asked" || type === "question.v2.asked") {
+        const id = String(props.id ?? "");
+        const sessionID = String(props.sessionID ?? "");
+        if (!id || sessionID !== sid) return;
+        const questions = (props.questions ?? []) as QuestionInfo[];
+        dispatch({
+          kind: "questionAsked",
+          request: {
+            id,
+            version: type === "question.asked" ? "v1" : "v2",
+            sessionID,
+            questions,
+            receivedAt: Date.now(),
+          },
+        });
+        return;
+      }
+      if (
+        type === "question.replied" ||
+        type === "question.rejected" ||
+        type === "question.v2.replied" ||
+        type === "question.v2.rejected"
+      ) {
+        const requestId = String(props.requestID ?? props.id ?? "");
+        if (requestId) dispatch({ kind: "questionReplied", requestId });
+        return;
+      }
     };
 
     const connect = (isReconnect: boolean) => {
@@ -329,5 +406,60 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     [directory],
   );
 
-  return { ...state, resync, sendPrompt, abort, replyPermission };
+  const replyQuestion = useCallback(
+    async (request: QuestionRequest, answers: string[][]) => {
+      if (!directory) return;
+      try {
+        if (request.version === "v2") {
+          await ocJson(
+            `/api/session/${request.sessionID}/question/${request.id}/reply`,
+            directory,
+            { method: "POST", body: { answers } },
+          );
+        } else {
+          await ocJson(`/question/${request.id}/reply`, directory, {
+            method: "POST",
+            body: { answers },
+          });
+        }
+      } catch (err) {
+        if (!(err instanceof Error && /404/.test(err.message))) throw err;
+      }
+      dispatch({ kind: "questionReplied", requestId: request.id });
+    },
+    [directory],
+  );
+
+  const rejectQuestion = useCallback(
+    async (request: QuestionRequest) => {
+      if (!directory) return;
+      try {
+        if (request.version === "v2") {
+          await ocJson(
+            `/api/session/${request.sessionID}/question/${request.id}/reject`,
+            directory,
+            { method: "POST" },
+          );
+        } else {
+          await ocJson(`/question/${request.id}/reject`, directory, {
+            method: "POST",
+          });
+        }
+      } catch (err) {
+        if (!(err instanceof Error && /404/.test(err.message))) throw err;
+      }
+      dispatch({ kind: "questionReplied", requestId: request.id });
+    },
+    [directory],
+  );
+
+  return {
+    ...state,
+    resync,
+    sendPrompt,
+    abort,
+    replyPermission,
+    replyQuestion,
+    rejectQuestion,
+  };
 }
