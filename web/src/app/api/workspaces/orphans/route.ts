@@ -149,13 +149,11 @@ export async function POST(req: NextRequest) {
 
     if (row.isolation === "git_worktree" && row.worktree_path && project) {
       try {
-        if (fs.existsSync(row.worktree_path)) {
-          await removeWorktree({
-            repoRoot: project.root_path,
-            worktreePath: row.worktree_path,
-            force: true,
-          });
-        }
+        await removeWorktree({
+          repoRoot: project.root_path,
+          worktreePath: row.worktree_path,
+          force: true,
+        });
       } catch (err) {
         results.push({
           id: row.id,

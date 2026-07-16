@@ -158,9 +158,13 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
         worktreePath: row.worktree_path,
         force: true,
       });
-    } catch {
+    } catch (err) {
       setWorkspaceStatus(id, "orphaned");
-      throw new ServiceError("git worktree remove failed; marked orphaned", 409);
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new ServiceError(
+        `git worktree remove failed; marked orphaned (${detail})`,
+        409,
+      );
     }
   }
 

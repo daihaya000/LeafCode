@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 const SAFE_BRANCH = /^[A-Za-z0-9._\/-]+$/;
@@ -56,17 +57,71 @@ export async function addWorktree(input: {
   }
 }
 
+function rmDirBestEffort(target: string): void {
+  if (!fs.existsSync(target)) return;
+  fs.rmSync(target, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 200,
+  });
+}
+
+/**
+ * Remove a git worktree. On Windows / OneDrive, `git worktree remove` often
+ * fails when metadata is already broken ("not a working tree") or files are
+ * briefly locked — fall back to prune + filesystem delete.
+ */
 export async function removeWorktree(input: {
   repoRoot: string;
   worktreePath: string;
   force?: boolean;
 }): Promise<void> {
   const absWorktree = path.resolve(input.worktreePath);
+  const repoRoot = path.resolve(input.repoRoot);
+  const force = input.force !== false;
+
+  if (!fs.existsSync(absWorktree)) {
+    await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
+    return;
+  }
+
   const args = ["worktree", "remove", absWorktree];
-  if (input.force) args.push("--force");
-  const result = await runGit(input.repoRoot, args);
-  if (result.code !== 0) {
-    throw new Error(result.stderr.trim() || "git worktree remove failed");
+  if (force) args.push("--force");
+  const result = await runGit(repoRoot, args);
+  if (result.code === 0) {
+    await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
+    return;
+  }
+
+  const gitErr =
+    result.stderr.trim() || result.stdout.trim() || "git worktree remove failed";
+
+  // Metadata already gone / half-deleted — finish with prune + rimraf
+  await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
+
+  try {
+    rmDirBestEffort(absWorktree);
+  } catch (err) {
+    throw new Error(
+      `${gitErr}; folder delete failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  // Stale admin dir under .git/worktrees/<basename>
+  const admin = path.join(repoRoot, ".git", "worktrees", path.basename(absWorktree));
+  try {
+    rmDirBestEffort(admin);
+  } catch {
+    /* best effort */
+  }
+
+  await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
+
+  if (fs.existsSync(absWorktree)) {
+    throw new Error(gitErr);
   }
 }
 
