@@ -355,7 +355,7 @@ export function GraphPanel({ directory }: { directory: string }) {
               </button>
 
               {open && (
-                <div className="border-t border-border/40 bg-bg/40 px-2 py-1.5 pl-10">
+                <div className="border-t border-border/40 bg-bg/40 px-2 py-1.5 pl-6 sm:pl-10">
                   {!files && (
                     <div className="flex justify-center py-3">
                       <Spinner />
@@ -388,7 +388,7 @@ export function GraphPanel({ directory }: { directory: string }) {
                       </button>
                       {fileDiff?.commit === row.commit.hash &&
                         fileDiff.path === f.path && (
-                          <pre className="mt-1 max-h-48 overflow-auto rounded-lg border border-border bg-bg p-2 font-mono text-[10px] leading-4 text-muted whitespace-pre-wrap">
+                          <pre className="mt-1 max-h-48 overflow-x-auto overflow-y-auto rounded-lg border border-border bg-bg p-2 font-mono text-[10px] leading-4 break-all whitespace-pre text-muted">
                             {fileDiff.text || "(empty diff)"}
                           </pre>
                         )}

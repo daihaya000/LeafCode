@@ -325,8 +325,8 @@ export const PartView = memo(function PartView({
       if (!text.trim()) return null;
       if (role === "user") {
         return (
-          <div className="ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-2.5">
-            <div className="md text-[0.925rem] whitespace-pre-wrap">{text}</div>
+          <div className="ml-auto min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-2.5">
+            <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">{text}</div>
           </div>
         );
       }

@@ -620,19 +620,17 @@ export function TaskView({ taskId }: { taskId: string }) {
                 currentSessionId={task.sessionId}
                 onSwitch={() => void refreshTask()}
               />
-              <div className="hidden sm:contents">
-                <SessionActions
-                  directory={task.directory}
-                  sessionId={task.sessionId}
-                  lastUserMessageId={lastRevertMessageId}
-                  messages={stream.visibleMessages}
-                  onRestoreText={restoreToComposer}
-                  onDone={() => {
-                    void stream.resync();
-                    setDiffKey((k) => k + 1);
-                  }}
-                />
-              </div>
+              <SessionActions
+                directory={task.directory}
+                sessionId={task.sessionId}
+                lastUserMessageId={lastRevertMessageId}
+                messages={stream.visibleMessages}
+                onRestoreText={restoreToComposer}
+                onDone={() => {
+                  void stream.resync();
+                  setDiffKey((k) => k + 1);
+                }}
+              />
             </>
           )}
           <Button
@@ -841,7 +839,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       />
                     ))}
                     {m.info.role === "user" && task.sessionId && (
-                      <div className="flex justify-end opacity-0 transition-opacity group-hover/msg:opacity-100">
+                      <div className="flex justify-end opacity-100 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100">
                         <MessageRevertButton
                           directory={task.directory}
                           sessionId={task.sessionId}

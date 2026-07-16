@@ -430,7 +430,7 @@ export function DiffPane({
 
       {/* Inline action panels */}
       {panel === "commit" && (
-        <div className="flex shrink-0 gap-2 border-b border-border bg-surface px-3 py-2">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-3 py-2 sm:flex-row sm:items-center">
           <input
             value={commitMsg}
             onChange={(e) => setCommitMsg(e.target.value)}
@@ -443,6 +443,7 @@ export function DiffPane({
           <Button
             variant="primary"
             size="md"
+            className="w-full shrink-0 sm:w-auto"
             busy={busy}
             disabled={!commitMsg.trim() || selectedPaths.length === 0}
             onClick={() => void commit()}
@@ -491,7 +492,7 @@ export function DiffPane({
         </div>
       )}
       {panel === "pr" && (
-        <div className="flex shrink-0 gap-2 border-b border-border bg-surface px-3 py-2">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-3 py-2 sm:flex-row sm:items-center">
           <input
             value={prTitle}
             onChange={(e) => setPrTitle(e.target.value)}
@@ -501,6 +502,7 @@ export function DiffPane({
           <Button
             variant="primary"
             size="md"
+            className="w-full shrink-0 sm:w-auto"
             busy={busy}
             disabled={!prTitle.trim() || hasChanges}
             title={hasChanges ? "先にコミットしてください" : undefined}
