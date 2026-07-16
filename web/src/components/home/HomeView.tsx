@@ -207,7 +207,7 @@ export function HomeView() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-24">
+      <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]">
         <section>
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
             何をつくりますか？
@@ -236,11 +236,12 @@ export function HomeView() {
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
             />
-            <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+            <div className="flex items-center gap-2 px-3 pb-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
-                className="h-9 max-w-44 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                className="h-9 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-44"
               >
                 {projects.length === 0 && <option value="">プロジェクトなし</option>}
                 {projects.map((p) => (
@@ -256,12 +257,12 @@ export function HomeView() {
                   setAccessMode(m);
                   writeAccessMode(m);
                 }}
-                className="h-9"
+                className="h-9 shrink-0"
               />
               <select
                 value={isolation}
                 onChange={(e) => setIsolation(e.target.value)}
-                className="h-9 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                className="h-9 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
               >
                 {ISOLATIONS.map((i) => (
                   <option key={i.value} value={i.value}>
@@ -273,7 +274,7 @@ export function HomeView() {
                 <select
                   value={baseBranch}
                   onChange={(e) => setBaseBranch(e.target.value)}
-                  className="h-9 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  className="h-9 max-w-[7rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-36"
                   title="ベースブランチ"
                 >
                   {branches.map((b) => (
@@ -287,7 +288,7 @@ export function HomeView() {
                 <select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="h-9 max-w-40 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  className="h-9 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-40"
                 >
                   {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
                     <optgroup key={group} label={group}>
@@ -306,7 +307,7 @@ export function HomeView() {
                 <select
                   value={agent}
                   onChange={(e) => setAgent(e.target.value)}
-                  className="h-9 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  className="h-9 max-w-[8rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-36"
                   title="エージェント（OpenCode agent）"
                 >
                   {agents.map((a) => (
@@ -322,11 +323,12 @@ export function HomeView() {
                   ))}
                 </select>
               )}
-              <div className="flex-1" />
+              </div>
               <Button
                 variant="primary"
                 size="icon"
                 aria-label="タスク開始"
+                className="shrink-0"
                 busy={submitting}
                 disabled={!prompt.trim() || !projectId || !engineOk}
                 onClick={() => void submit()}

@@ -582,16 +582,17 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex max-w-[55vw] shrink-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none sm:gap-1 [&::-webkit-scrollbar]:hidden">
           {working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
-              停止
+              <span className="hidden sm:inline">停止</span>
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon"
+            className="hidden sm:inline-flex"
             title={copied ? "コピーしました" : "作業パスをコピー"}
             onClick={() => void copyPath()}
           >
@@ -600,6 +601,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
+            className="hidden sm:inline-flex"
             title="再同期"
             onClick={() => {
               void stream.resync();
@@ -610,28 +612,31 @@ export function TaskView({ taskId }: { taskId: string }) {
           </Button>
           {task.sessionId && (
             <>
-              <SessionSwitcher
-                workspaceId={task.id}
-                directory={task.directory}
-                currentSessionId={task.sessionId}
-                onSwitch={() => void refreshTask()}
-              />
-              <SessionActions
-                directory={task.directory}
-                sessionId={task.sessionId}
-                lastUserMessageId={lastRevertMessageId}
-                messages={stream.visibleMessages}
-                onRestoreText={restoreToComposer}
-                onDone={() => {
-                  void stream.resync();
-                  setDiffKey((k) => k + 1);
-                }}
-              />
+              <div className="hidden sm:contents">
+                <SessionSwitcher
+                  workspaceId={task.id}
+                  directory={task.directory}
+                  currentSessionId={task.sessionId}
+                  onSwitch={() => void refreshTask()}
+                />
+                <SessionActions
+                  directory={task.directory}
+                  sessionId={task.sessionId}
+                  lastUserMessageId={lastRevertMessageId}
+                  messages={stream.visibleMessages}
+                  onRestoreText={restoreToComposer}
+                  onDone={() => {
+                    void stream.resync();
+                    setDiffKey((k) => k + 1);
+                  }}
+                />
+              </div>
             </>
           )}
           <Button
             variant="ghost"
             size="icon"
+            className="hidden sm:inline-flex"
             title="タスクを削除"
             onClick={() => void removeTask()}
           >
@@ -642,11 +647,11 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="ファイルツリー"
             className={cx(
-              "hidden lg:inline-flex",
               showDiff && sidePanel === "files" && "bg-surface-2 text-text",
             )}
             onClick={() => {
               setShowDiff(true);
+              setTab("diff");
               setSidePanel("files");
             }}
           >
@@ -657,11 +662,11 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="グラフ"
             className={cx(
-              "hidden lg:inline-flex",
               showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
             )}
             onClick={() => {
               setShowDiff(true);
+              setTab("diff");
               setSidePanel("graph");
             }}
           >
@@ -672,11 +677,12 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="ターミナル"
             className={cx(
-              "hidden lg:inline-flex",
+              "hidden md:inline-flex",
               showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
             )}
             onClick={() => {
               setShowDiff(true);
+              setTab("diff");
               setSidePanel("pty");
             }}
           >
@@ -687,15 +693,16 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="Diff パネル"
             className={cx(
-              "hidden lg:inline-flex",
               showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              if (sidePanel === "diff" && showDiff) {
+              if (sidePanel === "diff" && showDiff && tab === "diff") {
                 setShowDiff(false);
+                setTab("chat");
               } else {
                 setSidePanel("diff");
                 setShowDiff(true);
+                setTab("diff");
               }
             }}
           >
@@ -705,31 +712,45 @@ export function TaskView({ taskId }: { taskId: string }) {
       </header>
 
       {/* Mobile tabs */}
-      <div className="flex shrink-0 border-b border-border bg-surface lg:hidden">
+      <div className="flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
         {(
           [
-            { key: "chat", label: "会話" },
+            { key: "chat" as const, label: "会話", panel: null },
             {
-              key: "diff",
+              key: "diff" as const,
               label:
                 task.filesChanged > 0 ? `変更 (${task.filesChanged})` : "変更",
+              panel: "diff" as const,
             },
+            { key: "diff" as const, label: "ファイル", panel: "files" as const },
+            { key: "diff" as const, label: "グラフ", panel: "graph" as const },
           ] as const
-        ).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cx(
-              "flex-1 cursor-pointer border-b-2 px-4 py-2.5 text-sm font-medium",
-              tab === t.key
-                ? "border-primary text-text"
-                : "border-transparent text-faint hover:text-muted",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+        ).map((t) => {
+          const active =
+            tab === t.key &&
+            (t.panel === null || sidePanel === t.panel);
+          return (
+            <button
+              key={`${t.key}-${t.panel ?? "main"}`}
+              type="button"
+              onClick={() => {
+                setTab(t.key);
+                if (t.panel) {
+                  setSidePanel(t.panel);
+                  setShowDiff(true);
+                }
+              }}
+              className={cx(
+                "shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap",
+                active
+                  ? "border-primary text-text"
+                  : "border-transparent text-faint hover:text-muted",
+              )}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {stream.sessionError && (
@@ -1013,7 +1034,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
           {sidePanel === "files" && (
-            <div className="hidden min-h-0 w-full flex-1 lg:flex">
+            <div className="flex min-h-0 w-full flex-1">
               <FileTreePanel
                 root={task.directory}
                 onFile={(p) => {
@@ -1023,12 +1044,12 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
           {sidePanel === "graph" && (
-            <div className="hidden min-h-0 w-full flex-1 lg:flex">
+            <div className="flex min-h-0 w-full flex-1">
               <GraphPanel directory={task.directory} />
             </div>
           )}
           {sidePanel === "pty" && (
-            <div className="hidden min-h-0 w-full flex-1 lg:flex">
+            <div className="flex min-h-0 w-full flex-1">
               <PtyPanel directory={task.directory} />
             </div>
           )}

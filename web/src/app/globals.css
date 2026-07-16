@@ -197,6 +197,15 @@ body {
 }
 
 /* subtle scrollbars */
+html,
+body {
+  overflow-x: clip;
+}
+
+.pb-safe {
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;

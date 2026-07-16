@@ -309,10 +309,10 @@ export function GraphPanel({ directory }: { directory: string }) {
                 style={{ minHeight: ROW_H }}
               >
                 <GraphCell row={row} />
-                <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-1 py-1.5 pr-2 sm:flex-row sm:items-center sm:gap-2">
                   <ChevronRight
                     className={cx(
-                      "h-3 w-3 shrink-0 text-faint transition-transform",
+                      "mt-0.5 h-3 w-3 shrink-0 text-faint transition-transform sm:mt-0",
                       open && "rotate-90",
                     )}
                   />
@@ -326,6 +326,7 @@ export function GraphPanel({ directory }: { directory: string }) {
                       <span className="font-mono">{row.commit.shortHash}</span>
                     </div>
                   </div>
+                  <div className="flex max-w-full flex-wrap items-center gap-1">
                   {shown.map((name) => (
                     <span
                       key={name}
@@ -349,6 +350,7 @@ export function GraphPanel({ directory }: { directory: string }) {
                       +{more}
                     </span>
                   )}
+                  </div>
                 </div>
               </button>
 

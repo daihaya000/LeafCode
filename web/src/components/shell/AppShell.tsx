@@ -15,7 +15,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     <div className="flex h-dvh flex-col bg-bg text-text md:flex-row">
       <CommandPalette directory={extras.directory} onFile={extras.onFile} />
 
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-surface px-2 md:hidden">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-surface px-2 pt-[env(safe-area-inset-top)] md:hidden">
         <button
           type="button"
           aria-label="メニュー"

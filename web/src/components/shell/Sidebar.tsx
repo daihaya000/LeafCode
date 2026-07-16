@@ -284,7 +284,7 @@ export function Sidebar({
                       type="button"
                       title="お気に入り"
                       onClick={(e) => void toggleFavorite(p, e)}
-                      className="hidden shrink-0 rounded-md p-1 text-faint hover:bg-surface-2 group-hover/project:inline-flex"
+                      className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md p-1 text-faint hover:bg-surface-2 md:hidden md:group-hover/project:inline-flex"
                     >
                       <Star
                         className={
@@ -298,7 +298,7 @@ export function Sidebar({
                       type="button"
                       title="プロジェクトを削除"
                       onClick={(e) => void removeProject(p, e)}
-                      className="hidden shrink-0 rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger group-hover/project:inline-flex"
+                      className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger md:hidden md:group-hover/project:inline-flex"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -350,7 +350,7 @@ export function Sidebar({
                                 type="button"
                                 aria-label="タスクを削除"
                                 onClick={(e) => void removeTask(task, e)}
-                                className="absolute top-1.5 right-1 hidden rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger group-hover:block"
+                                className="absolute top-1.5 right-1 inline-flex min-h-9 min-w-9 items-center justify-center rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger md:hidden md:group-hover:inline-flex"
                               >
                                 <Trash2 className="h-3 w-3" />
                               </button>
@@ -405,7 +405,7 @@ export function Sidebar({
             className="absolute inset-0 bg-black/40"
             onClick={onClose}
           />
-          <aside className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] shadow-xl">
+          <aside className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]">
             {body}
           </aside>
         </div>

@@ -159,7 +159,7 @@ export function SettingsView() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-8 px-4 py-8 pb-24">
+      <main className="mx-auto max-w-3xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]">
         {error && (
           <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
             {error}
@@ -344,7 +344,7 @@ export function SettingsView() {
 
         {(orphans.length > 0 || stray.length > 0) && (
           <section>
-            <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-warning">
                   要復旧の Workspace

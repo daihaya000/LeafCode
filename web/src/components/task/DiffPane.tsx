@@ -110,7 +110,7 @@ function FileDiffBlock({
                     return (
                       <div
                         key={li}
-                        className="grid grid-cols-2 bg-diff-del-bg text-diff-del-text"
+                        className="grid grid-cols-1 bg-diff-del-bg text-diff-del-text sm:grid-cols-2"
                       >
                         <div className="border-r border-border px-2 whitespace-pre">
                           -{line.text || " "}
@@ -123,7 +123,7 @@ function FileDiffBlock({
                     return (
                       <div
                         key={li}
-                        className="grid grid-cols-2 bg-diff-add-bg text-diff-add-text"
+                        className="grid grid-cols-1 bg-diff-add-bg text-diff-add-text sm:grid-cols-2"
                       >
                         <div className="border-r border-border px-2" />
                         <div className="px-2 whitespace-pre">+{line.text || " "}</div>
@@ -131,7 +131,7 @@ function FileDiffBlock({
                     );
                   }
                   return (
-                    <div key={li} className="grid grid-cols-2 text-muted">
+                    <div key={li} className="grid grid-cols-1 text-muted sm:grid-cols-2">
                       <div className="border-r border-border px-2 whitespace-pre">
                         {line.text || " "}
                       </div>
@@ -375,6 +375,7 @@ export function DiffPane({
         <Button
           variant={sideBySide ? "secondary" : "ghost"}
           size="sm"
+          className="hidden sm:inline-flex"
           onClick={() => setSideBySide((v) => !v)}
         >
           並列
