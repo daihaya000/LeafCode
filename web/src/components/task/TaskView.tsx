@@ -166,20 +166,22 @@ export function TaskView({ taskId }: { taskId: string }) {
     writeAccessMode(mode);
   }, []);
 
+  const { permissions, replyPermission } = stream;
+
   // フルアクセス: pending 権限を自動承認
   useEffect(() => {
     if (accessMode !== "full") {
       autoReplyIdsRef.current.clear();
       return;
     }
-    for (const p of stream.permissions) {
+    for (const p of permissions) {
       if (autoReplyIdsRef.current.has(p.id)) continue;
       autoReplyIdsRef.current.add(p.id);
-      void stream.replyPermission(p, "once").catch(() => {
+      void replyPermission(p, "once").catch(() => {
         autoReplyIdsRef.current.delete(p.id);
       });
     }
-  }, [accessMode, stream.permissions, stream.replyPermission]);
+  }, [accessMode, permissions, replyPermission]);
 
   useEffect(() => {
     void (async () => {
