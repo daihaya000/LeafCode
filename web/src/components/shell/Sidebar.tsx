@@ -18,6 +18,10 @@ import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
 const EXPANDED_KEY = "webui.sidebar.expanded";
+const WIDTH_KEY = "webui.sidebar.width";
+const DEFAULT_WIDTH = 240;
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 480;
 
 function loadExpanded(): Set<string> {
   try {
@@ -38,6 +42,29 @@ function saveExpanded(ids: Set<string>) {
   }
 }
 
+function clampWidth(n: number) {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(n)));
+}
+
+function loadWidth(): number {
+  try {
+    const raw = localStorage.getItem(WIDTH_KEY);
+    if (!raw) return DEFAULT_WIDTH;
+    const n = Number(raw);
+    return Number.isFinite(n) ? clampWidth(n) : DEFAULT_WIDTH;
+  } catch {
+    return DEFAULT_WIDTH;
+  }
+}
+
+function saveWidth(n: number) {
+  try {
+    localStorage.setItem(WIDTH_KEY, String(clampWidth(n)));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function Sidebar({
   mobileOpen,
   onClose,
@@ -52,6 +79,8 @@ export function Sidebar({
   const [engineOk, setEngineOk] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const [resizing, setResizing] = useState(false);
 
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
@@ -73,6 +102,7 @@ export function Sidebar({
 
   useEffect(() => {
     setExpanded(loadExpanded());
+    setWidth(loadWidth());
     setHydrated(true);
     void refresh();
     const poll = setInterval(() => {
@@ -104,6 +134,33 @@ export function Sidebar({
       return next;
     });
   }, [activeTaskId, tasks, hydrated]);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (e: PointerEvent) => {
+      const next = clampWidth(e.clientX);
+      setWidth(next);
+    };
+    const onUp = () => {
+      setResizing(false);
+      setWidth((w) => {
+        saveWidth(w);
+        return w;
+      });
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [resizing]);
 
   const tasksByProject = useMemo(() => {
     const map = new Map<string, TaskSummary[]>();
@@ -392,8 +449,33 @@ export function Sidebar({
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden h-full w-60 shrink-0 border-r border-border md:block">
+      <aside
+        className="relative hidden h-full shrink-0 border-r border-border md:block"
+        style={{ width }}
+      >
         {body}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="サイドバー幅を調整"
+          aria-valuenow={width}
+          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={MAX_WIDTH}
+          title="ドラッグで幅を変更（ダブルクリックでリセット）"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            setResizing(true);
+          }}
+          onDoubleClick={() => {
+            setWidth(DEFAULT_WIDTH);
+            saveWidth(DEFAULT_WIDTH);
+          }}
+          className={cx(
+            "absolute top-0 right-0 z-10 h-full w-1.5 translate-x-1/2 cursor-col-resize touch-none",
+            "hover:bg-accent/40 active:bg-accent/60",
+            resizing && "bg-accent/50",
+          )}
+        />
       </aside>
 
       {/* Mobile drawer */}
