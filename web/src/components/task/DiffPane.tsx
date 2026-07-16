@@ -63,7 +63,7 @@ function FileDiffBlock({
           type="checkbox"
           checked={selected}
           onChange={(e) => onSelect(e.target.checked)}
-          className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--accent)]"
+          className="h-5 w-5 shrink-0 cursor-pointer accent-[var(--accent)]"
           aria-label={`${file.path} をコミット対象にする`}
         />
         <button
@@ -387,11 +387,12 @@ export function DiffPane({
           onClick={() => setPanel(panel === "commit" ? null : "commit")}
         >
           <GitCommitHorizontal className="h-3.5 w-3.5" />
-          Commit
+          <span className="hidden sm:inline">Commit</span>
         </Button>
         <Button
           variant={panel === "merge" ? "secondary" : "ghost"}
           size="sm"
+          className="hidden sm:inline-flex"
           onClick={() => setPanel(panel === "merge" ? null : "merge")}
         >
           <GitMerge className="h-3.5 w-3.5" />
@@ -400,6 +401,7 @@ export function DiffPane({
         <Button
           variant={panel === "pr" ? "secondary" : "ghost"}
           size="sm"
+          className="hidden sm:inline-flex"
           disabled={prAvailable === false}
           title={prAvailable === false ? "gh CLI が必要です" : undefined}
           onClick={() => setPanel(panel === "pr" ? null : "pr")}

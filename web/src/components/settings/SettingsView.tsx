@@ -168,16 +168,15 @@ export function SettingsView() {
 
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3">
             <Badge tone={health?.opencode.ok ? "success" : "danger"}>
               {health?.opencode.ok ? "接続中" : "停止"}
             </Badge>
             <span className="text-sm text-muted">
               OpenCode {health?.opencode.version ?? ""}
             </span>
-            <span className="flex-1" />
             {!health?.opencode.ok && (
-              <span className="text-xs text-faint">
+              <span className="basis-full text-xs text-faint sm:basis-auto sm:ml-auto">
                 トレイの「再起動」で復旧してください
               </span>
             )}
@@ -196,7 +195,7 @@ export function SettingsView() {
             {(access?.addresses ?? []).map((a) => (
               <li
                 key={`${a.name}-${a.address}`}
-                className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-nowrap"
               >
                 <Badge tone={a.kind === "vpn" ? "success" : "neutral"}>
                   {kindLabel(a.kind)}

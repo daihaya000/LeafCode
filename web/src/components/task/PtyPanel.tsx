@@ -37,7 +37,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   }, [directory]);
 
   return (
-    <div className="flex h-full flex-col border-l border-border bg-surface p-3">
+    <div className="flex h-full flex-col border-border bg-surface p-3 lg:border-l">
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted">
         <Terminal className="h-3.5 w-3.5" />
         ターミナル
