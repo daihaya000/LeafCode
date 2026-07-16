@@ -247,7 +247,7 @@ const ToolPartView = memo(function ToolPartView({
               {fields.map((f) => (
                 <div key={f.label}>
                   <dt className="text-[11px] font-medium text-faint">{f.label}</dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap text-xs text-muted">
+                  <dd className="mt-0.5 break-all whitespace-pre-wrap text-xs text-muted">
                     {f.value}
                   </dd>
                 </div>

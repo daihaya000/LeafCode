@@ -857,13 +857,13 @@ export function TaskView({ taskId }: { taskId: string }) {
                     {m.info.role === "assistant" &&
                       typeof m.info.cost === "number" &&
                       m.info.cost > 0 && (
-                        <p className="text-[10px] text-faint">
+                        <p className="break-all text-[10px] text-faint">
                           cost ${m.info.cost.toFixed(4)}
                           {m.info.modelID ? ` · ${m.info.modelID}` : ""}
                         </p>
                       )}
                     {m.info.error?.data?.message && (
-                      <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
+                      <p className="break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
                         {m.info.error.data.message}
                       </p>
                     )}

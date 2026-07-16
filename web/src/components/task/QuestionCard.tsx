@@ -110,7 +110,7 @@ export function QuestionCard({
             {q.header && (
               <p className="mb-0.5 text-xs font-medium text-faint">{q.header}</p>
             )}
-            <p className="mb-2 text-sm text-text">{q.question}</p>
+            <p className="mb-2 break-words text-sm text-text">{q.question}</p>
             <div className="flex flex-col gap-1.5">
               {q.options.map((opt) => {
                 const on = (selected[qi] ?? []).includes(opt.label);

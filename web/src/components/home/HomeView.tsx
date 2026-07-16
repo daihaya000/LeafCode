@@ -338,6 +338,12 @@ export function HomeView() {
             </div>
           </div>
 
+          {loaded && !engineOk && (
+            <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">
+              エンジン未接続。トレイから再起動してください。
+            </p>
+          )}
+
           {loaded && projects.length === 0 && (
             <div className="mx-auto mt-4 max-w-2xl">
               <p className="mb-3 text-center text-sm text-muted">
@@ -352,7 +358,7 @@ export function HomeView() {
           )}
 
           {error && (
-            <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
+            <p className="mx-auto mt-3 max-w-2xl break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
               {error}
             </p>
           )}
