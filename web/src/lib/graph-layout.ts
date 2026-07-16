@@ -3,35 +3,32 @@ import type { GraphCommit } from "./types";
 export type GraphEdge = {
   fromLane: number;
   toLane: number;
-  /** color index follows the source lane */
   color: number;
-  /** true = connect into this row's commit (from above) */
-  kind: "pass" | "merge" | "fork";
+  /** upper = into this commit from above; lower = leaving toward parents below */
+  half: "upper" | "lower";
 };
 
 export type GraphRow = {
   commit: GraphCommit;
-  /** lane of this commit's node */
   lane: number;
-  /** color index for this commit's lane */
   color: number;
-  /** active lane count at this row (for width) */
   laneCount: number;
-  /** vertical lines passing through this row */
+  /** active vertical rails through this row (excluding the commit lane itself) */
   passes: { lane: number; color: number }[];
-  /** edges drawn in the upper half of the row (from previous → this) */
   edges: GraphEdge[];
 };
 
 const LANE_COLORS = 6;
 
 /**
- * Assign swimlanes for commits listed newest-first (git log --date-order).
- * First parent stays on the same lane; additional parents fork new lanes.
+ * Swimlane layout for commits newest-first.
+ * - First parent continues on the same lane
+ * - Extra parents open new lanes (drawn in the lower half of the merge row)
+ * - When several lanes meet the same commit, extra lanes curve in (upper half)
  */
 export function layoutGraph(commits: GraphCommit[]): GraphRow[] {
   const rows: GraphRow[] = [];
-  // lanes[i] = hash we expect next on this lane (going downward / older)
+  // lanes[i] = hash expected next on this lane (going older / downward)
   let lanes: (string | null)[] = [];
   const colorOf = new Map<number, number>();
   let nextColor = 0;
@@ -45,28 +42,43 @@ export function layoutGraph(commits: GraphCommit[]): GraphRow[] {
   };
 
   for (const commit of commits) {
-    let lane = lanes.findIndex((h) => h === commit.hash);
-    if (lane < 0) {
+    const waiting = lanes
+      .map((h, i) => (h === commit.hash ? i : -1))
+      .filter((i) => i >= 0);
+
+    let lane: number;
+    if (waiting.length > 0) {
+      lane = waiting[0];
+    } else {
       lane = lanes.findIndex((h) => h === null);
       if (lane < 0) {
         lane = lanes.length;
         lanes.push(null);
       }
-      colorFor(lane);
     }
+    colorFor(lane);
 
     const edges: GraphEdge[] = [];
     const passes: { lane: number; color: number }[] = [];
 
     for (let i = 0; i < lanes.length; i++) {
+      if (i === lane) continue;
       if (lanes[i] && lanes[i] !== commit.hash) {
         passes.push({ lane: i, color: colorFor(i) });
       }
     }
 
-    // Incoming: previous row expected this hash on `lane`
-    // (edges from children are implicit via passes + node)
+    // Other lanes that were waiting for this same commit → converge (upper)
+    for (const other of waiting.slice(1)) {
+      edges.push({
+        fromLane: other,
+        toLane: lane,
+        color: colorFor(other),
+        half: "upper",
+      });
+    }
 
+    // Clear all lanes that pointed at this commit
     const next: (string | null)[] = lanes.map((h) =>
       h === commit.hash ? null : h,
     );
@@ -75,35 +87,35 @@ export function layoutGraph(commits: GraphCommit[]): GraphRow[] {
     const firstParent = commit.parents[0] ?? null;
     next[lane] = firstParent;
 
+    // Additional parents → new/reuse lanes, fork downward from this commit
     for (let pi = 1; pi < commit.parents.length; pi++) {
       const parent = commit.parents[pi];
       let pl = next.findIndex((h) => h === parent);
       if (pl < 0) {
-        pl = next.findIndex((h) => h === null);
+        pl = next.findIndex((h, idx) => h === null && idx !== lane);
         if (pl < 0) {
           pl = next.length;
           next.push(parent);
         } else {
           next[pl] = parent;
         }
-        colorFor(pl);
       }
+      colorFor(pl);
       edges.push({
-        fromLane: pl,
-        toLane: lane,
+        fromLane: lane,
+        toLane: pl,
         color: colorFor(pl),
-        kind: "merge",
+        half: "lower",
       });
     }
 
-    // Trim trailing empty lanes
     while (next.length > 0 && next[next.length - 1] === null) next.pop();
 
     rows.push({
       commit,
       lane,
       color: colorFor(lane),
-      laneCount: Math.max(lanes.length, next.length, lane + 1),
+      laneCount: Math.max(lanes.length, next.length, lane + 1, 1),
       passes,
       edges,
     });
@@ -115,3 +127,24 @@ export function layoutGraph(commits: GraphCommit[]): GraphRow[] {
 }
 
 export { LANE_COLORS };
+
+/** Prefer current branch, then non-worktree names; cap visible badges. */
+export function pickBranchBadges(
+  names: string[],
+  currentBranch: string | null,
+  max = 2,
+): { shown: string[]; more: number } {
+  if (names.length === 0) return { shown: [], more: 0 };
+  const uniq = [...new Set(names)];
+  const score = (n: string) => {
+    if (currentBranch && n === currentBranch) return 0;
+    if (n === "main" || n === "master") return 1;
+    if (n.startsWith("webui/")) return 3;
+    return 2;
+  };
+  uniq.sort((a, b) => score(a) - score(b) || a.localeCompare(b));
+
+  // If current + others all share the tip, still show current first
+  const shown = uniq.slice(0, max);
+  return { shown, more: Math.max(0, uniq.length - shown.length) };
+}

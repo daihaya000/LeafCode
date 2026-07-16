@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutGraph } from "./graph-layout";
+import { layoutGraph, pickBranchBadges } from "./graph-layout";
 import type { GraphCommit } from "./types";
 
 function c(
@@ -19,7 +19,6 @@ function c(
 
 describe("layoutGraph", () => {
   it("keeps first-parent chain on lane 0", () => {
-    // newest first
     const rows = layoutGraph([
       c("c3", ["c2"]),
       c("c2", ["c1"]),
@@ -28,15 +27,34 @@ describe("layoutGraph", () => {
     expect(rows.map((r) => r.lane)).toEqual([0, 0, 0]);
   });
 
-  it("assigns a second lane for a merge parent", () => {
+  it("forks a second lane for merge and converges later", () => {
+    // newest → oldest (matches real opencode history shape)
     const rows = layoutGraph([
-      c("m", ["a", "b"], "merge"),
-      c("a", ["root"]),
-      c("b", ["root"]),
-      c("root", []),
+      c("tip", ["merge"]),
+      c("merge", ["main", "side"], "merge"),
+      c("side", ["base"]),
+      c("main", ["base"]),
+      c("base", []),
     ]);
-    expect(rows[0].lane).toBe(0);
-    expect(rows[0].edges.some((e) => e.kind === "merge")).toBe(true);
-    expect(rows[0].commit.parents.length).toBe(2);
+    expect(rows[1].commit.hash).toBe("merge");
+    expect(rows[1].edges.some((e) => e.half === "lower")).toBe(true);
+    expect(rows[2].lane).toBe(1); // side branch
+    // base is reached from both lanes → upper merge into lane 0
+    const base = rows.find((r) => r.commit.hash === "base");
+    expect(base?.lane).toBe(0);
+    expect(base?.edges.some((e) => e.half === "upper")).toBe(true);
+  });
+});
+
+describe("pickBranchBadges", () => {
+  it("prefers current and caps extras", () => {
+    const { shown, more } = pickBranchBadges(
+      ["webui/a", "master", "webui/b"],
+      "webui/a",
+      2,
+    );
+    expect(shown[0]).toBe("webui/a");
+    expect(shown).toContain("master");
+    expect(more).toBe(1);
   });
 });

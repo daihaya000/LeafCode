@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Button, Spinner, cx } from "@/components/ui";
 import { getJson } from "@/lib/client";
-import { layoutGraph, LANE_COLORS, type GraphRow } from "@/lib/graph-layout";
+import { layoutGraph, pickBranchBadges, LANE_COLORS, type GraphRow } from "@/lib/graph-layout";
 import type {
   GraphFileChange,
   GraphLogPayload,
@@ -66,6 +66,7 @@ function GraphCell({ row }: { row: GraphRow }) {
           strokeWidth={2}
         />
       ))}
+      {/* rail into commit */}
       <line
         x1={x(row.lane)}
         y1={0}
@@ -75,6 +76,7 @@ function GraphCell({ row }: { row: GraphRow }) {
         stroke={nodeStroke}
         strokeWidth={2}
       />
+      {/* continue first-parent downward */}
       {row.commit.parents.length > 0 && (
         <line
           x1={x(row.lane)}
@@ -86,15 +88,30 @@ function GraphCell({ row }: { row: GraphRow }) {
           strokeWidth={2}
         />
       )}
-      {row.edges.map((e, i) => (
-        <path
-          key={`e-${i}`}
-          d={`M ${x(e.fromLane)} 0 C ${x(e.fromLane)} ${midY * 0.6}, ${x(e.toLane)} ${midY * 0.4}, ${x(e.toLane)} ${midY}`}
-          fill="none"
-          stroke={laneStroke(e.color)}
-          strokeWidth={2}
-        />
-      ))}
+      {row.edges.map((e, i) => {
+        if (e.half === "upper") {
+          // side lane from above curves into this commit
+          return (
+            <path
+              key={`e-${i}`}
+              d={`M ${x(e.fromLane)} 0 C ${x(e.fromLane)} ${midY * 0.55}, ${x(e.toLane)} ${midY * 0.45}, ${x(e.toLane)} ${midY}`}
+              fill="none"
+              stroke={laneStroke(e.color)}
+              strokeWidth={2}
+            />
+          );
+        }
+        // fork from this commit down toward extra parent lane
+        return (
+          <path
+            key={`e-${i}`}
+            d={`M ${x(e.fromLane)} ${midY} C ${x(e.fromLane)} ${midY + (ROW_H - midY) * 0.45}, ${x(e.toLane)} ${midY + (ROW_H - midY) * 0.55}, ${x(e.toLane)} ${ROW_H}`}
+            fill="none"
+            stroke={laneStroke(e.color)}
+            strokeWidth={2}
+          />
+        );
+      })}
       <circle
         cx={x(row.lane)}
         cy={midY}
@@ -232,7 +249,10 @@ export function GraphPanel({ directory }: { directory: string }) {
         <GitGraph className="h-3.5 w-3.5 text-muted" />
         <span className="text-xs font-semibold text-muted">グラフ</span>
         {payload?.currentBranch && (
-          <span className="inline-flex max-w-[8rem] items-center gap-1 truncate rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-text">
+          <span
+            title={payload.currentBranch}
+            className="inline-flex max-w-[10rem] items-center gap-1 truncate rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-text"
+          >
             <GitBranch className="h-2.5 w-2.5 shrink-0" />
             {payload.currentBranch}
           </span>
@@ -267,6 +287,11 @@ export function GraphPanel({ directory }: { directory: string }) {
         )}
         {rows.map((row) => {
           const refs = refsByHash.get(row.commit.hash) ?? [];
+          const { shown, more } = pickBranchBadges(
+            refs,
+            payload?.currentBranch ?? null,
+            2,
+          );
           const open = expanded === row.commit.hash;
           const files = filesByCommit[row.commit.hash];
           return (
@@ -301,15 +326,29 @@ export function GraphPanel({ directory }: { directory: string }) {
                       <span className="font-mono">{row.commit.shortHash}</span>
                     </div>
                   </div>
-                  {refs.map((name) => (
+                  {shown.map((name) => (
                     <span
                       key={name}
-                      className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] text-accent"
+                      title={name}
+                      className={cx(
+                        "inline-flex max-w-[7rem] shrink-0 items-center gap-0.5 truncate rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+                        name === payload?.currentBranch
+                          ? "border-accent/50 bg-accent/15 text-accent"
+                          : "border-border bg-surface-2 text-muted",
+                      )}
                     >
-                      <GitBranch className="h-2.5 w-2.5" />
-                      {name}
+                      <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                      <span className="truncate">{name}</span>
                     </span>
                   ))}
+                  {more > 0 && (
+                    <span
+                      title={refs.join(", ")}
+                      className="shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
+                    >
+                      +{more}
+                    </span>
+                  )}
                 </div>
               </button>
 
