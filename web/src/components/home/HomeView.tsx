@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { ArrowUp } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
-import { ISOLATIONS } from "@/components/StatusBadge";
 import { Button } from "@/components/ui";
 import {
   readAccessMode,
@@ -31,7 +30,9 @@ export function HomeView() {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [engineOk, setEngineOk] = useState(true);
   const [projectId, setProjectId] = useState("");
-  const [isolation, setIsolation] = useState<string>("git_worktree");
+  const [isolation, setIsolation] = useState<"current_folder" | "git_worktree">(
+    "git_worktree",
+  );
   const [prompt, setPrompt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export function HomeView() {
   const [agent, setAgent] = useState("");
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [baseBranch, setBaseBranch] = useState("");
-  const [branches, setBranches] = useState<string[]>([]);
+  const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
   const [loaded, setLoaded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
@@ -155,9 +156,9 @@ export function HomeView() {
 
   useEffect(() => {
     const project = projects.find((p) => p.id === projectId);
-    if (!project?.rootPath || isolation === "current_folder") {
-      setBranches([]);
+    if (!project?.rootPath) {
       setBaseBranch("");
+      setDefaultBranchLabel("master");
       return;
     }
     void (async () => {
@@ -167,13 +168,23 @@ export function HomeView() {
           defaultTarget: string | null;
           current: string;
         }>("/api/git/branches", { directory: project.rootPath });
-        setBranches(info.branches ?? []);
-        setBaseBranch((cur) => cur || info.defaultTarget || info.current || "");
+        const branches = info.branches ?? [];
+        const preferred =
+          info.defaultTarget ||
+          (branches.includes("master")
+            ? "master"
+            : branches.includes("main")
+              ? "main"
+              : info.current) ||
+          "master";
+        setDefaultBranchLabel(preferred);
+        setBaseBranch(preferred);
       } catch {
-        setBranches([]);
+        setBaseBranch("master");
+        setDefaultBranchLabel("master");
       }
     })();
-  }, [projectId, projects, isolation]);
+  }, [projectId, projects]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -193,7 +204,9 @@ export function HomeView() {
         projectId,
         prompt: text,
         isolation,
-        ...(baseBranch ? { baseBranch } : {}),
+        ...(isolation === "git_worktree" && baseBranch
+          ? { baseBranch }
+          : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(agent ? { agent } : {}),
       });
@@ -236,93 +249,85 @@ export function HomeView() {
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
             />
-            <div className="flex items-center gap-2 px-3 pb-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="h-9 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-44"
-              >
-                {projects.length === 0 && <option value="">プロジェクトなし</option>}
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.favorite ? "★ " : ""}
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <AccessModeSelect
-                value={accessMode}
-                onChange={(m) => {
-                  setAccessMode(m);
-                  writeAccessMode(m);
-                }}
-                className="h-9 shrink-0"
-              />
-              <select
-                value={isolation}
-                onChange={(e) => setIsolation(e.target.value)}
-                className="h-9 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
-              >
-                {ISOLATIONS.map((i) => (
-                  <option key={i.value} value={i.value}>
-                    {i.label}
-                  </option>
-                ))}
-              </select>
-              {branches.length > 0 && isolation !== "current_folder" && (
+            <div className="flex items-start gap-2 px-3 pb-3">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                 <select
-                  value={baseBranch}
-                  onChange={(e) => setBaseBranch(e.target.value)}
-                  className="h-9 max-w-[7rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-36"
-                  title="ベースブランチ"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className="h-9 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-44"
                 >
-                  {branches.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
+                  {projects.length === 0 && (
+                    <option value="">プロジェクトなし</option>
+                  )}
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.favorite ? "★ " : ""}
+                      {p.name}
                     </option>
                   ))}
                 </select>
-              )}
-              {modelOptions.length > 0 && (
+                <AccessModeSelect
+                  value={accessMode}
+                  onChange={(m) => {
+                    setAccessMode(m);
+                    writeAccessMode(m);
+                  }}
+                  className="h-9"
+                />
                 <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="h-9 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-40"
+                  value={isolation}
+                  onChange={(e) =>
+                    setIsolation(
+                      e.target.value as "current_folder" | "git_worktree",
+                    )
+                  }
+                  className="h-9 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
                 >
-                  {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
-                    <optgroup key={group} label={group}>
-                      {modelOptions
-                        .filter((o) => o.group === group)
-                        .map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                    </optgroup>
-                  ))}
+                  <option value="current_folder">{defaultBranchLabel}</option>
+                  <option value="git_worktree">worktree</option>
                 </select>
-              )}
-              {agents.length > 0 && (
-                <select
-                  value={agent}
-                  onChange={(e) => setAgent(e.target.value)}
-                  className="h-9 max-w-[8rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-36"
-                  title="エージェント（OpenCode agent）"
-                >
-                  {agents.map((a) => (
-                    <option key={a} value={a}>
-                      {a === "build"
-                        ? "build（Code）"
-                        : a === "plan"
-                          ? "plan（Plan）"
-                          : /ask|explore/i.test(a)
-                            ? `${a}（Ask）`
-                            : a}
-                    </option>
-                  ))}
-                </select>
-              )}
+                {modelOptions.length > 0 && (
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="h-9 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-40"
+                  >
+                    {[...new Set(modelOptions.map((o) => o.group))].map(
+                      (group) => (
+                        <optgroup key={group} label={group}>
+                          {modelOptions
+                            .filter((o) => o.group === group)
+                            .map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ),
+                    )}
+                  </select>
+                )}
+                {agents.length > 0 && (
+                  <select
+                    value={agent}
+                    onChange={(e) => setAgent(e.target.value)}
+                    className="h-9 max-w-[8rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-36"
+                    title="エージェント（OpenCode agent）"
+                  >
+                    {agents.map((a) => (
+                      <option key={a} value={a}>
+                        {a === "build"
+                          ? "build（Code）"
+                          : a === "plan"
+                            ? "plan（Plan）"
+                            : /ask|explore/i.test(a)
+                              ? `${a}（Ask）`
+                              : a}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <Button
                 variant="primary"
