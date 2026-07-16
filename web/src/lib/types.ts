@@ -96,6 +96,14 @@ export type Todo = {
   status?: "pending" | "in_progress" | "completed" | "cancelled";
 };
 
+/** OpenCode soft-revert marker on a session (messages remain until cleanup). */
+export type SessionRevert = {
+  messageID: string;
+  partID?: string;
+  snapshot?: string;
+  diff?: string;
+};
+
 export type TaskStatus =
   | "working"
   | "ready"

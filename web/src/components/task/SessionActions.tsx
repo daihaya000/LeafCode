@@ -53,7 +53,9 @@ export function SessionActions({
       const result = await fn();
       if (result === "ok") onDone?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "失敗しました");
+      const msg = err instanceof Error ? err.message : "失敗しました";
+      setError(msg);
+      window.alert(`巻き戻し失敗: ${msg}`);
     } finally {
       setBusy(null);
     }

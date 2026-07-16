@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiUrl, ocJson } from "./client";
 import type {
   MessageInfo,
@@ -9,6 +9,7 @@ import type {
   PermissionRequest,
   QuestionInfo,
   QuestionRequest,
+  SessionRevert,
   SessionStatus,
   Todo,
 } from "./types";
@@ -21,6 +22,7 @@ type StreamState = {
   permissions: PermissionRequest[];
   questions: QuestionRequest[];
   todos: Todo[];
+  revert: SessionRevert | null;
   connection: ConnectionState;
   sessionError: string | null;
   loaded: boolean;
@@ -38,6 +40,7 @@ type Action =
   | { kind: "questionsSynced"; requests: QuestionRequest[] }
   | { kind: "questionReplied"; requestId: string }
   | { kind: "todos"; todos: Todo[] }
+  | { kind: "revert"; revert: SessionRevert | null }
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "sessionError"; message: string | null };
 
@@ -47,10 +50,33 @@ const initialState: StreamState = {
   permissions: [],
   questions: [],
   todos: [],
+  revert: null,
   connection: "connecting",
   sessionError: null,
   loaded: false,
 };
+
+/** Hide soft-reverted messages the way OpenCode Desktop does. */
+export function filterRevertedMessages(
+  messages: MessageWithParts[],
+  revert: SessionRevert | null,
+): MessageWithParts[] {
+  if (!revert?.messageID) return messages;
+  const out: MessageWithParts[] = [];
+  for (const m of messages) {
+    if (m.info.id > revert.messageID) continue;
+    if (m.info.id < revert.messageID) {
+      out.push(m);
+      continue;
+    }
+    // id === revert.messageID
+    if (!revert.partID) continue;
+    const idx = m.parts.findIndex((p) => p.id === revert.partID);
+    if (idx <= 0) continue;
+    out.push({ ...m, parts: m.parts.slice(0, idx) });
+  }
+  return out;
+}
 
 function upsertPart(parts: Part[], part: Part): Part[] {
   const idx = parts.findIndex((p) => p.id === part.id);
@@ -125,6 +151,8 @@ function reducer(state: StreamState, action: Action): StreamState {
       };
     case "todos":
       return { ...state, todos: action.todos };
+    case "revert":
+      return { ...state, revert: action.revert };
     case "connection":
       return { ...state, connection: action.connection };
     case "sessionError":
@@ -154,6 +182,16 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         directory,
       );
       if (statuses[sid]) dispatch({ kind: "status", status: statuses[sid] });
+
+      try {
+        const session = await ocJson<{ revert?: SessionRevert | null }>(
+          `/session/${sid}`,
+          directory,
+        );
+        dispatch({ kind: "revert", revert: session.revert ?? null });
+      } catch {
+        dispatch({ kind: "revert", revert: null });
+      }
 
       // Recover todos
       try {
@@ -505,8 +543,14 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     [directory],
   );
 
+  const visibleMessages = useMemo(
+    () => filterRevertedMessages(state.messages, state.revert),
+    [state.messages, state.revert],
+  );
+
   return {
     ...state,
+    visibleMessages,
     resync,
     sendPrompt,
     abort,

@@ -284,9 +284,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     return `${done}/${stream.todos.length}`;
   }, [stream.todos]);
 
-  // Prefer last user message for header revert (undo that turn + after)
+  // Prefer last *visible* user message for header revert
   const lastRevertMessageId = useMemo(() => {
-    const msgs = stream.messages;
+    const msgs = stream.visibleMessages;
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
       if (m?.info.role === "user" && m.info.id) return m.info.id;
@@ -296,7 +296,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       if (id) return id;
     }
     return null;
-  }, [stream.messages]);
+  }, [stream.visibleMessages]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -410,7 +410,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const timeline = useMemo(
     () =>
-      stream.messages.filter((m) =>
+      stream.visibleMessages.filter((m) =>
         m.parts.some(
           (p) =>
             (p.type === "text" && p.text?.trim()) ||
@@ -421,7 +421,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             p.type === "agent",
         ),
       ),
-    [stream.messages],
+    [stream.visibleMessages],
   );
 
   if (loadError) {
@@ -516,7 +516,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                 directory={task.directory}
                 sessionId={task.sessionId}
                 lastMessageId={lastRevertMessageId}
-                onDone={() => void stream.resync()}
+                onDone={() => {
+                  void stream.resync();
+                  setDiffKey((k) => k + 1);
+                }}
               />
             </>
           )}
@@ -637,6 +640,35 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </Button>
                 </div>
               )}
+              {stream.revert && (
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-warning/30 bg-warning-bg px-4 py-2 text-sm text-warning">
+                  <span>巻き戻し中（以降のメッセージは非表示）</span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const { unrevertSession } = await import(
+                            "./SessionActions"
+                          );
+                          await unrevertSession(task.directory, task.sessionId!);
+                          await stream.resync();
+                          setDiffKey((k) => k + 1);
+                        } catch (err) {
+                          window.alert(
+                            err instanceof Error
+                              ? err.message
+                              : "復元に失敗しました",
+                          );
+                        }
+                      })();
+                    }}
+                  >
+                    復元
+                  </Button>
+                </div>
+              )}
             <div
               ref={scrollRef}
               onScroll={onScroll}
@@ -667,7 +699,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                           sessionId={task.sessionId}
                           messageId={m.info.id}
                           disabled={working}
-                          onDone={() => void stream.resync()}
+                          onDone={() => {
+                            void stream.resync();
+                            setDiffKey((k) => k + 1);
+                          }}
                         />
                       </div>
                     )}
