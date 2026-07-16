@@ -17,6 +17,7 @@ import {
   Copy,
   FolderTree,
   GitBranch,
+  GitGraph,
   ListTodo,
   Loader2,
   PanelRight,
@@ -40,6 +41,7 @@ import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
+import { GraphPanel } from "./GraphPanel";
 import { PartView } from "./PartView";
 import { PermissionCard } from "./PermissionCard";
 import { PtyPanel } from "./PtyPanel";
@@ -129,7 +131,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<"chat" | "diff">("chat");
   const [showDiff, setShowDiff] = useState(true);
-  const [sidePanel, setSidePanel] = useState<"diff" | "files" | "pty">("diff");
+  const [sidePanel, setSidePanel] = useState<"diff" | "files" | "pty" | "graph">(
+    "diff",
+  );
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -651,6 +655,21 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
+            title="グラフ"
+            className={cx(
+              "hidden lg:inline-flex",
+              showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
+            )}
+            onClick={() => {
+              setShowDiff(true);
+              setSidePanel("graph");
+            }}
+          >
+            <GitGraph className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             title="ターミナル"
             className={cx(
               "hidden lg:inline-flex",
@@ -1001,6 +1020,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                   openFileInDiff(p);
                 }}
               />
+            </div>
+          )}
+          {sidePanel === "graph" && (
+            <div className="hidden min-h-0 w-full flex-1 lg:flex">
+              <GraphPanel directory={task.directory} />
             </div>
           )}
           {sidePanel === "pty" && (

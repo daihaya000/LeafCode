@@ -195,3 +195,137 @@ export async function listGitWorktrees(
   if (current.path) entries.push({ path: current.path, bare: current.bare });
   return entries;
 }
+
+const SAFE_HASH = /^[0-9a-f]{7,64}$/i;
+
+export function assertSafeCommitHash(hash: string): void {
+  if (!SAFE_HASH.test(hash)) throw new Error("invalid commit hash");
+}
+
+const LOG_SEP = "\x1f";
+const LOG_REC = "\x1e";
+
+/** Commits for graph panel (newest first). */
+export async function gitLogGraph(
+  cwd: string,
+  limit = 80,
+  skip = 0,
+): Promise<{ commits: import("./types").GraphCommit[]; hasMore: boolean }> {
+  const n = Math.min(Math.max(limit, 1), 200);
+  const s = Math.max(skip, 0);
+  const fmt = ["%H", "%P", "%s", "%an", "%cI"].join(LOG_SEP);
+  const result = await runGit(cwd, [
+    "log",
+    "--all",
+    "--date-order",
+    `-n${n + 1}`,
+    `--skip=${s}`,
+    `--pretty=format:${fmt}${LOG_REC}`,
+  ]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || "git log failed");
+  }
+  const raw = result.stdout.split(LOG_REC).map((r) => r.trim()).filter(Boolean);
+  const hasMore = raw.length > n;
+  const commits = raw.slice(0, n).map((rec) => {
+    const [hash, parents, subject, author, date] = rec.split(LOG_SEP);
+    return {
+      hash: hash ?? "",
+      shortHash: (hash ?? "").slice(0, 7),
+      parents: (parents ?? "").trim() ? (parents ?? "").trim().split(/\s+/) : [],
+      subject: subject ?? "",
+      author: author ?? "",
+      date: date ?? "",
+    };
+  });
+  return { commits, hasMore };
+}
+
+/** Local branch tips (+ current HEAD name). */
+export async function gitBranchRefs(
+  cwd: string,
+): Promise<{ refs: import("./types").GraphRef[]; currentBranch: string | null }> {
+  const head = await runGit(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const currentBranch = head.code === 0 ? head.stdout.trim() : null;
+
+  const listed = await runGit(cwd, [
+    "for-each-ref",
+    "--format=%(objectname)%00%(refname:short)",
+    "refs/heads",
+  ]);
+  if (listed.code !== 0) {
+    return { refs: [], currentBranch };
+  }
+  const refs: import("./types").GraphRef[] = [];
+  for (const line of listed.stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const [hash, name] = line.split("\0");
+    if (!hash || !name) continue;
+    refs.push({
+      name,
+      hash,
+      current: name === currentBranch,
+    });
+  }
+  return { refs, currentBranch };
+}
+
+/** Files changed in a commit (name-status). */
+export async function gitCommitFiles(
+  cwd: string,
+  hash: string,
+): Promise<import("./types").GraphFileChange[]> {
+  assertSafeCommitHash(hash);
+  const result = await runGit(cwd, [
+    "show",
+    "--name-status",
+    "--format=",
+    "--no-renames",
+    hash,
+  ]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || "git show failed");
+  }
+  const files: import("./types").GraphFileChange[] = [];
+  for (const line of result.stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const m = /^([MADCRTUX])\t(.+)$/.exec(line);
+    if (!m) continue;
+    files.push({
+      status: m[1] as import("./types").GraphFileChange["status"],
+      path: m[2].replace(/\\/g, "/"),
+    });
+  }
+  return files;
+}
+
+/** Unified diff for one file in a commit. */
+export async function gitCommitFileDiff(
+  cwd: string,
+  hash: string,
+  filePath: string,
+): Promise<string> {
+  assertSafeCommitHash(hash);
+  const normalized = filePath.replace(/\\/g, "/");
+  if (
+    !normalized ||
+    normalized.includes("\0") ||
+    normalized.startsWith("/") ||
+    normalized.includes("..")
+  ) {
+    throw new Error("invalid file path");
+  }
+  const result = await runGit(cwd, [
+    "show",
+    "--format=",
+    "--no-color",
+    "--no-ext-diff",
+    hash,
+    "--",
+    normalized,
+  ]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || "git show file failed");
+  }
+  return result.stdout;
+}

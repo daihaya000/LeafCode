@@ -159,6 +159,40 @@ export type DiffFilesPayload = {
   error?: string;
 };
 
+/** One commit for the graph panel. */
+export type GraphCommit = {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  subject: string;
+  author: string;
+  date: string;
+};
+
+export type GraphRef = {
+  name: string;
+  hash: string;
+  current?: boolean;
+};
+
+export type GraphLogPayload = {
+  commits: GraphCommit[];
+  refs: GraphRef[];
+  currentBranch: string | null;
+  hasMore: boolean;
+};
+
+export type GraphFileChange = {
+  path: string;
+  status: "M" | "A" | "D" | "R" | "C" | "T" | "U" | "?";
+};
+
+export type GraphShowPayload = {
+  commit: string;
+  files?: GraphFileChange[];
+  diff?: string;
+};
+
 export type ProjectDto = {
   id: string;
   name: string;
