@@ -62,7 +62,8 @@ export function HomeView() {
       .then((r) => (r.ok ? (r.json() as Promise<ProviderResponse>) : null))
       .then((data) => {
         if (!data) return;
-        const connected = new Set(data.connected ?? []);
+        const connectedList = data.connected ?? [];
+        const connected = new Set(connectedList);
         const options: ModelOption[] = [];
         for (const p of data.all ?? []) {
           if (connected.size > 0 && !connected.has(p.id)) continue;
@@ -75,17 +76,35 @@ export function HomeView() {
           }
         }
         setModelOptions(options);
+
+        let initial = "";
+        const order =
+          connectedList.length > 0
+            ? connectedList
+            : Object.keys(data.default ?? {});
+        for (const pid of order) {
+          const mid = data.default?.[pid];
+          if (!mid) continue;
+          const value = `${pid}::${mid}`;
+          if (options.some((o) => o.value === value)) {
+            initial = value;
+            break;
+          }
+        }
+        if (!initial && options[0]) initial = options[0].value;
+        setModel((cur) => cur || initial);
       })
       .catch(() => undefined);
     fetch("/api/opencode/agent", { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<AgentResponse>) : null))
       .then((data) => {
         if (!data) return;
-        setAgents(
-          data
-            .filter((a) => a.mode !== "subagent" && !a.hidden)
-            .map((a) => a.name),
-        );
+        const names = data
+          .filter((a) => a.mode !== "subagent" && !a.hidden)
+          .map((a) => a.name);
+        setAgents(names);
+        const initial = names.includes("build") ? "build" : (names[0] ?? "");
+        setAgent((cur) => cur || initial);
       })
       .catch(() => undefined);
   }, []);
@@ -207,7 +226,6 @@ export function HomeView() {
                   onChange={(e) => setModel(e.target.value)}
                   className="h-9 max-w-40 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
                 >
-                  <option value="">モデル: 既定</option>
                   {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
                     <optgroup key={group} label={group}>
                       {modelOptions
@@ -227,7 +245,6 @@ export function HomeView() {
                   onChange={(e) => setAgent(e.target.value)}
                   className="h-9 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
                 >
-                  <option value="">エージェント: 既定</option>
                   {agents.map((a) => (
                     <option key={a} value={a}>
                       {a}
