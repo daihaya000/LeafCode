@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   Bot,
   Brain,
@@ -38,10 +38,27 @@ function asString(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+function shortAgentName(raw: string): string {
+  // c-explore-opencode-go-kimi-k2-7-code → explore / kimi…
+  const parts = raw.split("-").filter(Boolean);
+  if (parts.length >= 2 && /^[a-e]$/i.test(parts[0]!)) {
+    return parts.slice(1, 3).join("-");
+  }
+  return raw.length > 36 ? raw.slice(0, 34) + "…" : raw;
+}
+
 function toolSummary(tool: string, state: ToolState | undefined): string {
   if (state?.title) return state.title;
   const input = state?.input ?? {};
   const t = tool.toLowerCase();
+  if (t === "task" || t.includes("task")) {
+    return (
+      asString(input.description) ??
+      asString(input.command) ??
+      asString(input.prompt)?.slice(0, 80) ??
+      "サブエージェント"
+    );
+  }
   if (t.includes("bash") || t.includes("shell")) {
     return (
       asString(input.description) ?? asString(input.command)?.slice(0, 120) ?? tool
@@ -59,28 +76,100 @@ function toolSummary(tool: string, state: ToolState | undefined): string {
   );
 }
 
-function compactJson(value: unknown, max = 600): string {
-  try {
-    const text = JSON.stringify(value, null, 1);
-    return text.length > max ? text.slice(0, max) + "…" : text;
-  } catch {
-    return String(value);
+/** Pull human text out of OpenCode task tool XML / JSON dumps. */
+function humanizeToolOutput(raw: string): string {
+  let text = raw.trim();
+  if (!text) return "";
+
+  const resultMatch = text.match(/<task_result>\s*([\s\S]*?)\s*<\/task_result>/i);
+  if (resultMatch?.[1]) {
+    text = resultMatch[1].trim();
+  } else {
+    text = text
+      .replace(/<\/?task\b[^>]*>/gi, "")
+      .replace(/<\/?task_result>/gi, "")
+      .trim();
   }
+
+  // Drop leftover XML/meta noise lines
+  text = text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*<[^>]+>\s*$/.test(line))
+    .join("\n")
+    .trim();
+
+  return text;
+}
+
+type Field = { label: string; value: string };
+
+function inputFields(tool: string, input: Record<string, unknown> | undefined): Field[] {
+  if (!input) return [];
+  const t = tool.toLowerCase();
+  const fields: Field[] = [];
+  const add = (label: string, key: string, transform?: (s: string) => string) => {
+    const v = asString(input[key]);
+    if (v) fields.push({ label, value: transform ? transform(v) : v });
+  };
+
+  if (t === "task" || t.includes("task")) {
+    add("内容", "description");
+    add("エージェント", "subagent_type", shortAgentName);
+    add("指示", "prompt", (s) => (s.length > 200 ? s.slice(0, 200) + "…" : s));
+    return fields;
+  }
+  if (t.includes("bash") || t.includes("shell")) {
+    add("説明", "description");
+    add("コマンド", "command");
+    return fields;
+  }
+
+  add("パス", "filePath");
+  add("パス", "file_path");
+  add("パス", "path");
+  add("パターン", "pattern");
+  add("クエリ", "query");
+  add("URL", "url");
+  add("説明", "description");
+  return fields;
+}
+
+function toolLabel(tool: string): string {
+  const t = tool.toLowerCase();
+  if (t === "task") return "サブエージェント";
+  if (t.includes("bash") || t.includes("shell")) return "コマンド";
+  if (t.includes("read")) return "読取";
+  if (t.includes("write") || t.includes("edit")) return "編集";
+  if (t.includes("grep") || t.includes("glob") || t.includes("find")) return "検索";
+  return tool;
 }
 
 const ToolPartView = memo(function ToolPartView({ part }: { part: Part }) {
   const [open, setOpen] = useState(false);
   const state = part.state;
   const status = state?.status ?? "pending";
-  const Icon = toolIcon(part.tool ?? "");
-  const summary = toolSummary(part.tool ?? "tool", state);
-  const output = state?.output ?? state?.error ?? "";
-  const hasDetail = Boolean(output || state?.input);
+  const tool = part.tool ?? "tool";
+  const Icon = toolIcon(tool);
+  const summary = toolSummary(tool, state);
+  const fields = useMemo(
+    () => inputFields(tool, state?.input),
+    [tool, state?.input],
+  );
+  const rawOutput = state?.output ?? state?.error ?? "";
+  const niceOutput = useMemo(
+    () => (rawOutput ? humanizeToolOutput(rawOutput) : ""),
+    [rawOutput],
+  );
+  const preview =
+    status === "completed" && niceOutput
+      ? niceOutput.replace(/\s+/g, " ").slice(0, 100)
+      : "";
+  const hasDetail = fields.length > 0 || Boolean(niceOutput) || Boolean(rawOutput);
 
   return (
     <div
       className={cx(
-        "overflow-hidden rounded-lg border text-sm",
+        "overflow-hidden rounded-xl border text-sm",
         status === "error" ? "border-danger/40" : "border-border",
       )}
     >
@@ -88,17 +177,22 @@ const ToolPartView = memo(function ToolPartView({ part }: { part: Part }) {
         type="button"
         onClick={() => hasDetail && setOpen((v) => !v)}
         className={cx(
-          "flex w-full items-center gap-2.5 bg-surface-2 px-3 py-2 text-left",
+          "flex w-full items-center gap-2.5 bg-surface-2 px-3 py-2.5 text-left",
           hasDetail && "cursor-pointer hover:bg-surface-3",
         )}
       >
         <Icon className="h-4 w-4 shrink-0 text-muted" />
-        <span className="shrink-0 font-mono text-xs font-medium text-muted">
-          {part.tool}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-faint">
-          {summary}
-        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-xs font-medium text-muted">
+              {toolLabel(tool)}
+            </span>
+            <span className="min-w-0 truncate text-xs text-text">{summary}</span>
+          </div>
+          {preview && !open && (
+            <p className="mt-0.5 truncate text-[11px] text-faint">{preview}</p>
+          )}
+        </div>
         {status === "running" || status === "pending" ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />
         ) : status === "error" ? (
@@ -116,20 +210,38 @@ const ToolPartView = memo(function ToolPartView({ part }: { part: Part }) {
         )}
       </button>
       {open && (
-        <div className="max-h-72 space-y-2 overflow-y-auto border-t border-border bg-surface px-3 py-2">
-          {state?.input !== undefined && Object.keys(state.input).length > 0 && (
-            <pre className="whitespace-pre-wrap font-mono text-xs text-muted">
-              {compactJson(state.input)}
-            </pre>
+        <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border bg-surface px-3 py-3">
+          {fields.length > 0 && (
+            <dl className="space-y-2">
+              {fields.map((f) => (
+                <div key={f.label}>
+                  <dt className="text-[11px] font-medium text-faint">{f.label}</dt>
+                  <dd className="mt-0.5 whitespace-pre-wrap text-xs text-muted">
+                    {f.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           )}
-          {output && (
-            <pre
+          {niceOutput && (
+            <div
               className={cx(
-                "whitespace-pre-wrap font-mono text-xs",
-                status === "error" ? "text-danger" : "text-text/80",
+                "rounded-lg px-3 py-2 text-sm",
+                status === "error"
+                  ? "bg-danger-bg text-danger"
+                  : "bg-surface-2 text-text/90",
               )}
             >
-              {output.length > 6000 ? output.slice(0, 6000) + "\n…" : output}
+              {status === "error" ? (
+                <pre className="whitespace-pre-wrap font-sans text-xs">{niceOutput}</pre>
+              ) : (
+                <Markdown text={niceOutput} />
+              )}
+            </div>
+          )}
+          {!niceOutput && rawOutput && (
+            <pre className="whitespace-pre-wrap font-mono text-xs text-faint">
+              {rawOutput.length > 2000 ? rawOutput.slice(0, 2000) + "\n…" : rawOutput}
             </pre>
           )}
         </div>
@@ -231,7 +343,6 @@ export const PartView = memo(function PartView({
           {part.name ?? "agent"}
         </span>
       );
-    // step-start / step-finish / snapshot are internal markers — not rendered
     default:
       return null;
   }

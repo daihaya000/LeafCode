@@ -33,6 +33,16 @@ import { DiffPane } from "./DiffPane";
 import { PartView } from "./PartView";
 import { PermissionCard } from "./PermissionCard";
 
+type ModelOption = { value: string; label: string; group: string };
+
+type ProviderResponse = {
+  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
+  connected: string[];
+  default: Record<string, string>;
+};
+
+type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+
 function TodoPanel({ todos }: { todos: Todo[] }) {
   const [open, setOpen] = useState(false);
   const done = todos.filter((t) => t.status === "completed").length;
@@ -88,6 +98,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [agents, setAgents] = useState<string[]>([]);
+  const [model, setModel] = useState("");
+  const [agent, setAgent] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const composingRef = useRef(false);
@@ -97,6 +111,83 @@ export function TaskView({ taskId }: { taskId: string }) {
     task?.directory ?? null,
     task?.sessionId ?? null,
   );
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [providerRes, configRes, agentRes] = await Promise.all([
+          fetch("/api/opencode/provider", { cache: "no-store" }),
+          fetch("/api/opencode/config", { cache: "no-store" }),
+          fetch("/api/opencode/agent", { cache: "no-store" }),
+        ]);
+
+        const data = providerRes.ok
+          ? ((await providerRes.json()) as ProviderResponse)
+          : null;
+        const config = configRes.ok
+          ? ((await configRes.json()) as { model?: string; agent?: unknown })
+          : null;
+
+        if (data) {
+          const connectedList = data.connected ?? [];
+          const connected = new Set(connectedList);
+          const options: ModelOption[] = [];
+          for (const p of data.all ?? []) {
+            if (connected.size > 0 && !connected.has(p.id)) continue;
+            for (const [mid, m] of Object.entries(p.models ?? {})) {
+              options.push({
+                value: `${p.id}::${mid}`,
+                label: m.name || mid,
+                group: p.name || p.id,
+              });
+            }
+          }
+          setModelOptions(options);
+
+          let initial = "";
+          const cfg = config?.model?.trim();
+          if (cfg) {
+            const slash = cfg.indexOf("/");
+            if (slash > 0) {
+              const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+              if (options.some((o) => o.value === value)) initial = value;
+            }
+          }
+          if (!initial) {
+            for (const pid of connectedList) {
+              const mid = data.default?.[pid];
+              if (!mid) continue;
+              const value = `${pid}::${mid}`;
+              if (options.some((o) => o.value === value)) {
+                initial = value;
+                break;
+              }
+            }
+          }
+          if (!initial && options[0]) initial = options[0].value;
+          setModel((cur) => cur || initial);
+        }
+
+        if (agentRes.ok) {
+          const agentsData = (await agentRes.json()) as AgentResponse;
+          const names = agentsData
+            .filter((a) => a.mode !== "subagent" && !a.hidden)
+            .map((a) => a.name);
+          setAgents(names);
+          const cfgAgent =
+            typeof config?.agent === "string" ? config.agent : undefined;
+          const initial = names.includes(cfgAgent ?? "")
+            ? (cfgAgent as string)
+            : names.includes("build")
+              ? "build"
+              : (names[0] ?? "");
+          setAgent((cur) => cur || initial);
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })();
+  }, []);
 
   const refreshTask = useCallback(async () => {
     try {
@@ -146,12 +237,32 @@ export function TaskView({ taskId }: { taskId: string }) {
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
-      await stream.sendPrompt(text);
+      const [providerID, modelID] = model ? model.split("::") : [];
+      await stream.sendPrompt(text, {
+        ...(agent ? { agent } : {}),
+        ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+      });
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
     }
-  }, [input, stream]);
+  }, [input, stream, model, agent]);
+
+  // Prefer last assistant message's model once stream is loaded
+  const seededModelRef = useRef(false);
+  useEffect(() => {
+    if (seededModelRef.current || !stream.loaded || modelOptions.length === 0) return;
+    for (let i = stream.messages.length - 1; i >= 0; i--) {
+      const info = stream.messages[i]?.info;
+      if (info?.role !== "assistant" || !info.providerID || !info.modelID) continue;
+      const value = `${info.providerID}::${info.modelID}`;
+      if (modelOptions.some((o) => o.value === value)) {
+        setModel(value);
+        seededModelRef.current = true;
+      }
+      break;
+    }
+  }, [stream.loaded, stream.messages, modelOptions]);
 
   const copyPath = useCallback(async () => {
     if (!task) return;
@@ -421,7 +532,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   {sendError}
                 </p>
               )}
-              <div className="mt-2 flex items-end gap-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong">
+              <div className="mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong">
                 <textarea
                   ref={textareaRef}
                   value={input}
@@ -446,28 +557,67 @@ export function TaskView({ taskId }: { taskId: string }) {
                     }
                   }}
                   placeholder="フォローアップを送信…"
-                  className="max-h-40 flex-1 resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
+                  className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
                 />
-                {working ? (
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="停止"
-                    onClick={() => void stream.abort()}
-                  >
-                    <Square className="h-3.5 w-3.5 fill-current" />
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="icon"
-                    aria-label="送信"
-                    disabled={!input.trim() || !task.sessionId}
-                    onClick={() => void send()}
-                  >
-                    <ArrowUp className="h-4.5 w-4.5" />
-                  </Button>
-                )}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {modelOptions.length > 0 && (
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      disabled={!task.sessionId || working}
+                      className="h-8 max-w-40 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50"
+                    >
+                      {[...new Set(modelOptions.map((o) => o.group))].map(
+                        (group) => (
+                          <optgroup key={group} label={group}>
+                            {modelOptions
+                              .filter((o) => o.group === group)
+                              .map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                          </optgroup>
+                        ),
+                      )}
+                    </select>
+                  )}
+                  {agents.length > 0 && (
+                    <select
+                      value={agent}
+                      onChange={(e) => setAgent(e.target.value)}
+                      disabled={!task.sessionId || working}
+                      className="h-8 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50"
+                    >
+                      {agents.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="flex-1" />
+                  {working ? (
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      aria-label="停止"
+                      onClick={() => void stream.abort()}
+                    >
+                      <Square className="h-3.5 w-3.5 fill-current" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      size="icon"
+                      aria-label="送信"
+                      disabled={!input.trim() || !task.sessionId}
+                      onClick={() => void send()}
+                    >
+                      <ArrowUp className="h-4.5 w-4.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

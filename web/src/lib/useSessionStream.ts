@@ -271,12 +271,25 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   }, [directory, sessionId, resync]);
 
   const sendPrompt = useCallback(
-    async (text: string) => {
+    async (
+      text: string,
+      opts?: {
+        agent?: string;
+        model?: { providerID: string; modelID: string };
+      },
+    ) => {
       const sid = sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
+      const body: Record<string, unknown> = {
+        parts: [{ type: "text", text }],
+      };
+      if (opts?.agent?.trim()) body.agent = opts.agent.trim();
+      if (opts?.model?.providerID && opts.model.modelID) {
+        body.model = opts.model;
+      }
       await ocJson(`/session/${sid}/prompt_async`, directory, {
         method: "POST",
-        body: { parts: [{ type: "text", text }] },
+        body,
       });
       // safety net: events normally arrive first, resync fills any gap
       setTimeout(() => void resync(), 800);
