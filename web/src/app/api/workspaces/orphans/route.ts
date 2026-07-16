@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import {
   deleteWorkspace,
@@ -6,7 +7,7 @@ import {
   listWorkspacesByStatus,
   setWorkspaceStatus,
 } from "@/lib/db";
-import { listGitWorktrees, removeWorktree } from "@/lib/git";
+import { listGitWorktrees, removeWorktree, runGit } from "@/lib/git";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ function mapWorkspace(w: {
   };
 }
 
-/** Mark workspaces orphaned when path/worktree is missing. */
+/** Mark active workspaces orphaned when path/worktree is missing. */
 async function scanAndMark(): Promise<number> {
   const rows = getDb()
     .prepare(`SELECT * FROM workspaces WHERE status = 'active'`)
@@ -55,11 +56,58 @@ async function scanAndMark(): Promise<number> {
   return marked;
 }
 
+/**
+ * Drop orphan DB rows whose folders are already gone (heal after partial deletes).
+ * Also prune git worktree metadata when possible.
+ */
+async function purgeGoneOrphans(): Promise<number> {
+  const orphans = listWorkspacesByStatus("orphaned");
+  let purged = 0;
+  for (const row of orphans) {
+    const target = row.worktree_path || row.absolute_path;
+    if (fs.existsSync(target)) continue;
+
+    const project = getDb()
+      .prepare("SELECT root_path FROM projects WHERE id = ?")
+      .get(row.project_id) as { root_path: string } | undefined;
+
+    if (project?.root_path) {
+      await runGit(project.root_path, [
+        "worktree",
+        "prune",
+        "--expire",
+        "now",
+      ]).catch(() => undefined);
+      if (row.worktree_path) {
+        const admin = path.join(
+          project.root_path,
+          ".git",
+          "worktrees",
+          path.basename(row.worktree_path),
+        );
+        try {
+          if (fs.existsSync(admin)) {
+            fs.rmSync(admin, { recursive: true, force: true, maxRetries: 3 });
+          }
+        } catch {
+          /* best effort */
+        }
+      }
+    }
+
+    deleteWorkspace(row.id);
+    purged += 1;
+  }
+  return purged;
+}
+
 export async function GET(req: NextRequest) {
   const doScan = req.nextUrl.searchParams.get("scan") === "1";
   let marked = 0;
+  let purged = 0;
   if (doScan) {
     marked = await scanAndMark();
+    purged = await purgeGoneOrphans();
   }
 
   const orphans = listWorkspacesByStatus("orphaned").map(mapWorkspace);
@@ -77,9 +125,11 @@ export async function GET(req: NextRequest) {
       getDb()
         .prepare(`SELECT absolute_path, worktree_path FROM workspaces`)
         .all() as { absolute_path: string; worktree_path: string | null }[]
-    ).flatMap((r) =>
-      [r.absolute_path, r.worktree_path].filter((p): p is string => Boolean(p)),
-    ),
+    )
+      .flatMap((r) =>
+        [r.absolute_path, r.worktree_path].filter((p): p is string => Boolean(p)),
+      )
+      .map((p) => p.replace(/\//g, "\\").toLowerCase()),
   );
 
   for (const p of projects) {
@@ -87,16 +137,10 @@ export async function GET(req: NextRequest) {
       const wts = await listGitWorktrees(p.root_path);
       for (const wt of wts) {
         if (wt.bare) continue;
-        const normalized = wt.path.replace(/\//g, "\\");
         const isWebui = /[\\/]\.webui-worktrees[\\/]/.test(wt.path);
         if (!isWebui) continue;
-        const known =
-          knownPaths.has(wt.path) ||
-          knownPaths.has(normalized) ||
-          [...knownPaths].some(
-            (k) => k.toLowerCase() === wt.path.toLowerCase(),
-          );
-        if (!known) {
+        const key = wt.path.replace(/\//g, "\\").toLowerCase();
+        if (!knownPaths.has(key)) {
           stray.push({
             projectId: p.id,
             projectName: p.name,
@@ -109,7 +153,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ orphans, stray, marked });
+  return NextResponse.json({ orphans, stray, marked, purged });
 }
 
 export async function POST(req: NextRequest) {
@@ -120,8 +164,10 @@ export async function POST(req: NextRequest) {
 
   if (body.action === "scan") {
     const marked = await scanAndMark();
+    const purged = await purgeGoneOrphans();
     return NextResponse.json({
       marked,
+      purged,
       orphans: listWorkspacesByStatus("orphaned").map(mapWorkspace),
     });
   }
@@ -142,10 +188,14 @@ export async function POST(req: NextRequest) {
     project_id: string;
     isolation: string;
     worktree_path: string | null;
+    absolute_path: string;
   }[]) {
     const project = getDb()
       .prepare("SELECT root_path FROM projects WHERE id = ?")
       .get(row.project_id) as { root_path: string } | undefined;
+
+    const target = row.worktree_path || row.absolute_path;
+    const gone = !fs.existsSync(target);
 
     if (row.isolation === "git_worktree" && row.worktree_path && project) {
       try {
@@ -155,28 +205,39 @@ export async function POST(req: NextRequest) {
           force: true,
         });
       } catch (err) {
-        results.push({
-          id: row.id,
-          ok: false,
-          error: err instanceof Error ? err.message : "remove failed",
-        });
-        continue;
+        // Path already gone → still drop DB row
+        if (!gone && fs.existsSync(row.worktree_path)) {
+          results.push({
+            id: row.id,
+            ok: false,
+            error: err instanceof Error ? err.message : "remove failed",
+          });
+          continue;
+        }
+        await runGit(project.root_path, [
+          "worktree",
+          "prune",
+          "--expire",
+          "now",
+        ]).catch(() => undefined);
       }
     }
 
     if (row.isolation === "temporary_copy" && row.worktree_path) {
       try {
-        const { removeTemporaryCopy } = await import("@/lib/copy");
         if (fs.existsSync(row.worktree_path)) {
+          const { removeTemporaryCopy } = await import("@/lib/copy");
           removeTemporaryCopy(row.worktree_path);
         }
       } catch (err) {
-        results.push({
-          id: row.id,
-          ok: false,
-          error: err instanceof Error ? err.message : "copy remove failed",
-        });
-        continue;
+        if (fs.existsSync(row.worktree_path)) {
+          results.push({
+            id: row.id,
+            ok: false,
+            error: err instanceof Error ? err.message : "copy remove failed",
+          });
+          continue;
+        }
       }
     }
 

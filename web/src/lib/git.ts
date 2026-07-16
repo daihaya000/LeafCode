@@ -62,15 +62,19 @@ function rmDirBestEffort(target: string): void {
   fs.rmSync(target, {
     recursive: true,
     force: true,
-    maxRetries: 5,
-    retryDelay: 200,
+    maxRetries: 10,
+    retryDelay: 250,
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
  * Remove a git worktree. On Windows / OneDrive, `git worktree remove` often
  * fails when metadata is already broken ("not a working tree") or files are
- * briefly locked — fall back to prune + filesystem delete.
+ * briefly locked — fall back to prune + filesystem delete with retries.
  */
 export async function removeWorktree(input: {
   repoRoot: string;
@@ -83,6 +87,18 @@ export async function removeWorktree(input: {
 
   if (!fs.existsSync(absWorktree)) {
     await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
+    // Stale admin dir under .git/worktrees/<basename>
+    const adminGone = path.join(
+      repoRoot,
+      ".git",
+      "worktrees",
+      path.basename(absWorktree),
+    );
+    try {
+      rmDirBestEffort(adminGone);
+    } catch {
+      /* best effort */
+    }
     return;
   }
 
@@ -100,12 +116,21 @@ export async function removeWorktree(input: {
   // Metadata already gone / half-deleted — finish with prune + rimraf
   await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
 
-  try {
-    rmDirBestEffort(absWorktree);
-  } catch (err) {
+  let lastRmErr: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      rmDirBestEffort(absWorktree);
+      lastRmErr = undefined;
+      break;
+    } catch (err) {
+      lastRmErr = err;
+      await sleep(300 * (attempt + 1));
+    }
+  }
+  if (lastRmErr && fs.existsSync(absWorktree)) {
     throw new Error(
       `${gitErr}; folder delete failed: ${
-        err instanceof Error ? err.message : String(err)
+        lastRmErr instanceof Error ? lastRmErr.message : String(lastRmErr)
       }`,
     );
   }

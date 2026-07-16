@@ -344,10 +344,15 @@ export function SettingsView() {
 
         {(orphans.length > 0 || stray.length > 0) && (
           <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-warning">
-                要復旧の Workspace
-              </h2>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-warning">
+                  要復旧の Workspace
+                </h2>
+                <p className="mt-0.5 text-[11px] text-muted">
+                  worktree 削除に失敗した残骸です。フォルダが既に無いものは設定を開いたときに自動削除されます。
+                </p>
+              </div>
               <Button
                 variant="danger"
                 size="sm"

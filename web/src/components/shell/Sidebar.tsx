@@ -144,8 +144,16 @@ export function Sidebar({
       if (activeTaskId === task.id) router.push("/");
       notifyTasksChanged();
       await refresh();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "タスクの削除に失敗しました";
+      window.alert(
+        msg.includes("orphaned") || msg.includes("worktree")
+          ? `${msg}\n\n設定 → 「orphan を掃除」で残件を削除できます。`
+          : msg,
+      );
+      notifyTasksChanged();
+      await refresh();
     }
   };
 

@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { assertAllowedDirectory } from "./allowlist";
 import { createTemporaryCopy, removeTemporaryCopy } from "./copy";
 import { detectDevcontainer } from "./devcontainer";
@@ -15,7 +16,7 @@ import {
   removeAllowedRoot,
   setWorkspaceStatus,
 } from "./db";
-import { addWorktree, removeWorktree } from "./git";
+import { addWorktree, removeWorktree, runGit } from "./git";
 
 export type Isolation =
   | "current_folder"
@@ -156,6 +157,7 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
     .get(row.project_id) as { root_path: string } | undefined;
 
   if (row.isolation === "git_worktree" && row.worktree_path && project) {
+    const wt = path.resolve(row.worktree_path);
     try {
       await removeWorktree({
         repoRoot: project.root_path,
@@ -163,21 +165,37 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
         force: true,
       });
     } catch (err) {
-      setWorkspaceStatus(id, "orphaned");
-      const detail = err instanceof Error ? err.message : String(err);
-      throw new ServiceError(
-        `git worktree remove failed; marked orphaned (${detail})`,
-        409,
-      );
+      // Folder already gone (or removed mid-failure) → treat as cleaned
+      if (!fs.existsSync(wt)) {
+        await runGit(project.root_path, [
+          "worktree",
+          "prune",
+          "--expire",
+          "now",
+        ]).catch(() => undefined);
+      } else {
+        setWorkspaceStatus(id, "orphaned");
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new ServiceError(
+          `git worktree remove failed; marked orphaned (${detail})`,
+          409,
+        );
+      }
     }
   }
 
   if (row.isolation === "temporary_copy" && row.worktree_path) {
+    const wt = path.resolve(row.worktree_path);
     try {
       removeTemporaryCopy(row.worktree_path);
     } catch {
-      setWorkspaceStatus(id, "orphaned");
-      throw new ServiceError("temporary copy remove failed; marked orphaned", 409);
+      if (fs.existsSync(wt)) {
+        setWorkspaceStatus(id, "orphaned");
+        throw new ServiceError(
+          "temporary copy remove failed; marked orphaned",
+          409,
+        );
+      }
     }
   }
 
