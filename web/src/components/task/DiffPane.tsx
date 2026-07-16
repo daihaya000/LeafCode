@@ -83,12 +83,12 @@ function FileDiffBlock({
           </span>
           {file.untracked && (
             <span className="shrink-0 rounded-full bg-success-bg px-2 py-0.5 text-[10px] font-medium text-success">
-              new
+              新規
             </span>
           )}
           {file.binary && (
             <span className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-[10px] text-muted">
-              binary
+              バイナリ
             </span>
           )}
           <span className="flex-1" />
@@ -366,19 +366,21 @@ export function DiffPane({
           onChange={(e) =>
             setFilter(e.target.value as "all" | "tracked" | "untracked")
           }
-          className="h-8 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none"
+          title="表示する変更の種類"
+          className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none"
         >
-          <option value="all">すべて</option>
-          <option value="tracked">tracked</option>
-          <option value="untracked">untracked</option>
+          <option value="all">すべての変更</option>
+          <option value="tracked">既存の変更</option>
+          <option value="untracked">新規ファイル</option>
         </select>
         <Button
           variant={sideBySide ? "secondary" : "ghost"}
           size="sm"
           className="hidden sm:inline-flex"
+          title="左右に並べて差分表示"
           onClick={() => setSideBySide((v) => !v)}
         >
-          並列
+          並列表示
         </Button>
         <Button
           variant={panel === "commit" ? "secondary" : "ghost"}
