@@ -1,0 +1,11 @@
+{
+  "name": "opencode-webui",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix web run dev -- --hostname 127.0.0.1 --port 3000",
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web run start -- --hostname 127.0.0.1 --port 3000",
+    "host": "npm --prefix host start",
+    "smoke": "node scripts/smoke-api.mjs"
+  }
+}
