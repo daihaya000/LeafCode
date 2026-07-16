@@ -187,6 +187,26 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
     }
   };
 
+  const toggleFavorite = async (p: Project) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: p.id, favorite: !p.favorite }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? `favorite failed: ${res.status}`);
+        return;
+      }
+      await refreshProjects();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-4 py-8 text-[#e7ecf1]">
       <header>
@@ -220,18 +240,32 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
           <ul className="space-y-1">
             {projects.map((p) => (
               <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedProjectId(p.id)}
-                  className={`min-h-12 w-full rounded-md px-3 text-left text-sm ${
-                    selectedProjectId === p.id
-                      ? "bg-sky-600/30"
-                      : "bg-black/20 hover:bg-white/10"
+                <div
+                  className={`flex items-stretch gap-1 rounded-md ${
+                    selectedProjectId === p.id ? "bg-sky-600/30" : "bg-black/20"
                   }`}
                 >
-                  <div className="font-medium">{p.name}</div>
-                  <div className="truncate text-xs text-white/40">{p.rootPath}</div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProjectId(p.id)}
+                    className="min-h-12 flex-1 px-3 text-left text-sm hover:bg-white/10"
+                  >
+                    <div className="font-medium">
+                      {p.favorite ? "★ " : ""}
+                      {p.name}
+                    </div>
+                    <div className="truncate text-xs text-white/40">{p.rootPath}</div>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title="Toggle favorite"
+                    onClick={() => void toggleFavorite(p)}
+                    className="min-h-12 px-3 text-sm text-amber-200 hover:bg-white/10"
+                  >
+                    {p.favorite ? "★" : "☆"}
+                  </button>
+                </div>
               </li>
             ))}
             {projects.length === 0 && (

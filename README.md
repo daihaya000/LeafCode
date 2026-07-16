@@ -40,7 +40,10 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 3. New セッション → チャット / 承認
 4. Diff → Commit → Merge（または Create PR）
 
-## 開発
+## リモート（任意）
+
+VPN 経由で公開する場合の例: [`deploy/Caddyfile.example`](./deploy/Caddyfile.example)  
+Remote Workspace API はスタブ（`/api/remote` → 501）。当面は VPN + ローカルパスを開く。
 
 ```bat
 cd web && npm install && npm run dev

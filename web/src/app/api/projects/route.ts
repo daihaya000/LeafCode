@@ -52,3 +52,52 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+
+export async function PATCH(req: NextRequest) {
+  const body = (await req.json().catch(() => null)) as {
+    id?: string;
+    favorite?: boolean;
+    name?: string;
+  } | null;
+
+  if (!body?.id) {
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
+  }
+
+  const { getDb } = await import("@/lib/db");
+  const existing = getDb()
+    .prepare("SELECT * FROM projects WHERE id = ?")
+    .get(body.id) as
+    | {
+        id: string;
+        name: string;
+        root_path: string;
+        favorite: number;
+      }
+    | undefined;
+
+  if (!existing) {
+    return NextResponse.json({ error: "project not found" }, { status: 404 });
+  }
+
+  const name = body.name?.trim() || existing.name;
+  const favorite =
+    body.favorite === undefined ? Boolean(existing.favorite) : body.favorite;
+
+  const row = upsertProject({
+    name,
+    rootPath: existing.root_path,
+    favorite,
+  });
+
+  return NextResponse.json({
+    project: {
+      id: row.id,
+      name: row.name,
+      rootPath: row.root_path,
+      favorite: Boolean(row.favorite),
+      lastOpenedAt: row.last_opened_at,
+      createdAt: row.created_at,
+    },
+  });
+}

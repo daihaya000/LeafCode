@@ -1,0 +1,31 @@
+# Example Caddy reverse proxy for OpenCode WebUI (remote via VPN).
+# Adjust email / domain. Do NOT expose without VPN / auth.
+#
+# Usage (example):
+#   caddy run --config Caddyfile
+
+{
+	email you@example.com
+}
+
+webui.example.local {
+	# Prefer Basic Auth or VPN-only binding in production
+	basicauth /* {
+		# Generate with: caddy hash-password
+		# user JDJh...hashed...
+	}
+
+	reverse_proxy 127.0.0.1:3000 {
+		# SSE / long-lived streams
+		flush_interval -1
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+}
