@@ -28,7 +28,10 @@ const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
 const LOCK_FILE = join(DATA_DIR, 'host.lock');
 const OPENCODE_PORT = 4096;
-const WEBUI_PORT = 3000;
+const WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
+/** Bind address for Next.js. Default 0.0.0.0 so VPN/LAN phone can reach it.
+ *  OpenCode engine stays on 127.0.0.1. Override with OPENCODE_WEBUI_HOST=127.0.0.1 for local-only. */
+const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '0.0.0.0';
 const WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
 const OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
 
@@ -194,17 +197,24 @@ function spawnWeb() {
     (process.env.OPENCODE_WEBUI_MODE !== 'dev' && hasBuild);
 
   const npmArgs = useProd
-    ? ['run', 'start', '--', '--hostname', '127.0.0.1', '--port', String(WEBUI_PORT)]
-    : ['run', 'dev', '--', '--hostname', '127.0.0.1', '--port', String(WEBUI_PORT)];
+    ? ['run', 'start', '--', '--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)]
+    : ['run', 'dev', '--', '--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)];
 
-  log(`Starting WebUI (${useProd ? 'production' : 'dev'}) in ${WEB_DIR}`);
+  log(
+    `Starting WebUI (${useProd ? 'production' : 'dev'}) on ${WEBUI_HOST}:${WEBUI_PORT} in ${WEB_DIR}`,
+  );
   // On Windows, npm is a .cmd shim — must use shell:true
   webProc = spawn('npm', npmArgs, {
     cwd: WEB_DIR,
     shell: true,
     stdio: 'pipe',
     windowsHide: true,
-    env: process.env,
+    env: {
+      ...process.env,
+      OPENCODE_WEBUI_HOST: WEBUI_HOST,
+      OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
+      PORT: String(WEBUI_PORT),
+    },
   });
 
   webProc.on('error', (err) => {

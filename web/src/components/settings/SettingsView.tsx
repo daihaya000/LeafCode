@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Star, Trash2 } from "lucide-react";
+import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { Badge, Button, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
@@ -16,8 +16,22 @@ type OrphanDto = {
 
 type StrayDto = { projectId: string; projectName: string; path: string };
 
+type AccessInfo = {
+  bind: string;
+  port: number;
+  localUrl: string;
+  hint: string;
+  addresses: {
+    name: string;
+    address: string;
+    url: string;
+    kind: "vpn" | "lan" | "other";
+  }[];
+};
+
 export function SettingsView() {
   const [health, setHealth] = useState<HealthDto | null>(null);
+  const [access, setAccess] = useState<AccessInfo | null>(null);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [roots, setRoots] = useState<string[]>([]);
   const [orphans, setOrphans] = useState<OrphanDto[]>([]);
@@ -25,9 +39,10 @@ export function SettingsView() {
   const [newRoot, setNewRoot] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [h, p, r, o] = await Promise.allSettled([
+    const [h, p, r, o, a] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
@@ -35,6 +50,7 @@ export function SettingsView() {
         "/api/workspaces/orphans",
         { scan: "1" },
       ),
+      getJson<AccessInfo>("/api/access"),
     ]);
     if (h.status === "fulfilled") setHealth(h.value);
     if (p.status === "fulfilled") setProjects(p.value.projects ?? []);
@@ -43,6 +59,7 @@ export function SettingsView() {
       setOrphans(o.value.orphans ?? []);
       setStray(o.value.stray ?? []);
     }
+    if (a.status === "fulfilled") setAccess(a.value);
   }, []);
 
   useEffect(() => {
@@ -94,6 +111,15 @@ export function SettingsView() {
       }
     });
 
+  const copyUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url).catch(() => undefined);
+    setCopied(url);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const kindLabel = (kind: string) =>
+    kind === "vpn" ? "VPN" : kind === "lan" ? "LAN" : "その他";
+
   return (
     <div className="h-full overflow-y-auto">
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
@@ -125,6 +151,59 @@ export function SettingsView() {
               </span>
             )}
           </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-muted">
+            スマホ / VPN アクセス
+          </h2>
+          <p className="mb-3 text-xs text-faint">
+            {access?.hint ??
+              "VPN 接続後、PC の VPN アドレス:3000 をスマホブラウザで開きます。"}
+          </p>
+          <ul className="space-y-2">
+            {(access?.addresses ?? []).map((a) => (
+              <li
+                key={`${a.name}-${a.address}`}
+                className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
+              >
+                <Badge tone={a.kind === "vpn" ? "success" : "neutral"}>
+                  {kindLabel(a.kind)}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono text-sm">{a.url}</p>
+                  <p className="truncate text-[11px] text-faint">{a.name}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="URL をコピー"
+                  onClick={() => void copyUrl(a.url)}
+                >
+                  {copied === a.url ? (
+                    <Check className="h-4 w-4 text-success" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </li>
+            ))}
+            {access && access.addresses.length === 0 && (
+              <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
+                利用可能なネットワークアドレスがありません
+              </li>
+            )}
+          </ul>
+          <p className="mt-2 text-[11px] text-faint">
+            届かない場合: Windows ファイアウォールで TCP {access?.port ?? 3000}{" "}
+            の受信を許可してください（管理者 PowerShell:{" "}
+            <code className="rounded bg-surface-2 px-1">
+              netsh advfirewall firewall add rule name=&quot;OpenCode WebUI&quot;
+              dir=in action=allow protocol=TCP localport=
+              {access?.port ?? 3000}
+            </code>
+            ）
+          </p>
         </section>
 
         <section>

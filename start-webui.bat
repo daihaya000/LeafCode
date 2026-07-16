@@ -41,6 +41,9 @@ if not exist "host\node_modules\" (
 )
 
 set OPENCODE_WEBUI_MODE=prod
+rem VPN/スマホ向け: WebUI を全インターフェースで待ち受け (OpenCode は 127.0.0.1 のまま)
+rem ローカルのみにする場合: set OPENCODE_WEBUI_HOST=127.0.0.1
+if not defined OPENCODE_WEBUI_HOST set OPENCODE_WEBUI_HOST=0.0.0.0
 cd host
 node src\index.js
 set ERR=%ERRORLEVEL%
