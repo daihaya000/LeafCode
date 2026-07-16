@@ -18,11 +18,25 @@ const EMPTY_STAT: DirStat = {
   files: 0,
 };
 
+async function globalEngineOk(): Promise<boolean> {
+  try {
+    const health = await ocServer<{ healthy?: boolean }>(null, "/global/health", {
+      timeoutMs: 1500,
+    });
+    return Boolean(health.healthy);
+  } catch {
+    return false;
+  }
+}
+
 async function sessionStatusFor(dirs: string[]): Promise<{
   engineOk: boolean;
   statuses: StatusMap;
 }> {
   const statuses: StatusMap = {};
+  if (dirs.length === 0) {
+    return { engineOk: await globalEngineOk(), statuses };
+  }
   let engineOk = false;
   const results = await Promise.allSettled(
     dirs.map(async (dir) => {
