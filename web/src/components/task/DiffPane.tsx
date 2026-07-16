@@ -544,7 +544,7 @@ export function DiffPane({
         )}
         {payload && !payload.git && (
           <p className="py-10 text-center text-sm text-faint">
-            Git リポジトリではありません
+            {payload.error || "Git リポジトリではありません"}
           </p>
         )}
         {payload?.git && files.length === 0 && (

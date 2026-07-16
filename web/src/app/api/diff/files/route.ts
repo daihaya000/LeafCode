@@ -19,6 +19,19 @@ function isProbablyBinary(buf: Buffer): boolean {
   return false;
 }
 
+function emptyPayload(
+  partial: Partial<DiffFilesPayload> & { error?: string },
+): DiffFilesPayload {
+  return {
+    git: false,
+    branch: null,
+    files: [],
+    additions: 0,
+    deletions: 0,
+    ...partial,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const directory = req.nextUrl.searchParams.get("directory");
   if (!directory) {
@@ -30,87 +43,117 @@ export async function GET(req: NextRequest) {
   }
   const dir = check.path;
 
-  const head = await runGit(dir, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (head.code !== 0) {
-    const payload: DiffFilesPayload = {
-      git: false,
-      branch: null,
-      files: [],
-      additions: 0,
-      deletions: 0,
-      error: "not a git repository",
-    };
-    return NextResponse.json(payload);
-  }
-  const branch = head.stdout.trim() || null;
+  try {
+    if (!fs.existsSync(dir)) {
+      return NextResponse.json(
+        emptyPayload({ error: `directory does not exist: ${dir}` }),
+      );
+    }
 
-  // Tracked changes (staged + unstaged vs HEAD); fresh repos fall back
-  let diff = await runGit(dir, ["diff", "HEAD", "--no-color", "--no-ext-diff"]);
-  if (diff.code !== 0) {
-    const unstaged = await runGit(dir, ["diff", "--no-color", "--no-ext-diff"]);
-    const staged = await runGit(dir, [
+    const head = await runGit(dir, ["rev-parse", "--abbrev-ref", "HEAD"]);
+    if (head.code !== 0) {
+      return NextResponse.json(
+        emptyPayload({ error: head.stderr.trim() || "not a git repository" }),
+      );
+    }
+    const branch = head.stdout.trim() || null;
+
+    // Tracked changes (staged + unstaged vs HEAD); fresh repos fall back
+    let diff = await runGit(dir, [
       "diff",
-      "--cached",
+      "HEAD",
       "--no-color",
       "--no-ext-diff",
+      "-M",
     ]);
-    diff = {
-      code: 0,
-      stdout: [staged.stdout, unstaged.stdout].filter(Boolean).join("\n"),
-      stderr: "",
-    };
-  }
+    if (diff.code !== 0) {
+      const unstaged = await runGit(dir, [
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "-M",
+      ]);
+      const staged = await runGit(dir, [
+        "diff",
+        "--cached",
+        "--no-color",
+        "--no-ext-diff",
+        "-M",
+      ]);
+      diff = {
+        code: 0,
+        stdout: [staged.stdout, unstaged.stdout].filter(Boolean).join("\n"),
+        stderr: "",
+      };
+    }
 
-  const files: DiffFile[] = parseUnifiedDiff(diff.stdout);
+    const files: DiffFile[] = parseUnifiedDiff(diff.stdout);
 
-  // Untracked files as synthetic all-added entries
-  const status = await runGit(dir, ["status", "--porcelain"]);
-  if (status.code === 0) {
-    for (const line of status.stdout.split(/\r?\n/)) {
-      if (!line.startsWith("??")) continue;
-      let rel = line.slice(3).trim();
-      if (rel.startsWith('"') && rel.endsWith('"')) rel = rel.slice(1, -1);
-      if (rel.endsWith("/")) {
-        files.push({
-          path: rel,
+    // Untracked files as synthetic all-added entries
+    const status = await runGit(dir, ["status", "--porcelain", "-uall"]);
+    if (status.code === 0) {
+      for (const line of status.stdout.split(/\r?\n/)) {
+        if (!line.startsWith("??")) continue;
+        let rel = line.slice(3).trim();
+        if (rel.startsWith('"') && rel.endsWith('"')) rel = rel.slice(1, -1);
+        // Avoid duplicating paths already present from unified diff
+        const norm = rel.replace(/\\/g, "/");
+        if (files.some((f) => f.path === norm)) continue;
+        if (rel.endsWith("/")) {
+          files.push({
+            path: norm,
+            additions: 0,
+            deletions: 0,
+            binary: false,
+            untracked: true,
+            hunks: [],
+          });
+          continue;
+        }
+        const abs = path.join(dir, rel);
+        const entry: DiffFile = {
+          path: norm,
           additions: 0,
           deletions: 0,
           binary: false,
           untracked: true,
           hunks: [],
-        });
-        continue;
-      }
-      const abs = path.join(dir, rel);
-      const entry: DiffFile = {
-        path: rel.replace(/\\/g, "/"),
-        additions: 0,
-        deletions: 0,
-        binary: false,
-        untracked: true,
-        hunks: [],
-      };
-      try {
-        const st = fs.statSync(abs);
-        if (st.size <= MAX_UNTRACKED_BYTES) {
-          const buf = fs.readFileSync(abs);
-          if (isProbablyBinary(buf)) {
-            entry.binary = true;
-          } else {
-            const hunk = untrackedHunk(buf.toString("utf8"));
-            entry.hunks = [hunk];
-            entry.additions = hunk.lines.filter((l) => l.t === "+").length;
+        };
+        try {
+          const st = fs.statSync(abs);
+          if (st.isDirectory()) {
+            files.push(entry);
+            continue;
           }
+          if (st.size <= MAX_UNTRACKED_BYTES) {
+            const buf = fs.readFileSync(abs);
+            if (isProbablyBinary(buf)) {
+              entry.binary = true;
+            } else {
+              const hunk = untrackedHunk(buf.toString("utf8"));
+              entry.hunks = [hunk];
+              entry.additions = hunk.lines.filter((l) => l.t === "+").length;
+            }
+          }
+        } catch {
+          /* unreadable — list path only */
         }
-      } catch {
-        /* unreadable — list path only */
+        files.push(entry);
       }
-      files.push(entry);
     }
-  }
 
-  const additions = files.reduce((n, f) => n + f.additions, 0);
-  const deletions = files.reduce((n, f) => n + f.deletions, 0);
-  const payload: DiffFilesPayload = { git: true, branch, files, additions, deletions };
-  return NextResponse.json(payload);
+    const additions = files.reduce((n, f) => n + f.additions, 0);
+    const deletions = files.reduce((n, f) => n + f.deletions, 0);
+    const payload: DiffFilesPayload = {
+      git: true,
+      branch,
+      files,
+      additions,
+      deletions,
+    };
+    return NextResponse.json(payload);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(emptyPayload({ error: message }), { status: 200 });
+  }
 }

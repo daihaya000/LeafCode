@@ -278,12 +278,43 @@ export function TaskView({ taskId }: { taskId: string }) {
   const prevStatusRef = useRef<string | null>(null);
   useEffect(() => {
     const cur = stream.status?.type ?? null;
-    if (prevStatusRef.current === "busy" && cur === "idle") {
+    const wasBusy =
+      prevStatusRef.current === "busy" || prevStatusRef.current === "retry";
+    const nowIdle = cur === "idle" || cur === null;
+    if (wasBusy && nowIdle) {
       setDiffKey((k) => k + 1);
       void refreshTask();
     }
     prevStatusRef.current = cur;
   }, [stream.status, refreshTask]);
+
+  // Refresh Diff when patch / edit tools land in the timeline
+  const patchSignature = useMemo(() => {
+    let n = 0;
+    for (const m of stream.messages) {
+      for (const p of m.parts) {
+        if (p.type === "patch") n += 1 + (p.files?.length ?? 0);
+        if (
+          p.type === "tool" &&
+          (p.tool === "edit" ||
+            p.tool === "write" ||
+            p.tool === "apply_patch" ||
+            p.tool === "multiedit") &&
+          p.state?.status === "completed"
+        ) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [stream.messages]);
+  const prevPatchRef = useRef(0);
+  useEffect(() => {
+    if (patchSignature > prevPatchRef.current) {
+      setDiffKey((k) => k + 1);
+    }
+    prevPatchRef.current = patchSignature;
+  }, [patchSignature]);
 
   // Auto-stick scroll to bottom
   useEffect(() => {
@@ -447,11 +478,26 @@ export function TaskView({ taskId }: { taskId: string }) {
     });
   }, []);
 
-  const openFileInDiff = useCallback((path: string) => {
-    setFocusFile(path);
-    setShowDiff(true);
-    setTab("diff");
-  }, []);
+  const openFileInDiff = useCallback(
+    (path: string) => {
+      const root = task?.directory ?? "";
+      let rel = path.replace(/\\/g, "/");
+      if (root) {
+        const rootNorm = root.replace(/\\/g, "/").replace(/\/+$/, "");
+        if (rel.toLowerCase().startsWith(rootNorm.toLowerCase() + "/")) {
+          rel = rel.slice(rootNorm.length + 1);
+        } else if (rel.toLowerCase() === rootNorm.toLowerCase()) {
+          rel = "";
+        }
+      }
+      rel = rel.replace(/^\.?\//, "");
+      if (rel) setFocusFile(rel);
+      setShowDiff(true);
+      setTab("diff");
+      setSidePanel("diff");
+    },
+    [task?.directory],
+  );
 
   useEffect(() => {
     if (!task?.directory) {
@@ -626,8 +672,12 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff((v) => (sidePanel === "diff" ? !v : true));
-              setSidePanel("diff");
+              if (sidePanel === "diff" && showDiff) {
+                setShowDiff(false);
+              } else {
+                setSidePanel("diff");
+                setShowDiff(true);
+              }
             }}
           >
             <PanelRight className="h-4 w-4" />
@@ -924,7 +974,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         {/* Diff pane */}
         <div
           className={cx(
-            "min-w-0 flex-col border-border",
+            "min-h-0 min-w-0 flex-col border-border",
             diffVisible ? "flex flex-1" : "hidden",
             showDiff
               ? "lg:flex lg:w-[46%] lg:max-w-[720px] lg:flex-none lg:border-l"
@@ -932,25 +982,23 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
         >
           {sidePanel === "diff" && (
-            <DiffPane
-              directory={task.directory}
-              workspaceId={task.id}
-              refreshKey={diffKey}
-              focusFile={focusFile}
-              onFocusHandled={() => setFocusFile(null)}
-              onMutated={() => void refreshTask()}
-            />
+            <div className="flex min-h-0 w-full flex-1 flex-col">
+              <DiffPane
+                directory={task.directory}
+                workspaceId={task.id}
+                refreshKey={diffKey}
+                focusFile={focusFile}
+                onFocusHandled={() => setFocusFile(null)}
+                onMutated={() => void refreshTask()}
+              />
+            </div>
           )}
           {sidePanel === "files" && (
             <div className="hidden min-h-0 w-full flex-1 lg:flex">
               <FileTreePanel
                 root={task.directory}
                 onFile={(p) => {
-                  const rel = p.startsWith(task.directory)
-                    ? p.slice(task.directory.length).replace(/^[\\/]/, "")
-                    : p;
-                  openFileInDiff(rel.replace(/\\/g, "/"));
-                  setSidePanel("diff");
+                  openFileInDiff(p);
                 }}
               />
             </div>
