@@ -58,55 +58,81 @@ export function HomeView() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/opencode/provider", { cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<ProviderResponse>) : null))
-      .then((data) => {
-        if (!data) return;
-        const connectedList = data.connected ?? [];
-        const connected = new Set(connectedList);
-        const options: ModelOption[] = [];
-        for (const p of data.all ?? []) {
-          if (connected.size > 0 && !connected.has(p.id)) continue;
-          for (const [mid, m] of Object.entries(p.models ?? {})) {
-            options.push({
-              value: `${p.id}::${mid}`,
-              label: m.name || mid,
-              group: p.name || p.id,
-            });
-          }
-        }
-        setModelOptions(options);
+    void (async () => {
+      try {
+        const [providerRes, configRes, agentRes] = await Promise.all([
+          fetch("/api/opencode/provider", { cache: "no-store" }),
+          fetch("/api/opencode/config", { cache: "no-store" }),
+          fetch("/api/opencode/agent", { cache: "no-store" }),
+        ]);
 
-        let initial = "";
-        const order =
-          connectedList.length > 0
-            ? connectedList
-            : Object.keys(data.default ?? {});
-        for (const pid of order) {
-          const mid = data.default?.[pid];
-          if (!mid) continue;
-          const value = `${pid}::${mid}`;
-          if (options.some((o) => o.value === value)) {
-            initial = value;
-            break;
+        const data = providerRes.ok
+          ? ((await providerRes.json()) as ProviderResponse)
+          : null;
+        const config = configRes.ok
+          ? ((await configRes.json()) as { model?: string; agent?: unknown })
+          : null;
+
+        if (data) {
+          const connectedList = data.connected ?? [];
+          const connected = new Set(connectedList);
+          const options: ModelOption[] = [];
+          for (const p of data.all ?? []) {
+            if (connected.size > 0 && !connected.has(p.id)) continue;
+            for (const [mid, m] of Object.entries(p.models ?? {})) {
+              options.push({
+                value: `${p.id}::${mid}`,
+                label: m.name || mid,
+                group: p.name || p.id,
+              });
+            }
           }
+          setModelOptions(options);
+
+          // Prefer OpenCode config.model (provider/modelID), then provider defaults
+          let initial = "";
+          const cfg = config?.model?.trim();
+          if (cfg) {
+            const slash = cfg.indexOf("/");
+            if (slash > 0) {
+              const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+              if (options.some((o) => o.value === value)) initial = value;
+            }
+          }
+          if (!initial) {
+            for (const pid of connectedList) {
+              const mid = data.default?.[pid];
+              if (!mid) continue;
+              const value = `${pid}::${mid}`;
+              if (options.some((o) => o.value === value)) {
+                initial = value;
+                break;
+              }
+            }
+          }
+          if (!initial && options[0]) initial = options[0].value;
+          setModel((cur) => cur || initial);
         }
-        if (!initial && options[0]) initial = options[0].value;
-        setModel((cur) => cur || initial);
-      })
-      .catch(() => undefined);
-    fetch("/api/opencode/agent", { cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<AgentResponse>) : null))
-      .then((data) => {
-        if (!data) return;
-        const names = data
-          .filter((a) => a.mode !== "subagent" && !a.hidden)
-          .map((a) => a.name);
-        setAgents(names);
-        const initial = names.includes("build") ? "build" : (names[0] ?? "");
-        setAgent((cur) => cur || initial);
-      })
-      .catch(() => undefined);
+
+        if (agentRes.ok) {
+          const agentsData = (await agentRes.json()) as AgentResponse;
+          const names = agentsData
+            .filter((a) => a.mode !== "subagent" && !a.hidden)
+            .map((a) => a.name);
+          setAgents(names);
+          const cfgAgent =
+            typeof config?.agent === "string" ? config.agent : undefined;
+          const initial = names.includes(cfgAgent ?? "")
+            ? (cfgAgent as string)
+            : names.includes("build")
+              ? "build"
+              : (names[0] ?? "");
+          setAgent((cur) => cur || initial);
+        }
+      } catch {
+        /* non-fatal */
+      }
+    })();
   }, []);
 
   useEffect(() => {
