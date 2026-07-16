@@ -25,10 +25,16 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
+import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
 import { Button, Spinner, cx } from "@/components/ui";
+import {
+  readAccessMode,
+  writeAccessMode,
+  type AccessMode,
+} from "@/lib/access-mode";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
@@ -133,15 +139,47 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
+  const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const autoReplyIdsRef = useRef<Set<string>>(new Set());
 
   const stream = useSessionStream(
     task?.directory ?? null,
     task?.sessionId ?? null,
   );
+
+  useEffect(() => {
+    setAccessMode(readAccessMode());
+    const onMode = (e: Event) => {
+      const detail = (e as CustomEvent<AccessMode>).detail;
+      if (detail === "ask" || detail === "full") setAccessMode(detail);
+    };
+    window.addEventListener("webui:access-mode", onMode);
+    return () => window.removeEventListener("webui:access-mode", onMode);
+  }, []);
+
+  const changeAccessMode = useCallback((mode: AccessMode) => {
+    setAccessMode(mode);
+    writeAccessMode(mode);
+  }, []);
+
+  // フルアクセス: pending 権限を自動承認
+  useEffect(() => {
+    if (accessMode !== "full") {
+      autoReplyIdsRef.current.clear();
+      return;
+    }
+    for (const p of stream.permissions) {
+      if (autoReplyIdsRef.current.has(p.id)) continue;
+      autoReplyIdsRef.current.add(p.id);
+      void stream.replyPermission(p, "once").catch(() => {
+        autoReplyIdsRef.current.delete(p.id);
+      });
+    }
+  }, [accessMode, stream.permissions, stream.replyPermission]);
 
   useEffect(() => {
     void (async () => {
@@ -739,13 +777,20 @@ export function TaskView({ taskId }: { taskId: string }) {
                     )}
                   </div>
                 ))}
-                {stream.permissions.map((p) => (
+                {accessMode === "ask" &&
+                  stream.permissions.map((p) => (
                   <PermissionCard
                     key={p.id}
                     request={p}
                     onReply={stream.replyPermission}
+                    onEnableFullAccess={() => changeAccessMode("full")}
                   />
                 ))}
+                {accessMode === "full" && stream.permissions.length > 0 && (
+                  <p className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
+                    フルアクセス: 権限要求を自動承認中…
+                  </p>
+                )}
                 {stream.questions.map((q) => (
                   <QuestionCard
                     key={q.id}
@@ -806,6 +851,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                   className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
                 />
                 <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <AccessModeSelect
+                    value={accessMode}
+                    onChange={changeAccessMode}
+                    disabled={!task.sessionId}
+                  />
                   {modelOptions.length > 0 && (
                     <select
                       value={model}

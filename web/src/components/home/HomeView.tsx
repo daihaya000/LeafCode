@@ -3,9 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUp } from "lucide-react";
+import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { ISOLATIONS } from "@/components/StatusBadge";
 import { Button } from "@/components/ui";
+import {
+  readAccessMode,
+  writeAccessMode,
+  type AccessMode,
+} from "@/lib/access-mode";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto } from "@/lib/types";
@@ -34,11 +40,16 @@ export function HomeView() {
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
   const [mode, setMode] = useState<"code" | "ask" | "plan">("code");
+  const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [baseBranch, setBaseBranch] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
+
+  useEffect(() => {
+    setAccessMode(readAccessMode());
+  }, []);
 
   const refreshProjects = useCallback(async () => {
     try {
@@ -270,6 +281,14 @@ export function HomeView() {
                 <option value="ask">Ask</option>
                 <option value="plan">Plan</option>
               </select>
+              <AccessModeSelect
+                value={accessMode}
+                onChange={(m) => {
+                  setAccessMode(m);
+                  writeAccessMode(m);
+                }}
+                className="h-9"
+              />
               <select
                 value={isolation}
                 onChange={(e) => setIsolation(e.target.value)}

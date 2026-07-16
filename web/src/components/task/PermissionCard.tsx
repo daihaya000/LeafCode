@@ -8,12 +8,15 @@ import type { PermissionRequest } from "@/lib/types";
 export function PermissionCard({
   request,
   onReply,
+  onEnableFullAccess,
 }: {
   request: PermissionRequest;
   onReply: (
     request: PermissionRequest,
     response: "once" | "always" | "reject",
   ) => Promise<void>;
+  /** Approve this request and switch composer to フルアクセス */
+  onEnableFullAccess?: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +29,25 @@ export function PermissionCard({
     } catch (err) {
       setError(err instanceof Error ? err.message : "応答に失敗しました");
       setBusy(null);
+    }
+  };
+
+  const onExtra = async (value: string) => {
+    if (!value) return;
+    if (value === "always") {
+      await reply("always");
+      return;
+    }
+    if (value === "full") {
+      setBusy("full");
+      setError(null);
+      try {
+        onEnableFullAccess?.();
+        await onReply(request, "once");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "応答に失敗しました");
+        setBusy(null);
+      }
     }
   };
 
@@ -45,7 +67,7 @@ export function PermissionCard({
           ))}
         </ul>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="primary"
           size="md"
@@ -55,14 +77,24 @@ export function PermissionCard({
         >
           許可
         </Button>
-        <Button
-          size="md"
-          busy={busy === "always"}
+        <select
+          defaultValue=""
           disabled={busy !== null}
-          onClick={() => void reply("always")}
+          aria-label="追加の許可オプション"
+          title="常に許可 / フルアクセス"
+          onChange={(e) => {
+            const v = e.target.value;
+            e.target.value = "";
+            void onExtra(v);
+          }}
+          className="h-10 cursor-pointer rounded-lg border border-border bg-surface px-2.5 text-sm text-muted outline-none hover:text-text disabled:opacity-50"
         >
-          常に許可
-        </Button>
+          <option value="" disabled>
+            オプション…
+          </option>
+          <option value="always">常に許可</option>
+          <option value="full">フルアクセス</option>
+        </select>
         <Button
           variant="ghost"
           size="md"
