@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Plus } from "lucide-react";
+import { ArrowUp } from "lucide-react";
+import { AddProjectButton } from "@/components/AddProjectButton";
 import { ISOLATIONS } from "@/components/StatusBadge";
 import { Button } from "@/components/ui";
-import { notifyTasksChanged } from "@/components/shell/Sidebar";
+import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto } from "@/lib/types";
 
@@ -28,8 +29,6 @@ export function HomeView() {
   const [prompt, setPrompt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newProjectPath, setNewProjectPath] = useState("");
-  const [addingProject, setAddingProject] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
@@ -170,26 +169,6 @@ export function HomeView() {
     }
   }, [prompt, projectId, isolation, model, agent, submitting, router]);
 
-  const addProject = useCallback(async () => {
-    const p = newProjectPath.trim();
-    if (!p) return;
-    setAddingProject(true);
-    setError(null);
-    try {
-      const data = await sendJson<{ project: ProjectDto }>("POST", "/api/projects", {
-        rootPath: p,
-      });
-      setNewProjectPath("");
-      await refreshProjects();
-      setProjectId(data.project.id);
-      notifyTasksChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "プロジェクト追加に失敗しました");
-    } finally {
-      setAddingProject(false);
-    }
-  }, [newProjectPath, refreshProjects]);
-
   return (
     <div className="h-full overflow-y-auto">
       <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-24">
@@ -293,20 +272,15 @@ export function HomeView() {
           </div>
 
           {loaded && projects.length === 0 && (
-            <div className="mx-auto mt-4 flex max-w-2xl gap-2">
-              <input
-                value={newProjectPath}
-                onChange={(e) => setNewProjectPath(e.target.value)}
-                placeholder="C:\path\to\repo — まずプロジェクトを追加"
-                className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void addProject();
+            <div className="mx-auto mt-4 max-w-2xl">
+              <p className="mb-3 text-center text-sm text-muted">
+                まずプロジェクトフォルダを追加してください
+              </p>
+              <AddProjectButton
+                onAdded={(project) => {
+                  void refreshProjects().then(() => setProjectId(project.id));
                 }}
               />
-              <Button busy={addingProject} onClick={() => void addProject()}>
-                <Plus className="h-4 w-4" />
-                追加
-              </Button>
             </div>
           )}
 

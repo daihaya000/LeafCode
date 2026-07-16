@@ -23,7 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
-import { notifyTasksChanged } from "@/components/shell/Sidebar";
+import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
 import { Button, Spinner, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";

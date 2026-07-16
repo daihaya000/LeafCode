@@ -10,7 +10,9 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
+import { AddProjectButton } from "@/components/AddProjectButton";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
+import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
@@ -32,12 +34,6 @@ function saveExpanded(ids: Set<string>) {
     localStorage.setItem(EXPANDED_KEY, JSON.stringify([...ids]));
   } catch {
     /* ignore */
-  }
-}
-
-export function notifyTasksChanged() {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("webui:tasks-changed"));
   }
 }
 
@@ -176,6 +172,13 @@ export function Sidebar({
         >
           <Plus className="h-4 w-4" />
         </Link>
+        <AddProjectButton
+          variant="icon"
+          onAdded={() => {
+            void refresh();
+            onClose();
+          }}
+        />
         <Link
           href="/settings"
           onClick={() => onClose()}
@@ -195,11 +198,17 @@ export function Sidebar({
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-2">
         {projects.length === 0 ? (
-          <p className="px-2 py-6 text-center text-xs text-faint">
-            プロジェクトがありません。
-            <br />
-            ホームまたは設定から追加してください。
-          </p>
+          <div className="px-2 py-4">
+            <p className="mb-3 text-center text-xs text-faint">
+              プロジェクトがありません
+            </p>
+            <AddProjectButton
+              onAdded={() => {
+                void refresh();
+                onClose();
+              }}
+            />
+          </div>
         ) : (
           <ul className="space-y-0.5">
             {projects.map((p) => {
@@ -296,6 +305,16 @@ export function Sidebar({
           >
             要復旧 {orphanCount} 件 → 設定
           </Link>
+        )}
+
+        {projects.length > 0 && (
+          <div className="mt-3 border-t border-border px-1 pt-3">
+            <AddProjectButton
+              onAdded={() => {
+                void refresh();
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

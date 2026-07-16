@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Star, Trash2 } from "lucide-react";
+import { AddProjectButton } from "@/components/AddProjectButton";
 import { Badge, Button, timeAgo } from "@/components/ui";
-import { notifyTasksChanged } from "@/components/shell/Sidebar";
+import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
@@ -21,7 +22,6 @@ export function SettingsView() {
   const [roots, setRoots] = useState<string[]>([]);
   const [orphans, setOrphans] = useState<OrphanDto[]>([]);
   const [stray, setStray] = useState<StrayDto[]>([]);
-  const [newPath, setNewPath] = useState("");
   const [newRoot, setNewRoot] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,13 +65,6 @@ export function SettingsView() {
     },
     [refresh],
   );
-
-  const addProject = () =>
-    guard(async () => {
-      if (!newPath.trim()) return;
-      await sendJson("POST", "/api/projects", { rootPath: newPath.trim() });
-      setNewPath("");
-    });
 
   const toggleFavorite = (p: ProjectDto) =>
     guard(async () => {
@@ -136,20 +129,8 @@ export function SettingsView() {
 
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted">プロジェクト</h2>
-          <div className="mb-3 flex gap-2">
-            <input
-              value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
-              placeholder="C:\path\to\repo"
-              className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void addProject();
-              }}
-            />
-            <Button busy={busy} onClick={() => void addProject()}>
-              <Plus className="h-4 w-4" />
-              追加
-            </Button>
+          <div className="mb-3">
+            <AddProjectButton onAdded={() => void refresh()} />
           </div>
           <ul className="space-y-2">
             {projects.map((p) => (
