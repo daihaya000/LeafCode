@@ -16,9 +16,11 @@ type Session = {
 type PermissionRequest = {
   id: string;
   sessionID?: string;
+  /** v1 permission name or v2 action */
   permission?: string;
   patterns?: string[];
   metadata?: unknown;
+  version: "v1" | "v2";
 };
 
 type TimelineItem = {
@@ -174,15 +176,21 @@ export function ChatApp() {
           const payload = JSON.parse(ev.data) as {
             type?: string;
             properties?: Record<string, unknown>;
+            data?: Record<string, unknown>;
           };
           const type = payload.type ?? "";
-          const props = payload.properties ?? {};
+          // OpenAPI: Event* uses `properties`; some V2Event* use `data`
+          const props = (payload.properties ?? payload.data ?? {}) as Record<
+            string,
+            unknown
+          >;
 
-          if (type === "permission.asked" || type === "permission.updated") {
-            const id = String(props.id ?? props.requestID ?? "");
+          if (type === "permission.asked") {
+            const id = String(props.id ?? "");
             if (id) {
               setPermission({
                 id,
+                version: "v1",
                 sessionID: props.sessionID as string | undefined,
                 permission: props.permission as string | undefined,
                 patterns: props.patterns as string[] | undefined,
@@ -191,11 +199,32 @@ export function ChatApp() {
             }
           }
 
+          if (type === "permission.v2.asked") {
+            const id = String(props.id ?? "");
+            if (id) {
+              setPermission({
+                id,
+                version: "v2",
+                sessionID: props.sessionID as string | undefined,
+                permission: props.action as string | undefined,
+                patterns: props.resources as string[] | undefined,
+                metadata: props.metadata,
+              });
+            }
+          }
+
+          if (type === "permission.replied" || type === "permission.v2.replied") {
+            const repliedId = String(props.requestID ?? props.id ?? "");
+            setPermission((cur) =>
+              cur && (!repliedId || cur.id === repliedId) ? null : cur,
+            );
+          }
+
           if (
             type.startsWith("message.") ||
             type.startsWith("session.") ||
-            type === "message.part.updated" ||
-            type === "message.part.delta"
+            type.includes("message.part") ||
+            type.includes("session.next")
           ) {
             if (sessionId) void loadMessages(sessionId);
             void refreshSessions();
@@ -291,7 +320,11 @@ export function ChatApp() {
 
   const replyPermission = async (reply: "once" | "always" | "reject") => {
     if (!permission || !directory) return;
-    const res = await ocFetch(`/permission/${permission.id}/reply`, directory, {
+    const path =
+      permission.version === "v2" && permission.sessionID
+        ? `/api/session/${permission.sessionID}/permission/${permission.id}/reply`
+        : `/permission/${permission.id}/reply`;
+    const res = await ocFetch(path, directory, {
       method: "POST",
       body: JSON.stringify({ reply }),
     });

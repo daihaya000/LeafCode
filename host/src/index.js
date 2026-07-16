@@ -164,19 +164,34 @@ function handleExistingInstance() {
   return false;
 }
 
-function assertPortsAvailable() {
-  const conflicts = [];
+async function resolvePortPlan() {
+  const plan = { startOpencode: true, startWeb: true };
+
   if (isPortInUse(OPENCODE_PORT)) {
-    conflicts.push(String(OPENCODE_PORT));
+    const healthy = await isHttpUp(`${OPENCODE_URL}/global/health`);
+    if (healthy) {
+      log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
+      plan.startOpencode = false;
+    } else {
+      throw new Error(
+        `Port ${OPENCODE_PORT} is in use but OpenCode health check failed. Free the port and retry.`,
+      );
+    }
   }
+
   if (isPortInUse(WEBUI_PORT)) {
-    conflicts.push(String(WEBUI_PORT));
+    const healthy = await isHttpUp(WEBUI_URL);
+    if (healthy) {
+      log(`Reusing existing WebUI on :${WEBUI_PORT}`);
+      plan.startWeb = false;
+    } else {
+      throw new Error(
+        `Port ${WEBUI_PORT} is in use but WebUI is not responding. Free the port and retry.`,
+      );
+    }
   }
-  if (conflicts.length > 0) {
-    throw new Error(
-      `Port conflict on ${conflicts.join(', ')}. Stop the conflicting process and try again.`,
-    );
-  }
+
+  return plan;
 }
 
 async function isHttpUp(url) {
@@ -248,12 +263,16 @@ function spawnWeb() {
 }
 
 async function startChildren() {
-  assertPortsAvailable();
-  const opencodePath = findOpencode();
-  log(`Starting OpenCode: ${opencodePath}`);
-  spawnOpencode(opencodePath);
-  log(`Starting WebUI in ${WEB_DIR}`);
-  spawnWeb();
+  const plan = await resolvePortPlan();
+  if (plan.startOpencode) {
+    const opencodePath = findOpencode();
+    log(`Starting OpenCode: ${opencodePath}`);
+    spawnOpencode(opencodePath);
+  }
+  if (plan.startWeb) {
+    log(`Starting WebUI in ${WEB_DIR}`);
+    spawnWeb();
+  }
   await refreshStatusMenu();
 }
 
