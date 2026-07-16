@@ -165,6 +165,14 @@ export function listWorkspaces(projectId?: string): WorkspaceRow[] {
     .all() as WorkspaceRow[];
 }
 
+export function listWorkspacesByStatus(
+  status: WorkspaceRow["status"],
+): WorkspaceRow[] {
+  return getDb()
+    .prepare(`SELECT * FROM workspaces WHERE status = ? ORDER BY created_at DESC`)
+    .all(status) as WorkspaceRow[];
+}
+
 export function createWorkspace(input: {
   projectId: string;
   displayName: string;

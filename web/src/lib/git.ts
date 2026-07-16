@@ -90,3 +90,28 @@ export async function gitDiff(cwd: string): Promise<string> {
   const parts = [staged.stdout.trim(), unstaged.stdout.trim()].filter(Boolean);
   return parts.join("\n\n") || "";
 }
+
+/** Parse `git worktree list --porcelain` into path entries. */
+export async function listGitWorktrees(
+  repoRoot: string,
+): Promise<{ path: string; bare: boolean }[]> {
+  const result = await runGit(repoRoot, ["worktree", "list", "--porcelain"]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || "git worktree list failed");
+  }
+  const entries: { path: string; bare: boolean }[] = [];
+  let current: { path?: string; bare: boolean } = { bare: false };
+  for (const line of result.stdout.split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) {
+      if (current.path) entries.push({ path: current.path, bare: current.bare });
+      current = { path: line.slice("worktree ".length).trim(), bare: false };
+    } else if (line === "bare") {
+      current.bare = true;
+    } else if (line === "") {
+      if (current.path) entries.push({ path: current.path, bare: current.bare });
+      current = { bare: false };
+    }
+  }
+  if (current.path) entries.push({ path: current.path, bare: current.bare });
+  return entries;
+}

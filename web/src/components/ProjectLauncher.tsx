@@ -35,6 +35,10 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [orphans, setOrphans] = useState<Workspace[]>([]);
+  const [stray, setStray] = useState<
+    { projectId: string; projectName: string; path: string }[]
+  >([]);
 
   const refreshProjects = useCallback(async () => {
     const res = await fetch("/api/projects", { cache: "no-store" });
@@ -57,6 +61,19 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
     setWorkspaces(data.workspaces ?? []);
   }, []);
 
+  const refreshOrphans = useCallback(async (scan = false) => {
+    const res = await fetch(
+      `/api/workspaces/orphans${scan ? "?scan=1" : ""}`,
+      { cache: "no-store" },
+    );
+    const data = (await res.json()) as {
+      orphans: Workspace[];
+      stray: { projectId: string; projectName: string; path: string }[];
+    };
+    setOrphans(data.orphans ?? []);
+    setStray(data.stray ?? []);
+  }, []);
+
   useEffect(() => {
     void refreshProjects();
   }, [refreshProjects]);
@@ -64,6 +81,10 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
   useEffect(() => {
     void refreshWorkspaces(selectedProjectId);
   }, [selectedProjectId, refreshWorkspaces]);
+
+  useEffect(() => {
+    void refreshOrphans(true);
+  }, [refreshOrphans]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
 
@@ -128,6 +149,34 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
         setError(data.error ?? `delete failed: ${res.status}`);
         return;
       }
+      await refreshWorkspaces(selectedProjectId);
+      await refreshOrphans(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cleanupOrphans = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/workspaces/orphans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "cleanup" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `cleanup failed: ${res.status}`);
+        return;
+      }
+      const failed = (data.results as { ok: boolean; error?: string }[])?.filter(
+        (r) => !r.ok,
+      );
+      if (failed?.length) {
+        setError(failed.map((f) => f.error).join("; "));
+      }
+      await refreshOrphans(true);
       await refreshWorkspaces(selectedProjectId);
     } finally {
       setBusy(false);
@@ -264,6 +313,36 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
           </div>
         </section>
       </div>
+
+      {(orphans.length > 0 || stray.length > 0) && (
+        <section className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-amber-200/80">
+              Orphans / stray worktrees
+            </h2>
+            <button
+              type="button"
+              disabled={busy || orphans.length === 0}
+              onClick={() => void cleanupOrphans()}
+              className="min-h-10 rounded-md bg-amber-700/80 px-3 text-sm disabled:opacity-40"
+            >
+              Cleanup orphans
+            </button>
+          </div>
+          <ul className="space-y-1 text-sm">
+            {orphans.map((o) => (
+              <li key={o.id} className="text-amber-100/90">
+                {o.displayName} · {o.absolutePath}
+              </li>
+            ))}
+            {stray.map((s) => (
+              <li key={s.path} className="text-amber-100/70">
+                stray ({s.projectName}): {s.path}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {error && (
         <div className="rounded-md border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-100">
