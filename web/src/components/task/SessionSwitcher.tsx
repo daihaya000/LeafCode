@@ -98,7 +98,7 @@ export function SessionSwitcher({
         }}
         disabled={busy}
         className={cx(
-          "h-8 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs outline-none",
+          "h-8 max-w-[7rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs outline-none sm:max-w-[9rem]",
         )}
       >
         {sessions.map((s) => (

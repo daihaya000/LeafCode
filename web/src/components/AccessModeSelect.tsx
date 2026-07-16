@@ -22,7 +22,7 @@ export function AccessModeSelect({
       title={current?.title}
       onChange={(e) => onChange(e.target.value as AccessMode)}
       className={cx(
-        "h-8 max-w-36 cursor-pointer rounded-lg border px-2 text-xs font-medium outline-none disabled:opacity-50",
+        "h-8 max-w-36 shrink-0 cursor-pointer rounded-lg border px-2 text-xs font-medium outline-none disabled:opacity-50",
         value === "full"
           ? "border-warning/50 bg-warning-bg text-warning hover:border-warning"
           : "border-border bg-surface-2 text-muted hover:text-text",

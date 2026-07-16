@@ -109,11 +109,11 @@ function ChildNode({ feed, depth }: { feed: ChildFeed; depth: number }) {
   const [open, setOpen] = useState(depth < 2);
   const busy = feed.status === "busy" || Boolean(feed.runningTool);
   return (
-    <div className={cx(depth > 0 && "ml-3 border-l border-border pl-2")}>
+    <div className={cx(depth > 0 && "ml-2 border-l border-border pl-2 sm:ml-3")}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2"
+        className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2"
       >
         {busy ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />
@@ -124,7 +124,7 @@ function ChildNode({ feed, depth }: { feed: ChildFeed; depth: number }) {
           {feed.session.title || feed.session.id.slice(0, 12)}
         </span>
         {feed.runningTool && (
-          <span className="max-w-[8rem] truncate text-[10px] text-working">
+          <span className="hidden max-w-[8rem] truncate text-[10px] text-working sm:inline">
             {feed.runningTool}
           </span>
         )}

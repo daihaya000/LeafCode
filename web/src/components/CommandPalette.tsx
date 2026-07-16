@@ -160,7 +160,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[12vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[max(12vh,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={close}
     >
       <div
@@ -190,7 +190,7 @@ export function CommandPalette({
               }
             }}
           />
-          <kbd className="rounded border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] text-faint">
+          <kbd className="hidden rounded border border-border bg-surface-2 px-1.5 py-0.5 text-[10px] text-faint sm:inline">
             esc
           </kbd>
         </div>
@@ -224,7 +224,9 @@ export function CommandPalette({
                   <span className="hidden truncate text-xs text-faint sm:inline">
                     {item.task.projectName}
                   </span>
-                  <StatusBadge status={item.task.status} />
+                  <span className="shrink-0">
+                    <StatusBadge status={item.task.status} />
+                  </span>
                 </>
               )}
               {item.kind === "file" && (

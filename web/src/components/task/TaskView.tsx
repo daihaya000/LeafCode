@@ -555,8 +555,10 @@ export function TaskView({ taskId }: { taskId: string }) {
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h1 className="truncate text-sm font-semibold">{task.title}</h1>
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
+              {task.title}
+            </h1>
             <StatusBadge status={working ? "working" : task.status} />
             {working && currentTool && (
               <span className="hidden max-w-[12rem] truncate text-xs text-working sm:inline">
@@ -612,13 +614,13 @@ export function TaskView({ taskId }: { taskId: string }) {
           </Button>
           {task.sessionId && (
             <>
+              <SessionSwitcher
+                workspaceId={task.id}
+                directory={task.directory}
+                currentSessionId={task.sessionId}
+                onSwitch={() => void refreshTask()}
+              />
               <div className="hidden sm:contents">
-                <SessionSwitcher
-                  workspaceId={task.id}
-                  directory={task.directory}
-                  currentSessionId={task.sessionId}
-                  onSwitch={() => void refreshTask()}
-                />
                 <SessionActions
                   directory={task.directory}
                   sessionId={task.sessionId}
@@ -942,53 +944,56 @@ export function TaskView({ taskId }: { taskId: string }) {
                   placeholder="フォローアップを送信…"
                   className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
                 />
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <AccessModeSelect
-                    value={accessMode}
-                    onChange={changeAccessMode}
-                    disabled={!task.sessionId}
-                  />
-                  {modelOptions.length > 0 && (
-                    <select
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      disabled={!task.sessionId || working}
-                      className="h-8 max-w-40 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50"
-                    >
-                      {[...new Set(modelOptions.map((o) => o.group))].map(
-                        (group) => (
-                          <optgroup key={group} label={group}>
-                            {modelOptions
-                              .filter((o) => o.group === group)
-                              .map((o) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label}
-                                </option>
-                              ))}
-                          </optgroup>
-                        ),
-                      )}
-                    </select>
-                  )}
-                  {agents.length > 0 && (
-                    <select
-                      value={agent}
-                      onChange={(e) => setAgent(e.target.value)}
-                      disabled={!task.sessionId || working}
-                      className="h-8 max-w-36 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50"
-                    >
-                      {agents.map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <div className="flex-1" />
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <AccessModeSelect
+                      value={accessMode}
+                      onChange={changeAccessMode}
+                      disabled={!task.sessionId}
+                      className="h-8 shrink-0"
+                    />
+                    {modelOptions.length > 0 && (
+                      <select
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        disabled={!task.sessionId || working}
+                        className="h-8 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50 sm:max-w-40"
+                      >
+                        {[...new Set(modelOptions.map((o) => o.group))].map(
+                          (group) => (
+                            <optgroup key={group} label={group}>
+                              {modelOptions
+                                .filter((o) => o.group === group)
+                                .map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          ),
+                        )}
+                      </select>
+                    )}
+                    {agents.length > 0 && (
+                      <select
+                        value={agent}
+                        onChange={(e) => setAgent(e.target.value)}
+                        disabled={!task.sessionId || working}
+                        className="h-8 max-w-[8rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50 sm:max-w-36"
+                      >
+                        {agents.map((a) => (
+                          <option key={a} value={a}>
+                            {a}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                   {working ? (
                     <Button
                       variant="secondary"
                       size="icon"
+                      className="shrink-0"
                       aria-label="停止"
                       onClick={() => void stream.abort()}
                     >
@@ -998,6 +1003,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     <Button
                       variant="primary"
                       size="icon"
+                      className="shrink-0"
                       aria-label="送信"
                       disabled={!input.trim() || !task.sessionId}
                       onClick={() => void send()}

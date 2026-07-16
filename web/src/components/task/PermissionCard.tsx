@@ -57,9 +57,9 @@ export function PermissionCard({
         <ShieldAlert className="h-4 w-4" />
         権限の承認が必要です
       </div>
-      <p className="mb-1 font-mono text-sm">{request.permission}</p>
+      <p className="mb-1 break-all font-mono text-sm">{request.permission}</p>
       {request.patterns.length > 0 && (
-        <ul className="mb-3 space-y-0.5">
+        <ul className="mb-3 min-w-0 space-y-0.5">
           {request.patterns.map((p) => (
             <li key={p} className="truncate font-mono text-xs text-muted">
               {p}
