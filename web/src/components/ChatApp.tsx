@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DiffPanel } from "@/components/DiffPanel";
+import { FileSearch } from "@/components/FileSearch";
 
 type Health = {
   webui: { ok: boolean };
@@ -76,6 +77,7 @@ export function ChatApp({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -84,6 +86,17 @@ export function ChatApp({
   useEffect(() => {
     if (initialDirectory) setDirectory(initialDirectory);
   }, [initialDirectory]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        if (directory) setShowFiles(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [directory]);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -358,6 +371,11 @@ export function ChatApp({
 
   return (
     <div className="flex min-h-dvh flex-col bg-[#0f1419] text-[#e7ecf1]">
+      <FileSearch
+        directory={directory}
+        open={showFiles}
+        onClose={() => setShowFiles(false)}
+      />
       {!engineOk && (
         <div className="bg-amber-700/90 px-4 py-3 text-sm text-white">
           OpenCode エンジンが応答していません。トレイから再起動するか、
@@ -388,6 +406,14 @@ export function ChatApp({
                 className="min-h-10 rounded-md bg-white/10 px-3 text-sm hover:bg-white/15 disabled:opacity-40"
               >
                 {showDiff ? "Hide Diff" : "Diff"}
+              </button>
+              <button
+                type="button"
+                disabled={!directory}
+                onClick={() => setShowFiles(true)}
+                className="min-h-10 rounded-md bg-white/10 px-3 text-sm hover:bg-white/15 disabled:opacity-40"
+              >
+                Files
               </button>
             </div>
             <p className="text-sm text-white/55">

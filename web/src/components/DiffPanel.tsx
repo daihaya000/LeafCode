@@ -35,6 +35,10 @@ export function DiffPanel({
   const [merging, setMerging] = useState(false);
   const [commitResult, setCommitResult] = useState<string | null>(null);
   const [mergeResult, setMergeResult] = useState<string | null>(null);
+  const [prTitle, setPrTitle] = useState("");
+  const [prAvailable, setPrAvailable] = useState<boolean | null>(null);
+  const [prResult, setPrResult] = useState<string | null>(null);
+  const [prBusy, setPrBusy] = useState(false);
 
   const loadBranches = useCallback(async () => {
     if (!directory) return;
@@ -46,6 +50,13 @@ export function DiffPanel({
     const info = body as BranchInfo;
     setBranches(info);
     setMergeTarget((prev) => prev || info.defaultTarget || "");
+
+    const pr = await fetch(
+      `/api/git/pr?directory=${encodeURIComponent(directory)}`,
+      { cache: "no-store" },
+    );
+    const prBody = await pr.json();
+    setPrAvailable(Boolean(prBody.available));
   }, [directory]);
 
   const load = useCallback(async () => {
@@ -139,6 +150,35 @@ export function DiffPanel({
     }
   };
 
+  const createPr = async () => {
+    if (!directory || !prTitle.trim()) return;
+    setPrBusy(true);
+    setError(null);
+    setPrResult(null);
+    try {
+      const res = await fetch("/api/git/pr", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          directory,
+          title: prTitle.trim(),
+          base: mergeTarget || undefined,
+          push: true,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error ?? `PR failed: ${res.status}`);
+        return;
+      }
+      setPrResult(body.url ?? "created");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "PR failed");
+    } finally {
+      setPrBusy(false);
+    }
+  };
+
   const sessionText =
     data?.sessionDiff == null
       ? ""
@@ -225,6 +265,28 @@ export function DiffPanel({
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
+        <input
+          className="min-h-11 flex-1 rounded-md border border-white/15 bg-black/30 px-3 text-sm outline-none focus:border-sky-500"
+          placeholder={
+            prAvailable === false
+              ? "Install gh CLI to create PRs"
+              : "PR title"
+          }
+          value={prTitle}
+          onChange={(e) => setPrTitle(e.target.value)}
+          disabled={prAvailable === false}
+        />
+        <button
+          type="button"
+          disabled={prBusy || prAvailable === false || !prTitle.trim() || hasChanges}
+          onClick={() => void createPr()}
+          className="min-h-11 rounded-md bg-violet-700 px-3 text-sm disabled:opacity-40"
+        >
+          Create PR
+        </button>
+      </div>
+
       <div className="overflow-y-auto px-3 py-2 text-xs leading-relaxed">
         {error && <p className="mb-2 text-red-300">{error}</p>}
         {commitResult && (
@@ -232,6 +294,14 @@ export function DiffPanel({
         )}
         {mergeResult && (
           <p className="mb-2 text-sky-300">Merged: {mergeResult}</p>
+        )}
+        {prResult && (
+          <p className="mb-2 text-violet-200">
+            PR:{" "}
+            <a className="underline" href={prResult} target="_blank" rel="noreferrer">
+              {prResult}
+            </a>
+          </p>
         )}
         {data?.gitError && (
           <p className="mb-2 text-amber-200">git: {data.gitError}</p>
