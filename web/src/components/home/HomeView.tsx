@@ -1,20 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowUp,
-  FolderGit2,
-  Plus,
-  RefreshCw,
-  Settings,
-  Trash2,
-} from "lucide-react";
-import { CommandPalette } from "@/components/CommandPalette";
-import { Badge, Button, DiffStat, Spinner, ThemeToggle, cx, timeAgo } from "@/components/ui";
+import { ArrowUp, Plus } from "lucide-react";
+import { ISOLATIONS } from "@/components/StatusBadge";
+import { Button } from "@/components/ui";
+import { notifyTasksChanged } from "@/components/shell/Sidebar";
 import { getJson, sendJson } from "@/lib/client";
-import type { ProjectDto, TaskStatus, TaskSummary } from "@/lib/types";
+import type { ProjectDto } from "@/lib/types";
 
 type ModelOption = { value: string; label: string; group: string };
 
@@ -26,42 +19,9 @@ type ProviderResponse = {
 
 type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
 
-const ISOLATIONS = [
-  { value: "git_worktree", label: "Worktree（分離）" },
-  { value: "current_folder", label: "そのまま" },
-  { value: "temporary_copy", label: "一時コピー" },
-  { value: "devcontainer", label: "Dev Container" },
-] as const;
-
-const STATUS_META: Record<
-  TaskStatus,
-  { label: string; tone: "neutral" | "working" | "success" | "warning" | "danger"; pulse?: boolean }
-> = {
-  working: { label: "実行中", tone: "working", pulse: true },
-  ready: { label: "変更あり", tone: "success" },
-  idle: { label: "クリーン", tone: "neutral" },
-  error: { label: "エラー", tone: "danger" },
-  orphaned: { label: "要復旧", tone: "warning" },
-  unknown: { label: "不明", tone: "neutral" },
-};
-
-export function StatusBadge({ status }: { status: TaskStatus }) {
-  const meta = STATUS_META[status] ?? STATUS_META.unknown;
-  return (
-    <Badge tone={meta.tone} pulse={meta.pulse}>
-      {meta.label}
-    </Badge>
-  );
-}
-
-export function isolationLabel(value: string): string {
-  return ISOLATIONS.find((i) => i.value === value)?.label ?? value;
-}
-
 export function HomeView() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
-  const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
   const [engineOk, setEngineOk] = useState(true);
   const [projectId, setProjectId] = useState("");
   const [isolation, setIsolation] = useState<string>("git_worktree");
@@ -74,6 +34,7 @@ export function HomeView() {
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
 
@@ -87,19 +48,15 @@ export function HomeView() {
     }
   }, []);
 
-  const refreshTasks = useCallback(async () => {
+  const refreshEngine = useCallback(async () => {
     try {
-      const data = await getJson<{ tasks: TaskSummary[]; engineOk: boolean }>(
-        "/api/tasks",
-      );
-      setTasks(data.tasks ?? []);
+      const data = await getJson<{ engineOk: boolean }>("/api/tasks");
       setEngineOk(data.engineOk);
     } catch {
-      /* keep previous list */
+      /* keep */
     }
   }, []);
 
-  // Model / agent options (engine-global; failures are non-fatal)
   useEffect(() => {
     fetch("/api/opencode/provider", { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<ProviderResponse>) : null))
@@ -134,20 +91,10 @@ export function HomeView() {
   }, []);
 
   useEffect(() => {
-    void refreshProjects();
-    void refreshTasks();
-    const t = setInterval(() => {
-      if (document.visibilityState === "visible") void refreshTasks();
-    }, 8000);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refreshTasks();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [refreshProjects, refreshTasks]);
+    void Promise.all([refreshProjects(), refreshEngine()]).finally(() =>
+      setLoaded(true),
+    );
+  }, [refreshProjects, refreshEngine]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -170,6 +117,7 @@ export function HomeView() {
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(agent ? { agent } : {}),
       });
+      notifyTasksChanged();
       router.push(`/task/${data.taskId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
@@ -189,6 +137,7 @@ export function HomeView() {
       setNewProjectPath("");
       await refreshProjects();
       setProjectId(data.project.id);
+      notifyTasksChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "プロジェクト追加に失敗しました");
     } finally {
@@ -196,60 +145,10 @@ export function HomeView() {
     }
   }, [newProjectPath, refreshProjects]);
 
-  const removeTask = useCallback(
-    async (task: TaskSummary) => {
-      const label =
-        task.isolation === "current_folder"
-          ? `「${task.title}」を一覧から削除しますか？（フォルダはそのまま残ります）`
-          : `「${task.title}」を削除しますか？ worktree/コピーも削除されます。`;
-      if (!window.confirm(label)) return;
-      try {
-        await sendJson("DELETE", `/api/tasks/${task.id}`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "削除に失敗しました");
-      }
-      await refreshTasks();
-    },
-    [refreshTasks],
-  );
-
-  const activeTasks = useMemo(
-    () => (tasks ?? []).filter((t) => t.status !== "orphaned"),
-    [tasks],
-  );
-  const orphanCount = (tasks ?? []).length - activeTasks.length;
-
   return (
-    <div className="min-h-dvh">
-      <CommandPalette />
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
-          <div className="flex items-center gap-2 font-semibold tracking-tight">
-            <FolderGit2 className="h-5 w-5" />
-            OpenCode WebUI
-          </div>
-          <div className="flex items-center gap-1">
-            <Link
-              href="/settings"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
-              aria-label="設定"
-            >
-              <Settings className="h-4.5 w-4.5" />
-            </Link>
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
-
-      {!engineOk && tasks !== null && (
-        <div className="border-b border-warning/30 bg-warning-bg px-4 py-2.5 text-center text-sm text-warning">
-          OpenCode エンジンに接続できません。トレイから再起動してください。
-        </div>
-      )}
-
-      <main className="mx-auto max-w-4xl px-4 pb-24">
-        {/* Composer hero */}
-        <section className="pt-14 pb-10 sm:pt-20">
+    <div className="h-full overflow-y-auto">
+      <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-24">
+        <section>
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
             何をつくりますか？
           </h1>
@@ -350,7 +249,7 @@ export function HomeView() {
             </div>
           </div>
 
-          {projects.length === 0 && tasks !== null && (
+          {loaded && projects.length === 0 && (
             <div className="mx-auto mt-4 flex max-w-2xl gap-2">
               <input
                 value={newProjectPath}
@@ -372,81 +271,6 @@ export function HomeView() {
             <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
               {error}
             </p>
-          )}
-        </section>
-
-        {/* Task list */}
-        <section className="mx-auto max-w-3xl">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted">タスク</h2>
-            <div className="flex items-center gap-2">
-              {orphanCount > 0 && (
-                <Link href="/settings" className="text-xs text-warning underline">
-                  要復旧 {orphanCount} 件
-                </Link>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => void refreshTasks()}>
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          {tasks === null ? (
-            <div className="flex justify-center py-10">
-              <Spinner />
-            </div>
-          ) : activeTasks.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-faint">
-              タスクはまだありません。上の入力欄から始めましょう。
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {activeTasks.map((task) => (
-                <li key={task.id} className="group relative">
-                  <Link
-                    href={`/task/${task.id}`}
-                    className="block rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <StatusBadge status={task.status} />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {task.title}
-                      </span>
-                      <DiffStat
-                        additions={task.additions}
-                        deletions={task.deletions}
-                        className="hidden sm:inline-flex"
-                      />
-                      <span className="shrink-0 text-xs text-faint">
-                        {timeAgo(task.updatedAt)}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 pl-0.5 text-xs text-faint">
-                      <span className="truncate">{task.projectName}</span>
-                      <span>·</span>
-                      <span>{isolationLabel(task.isolation)}</span>
-                      {task.branch && (
-                        <>
-                          <span>·</span>
-                          <span className="truncate font-mono">{task.branch}</span>
-                        </>
-                      )}
-                    </div>
-                  </Link>
-                  <button
-                    type="button"
-                    aria-label="タスクを削除"
-                    onClick={() => void removeTask(task)}
-                    className={cx(
-                      "absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-lg p-2 text-faint",
-                      "hover:bg-danger-bg hover:text-danger group-hover:block",
-                    )}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </li>
-              ))}
-            </ul>
           )}
         </section>
       </main>

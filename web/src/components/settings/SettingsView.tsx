@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Plus, Star, Trash2 } from "lucide-react";
-import { CommandPalette } from "@/components/CommandPalette";
-import { Badge, Button, ThemeToggle, timeAgo } from "@/components/ui";
+import { Plus, Star, Trash2 } from "lucide-react";
+import { Badge, Button, timeAgo } from "@/components/ui";
+import { notifyTasksChanged } from "@/components/shell/Sidebar";
 import { getJson, sendJson } from "@/lib/client";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
@@ -57,6 +56,7 @@ export function SettingsView() {
       try {
         await fn();
         await refresh();
+        notifyTasksChanged();
       } catch (err) {
         setError(err instanceof Error ? err.message : "操作に失敗しました");
       } finally {
@@ -102,19 +102,10 @@ export function SettingsView() {
     });
 
   return (
-    <div className="min-h-dvh">
-      <CommandPalette />
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
-          <Link
-            href="/"
-            aria-label="ホームへ戻る"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
-          >
-            <ArrowLeft className="h-4.5 w-4.5" />
-          </Link>
-          <h1 className="flex-1 text-sm font-semibold">設定</h1>
-          <ThemeToggle />
+    <div className="h-full overflow-y-auto">
+      <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-3xl items-center px-4">
+          <h1 className="text-sm font-semibold">設定</h1>
         </div>
       </header>
 
@@ -125,7 +116,6 @@ export function SettingsView() {
           </p>
         )}
 
-        {/* Engine */}
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
           <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
@@ -144,7 +134,6 @@ export function SettingsView() {
           </div>
         </section>
 
-        {/* Projects */}
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted">プロジェクト</h2>
           <div className="mb-3 flex gap-2">
@@ -204,7 +193,6 @@ export function SettingsView() {
           </ul>
         </section>
 
-        {/* Allowed roots */}
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted">
             許可ルート（allowlist）
@@ -236,7 +224,6 @@ export function SettingsView() {
           </ul>
         </section>
 
-        {/* Orphans */}
         {(orphans.length > 0 || stray.length > 0) && (
           <section>
             <div className="mb-3 flex items-center justify-between">

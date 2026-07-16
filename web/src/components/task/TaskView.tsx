@@ -10,7 +10,6 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   ArrowUp,
   Check,
   ChevronRight,
@@ -23,9 +22,10 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { CommandPalette } from "@/components/CommandPalette";
-import { StatusBadge } from "@/components/home/HomeView";
-import { Button, Spinner, ThemeToggle, cx } from "@/components/ui";
+import { StatusBadge } from "@/components/StatusBadge";
+import { notifyTasksChanged } from "@/components/shell/Sidebar";
+import { useShellExtras } from "@/components/shell/ShellContext";
+import { Button, Spinner, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
@@ -78,6 +78,7 @@ function TodoPanel({ todos }: { todos: Todo[] }) {
 
 export function TaskView({ taskId }: { taskId: string }) {
   const router = useRouter();
+  const { setExtras } = useShellExtras();
   const [task, setTask] = useState<TaskSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<"chat" | "diff">("chat");
@@ -168,6 +169,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!window.confirm(label)) return;
     try {
       await sendJson("DELETE", `/api/tasks/${task.id}`);
+      notifyTasksChanged();
       router.push("/");
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "削除に失敗しました");
@@ -197,6 +199,15 @@ export function TaskView({ taskId }: { taskId: string }) {
     setTab("diff");
   }, []);
 
+  useEffect(() => {
+    if (!task?.directory) {
+      setExtras({});
+      return;
+    }
+    setExtras({ directory: task.directory, onFile: openFileInDiff });
+    return () => setExtras({});
+  }, [task?.directory, openFileInDiff, setExtras]);
+
   const timeline = useMemo(
     () =>
       stream.messages.filter((m) =>
@@ -215,7 +226,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   if (loadError) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-4">
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
         <p className="text-sm text-danger">{loadError}</p>
         <Link href="/" className="text-sm text-accent underline">
           ホームへ戻る
@@ -226,7 +237,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   if (!task) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <Spinner />
       </div>
     );
@@ -236,17 +247,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const diffVisible = tab === "diff";
 
   return (
-    <div className="flex h-dvh flex-col">
-      <CommandPalette directory={task.directory} onFile={openFileInDiff} />
+    <div className="flex h-full flex-col">
       {/* Header */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
-        <Link
-          href="/"
-          aria-label="ホームへ戻る"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
-        >
-          <ArrowLeft className="h-4.5 w-4.5" />
-        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-sm font-semibold">{task.title}</h1>
@@ -307,9 +310,6 @@ export function TaskView({ taskId }: { taskId: string }) {
           >
             <PanelRight className="h-4 w-4" />
           </Button>
-          <div className="hidden sm:block">
-            <ThemeToggle />
-          </div>
         </div>
       </header>
 

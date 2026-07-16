@@ -18,7 +18,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
-import { StatusBadge } from "@/components/home/HomeView";
+import { StatusBadge } from "@/components/StatusBadge";
 import { cx } from "@/components/ui";
 import { getJson } from "@/lib/client";
 import type { TaskSummary } from "@/lib/types";
