@@ -195,14 +195,18 @@ export function SettingsView() {
             )}
           </ul>
           <p className="mt-2 text-[11px] text-faint">
-            届かない場合: Windows ファイアウォールで TCP {access?.port ?? 3000}{" "}
-            の受信を許可してください（管理者 PowerShell:{" "}
+            同一ネットワークでも開けない場合は Windows ファイアウォールが原因です。
+            管理者で{" "}
             <code className="rounded bg-surface-2 px-1">
+              scripts\allow-firewall-3000.bat
+            </code>{" "}
+            を実行するか、PowerShell（管理者）で:
+            <br />
+            <code className="mt-1 block break-all rounded bg-surface-2 px-1 py-0.5">
               netsh advfirewall firewall add rule name=&quot;OpenCode WebUI&quot;
               dir=in action=allow protocol=TCP localport=
               {access?.port ?? 3000}
             </code>
-            ）
           </p>
         </section>
 
