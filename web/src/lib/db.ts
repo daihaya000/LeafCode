@@ -17,7 +17,7 @@ export type WorkspaceRow = {
   project_id: string;
   display_name: string;
   absolute_path: string;
-  isolation: "current_folder" | "git_worktree";
+  isolation: "current_folder" | "git_worktree" | "temporary_copy";
   base_branch: string | null;
   worktree_path: string | null;
   status: "active" | "merging" | "archived" | "orphaned";
@@ -174,14 +174,15 @@ export function listWorkspacesByStatus(
 }
 
 export function createWorkspace(input: {
+  id?: string;
   projectId: string;
   displayName: string;
   absolutePath: string;
-  isolation: "current_folder" | "git_worktree";
+  isolation: "current_folder" | "git_worktree" | "temporary_copy";
   baseBranch?: string;
   worktreePath?: string;
 }): WorkspaceRow {
-  const id = crypto.randomUUID();
+  const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
   getDb()
     .prepare(

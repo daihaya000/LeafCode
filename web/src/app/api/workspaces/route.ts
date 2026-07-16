@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { createWorkspace, getDb, listWorkspaces } from "@/lib/db";
-import { addWorktree } from "@/lib/git";
+import { createTemporaryCopy, removeTemporaryCopy } from "@/lib/copy";
+import {
+  addAllowedRoot,
+  createWorkspace,
+  deleteWorkspace,
+  getDb,
+  listWorkspaces,
+  setWorkspaceStatus,
+} from "@/lib/db";
+import { addWorktree, removeWorktree } from "@/lib/git";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type Isolation = "current_folder" | "git_worktree" | "temporary_copy";
 
 function slugBranch(name: string): string {
   const base = name
@@ -37,7 +47,7 @@ export async function POST(req: NextRequest) {
     projectId?: string;
     displayName?: string;
     absolutePath?: string;
-    isolation?: "current_folder" | "git_worktree";
+    isolation?: Isolation;
     baseBranch?: string;
     branch?: string;
   } | null;
@@ -46,8 +56,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "projectId is required" }, { status: 400 });
   }
 
-  const isolation = body.isolation ?? "current_folder";
-  if (isolation !== "current_folder" && isolation !== "git_worktree") {
+  const isolation: Isolation = body.isolation ?? "current_folder";
+  if (
+    isolation !== "current_folder" &&
+    isolation !== "git_worktree" &&
+    isolation !== "temporary_copy"
+  ) {
     return NextResponse.json({ error: "invalid isolation" }, { status: 400 });
   }
 
@@ -67,13 +81,16 @@ export async function POST(req: NextRequest) {
     body.displayName?.trim() ||
     (isolation === "git_worktree"
       ? "Worktree session"
-      : path.basename(project.root_path));
+      : isolation === "temporary_copy"
+        ? "Temp copy session"
+        : path.basename(project.root_path));
 
   let absolutePath = body.absolutePath
     ? path.resolve(body.absolutePath)
     : path.resolve(project.root_path);
   let worktreePath: string | undefined;
   const baseBranch: string | undefined = body.baseBranch;
+  const workspaceId = crypto.randomUUID();
 
   if (isolation === "git_worktree") {
     const branch = body.branch?.trim() || slugBranch(displayName);
@@ -99,12 +116,26 @@ export async function POST(req: NextRequest) {
     worktreePath = wtDir;
   }
 
+  if (isolation === "temporary_copy") {
+    try {
+      absolutePath = createTemporaryCopy(project.root_path, workspaceId);
+      worktreePath = absolutePath;
+      addAllowedRoot(absolutePath);
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "temporary copy failed" },
+        { status: 500 },
+      );
+    }
+  }
+
   const pathCheck = assertAllowedDirectory(absolutePath);
   if (!pathCheck.ok) {
     return NextResponse.json({ error: pathCheck.error }, { status: pathCheck.status });
   }
 
   const row = createWorkspace({
+    id: isolation === "temporary_copy" ? workspaceId : undefined,
     projectId: body.projectId,
     displayName,
     absolutePath,
@@ -133,9 +164,6 @@ export async function DELETE(req: NextRequest) {
   if (!id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
-
-  const { deleteWorkspace, getDb, setWorkspaceStatus } = await import("@/lib/db");
-  const { removeWorktree } = await import("@/lib/git");
 
   const row = getDb()
     .prepare("SELECT * FROM workspaces WHERE id = ?")
@@ -169,6 +197,21 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json(
         {
           error: "git worktree remove failed; marked orphaned",
+          status: "orphaned",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  if (row.isolation === "temporary_copy" && row.worktree_path) {
+    try {
+      removeTemporaryCopy(row.worktree_path);
+    } catch {
+      setWorkspaceStatus(id, "orphaned");
+      return NextResponse.json(
+        {
+          error: "temporary copy remove failed; marked orphaned",
           status: "orphaned",
         },
         { status: 409 },

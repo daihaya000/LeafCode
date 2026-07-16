@@ -166,6 +166,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (row.isolation === "temporary_copy" && row.worktree_path) {
+      try {
+        const { removeTemporaryCopy } = await import("@/lib/copy");
+        if (fs.existsSync(row.worktree_path)) {
+          removeTemporaryCopy(row.worktree_path);
+        }
+      } catch (err) {
+        results.push({
+          id: row.id,
+          ok: false,
+          error: err instanceof Error ? err.message : "copy remove failed",
+        });
+        continue;
+      }
+    }
+
     deleteWorkspace(row.id);
     results.push({ id: row.id, ok: true });
   }

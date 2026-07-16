@@ -15,7 +15,7 @@ export type Workspace = {
   projectId: string;
   displayName: string;
   absolutePath: string;
-  isolation: "current_folder" | "git_worktree";
+  isolation: "current_folder" | "git_worktree" | "temporary_copy";
   status: string;
   createdAt: string;
 };
@@ -30,9 +30,9 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [rootPath, setRootPath] = useState("");
   const [sessionName, setSessionName] = useState("");
-  const [isolation, setIsolation] = useState<"current_folder" | "git_worktree">(
-    "git_worktree",
-  );
+  const [isolation, setIsolation] = useState<
+    "current_folder" | "git_worktree" | "temporary_copy"
+  >("git_worktree");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [orphans, setOrphans] = useState<Workspace[]>([]);
@@ -282,7 +282,7 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
               onChange={(e) => setSessionName(e.target.value)}
               disabled={!selectedProject}
             />
-            <div className="flex gap-3 text-sm">
+            <div className="flex flex-wrap gap-3 text-sm">
               <label className="flex min-h-11 items-center gap-2">
                 <input
                   type="radio"
@@ -300,6 +300,15 @@ export function ProjectLauncher({ onOpenWorkspace }: Props) {
                   onChange={() => setIsolation("current_folder")}
                 />
                 Current Folder
+              </label>
+              <label className="flex min-h-11 items-center gap-2">
+                <input
+                  type="radio"
+                  name="iso"
+                  checked={isolation === "temporary_copy"}
+                  onChange={() => setIsolation("temporary_copy")}
+                />
+                Temp Copy
               </label>
             </div>
             <button
