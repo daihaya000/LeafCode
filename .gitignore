@@ -9,3 +9,8 @@ node_modules/
 deploy/Caddyfile
 # Caddy runtime state
 deploy/.caddy/
+
+# Playwright E2E artifacts
+web/test-results/
+web/playwright-report/
+web/.playwright/
