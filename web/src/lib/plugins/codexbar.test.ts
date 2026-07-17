@@ -3,8 +3,10 @@ import {
   clampPercent,
   emptyUsage,
   formatResetsIn,
+  isStale,
   parseCodexBarSnapshot,
   providerLabel,
+  STALE_AFTER_MS,
   usageTone,
   worstProvider,
 } from "./codexbar";
@@ -135,6 +137,22 @@ describe("formatResetsIn", () => {
     expect(formatResetsIn("2026-07-17T05:00:00Z", now)).toBe("5時間後");
     expect(formatResetsIn("2026-07-19T00:00:00Z", now)).toBe("2日後");
     expect(formatResetsIn("2026-07-19T03:00:00Z", now)).toBe("2日3時間後");
+  });
+});
+
+describe("isStale", () => {
+  const now = Date.parse("2026-07-17T00:00:00Z");
+  it("returns false for null/invalid timestamps", () => {
+    expect(isStale(null, now)).toBe(false);
+    expect(isStale("nope", now)).toBe(false);
+  });
+  it("flags snapshots older than the threshold", () => {
+    expect(isStale("2026-07-16T23:58:00Z", now)).toBe(false); // 2m old
+    expect(isStale("2026-07-16T23:40:00Z", now)).toBe(true); // 20m old
+  });
+  it("honors a custom threshold and uses the 15m default", () => {
+    expect(STALE_AFTER_MS).toBe(15 * 60 * 1000);
+    expect(isStale("2026-07-16T23:55:00Z", now, 60 * 1000)).toBe(true); // 5m > 1m
   });
 });
 

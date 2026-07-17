@@ -14,6 +14,7 @@ import { getJson } from "@/lib/client";
 import {
   clampPercent,
   formatResetsIn,
+  isStale,
   providerLabel,
   usageTone,
   worstProvider,
@@ -224,8 +225,11 @@ export function CodexBarWidget() {
       </div>
 
       {usage?.available && usage.generatedAt && (
-        <div className="border-t border-border px-3 py-1.5 text-[10px] text-faint">
-          更新 {timeAgo(usage.generatedAt)}
+        <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-[10px] text-faint">
+          <span>更新 {timeAgo(usage.generatedAt)}</span>
+          {isStale(usage.generatedAt, now) && (
+            <span className="text-warning">古い可能性（CodexBar 停止中?）</span>
+          )}
         </div>
       )}
     </div>

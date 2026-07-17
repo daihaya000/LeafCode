@@ -145,6 +145,24 @@ export function formatResetsIn(iso: string | null, nowMs: number): string | null
   return remHours > 0 ? `${days}日${remHours}時間後` : `${days}日後`;
 }
 
+/**
+ * CodexBar refreshes ~every 5 min; treat a snapshot older than 3 cycles as stale
+ * (likely CodexBar is stopped or wedged).
+ */
+export const STALE_AFTER_MS = 15 * 60 * 1000;
+
+/** True when `generatedAt` is older than the threshold. Unknown/invalid → false. */
+export function isStale(
+  generatedAt: string | null,
+  nowMs: number,
+  thresholdMs: number = STALE_AFTER_MS,
+): boolean {
+  if (!generatedAt) return false;
+  const t = Date.parse(generatedAt);
+  if (Number.isNaN(t)) return false;
+  return nowMs - t > thresholdMs;
+}
+
 /** The provider with the highest usage (for a collapsed summary). Null if none. */
 export function worstProvider(usage: CodexBarUsage): CodexBarProvider | null {
   let worst: CodexBarProvider | null = null;
