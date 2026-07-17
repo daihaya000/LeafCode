@@ -22,3 +22,13 @@ test("settings page renders its sections", async ({ page }) => {
     page.getByRole("heading", { name: "Remote Workspace" }),
   ).toBeVisible();
 });
+
+test("theme toggle switches the color scheme", async ({ page }) => {
+  await page.goto("/");
+  const html = page.locator("html");
+  const toggle = page.getByRole("button", { name: "テーマ切替" });
+  await expect(toggle).toBeVisible();
+  const before = (await html.getAttribute("class")) ?? "";
+  await toggle.click();
+  await expect(html).not.toHaveClass(before);
+});
