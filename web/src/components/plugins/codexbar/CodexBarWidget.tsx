@@ -149,6 +149,7 @@ export function CodexBarWidget() {
       <button
         type="button"
         onClick={toggleCollapsed}
+        aria-label="CodexBar 利用状況を開く"
         title="CodexBar 利用状況を開く"
         className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs shadow-lg hover:bg-surface-2"
       >
