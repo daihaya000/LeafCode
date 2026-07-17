@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   ProjectRow,
   bindSession,
@@ -77,6 +78,12 @@ const isolations = new Set([
 ]);
 const statuses = new Set(["active", "merging", "archived", "orphaned"]);
 
+/** True when `child` is the same as, or nested inside, `parent`. */
+function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
 /**
  * Import any workspaces/sessions present in a project's manifest but missing
  * from the DB. Idempotent: existing rows are left untouched.
@@ -96,6 +103,18 @@ export function restoreProjectFromManifest(
       const status = statuses.has(ws.status)
         ? (ws.status as "active")
         : "active";
+      // A git worktree we provisioned always lives under the project root. A
+      // manifest that points its worktreePath elsewhere is untrusted (e.g. a
+      // cloned repo carrying a crafted sessions.json) and must not be imported,
+      // since destroying it would drive a recursive delete outside the repo.
+      if (
+        ws.isolation === "git_worktree" &&
+        ws.worktreePath &&
+        !isInside(rootPath, ws.worktreePath)
+      ) {
+        log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath escapes root`);
+        continue;
+      }
       const inserted = importWorkspaceRow({
         id: ws.id,
         projectId,
@@ -140,7 +159,11 @@ export function adoptProjectFromManifest(rootPath: string): {
   restored: RestoreResult;
 } | null {
   const manifest = readProjectManifest(rootPath);
-  const name = manifest?.project.name;
+  // No manifest → nothing to adopt. Returning null keeps the /restore route's
+  // 404 branch live and avoids registering a project (and allow-listing its
+  // path) for a directory the user never actually opened.
+  if (!manifest) return null;
+  const name = manifest.project.name;
   const project = upsertProject({
     name: name || rootPath.split(/[\\/]/).filter(Boolean).pop() || "Project",
     rootPath,

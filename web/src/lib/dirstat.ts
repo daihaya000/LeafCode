@@ -13,6 +13,18 @@ const cache = new Map<string, { at: number; stat: DirStat }>();
 
 const EMPTY: DirStat = { git: false, branch: null, additions: 0, deletions: 0, files: 0 };
 
+/** True for a `git status --porcelain` line that refers to our own metadata. */
+function isWebuiMeta(line: string): boolean {
+  // Porcelain line is "XY <path>"; strip the 2-char status + space.
+  const p = line.slice(3).replace(/^"|"$/g, "").replace(/\\/g, "/");
+  return (
+    p === ".opencode-webui" ||
+    p.startsWith(".opencode-webui/") ||
+    p === ".webui-worktrees" ||
+    p.startsWith(".webui-worktrees/")
+  );
+}
+
 function parseShortstat(text: string): { additions: number; deletions: number } {
   const add = /(\d+) insertion/.exec(text);
   const del = /(\d+) deletion/.exec(text);
@@ -43,7 +55,11 @@ export async function dirStat(dir: string, ttlMs = 15_000): Promise<DirStat> {
       const status = await runGit(dir, ["status", "--porcelain"]);
       const files =
         status.code === 0
-          ? status.stdout.split(/\r?\n/).filter((l) => l.trim().length > 0).length
+          ? status.stdout
+              .split(/\r?\n/)
+              .filter((l) => l.trim().length > 0)
+              .filter((l) => !isWebuiMeta(l))
+              .length
           : 0;
       stat = { git: true, branch, additions, deletions, files };
     }

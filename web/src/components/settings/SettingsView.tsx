@@ -7,6 +7,7 @@ import { PluginSettings } from "@/components/plugins/PluginSettings";
 import { Badge, Button, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import { copyText } from "@/lib/clipboard";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type OrphanDto = {
@@ -144,7 +145,8 @@ export function SettingsView() {
     });
 
   const copyUrl = async (url: string) => {
-    await navigator.clipboard.writeText(url).catch(() => undefined);
+    const ok = await copyText(url);
+    if (!ok) return;
     setCopied(url);
     setTimeout(() => setCopied(null), 1500);
   };

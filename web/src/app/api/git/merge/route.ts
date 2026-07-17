@@ -78,11 +78,16 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
+    // Restore the working tree to the branch the caller started on. Without
+    // this the worktree is left checked out on the merge target (e.g. main),
+    // so subsequent diffs/commits in this workspace would silently target it.
+    const restore = await runGit(check.path, ["checkout", currentBranch]);
     return NextResponse.json({
       ok: true,
       merged: currentBranch,
       into: branch,
       summary: merge.stdout.trim(),
+      restored: restore.code === 0 ? currentBranch : null,
     });
   }
 

@@ -126,6 +126,15 @@ export async function GET(req: NextRequest) {
         if (rel.startsWith('"') && rel.endsWith('"')) rel = rel.slice(1, -1);
         // Avoid duplicating paths already present from unified diff
         const norm = rel.replace(/\\/g, "/");
+        // Hide our own metadata dirs from the diff view.
+        if (
+          norm === ".opencode-webui" ||
+          norm.startsWith(".opencode-webui/") ||
+          norm === ".webui-worktrees" ||
+          norm.startsWith(".webui-worktrees/")
+        ) {
+          continue;
+        }
         if (files.some((f) => f.path === norm)) continue;
         if (rel.endsWith("/")) {
           files.push({

@@ -315,7 +315,10 @@ export function DiffPane({
         directory,
         message: commitMsg.trim(),
       };
-      if (selectedPaths.length === files.length) body.all = true;
+      // Only "commit everything" (git add -A) when the entire UNFILTERED set is
+      // selected. `files` is filter-scoped, so comparing against it would let a
+      // full selection of a filtered view stage files hidden by the filter.
+      if (selectedPaths.length === (payload?.files.length ?? 0)) body.all = true;
       else body.paths = selectedPaths;
       const res = await sendJson<{ summary?: string }>(
         "POST",

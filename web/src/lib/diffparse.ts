@@ -26,28 +26,36 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
 
     let hunk: DiffHunk | null = null;
     for (const line of lines.slice(1)) {
-      if (line.startsWith("Binary files ")) {
-        file.binary = true;
-        continue;
-      }
-      if (line.startsWith("+++ ")) {
-        const p = line.slice(4).trim();
-        if (p !== "/dev/null") file.path = p.replace(/^"?b\//, "").replace(/"$/, "");
-        continue;
-      }
-      if (line.startsWith("--- ")) {
-        const p = line.slice(4).trim();
-        if (p !== "/dev/null" && !file.path) {
-          file.path = p.replace(/^"?a\//, "").replace(/"$/, "");
-        }
-        continue;
-      }
+      // A new hunk header. Check first so `@@` is never mistaken for content.
       if (line.startsWith("@@")) {
         hunk = { header: line, lines: [] };
         file.hunks.push(hunk);
         continue;
       }
-      if (!hunk) continue;
+      // File-level headers (`---`/`+++`/`Binary files`) only appear before the
+      // first hunk. Once inside a hunk, a diff line such as `--- foo` is the
+      // DELETION of a line whose content is `-- foo`, and `+++ foo` the ADDITION
+      // of `++ foo` — they must be treated as content, not headers.
+      if (hunk === null) {
+        if (line.startsWith("Binary files ")) {
+          file.binary = true;
+          continue;
+        }
+        if (line.startsWith("+++ ")) {
+          const p = line.slice(4).trim();
+          if (p !== "/dev/null") file.path = p.replace(/^"?b\//, "").replace(/"$/, "");
+          continue;
+        }
+        if (line.startsWith("--- ")) {
+          const p = line.slice(4).trim();
+          if (p !== "/dev/null" && !file.path) {
+            file.path = p.replace(/^"?a\//, "").replace(/"$/, "");
+          }
+          continue;
+        }
+        // Other pre-hunk metadata (index, mode, rename…) — skip.
+        continue;
+      }
       if (line.startsWith("+")) {
         hunk.lines.push({ t: "+", text: line.slice(1) });
         file.additions += 1;
@@ -68,6 +76,9 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
 /** Synthesize an all-added hunk for an untracked file's content. */
 export function untrackedHunk(content: string, maxLines = 400): DiffHunk {
   const all = content.split(/\r?\n/);
+  // A file ending in a newline yields a trailing "" element; dropping it avoids
+  // a phantom empty "+" line and an off-by-one added-line count.
+  if (all.length > 0 && all[all.length - 1] === "") all.pop();
   const shown = all.slice(0, maxLines);
   const lines: DiffLine[] = shown.map((text) => ({ t: "+" as const, text }));
   if (all.length > maxLines) {

@@ -169,6 +169,15 @@ export function writeProjectManifest(
 ): void {
   const dir = manifestDir(rootPath);
   fs.mkdirSync(dir, { recursive: true });
+  // Keep our metadata dir out of the user's repo: a self-ignoring .gitignore
+  // makes git treat the whole folder (manifest included) as ignored, so it
+  // never shows up as an untracked change or gets committed by accident.
+  const ignore = path.join(dir, ".gitignore");
+  try {
+    if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, "*\n", "utf8");
+  } catch {
+    /* best effort */
+  }
   const file = manifestPath(rootPath);
   const tmp = `${file}.tmp`;
   const body = JSON.stringify(manifest, null, 2);

@@ -68,6 +68,29 @@ describe("parseUnifiedDiff", () => {
     expect(file.oldPath).toBe("old.ts");
   });
 
+  it("treats ---/+++ inside a hunk as content, not headers", () => {
+    // A deleted line whose content is `-- old` shows up as `--- old`, and an
+    // added line `++ new` as `+++ new`. These must count as deletion/addition
+    // and must not overwrite the file path.
+    const diff = [
+      "diff --git a/f.sql b/f.sql",
+      "index 111..222 100644",
+      "--- a/f.sql",
+      "+++ b/f.sql",
+      "@@ -1,2 +1,2 @@",
+      " keep",
+      "--- old comment",
+      "+++ new comment",
+    ].join("\n");
+    const [file] = parseUnifiedDiff(diff);
+    expect(file.path).toBe("f.sql");
+    expect(file.deletions).toBe(1);
+    expect(file.additions).toBe(1);
+    const texts = file.hunks[0].lines.map((l) => `${l.t}${l.text}`);
+    expect(texts).toContain("--- old comment");
+    expect(texts).toContain("+++ new comment");
+  });
+
   it("parses multiple files", () => {
     const diff = [
       "diff --git a/a.ts b/a.ts",
@@ -92,6 +115,13 @@ describe("untrackedHunk", () => {
     expect(hunk.lines).toHaveLength(3);
     expect(hunk.lines.every((l) => l.t === "+")).toBe(true);
     expect(hunk.header).toBe("@@ -0,0 +1,3 @@");
+  });
+
+  it("does not emit a phantom line for content ending in a newline", () => {
+    const hunk = untrackedHunk("a\nb\n");
+    expect(hunk.lines).toHaveLength(2);
+    expect(hunk.lines.map((l) => l.text)).toEqual(["a", "b"]);
+    expect(hunk.header).toBe("@@ -0,0 +1,2 @@");
   });
 
   it("truncates beyond maxLines and appends a summary line", () => {

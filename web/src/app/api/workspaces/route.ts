@@ -108,6 +108,10 @@ export async function PATCH(req: NextRequest) {
       { status: 400 },
     );
   }
+  const VALID_STATUS = ["active", "merging", "archived", "orphaned"] as const;
+  if (!VALID_STATUS.includes(body.status)) {
+    return NextResponse.json({ error: "invalid status" }, { status: 400 });
+  }
   const { getWorkspace, setWorkspaceStatus } = await import("@/lib/db");
   if (!getWorkspace(body.id)) {
     return NextResponse.json({ error: "workspace not found" }, { status: 404 });

@@ -39,6 +39,7 @@ import {
   type AccessMode,
 } from "@/lib/access-mode";
 import { getJson, ocJson, sendJson } from "@/lib/client";
+import { copyText } from "@/lib/clipboard";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import { decideNotification, notificationText } from "@/lib/notify";
 import { useSessionStream } from "@/lib/useSessionStream";
@@ -484,7 +485,8 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const copyPath = useCallback(async () => {
     if (!task) return;
-    await navigator.clipboard.writeText(task.directory).catch(() => undefined);
+    const ok = await copyText(task.directory);
+    if (!ok) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [task]);

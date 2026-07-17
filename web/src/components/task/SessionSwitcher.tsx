@@ -92,6 +92,10 @@ export function SessionSwitcher({
               title,
             });
             onSwitch();
+          } catch {
+            // Bind failed (engine down, etc.): resync the dropdown to real state
+            // instead of leaving an unhandled rejection and a lying selection.
+            await refresh();
           } finally {
             setBusy(false);
           }

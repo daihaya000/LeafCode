@@ -199,6 +199,9 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
         );
       }
     }
+    // The copy path was allow-listed when provisioned; drop it now that the
+    // folder is gone so allowed_roots doesn't accumulate dead entries.
+    removeAllowedRoot(row.worktree_path);
   }
 
   deleteWorkspace(id);

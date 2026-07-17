@@ -8,6 +8,7 @@ import {
   setWorkspaceStatus,
 } from "@/lib/db";
 import { listGitWorktrees, removeWorktree, runGit } from "@/lib/git";
+import { persistProjectSessions } from "@/lib/project-session-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,6 +97,9 @@ async function purgeGoneOrphans(): Promise<number> {
     }
 
     deleteWorkspace(row.id);
+    // Rewrite the repo manifest from DB truth so the purged workspace doesn't
+    // get re-imported (and resurrected) next time the project is opened.
+    persistProjectSessions(row.project_id);
     purged += 1;
   }
   return purged;
@@ -242,6 +246,7 @@ export async function POST(req: NextRequest) {
     }
 
     deleteWorkspace(row.id);
+    persistProjectSessions(row.project_id);
     results.push({ id: row.id, ok: true });
   }
 

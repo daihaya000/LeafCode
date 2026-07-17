@@ -20,10 +20,19 @@ export function runGit(
   args: string[],
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", args, {
+    // `core.quotepath=false` keeps non-ASCII paths (e.g. Japanese filenames)
+    // literal instead of octal-escaped, so status/diff/name-status output can be
+    // matched against the filesystem. The env vars stop git from blocking on an
+    // interactive credential/editor prompt, which would hang the HTTP request.
+    const child = spawn("git", ["-c", "core.quotepath=false", ...args], {
       cwd,
       shell: false,
       windowsHide: true,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_EDITOR: "true",
+      },
     });
     let stdout = "";
     let stderr = "";
@@ -87,6 +96,12 @@ function clearReadonlyRecursive(target: string): void {
   }
 }
 
+/** True when `child` is the same as, or nested inside, `parent`. */
+function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
 function rmDirBestEffort(target: string): void {
   if (!fs.existsSync(target)) return;
   try {
@@ -129,6 +144,16 @@ export async function removeWorktree(input: {
   const absWorktree = path.resolve(input.worktreePath);
   const repoRoot = path.resolve(input.repoRoot);
   const force = input.force !== false;
+
+  // Defense-in-depth: worktrees we provision always live under the repo root
+  // (<repoRoot>/.webui-worktrees/…). Refuse to touch anything outside it so a
+  // tampered manifest / DB row can't drive the filesystem-delete fallback into
+  // an arbitrary directory.
+  if (!isInside(repoRoot, absWorktree)) {
+    throw new Error(
+      `refusing to remove worktree outside repo root: ${absWorktree}`,
+    );
+  }
 
   if (!fs.existsSync(absWorktree)) {
     await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);

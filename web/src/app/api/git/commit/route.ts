@@ -33,7 +33,18 @@ export async function POST(req: NextRequest) {
 
   // Stage
   if (body.all || !body.paths?.length) {
-    const add = await runGit(check.path, ["add", "-A"]);
+    // Never let "commit everything" sweep in our own metadata (session manifest
+    // and worktree dirs), which appear as untracked in the user's repo.
+    const add = await runGit(check.path, [
+      "add",
+      "-A",
+      "--",
+      ".",
+      ":(exclude).opencode-webui",
+      ":(exclude).opencode-webui/**",
+      ":(exclude).webui-worktrees",
+      ":(exclude).webui-worktrees/**",
+    ]);
     if (add.code !== 0) {
       return NextResponse.json(
         { error: add.stderr.trim() || "git add failed" },
