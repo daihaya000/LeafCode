@@ -18,3 +18,6 @@ web/.playwright/
 
 # OpenCode loop runtime state (per-session, machine-local)
 .opencode/opencode-loop/
+
+# OpenCode WebUI runtime state (per-session, machine-local)
+.opencode-webui/
