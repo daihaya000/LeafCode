@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
+import { PluginSettings } from "@/components/plugins/PluginSettings";
 import { Badge, Button, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
@@ -325,6 +326,14 @@ export function SettingsView() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-muted">プラグイン</h2>
+          <p className="mb-3 text-xs text-faint">
+            右下に表示するウィジェットの有効/無効を切り替えます。
+          </p>
+          <PluginSettings />
         </section>
 
         <section>
