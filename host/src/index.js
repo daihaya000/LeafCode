@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
   unlinkSync,
 } from 'fs';
@@ -10,6 +11,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
 import { formatServiceStatus } from './service-status.js';
+import { getWebLaunchPlan, webRestartDelay } from './web-runtime.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -51,10 +53,25 @@ let opencodeProc = null;
 /** @type {import('child_process').ChildProcess | null} */
 let webProc = null;
 /** @type {import('child_process').ChildProcess | null} */
+let webBuildProc = null;
+/** @type {import('child_process').ChildProcess | null} */
 let caddyProc = null;
 /** @type {import('systray2').default | null} */
 let systray = null;
 let quitting = false;
+let restartingServices = false;
+
+/** WebUI self-healing. Expected exits (manual restart/quit) never consume it. */
+const MAX_WEB_RESTARTS = 5;
+let webRestarts = 0;
+/** @type {NodeJS.Timeout | null} */
+let webRestartTimer = null;
+/** @type {NodeJS.Timeout | null} */
+let webStableTimer = null;
+const expectedWebExitPids = new Set();
+
+/** @type {string | null} */
+let cachedNpmCli = null;
 
 /** Tray self-healing: recreate the icon if the helper process dies unexpectedly. */
 const MAX_TRAY_RESTARTS = 5;
@@ -363,11 +380,124 @@ function spawnCaddy() {
   });
 }
 
-function spawnWeb() {
-  const hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
-  const useProd =
-    process.env.OPENCODE_WEBUI_MODE === 'prod' ||
-    (process.env.OPENCODE_WEBUI_MODE !== 'dev' && hasBuild);
+function removeBrokenWebBuild() {
+  const buildDir = join(WEB_DIR, '.next');
+  if (!existsSync(buildDir) || existsSync(join(buildDir, 'BUILD_ID'))) return;
+  log(`Removing incomplete production build: ${buildDir}`);
+  rmSync(buildDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 250,
+  });
+}
+
+/**
+ * Run npm through its JavaScript CLI instead of a .cmd shell shim. This keeps
+ * every argument separate and avoids Node's shell:true quoting vulnerability.
+ */
+function spawnNpm(args, options) {
+  if (!cachedNpmCli) {
+    const candidates = [
+      process.env.npm_execpath,
+      join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ].filter(Boolean);
+
+    try {
+      const npmCommands = execFileSync('where.exe', ['npm.cmd'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      for (const npmCommand of npmCommands) {
+        candidates.push(
+          join(dirname(npmCommand), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        );
+      }
+    } catch {
+      // The normal Node-adjacent candidate above still covers standard installs.
+    }
+
+    cachedNpmCli = candidates.find((candidate) => existsSync(candidate)) || null;
+    if (!cachedNpmCli) {
+      throw new Error('npm-cli.js was not found. Reinstall Node.js with npm included.');
+    }
+  }
+
+  return spawn(process.execPath, [cachedNpmCli, ...args], {
+    ...options,
+    shell: false,
+  });
+}
+
+/** Build the production WebUI when prod mode has no usable BUILD_ID. */
+function buildWebProduction() {
+  return new Promise((resolve, reject) => {
+    removeBrokenWebBuild();
+    log('Production WebUI build is missing; rebuilding before start…');
+    const child = spawnNpm(['run', 'build'], {
+      cwd: WEB_DIR,
+      stdio: 'pipe',
+      windowsHide: true,
+      env: {
+        ...process.env,
+        NEXT_DIST_DIR: '.next',
+      },
+    });
+    webBuildProc = child;
+    void refreshStatusMenu();
+    let settled = false;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      if (webBuildProc === child) webBuildProc = null;
+      void refreshStatusMenu();
+      if (err) reject(err);
+      else resolve();
+    };
+    child.stdout?.on('data', (chunk) => {
+      process.stdout.write(`[web-build] ${chunk}`);
+    });
+    child.stderr?.on('data', (chunk) => {
+      process.stderr.write(`[web-build] ${chunk}`);
+    });
+    child.on('error', (err) => finish(err));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        finish(new Error(`WebUI production build failed (code=${code})`));
+        return;
+      }
+      if (!existsSync(join(WEB_DIR, '.next', 'BUILD_ID'))) {
+        finish(new Error('WebUI production build finished without BUILD_ID'));
+        return;
+      }
+      log('Production WebUI build completed');
+      finish();
+    });
+  });
+}
+
+function armWebStableReset(child) {
+  if (webStableTimer) clearTimeout(webStableTimer);
+  webStableTimer = setTimeout(() => {
+    if (webProc === child && procRunning(child)) webRestarts = 0;
+  }, 60000);
+  webStableTimer.unref?.();
+}
+
+async function spawnWeb() {
+  let hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
+  let plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild);
+  if (plan.needsBuild) {
+    await buildWebProduction();
+    hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
+    plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild);
+  }
+  if (plan.needsBuild) throw new Error('WebUI production build is unavailable');
+  const useProd = plan.useProd;
 
   const npmArgs = useProd
     ? ['run', 'start', '--', '--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)]
@@ -376,10 +506,8 @@ function spawnWeb() {
   log(
     `Starting WebUI (${useProd ? 'production' : 'dev'}) on ${WEBUI_HOST}:${WEBUI_PORT} in ${WEB_DIR}`,
   );
-  // On Windows, npm is a .cmd shim — must use shell:true
-  webProc = spawn('npm', npmArgs, {
+  const child = spawnNpm(npmArgs, {
     cwd: WEB_DIR,
-    shell: true,
     stdio: 'pipe',
     windowsHide: true,
     env: {
@@ -389,24 +517,65 @@ function spawnWeb() {
       PORT: String(WEBUI_PORT),
     },
   });
+  webProc = child;
+  armWebStableReset(child);
 
-  webProc.on('error', (err) => {
+  child.on('error', (err) => {
     error(`WebUI spawn error: ${err.message}`);
   });
 
-  webProc.stdout?.on('data', (chunk) => {
+  child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[webui] ${chunk}`);
   });
-  webProc.stderr?.on('data', (chunk) => {
+  child.stderr?.on('data', (chunk) => {
     process.stderr.write(`[webui] ${chunk}`);
   });
-  webProc.on('exit', (code, signal) => {
+  child.on('close', (code, signal) => {
+    const expected = child.pid ? expectedWebExitPids.delete(child.pid) : false;
+    const wasCurrent = webProc === child;
     if (!quitting) {
       log(`WebUI exited (code=${code}, signal=${signal ?? 'none'})`);
     }
-    webProc = null;
+    if (wasCurrent) {
+      webProc = null;
+      if (webStableTimer) {
+        clearTimeout(webStableTimer);
+        webStableTimer = null;
+      }
+    }
     refreshStatusMenu();
+    if (!quitting && !expected && wasCurrent) scheduleWebRestart();
   });
+}
+
+function scheduleWebRestart() {
+  if (quitting || webRestartTimer || procRunning(webProc)) return;
+  if (webRestarts >= MAX_WEB_RESTARTS) {
+    error(`WebUI restart limit reached (${MAX_WEB_RESTARTS})`);
+    return;
+  }
+  webRestarts += 1;
+  const delay = webRestartDelay(webRestarts);
+  log(`Restarting WebUI in ${delay}ms (attempt ${webRestarts}/${MAX_WEB_RESTARTS})…`);
+  webRestartTimer = setTimeout(() => {
+    webRestartTimer = null;
+    void (async () => {
+      if (quitting || procRunning(webProc)) return;
+      if (await isHttpUp(WEBUI_URL)) {
+        webRestarts = 0;
+        await refreshStatusMenu();
+        return;
+      }
+      try {
+        await spawnWeb();
+        await refreshStatusMenu();
+      } catch (err) {
+        error(`WebUI restart failed: ${err instanceof Error ? err.message : String(err)}`);
+        scheduleWebRestart();
+      }
+    })();
+  }, delay);
+  webRestartTimer.unref?.();
 }
 
 function ensureDataDir() {
@@ -654,7 +823,7 @@ async function startChildren() {
     spawnOpencode(opencodePath);
   }
   if (plan.startWeb) {
-    spawnWeb();
+    await spawnWeb();
   }
   if (CADDY_ENABLED) {
     spawnCaddy();
@@ -663,12 +832,28 @@ async function startChildren() {
 }
 
 function stopChildren() {
-  const pids = [opencodeProc?.pid, webProc?.pid, caddyProc?.pid].filter(Boolean);
+  if (webRestartTimer) {
+    clearTimeout(webRestartTimer);
+    webRestartTimer = null;
+  }
+  if (webStableTimer) {
+    clearTimeout(webStableTimer);
+    webStableTimer = null;
+  }
+  webRestarts = 0;
+  if (webProc?.pid) expectedWebExitPids.add(webProc.pid);
+  const pids = [
+    opencodeProc?.pid,
+    webProc?.pid,
+    webBuildProc?.pid,
+    caddyProc?.pid,
+  ].filter(Boolean);
   for (const pid of pids) {
     killProcessTree(pid);
   }
   opencodeProc = null;
   webProc = null;
+  webBuildProc = null;
   caddyProc = null;
 }
 
@@ -683,7 +868,9 @@ async function refreshStatusMenu() {
   ]);
 
   statusOpencodeItem.title = formatStatus('OpenCode', opencodeProc, opencodeUp);
-  statusWebuiItem.title = formatStatus('WebUI', webProc, webUp);
+  statusWebuiItem.title = procRunning(webBuildProc)
+    ? 'WebUI: building…'
+    : formatStatus('WebUI', webProc, webUp);
 
   if (systray) {
     systray.sendAction({ type: 'update-item', item: statusOpencodeItem });
@@ -701,13 +888,22 @@ async function refreshStatusMenu() {
 }
 
 async function restartServices() {
+  if (restartingServices) {
+    log('Service restart is already in progress');
+    return;
+  }
+  restartingServices = true;
   log('Restarting services…');
-  stopChildren();
-  await new Promise((resolve) => setTimeout(resolve, 1000));
   try {
+    stopChildren();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await startChildren();
   } catch (err) {
-    error(err instanceof Error ? err.message : String(err));
+    stopChildren();
+    throw err;
+  } finally {
+    restartingServices = false;
+    await refreshStatusMenu();
   }
 }
 
@@ -874,6 +1070,14 @@ async function main() {
     error('This host is intended for Windows.');
     process.exit(1);
   }
+  if (webRestartTimer) {
+    clearTimeout(webRestartTimer);
+    webRestartTimer = null;
+  }
+  if (webStableTimer) {
+    clearTimeout(webStableTimer);
+    webStableTimer = null;
+  }
 
   ensureDataDir();
   await acquireLock();
@@ -889,6 +1093,7 @@ async function main() {
   try {
     await startChildren();
   } catch (err) {
+    stopChildren();
     removeLock();
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
