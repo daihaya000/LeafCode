@@ -38,6 +38,7 @@ import {
 } from "@/lib/access-mode";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
+import { decideNotification, notificationText } from "@/lib/notify";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
@@ -543,6 +544,49 @@ export function TaskView({ taskId }: { taskId: string }) {
     working,
     stream.permissions.length,
     stream.questions.length,
+  ]);
+
+  // Desktop notifications when the tab is backgrounded
+  const prevWorkingRef = useRef(false);
+  const prevAttentionRef = useRef(false);
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    const attention =
+      stream.permissions.length > 0 || stream.questions.length > 0;
+
+    if (
+      Notification.permission === "default" &&
+      (working || attention)
+    ) {
+      void Notification.requestPermission().catch(() => undefined);
+    }
+
+    const kind = decideNotification({
+      prevAttention: prevAttentionRef.current,
+      attention,
+      prevWorking: prevWorkingRef.current,
+      working,
+      documentHidden:
+        typeof document !== "undefined" ? document.hidden : false,
+      permission: Notification.permission,
+    });
+    if (kind) {
+      const { title, body } = notificationText(kind, task?.title ?? "");
+      try {
+        new Notification(title, { body, tag: `task-${task?.id ?? "x"}` });
+      } catch {
+        // ignore construction errors (e.g. unsupported context)
+      }
+    }
+
+    prevWorkingRef.current = working;
+    prevAttentionRef.current = attention;
+  }, [
+    working,
+    stream.permissions.length,
+    stream.questions.length,
+    task?.title,
+    task?.id,
   ]);
 
   const restoreToComposer = useCallback((text: string) => {
