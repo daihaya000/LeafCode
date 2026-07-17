@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   web:
-    name: web (lint / typecheck / test)
+    name: web (lint / typecheck / test / build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,6 +37,11 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
 
   host:
     name: host (syntax)
