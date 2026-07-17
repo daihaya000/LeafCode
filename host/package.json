@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Windows system tray host for OpenCode WebUI",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test src/*.test.js"
   },
   "dependencies": {
     "systray2": "^2.1.4"

@@ -9,6 +9,7 @@ import {
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
+import { formatServiceStatus } from './service-status.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -672,9 +673,7 @@ function stopChildren() {
 }
 
 function formatStatus(name, proc, httpUp) {
-  if (!procRunning(proc)) return `${name}: stopped`;
-  if (httpUp) return `${name}: running`;
-  return `${name}: starting…`;
+  return formatServiceStatus(name, procRunning(proc), httpUp);
 }
 
 async function refreshStatusMenu() {

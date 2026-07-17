@@ -81,4 +81,81 @@ test.describe("home composer", () => {
   test("keeps the submit button disabled while the prompt is empty", async ({ page }) => {
     await expect(page.getByRole("button", { name: "タスク開始" })).toBeDisabled();
   });
+
+  test("waits for the selected project's base branch before submitting", async ({
+    page,
+  }) => {
+    let submitted: Record<string, unknown> | null = null;
+    await page.route("**/api/projects", (route) =>
+      route.fulfill({
+        json: {
+          projects: [
+            {
+              id: "project-a",
+              name: "Project A",
+              rootPath: "C:\\repo-a",
+              favorite: true,
+            },
+            {
+              id: "project-b",
+              name: "Project B",
+              rootPath: "C:\\repo-b",
+              favorite: false,
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        submitted = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({ json: { taskId: "created-task" } });
+        return;
+      }
+      await route.fulfill({ json: { tasks: [], engineOk: true } });
+    });
+    await page.route("**/api/git/branches**", async (route) => {
+      const directory = new URL(route.request().url()).searchParams.get(
+        "directory",
+      );
+      if (directory === "C:\\repo-b") {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await route.fulfill({
+          json: {
+            branches: ["develop"],
+            current: "develop",
+            defaultTarget: "develop",
+          },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          branches: ["master"],
+          current: "master",
+          defaultTarget: "master",
+        },
+      });
+    });
+
+    await page.goto("/");
+    const project = page.getByRole("combobox", { name: "プロジェクト" });
+    const submit = page.getByRole("button", { name: "タスク開始" });
+    const prompt = page.getByPlaceholder(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    await expect(project).toHaveValue("project-a");
+    await project.selectOption("project-b");
+    await prompt.fill("branch race regression");
+
+    await expect(submit).toBeDisabled();
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect.poll(() => submitted).not.toBeNull();
+    expect(submitted).toMatchObject({
+      projectId: "project-b",
+      isolation: "git_worktree",
+      baseBranch: "develop",
+    });
+  });
 });

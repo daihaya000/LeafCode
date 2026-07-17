@@ -49,9 +49,13 @@ const textClass: Record<UsageTone, string> = {
 
 function loadCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === "1";
+    const saved = localStorage.getItem(COLLAPSED_KEY);
+    // An expanded fixed widget obscures the composer on phones and narrower
+    // desktop windows. Keep it discoverable as a compact pill until the user
+    // explicitly opens it, while preserving an existing preference.
+    return saved === null ? true : saved === "1";
   } catch {
-    return false;
+    return true;
   }
 }
 function saveCollapsed(v: boolean) {
@@ -260,7 +264,7 @@ export function CodexBarWidget() {
   const [usage, setUsage] = useState<CodexBarUsage | null>(null);
   const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [providerCollapsed, setProviderCollapsed] = useState<Record<string, boolean>>(
     {},
   );

@@ -48,6 +48,7 @@ export function HomeView() {
   const [agent, setAgent] = useState("");
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [baseBranch, setBaseBranch] = useState("");
+  const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
   const [loaded, setLoaded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -162,11 +163,16 @@ export function HomeView() {
 
   useEffect(() => {
     const project = projects.find((p) => p.id === projectId);
+    let cancelled = false;
+    setBaseBranch("");
+    setBranchProjectId("");
     if (!project?.rootPath) {
-      setBaseBranch("");
       setDefaultBranchLabel("master");
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
+    setDefaultBranchLabel("読み込み中…");
     void (async () => {
       try {
         const info = await getJson<{
@@ -183,13 +189,22 @@ export function HomeView() {
               ? "main"
               : info.current) ||
           "master";
+        if (cancelled) return;
         setDefaultBranchLabel(preferred);
         setBaseBranch(preferred);
       } catch {
-        setBaseBranch("master");
-        setDefaultBranchLabel("master");
+        if (cancelled) return;
+        // Omitting baseBranch makes git use this repository's current HEAD,
+        // which is safer than guessing "master" for a main/develop repository.
+        setBaseBranch("");
+        setDefaultBranchLabel("現在の HEAD");
+      } finally {
+        if (!cancelled) setBranchProjectId(project.id);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, projects]);
 
   const autoResize = useCallback(() => {
@@ -201,7 +216,13 @@ export function HomeView() {
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
-    if (!text || !projectId || submitting || !engineOk) return;
+    const branchReady =
+      isolation !== "git_worktree" || branchProjectId === projectId;
+    if (!text || !projectId || submitting || !engineOk || !branchReady) return;
+    const requestBaseBranch =
+      isolation === "git_worktree" && branchProjectId === projectId
+        ? baseBranch
+        : "";
     setSubmitting(true);
     setError(null);
     try {
@@ -210,9 +231,7 @@ export function HomeView() {
         projectId,
         prompt: text,
         isolation,
-        ...(isolation === "git_worktree" && baseBranch
-          ? { baseBranch }
-          : {}),
+        ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(agent ? { agent } : {}),
       });
@@ -222,7 +241,18 @@ export function HomeView() {
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
     }
-  }, [prompt, projectId, isolation, baseBranch, model, agent, submitting, engineOk, router]);
+  }, [
+    prompt,
+    projectId,
+    isolation,
+    branchProjectId,
+    baseBranch,
+    model,
+    agent,
+    submitting,
+    engineOk,
+    router,
+  ]);
 
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
@@ -374,7 +404,13 @@ export function HomeView() {
                 aria-label="タスク開始"
                 className="col-start-2 row-start-1 shrink-0 xl:col-start-3 xl:row-start-1"
                 busy={submitting}
-                disabled={!prompt.trim() || !projectId || !engineOk}
+                disabled={
+                  !prompt.trim() ||
+                  !projectId ||
+                  !engineOk ||
+                  (isolation === "git_worktree" &&
+                    branchProjectId !== projectId)
+                }
               >
                 {!submitting && <ArrowUp className="h-4.5 w-4.5" />}
               </Button>

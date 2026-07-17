@@ -5,7 +5,11 @@ import path from "node:path";
 const SAFE_BRANCH = /^[A-Za-z0-9._\/-]+$/;
 
 export function assertSafeBranchName(name: string): void {
-  if (!SAFE_BRANCH.test(name) || name.includes("..")) {
+  if (
+    !SAFE_BRANCH.test(name) ||
+    name.startsWith("-") ||
+    name.includes("..")
+  ) {
     throw new Error("invalid branch name");
   }
 }

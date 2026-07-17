@@ -61,11 +61,19 @@ export function CommandPalette({
   // Load tasks when opened
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setQuery("");
     setActive(0);
     getJson<{ tasks: TaskSummary[] }>("/api/tasks")
-      .then((d) => setTasks(d.tasks ?? []))
-      .catch(() => setTasks([]));
+      .then((d) => {
+        if (!cancelled) setTasks(d.tasks ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setTasks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // Debounced engine file search inside the workspace
@@ -74,6 +82,7 @@ export function CommandPalette({
       setFiles([]);
       return;
     }
+    const controller = new AbortController();
     const t = setTimeout(() => {
       const u = new URL("/api/opencode/find/file", window.location.origin);
       u.searchParams.set("directory", directory);
@@ -82,12 +91,24 @@ export function CommandPalette({
       fetch(u.toString(), {
         headers: { "x-opencode-directory": directory },
         cache: "no-store",
+        signal: controller.signal,
       })
         .then((r) => (r.ok ? r.json() : []))
-        .then((d) => setFiles(Array.isArray(d) ? d : []))
-        .catch(() => setFiles([]));
+        .then((d) => {
+          if (!controller.signal.aborted) {
+            setFiles(Array.isArray(d) ? d : []);
+          }
+        })
+        .catch((err: unknown) => {
+          if (!(err instanceof DOMException && err.name === "AbortError")) {
+            setFiles([]);
+          }
+        });
     }, 150);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
   }, [open, directory, query]);
 
   const close = useCallback(() => setOpen(false), []);

@@ -449,7 +449,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || working) return;
     setInput("");
     setSendError(null);
     stickRef.current = true;
@@ -464,7 +464,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
     }
-  }, [input, stream, model, agent]);
+  }, [input, working, stream, model, agent]);
 
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
@@ -1047,6 +1047,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   value={input}
                   rows={1}
                   disabled={!task.sessionId}
+                  readOnly={working}
                   onChange={(e) => {
                     setInput(e.target.value);
                     const el = e.currentTarget;
@@ -1059,6 +1060,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     if (
                       e.key === "Enter" &&
                       !e.shiftKey &&
+                      !working &&
                       !composingRef.current
                     ) {
                       e.preventDefault();

@@ -16,7 +16,8 @@ import type {
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "down";
 
-type StreamState = {
+export type StreamState = {
+  scopeKey: string;
   messages: MessageWithParts[];
   status: SessionStatus | null;
   permissions: PermissionRequest[];
@@ -28,7 +29,8 @@ type StreamState = {
   loaded: boolean;
 };
 
-type Action =
+export type StreamAction =
+  | { kind: "reset"; scopeKey: string }
   | { kind: "init"; messages: MessageWithParts[] }
   | { kind: "messageUpdated"; info: MessageInfo }
   | { kind: "partUpdated"; part: Part }
@@ -44,17 +46,20 @@ type Action =
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "sessionError"; message: string | null };
 
-const initialState: StreamState = {
-  messages: [],
-  status: null,
-  permissions: [],
-  questions: [],
-  todos: [],
-  revert: null,
-  connection: "connecting",
-  sessionError: null,
-  loaded: false,
-};
+export function createInitialStreamState(scopeKey = ""): StreamState {
+  return {
+    scopeKey,
+    messages: [],
+    status: null,
+    permissions: [],
+    questions: [],
+    todos: [],
+    revert: null,
+    connection: "connecting",
+    sessionError: null,
+    loaded: false,
+  };
+}
 
 /** Hide soft-reverted messages the way OpenCode Desktop does. */
 export function filterRevertedMessages(
@@ -86,8 +91,13 @@ function upsertPart(parts: Part[], part: Part): Part[] {
   return next;
 }
 
-function reducer(state: StreamState, action: Action): StreamState {
+export function sessionStreamReducer(
+  state: StreamState,
+  action: StreamAction,
+): StreamState {
   switch (action.kind) {
+    case "reset":
+      return createInitialStreamState(action.scopeKey);
     case "init":
       return { ...state, messages: action.messages, loaded: true };
     case "messageUpdated": {
@@ -164,23 +174,38 @@ function reducer(state: StreamState, action: Action): StreamState {
 
 /** Live view of one OpenCode session: initial fetch + SSE incremental updates. */
 export function useSessionStream(directory: string | null, sessionId: string | null) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const scopeKey = `${directory ?? ""}\u0000${sessionId ?? ""}`;
+  const [state, dispatch] = useReducer(
+    sessionStreamReducer,
+    scopeKey,
+    createInitialStreamState,
+  );
   const sessionRef = useRef(sessionId);
+  const scopeRef = useRef(scopeKey);
   sessionRef.current = sessionId;
+  scopeRef.current = scopeKey;
+
+  useEffect(() => {
+    dispatch({ kind: "reset", scopeKey });
+  }, [scopeKey]);
 
   const resync = useCallback(async () => {
     const sid = sessionRef.current;
     if (!directory || !sid) return;
+    const requestedScope = `${directory}\u0000${sid}`;
+    const stale = () => scopeRef.current !== requestedScope;
     try {
       const rows = await ocJson<MessageWithParts[]>(
         `/session/${sid}/message`,
         directory,
       );
+      if (stale()) return;
       dispatch({ kind: "init", messages: Array.isArray(rows) ? rows : [] });
       const statuses = await ocJson<Record<string, SessionStatus>>(
         "/session/status",
         directory,
       );
+      if (stale()) return;
       if (statuses[sid]) dispatch({ kind: "status", status: statuses[sid] });
 
       try {
@@ -188,14 +213,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           `/session/${sid}`,
           directory,
         );
+        if (stale()) return;
         dispatch({ kind: "revert", revert: session.revert ?? null });
       } catch {
+        if (stale()) return;
         dispatch({ kind: "revert", revert: null });
       }
 
       // Recover todos
       try {
         const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
+        if (stale()) return;
         if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
       } catch {
         /* non-fatal */
@@ -214,6 +242,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             }>
           | { data?: Array<Record<string, unknown>> }
         >("/permission", directory);
+        if (stale()) return;
         const list = Array.isArray(pending)
           ? pending
           : Array.isArray((pending as { data?: unknown[] })?.data)
@@ -252,6 +281,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             }>
           | { data?: Array<{ id: string; sessionID: string; questions: QuestionInfo[] }> }
         >("/question", directory);
+        if (stale()) return;
         const list = Array.isArray(pending)
           ? pending
           : Array.isArray(pending?.data)
@@ -273,8 +303,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         /* non-fatal: SSE will deliver question.asked */
       }
 
-      dispatch({ kind: "sessionError", message: null });
+      if (!stale()) dispatch({ kind: "sessionError", message: null });
     } catch (err) {
+      if (stale()) return;
       dispatch({
         kind: "sessionError",
         message: err instanceof Error ? err.message : "読み込みに失敗しました",
@@ -285,6 +316,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   useEffect(() => {
     if (!directory || !sessionId) return;
 
+    const effectScope = `${directory}\u0000${sessionId}`;
     let cancelled = false;
     let es: EventSource | null = null;
     let retryMs = 1000;
@@ -293,6 +325,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     void resync();
 
     const handleEvent = (raw: string) => {
+      if (scopeRef.current !== effectScope) return;
       let payload: {
         type?: string;
         properties?: Record<string, unknown>;
@@ -543,13 +576,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     [directory],
   );
 
+  // Effects reset the reducer after a scope change. Gate the render as well so
+  // React never paints the previous session's messages during that transition.
+  const visibleState =
+    state.scopeKey === scopeKey ? state : createInitialStreamState(scopeKey);
   const visibleMessages = useMemo(
-    () => filterRevertedMessages(state.messages, state.revert),
-    [state.messages, state.revert],
+    () => filterRevertedMessages(visibleState.messages, visibleState.revert),
+    [visibleState.messages, visibleState.revert],
   );
 
   return {
-    ...state,
+    ...visibleState,
     visibleMessages,
     resync,
     sendPrompt,

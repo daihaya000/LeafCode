@@ -6,5 +6,7 @@ export default async function TaskPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <TaskView taskId={id} />;
+  // Force local composer/stream state to reset when client navigation switches
+  // between two dynamic task IDs at the same route position.
+  return <TaskView key={id} taskId={id} />;
 }
