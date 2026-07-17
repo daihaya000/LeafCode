@@ -14,6 +14,7 @@ export type IntelligenceVariant = "high" | "low";
  * intelligence variant declarations.
  */
 export type ModelVariantMeta = {
+  name?: string;
   variants?: Record<string, { disabled?: boolean } | undefined>;
 };
 
