@@ -55,6 +55,12 @@ let caddyProc = null;
 let systray = null;
 let quitting = false;
 
+/** Tray self-healing: recreate the icon if the helper process dies unexpectedly. */
+const MAX_TRAY_RESTARTS = 5;
+let trayRestarts = 0;
+/** @type {NodeJS.Timeout | null} */
+let trayStableTimer = null;
+
 const statusOpencodeItem = {
   title: 'OpenCode: …',
   tooltip: 'OpenCode serve status',
@@ -504,73 +510,158 @@ async function quit() {
   if (quitting) return;
   quitting = true;
   log('Shutting down…');
+  if (trayStableTimer) {
+    clearTimeout(trayStableTimer);
+    trayStableTimer = null;
+  }
   stopChildren();
   removeLock();
-  if (systray) {
-    systray.kill(false);
-  } else {
-    process.exit(0);
+  try {
+    if (systray) {
+      await systray.kill(false);
+    }
+  } catch {
+    // best effort — exit regardless
   }
+  process.exit(0);
 }
 
-function createTray() {
-  systray = new SysTray({
-    menu: {
-      icon: TRAY_ICON,
-      title: 'OpenCode WebUI',
-      tooltip: 'OpenCode WebUI Host',
-      items: [
-        {
-          title: 'Open browser',
-          tooltip: `Open ${WEBUI_URL}`,
-          checked: false,
-          enabled: true,
-          click: () => openBrowser(WEBUI_URL),
+function buildTrayMenu() {
+  return {
+    icon: TRAY_ICON,
+    title: 'OpenCode WebUI',
+    tooltip: 'OpenCode WebUI Host',
+    items: [
+      {
+        title: 'Open browser',
+        tooltip: `Open ${WEBUI_URL}`,
+        checked: false,
+        enabled: true,
+        click: () => openBrowser(WEBUI_URL),
+      },
+      SysTray.separator,
+      {
+        title: 'Status',
+        tooltip: 'Service status',
+        checked: false,
+        enabled: true,
+        items: CADDY_ENABLED
+          ? [statusOpencodeItem, statusWebuiItem, statusCaddyItem]
+          : [statusOpencodeItem, statusWebuiItem],
+      },
+      {
+        title: 'Restart',
+        tooltip: 'Restart OpenCode and WebUI',
+        checked: false,
+        enabled: true,
+        click: () => {
+          restartServices().catch((err) => {
+            error(err instanceof Error ? err.message : String(err));
+          });
         },
-        SysTray.separator,
-        {
-          title: 'Status',
-          tooltip: 'Service status',
-          checked: false,
-          enabled: true,
-          items: CADDY_ENABLED
-            ? [statusOpencodeItem, statusWebuiItem, statusCaddyItem]
-            : [statusOpencodeItem, statusWebuiItem],
+      },
+      SysTray.separator,
+      {
+        title: 'Quit',
+        tooltip: 'Stop services and exit',
+        checked: false,
+        enabled: true,
+        click: () => {
+          quit().catch((err) => {
+            error(err instanceof Error ? err.message : String(err));
+          });
         },
-        {
-          title: 'Restart',
-          tooltip: 'Restart OpenCode and WebUI',
-          checked: false,
-          enabled: true,
-          click: () => {
-            restartServices().catch((err) => {
-              error(err instanceof Error ? err.message : String(err));
-            });
-          },
-        },
-        SysTray.separator,
-        {
-          title: 'Quit',
-          tooltip: 'Stop services and exit',
-          checked: false,
-          enabled: true,
-          click: () => {
-            quit().catch((err) => {
-              error(err instanceof Error ? err.message : String(err));
-            });
-          },
-        },
-      ],
-    },
-    debug: false,
-    copyDir: false,
+      },
+    ],
+  };
+}
+
+/** Wire error/exit handlers so a dead tray helper is logged and recreated. */
+function wireTrayLifecycle() {
+  if (!systray) return;
+
+  systray.onError?.((err) => {
+    error(`Tray process error: ${err instanceof Error ? err.message : String(err)}`);
   });
 
-  systray.onClick((action) => {
-    if (action.item?.click) {
-      action.item.click();
+  // Consider the tray "stable" after 60s alive → reset the restart budget.
+  if (trayStableTimer) clearTimeout(trayStableTimer);
+  trayStableTimer = setTimeout(() => {
+    trayRestarts = 0;
+  }, 60000);
+  trayStableTimer.unref?.();
+
+  systray.process?.on('exit', (code, signal) => {
+    if (trayStableTimer) {
+      clearTimeout(trayStableTimer);
+      trayStableTimer = null;
     }
+    if (quitting) return;
+    error(
+      `Tray helper exited unexpectedly (code=${code}, signal=${signal ?? 'none'}); restoring icon`,
+    );
+    scheduleTrayRestart();
   });
+}
+
+/**
+ * Create the tray icon. Prefer running the helper from a local cache (copyDir)
+ * so a OneDrive-synced/dehydrated repo path can't break or hide the icon;
+ * fall back to running it in place if the copy fails.
+ */
+async function startTray() {
+  let lastErr;
+  for (const copyDir of [true, false]) {
+    try {
+      systray = new SysTray({
+        menu: buildTrayMenu(),
+        debug: false,
+        copyDir,
+      });
+      systray.onClick((action) => {
+        if (action.item?.click) {
+          action.item.click();
+        }
+      });
+      await systray.ready();
+      log(`Tray host ready (copyDir=${copyDir})`);
+      wireTrayLifecycle();
+      return;
+    } catch (err) {
+      lastErr = err;
+      error(
+        `Tray start failed (copyDir=${copyDir}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      try {
+        await systray?.kill(false);
+      } catch {
+        // best effort
+      }
+      systray = null;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+function scheduleTrayRestart() {
+  if (quitting) return;
+  if (trayRestarts >= MAX_TRAY_RESTARTS) {
+    error(
+      `Tray restart limit reached (${MAX_TRAY_RESTARTS}); continuing without a tray icon`,
+    );
+    return;
+  }
+  trayRestarts += 1;
+  const delay = Math.min(1000 * trayRestarts, 5000);
+  log(`Recreating tray in ${delay}ms (attempt ${trayRestarts}/${MAX_TRAY_RESTARTS})…`);
+  setTimeout(() => {
+    startTray()
+      .then(() => refreshStatusMenu())
+      .catch((err) => {
+        error(`Tray recreate failed: ${err instanceof Error ? err.message : String(err)}`);
+        scheduleTrayRestart();
+      });
+  }, delay);
 }
 
 async function main() {
@@ -614,28 +705,24 @@ async function main() {
     return;
   }
 
-  createTray();
+  try {
+    await startTray();
+  } catch (err) {
+    removeLock();
+    stopChildren();
+    error(`Tray failed to start: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 
-  systray
-    .ready()
-    .then(async () => {
-      log('Tray host ready');
-      setInterval(() => {
-        refreshStatusMenu().catch(() => {});
-      }, 5000);
-      await refreshStatusMenu();
-      const webReady = await waitUntilReady(WEBUI_URL, 'WebUI');
-      await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode');
-      if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
-        openBrowser(WEBUI_URL);
-      }
-    })
-    .catch((err) => {
-      removeLock();
-      stopChildren();
-      error(`Tray failed to start: ${err.message}`);
-      process.exit(1);
-    });
+  setInterval(() => {
+    refreshStatusMenu().catch(() => {});
+  }, 5000);
+  await refreshStatusMenu();
+  const webReady = await waitUntilReady(WEBUI_URL, 'WebUI');
+  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode');
+  if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+    openBrowser(WEBUI_URL);
+  }
 }
 
 main().catch((err) => {
