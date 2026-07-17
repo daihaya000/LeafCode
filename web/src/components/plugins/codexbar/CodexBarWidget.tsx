@@ -5,6 +5,7 @@ import {
   Activity,
   AlertTriangle,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   RefreshCw,
   X,
@@ -18,6 +19,7 @@ import {
   limitedCount,
   overallUsedPercent,
   percentTone,
+  providerIconSrc,
   providerLabel,
   usageTone,
   worstProvider,
@@ -32,6 +34,7 @@ export const CODEXBAR_PLUGIN_ID = "codexbar-usage";
 
 const POLL_MS = 30_000;
 const COLLAPSED_KEY = "webui:plugin:codexbar:collapsed";
+const PROVIDERS_KEY = "webui:plugin:codexbar:providers";
 
 const barClass: Record<UsageTone, string> = {
   ok: "bg-success",
@@ -57,6 +60,51 @@ function saveCollapsed(v: boolean) {
   } catch {
     /* ignore */
   }
+}
+
+/** Per-provider collapsed map: { [providerId]: true } means minimized. */
+function loadProviderCollapsed(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(PROVIDERS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (v === true) out[k] = true;
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+function saveProviderCollapsed(map: Record<string, boolean>) {
+  try {
+    localStorage.setItem(PROVIDERS_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
+function ProviderIcon({ id, tone }: { id: string; tone: UsageTone }) {
+  const [broken, setBroken] = useState(false);
+  const src = providerIconSrc(id);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={16}
+        height={16}
+        className="h-4 w-4 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return <Activity className={cx("h-4 w-4 shrink-0", textClass[tone])} />;
 }
 
 function UsageBar({
@@ -105,29 +153,60 @@ function WindowRow({
   );
 }
 
-function ProviderRow({ p, now }: { p: CodexBarProvider; now: number }) {
+function ProviderRow({
+  p,
+  now,
+  collapsed,
+  onToggle,
+}: {
+  p: CodexBarProvider;
+  now: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const tone = usageTone(p);
   const resets = formatResetsIn(p.resetsAt, now);
   const hasWindows = p.windows.length > 0;
+  const canExpand = !p.error && (hasWindows || p.usedPercent !== null);
+  const label = providerLabel(p.id);
+
   return (
     <li className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="truncate font-semibold text-text">{providerLabel(p.id)}</span>
+      <button
+        type="button"
+        onClick={canExpand ? onToggle : undefined}
+        aria-expanded={canExpand ? !collapsed : undefined}
+        aria-label={
+          canExpand ? `${label} を${collapsed ? "展開" : "最小化"}` : undefined
+        }
+        className={cx(
+          "flex w-full items-center gap-2 text-xs",
+          canExpand && "cursor-pointer rounded-md -mx-1 px-1 py-0.5 hover:bg-surface-2",
+        )}
+      >
+        <ProviderIcon id={p.id} tone={tone} />
+        <span className="truncate font-semibold text-text">{label}</span>
         {p.error ? (
-          <span className="flex shrink-0 items-center gap-1 text-danger">
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-danger">
             <AlertTriangle className="h-3 w-3" /> エラー
           </span>
         ) : (
-          <span className={cx("shrink-0 font-mono", textClass[tone])}>
+          <span className={cx("ml-auto shrink-0 font-mono", textClass[tone])}>
             {p.usedPercent === null ? "—" : `${Math.round(p.usedPercent)}%`}
           </span>
         )}
-      </div>
+        {canExpand &&
+          (collapsed ? (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-faint" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-faint" />
+          ))}
+      </button>
 
       {p.error ? (
-        <p className="text-[10px] text-faint">{p.error}</p>
-      ) : hasWindows ? (
-        <div className="flex flex-col gap-1.5 pl-1">
+        <p className="pl-6 text-[10px] text-faint">{p.error}</p>
+      ) : collapsed ? null : hasWindows ? (
+        <div className="flex flex-col gap-1.5 pl-6">
           {p.windows.map((w) => (
             <WindowRow
               key={w.id || w.title}
@@ -139,12 +218,12 @@ function ProviderRow({ p, now }: { p: CodexBarProvider; now: number }) {
           ))}
         </div>
       ) : (
-        <>
+        <div className="pl-6">
           <UsageBar tone={tone} percent={p.usedPercent} />
           {resets && (
             <div className="text-right text-[10px] text-faint">リセット {resets}</div>
           )}
-        </>
+        </div>
       )}
     </li>
   );
@@ -155,6 +234,9 @@ export function CodexBarWidget() {
   const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [providerCollapsed, setProviderCollapsed] = useState<Record<string, boolean>>(
+    {},
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
@@ -186,6 +268,7 @@ export function CodexBarWidget() {
   useEffect(() => {
     mounted.current = true;
     setCollapsed(loadCollapsed());
+    setProviderCollapsed(loadProviderCollapsed());
     void refresh();
     const poll = setInterval(() => {
       if (document.visibilityState === "visible") {
@@ -211,6 +294,19 @@ export function CodexBarWidget() {
       return next;
     });
   };
+
+  const toggleProvider = useCallback((id: string) => {
+    setProviderCollapsed((prev) => {
+      const next = { ...prev };
+      if (next[id]) {
+        delete next[id];
+      } else {
+        next[id] = true;
+      }
+      saveProviderCollapsed(next);
+      return next;
+    });
+  }, []);
 
   const worst = usage ? worstProvider(usage) : null;
   // Tone reflects the busiest provider so urgency isn't hidden, but the shown
@@ -307,7 +403,13 @@ export function CodexBarWidget() {
         {!loadError && usage && usage.available && usage.providers.length > 0 && (
           <ul className="space-y-2.5">
             {usage.providers.map((p) => (
-              <ProviderRow key={p.id} p={p} now={now} />
+              <ProviderRow
+                key={p.id}
+                p={p}
+                now={now}
+                collapsed={!!providerCollapsed[p.id]}
+                onToggle={() => toggleProvider(p.id)}
+              />
             ))}
           </ul>
         )}

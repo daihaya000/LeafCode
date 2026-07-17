@@ -136,6 +136,22 @@ export function providerLabel(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
+/** Brand icons shared with the CodexBar desktop app (web/public/plugins/codexbar). */
+const PROVIDER_ICONS: Record<string, string> = {
+  codex: "codex.png",
+  claude: "claude.png",
+  cursor: "cursor.png",
+  ollama: "ollama.png",
+  "opencode-go": "opencode.png",
+  opencode: "opencode.png",
+};
+
+/** Public path of a provider's icon, or null when there is no bundled icon. */
+export function providerIconSrc(id: string): string | null {
+  const file = PROVIDER_ICONS[id];
+  return file ? `/plugins/codexbar/${file}` : null;
+}
+
 export type UsageTone = "ok" | "warn" | "danger";
 
 export function usageTone(

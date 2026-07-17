@@ -8,6 +8,7 @@ import {
   overallUsedPercent,
   parseCodexBarSnapshot,
   percentTone,
+  providerIconSrc,
   providerLabel,
   STALE_AFTER_MS,
   usageTone,
@@ -185,6 +186,16 @@ describe("providerLabel", () => {
     expect(providerLabel("opencode-go")).toBe("OpenCode");
     expect(providerLabel("mystery")).toBe("Mystery");
     expect(providerLabel("")).toBe("Unknown");
+  });
+});
+
+describe("providerIconSrc", () => {
+  it("maps known providers to bundled icons and null otherwise", () => {
+    expect(providerIconSrc("codex")).toBe("/plugins/codexbar/codex.png");
+    expect(providerIconSrc("opencode-go")).toBe("/plugins/codexbar/opencode.png");
+    expect(providerIconSrc("cursor")).toBe("/plugins/codexbar/cursor.png");
+    expect(providerIconSrc("mystery")).toBeNull();
+    expect(providerIconSrc("")).toBeNull();
   });
 });
 
