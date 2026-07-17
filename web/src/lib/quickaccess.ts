@@ -6,7 +6,9 @@ import path from "node:path";
 export type QuickAccessEntry = { name: string; path: string };
 
 const CACHE_MS = 30_000;
+const POWERSHELL_TIMEOUT_MS = 2_000;
 let cache: { at: number; entries: QuickAccessEntry[] } | null = null;
+let pending: Promise<QuickAccessEntry[]> | null = null;
 
 function sameKey(p: string): string {
   return path.resolve(p).toLowerCase();
@@ -54,16 +56,33 @@ function runPsJson(script: string): Promise<unknown> {
       ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script],
       { windowsHide: true, shell: false },
     );
+    let settled = false;
     let stdout = "";
     let stderr = "";
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error("quick access PowerShell timed out"));
+    }, POWERSHELL_TIMEOUT_MS);
+    timer.unref?.();
+
     child.stdout.on("data", (c) => {
       stdout += String(c);
     });
     child.stderr.on("data", (c) => {
       stderr += String(c);
     });
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (code !== 0 && !stdout.trim()) {
         reject(new Error(stderr.trim() || `powershell exited ${code}`));
         return;
@@ -116,43 +135,50 @@ else { $out | ConvertTo-Json -Compress }
 export async function listQuickAccess(): Promise<QuickAccessEntry[]> {
   if (process.platform !== "win32") return [];
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.entries;
+  if (pending) return pending;
 
-  const seen = new Set<string>();
-  const entries: QuickAccessEntry[] = [];
+  pending = (async () => {
+    const seen = new Set<string>();
+    const entries: QuickAccessEntry[] = [];
 
-  const push = (name: string, dir: string) => {
-    try {
-      const resolved = path.resolve(dir);
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-        return;
+    const push = (name: string, dir: string) => {
+      try {
+        const resolved = path.resolve(dir);
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+          return;
+        }
+        const key = sameKey(resolved);
+        if (seen.has(key)) return;
+        seen.add(key);
+        entries.push({ name: name || path.basename(resolved) || resolved, path: resolved });
+      } catch {
+        /* skip */
       }
-      const key = sameKey(resolved);
-      if (seen.has(key)) return;
-      seen.add(key);
-      entries.push({ name: name || path.basename(resolved) || resolved, path: resolved });
-    } catch {
-      /* skip */
+    };
+
+    // Pinned favorites (Links) first — closest to "ピン留め"
+    for (const e of await listLinksFolder()) {
+      push(e.name, e.path);
     }
-  };
 
-  // Pinned favorites (Links) first — closest to "ピン留め"
-  for (const e of await listLinksFolder()) {
-    push(e.name, e.path);
-  }
+    // Quick Access / Home frequent+pinned destinations jumplist
+    const qaJumplist = path.join(
+      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+      "Microsoft",
+      "Windows",
+      "Recent",
+      "AutomaticDestinations",
+      "f01b4d95cf55d32a.automaticDestinations-ms",
+    );
+    for (const p of pathsFromJumplist(qaJumplist)) {
+      push(path.basename(p) || p, p);
+    }
 
-  // Quick Access / Home frequent+pinned destinations jumplist
-  const qaJumplist = path.join(
-    process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
-    "Microsoft",
-    "Windows",
-    "Recent",
-    "AutomaticDestinations",
-    "f01b4d95cf55d32a.automaticDestinations-ms",
-  );
-  for (const p of pathsFromJumplist(qaJumplist)) {
-    push(path.basename(p) || p, p);
-  }
+    cache = { at: Date.now(), entries };
+    return entries;
+  })().finally(() => {
+    pending = null;
+  });
 
-  cache = { at: Date.now(), entries };
-  return entries;
+  return pending;
 }

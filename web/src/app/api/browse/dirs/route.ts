@@ -15,6 +15,23 @@ const SKIP = new Set([
 ]);
 
 type Entry = { name: string; path: string };
+const QUICK_ACCESS_WAIT_MS = 750;
+
+/** Do not let optional Explorer shortcuts block the usable folder listing. */
+async function quickAccessWithoutBlocking(): Promise<Entry[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      listQuickAccess().catch(() => []),
+      new Promise<Entry[]>((resolve) => {
+        timer = setTimeout(() => resolve([]), QUICK_ACCESS_WAIT_MS);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function listDirs(dir: string): Entry[] {
   const entries: Entry[] = [];
@@ -90,7 +107,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const entries = listDirs(resolved);
-    const quickAccess = atHome ? await listQuickAccess() : [];
+    const quickAccess = atHome ? await quickAccessWithoutBlocking() : [];
     return NextResponse.json({
       path: resolved,
       parent,
