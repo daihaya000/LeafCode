@@ -15,6 +15,9 @@ import {
   clampPercent,
   formatResetsIn,
   isStale,
+  limitedCount,
+  overallUsedPercent,
+  percentTone,
   providerLabel,
   usageTone,
   worstProvider,
@@ -56,13 +59,60 @@ function saveCollapsed(v: boolean) {
   }
 }
 
+function UsageBar({
+  tone,
+  percent,
+}: {
+  tone: UsageTone;
+  percent: number | null;
+}) {
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+      <div
+        className={cx("h-full rounded-full transition-all", barClass[tone])}
+        style={{ width: `${clampPercent(percent)}%` }}
+      />
+    </div>
+  );
+}
+
+function WindowRow({
+  title,
+  percent,
+  resetsAt,
+  now,
+}: {
+  title: string;
+  percent: number | null;
+  resetsAt: string | null;
+  now: number;
+}) {
+  const tone = percentTone(percent);
+  const resets = formatResetsIn(resetsAt, now);
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="truncate text-muted">{title}</span>
+        <span className={cx("shrink-0 font-mono", textClass[tone])}>
+          {percent === null ? "—" : `${Math.round(percent)}%`}
+        </span>
+      </div>
+      <UsageBar tone={tone} percent={percent} />
+      {resets && (
+        <div className="text-right text-[10px] text-faint">リセット {resets}</div>
+      )}
+    </div>
+  );
+}
+
 function ProviderRow({ p, now }: { p: CodexBarProvider; now: number }) {
   const tone = usageTone(p);
   const resets = formatResetsIn(p.resetsAt, now);
+  const hasWindows = p.windows.length > 0;
   return (
-    <li className="flex flex-col gap-1">
+    <li className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="truncate font-medium text-text">{providerLabel(p.id)}</span>
+        <span className="truncate font-semibold text-text">{providerLabel(p.id)}</span>
         {p.error ? (
           <span className="flex shrink-0 items-center gap-1 text-danger">
             <AlertTriangle className="h-3 w-3" /> エラー
@@ -73,19 +123,28 @@ function ProviderRow({ p, now }: { p: CodexBarProvider; now: number }) {
           </span>
         )}
       </div>
-      {!p.error && (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-          <div
-            className={cx("h-full rounded-full transition-all", barClass[tone])}
-            style={{ width: `${clampPercent(p.usedPercent)}%` }}
-          />
+
+      {p.error ? (
+        <p className="text-[10px] text-faint">{p.error}</p>
+      ) : hasWindows ? (
+        <div className="flex flex-col gap-1.5 pl-1">
+          {p.windows.map((w) => (
+            <WindowRow
+              key={w.id || w.title}
+              title={w.title || "—"}
+              percent={w.usedPercent}
+              resetsAt={w.resetsAt}
+              now={now}
+            />
+          ))}
         </div>
-      )}
-      {(resets || p.error) && (
-        <div className="flex items-center justify-between gap-2 text-[10px] text-faint">
-          <span className="truncate">{p.error ?? ""}</span>
-          {resets && <span className="shrink-0">リセット {resets}</span>}
-        </div>
+      ) : (
+        <>
+          <UsageBar tone={tone} percent={p.usedPercent} />
+          {resets && (
+            <div className="text-right text-[10px] text-faint">リセット {resets}</div>
+          )}
+        </>
       )}
     </li>
   );
@@ -154,7 +213,11 @@ export function CodexBarWidget() {
   };
 
   const worst = usage ? worstProvider(usage) : null;
+  // Tone reflects the busiest provider so urgency isn't hidden, but the shown
+  // value is the overall (mean) usage across providers, not just the max.
   const summaryTone: UsageTone = worst ? usageTone(worst) : "ok";
+  const overall = usage ? overallUsedPercent(usage) : null;
+  const limited = usage ? limitedCount(usage) : 0;
 
   if (collapsed) {
     return (
@@ -162,14 +225,17 @@ export function CodexBarWidget() {
         type="button"
         onClick={toggleCollapsed}
         aria-label="CodexBar 利用状況を開く"
-        title="CodexBar 利用状況を開く"
+        title="CodexBar 利用状況を開く（全体平均）"
         className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs shadow-lg hover:bg-surface-2"
       >
         <Activity className={cx("h-3.5 w-3.5", textClass[summaryTone])} />
         <span className="font-medium text-text">CodexBar</span>
-        {worst && !worst.error && worst.usedPercent !== null && (
-          <span className={cx("font-mono", textClass[summaryTone])}>
-            {Math.round(worst.usedPercent)}%
+        {overall !== null && (
+          <span className="font-mono text-muted">全体 {Math.round(overall)}%</span>
+        )}
+        {limited > 0 && (
+          <span className="rounded-full bg-danger-bg px-1.5 font-mono text-danger">
+            {limited} 制限
           </span>
         )}
       </button>
@@ -177,8 +243,8 @@ export function CodexBarWidget() {
   }
 
   return (
-    <div className="w-64 rounded-xl border border-border bg-surface shadow-xl">
-      <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
+    <div className="flex max-h-[80vh] w-72 flex-col rounded-xl border border-border bg-surface shadow-xl">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
         <Activity className={cx("h-4 w-4", textClass[summaryTone])} />
         <span className="flex-1 truncate text-xs font-semibold text-text">
           CodexBar 利用状況
@@ -213,7 +279,7 @@ export function CodexBarWidget() {
         </button>
       </div>
 
-      <div className="px-3 py-2.5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
         {tokens?.available && tokens.totals.totalTokens > 0 && (
           <div
             className="mb-2.5 flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-2 py-1.5 text-[11px]"
@@ -248,7 +314,7 @@ export function CodexBarWidget() {
       </div>
 
       {usage?.available && usage.generatedAt && (
-        <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-[10px] text-faint">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-[10px] text-faint">
           <span>更新 {timeAgo(usage.generatedAt)}</span>
           {isStale(usage.generatedAt, now) && (
             <span className="text-warning">古い可能性（CodexBar 停止中?）</span>

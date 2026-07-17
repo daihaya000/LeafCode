@@ -4,7 +4,10 @@ import {
   emptyUsage,
   formatResetsIn,
   isStale,
+  limitedCount,
+  overallUsedPercent,
   parseCodexBarSnapshot,
+  percentTone,
   providerLabel,
   STALE_AFTER_MS,
   usageTone,
@@ -88,6 +91,84 @@ describe("parseCodexBarSnapshot", () => {
     const u = parseCodexBarSnapshot({ providers: [null, 3, { codexBarProviderId: "codex" }] });
     expect(u.providers).toHaveLength(1);
     expect(u.providers[0].id).toBe("codex");
+  });
+});
+
+describe("parseCodexBarSnapshot windows", () => {
+  it("parses per-window detail defensively", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        {
+          codexBarProviderId: "claude",
+          usedPercent: 23,
+          windows: [
+            { id: "claude-5h", title: "5時間", usedPercent: 0, windowMinutes: 300 },
+            {
+              id: "claude-weekly",
+              title: "週間",
+              usedPercent: 13,
+              resetsAt: "2026-07-20T05:00:00Z",
+              windowMinutes: 10080,
+            },
+            null,
+            "junk",
+          ],
+        },
+      ],
+    });
+    expect(u.providers[0].windows).toHaveLength(2);
+    expect(u.providers[0].windows[0]).toEqual({
+      id: "claude-5h",
+      title: "5時間",
+      usedPercent: 0,
+      resetsAt: null,
+      windowMinutes: 300,
+    });
+    expect(u.providers[0].windows[1].usedPercent).toBe(13);
+  });
+
+  it("defaults windows to [] when absent or not an array", () => {
+    expect(parseCodexBarSnapshot({ providers: [{ codexBarProviderId: "codex" }] }).providers[0].windows).toEqual([]);
+    expect(
+      parseCodexBarSnapshot({ providers: [{ codexBarProviderId: "codex", windows: "no" }] }).providers[0].windows,
+    ).toEqual([]);
+  });
+});
+
+describe("percentTone", () => {
+  it("maps thresholds and null", () => {
+    expect(percentTone(null)).toBe("ok");
+    expect(percentTone(10)).toBe("ok");
+    expect(percentTone(80)).toBe("warn");
+    expect(percentTone(95)).toBe("danger");
+    expect(percentTone(100)).toBe("danger");
+  });
+});
+
+describe("overallUsedPercent", () => {
+  it("averages provider usedPercent and ignores nulls", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "a", usedPercent: 10 },
+        { codexBarProviderId: "b", usedPercent: 50 },
+        { codexBarProviderId: "c", error: "x" },
+      ],
+    });
+    expect(overallUsedPercent(u)).toBe(30); // (10+50)/2
+    expect(overallUsedPercent(emptyUsage("x"))).toBeNull();
+  });
+});
+
+describe("limitedCount", () => {
+  it("counts limited or maxed providers", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "a", usedPercent: 10 },
+        { codexBarProviderId: "b", usedPercent: 95 },
+        { codexBarProviderId: "c", usedPercent: 100 },
+      ],
+    });
+    expect(limitedCount(u)).toBe(2);
   });
 });
 

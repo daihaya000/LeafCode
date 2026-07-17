@@ -7,6 +7,16 @@
 
 export const CODEXBAR_SCHEMA = "codexbar.usage-snapshot/v1";
 
+/** A single rate-limit window (e.g. 5時間 / 週間 / 月間) for a provider. */
+export type CodexBarWindow = {
+  id: string;
+  title: string;
+  usedPercent: number | null;
+  resetsAt: string | null;
+  /** Window length in minutes (e.g. 300 = 5h, 10080 = weekly), or null. */
+  windowMinutes: number | null;
+};
+
 export type CodexBarProvider = {
   /** codexBarProviderId (codex/claude/cursor/opencode-go/ollama), falls back to opencode id. */
   id: string;
@@ -21,6 +31,8 @@ export type CodexBarProvider = {
   updatedAt: string | null;
   /** Present only when the fetch failed. */
   error: string | null;
+  /** Per-window detail (5時間/週間/…). Empty for older snapshots. */
+  windows: CodexBarWindow[];
 };
 
 export type CodexBarUsage = {
@@ -73,6 +85,20 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
       const usedPercent = asNumber(p.usedPercent);
       const limited = p.limited === true || (usedPercent !== null && usedPercent >= 90);
       const maxed = p.maxed === true || (usedPercent !== null && usedPercent >= 99.5);
+      const windows: CodexBarWindow[] = Array.isArray(p.windows)
+        ? p.windows
+            .filter(
+              (w): w is Record<string, unknown> =>
+                !!w && typeof w === "object" && !Array.isArray(w),
+            )
+            .map((w) => ({
+              id: asString(w.id) ?? "",
+              title: asString(w.title) ?? "",
+              usedPercent: asNumber(w.usedPercent),
+              resetsAt: asString(w.resetsAt),
+              windowMinutes: asNumber(w.windowMinutes),
+            }))
+        : [];
       return {
         id: asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown",
         opencodeId: asString(p.opencodeProviderId),
@@ -82,6 +108,7 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
         resetsAt: asString(p.resetsAt),
         updatedAt: asString(p.updatedAt),
         error: asString(p.error),
+        windows,
       };
     });
 
@@ -119,6 +146,32 @@ export function usageTone(
   const u = p.usedPercent ?? 0;
   if (u >= 75) return "warn";
   return "ok";
+}
+
+/** Tone from a bare percent (for individual windows): >=90 danger, >=75 warn. */
+export function percentTone(usedPercent: number | null): UsageTone {
+  const u = usedPercent ?? 0;
+  if (u >= 90) return "danger";
+  if (u >= 75) return "warn";
+  return "ok";
+}
+
+/**
+ * Overall usage across all providers = mean of each provider's usedPercent.
+ * Used for the collapsed pill so it reflects the whole picture rather than
+ * only the single busiest provider. Null when no numeric data.
+ */
+export function overallUsedPercent(usage: CodexBarUsage): number | null {
+  const vals = usage.providers
+    .map((p) => p.usedPercent)
+    .filter((v): v is number => v !== null);
+  if (vals.length === 0) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+/** How many providers are at/over their limit (limited or maxed). */
+export function limitedCount(usage: CodexBarUsage): number {
+  return usage.providers.filter((p) => p.limited || p.maxed).length;
 }
 
 /** Clamp a percent to the 0..100 range for bar widths (data may exceed 100). */
