@@ -31,4 +31,26 @@ describe("makeWorktreeBranchName", () => {
       }),
     ).toBe("webui/develop/patch-11223344");
   });
+
+  it("strips a leading dot so dotfile titles yield a valid ref", () => {
+    // ".gitignore を修正" must not become webui/main/.gitignore-... which git
+    // rejects (component may not start with a dot).
+    const name = makeWorktreeBranchName({
+      displayName: ".gitignore を修正",
+      workspaceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      baseBranch: "main",
+    });
+    expect(name).toBe("webui/main/gitignore-a1b2c3d4");
+    expect(name.split("/").every((seg) => !seg.startsWith("."))).toBe(true);
+  });
+
+  it("falls back to task when only a dot remains after sanitizing", () => {
+    expect(
+      makeWorktreeBranchName({
+        displayName: "...",
+        workspaceId: "deadbeef-0000-0000-0000-000000000002",
+        baseBranch: "main",
+      }),
+    ).toBe("webui/main/task-deadbeef");
+  });
 });

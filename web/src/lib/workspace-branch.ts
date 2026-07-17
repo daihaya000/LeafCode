@@ -7,14 +7,18 @@
  */
 
 function sanitizeBranchSegment(raw: string, max: number): string {
+  // Strip leading/trailing dots as well as dashes: git's check-ref-format
+  // rejects any slash-separated component that starts with "." or ends with "."
+  // (or ".lock"), so a title like ".gitignore を修正" must not yield
+  // "webui/main/.gitignore-<id>" which git refuses (worktree add → HTTP 500).
   return raw
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/\.+/g, ".")
-    .replace(/^-+|-+$/g, "")
+    .replace(/^[.-]+|[.-]+$/g, "")
     .replace(/-+/g, "-")
     .slice(0, max)
-    .replace(/^-+|-+$/g, "");
+    .replace(/^[.-]+|[.-]+$/g, "");
 }
 
 export function makeWorktreeBranchName(input: {
