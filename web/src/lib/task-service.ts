@@ -6,6 +6,7 @@ import {
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
+import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
 import type { SessionStatus, TaskSummary } from "./types";
 
@@ -93,10 +94,27 @@ function toTask(
   };
 }
 
+/**
+ * On the first task listing after a (re)start, pull any sessions recorded in
+ * project-local manifests back into the DB. Idempotent + memoized per process
+ * so it costs nothing on subsequent polls.
+ */
+let restoredOnce = false;
+function restoreFromManifestsOnce(): void {
+  if (restoredOnce) return;
+  restoredOnce = true;
+  try {
+    restoreAllKnownProjects();
+  } catch {
+    /* best-effort; never block task listing */
+  }
+}
+
 export async function listTasks(): Promise<{
   tasks: TaskSummary[];
   engineOk: boolean;
 }> {
+  restoreFromManifestsOnce();
   const workspaces = listWorkspacesJoined();
   const bindings = latestBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bindSession, getDb, getWorkspace } from "@/lib/db";
+import { persistProjectSessions } from "@/lib/project-session-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,5 +56,6 @@ export async function POST(req: NextRequest, context: Ctx) {
   }
 
   bindSession(id, body.opencodeSessionId, body.title?.trim() || "Session");
+  persistProjectSessions(ws.project_id);
   return NextResponse.json({ ok: true });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { listProjects, upsertProject } from "@/lib/db";
 import { realPathOrResolved } from "@/lib/allowlist";
+import { restoreProjectFromManifest } from "@/lib/project-session-sync";
 import { destroyProject, ServiceError } from "@/lib/workspace-service";
 
 export const runtime = "nodejs";
@@ -42,6 +43,10 @@ export async function POST(req: NextRequest) {
     favorite: body.favorite,
   });
 
+  // Restore any sessions recorded in the repo's local manifest so opening a
+  // project brings back its prior sessions (survives DB reset / fresh clone).
+  const restored = restoreProjectFromManifest(rootPath, row.id);
+
   return NextResponse.json({
     project: {
       id: row.id,
@@ -51,6 +56,7 @@ export async function POST(req: NextRequest) {
       lastOpenedAt: row.last_opened_at,
       createdAt: row.created_at,
     },
+    restored,
   });
 }
 

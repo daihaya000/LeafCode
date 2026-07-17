@@ -210,6 +210,7 @@ export function bindSession(
   workspaceId: string,
   opencodeSessionId: string,
   title: string,
+  updatedAt?: string,
 ): void {
   getDb()
     .prepare(
@@ -219,7 +220,55 @@ export function bindSession(
          title = excluded.title,
          updated_at = excluded.updated_at`,
     )
-    .run(workspaceId, opencodeSessionId, title, new Date().toISOString());
+    .run(workspaceId, opencodeSessionId, title, updatedAt ?? new Date().toISOString());
+}
+
+/** All session bindings for a workspace (newest first). */
+export function listSessionBindings(workspaceId: string): SessionBindingRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM session_bindings WHERE workspace_id = ?
+       ORDER BY updated_at DESC`,
+    )
+    .all(workspaceId) as SessionBindingRow[];
+}
+
+/**
+ * Insert a workspace row verbatim (preserving id/status/created_at), skipping
+ * when the id already exists. Used to restore workspaces from a project-local
+ * manifest without clobbering live rows.
+ */
+export function importWorkspaceRow(row: {
+  id: string;
+  projectId: string;
+  displayName: string;
+  absolutePath: string;
+  isolation: WorkspaceRow["isolation"];
+  baseBranch?: string | null;
+  worktreePath?: string | null;
+  status?: WorkspaceRow["status"];
+  createdAt?: string;
+}): boolean {
+  const existing = getWorkspace(row.id);
+  if (existing) return false;
+  getDb()
+    .prepare(
+      `INSERT INTO workspaces
+        (id, project_id, display_name, absolute_path, isolation, base_branch, worktree_path, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      row.id,
+      row.projectId,
+      row.displayName,
+      row.absolutePath,
+      row.isolation,
+      row.baseBranch ?? null,
+      row.worktreePath ?? null,
+      row.status ?? "active",
+      row.createdAt ?? new Date().toISOString(),
+    );
+  return true;
 }
 
 export type WorkspaceJoinedRow = WorkspaceRow & {

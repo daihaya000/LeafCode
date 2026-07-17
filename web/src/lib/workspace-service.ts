@@ -17,6 +17,7 @@ import {
   setWorkspaceStatus,
 } from "./db";
 import { addWorktree, removeWorktree, runGit } from "./git";
+import { persistProjectSessions } from "./project-session-sync";
 import { makeWorktreeBranchName } from "./workspace-branch";
 
 export type Isolation =
@@ -144,6 +145,7 @@ export async function provisionWorkspace(input: {
     worktreePath,
   });
 
+  persistProjectSessions(input.projectId);
   return { workspace: row, note };
 }
 
@@ -200,6 +202,7 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   }
 
   deleteWorkspace(id);
+  persistProjectSessions(row.project_id);
   return row;
 }
 

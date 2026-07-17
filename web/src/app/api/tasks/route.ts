@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { OcError, ocServer } from "@/lib/oc-server";
+import { persistProjectSessions } from "@/lib/project-session-sync";
 import { listTasks } from "@/lib/task-service";
 import {
   ServiceError,
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
     );
     bindSession(workspace.id, session.id, title);
     touchProjectOpened(workspace.project_id);
+    persistProjectSessions(workspace.project_id);
     return NextResponse.json({
       taskId: workspace.id,
       sessionId: session.id,
