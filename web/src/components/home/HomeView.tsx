@@ -64,7 +64,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       const nextProjects = data.projects ?? [];
       setProjects(nextProjects);
       setProjectId((cur) => {
-        if (cur) return cur;
+        if (cur && nextProjects.some((project) => project.id === cur)) {
+          return cur;
+        }
         if (
           initialProjectId &&
           nextProjects.some((project) => project.id === initialProjectId)

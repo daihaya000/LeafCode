@@ -5,10 +5,12 @@ export default async function Home({
 }: {
   searchParams: Promise<{ projectId?: string | string[] }>;
 }) {
-  const projectId = (await searchParams).projectId;
+  const query = await searchParams;
+  const projectId = typeof query.projectId === "string" ? query.projectId : undefined;
   return (
     <HomeView
-      initialProjectId={typeof projectId === "string" ? projectId : undefined}
+      key={projectId}
+      initialProjectId={projectId}
     />
   );
 }
