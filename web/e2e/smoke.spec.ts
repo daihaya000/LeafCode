@@ -14,3 +14,11 @@ test("has the expected document title", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/OpenCode/);
 });
+
+test("settings page renders its sections", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "設定", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Remote Workspace" }),
+  ).toBeVisible();
+});
