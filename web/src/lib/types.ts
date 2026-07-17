@@ -153,6 +153,8 @@ export type DiffFile = {
 export type DiffFilesPayload = {
   git: boolean;
   branch: string | null;
+  /** Base ref this diff was computed against (merge-base compare), if any. */
+  base?: string | null;
   files: DiffFile[];
   additions: number;
   deletions: number;

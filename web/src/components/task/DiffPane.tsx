@@ -202,6 +202,7 @@ export function DiffPane({
   const [prAvailable, setPrAvailable] = useState<boolean | null>(null);
   const [sideBySide, setSideBySide] = useState(false);
   const [filter, setFilter] = useState<"all" | "tracked" | "untracked">("all");
+  const [baseCompare, setBaseCompare] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRefs = useRef(new Map<string, HTMLDivElement>());
@@ -210,9 +211,9 @@ export function DiffPane({
     setLoading(true);
     setError(null);
     try {
-      const data = await getJson<DiffFilesPayload>("/api/diff/files", {
-        directory,
-      });
+      const query: Record<string, string> = { directory };
+      if (baseCompare) query.base = baseCompare;
+      const data = await getJson<DiffFilesPayload>("/api/diff/files", query);
       setPayload(data);
       setExpanded((prev) => {
         // keep manual choices; default-expand when few files
@@ -227,7 +228,7 @@ export function DiffPane({
     } finally {
       setLoading(false);
     }
-  }, [directory]);
+  }, [directory, baseCompare]);
 
   useEffect(() => {
     void load();
@@ -362,6 +363,31 @@ export function DiffPane({
           <DiffStat additions={payload.additions} deletions={payload.deletions} />
         )}
         <span className="flex-1" />
+        {branches && branches.branches.length > 0 && (
+          <select
+            value={baseCompare}
+            onChange={(e) => {
+              setBaseCompare(e.target.value);
+              if (e.target.value && panel === "commit") setPanel(null);
+            }}
+            title="比較の基準（選択したブランチとの分岐点から比較）"
+            className={cx(
+              "h-8 max-w-[11rem] cursor-pointer rounded-lg border px-2 text-[11px] outline-none",
+              baseCompare
+                ? "border-border-strong bg-surface text-fg"
+                : "border-border bg-surface-2 text-muted",
+            )}
+          >
+            <option value="">未コミット変更</option>
+            {branches.branches
+              .filter((b) => b !== branches.current)
+              .map((b) => (
+                <option key={b} value={b}>
+                  vs {b}
+                </option>
+              ))}
+          </select>
+        )}
         <select
           value={filter}
           onChange={(e) =>
@@ -386,7 +412,12 @@ export function DiffPane({
         <Button
           variant={panel === "commit" ? "secondary" : "ghost"}
           size="sm"
-          disabled={!hasChanges}
+          disabled={!hasChanges || !!baseCompare}
+          title={
+            baseCompare
+              ? "ブランチ比較中はコミットできません（未コミット変更に切替）"
+              : undefined
+          }
           onClick={() => setPanel(panel === "commit" ? null : "commit")}
         >
           <GitCommitHorizontal className="h-3.5 w-3.5" />

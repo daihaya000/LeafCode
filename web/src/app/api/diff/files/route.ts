@@ -58,33 +58,61 @@ export async function GET(req: NextRequest) {
     }
     const branch = head.stdout.trim() || null;
 
-    // Tracked changes (staged + unstaged vs HEAD); fresh repos fall back
-    let diff = await runGit(dir, [
-      "diff",
-      "HEAD",
-      "--no-color",
-      "--no-ext-diff",
-      "-M",
-    ]);
-    if (diff.code !== 0) {
-      const unstaged = await runGit(dir, [
+    const baseParam = req.nextUrl.searchParams.get("base");
+    const base =
+      baseParam && /^[\w./+-]{1,200}$/.test(baseParam) ? baseParam : null;
+
+    let diff: { code: number; stdout: string; stderr: string };
+    if (base) {
+      // All changes on this branch/worktree vs the merge-base with `base`
+      // (committed + working tree). Fall back to a two-dot diff on old git.
+      diff = await runGit(dir, [
         "diff",
+        "--merge-base",
+        base,
         "--no-color",
         "--no-ext-diff",
         "-M",
       ]);
-      const staged = await runGit(dir, [
+      if (diff.code !== 0) {
+        diff = await runGit(dir, [
+          "diff",
+          base,
+          "--no-color",
+          "--no-ext-diff",
+          "-M",
+        ]);
+      }
+      if (diff.code !== 0) diff = { code: 0, stdout: "", stderr: "" };
+    } else {
+      // Tracked changes (staged + unstaged vs HEAD); fresh repos fall back
+      diff = await runGit(dir, [
         "diff",
-        "--cached",
+        "HEAD",
         "--no-color",
         "--no-ext-diff",
         "-M",
       ]);
-      diff = {
-        code: 0,
-        stdout: [staged.stdout, unstaged.stdout].filter(Boolean).join("\n"),
-        stderr: "",
-      };
+      if (diff.code !== 0) {
+        const unstaged = await runGit(dir, [
+          "diff",
+          "--no-color",
+          "--no-ext-diff",
+          "-M",
+        ]);
+        const staged = await runGit(dir, [
+          "diff",
+          "--cached",
+          "--no-color",
+          "--no-ext-diff",
+          "-M",
+        ]);
+        diff = {
+          code: 0,
+          stdout: [staged.stdout, unstaged.stdout].filter(Boolean).join("\n"),
+          stderr: "",
+        };
+      }
     }
 
     const files: DiffFile[] = parseUnifiedDiff(diff.stdout);
@@ -147,6 +175,7 @@ export async function GET(req: NextRequest) {
     const payload: DiffFilesPayload = {
       git: true,
       branch,
+      base,
       files,
       additions,
       deletions,
