@@ -22,6 +22,7 @@ import {
   type CodexBarUsage,
   type UsageTone,
 } from "@/lib/plugins/codexbar";
+import { formatTokens, type CodexTokensResult } from "@/lib/plugins/codex-tokens";
 import { writePluginEnabled } from "@/lib/plugins/state";
 
 export const CODEXBAR_PLUGIN_ID = "codexbar-usage";
@@ -92,6 +93,7 @@ function ProviderRow({ p, now }: { p: CodexBarProvider; now: number }) {
 
 export function CodexBarWidget() {
   const [usage, setUsage] = useState<CodexBarUsage | null>(null);
+  const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,6 +112,15 @@ export function CodexBarWidget() {
       setLoadError(err instanceof Error ? err.message : "取得に失敗しました");
     } finally {
       if (mounted.current) setRefreshing(false);
+    }
+    // Token totals are best-effort and independent of the usage snapshot.
+    try {
+      const tok = await getJson<CodexTokensResult>("/api/plugins/codexbar/tokens", {
+        days: "1",
+      });
+      if (mounted.current) setTokens(tok);
+    } catch {
+      /* leave previous tokens value */
     }
   }, []);
 
@@ -203,6 +214,18 @@ export function CodexBarWidget() {
       </div>
 
       <div className="px-3 py-2.5">
+        {tokens?.available && tokens.totals.totalTokens > 0 && (
+          <div
+            className="mb-2.5 flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-2 py-1.5 text-[11px]"
+            title={`${tokens.totals.totalTokens.toLocaleString()} tokens across ${tokens.sessions} sessions (last 24h)`}
+          >
+            <span className="text-muted">直近24h トークン</span>
+            <span className="font-mono text-text">
+              {formatTokens(tokens.totals.totalTokens)} · {tokens.sessions}
+              <span className="text-faint">s</span>
+            </span>
+          </div>
+        )}
         {loadError && (
           <p className="text-[11px] text-danger">読み込みエラー: {loadError}</p>
         )}
