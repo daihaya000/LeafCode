@@ -40,6 +40,12 @@ import {
 } from "@/lib/access-mode";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
+import {
+  COST_DISPLAY_EVENT,
+  formatCost,
+  readCostDisplayPrefs,
+  type CostDisplayPrefs,
+} from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import { decideNotification, notificationText } from "@/lib/notify";
 import { useSessionStream } from "@/lib/useSessionStream";
@@ -181,6 +187,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
+  const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
+    readCostDisplayPrefs(),
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const composingRef = useRef(false);
@@ -238,6 +247,18 @@ export function TaskView({ taskId }: { taskId: string }) {
     };
     window.addEventListener("webui:access-mode", onMode);
     return () => window.removeEventListener("webui:access-mode", onMode);
+  }, []);
+
+  useEffect(() => {
+    setCostPrefs(readCostDisplayPrefs());
+    const onPrefs = (e: Event) => {
+      const detail = (e as CustomEvent<CostDisplayPrefs>).detail;
+      if (detail?.currency === "USD" || detail?.currency === "JPY") {
+        setCostPrefs(detail);
+      }
+    };
+    window.addEventListener(COST_DISPLAY_EVENT, onPrefs);
+    return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
   }, []);
 
   const changeAccessMode = useCallback((mode: AccessMode) => {
@@ -983,7 +1004,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       typeof m.info.cost === "number" &&
                       m.info.cost > 0 && (
                         <p className="break-all text-[10px] text-faint">
-                          cost ${m.info.cost.toFixed(4)}
+                          {formatCost(m.info.cost, costPrefs)}
                           {m.info.modelID ? ` · ${m.info.modelID}` : ""}
                         </p>
                       )}

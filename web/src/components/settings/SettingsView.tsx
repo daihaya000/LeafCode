@@ -8,6 +8,14 @@ import { Badge, Button, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
+import {
+  DEFAULT_USD_JPY_RATE,
+  formatCost,
+  readCostDisplayPrefs,
+  writeCostDisplayPrefs,
+  type CostCurrency,
+  type CostDisplayPrefs,
+} from "@/lib/currency";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type OrphanDto = {
@@ -43,6 +51,34 @@ export function SettingsView() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [mcpStatus, setMcpStatus] = useState<string>("未取得");
+  const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
+    readCostDisplayPrefs(),
+  );
+  const [rateDraft, setRateDraft] = useState(() =>
+    String(readCostDisplayPrefs().usdJpyRate),
+  );
+
+  useEffect(() => {
+    const prefs = readCostDisplayPrefs();
+    setCostPrefs(prefs);
+    setRateDraft(String(prefs.usdJpyRate));
+  }, []);
+
+  const applyCostPrefs = (next: CostDisplayPrefs) => {
+    setCostPrefs(next);
+    setRateDraft(String(next.usdJpyRate));
+    writeCostDisplayPrefs(next);
+  };
+
+  const setCurrency = (currency: CostCurrency) => {
+    applyCostPrefs({ ...costPrefs, currency });
+  };
+
+  const commitRate = () => {
+    const n = Number(rateDraft);
+    const usdJpyRate = Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE;
+    applyCostPrefs({ ...costPrefs, usdJpyRate });
+  };
 
   const refresh = useCallback(async () => {
     const [h, p, r, o, a, m] = await Promise.allSettled([
@@ -328,6 +364,61 @@ export function SettingsView() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-muted">コスト表示</h2>
+          <p className="mb-3 text-xs text-faint">
+            OpenCode のコストは USD 基準です。日本円表示は設定レートでの換算です。
+          </p>
+          <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { value: "USD" as const, label: "米ドル ($)" },
+                  { value: "JPY" as const, label: "日本円 (¥)" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setCurrency(opt.value)}
+                  className={
+                    costPrefs.currency === opt.value
+                      ? "rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent"
+                      : "rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+              <span className="shrink-0 text-xs text-muted">USD/JPY レート</span>
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                step={0.1}
+                value={rateDraft}
+                onChange={(e) => setRateDraft(e.target.value)}
+                onBlur={() => commitRate()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.currentTarget.blur();
+                  }
+                }}
+                className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
+              />
+              <span className="text-[11px] text-faint">
+                例:{" "}
+                {formatCost(0.1542, {
+                  currency: "JPY",
+                  usdJpyRate: Number(rateDraft) || costPrefs.usdJpyRate,
+                })}
+              </span>
+            </label>
+          </div>
         </section>
 
         <section>
