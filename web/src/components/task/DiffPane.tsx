@@ -21,6 +21,7 @@ import { Button, DiffStat, Spinner, cx } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import type { DiffFile, DiffFilesPayload } from "@/lib/types";
 import { tintCodeLine } from "@/lib/difftint";
+import { suggestCommitMessage } from "@/lib/commit-message";
 
 const MAX_LINES_PER_FILE = 500;
 
@@ -442,6 +443,24 @@ export function DiffPane({
               if (e.key === "Enter" && commitMsg.trim()) void commit();
             }}
           />
+          <Button
+            variant="ghost"
+            size="md"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={selectedPaths.length === 0}
+            title="選択したファイルからメッセージ案を生成"
+            onClick={() =>
+              setCommitMsg(
+                suggestCommitMessage(
+                  files
+                    .filter((f) => !deselected[f.path])
+                    .map((f) => ({ path: f.path, untracked: f.untracked })),
+                ),
+              )
+            }
+          >
+            生成
+          </Button>
           <Button
             variant="primary"
             size="md"
