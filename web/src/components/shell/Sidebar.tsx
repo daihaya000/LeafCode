@@ -280,7 +280,7 @@ export function Sidebar({
           className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2"
         >
           <FolderGit2 className="h-4.5 w-4.5 shrink-0" />
-          <span className="truncate">OpenCode</span>
+          <span className="truncate">OpenCodeWebUI</span>
         </Link>
         <Link
           href="/"
