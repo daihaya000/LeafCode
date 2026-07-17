@@ -57,14 +57,55 @@ export async function addWorktree(input: {
   }
 }
 
+/** Clear read-only attributes so Windows can unlink git objects/packs. */
+function clearReadonlyRecursive(target: string): void {
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(target);
+  } catch {
+    return;
+  }
+  try {
+    fs.chmodSync(target, 0o700);
+  } catch {
+    /* best effort */
+  }
+  if (stat.isDirectory()) {
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(target);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      clearReadonlyRecursive(path.join(target, entry));
+    }
+  }
+}
+
 function rmDirBestEffort(target: string): void {
   if (!fs.existsSync(target)) return;
-  fs.rmSync(target, {
-    recursive: true,
-    force: true,
-    maxRetries: 10,
-    retryDelay: 250,
-  });
+  try {
+    fs.rmSync(target, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 250,
+    });
+  } catch (err) {
+    // Windows: read-only git objects/packs cause EPERM. Clear attrs and retry.
+    if (fs.existsSync(target)) {
+      clearReadonlyRecursive(target);
+      fs.rmSync(target, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 250,
+      });
+    } else {
+      throw err;
+    }
+  }
 }
 
 function sleep(ms: number): Promise<void> {
