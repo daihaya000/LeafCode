@@ -476,13 +476,23 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       opts?: {
         agent?: string;
         model?: { providerID: string; modelID: string };
+        files?: { uri: string; mime: string; name?: string }[];
       },
     ) => {
       const sid = sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
-      const body: Record<string, unknown> = {
-        parts: [{ type: "text", text }],
-      };
+      const parts: Record<string, unknown>[] = [{ type: "text", text }];
+      if (opts?.files && opts.files.length > 0) {
+        for (const f of opts.files) {
+          parts.push({
+            type: "file",
+            mime: f.mime,
+            url: f.uri,
+            ...(f.name ? { filename: f.name } : {}),
+          });
+        }
+      }
+      const body: Record<string, unknown> = { parts };
       if (opts?.agent?.trim()) body.agent = opts.agent.trim();
       if (opts?.model?.providerID && opts.model.modelID) {
         body.model = opts.model;
@@ -496,6 +506,22 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     },
     [directory, resync],
   );
+
+  // Re-fetch the todo list on demand. The engine occasionally skips the final
+  // `todo.updated` event when a session goes idle, which left the "進行中" badge
+  // stuck after completion. Callers (e.g. TaskView on busy→idle) use this to
+  // reconcile the displayed list with the server state.
+  const refreshTodos = useCallback(async () => {
+    const sid = sessionRef.current;
+    if (!directory || !sid) return;
+    try {
+      const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
+      if (sessionRef.current !== sid) return;
+      if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
+    } catch {
+      /* non-fatal: SSE may still deliver updates */
+    }
+  }, [directory]);
 
   const abort = useCallback(async () => {
     const sid = sessionRef.current;
@@ -591,6 +617,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     resync,
     sendPrompt,
     abort,
+    refreshTodos,
     replyPermission,
     replyQuestion,
     rejectQuestion,

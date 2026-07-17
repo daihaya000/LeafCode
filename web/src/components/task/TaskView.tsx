@@ -22,11 +22,13 @@ import {
   GitGraph,
   ListTodo,
   Loader2,
+  Paperclip,
   PanelRight,
   RefreshCw,
   Square,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -63,12 +65,35 @@ import { SessionSwitcher } from "./SessionSwitcher";
 type ModelOption = { value: string; label: string; group: string };
 
 type ProviderResponse = {
-  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
+  all: {
+    id: string;
+    name: string;
+    models: Record<
+      string,
+      {
+        name?: string;
+        attachment?: boolean;
+        modalities?: {
+          input?: ("text" | "audio" | "image" | "video" | "pdf")[];
+          output?: ("text" | "audio" | "image" | "video" | "pdf")[];
+        };
+      }
+    >;
+  }[];
   connected: string[];
   default: Record<string, string>;
 };
 
-type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+type AgentResponse = {
+  name: string;
+  mode?: string;
+  hidden?: boolean;
+  model?: { modelID: string; providerID: string };
+}[];
+
+type Attachment = { uri: string; mime: string; name?: string; preview?: string };
+
+const IMAGE_MIME_RE = /^image\//i;
 
 function TodoPanel({
   todos,
@@ -183,9 +208,15 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelCapabilities, setModelCapabilities] = useState<
+    Record<string, { attachment?: boolean; image?: boolean }>
+  >({});
   const [agents, setAgents] = useState<string[]>([]);
+  const [agentModels, setAgentModels] = useState<Record<string, { providerID: string; modelID: string }>>({});
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
     readCostDisplayPrefs(),
@@ -303,17 +334,25 @@ export function TaskView({ taskId }: { taskId: string }) {
           const connectedList = data.connected ?? [];
           const connected = new Set(connectedList);
           const options: ModelOption[] = [];
+          const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
           for (const p of data.all ?? []) {
             if (connected.size > 0 && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
+              const value = `${p.id}::${mid}`;
               options.push({
-                value: `${p.id}::${mid}`,
+                value,
                 label: m.name || mid,
                 group: p.name || p.id,
               });
+              const inputs = m.modalities?.input ?? [];
+              caps[value] = {
+                attachment: m.attachment === true,
+                image: inputs.includes("image"),
+              };
             }
           }
           setModelOptions(options);
+          setModelCapabilities(caps);
 
           let initial = "";
           const cfg = config?.model?.trim();
@@ -345,6 +384,13 @@ export function TaskView({ taskId }: { taskId: string }) {
             .filter((a) => a.mode !== "subagent" && !a.hidden)
             .map((a) => a.name);
           setAgents(names);
+          const models: Record<string, { providerID: string; modelID: string }> = {};
+          for (const a of agentsData) {
+            if (a.name && a.model?.providerID && a.model?.modelID) {
+              models[a.name] = { providerID: a.model.providerID, modelID: a.model.modelID };
+            }
+          }
+          setAgentModels(models);
           const cfgAgent =
             typeof config?.agent === "string" ? config.agent : undefined;
           const initial = names.includes(cfgAgent ?? "")
@@ -384,9 +430,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (wasBusy && nowIdle) {
       setDiffKey((k) => k + 1);
       void refreshTask();
+      // The engine sometimes omits the final `todo.updated` SSE event when a
+      // session transitions to idle, leaving the plan badge stuck on "進行中".
+      // Reconcile the todo list from the server here.
+      void stream.refreshTodos();
     }
     prevStatusRef.current = cur;
-  }, [stream.status, refreshTask]);
+  }, [stream.status, stream, refreshTask]);
 
   // Refresh Diff when patch / edit tools land in the timeline
   const patchSignature = useMemo(() => {
@@ -471,8 +521,14 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || working) return;
+    if ((!text && attachments.length === 0) || working) return;
+    const files = attachments.map((a) => ({
+      uri: a.uri,
+      mime: a.mime,
+      ...(a.name ? { name: a.name } : {}),
+    }));
     setInput("");
+    setAttachments([]);
     setSendError(null);
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -481,12 +537,90 @@ export function TaskView({ taskId }: { taskId: string }) {
       await stream.sendPrompt(text, {
         ...(agent ? { agent } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+        ...(files.length > 0 ? { files } : {}),
       });
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
+      setAttachments(attachments);
     }
-  }, [input, working, stream, model, agent]);
+  }, [input, attachments, working, stream, model, agent]);
+
+  // Resolve the model that will actually serve the prompt: the selected
+  // agent's configured model takes priority over the manual model selector.
+  const effectiveModelKey = (() => {
+    const am = agent ? agentModels[agent] : undefined;
+    if (am) return `${am.providerID}::${am.modelID}`;
+    return model || "";
+  })();
+  const imageSupported = effectiveModelKey
+    ? modelCapabilities[effectiveModelKey]?.image === true ||
+      modelCapabilities[effectiveModelKey]?.attachment === true
+    : false;
+  const hasImageAttachment = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
+  const showImageWarning = hasImageAttachment && !imageSupported;
+
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+      reader.readAsDataURL(file);
+    });
+
+  const addImageFiles = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => IMAGE_MIME_RE.test(f.type));
+    const next: Attachment[] = [];
+    for (const f of list) {
+      try {
+        const uri = await readFileAsDataUrl(f);
+        next.push({ uri, mime: f.type, name: f.name, preview: uri });
+      } catch {
+        /* skip unreadable file */
+      }
+    }
+    if (next.length > 0) {
+      setAttachments((cur) => [...cur, ...next]);
+      stickRef.current = true;
+    }
+  }, []);
+
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments((cur) => cur.filter((_, i) => i !== index));
+  }, []);
+
+  const onPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind === "file" && IMAGE_MIME_RE.test(it.type)) {
+          const f = it.getAsFile();
+          if (f) imageFiles.push(f);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        void addImageFiles(imageFiles);
+      }
+    },
+    [addImageFiles],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer?.files?.length) return;
+      e.preventDefault();
+      void addImageFiles(e.dataTransfer.files);
+    },
+    [addImageFiles],
+  );
+
+  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+  }, []);
 
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
@@ -1064,7 +1198,50 @@ export function TaskView({ taskId }: { taskId: string }) {
                   {sendError}
                 </p>
               )}
-              <div className="mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20">
+              {showImageWarning && (
+                <p
+                  role="alert"
+                  className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
+                >
+                  選択中のエージェント/モデルは画像入力に対応していない可能性があります。画像が反映されない場合があります。
+                </p>
+              )}
+              <div
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                className="mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+              >
+                {attachments.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {attachments.map((a, i) => (
+                      <div
+                        key={`${a.name ?? a.uri}-${i}`}
+                        className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-surface"
+                      >
+                        {a.preview ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={a.preview}
+                            alt={a.name ?? "添付画像"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-faint">
+                            <Paperclip className="h-4 w-4" />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(i)}
+                          aria-label="添付を削除"
+                          className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <textarea
                   ref={textareaRef}
                   value={input}
@@ -1077,6 +1254,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     el.style.height = "auto";
                     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
                   }}
+                  onPaste={onPaste}
                   onCompositionStart={() => (composingRef.current = true)}
                   onCompositionEnd={() => (composingRef.current = false)}
                   onKeyDown={(e) => {
@@ -1095,6 +1273,27 @@ export function TaskView({ taskId }: { taskId: string }) {
                 />
                 <div className="flex items-center gap-2 pt-1">
                   <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) void addImageFiles(e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!task.sessionId || working}
+                      aria-label="画像を添付"
+                      title="画像を添付"
+                      className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                    </button>
                     <AccessModeSelect
                       value={accessMode}
                       onChange={changeAccessMode}
@@ -1163,7 +1362,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                       size="icon"
                       className="shrink-0"
                       aria-label="送信"
-                      disabled={!input.trim() || !task.sessionId}
+                      disabled={
+                        (!input.trim() && attachments.length === 0) ||
+                        !task.sessionId
+                      }
                       onClick={() => void send()}
                     >
                       <ArrowUp className="h-4.5 w-4.5" />
