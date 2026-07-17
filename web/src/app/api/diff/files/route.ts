@@ -59,8 +59,15 @@ export async function GET(req: NextRequest) {
     const branch = head.stdout.trim() || null;
 
     const baseParam = req.nextUrl.searchParams.get("base");
+    // Mirror assertSafeBranchName: no leading '-' (option injection into the
+    // `git diff <base>` argv position) and no '..' range syntax.
     const base =
-      baseParam && /^[\w./+-]{1,200}$/.test(baseParam) ? baseParam : null;
+      baseParam &&
+      baseParam.length <= 200 &&
+      /^[A-Za-z0-9._/+][A-Za-z0-9._/+-]*$/.test(baseParam) &&
+      !baseParam.includes("..")
+        ? baseParam
+        : null;
 
     let diff: { code: number; stdout: string; stderr: string };
     if (base) {

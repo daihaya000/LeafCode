@@ -76,6 +76,13 @@ async function proxy(
   }
 
   const target = new URL(pathname + incoming.search, OPENCODE_BASE_URL);
+  // Defense in depth: the allowlist check above validated `directory` (header
+  // preferred). Overwrite any `?directory=` query the caller may have sent with
+  // the validated value so a mismatched header/query pair cannot smuggle an
+  // unvalidated path through to OpenCode.
+  if (directory && target.searchParams.has("directory")) {
+    target.searchParams.set("directory", directory);
+  }
 
   const headers = new Headers();
   req.headers.forEach((value, key) => {

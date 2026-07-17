@@ -48,6 +48,7 @@ async function loadChildTree(
   directory: string,
   sessionId: string,
   depth: number,
+  statuses: Record<string, { type?: string }>,
 ): Promise<ChildFeed[]> {
   if (depth > MAX_DEPTH) return [];
   let children: ChildSession[] = [];
@@ -82,18 +83,16 @@ async function loadChildTree(
         latest = s.latest;
         runningTool = s.runningTool;
       }
-      const statuses = await ocJson<Record<string, { type?: string }>>(
-        "/session/status",
-        directory,
-      );
       status = statuses[child.id]?.type ?? "idle";
     } catch {
       /* keep empty */
     }
-    const nested =
-      status === "busy" || runningTool
-        ? await loadChildTree(directory, child.id, depth + 1)
-        : await loadChildTree(directory, child.id, depth + 1).catch(() => []);
+    const nested = await loadChildTree(
+      directory,
+      child.id,
+      depth + 1,
+      statuses,
+    );
     feeds.push({
       session: child,
       status,
@@ -165,7 +164,18 @@ export function NestedAgentPanel({
   const refresh = useCallback(async () => {
     if (!directory || !parentSessionId) return;
     try {
-      const tree = await loadChildTree(directory, parentSessionId, 1);
+      // Fetch the global session status map once per refresh and reuse it for
+      // the whole tree instead of re-fetching it for every child/grandchild.
+      let statuses: Record<string, { type?: string }> = {};
+      try {
+        statuses = await ocJson<Record<string, { type?: string }>>(
+          "/session/status",
+          directory,
+        );
+      } catch {
+        /* status unavailable — nodes fall back to idle */
+      }
+      const tree = await loadChildTree(directory, parentSessionId, 1, statuses);
       setFeeds(tree);
       setError(null);
     } catch (err) {

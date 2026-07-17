@@ -57,9 +57,22 @@ export async function POST(req: NextRequest) {
   if (into === "branch") {
     const co = await runGit(check.path, ["checkout", branch]);
     if (co.code !== 0) {
+      const stderr = co.stderr.trim();
+      // In worktree isolation the merge target (main/master) is usually checked
+      // out in the project's main folder, so `git checkout <target>` here fails
+      // with "already checked out". Surface an actionable message instead of a
+      // raw 500 the user cannot act on.
+      const inUseElsewhere = /already checked out|already used by worktree/i.test(
+        stderr,
+      );
       return NextResponse.json(
-        { error: co.stderr.trim() || `checkout ${branch} failed` },
-        { status: 500 },
+        {
+          error: inUseElsewhere
+            ? `対象ブランチ「${branch}」は別の作業ツリー（メインのフォルダ等）でチェックアウト中のため、この worktree からは反映できません。メインのフォルダで「取り込む ←」を使うか、PR を作成してください。`
+            : stderr || `checkout ${branch} failed`,
+          worktreeConflict: inUseElsewhere || undefined,
+        },
+        { status: inUseElsewhere ? 409 : 500 },
       );
     }
     const args = ["merge"];
