@@ -6,7 +6,8 @@ import {
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
-import type { SessionStatus, TaskStatus, TaskSummary } from "./types";
+import { deriveTaskStatus } from "./task-status";
+import type { SessionStatus, TaskSummary } from "./types";
 
 type StatusMap = Record<string, SessionStatus>;
 
@@ -66,13 +67,13 @@ function toTask(
   sessionStatus: SessionStatus | undefined,
   engineOk: boolean,
 ): TaskSummary {
-  let status: TaskStatus;
-  if (ws.status === "orphaned") status = "orphaned";
-  else if (ws.status === "archived") status = "merged";
-  else if (sessionStatus && sessionStatus.type !== "idle") status = "working";
-  else if (binding && !engineOk) status = "unknown";
-  else if (stat.files > 0) status = "ready";
-  else status = "idle";
+  const status = deriveTaskStatus({
+    workspaceStatus: ws.status,
+    hasBinding: Boolean(binding),
+    sessionStatus,
+    engineOk,
+    filesChanged: stat.files,
+  });
 
   return {
     id: ws.id,
