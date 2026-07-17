@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { PLUGINS } from "@/lib/plugins/registry";
 import {
   isEnabled,
@@ -15,6 +16,7 @@ import {
  * corner. Mounted once in the app shell so it appears on all pages.
  */
 export function PluginHost() {
+  const pathname = usePathname();
   const [prefs, setPrefs] = useState<PluginPrefs>({});
   const [hydrated, setHydrated] = useState(false);
 
@@ -29,7 +31,13 @@ export function PluginHost() {
     return () => window.removeEventListener(PLUGINS_CHANGED_EVENT, onChange);
   }, []);
 
-  if (!hydrated) return null;
+  if (
+    !hydrated ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/")
+  ) {
+    return null;
+  }
 
   const active = PLUGINS.filter((p) => isEnabled(prefs, p.id, p.defaultEnabled));
   if (active.length === 0) return null;

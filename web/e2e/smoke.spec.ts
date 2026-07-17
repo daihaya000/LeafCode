@@ -46,5 +46,28 @@ test("CodexBar plugin widget renders bottom-right by default", async ({ page }) 
 test("settings exposes the plugin toggle", async ({ page }) => {
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "プラグイン" })).toBeVisible();
-  await expect(page.getByRole("switch")).toBeVisible();
+  await expect(
+    page.getByTitle("このウィジェットを閉じる（設定から再表示できます）"),
+  ).toHaveCount(0);
+  const toggle = page.getByRole("switch");
+  const thumb = toggle.locator("span");
+  await expect(toggle).toBeVisible();
+
+  const expectThumbInsideTrack = async () => {
+    const [trackBox, thumbBox] = await Promise.all([
+      toggle.boundingBox(),
+      thumb.boundingBox(),
+    ]);
+    expect(trackBox).not.toBeNull();
+    expect(thumbBox).not.toBeNull();
+    expect(thumbBox!.x).toBeGreaterThanOrEqual(trackBox!.x);
+    expect(thumbBox!.x + thumbBox!.width).toBeLessThanOrEqual(
+      trackBox!.x + trackBox!.width,
+    );
+  };
+
+  await expectThumbInsideTrack();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expectThumbInsideTrack();
 });
