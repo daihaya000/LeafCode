@@ -71,6 +71,23 @@ start-webui.bat
 - OpenCode 本体は常に `127.0.0.1` のみで待ち受け、公開されるのは Next.js BFF（:3000）のみです。**VPN と認証なしで公開しないでください。**
 - Caddy が PATH に無い / 無効の場合はスキップします。
 
+### HTTPS（既定: `:8443` ローカル TLS）
+
+`deploy/Caddyfile` は既定で **HTTPS(:8443)** を `tls internal`（Caddy のローカル CA・自己署名）で配信します。起動時に UAC が出ないよう `skip_install_trust` を付けているため、証明書の信頼登録は下記スクリプトで**手動 1 回だけ**行います。
+
+```bat
+rem 1) CA を Windows の信頼ストアへ登録（管理者で実行 / 1回だけ）
+scripts\caddy-trust.bat
+rem 2) スマホ/LAN からアクセスするならファイアウォールを開放（管理者）
+scripts\allow-firewall-8443.bat
+```
+
+- アクセス URL: `https://localhost:8443` / `https://<LAN もしくは VPN の IP>:8443`
+- **アクセスする名前/IP は `deploy/Caddyfile` の site 行に列挙**してください（列挙した名前にだけ証明書が発行されます）。既定は `localhost, 127.0.0.1, 192.168.0.102`。LAN IP が変わる場合は DHCP 予約推奨。
+- スマホは警告なしにするには CA(`%APPDATA%\Caddy\pki\authorities\local\root.crt`)を端末へインストール。未インストールでも「警告を無視して続行」で利用可（ただし PWA/Service Worker は信頼済み証明書が必要）。
+- 公開ドメインがある場合は Caddyfile の Let's Encrypt ブロック（コメント）を使うと、全端末で警告なしの正規 TLS になります（80/443 到達性 + DNS 必須）。
+- HTTP(:8080) に戻したい場合は Caddyfile の該当ブロックのコメントを解除してください。
+
 Remote Workspace API はスタブ（`/api/remote` → 501）。当面は VPN + ローカルパスを開く運用です。
 
 ```bat
