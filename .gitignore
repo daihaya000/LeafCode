@@ -15,3 +15,6 @@ deploy/.caddy/
 web/test-results/
 web/playwright-report/
 web/.playwright/
+
+# OpenCode loop runtime state (per-session, machine-local)
+.opencode/opencode-loop/

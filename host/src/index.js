@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process';
+import { spawn, execFileSync, execSync } from 'child_process';
 import {
   existsSync,
   mkdirSync,
@@ -100,6 +100,69 @@ function isProcessAlive(pid) {
   } catch {
     return false;
   }
+}
+
+/** Run Windows PowerShell without routing the command through cmd.exe quoting. */
+function runPowerShell(command) {
+  return execFileSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', command],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  ).trim();
+}
+
+/** Command line of a PID, or null. Used to verify a lock PID is really our host (PID reuse). */
+function getProcessCommandLine(pid) {
+  try {
+    const output = runPowerShell(
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Number(pid)}').CommandLine`,
+    ).trim();
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Process creation time (Windows FILETIME as string), or null. */
+function getProcessCreationTime(pid) {
+  try {
+    const output = runPowerShell(
+      `(Get-CimInstance Win32_Process -Filter 'ProcessId=${Number(pid)}').CreationDate.ToFileTime()`,
+    ).trim();
+    return /^\d+$/.test(output) ? output : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the PID has a live systray helper child (tray_windows*.exe).
+ * `null` means the CIM query failed; that is not proof that the tray is absent.
+ */
+function hasTrayChild(pid) {
+  try {
+    const output = runPowerShell(
+      `@(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${Number(pid)}' | Where-Object { $_.Name -like 'tray_windows*' }).Count`,
+    ).trim();
+    return Number.parseInt(output, 10) > 0;
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeHostCommandLine(commandLine) {
+  return (
+    /node(\.exe)?"?\s/i.test(commandLine) &&
+    /src[\\/]index\.js/i.test(commandLine)
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isPortInUse(port) {
@@ -226,6 +289,19 @@ function findCaddy() {
     const exe = lines.find((p) => /\.exe$/i.test(p));
     return exe || lines[0] || null;
   } catch {
+    // WinGet's Links directory is not always present on PATH in a process
+    // launched from Explorer, even though the registered shim exists there.
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const wingetLink = join(
+        localAppData,
+        'Microsoft',
+        'WinGet',
+        'Links',
+        'caddy.exe',
+      );
+      if (existsSync(wingetLink)) return wingetLink;
+    }
     return null;
   }
 }
@@ -338,19 +414,39 @@ function ensureDataDir() {
   }
 }
 
-function readLockPid() {
+/**
+ * Lock file format: JSON `{ pid, created }` where `created` is the host
+ * process creation time (FILETIME). Legacy format was a bare PID string;
+ * it is still readable (`created` will be null).
+ */
+function readLock() {
   if (!existsSync(LOCK_FILE)) return null;
   try {
     const raw = readFileSync(LOCK_FILE, 'utf8').trim();
+    if (raw.startsWith('{')) {
+      const data = JSON.parse(raw);
+      const pid = Number.parseInt(String(data.pid), 10);
+      if (!Number.isFinite(pid)) return null;
+      return { pid, created: typeof data.created === 'string' ? data.created : null };
+    }
     const pid = Number.parseInt(raw, 10);
-    return Number.isFinite(pid) ? pid : null;
+    return Number.isFinite(pid) ? { pid, created: null } : null;
   } catch {
     return null;
   }
 }
 
+function readLockPid() {
+  return readLock()?.pid ?? null;
+}
+
 function writeLock() {
-  writeFileSync(LOCK_FILE, String(process.pid), 'utf8');
+  const created = getProcessCreationTime(process.pid);
+  writeFileSync(
+    LOCK_FILE,
+    JSON.stringify({ pid: process.pid, created }),
+    { encoding: 'utf8', flag: 'wx' },
+  );
 }
 
 function removeLock() {
@@ -365,23 +461,133 @@ function removeLock() {
   }
 }
 
-function handleExistingInstance() {
-  const lockPid = readLockPid();
-  if (lockPid == null) return false;
+async function handleExistingInstance() {
+  const lock = readLock();
+  if (lock == null) {
+    if (existsSync(LOCK_FILE)) {
+      try {
+        unlinkSync(LOCK_FILE);
+        log('Removed unreadable host lock');
+      } catch {
+        // The exclusive write will retry or report the lock failure.
+      }
+    }
+    return false;
+  }
+  const lockPid = lock.pid;
 
-  if (isProcessAlive(lockPid)) {
+  const removeStaleLock = (reason) => {
+    const current = readLock();
+    if (
+      current?.pid !== lock.pid ||
+      current?.created !== lock.created
+    ) {
+      log(`Lock changed while checking PID ${lockPid}; leaving it untouched`);
+      return;
+    }
+    try {
+      unlinkSync(LOCK_FILE);
+      log(`Removed stale lock (PID ${lockPid}): ${reason}`);
+    } catch {
+      // continue
+    }
+  };
+
+  if (!isProcessAlive(lockPid)) {
+    removeStaleLock('process is gone');
+    return false;
+  }
+
+  // The PID may have been reused by an unrelated process after a crash.
+  // Verify identity: exact creation-time match when the lock records it,
+  // otherwise (legacy lock) a conservative command-line heuristic.
+  let hostIdentityVerified = false;
+  if (lock.created) {
+    const created = getProcessCreationTime(lockPid);
+    if (created && created !== lock.created) {
+      removeStaleLock(`PID reused by another process (created=${created})`);
+      return false;
+    }
+    if (created === lock.created) {
+      hostIdentityVerified = true;
+    } else {
+      const cmdline = getProcessCommandLine(lockPid);
+      if (cmdline && !looksLikeHostCommandLine(cmdline)) {
+        removeStaleLock(`PID reused by another process (${cmdline})`);
+        return false;
+      }
+      if (cmdline) hostIdentityVerified = true;
+      if (!cmdline) {
+        log(`Could not verify identity of live lock PID ${lockPid}; preserving it`);
+      }
+    }
+  } else {
+    const cmdline = getProcessCommandLine(lockPid);
+    if (cmdline && !looksLikeHostCommandLine(cmdline)) {
+      removeStaleLock(`PID reused by another process (${cmdline})`);
+      return false;
+    }
+    if (cmdline) hostIdentityVerified = true;
+    if (!cmdline) {
+      log(`Could not verify identity of live legacy lock PID ${lockPid}; preserving it`);
+    }
+  }
+
+  // A real host is holding the lock. If it has a tray icon, defer to it.
+  // Give a freshly started host a grace period to spawn its tray helper.
+  const headless = process.env.OPENCODE_WEBUI_HEADLESS === '1';
+  if (!headless && hostIdentityVerified) {
+    let tray = hasTrayChild(lockPid);
+    if (tray === false) {
+      await sleep(3000);
+      tray = hasTrayChild(lockPid);
+    }
+    if (tray === null) {
+      log(`Could not inspect tray child for PID ${lockPid}; preserving the running host`);
+    } else if (!tray && isProcessAlive(lockPid)) {
+      // Degraded host (e.g. tray helper died and restarts were exhausted, or a
+      // pre-fix zombie). Take over: kill only the host process — its child
+      // services keep running and are reused via resolvePortPlan().
+      error(
+        `Host PID ${lockPid} is running without a tray icon; taking over to restore it`,
+      );
+      try {
+        execSync(`taskkill /F /PID ${lockPid}`, { stdio: 'ignore' });
+      } catch (err) {
+        throw new Error(
+          `Could not terminate degraded host PID ${lockPid}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      if (isProcessAlive(lockPid)) {
+        throw new Error(`Degraded host PID ${lockPid} is still running after termination`);
+      }
+      removeStaleLock('degraded host was terminated');
+      return false;
+    }
+  }
+
+  if (process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
     log(`Host already running (PID ${lockPid}). Opening ${WEBUI_URL}`);
     openBrowser(WEBUI_URL);
-    process.exit(0);
+  } else {
+    log(`Host already running (PID ${lockPid}).`);
   }
+  process.exit(0);
+}
 
-  try {
-    unlinkSync(LOCK_FILE);
-    log(`Removed stale lock (PID ${lockPid})`);
-  } catch {
-    // continue
+async function acquireLock() {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await handleExistingInstance();
+    try {
+      writeLock();
+      return;
+    } catch (err) {
+      if (err?.code !== 'EEXIST') throw err;
+      log(`Host lock changed during startup; retrying (${attempt}/3)`);
+      await sleep(100);
+    }
   }
-  return false;
+  throw new Error('Could not acquire the host lock after 3 attempts');
 }
 
 async function resolvePortPlan() {
@@ -671,8 +877,7 @@ async function main() {
   }
 
   ensureDataDir();
-  handleExistingInstance();
-  writeLock();
+  await acquireLock();
 
   process.on('SIGINT', () => {
     quit().catch(() => process.exit(1));

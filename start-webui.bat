@@ -52,4 +52,7 @@ if not "%ERR%"=="0" (
   pause
   exit /b %ERR%
 )
+rem Keep the window briefly so "already running" style messages are readable.
+rem ping is used instead of timeout because timeout errors when stdin is redirected.
+%SystemRoot%\System32\ping.exe -n 4 127.0.0.1 >nul
 endlocal
