@@ -1034,11 +1034,14 @@ export function TaskView({ taskId }: { taskId: string }) {
             <div className="mx-auto max-w-3xl">
               <TodoPanel todos={stream.todos} forceOpen={working} />
               {sendError && (
-                <p className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger">
+                <p
+                  role="alert"
+                  className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
+                >
                   {sendError}
                 </p>
               )}
-              <div className="mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong">
+              <div className="mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20">
                 <textarea
                   ref={textareaRef}
                   value={input}

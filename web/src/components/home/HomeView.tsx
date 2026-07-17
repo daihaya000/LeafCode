@@ -201,7 +201,7 @@ export function HomeView() {
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
-    if (!text || !projectId || submitting) return;
+    if (!text || !projectId || submitting || !engineOk) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -222,7 +222,7 @@ export function HomeView() {
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
     }
-  }, [prompt, projectId, isolation, baseBranch, model, agent, submitting, router]);
+  }, [prompt, projectId, isolation, baseBranch, model, agent, submitting, engineOk, router]);
 
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
@@ -246,6 +246,7 @@ export function HomeView() {
               ref={textareaRef}
               value={prompt}
               rows={2}
+              readOnly={submitting}
               onChange={(e) => {
                 setPrompt(e.target.value);
                 autoResize();
@@ -363,7 +364,7 @@ export function HomeView() {
                     setAccessMode(m);
                     writeAccessMode(m);
                   }}
-                  className="w-32 shrink-0 sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-36"
+                  className="order-first w-32 shrink-0 sm:order-none sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-36"
                 />
               </div>
               <Button
@@ -400,7 +401,10 @@ export function HomeView() {
           )}
 
           {error && (
-            <p className="mx-auto mt-3 max-w-2xl break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
+            <p
+              role="alert"
+              className="mx-auto mt-3 max-w-2xl break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+            >
               {error}
             </p>
           )}
