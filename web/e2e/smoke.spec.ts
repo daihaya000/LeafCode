@@ -85,16 +85,26 @@ test("desktop composer keeps selection labels readable", async ({ page }) => {
     );
   }
 
-  await page.setViewportSize({ width: 1024, height: 720 });
-  for (const name of selectionNames) {
-    const size = await displayLabel(name).evaluate((element) => ({
+  for (const width of [1024, 500, 400]) {
+    await page.setViewportSize({ width, height: 720 });
+    for (const name of selectionNames) {
+      const size = await displayLabel(name).evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }));
+      expect(
+        size.clientWidth,
+        `${name} label is truncated at ${width}px`,
+      ).toBeGreaterThanOrEqual(size.scrollWidth);
+    }
+    const formWidth = await form.evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
     }));
     expect(
-      size.clientWidth,
-      `${name} label is truncated at 1024px`,
-    ).toBeGreaterThanOrEqual(size.scrollWidth);
+      formWidth.scrollWidth,
+      `composer overflows horizontally at ${width}px`,
+    ).toBeLessThanOrEqual(formWidth.clientWidth);
   }
 });
 

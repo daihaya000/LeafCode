@@ -313,7 +313,7 @@ export function HomeView() {
                   <option value="git_worktree">worktree</option>
                 </GhostSelect>
               </div>
-              <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:overflow-visible">
+              <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible min-[480px]:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-[10rem_9rem_9rem]">
                 {modelOptions.length > 0 && (
                   <GhostSelect
                     value={model}
@@ -322,7 +322,7 @@ export function HomeView() {
                     icon={<Cpu className="h-3.5 w-3.5" />}
                     valueLabel={selectedModel?.label ?? "モデル"}
                     onChange={(e) => setModel(e.target.value)}
-                    className="w-40 shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 xl:max-w-40"
+                    className="w-full min-w-0"
                   >
                     {[...new Set(modelOptions.map((o) => o.group))].map(
                       (group) => (
@@ -347,7 +347,7 @@ export function HomeView() {
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={formatAgentLabel(agent)}
                     onChange={(e) => setAgent(e.target.value)}
-                    className="w-36 shrink-0 xl:w-auto xl:min-w-36 xl:flex-1 xl:max-w-36"
+                    className="w-full min-w-0"
                     title="エージェント（OpenCode agent）"
                   >
                     {agents.map((a) => (
@@ -364,7 +364,7 @@ export function HomeView() {
                     setAccessMode(m);
                     writeAccessMode(m);
                   }}
-                  className="order-first w-36 shrink-0 xl:order-none xl:w-auto xl:min-w-0 xl:flex-1 xl:max-w-36"
+                  className="order-first w-full min-w-0 xl:order-none"
                 />
               </div>
               <Button
