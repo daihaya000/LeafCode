@@ -158,4 +158,32 @@ test.describe("home composer", () => {
       baseBranch: "develop",
     });
   });
+
+  test("selects the project requested by the URL", async ({ page }) => {
+    await page.route("**/api/projects", (route) =>
+      route.fulfill({
+        json: {
+          projects: [
+            { id: "project-a", name: "Project A", rootPath: "C:\\repo-a", favorite: false },
+            { id: "project-b", name: "Project B", rootPath: "C:\\repo-b", favorite: true },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/git/branches**", (route) =>
+      route.fulfill({
+        json: { branches: ["main"], current: "main", defaultTarget: "main" },
+      }),
+    );
+
+    await page.goto("/?projectId=project-b");
+    await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
+      "project-b",
+    );
+
+    await page.goto("/?projectId=missing");
+    await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
+      "project-a",
+    );
+  });
 });

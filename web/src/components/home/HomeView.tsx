@@ -31,7 +31,7 @@ function formatAgentLabel(agent: string): string {
   return /ask|explore/i.test(agent) ? `${agent}（Ask）` : agent;
 }
 
-export function HomeView() {
+export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [engineOk, setEngineOk] = useState(true);
@@ -61,12 +61,22 @@ export function HomeView() {
   const refreshProjects = useCallback(async () => {
     try {
       const data = await getJson<{ projects: ProjectDto[] }>("/api/projects");
-      setProjects(data.projects ?? []);
-      setProjectId((cur) => cur || data.projects?.[0]?.id || "");
+      const nextProjects = data.projects ?? [];
+      setProjects(nextProjects);
+      setProjectId((cur) => {
+        if (cur) return cur;
+        if (
+          initialProjectId &&
+          nextProjects.some((project) => project.id === initialProjectId)
+        ) {
+          return initialProjectId;
+        }
+        return nextProjects[0]?.id ?? "";
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "projects failed");
     }
-  }, []);
+  }, [initialProjectId]);
 
   const refreshEngine = useCallback(async () => {
     try {
