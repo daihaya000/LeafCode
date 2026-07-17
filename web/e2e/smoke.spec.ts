@@ -10,6 +10,94 @@ test("home renders the composer shell", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("desktop composer keeps selection labels readable", async ({ page }) => {
+  await page.route("**/api/opencode/provider", (route) =>
+    route.fulfill({
+      json: {
+        all: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            models: { "gpt-5.6-sol": { name: "GPT-5.6 Sol" } },
+          },
+        ],
+        connected: ["openai"],
+        default: { openai: "gpt-5.6-sol" },
+      },
+    }),
+  );
+  await page.route("**/api/opencode/config", (route) =>
+    route.fulfill({ json: { model: "openai/gpt-5.6-sol", agent: "build" } }),
+  );
+  await page.route("**/api/opencode/agent", (route) =>
+    route.fulfill({ json: [{ name: "build" }] }),
+  );
+  await page.route("**/api/projects", (route) =>
+    route.fulfill({
+      json: {
+        projects: [
+          {
+            id: "project-1",
+            name: "opencode",
+            rootPath: "C:\\repo",
+            favorite: true,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/git/branches**", (route) =>
+    route.fulfill({
+      json: { branches: ["master"], current: "master", defaultTarget: "master" },
+    }),
+  );
+  await page.addInitScript(() =>
+    localStorage.setItem("webui:access-mode", "full"),
+  );
+
+  await page.goto("/");
+  const form = page.getByRole("form", { name: "タスク作成" });
+  const displayLabel = (name: string) =>
+    page
+      .getByRole("combobox", { name })
+      .locator("..")
+      .locator('span[aria-hidden="true"]')
+      .nth(1);
+  await expect(displayLabel("モデル")).toHaveText("GPT-5.6 Sol");
+  await expect(displayLabel("エージェント")).toHaveText("build（Code）");
+  expect((await form.boundingBox())?.width).toBeGreaterThanOrEqual(850);
+
+  const selectionNames = [
+    "プロジェクト",
+    "作業場所",
+    "モデル",
+    "エージェント",
+    "アクセスモード",
+  ];
+  for (const name of selectionNames) {
+    const label = displayLabel(name);
+    const size = await label.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(size.clientWidth, `${name} label is truncated`).toBeGreaterThanOrEqual(
+      size.scrollWidth,
+    );
+  }
+
+  await page.setViewportSize({ width: 1024, height: 720 });
+  for (const name of selectionNames) {
+    const size = await displayLabel(name).evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(
+      size.clientWidth,
+      `${name} label is truncated at 1024px`,
+    ).toBeGreaterThanOrEqual(size.scrollWidth);
+  }
+});
+
 test("has the expected document title", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/OpenCode/);

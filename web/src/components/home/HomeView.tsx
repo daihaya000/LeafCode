@@ -236,7 +236,7 @@ export function HomeView() {
           </h1>
           <form
             aria-label="タスク作成"
-            className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            className="mx-auto max-w-4xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
@@ -266,8 +266,8 @@ export function HomeView() {
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
             />
-            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 px-3 pb-3 sm:flex sm:flex-nowrap sm:gap-2">
-              <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 sm:col-auto sm:row-auto sm:flex-1">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 px-3 pb-3 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-2">
+              <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 xl:col-start-1 xl:row-start-1">
                 <GhostSelect
                   value={projectId}
                   disabled={projects.length === 0 || submitting}
@@ -279,7 +279,7 @@ export function HomeView() {
                       : "プロジェクトなし"
                   }
                   onChange={(e) => setProjectId(e.target.value)}
-                  className="min-w-0 flex-1 sm:max-w-44"
+                  className="min-w-0 flex-1 xl:min-w-40 xl:max-w-44"
                 >
                   {projects.length === 0 && (
                     <option value="">プロジェクトなし</option>
@@ -306,14 +306,14 @@ export function HomeView() {
                       e.target.value as "current_folder" | "git_worktree",
                     )
                   }
-                  className="min-w-0 flex-1 sm:max-w-32"
+                  className="min-w-0 flex-1 xl:min-w-32 xl:max-w-32"
                   title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
                 >
                   <option value="current_folder">{defaultBranchLabel}</option>
                   <option value="git_worktree">worktree</option>
                 </GhostSelect>
               </div>
-              <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:col-auto sm:row-auto sm:flex-1 sm:justify-end sm:overflow-visible">
+              <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:overflow-visible">
                 {modelOptions.length > 0 && (
                   <GhostSelect
                     value={model}
@@ -322,7 +322,7 @@ export function HomeView() {
                     icon={<Cpu className="h-3.5 w-3.5" />}
                     valueLabel={selectedModel?.label ?? "モデル"}
                     onChange={(e) => setModel(e.target.value)}
-                    className="w-36 shrink-0 sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-40"
+                    className="w-40 shrink-0 xl:w-auto xl:min-w-0 xl:flex-1 xl:max-w-40"
                   >
                     {[...new Set(modelOptions.map((o) => o.group))].map(
                       (group) => (
@@ -347,7 +347,7 @@ export function HomeView() {
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={formatAgentLabel(agent)}
                     onChange={(e) => setAgent(e.target.value)}
-                    className="w-32 shrink-0 sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-36"
+                    className="w-36 shrink-0 xl:w-auto xl:min-w-36 xl:flex-1 xl:max-w-36"
                     title="エージェント（OpenCode agent）"
                   >
                     {agents.map((a) => (
@@ -364,7 +364,7 @@ export function HomeView() {
                     setAccessMode(m);
                     writeAccessMode(m);
                   }}
-                  className="order-first w-32 shrink-0 sm:order-none sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-36"
+                  className="order-first w-36 shrink-0 xl:order-none xl:w-auto xl:min-w-0 xl:flex-1 xl:max-w-36"
                 />
               </div>
               <Button
@@ -372,7 +372,7 @@ export function HomeView() {
                 size="icon"
                 type="submit"
                 aria-label="タスク開始"
-                className="col-start-2 row-start-1 shrink-0 sm:col-auto sm:row-auto"
+                className="col-start-2 row-start-1 shrink-0 xl:col-start-3 xl:row-start-1"
                 busy={submitting}
                 disabled={!prompt.trim() || !projectId || !engineOk}
               >
