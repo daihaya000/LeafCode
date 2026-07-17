@@ -380,6 +380,22 @@ function spawnCaddy() {
   });
 }
 
+/**
+ * Stop any stray Caddy left behind when taking over a degraded host. That host
+ * is killed without /T so its OpenCode/WebUI can be reused via health check, but
+ * Caddy has no port-reuse path in resolvePortPlan and still holds its ports —
+ * a fresh spawnCaddy() would fail to bind and orphan the old process. Only used
+ * on the abnormal takeover path, and only when this host manages Caddy.
+ */
+function stopStrayCaddy() {
+  try {
+    execSync('taskkill /F /IM caddy.exe', { stdio: 'ignore' });
+    log('Stopped orphaned Caddy from the degraded host before takeover');
+  } catch {
+    // No stray Caddy running (taskkill exits non-zero when none matched).
+  }
+}
+
 function removeBrokenWebBuild() {
   const buildDir = join(WEB_DIR, '.next');
   if (!existsSync(buildDir) || existsSync(join(buildDir, 'BUILD_ID'))) return;
@@ -730,6 +746,11 @@ async function handleExistingInstance() {
       }
       if (isProcessAlive(lockPid)) {
         throw new Error(`Degraded host PID ${lockPid} is still running after termination`);
+      }
+      if (CADDY_ENABLED) {
+        // The degraded host's Caddy is now orphaned but still holds its ports;
+        // let the new host own a fresh, restartable instance instead.
+        stopStrayCaddy();
       }
       removeStaleLock('degraded host was terminated');
       return false;
