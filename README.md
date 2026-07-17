@@ -45,7 +45,8 @@ node src\index.js
 | 1 | worktree / Diff / orphan / SessionBinding |
 | 2 | Commit / Merge / PR(`gh` 任意) |
 | 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
-| UI-0〜3 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ）※ [docs/improvement-plan.md](./docs/improvement-plan.md) |
+| UI-0〜4 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ / モバイル / ⌘K）※ [docs/improvement-plan.md](./docs/improvement-plan.md) |
+| R | リモート: トレイ管理の Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`）|
 
 ## 最短フロー
 
@@ -54,10 +55,23 @@ node src\index.js
 3. タイムラインで進行を確認・権限を承認（必要なら停止）
 4. Diff ペインで確認 → Commit → Merge（または PR 作成）
 
-## リモート（任意）
+## リモート（任意 / Caddy）
 
-VPN 経由で公開する場合の例: [`deploy/Caddyfile.example`](./deploy/Caddyfile.example)  
-Remote Workspace API はスタブ（`/api/remote` → 501）。当面は VPN + ローカルパスを開く。
+VPN 経由で公開する場合、トレイ常駐ホストが **Caddy 逆プロキシを管理**できます。
+
+```bat
+set OPENCODE_WEBUI_CADDY=1
+rem 任意: Caddyfile の場所を変更
+set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
+start-webui.bat
+```
+
+- 初回起動時に [`deploy/Caddyfile.example`](./deploy/Caddyfile.example) から `deploy/Caddyfile` を生成します（ドメイン / Basic 認証を編集してください）。
+- ホストが Caddy の起動 / 停止 / 再起動を OpenCode・WebUI と連動管理し、トレイの「Status」に `Caddy: running` を表示します。
+- OpenCode 本体は常に `127.0.0.1` のみで待ち受け、公開されるのは Next.js BFF（:3000）のみです。**VPN と認証なしで公開しないでください。**
+- Caddy が PATH に無い / 無効の場合はスキップします。
+
+Remote Workspace API はスタブ（`/api/remote` → 501）。当面は VPN + ローカルパスを開く運用です。
 
 ```bat
 cd web && npm install && npm run dev

@@ -35,6 +35,13 @@ const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '0.0.0.0';
 const WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
 const OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
 
+/** Optional Caddy reverse proxy (TLS / remote). Enable with OPENCODE_WEBUI_CADDY=1.
+ *  Caddyfile path defaults to deploy/Caddyfile (auto-created from the example). */
+const CADDY_ENABLED = process.env.OPENCODE_WEBUI_CADDY === '1';
+const CADDYFILE =
+  process.env.OPENCODE_WEBUI_CADDYFILE || join(REPO_ROOT, 'deploy', 'Caddyfile');
+const CADDYFILE_EXAMPLE = join(REPO_ROOT, 'deploy', 'Caddyfile.example');
+
 const iconData = JSON.parse(readFileSync(join(__dirname, 'icon.json'), 'utf8'));
 const TRAY_ICON = iconData.base64;
 
@@ -42,6 +49,8 @@ const TRAY_ICON = iconData.base64;
 let opencodeProc = null;
 /** @type {import('child_process').ChildProcess | null} */
 let webProc = null;
+/** @type {import('child_process').ChildProcess | null} */
+let caddyProc = null;
 /** @type {import('systray2').default | null} */
 let systray = null;
 let quitting = false;
@@ -56,6 +65,13 @@ const statusOpencodeItem = {
 const statusWebuiItem = {
   title: 'WebUI: …',
   tooltip: 'Next.js WebUI status',
+  checked: false,
+  enabled: false,
+};
+
+const statusCaddyItem = {
+  title: 'Caddy: …',
+  tooltip: 'Caddy reverse proxy status',
   checked: false,
   enabled: false,
 };
@@ -186,6 +202,80 @@ function spawnOpencode(opencodePath) {
       log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
     }
     opencodeProc = null;
+    refreshStatusMenu();
+  });
+}
+
+function findCaddy() {
+  try {
+    const output = execSync('where.exe caddy', {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const lines = output
+      .trim()
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const exe = lines.find((p) => /\.exe$/i.test(p));
+    return exe || lines[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ensure a Caddyfile exists, seeding from the bundled example on first run. */
+function ensureCaddyfile() {
+  if (existsSync(CADDYFILE)) return true;
+  try {
+    if (existsSync(CADDYFILE_EXAMPLE)) {
+      writeFileSync(CADDYFILE, readFileSync(CADDYFILE_EXAMPLE, 'utf8'), 'utf8');
+      log(`Created ${CADDYFILE} from example — edit domain/auth before remote use`);
+      return true;
+    }
+  } catch (err) {
+    error(`Failed to seed Caddyfile: ${err instanceof Error ? err.message : err}`);
+  }
+  return false;
+}
+
+function spawnCaddy() {
+  const caddyPath = findCaddy();
+  if (!caddyPath) {
+    error('Caddy enabled but not found on PATH. Install Caddy or unset OPENCODE_WEBUI_CADDY.');
+    return;
+  }
+  if (!ensureCaddyfile()) {
+    error(`Caddy enabled but no Caddyfile at ${CADDYFILE}.`);
+    return;
+  }
+
+  log(`Starting Caddy: ${caddyPath} (config ${CADDYFILE})`);
+  caddyProc = spawn(
+    caddyPath,
+    ['run', '--config', CADDYFILE, '--adapter', 'caddyfile'],
+    {
+      cwd: REPO_ROOT,
+      shell: false,
+      stdio: 'pipe',
+      windowsHide: true,
+    },
+  );
+
+  caddyProc.on('error', (err) => {
+    error(`Caddy spawn error: ${err.message}`);
+  });
+  caddyProc.stdout?.on('data', (chunk) => {
+    process.stdout.write(`[caddy] ${chunk}`);
+  });
+  caddyProc.stderr?.on('data', (chunk) => {
+    process.stderr.write(`[caddy] ${chunk}`);
+  });
+  caddyProc.on('exit', (code, signal) => {
+    if (!quitting) {
+      log(`Caddy exited (code=${code}, signal=${signal ?? 'none'})`);
+    }
+    caddyProc = null;
     refreshStatusMenu();
   });
 }
@@ -353,16 +443,20 @@ async function startChildren() {
   if (plan.startWeb) {
     spawnWeb();
   }
+  if (CADDY_ENABLED) {
+    spawnCaddy();
+  }
   await refreshStatusMenu();
 }
 
 function stopChildren() {
-  const pids = [opencodeProc?.pid, webProc?.pid].filter(Boolean);
+  const pids = [opencodeProc?.pid, webProc?.pid, caddyProc?.pid].filter(Boolean);
   for (const pid of pids) {
     killProcessTree(pid);
   }
   opencodeProc = null;
   webProc = null;
+  caddyProc = null;
 }
 
 function formatStatus(name, proc, httpUp) {
@@ -383,6 +477,15 @@ async function refreshStatusMenu() {
   if (systray) {
     systray.sendAction({ type: 'update-item', item: statusOpencodeItem });
     systray.sendAction({ type: 'update-item', item: statusWebuiItem });
+  }
+
+  if (CADDY_ENABLED) {
+    statusCaddyItem.title = procRunning(caddyProc)
+      ? 'Caddy: running'
+      : 'Caddy: stopped';
+    if (systray) {
+      systray.sendAction({ type: 'update-item', item: statusCaddyItem });
+    }
   }
 }
 
@@ -430,7 +533,9 @@ function createTray() {
           tooltip: 'Service status',
           checked: false,
           enabled: true,
-          items: [statusOpencodeItem, statusWebuiItem],
+          items: CADDY_ENABLED
+            ? [statusOpencodeItem, statusWebuiItem, statusCaddyItem]
+            : [statusOpencodeItem, statusWebuiItem],
         },
         {
           title: 'Restart',

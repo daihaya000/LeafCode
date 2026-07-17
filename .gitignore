@@ -4,3 +4,8 @@ node_modules/
 *.log
 .DS_Store
 # .webui-worktrees/
+
+# User-specific Caddy config (seeded from deploy/Caddyfile.example)
+deploy/Caddyfile
+# Caddy runtime state
+deploy/.caddy/

@@ -1,22 +1,33 @@
 # Example Caddy reverse proxy for OpenCode WebUI (remote via VPN).
-# Adjust email / domain. Do NOT expose without VPN / auth.
 #
-# Usage (example):
-#   caddy run --config Caddyfile
+# The tray host can manage Caddy for you:
+#   set OPENCODE_WEBUI_CADDY=1
+#   (optional) set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
+# On first run the host copies this example to deploy/Caddyfile — edit that copy.
+#
+# Manual usage:
+#   caddy run --config deploy/Caddyfile --adapter caddyfile
+#
+# SECURITY: never expose the WebUI without VPN and/or auth. OpenCode itself
+# stays bound to 127.0.0.1; only the Next.js BFF (:3000) is proxied here.
 
 {
+	# Email for ACME/Let's Encrypt when using a public domain + real TLS.
 	email you@example.com
 }
 
-webui.example.local {
-	# Prefer Basic Auth or VPN-only binding in production
+# ---------------------------------------------------------------------------
+# Option A: HTTPS with a domain (public DNS or split-horizon over VPN).
+# ---------------------------------------------------------------------------
+webui.example.com {
+	# Prefer Basic Auth (or VPN-only binding) in production.
+	# Generate a hash with:  caddy hash-password
 	basicauth /* {
-		# Generate with: caddy hash-password
-		# user JDJh...hashed...
+		# user JDJhJDE0...hashed...
 	}
 
 	reverse_proxy 127.0.0.1:3000 {
-		# SSE / long-lived streams
+		# SSE / long-lived streams (event timeline) must not be buffered.
 		flush_interval -1
 		transport http {
 			read_timeout 0
@@ -29,3 +40,17 @@ webui.example.local {
 		Referrer-Policy no-referrer
 	}
 }
+
+# ---------------------------------------------------------------------------
+# Option B: LAN / VPN over plain HTTP on a fixed port (no public domain).
+# Bind to your VPN interface IP for safety. Uncomment to use.
+# ---------------------------------------------------------------------------
+# :8080 {
+# 	reverse_proxy 127.0.0.1:3000 {
+# 		flush_interval -1
+# 		transport http {
+# 			read_timeout 0
+# 			write_timeout 0
+# 		}
+# 	}
+# }
