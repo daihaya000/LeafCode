@@ -37,6 +37,7 @@ import {
   type AccessMode,
 } from "@/lib/access-mode";
 import { getJson, ocJson, sendJson } from "@/lib/client";
+import { applyFaviconBadge } from "@/lib/favicon-badge";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
@@ -518,18 +519,24 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [task, refreshTask]);
 
-  // Tab title notification for approvals / working
+  // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
     const base = task?.title ? `${task.title} · OpenCode` : "OpenCode WebUI";
-    if (stream.permissions.length > 0 || stream.questions.length > 0) {
+    const needsAttention =
+      stream.permissions.length > 0 || stream.questions.length > 0;
+    if (needsAttention) {
       document.title = `(要確認) ${base}`;
+      applyFaviconBadge("attention");
     } else if (working) {
       document.title = `(実行中) ${base}`;
+      applyFaviconBadge("working");
     } else {
       document.title = base;
+      applyFaviconBadge("idle");
     }
     return () => {
       document.title = "OpenCode WebUI";
+      applyFaviconBadge("idle");
     };
   }, [
     task?.title,
