@@ -66,11 +66,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const commit = await runGit(check.path, [
-    "commit",
-    "-m",
-    body.message.trim(),
-  ]);
+  // For a partial (paths) selection, scope the commit to those paths too.
+  // Without a pathspec, `git commit` would also include anything else already
+  // staged in the index (e.g. from a prior/external `git add`), committing
+  // files the user explicitly deselected.
+  const commitArgs = ["commit", "-m", body.message.trim()];
+  if (!body.all && body.paths?.length) {
+    commitArgs.push("--", ...body.paths);
+  }
+  const commit = await runGit(check.path, commitArgs);
   if (commit.code !== 0) {
     return NextResponse.json(
       {

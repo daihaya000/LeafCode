@@ -81,7 +81,11 @@ export async function POST(req: NextRequest) {
     args.push(currentBranch);
     const merge = await runGit(check.path, args);
     if (merge.code !== 0) {
-      // try return to original branch
+      // Abort the in-progress (conflicted) merge first: while MERGE_HEAD exists
+      // and the index has unmerged entries, `git checkout` fails with "you need
+      // to resolve your current index first", which would strand this worktree
+      // on the target branch with conflict markers. --abort restores HEAD/index.
+      await runGit(check.path, ["merge", "--abort"]).catch(() => undefined);
       await runGit(check.path, ["checkout", currentBranch]);
       return NextResponse.json(
         {
