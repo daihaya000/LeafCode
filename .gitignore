@@ -21,3 +21,6 @@ web/.playwright/
 
 # OpenCode WebUI runtime state (per-session, machine-local)
 .opencode-webui/
+
+# Superpowers agent scratch state
+.superpowers/
