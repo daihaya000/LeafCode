@@ -21,6 +21,8 @@ export type CodexBarProvider = {
   /** codexBarProviderId (codex/claude/cursor/opencode-go/ollama), falls back to opencode id. */
   id: string;
   opencodeId: string | null;
+  /** Subscription/plan label (e.g. Pro/Max/Go), or null when unknown. */
+  plan: string | null;
   /** Max usage percent across windows (0..100+), or null if unknown. */
   usedPercent: number | null;
   limited: boolean;
@@ -102,6 +104,7 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
       return {
         id: asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown",
         opencodeId: asString(p.opencodeProviderId),
+        plan: asString(p.plan),
         usedPercent,
         limited,
         maxed,

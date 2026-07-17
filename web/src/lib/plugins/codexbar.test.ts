@@ -88,6 +88,19 @@ describe("parseCodexBarSnapshot", () => {
     expect(parseCodexBarSnapshot({ providers: "nope" }).available).toBe(false);
   });
 
+  it("parses the plan label and defaults to null", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "claude", usedPercent: 10, plan: "Max" },
+        { codexBarProviderId: "codex", usedPercent: 10 },
+        { codexBarProviderId: "cursor", usedPercent: 10, plan: "" },
+      ],
+    });
+    expect(u.providers[0].plan).toBe("Max");
+    expect(u.providers[1].plan).toBeNull();
+    expect(u.providers[2].plan).toBeNull();
+  });
+
   it("skips non-object provider entries", () => {
     const u = parseCodexBarSnapshot({ providers: [null, 3, { codexBarProviderId: "codex" }] });
     expect(u.providers).toHaveLength(1);

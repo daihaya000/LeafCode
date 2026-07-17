@@ -201,6 +201,14 @@ function ProviderRow({
       >
         <ProviderIcon id={p.id} tone={tone} />
         <span className="truncate font-semibold text-text">{label}</span>
+        {p.plan && (
+          <span
+            className="shrink-0 rounded bg-surface-2 px-1 text-[10px] font-medium text-muted"
+            title={`プラン: ${p.plan}`}
+          >
+            {p.plan}
+          </span>
+        )}
         {p.error ? (
           <span className="ml-auto flex shrink-0 items-center gap-1 text-danger">
             <AlertTriangle className="h-3 w-3" /> エラー
