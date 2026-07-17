@@ -14,7 +14,7 @@ const SKIP = new Set([
   "DumpStack.log.tmp",
 ]);
 
-type Entry = { name: string; path: string };
+type Entry = { name: string; path: string; kind?: "dir" | "file" };
 const QUICK_ACCESS_WAIT_MS = 750;
 
 /** Do not let optional Explorer shortcuts block the usable folder listing. */
@@ -33,8 +33,9 @@ async function quickAccessWithoutBlocking(): Promise<Entry[]> {
   }
 }
 
-function listDirs(dir: string): Entry[] {
-  const entries: Entry[] = [];
+function listDirs(dir: string, includeFiles = false): Entry[] {
+  const dirs: Entry[] = [];
+  const files: Entry[] = [];
   let names: fs.Dirent[];
   try {
     names = fs.readdirSync(dir, { withFileTypes: true });
@@ -44,21 +45,26 @@ function listDirs(dir: string): Entry[] {
     );
   }
   for (const d of names) {
-    if (!d.isDirectory() && !d.isSymbolicLink()) continue;
     if (SKIP.has(d.name)) continue;
     const full = path.join(dir, d.name);
+    let isDir: boolean;
     try {
+      // statSync resolves symlinks so a linked directory is still treated as one.
       const st = fs.statSync(full);
-      if (!st.isDirectory()) continue;
+      isDir = st.isDirectory();
+      if (!isDir && !st.isFile()) continue;
     } catch {
       continue;
     }
-    entries.push({ name: d.name, path: full });
+    if (isDir) dirs.push({ name: d.name, path: full, kind: "dir" });
+    else if (includeFiles) files.push({ name: d.name, path: full, kind: "file" });
   }
-  entries.sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
-  return entries;
+  const cmp = (a: Entry, b: Entry) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  dirs.sort(cmp);
+  files.sort(cmp);
+  // Directories first, then files (only present when includeFiles is set).
+  return [...dirs, ...files];
 }
 
 function samePath(a: string, b: string): boolean {
@@ -104,9 +110,12 @@ export async function GET(req: NextRequest) {
   const parent =
     samePath(resolved, home) || parentDir === resolved ? null : parentDir;
   const atHome = samePath(resolved, home);
+  // Opt-in: the in-task file tree needs files too; the project picker omits
+  // this so it keeps listing directories only.
+  const includeFiles = req.nextUrl.searchParams.get("files") === "1";
 
   try {
-    const entries = listDirs(resolved);
+    const entries = listDirs(resolved, includeFiles);
     const quickAccess = atHome ? await quickAccessWithoutBlocking() : [];
     return NextResponse.json({
       path: resolved,

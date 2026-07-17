@@ -144,16 +144,14 @@ export async function getTask(id: string): Promise<TaskSummary | null> {
   const ws = listWorkspacesJoined().find((w) => w.id === id);
   if (!ws) return null;
   const binding = latestBindings().get(ws.id);
-  const [stat, statusResult] = await Promise.all([
+  // Reuse sessionStatusFor so engineOk here matches listTasks exactly: a
+  // non-503 API error still means the engine is up. The previous inline fetch
+  // treated any /session/status failure as engineOk=false, which made a single
+  // task view flip to "unknown" while the task list showed the real status.
+  const [stat, { engineOk, statuses }] = await Promise.all([
     dirStat(ws.absolute_path, 3000),
-    binding
-      ? ocServer<StatusMap>(ws.absolute_path, "/session/status", {
-          timeoutMs: 1500,
-        }).then(
-          (m) => ({ ok: true as const, status: m[binding.opencode_session_id] }),
-          () => ({ ok: false as const, status: undefined }),
-        )
-      : Promise.resolve({ ok: true as const, status: undefined }),
+    sessionStatusFor([ws.absolute_path]),
   ]);
-  return toTask(ws, binding, stat, statusResult.status, statusResult.ok);
+  const status = binding ? statuses[binding.opencode_session_id] : undefined;
+  return toTask(ws, binding, stat, status, engineOk);
 }

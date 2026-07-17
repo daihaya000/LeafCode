@@ -5,6 +5,7 @@ import {
   deleteWorkspace,
   getDb,
   listWorkspacesByStatus,
+  removeAllowedRoot,
   setWorkspaceStatus,
 } from "@/lib/db";
 import { listGitWorktrees, removeWorktree, runGit } from "@/lib/git";
@@ -243,6 +244,10 @@ export async function POST(req: NextRequest) {
           continue;
         }
       }
+      // The copy path was allow-listed on provision; drop it now that the
+      // folder is gone, mirroring destroyWorkspace so allowed_roots doesn't
+      // accumulate dead entries.
+      removeAllowedRoot(row.worktree_path);
     }
 
     deleteWorkspace(row.id);

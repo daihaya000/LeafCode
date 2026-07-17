@@ -26,7 +26,7 @@ export function FileTreePanel({
       const data = await getJson<{
         entries?: { name: string; path: string; kind?: string }[];
         dirs?: { name: string; path: string }[];
-      }>("/api/browse/dirs", { path });
+      }>("/api/browse/dirs", { path, files: "1" });
       const dirs = (data.dirs ?? data.entries ?? []).map((e) => ({
         name: e.name,
         path: e.path,
