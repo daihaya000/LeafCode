@@ -1,8 +1,13 @@
 "use client";
 
-import { ButtonHTMLAttributes, ReactNode, forwardRef } from "react";
+import React, {
+  ButtonHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  forwardRef,
+} from "react";
 import { useTheme } from "next-themes";
-import { Loader2, Moon, Sun } from "lucide-react";
+import { ChevronDown, Loader2, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 function cx(...parts: (string | false | null | undefined)[]): string {
@@ -10,6 +15,57 @@ function cx(...parts: (string | false | null | undefined)[]): string {
 }
 
 export { cx };
+
+export function GhostSelect({
+  icon,
+  valueLabel,
+  tone = "default",
+  className,
+  selectClassName,
+  disabled,
+  children,
+  ...selectProps
+}: Omit<SelectHTMLAttributes<HTMLSelectElement>, "className" | "disabled"> & {
+  icon: ReactNode;
+  valueLabel: ReactNode;
+  tone?: "default" | "warning";
+  className?: string;
+  selectClassName?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <span
+      className={cx(
+        "group relative inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors focus-within:ring-2 focus-within:ring-primary/30",
+        tone === "warning"
+          ? "text-warning hover:bg-warning-bg focus-within:bg-warning-bg"
+          : "text-muted hover:bg-surface-2 hover:text-text focus-within:bg-surface-2 focus-within:text-text",
+        disabled && "cursor-not-allowed opacity-40",
+        className,
+      )}
+    >
+      <span aria-hidden="true" className="shrink-0">
+        {icon}
+      </span>
+      <span aria-hidden="true" className="min-w-0 truncate">
+        {valueLabel}
+      </span>
+      <span aria-hidden="true" className="shrink-0 text-faint">
+        <ChevronDown className="h-3.5 w-3.5" />
+      </span>
+      <select
+        {...selectProps}
+        disabled={disabled}
+        className={cx(
+          "absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 disabled:cursor-not-allowed",
+          selectClassName,
+        )}
+      >
+        {children}
+      </select>
+    </span>
+  );
+}
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";
 type ButtonSize = "sm" | "md" | "lg" | "icon";

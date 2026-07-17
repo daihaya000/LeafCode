@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
-import { Button } from "@/components/ui";
+import { Button, GhostSelect } from "@/components/ui";
 import {
   readAccessMode,
   writeAccessMode,
@@ -24,6 +24,12 @@ type ProviderResponse = {
 };
 
 type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+
+function formatAgentLabel(agent: string): string {
+  if (agent === "build") return "build（Code）";
+  if (agent === "plan") return "plan（Plan）";
+  return /ask|explore/i.test(agent) ? `${agent}（Ask）` : agent;
+}
 
 export function HomeView() {
   const router = useRouter();
@@ -218,6 +224,9 @@ export function HomeView() {
     }
   }, [prompt, projectId, isolation, baseBranch, model, agent, submitting, router]);
 
+  const selectedProject = projects.find((project) => project.id === projectId);
+  const selectedModel = modelOptions.find((option) => option.value === model);
+
   return (
     <div className="h-full overflow-y-auto">
       <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]">
@@ -225,7 +234,14 @@ export function HomeView() {
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
             何をつくりますか？
           </h1>
-          <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong">
+          <form
+            aria-label="タスク作成"
+            className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
             <textarea
               ref={textareaRef}
               value={prompt}
@@ -249,12 +265,20 @@ export function HomeView() {
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
             />
-            <div className="flex items-start gap-2 px-3 pb-3">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                <select
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 px-3 pb-3 sm:flex sm:flex-nowrap sm:gap-2">
+              <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 sm:col-auto sm:row-auto sm:flex-1">
+                <GhostSelect
                   value={projectId}
+                  disabled={projects.length === 0 || submitting}
+                  aria-label="プロジェクト"
+                  icon={<FolderGit2 className="h-3.5 w-3.5" />}
+                  valueLabel={
+                    selectedProject
+                      ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                      : "プロジェクトなし"
+                  }
                   onChange={(e) => setProjectId(e.target.value)}
-                  className="h-9 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-44"
+                  className="min-w-0 flex-1 sm:max-w-44"
                 >
                   {projects.length === 0 && (
                     <option value="">プロジェクトなし</option>
@@ -265,33 +289,39 @@ export function HomeView() {
                       {p.name}
                     </option>
                   ))}
-                </select>
-                <AccessModeSelect
-                  value={accessMode}
-                  onChange={(m) => {
-                    setAccessMode(m);
-                    writeAccessMode(m);
-                  }}
-                  className="h-9"
-                />
-                <select
+                </GhostSelect>
+                <GhostSelect
                   value={isolation}
+                  disabled={submitting}
+                  aria-label="作業場所"
+                  icon={<GitBranch className="h-3.5 w-3.5" />}
+                  valueLabel={
+                    isolation === "current_folder"
+                      ? defaultBranchLabel
+                      : "worktree"
+                  }
                   onChange={(e) =>
                     setIsolation(
                       e.target.value as "current_folder" | "git_worktree",
                     )
                   }
-                  className="h-9 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text"
+                  className="min-w-0 flex-1 sm:max-w-32"
                   title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
                 >
                   <option value="current_folder">{defaultBranchLabel}</option>
                   <option value="git_worktree">worktree</option>
-                </select>
+                </GhostSelect>
+              </div>
+              <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:col-auto sm:row-auto sm:flex-1 sm:justify-end sm:overflow-visible">
                 {modelOptions.length > 0 && (
-                  <select
+                  <GhostSelect
                     value={model}
+                    disabled={submitting}
+                    aria-label="モデル"
+                    icon={<Cpu className="h-3.5 w-3.5" />}
+                    valueLabel={selectedModel?.label ?? "モデル"}
                     onChange={(e) => setModel(e.target.value)}
-                    className="h-9 max-w-[9rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-40"
+                    className="w-36 shrink-0 sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-40"
                   >
                     {[...new Set(modelOptions.map((o) => o.group))].map(
                       (group) => (
@@ -306,42 +336,49 @@ export function HomeView() {
                         </optgroup>
                       ),
                     )}
-                  </select>
+                  </GhostSelect>
                 )}
                 {agents.length > 0 && (
-                  <select
+                  <GhostSelect
                     value={agent}
+                    disabled={submitting}
+                    aria-label="エージェント"
+                    icon={<Bot className="h-3.5 w-3.5" />}
+                    valueLabel={formatAgentLabel(agent)}
                     onChange={(e) => setAgent(e.target.value)}
-                    className="h-9 max-w-[8rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted outline-none hover:text-text sm:max-w-36"
+                    className="w-32 shrink-0 sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-36"
                     title="エージェント（OpenCode agent）"
                   >
                     {agents.map((a) => (
                       <option key={a} value={a}>
-                        {a === "build"
-                          ? "build（Code）"
-                          : a === "plan"
-                            ? "plan（Plan）"
-                            : /ask|explore/i.test(a)
-                              ? `${a}（Ask）`
-                              : a}
+                        {formatAgentLabel(a)}
                       </option>
                     ))}
-                  </select>
+                  </GhostSelect>
                 )}
+                <AccessModeSelect
+                  value={accessMode}
+                  disabled={submitting}
+                  onChange={(m) => {
+                    setAccessMode(m);
+                    writeAccessMode(m);
+                  }}
+                  className="w-32 shrink-0 sm:w-auto sm:min-w-0 sm:flex-1 sm:max-w-36"
+                />
               </div>
               <Button
                 variant="primary"
                 size="icon"
+                type="submit"
                 aria-label="タスク開始"
-                className="shrink-0"
+                className="col-start-2 row-start-1 shrink-0 sm:col-auto sm:row-auto"
                 busy={submitting}
                 disabled={!prompt.trim() || !projectId || !engineOk}
-                onClick={() => void submit()}
               >
                 {!submitting && <ArrowUp className="h-4.5 w-4.5" />}
               </Button>
             </div>
-          </div>
+          </form>
 
           {loaded && !engineOk && (
             <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">

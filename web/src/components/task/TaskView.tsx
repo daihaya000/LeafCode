@@ -11,10 +11,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowUp,
+  Bot,
   Check,
   ChevronRight,
   CircleAlert,
   Copy,
+  Cpu,
   FolderTree,
   GitBranch,
   GitGraph,
@@ -30,7 +32,7 @@ import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
-import { Button, Spinner, cx } from "@/components/ui";
+import { Button, GhostSelect, Spinner, cx } from "@/components/ui";
 import {
   readAccessMode,
   writeAccessMode,
@@ -1072,11 +1074,17 @@ export function TaskView({ taskId }: { taskId: string }) {
                       className="h-8 shrink-0"
                     />
                     {modelOptions.length > 0 && (
-                      <select
+                      <GhostSelect
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
                         disabled={!task.sessionId || working}
-                        className="h-8 max-w-[9rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50 sm:max-w-40"
+                        aria-label="モデル"
+                        icon={<Cpu className="h-3.5 w-3.5" />}
+                        valueLabel={
+                          modelOptions.find((o) => o.value === model)?.label ??
+                          "モデル"
+                        }
+                        className="max-w-[11rem] shrink-0 sm:max-w-48"
                       >
                         {[...new Set(modelOptions.map((o) => o.group))].map(
                           (group) => (
@@ -1091,21 +1099,24 @@ export function TaskView({ taskId }: { taskId: string }) {
                             </optgroup>
                           ),
                         )}
-                      </select>
+                      </GhostSelect>
                     )}
                     {agents.length > 0 && (
-                      <select
+                      <GhostSelect
                         value={agent}
                         onChange={(e) => setAgent(e.target.value)}
                         disabled={!task.sessionId || working}
-                        className="h-8 max-w-[8rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-muted outline-none hover:text-text disabled:opacity-50 sm:max-w-36"
+                        aria-label="エージェント"
+                        icon={<Bot className="h-3.5 w-3.5" />}
+                        valueLabel={agent || "エージェント"}
+                        className="max-w-[10rem] shrink-0 sm:max-w-40"
                       >
                         {agents.map((a) => (
                           <option key={a} value={a}>
                             {a}
                           </option>
                         ))}
-                      </select>
+                      </GhostSelect>
                     )}
                   </div>
                   {working ? (
