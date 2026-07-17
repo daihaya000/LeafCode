@@ -186,7 +186,7 @@ function ProviderRow({
   const label = providerLabel(p.id);
 
   return (
-    <li className="flex flex-col gap-1.5">
+    <li className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2/40 p-2">
       <button
         type="button"
         onClick={canExpand ? onToggle : undefined}
@@ -196,14 +196,14 @@ function ProviderRow({
         }
         className={cx(
           "flex w-full items-center gap-2 text-xs",
-          canExpand && "cursor-pointer rounded-md -mx-1 px-1 py-0.5 hover:bg-surface-2",
+          canExpand && "cursor-pointer rounded-md -mx-1 px-1 py-0.5 hover:bg-surface-3",
         )}
       >
         <ProviderIcon id={p.id} tone={tone} />
         <span className="truncate font-semibold text-text">{label}</span>
         {p.plan && (
           <span
-            className="shrink-0 rounded bg-surface-2 px-1 text-[10px] font-medium text-muted"
+            className="shrink-0 rounded border border-border bg-surface-3 px-1 text-[10px] font-medium text-muted"
             title={`プラン: ${p.plan}`}
           >
             {p.plan}
