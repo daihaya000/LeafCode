@@ -1,5 +1,5 @@
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 import { assertAllowedDirectory } from "./allowlist";
 import { createTemporaryCopy, removeTemporaryCopy } from "./copy";
 import { detectDevcontainer } from "./devcontainer";
@@ -17,8 +17,27 @@ import {
   setWorkspaceStatus,
 } from "./db";
 import { addWorktree, removeWorktree, runGit } from "./git";
+import { dataDir, ensureDataDir } from "./paths";
 import { persistProjectSessions } from "./project-session-sync";
 import { makeWorktreeBranchName } from "./workspace-branch";
+
+/**
+ * Resolve the worktree directory for a new git worktree session.
+ *
+ * Historically worktrees lived under `<repoRoot>/.webui-worktrees/…`. When the
+ * repo root is inside a OneDrive-synced folder, OneDrive's Cloud Files reparse
+ * point locks the worktree directory so `git worktree remove` / `fs.rmSync`
+ * fail with EPERM, leaving every workspace orphaned ("要復旧"). Place new
+ * worktrees under the machine-local data dir (outside OneDrive) so removal
+ * succeeds reliably. Existing DB rows keep their original `worktree_path` for
+ * backward compatibility.
+ */
+export function resolveWorktreeDir(projectId: string, branchSlug: string): string {
+  ensureDataDir();
+  const base = path.join(dataDir(), "worktrees", projectId);
+  fs.mkdirSync(base, { recursive: true });
+  return path.join(base, branchSlug);
+}
 
 export type Isolation =
   | "current_folder"
@@ -97,9 +116,8 @@ export async function provisionWorkspace(input: {
         workspaceId,
         baseBranch: input.baseBranch,
       });
-    const wtDir = path.join(
-      project.root_path,
-      ".webui-worktrees",
+    const wtDir = resolveWorktreeDir(
+      input.projectId,
       branch.replace(/\//g, "__"),
     );
     try {

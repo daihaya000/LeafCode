@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { dataDir } from "./paths";
 
 const SAFE_BRANCH = /^[A-Za-z0-9._\/-]+$/;
 
@@ -145,13 +146,15 @@ export async function removeWorktree(input: {
   const repoRoot = path.resolve(input.repoRoot);
   const force = input.force !== false;
 
-  // Defense-in-depth: worktrees we provision always live under the repo root
-  // (<repoRoot>/.webui-worktrees/…). Refuse to touch anything outside it so a
+  // Defense-in-depth: worktrees we provision live either under the repo root
+  // (legacy <repoRoot>/.webui-worktrees/…) or under the machine-local data dir
+  // (<dataDir>/worktrees/…). Refuse to touch anything outside both so a
   // tampered manifest / DB row can't drive the filesystem-delete fallback into
   // an arbitrary directory.
-  if (!isInside(repoRoot, absWorktree)) {
+  const worktreeBase = path.resolve(dataDir(), "worktrees");
+  if (!isInside(repoRoot, absWorktree) && !isInside(worktreeBase, absWorktree)) {
     throw new Error(
-      `refusing to remove worktree outside repo root: ${absWorktree}`,
+      `refusing to remove worktree outside repo root and data dir: ${absWorktree}`,
     );
   }
 

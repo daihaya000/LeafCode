@@ -9,10 +9,17 @@ import {
   setWorkspaceStatus,
 } from "@/lib/db";
 import { listGitWorktrees, removeWorktree, runGit } from "@/lib/git";
+import { dataDir } from "@/lib/paths";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** True when `child` is the same as, or nested inside, `parent`. */
+function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
 
 function mapWorkspace(w: {
   id: string;
@@ -140,10 +147,14 @@ export async function GET(req: NextRequest) {
   for (const p of projects) {
     try {
       const wts = await listGitWorktrees(p.root_path);
+      const worktreeBase = path.resolve(dataDir(), "worktrees");
       for (const wt of wts) {
         if (wt.bare) continue;
-        const isWebui = /[\\/]\.webui-worktrees[\\/]/.test(wt.path);
-        if (!isWebui) continue;
+        // Legacy location: <repoRoot>/.webui-worktrees/…
+        // New location:     <dataDir>/worktrees/…
+        const isLegacy = /[\\/]\.webui-worktrees[\\/]/.test(wt.path);
+        const isNew = isInside(worktreeBase, wt.path);
+        if (!isLegacy && !isNew) continue;
         const key = wt.path.replace(/\//g, "\\").toLowerCase();
         if (!knownPaths.has(key)) {
           stray.push({

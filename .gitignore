@@ -4,7 +4,9 @@ node_modules/
 .env*.local
 *.log
 .DS_Store
-# .webui-worktrees/
+# Legacy worktree location (kept for backward compat; new worktrees live under
+# the machine-local data dir, but old DB rows may still point here).
+.webui-worktrees/
 
 # User-specific Caddy config (seeded from deploy/Caddyfile.example)
 deploy/Caddyfile
