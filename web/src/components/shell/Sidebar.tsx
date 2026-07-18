@@ -340,7 +340,7 @@ export function Sidebar({
                       aria-expanded={open}
                       aria-label={`${p.name}を${open ? "折りたたむ" : "展開"}`}
                       onClick={() => toggleProject(p.id)}
-                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text"
+                      className="flex min-w-0 min-h-11 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text md:min-h-8"
                     >
                       <ChevronRight
                         className={cx(

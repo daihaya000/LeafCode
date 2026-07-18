@@ -54,3 +54,19 @@ test("opens task creation with the selected project", async ({ page }) => {
     "project-b",
   );
 });
+
+test("selects the project for task creation when the engine is unavailable", async ({
+  page,
+}) => {
+  await page.route("**/api/tasks", (route) =>
+    route.fulfill({ json: { tasks: [], engineOk: false } }),
+  );
+
+  await page
+    .getByRole("button", { name: "Project Bに新規タスクを作成" })
+    .click();
+  await expect(page).toHaveURL(/\?projectId=project-b$/);
+  await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
+    "project-b",
+  );
+});
