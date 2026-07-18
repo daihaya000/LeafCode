@@ -505,6 +505,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const value = `${info.providerID}::${info.modelID}`;
       if (modelOptions.some((o) => o.value === value)) {
         setModel(value);
+        setIntelligence("");
         seededModelRef.current = true;
       }
       break;
