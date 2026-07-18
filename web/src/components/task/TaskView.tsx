@@ -40,6 +40,21 @@ import {
   writeAccessMode,
   type AccessMode,
 } from "@/lib/access-mode";
+import {
+  DEFAULT_MODEL_EVENT,
+  readDefaultModel,
+} from "@/lib/default-model";
+import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
+import {
+  readChatTab,
+  readShowDiff,
+  readSidePanel,
+  writeChatTab,
+  writeShowDiff,
+  writeSidePanel,
+  type ChatTab,
+  type SidePanelKind,
+} from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
 import {
@@ -94,6 +109,26 @@ type AgentResponse = {
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
 
 const IMAGE_MIME_RE = /^image\//i;
+
+function ModelSelectIcon({ model }: { model: string }) {
+  const providerID = model ? model.split("::")[0] : "";
+  const src = providerIconSrcForOpencodeId(providerID);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={14}
+        height={14}
+        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return <Cpu className="h-3.5 w-3.5" />;
+}
 
 function TodoPanel({
   todos,
@@ -193,11 +228,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const { setExtras } = useShellExtras();
   const [task, setTask] = useState<TaskSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"chat" | "diff">("chat");
+  const [tab, setTab] = useState<ChatTab>("chat");
   const [showDiff, setShowDiff] = useState(true);
-  const [sidePanel, setSidePanel] = useState<"diff" | "files" | "pty" | "graph">(
-    "diff",
-  );
+  const [sidePanel, setSidePanel] = useState<SidePanelKind>("diff");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);
   const [isLg, setIsLg] = useState(false);
@@ -234,6 +267,9 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   useEffect(() => {
     setSideWidth(loadSideWidth());
+    setTab(readChatTab());
+    setShowDiff(readShowDiff());
+    setSidePanel(readSidePanel());
     const mq = window.matchMedia("(min-width: 1024px)");
     const apply = () => setIsLg(mq.matches);
     apply();
@@ -292,9 +328,40 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
   }, []);
 
+  // Sync default model when changed in Settings while a task is open and the
+  // user has not manually picked a different model in this composer.
+  useEffect(() => {
+    const onDefault = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      const next = typeof detail === "string" && detail.length > 0 ? detail : "";
+      if (!next) return;
+      setModel((cur) => {
+        if (cur && cur === next) return cur;
+        if (modelOptions.some((o) => o.value === next)) return next;
+        return cur;
+      });
+    };
+    window.addEventListener(DEFAULT_MODEL_EVENT, onDefault);
+    return () => window.removeEventListener(DEFAULT_MODEL_EVENT, onDefault);
+  }, [modelOptions]);
+
   const changeAccessMode = useCallback((mode: AccessMode) => {
     setAccessMode(mode);
     writeAccessMode(mode);
+  }, []);
+
+  // Persist right-panel display state so it survives task/session switches.
+  const changeTab = useCallback((next: ChatTab) => {
+    setTab(next);
+    writeChatTab(next);
+  }, []);
+  const changeShowDiff = useCallback((next: boolean) => {
+    setShowDiff(next);
+    writeShowDiff(next);
+  }, []);
+  const changeSidePanel = useCallback((next: SidePanelKind) => {
+    setSidePanel(next);
+    writeSidePanel(next);
   }, []);
 
   const { permissions, replyPermission } = stream;
@@ -354,13 +421,24 @@ export function TaskView({ taskId }: { taskId: string }) {
           setModelOptions(options);
           setModelCapabilities(caps);
 
+          // Prefer user-configured default model, then OpenCode config.model
+          // (provider/modelID), then provider defaults.
           let initial = "";
-          const cfg = config?.model?.trim();
-          if (cfg) {
-            const slash = cfg.indexOf("/");
-            if (slash > 0) {
-              const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-              if (options.some((o) => o.value === value)) initial = value;
+          const savedDefault = readDefaultModel();
+          if (
+            savedDefault &&
+            options.some((o) => o.value === savedDefault)
+          ) {
+            initial = savedDefault;
+          }
+          if (!initial) {
+            const cfg = config?.model?.trim();
+            if (cfg) {
+              const slash = cfg.indexOf("/");
+              if (slash > 0) {
+                const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+                if (options.some((o) => o.value === value)) initial = value;
+              }
             }
           }
           if (!initial) {
@@ -681,7 +759,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
-    const base = task?.title ? `${task.title} · OpenCode` : "OpenCode WebUI";
+    const base = task?.title ? `${task.title} · OpenCodeWebUI` : "OpenCodeWebUI";
     const needsAttention =
       stream.permissions.length > 0 || stream.questions.length > 0;
     if (needsAttention) {
@@ -695,7 +773,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       applyFaviconBadge("idle");
     }
     return () => {
-      document.title = "OpenCode WebUI";
+      document.title = "OpenCodeWebUI";
       applyFaviconBadge("idle");
     };
   }, [
@@ -776,11 +854,11 @@ export function TaskView({ taskId }: { taskId: string }) {
       }
       rel = rel.replace(/^\.?\//, "");
       if (rel) setFocusFile(rel);
-      setShowDiff(true);
-      setTab("diff");
-      setSidePanel("diff");
+      changeShowDiff(true);
+      changeTab("diff");
+      changeSidePanel("diff");
     },
-    [task?.directory],
+    [task?.directory, changeShowDiff, changeTab, changeSidePanel],
   );
 
   useEffect(() => {
@@ -930,9 +1008,9 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "files" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff(true);
-              setTab("diff");
-              setSidePanel("files");
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("files");
             }}
           >
             <FolderTree className="h-4 w-4" />
@@ -945,9 +1023,9 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff(true);
-              setTab("diff");
-              setSidePanel("graph");
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("graph");
             }}
           >
             <GitGraph className="h-4 w-4" />
@@ -961,9 +1039,9 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff(true);
-              setTab("diff");
-              setSidePanel("pty");
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("pty");
             }}
           >
             <Terminal className="h-4 w-4" />
@@ -977,12 +1055,12 @@ export function TaskView({ taskId }: { taskId: string }) {
             )}
             onClick={() => {
               if (sidePanel === "diff" && showDiff && tab === "diff") {
-                setShowDiff(false);
-                setTab("chat");
+                changeShowDiff(false);
+                changeTab("chat");
               } else {
-                setSidePanel("diff");
-                setShowDiff(true);
-                setTab("diff");
+                changeSidePanel("diff");
+                changeShowDiff(true);
+                changeTab("diff");
               }
             }}
           >
@@ -1014,10 +1092,10 @@ export function TaskView({ taskId }: { taskId: string }) {
               key={`${t.key}-${t.panel ?? "main"}`}
               type="button"
               onClick={() => {
-                setTab(t.key);
+                changeTab(t.key);
                 if (t.panel) {
-                  setSidePanel(t.panel);
-                  setShowDiff(true);
+                  changeSidePanel(t.panel);
+                  changeShowDiff(true);
                 }
               }}
               className={cx(
@@ -1306,7 +1384,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         onChange={(e) => setModel(e.target.value)}
                         disabled={!task.sessionId || working}
                         aria-label="モデル"
-                        icon={<Cpu className="h-3.5 w-3.5" />}
+                        icon={<ModelSelectIcon model={model} />}
                         valueLabel={
                           modelOptions.find((o) => o.value === model)?.label ??
                           "モデル"

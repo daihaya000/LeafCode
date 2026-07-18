@@ -30,7 +30,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           className="flex items-center gap-1.5 text-sm font-semibold tracking-tight"
         >
           <FolderGit2 className="h-4 w-4" />
-          OpenCode
+          OpenCodeWebUI
         </Link>
       </div>
 

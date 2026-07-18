@@ -11,6 +11,8 @@ import {
   writeAccessMode,
   type AccessMode,
 } from "@/lib/access-mode";
+import { readDefaultModel } from "@/lib/default-model";
+import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto } from "@/lib/types";
@@ -24,6 +26,26 @@ type ProviderResponse = {
 };
 
 type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+
+function ModelSelectIcon({ model }: { model: string }) {
+  const providerID = model ? model.split("::")[0] : "";
+  const src = providerIconSrcForOpencodeId(providerID);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={14}
+        height={14}
+        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return <Cpu className="h-3.5 w-3.5" />;
+}
 
 function formatAgentLabel(agent: string): string {
   if (agent === "build") return "build（Code）";
@@ -121,14 +143,24 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           }
           setModelOptions(options);
 
-          // Prefer OpenCode config.model (provider/modelID), then provider defaults
+          // Prefer user-configured default model, then OpenCode config.model
+          // (provider/modelID), then provider defaults.
           let initial = "";
-          const cfg = config?.model?.trim();
-          if (cfg) {
-            const slash = cfg.indexOf("/");
-            if (slash > 0) {
-              const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-              if (options.some((o) => o.value === value)) initial = value;
+          const savedDefault = readDefaultModel();
+          if (
+            savedDefault &&
+            options.some((o) => o.value === savedDefault)
+          ) {
+            initial = savedDefault;
+          }
+          if (!initial) {
+            const cfg = config?.model?.trim();
+            if (cfg) {
+              const slash = cfg.indexOf("/");
+              if (slash > 0) {
+                const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+                if (options.some((o) => o.value === value)) initial = value;
+              }
             }
           }
           if (!initial) {
@@ -361,7 +393,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     value={model}
                     disabled={submitting}
                     aria-label="モデル"
-                    icon={<Cpu className="h-3.5 w-3.5" />}
+                    icon={<ModelSelectIcon model={model} />}
                     valueLabel={selectedModel?.label ?? "モデル"}
                     onChange={(e) => setModel(e.target.value)}
                     className="w-full min-w-0"

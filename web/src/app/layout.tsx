@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "OpenCode",
+    title: "OpenCodeWebUI",
   },
   icons: {
     apple: "/apple-touch-icon.png",
