@@ -13,6 +13,12 @@ import SysTrayImport from 'systray2';
 import { formatServiceStatus } from './service-status.js';
 import { getWebLaunchPlan, webRestartDelay } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
+import {
+  closeControlServer,
+  createControlServer,
+  listenControlServer,
+} from './control-server.js';
+import { resolveKillPids } from './restart-targets.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -31,9 +37,13 @@ const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
 const LOCK_FILE = join(DATA_DIR, 'host.lock');
+const CONTROL_FILE = join(DATA_DIR, 'host-control.json');
 /** Preferred OpenCode serve port. Override with OPENCODE_PORT. May bump on ghost sockets. */
 let OPENCODE_PORT = Number(process.env.OPENCODE_PORT) || 4096;
 let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
+/** Localhost control plane for WebUI / tray restart actions. */
+const CONTROL_PORT = Number(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT) || 18765;
+let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
 /** Bind address for Next.js. Default 0.0.0.0 so VPN/LAN phone can reach it.
  *  OpenCode engine stays on 127.0.0.1. Override with OPENCODE_WEBUI_HOST=127.0.0.1 for local-only. */
 const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '0.0.0.0';
@@ -70,6 +80,8 @@ let webBuildProc = null;
 let caddyProc = null;
 /** @type {import('systray2').default | null} */
 let systray = null;
+/** @type {import('http').Server | null} */
+let controlServer = null;
 let quitting = false;
 let restartingServices = false;
 
@@ -602,6 +614,7 @@ async function spawnWeb() {
       OPENCODE_PORT: String(OPENCODE_PORT),
       OPENCODE_WEBUI_HOST: WEBUI_HOST,
       OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
+      OPENCODE_WEBUI_HOST_CONTROL_URL: CONTROL_URL,
       PORT: String(WEBUI_PORT),
     },
   });
@@ -713,6 +726,7 @@ function removeLock() {
     const lockPid = readLockPid();
     if (lockPid === process.pid) {
       unlinkSync(LOCK_FILE);
+      removeControlFile();
     }
   } catch {
     // best effort
@@ -925,6 +939,54 @@ async function startChildren() {
   await refreshStatusMenu();
 }
 
+async function waitForPortFree(port, attempts = 40) {
+  for (let i = 0; i < attempts; i += 1) {
+    if (!isPortInUse(port)) return true;
+    await sleep(250);
+  }
+  return !isPortInUse(port);
+}
+
+async function stopWebOnly() {
+  if (webRestartTimer) {
+    clearTimeout(webRestartTimer);
+    webRestartTimer = null;
+  }
+  if (webStableTimer) {
+    clearTimeout(webStableTimer);
+    webStableTimer = null;
+  }
+  webRestarts = 0;
+
+  if (webBuildProc?.pid) {
+    killProcessTree(webBuildProc.pid);
+    webBuildProc = null;
+  }
+
+  const pids = resolveKillPids({
+    ownedPid: webProc?.pid,
+    listeningPids: getListeningPids(WEBUI_PORT),
+  });
+  for (const pid of pids) {
+    expectedWebExitPids.add(pid);
+    killProcessTree(pid);
+  }
+  webProc = null;
+  await waitForPortFree(WEBUI_PORT);
+}
+
+async function stopOpencodeOnly() {
+  const pids = resolveKillPids({
+    ownedPid: opencodeProc?.pid,
+    listeningPids: getListeningPids(OPENCODE_PORT),
+  });
+  for (const pid of pids) {
+    killProcessTree(pid);
+  }
+  opencodeProc = null;
+  await waitForPortFree(OPENCODE_PORT);
+}
+
 function stopChildren() {
   if (webRestartTimer) {
     clearTimeout(webRestartTimer);
@@ -981,6 +1043,49 @@ async function refreshStatusMenu() {
   }
 }
 
+async function restartWeb() {
+  if (restartingServices) {
+    log('Service restart is already in progress');
+    return;
+  }
+  restartingServices = true;
+  log('Restarting WebUI…');
+  try {
+    await stopWebOnly();
+    await sleep(500);
+    await spawnWeb();
+  } catch (err) {
+    error(`WebUI restart failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  } finally {
+    restartingServices = false;
+    await refreshStatusMenu();
+  }
+}
+
+async function restartOpencode() {
+  if (restartingServices) {
+    log('Service restart is already in progress');
+    return;
+  }
+  restartingServices = true;
+  log('Restarting OpenCode…');
+  try {
+    await stopOpencodeOnly();
+    await sleep(500);
+    const opencodePath = findOpencode();
+    log(`Starting OpenCode: ${opencodePath}`);
+    spawnOpencode(opencodePath);
+    await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45);
+  } catch (err) {
+    error(`OpenCode restart failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  } finally {
+    restartingServices = false;
+    await refreshStatusMenu();
+  }
+}
+
 async function restartServices() {
   if (restartingServices) {
     log('Service restart is already in progress');
@@ -1001,6 +1106,47 @@ async function restartServices() {
   }
 }
 
+function writeControlFile() {
+  writeFileSync(
+    CONTROL_FILE,
+    JSON.stringify({
+      url: CONTROL_URL,
+      port: CONTROL_PORT,
+      pid: process.pid,
+      updatedAt: new Date().toISOString(),
+    }),
+    'utf8',
+  );
+}
+
+function removeControlFile() {
+  try {
+    unlinkSync(CONTROL_FILE);
+  } catch {
+    // absent
+  }
+}
+
+async function startControlServer() {
+  if (controlServer) return;
+  const server = createControlServer({
+    onRestartWebui: () => restartWeb(),
+    onRestartOpencode: () => restartOpencode(),
+    onRestartAll: () => restartServices(),
+  });
+  try {
+    await listenControlServer(server, CONTROL_PORT);
+  } catch (err) {
+    server.close();
+    throw new Error(
+      `Host control port ${CONTROL_PORT} is unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  controlServer = server;
+  writeControlFile();
+  log(`Host control listening on ${CONTROL_URL}`);
+}
+
 async function quit() {
   if (quitting) return;
   quitting = true;
@@ -1010,6 +1156,9 @@ async function quit() {
     trayStableTimer = null;
   }
   stopChildren();
+  await closeControlServer(controlServer);
+  controlServer = null;
+  removeControlFile();
   removeLock();
   try {
     if (systray) {
@@ -1045,7 +1194,29 @@ function buildTrayMenu() {
           : [statusOpencodeItem, statusWebuiItem],
       },
       {
-        title: 'Restart',
+        title: 'Restart WebUI',
+        tooltip: 'Restart Next.js frontend only',
+        checked: false,
+        enabled: true,
+        click: () => {
+          restartWeb().catch((err) => {
+            error(err instanceof Error ? err.message : String(err));
+          });
+        },
+      },
+      {
+        title: 'Restart OpenCode',
+        tooltip: 'Restart OpenCode CLI backend only',
+        checked: false,
+        enabled: true,
+        click: () => {
+          restartOpencode().catch((err) => {
+            error(err instanceof Error ? err.message : String(err));
+          });
+        },
+      },
+      {
+        title: 'Restart all',
         tooltip: 'Restart OpenCode and WebUI',
         checked: false,
         enabled: true,
@@ -1185,9 +1356,13 @@ async function main() {
   process.on('exit', removeLock);
 
   try {
+    await startControlServer();
     await startChildren();
   } catch (err) {
     stopChildren();
+    await closeControlServer(controlServer);
+    controlServer = null;
+    removeControlFile();
     removeLock();
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);

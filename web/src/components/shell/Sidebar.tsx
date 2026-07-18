@@ -348,7 +348,7 @@ export function Sidebar({
 
       {!engineOk && (
         <div className="shrink-0 border-b border-warning/30 bg-warning-bg px-3 py-2 text-[11px] leading-snug text-warning">
-          エンジン未接続。トレイから再起動してください。
+          エンジン未接続。設定またはトレイから OpenCode を再起動してください。
         </div>
       )}
 

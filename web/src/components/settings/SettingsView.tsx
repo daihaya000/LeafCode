@@ -74,6 +74,10 @@ type AccessInfo = {
 
 export function SettingsView() {
   const [health, setHealth] = useState<HealthDto | null>(null);
+  const [hostOk, setHostOk] = useState<boolean | null>(null);
+  const [restarting, setRestarting] = useState<"webui" | "opencode" | "all" | null>(
+    null,
+  );
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [roots, setRoots] = useState<string[]>([]);
@@ -149,7 +153,7 @@ export function SettingsView() {
   };
 
   const refresh = useCallback(async () => {
-    const [h, p, r, o, a, m] = await Promise.allSettled([
+    const [h, p, r, o, a, m, host] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
@@ -162,6 +166,10 @@ export function SettingsView() {
         if (!res.ok) throw new Error(String(res.status));
         return res.json();
       }),
+      fetch("/api/host", { cache: "no-store" }).then(async (res) => {
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
+        return { ok: res.ok && Boolean(body.ok) };
+      }),
     ]);
     if (h.status === "fulfilled") setHealth(h.value);
     if (p.status === "fulfilled") setProjects(p.value.projects ?? []);
@@ -171,6 +179,8 @@ export function SettingsView() {
       setStray(o.value.stray ?? []);
     }
     if (a.status === "fulfilled") setAccess(a.value);
+    if (host.status === "fulfilled") setHostOk(host.value.ok);
+    else setHostOk(false);
     if (m.status === "fulfilled") {
       const raw = m.value;
       const list = Array.isArray(raw)
@@ -194,6 +204,54 @@ export function SettingsView() {
     void refresh();
   }, [refresh]);
 
+  const restartService = async (target: "webui" | "opencode" | "all") => {
+    const labels = {
+      webui: "WebUI（フロントエンド）",
+      opencode: "OpenCode（バックエンド）",
+      all: "すべて",
+    } as const;
+    const ok = window.confirm(`${labels[target]}を再起動しますか？`);
+    if (!ok) return;
+    setRestarting(target);
+    setError(null);
+    try {
+      const res = await fetch("/api/host/restart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ target }),
+        cache: "no-store",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        hint?: string;
+      };
+      if (!res.ok && res.status !== 202) {
+        throw new Error(
+          [data.error, data.hint].filter(Boolean).join(" — ") ||
+            "再起動に失敗しました",
+        );
+      }
+      if (target === "webui" || target === "all") {
+        // WebUI process will die; poll until it comes back.
+        for (let i = 0; i < 60; i += 1) {
+          await new Promise((r) => setTimeout(r, 1000));
+          try {
+            const h = await fetch("/api/health", { cache: "no-store" });
+            if (h.ok) break;
+          } catch {
+            // still down
+          }
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "再起動に失敗しました");
+    } finally {
+      setRestarting(null);
+    }
+  };
   const guard = useCallback(
     async (fn: () => Promise<void>) => {
       setBusy(true);
@@ -275,18 +333,55 @@ export function SettingsView() {
 
         <section>
           <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3">
-            <Badge tone={health?.opencode.ok ? "success" : "danger"}>
-              {health?.opencode.ok ? "接続中" : "停止"}
-            </Badge>
-            <span className="text-sm text-muted">
-              OpenCode {health?.opencode.version ?? ""}
-            </span>
-            {!health?.opencode.ok && (
-              <span className="basis-full text-xs text-faint sm:basis-auto sm:ml-auto">
-                トレイの「再起動」で復旧してください
+          <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={health?.opencode.ok ? "success" : "danger"}>
+                {health?.opencode.ok ? "接続中" : "停止"}
+              </Badge>
+              <span className="text-sm text-muted">
+                OpenCode {health?.opencode.version ?? ""}
               </span>
-            )}
+              <Badge tone={hostOk ? "success" : "warning"}>
+                {hostOk ? "ホスト接続中" : "ホスト未検出"}
+              </Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                busy={restarting === "webui"}
+                disabled={hostOk !== true || restarting !== null}
+                onClick={() => void restartService("webui")}
+              >
+                WebUI を再起動
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                busy={restarting === "opencode"}
+                disabled={hostOk !== true || restarting !== null}
+                onClick={() => void restartService("opencode")}
+              >
+                OpenCode を再起動
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                busy={restarting === "all"}
+                disabled={hostOk !== true || restarting !== null}
+                onClick={() => void restartService("all")}
+              >
+                すべて再起動
+              </Button>
+            </div>
+            <p className="text-xs text-faint">
+              {hostOk
+                ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"
+                : "再起動には start-webui.bat（トレイホスト）経由の起動が必要です。"}
+            </p>
           </div>
         </section>
 
