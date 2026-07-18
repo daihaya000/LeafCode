@@ -223,6 +223,7 @@ const SIDE_WIDTH_KEY = "webui.sidepanel.width";
 const SIDE_DEFAULT = 520;
 const SIDE_MIN = 280;
 const SIDE_MAX = 900;
+const ACTIVE_TASK_POLL_MS = 3000;
 
 function clampSideWidth(n: number) {
   return Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(n)));
@@ -253,6 +254,16 @@ export function TaskView({ taskId }: { taskId: string }) {
   const setActiveScope = useShellSetActiveScope();
   const [task, setTask] = useState<TaskSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
+  const taskRef = useRef<TaskSummary | null>(null);
+  const taskIdRef = useRef(taskId);
+  const refreshSequenceRef = useRef(0);
+  if (taskIdRef.current !== taskId) {
+    taskIdRef.current = taskId;
+    taskRef.current = null;
+  }
   const [tab, setTab] = useState<ChatTab>("chat");
   const [showDiff, setShowDiff] = useState(true);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("diff");
@@ -507,11 +518,27 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, []);
 
   const refreshTask = useCallback(async () => {
+    const sequence = ++refreshSequenceRef.current;
+    const requestedTaskId = taskId;
     try {
       const data = await getJson<{ task: TaskSummary }>(`/api/tasks/${taskId}`);
+      if (
+        sequence !== refreshSequenceRef.current ||
+        taskIdRef.current !== requestedTaskId
+      ) {
+        return;
+      }
+      taskRef.current = data.task;
       setTask(data.task);
       setLoadError(null);
     } catch (err) {
+      if (
+        sequence !== refreshSequenceRef.current ||
+        taskIdRef.current !== requestedTaskId
+      ) {
+        return;
+      }
+      if (taskRef.current?.id === requestedTaskId) return;
       setLoadError(err instanceof Error ? err.message : "タスクを読み込めません");
     }
   }, [taskId]);
@@ -519,6 +546,23 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     void refreshTask();
   }, [refreshTask]);
+
+  const hasActiveTask = task?.status === "working" || stream.status?.type === "retry";
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible && hasActiveTask) void refreshTask();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [hasActiveTask, refreshTask]);
+
+  useEffect(() => {
+    if (!pageVisible || !hasActiveTask) return;
+    const poll = setInterval(() => void refreshTask(), ACTIVE_TASK_POLL_MS);
+    return () => clearInterval(poll);
+  }, [hasActiveTask, pageVisible, refreshTask]);
 
   // busy → idle transition: refresh diff + task stats
   const prevStatusRef = useRef<string | null>(null);
