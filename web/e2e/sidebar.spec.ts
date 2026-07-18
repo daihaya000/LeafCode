@@ -45,6 +45,59 @@ test("keeps project actions stable across hover and focus", async ({ page }) => 
   expect(afterFocus).toEqual(before);
 });
 
+test("keeps mobile project actions visible and focusable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "メニュー" }).click();
+
+  for (const name of [
+    "Project Bをお気に入りに追加",
+    "Project Bに新規タスクを作成",
+    "Project Bを削除",
+  ]) {
+    const action = page.getByRole("button", { name });
+    await expect(action).toBeVisible();
+    await expect(action).toHaveClass(/focus-visible:outline-primary/);
+  }
+});
+
+test("does not show the empty state before projects load", async ({ page }) => {
+  await page.unroute("**/api/projects");
+  let release: (() => void) | undefined;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/projects", async (route) => {
+    await blocked;
+    await route.fulfill({
+      json: {
+        projects: [],
+      },
+    });
+  });
+
+  await page.reload();
+  await expect(
+    page.getByRole("status", { name: "プロジェクトを読み込み中" }),
+  ).toBeVisible();
+  await expect(page.getByText("プロジェクトがありません")).toHaveCount(0);
+
+  release?.();
+  await expect(page.getByText("プロジェクトがありません")).toBeVisible();
+});
+
+test("does not show a false empty state when projects fail to load", async ({
+  page,
+}) => {
+  await page.unroute("**/api/projects");
+  await page.route("**/api/projects", (route) => route.fulfill({ status: 500 }));
+
+  await page.reload();
+  await expect(
+    page.getByRole("status", { name: "プロジェクトを読み込めませんでした" }),
+  ).toBeVisible();
+  await expect(page.getByText("プロジェクトがありません")).toHaveCount(0);
+});
+
 test("opens task creation with the selected project", async ({ page }) => {
   await page
     .getByRole("button", { name: "Project Bに新規タスクを作成" })
