@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ roots: [] as string[] }));
+const h = vi.hoisted(() => ({ roots: [] as string[], dataDir: "" }));
+
+vi.mock("./paths", () => ({
+  dataDir: () => h.dataDir,
+  ensureDataDir: () => undefined,
+}));
 
 vi.mock("./db", () => ({
   listAllowedRoots: () => h.roots,
@@ -23,6 +28,7 @@ function tempDir(prefix: string): string {
 
 beforeEach(() => {
   h.roots.length = 0;
+  if (!h.dataDir) h.dataDir = tempDir("allow-data-");
 });
 
 afterAll(() => {
@@ -62,6 +68,33 @@ describe("assertAllowedDirectory", () => {
     const outside = tempDir("allow-out-");
     h.roots.push(root);
     const res = assertAllowedDirectory(outside);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.status).toBe(403);
+  });
+
+  it("allows a provisioned worktree under <dataDir>/worktrees", () => {
+    const root = tempDir("allow-root-");
+    h.roots.push(root);
+    const wt = path.join(h.dataDir, "worktrees", "proj-1", "webui__main__task-abc");
+    fs.mkdirSync(wt, { recursive: true });
+    const res = assertAllowedDirectory(wt);
+    expect(res.ok).toBe(true);
+  });
+
+  it("still rejects worktree paths when no roots are configured", () => {
+    const wt = path.join(h.dataDir, "worktrees", "proj-1", "wt");
+    fs.mkdirSync(wt, { recursive: true });
+    const res = assertAllowedDirectory(wt);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.status).toBe(403);
+  });
+
+  it("rejects a dataDir path outside the worktrees base", () => {
+    const root = tempDir("allow-root-");
+    h.roots.push(root);
+    const other = path.join(h.dataDir, "secrets");
+    fs.mkdirSync(other, { recursive: true });
+    const res = assertAllowedDirectory(other);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.status).toBe(403);
   });

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { dataDir } from "./paths";
 import {
   ProjectRow,
   bindSession,
@@ -103,14 +104,17 @@ export function restoreProjectFromManifest(
       const status = statuses.has(ws.status)
         ? (ws.status as "active")
         : "active";
-      // A git worktree we provisioned always lives under the project root. A
+      // A git worktree we provisioned lives either under the project root
+      // (legacy <repoRoot>/.webui-worktrees/…) or under the machine-local
+      // data dir (<dataDir>/worktrees/…, OneDrive-safe location). A
       // manifest that points its worktreePath elsewhere is untrusted (e.g. a
       // cloned repo carrying a crafted sessions.json) and must not be imported,
       // since destroying it would drive a recursive delete outside the repo.
       if (
         ws.isolation === "git_worktree" &&
         ws.worktreePath &&
-        !isInside(rootPath, ws.worktreePath)
+        !isInside(rootPath, ws.worktreePath) &&
+        !isInside(path.resolve(dataDir(), "worktrees"), ws.worktreePath)
       ) {
         log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath escapes root`);
         continue;

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { addAllowedRoot, listAllowedRoots } from "./db";
+import { dataDir } from "./paths";
 
 function normalize(p: string): string {
   return path.resolve(p);
@@ -19,6 +20,18 @@ export function realPathOrResolved(p: string): string {
 function isUnder(parent: string, child: string): boolean {
   const rel = path.relative(parent, child);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/**
+ * Machine-local base where provisioned git worktrees live
+ * (`<dataDir>/worktrees/…`). Worktrees moved out of the repo root to avoid
+ * OneDrive reparse-point locks, so they are no longer under any user-added
+ * allowed root. Only this app creates directories here, so the base is
+ * implicitly allowed — mirroring the defense-in-depth boundary used by
+ * `removeWorktree` in git.ts.
+ */
+function worktreeBase(): string {
+  return path.resolve(dataDir(), "worktrees");
 }
 
 /**
@@ -51,7 +64,10 @@ export function assertAllowedDirectory(directory: string): {
     };
   }
 
-  const allowed = roots.some((root) => isUnder(root, resolved) && isUnder(root, real));
+  // Provisioned git worktrees live under the machine-local data dir, outside
+  // every user-added root — accept that base implicitly (see worktreeBase).
+  const bases = [...roots, realPathOrResolved(worktreeBase())];
+  const allowed = bases.some((root) => isUnder(root, resolved) && isUnder(root, real));
   if (!allowed) {
     return {
       ok: false,
