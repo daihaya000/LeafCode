@@ -65,12 +65,18 @@ import {
 } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import { decideNotification, notificationText } from "@/lib/notify";
+import {
+  extractPlanMarkdownPath,
+  isPlanApproved,
+  PLAN_APPROVAL_PROMPT,
+} from "@/lib/plan-document";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
 import { GraphPanel } from "./GraphPanel";
 import { PartView } from "./PartView";
+import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
 import { PtyPanel } from "./PtyPanel";
 import { QuestionCard } from "./QuestionCard";
@@ -128,6 +134,15 @@ function ModelSelectIcon({ model }: { model: string }) {
     );
   }
   return <Cpu className="h-3.5 w-3.5" />;
+}
+
+function normalizedPlanPath(value: string | undefined) {
+  if (!value) return null;
+  let path = value.trim();
+  if (path.startsWith("`") && path.endsWith("`") && path.length > 2) {
+    path = path.slice(1, -1).trim();
+  }
+  return path;
 }
 
 function TodoPanel({
@@ -700,6 +715,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
   }, []);
 
+  const approvePlan = useCallback(async () => {
+    if (working) throw new Error("セッションの完了を待ってください");
+    setSendError(null);
+    setAgent("build");
+    stickRef.current = true;
+    await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: "build" });
+  }, [working, stream]);
+
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
   useEffect(() => {
@@ -885,6 +908,25 @@ export function TaskView({ taskId }: { taskId: string }) {
       ),
     [stream.visibleMessages],
   );
+
+  const planPaths = useMemo(
+    () =>
+      new Map(
+        stream.visibleMessages.flatMap((message) => {
+          const path = extractPlanMarkdownPath(message);
+          return path ? [[message.info.id, path] as const] : [];
+        }),
+      ),
+    [stream.visibleMessages],
+  );
+  const actionablePlanMessageId = Array.from(planPaths.keys()).at(-1) ?? null;
+  const approvedPlanIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of planPaths.keys()) {
+      if (isPlanApproved(stream.visibleMessages, id)) ids.add(id);
+    }
+    return ids;
+  }, [planPaths, stream.visibleMessages]);
 
   if (loadError) {
     return (
@@ -1186,7 +1228,16 @@ export function TaskView({ taskId }: { taskId: string }) {
                 )}
                 {timeline.map((m) => (
                   <div key={m.info.id} className="group/msg flex flex-col gap-2">
-                    {m.parts.map((p) => (
+                    {m.parts
+                      .filter((p) => {
+                        const planPath = planPaths.get(m.info.id);
+                        if (!planPath) return true;
+                        return (
+                          normalizedPlanPath(p.text) !== planPath &&
+                          normalizedPlanPath(p.filename) !== planPath
+                        );
+                      })
+                      .map((p) => (
                       <PartView
                         key={p.id}
                         part={p}
@@ -1196,6 +1247,16 @@ export function TaskView({ taskId }: { taskId: string }) {
                         rootSessionId={task.sessionId}
                       />
                     ))}
+                    {planPaths.get(m.info.id) && (
+                      <PlanDocumentCard
+                        path={planPaths.get(m.info.id)!}
+                        directory={task.directory}
+                        actionable={m.info.id === actionablePlanMessageId}
+                        working={working}
+                        approved={approvedPlanIds.has(m.info.id)}
+                        onApprove={approvePlan}
+                      />
+                    )}
                     {m.info.role === "user" && task.sessionId && (
                       <div className="flex justify-end opacity-100 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100">
                         <MessageRevertButton
