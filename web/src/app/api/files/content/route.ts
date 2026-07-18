@@ -8,6 +8,13 @@ export const dynamic = "force-dynamic";
 
 const MAX_MARKDOWN_BYTES = 1_048_576;
 
+function normalizeWindowsNamespace(value: string): string {
+  if (value.slice(0, 8).toLowerCase() === "\\\\?\\unc\\") {
+    return `\\\\${value.slice(8)}`;
+  }
+  return value.startsWith("\\\\?\\") ? value.slice(4) : value;
+}
+
 function isUnder(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -37,9 +44,13 @@ export async function GET(request: NextRequest) {
     return errorResponse("project directory was not found", 404);
   }
 
-  const lexical = path.resolve(checked.path, requested);
+  const normalizedDirectory = normalizeWindowsNamespace(checked.path);
+  const lexical = path.resolve(
+    normalizedDirectory,
+    normalizeWindowsNamespace(requested),
+  );
   if (
-    !isUnder(checked.path, lexical) ||
+    !isUnder(normalizedDirectory, lexical) ||
     path.extname(lexical).toLowerCase() !== ".md"
   ) {
     return errorResponse("Markdown path is outside the project", 403);
@@ -53,7 +64,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (
-    !isUnder(workspace, real) ||
+    !isUnder(
+      normalizeWindowsNamespace(workspace),
+      normalizeWindowsNamespace(real),
+    ) ||
     path.extname(real).toLowerCase() !== ".md"
   ) {
     return errorResponse("Markdown path is outside the project", 403);

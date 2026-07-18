@@ -40,6 +40,21 @@ describe("GET /api/files/content", () => {
     });
   });
 
+  it("returns a Markdown document addressed by a namespaced Windows path", async () => {
+    const inWorkspaceMd = path.join(workspace, "plan.md");
+    fs.writeFileSync(inWorkspaceMd, "# Plan\n");
+
+    const response = await GET(
+      request(workspace, path.toNamespacedPath(inWorkspaceMd)),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      name: "plan.md",
+      content: "# Plan\n",
+    });
+  });
+
   it.each([
     ["missing directory", undefined, undefined],
     ["missing path", workspace, undefined],
