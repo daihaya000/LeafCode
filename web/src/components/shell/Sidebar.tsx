@@ -162,7 +162,7 @@ export function Sidebar({
   }, [refresh]);
 
   const hasActiveTask = tasks.some(
-    (task) => task.status === "working" || task.status === "retry",
+    (task) => task.status === "working",
   );
   useEffect(() => {
     if (!pageVisible || !hasActiveTask) return;
