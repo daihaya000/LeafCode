@@ -223,6 +223,21 @@ export function bindSession(
     .run(workspaceId, opencodeSessionId, title, updatedAt ?? new Date().toISOString());
 }
 
+/** Update only the title of an existing binding, preserving updated_at. */
+export function updateSessionTitle(
+  workspaceId: string,
+  opencodeSessionId: string,
+  title: string,
+): boolean {
+  const info = getDb()
+    .prepare(
+      `UPDATE session_bindings SET title = ?
+       WHERE workspace_id = ? AND opencode_session_id = ?`,
+    )
+    .run(title, workspaceId, opencodeSessionId);
+  return info.changes > 0;
+}
+
 /** All session bindings for a workspace (newest first). */
 export function listSessionBindings(workspaceId: string): SessionBindingRow[] {
   return getDb()

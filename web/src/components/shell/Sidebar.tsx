@@ -8,6 +8,7 @@ import {
   FolderGit2,
   GitBranch,
   Plus,
+  RefreshCw,
   Settings,
   Star,
   Trash2,
@@ -97,6 +98,8 @@ export function Sidebar({
   const [hydrated, setHydrated] = useState(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [resizing, setResizing] = useState(false);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
@@ -276,6 +279,33 @@ export function Sidebar({
     onClose();
     router.push(href);
   };
+
+  const refreshTitle = useCallback(
+    async (task: TaskSummary, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!task.sessionId || refreshingId === task.id) return;
+      setRefreshingId(task.id);
+      setRefreshError(null);
+      try {
+        const { title } = await sendJson<{ title: string }>(
+          "POST",
+          `/api/workspaces/${task.id}/sessions/${task.sessionId}/refresh-title`,
+        );
+        setTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? { ...t, title } : t)),
+        );
+        notifyTasksChanged();
+      } catch (err) {
+        setRefreshError(
+          err instanceof Error ? err.message : "タイトルの更新に失敗しました",
+        );
+      } finally {
+        setRefreshingId(null);
+      }
+    },
+    [refreshingId],
+  );
 
   const body = (
     <div className="flex h-full flex-col bg-surface">
@@ -477,6 +507,25 @@ export function Sidebar({
                                   </span>
                                 </div>
                               </button>
+                              {task.sessionId && (
+                                <button
+                                  type="button"
+                                  aria-label="会話からタイトルを再生成"
+                                  title="会話からタイトルを再生成"
+                                  aria-busy={refreshingId === task.id}
+                                  disabled={refreshingId === task.id}
+                                  onClick={(e) => void refreshTitle(task, e)}
+                                  className="absolute top-1.5 right-8 inline-flex min-h-9 min-w-9 items-center justify-center rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text disabled:opacity-50 md:hidden md:group-hover:inline-flex"
+                                >
+                                  <RefreshCw
+                                    className={cx(
+                                      "h-3 w-3",
+                                      refreshingId === task.id &&
+                                        "motion-safe:animate-spin",
+                                    )}
+                                  />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 aria-label="タスクを削除"
@@ -505,6 +554,15 @@ export function Sidebar({
           >
             要復旧 {orphanCount} 件 → 設定
           </Link>
+        )}
+
+        {refreshError && (
+          <div
+            role="status"
+            className="mt-2 rounded-lg bg-danger-bg px-2 py-1.5 text-[11px] text-danger"
+          >
+            {refreshError}
+          </div>
         )}
 
         {projects.length > 0 && (
