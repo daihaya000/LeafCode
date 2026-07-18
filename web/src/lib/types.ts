@@ -50,6 +50,14 @@ export type MessageInfo = {
   error?: { name?: string; data?: { message?: string } };
   summary?: boolean;
   cost?: number;
+  /** Token usage for this assistant turn (from Message.tokens). */
+  tokens?: {
+    total?: number;
+    input: number;
+    output: number;
+    reasoning: number;
+    cache?: { read: number; write: number };
+  };
   modelID?: string;
   providerID?: string;
 };

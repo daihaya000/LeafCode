@@ -49,6 +49,8 @@ import {
   readDefaultModel,
 } from "@/lib/default-model";
 import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
+import { formatTokens } from "@/lib/plugins/codex-tokens";
+import { computeContextUsage } from "@/lib/context-usage";
 import {
   readChatTab,
   readShowDiff,
@@ -104,6 +106,7 @@ type ProviderResponse = {
           output?: ("text" | "audio" | "image" | "video" | "pdf")[];
         };
         variants?: ProviderModelMeta["variants"];
+        limit?: ProviderModelMeta["limit"];
       }
     >;
   }[];
@@ -432,6 +435,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               map[`${p.id}::${mid}`] = {
                 name: m.name,
                 variants: m.variants,
+                limit: m.limit,
               };
             }
           }
@@ -600,6 +604,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     const done = stream.todos.filter((t) => t.status === "completed").length;
     return `${done}/${stream.todos.length}`;
   }, [stream.todos]);
+
+  // Context window usage, derived from the most recent assistant turn's
+  // token usage against that model's known context limit (see
+  // computeContextUsage for why this uses the last turn, not a sum).
+  const contextUsage = useMemo(
+    () => computeContextUsage(stream.messages, providerModelsMap),
+    [stream.messages, providerModelsMap],
+  );
 
   // Prefer last *visible* user message for header revert
   const lastRevertMessageId = useMemo(() => {
@@ -1000,7 +1012,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <span className="hidden text-xs text-warning sm:inline">再接続中…</span>
             )}
           </div>
-          {(task.branch || (task.cost ?? 0) > 0) && (
+          {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
             <div className="mt-0.5 hidden items-center gap-1 text-xs text-faint sm:flex">
               {task.branch && (
                 <>
@@ -1018,6 +1030,33 @@ export function TaskView({ taskId }: { taskId: string }) {
                     title="このセッションの累計コスト"
                   >
                     累計 {formatCostValue(task.cost!, costPrefs)}
+                  </span>
+                </>
+              )}
+              {contextUsage && (
+                <>
+                  <span className="mx-1">·</span>
+                  <span
+                    className="flex shrink-0 items-center gap-1.5"
+                    title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
+                  >
+                    <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-2">
+                      <span
+                        className={cx(
+                          "block h-full rounded-full",
+                          contextUsage.pct >= 90
+                            ? "bg-danger"
+                            : contextUsage.pct >= 70
+                              ? "bg-warning"
+                              : "bg-accent",
+                        )}
+                        style={{ width: `${contextUsage.pct}%` }}
+                      />
+                    </span>
+                    <span className="font-mono">
+                      {formatTokens(contextUsage.used)}/
+                      {formatTokens(contextUsage.limit)} ({contextUsage.pct}%)
+                    </span>
                   </span>
                 </>
               )}

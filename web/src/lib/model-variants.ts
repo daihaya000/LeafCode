@@ -24,6 +24,8 @@ export type ModelVariantMeta = {
 export type ProviderModelMeta = {
   name?: string;
   variants?: Record<string, { disabled?: boolean } | undefined>;
+  /** Context/output token limits reported by the provider API, if known. */
+  limit?: { context: number; output?: number; input?: number };
 };
 
 const INTELLIGENCE_KEYS: readonly IntelligenceVariant[] = ["high", "low"];
