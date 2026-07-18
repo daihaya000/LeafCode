@@ -1,29 +1,61 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { Button, GhostSelect } from "@/components/ui";
 import {
   readAccessMode,
   writeAccessMode,
   type AccessMode,
 } from "@/lib/access-mode";
+import { readDefaultModel } from "@/lib/default-model";
+import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import {
+  getIntelligenceVariants,
+  type IntelligenceVariant,
+  type ProviderModelMeta,
+} from "@/lib/model-variants";
 import type { ProjectDto } from "@/lib/types";
 
 type ModelOption = { value: string; label: string; group: string };
 
 type ProviderResponse = {
-  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
+  all: {
+    id: string;
+    name: string;
+    models: Record<string, { name?: string; variants?: ProviderModelMeta["variants"] }>;
+  }[];
   connected: string[];
   default: Record<string, string>;
 };
 
 type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+
+function ModelSelectIcon({ model }: { model: string }) {
+  const providerID = model ? model.split("::")[0] : "";
+  const src = providerIconSrcForOpencodeId(providerID);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={14}
+        height={14}
+        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return <Cpu className="h-3.5 w-3.5" />;
+}
 
 function formatAgentLabel(agent: string): string {
   if (agent === "build") return "build（Code）";
@@ -37,7 +69,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [engineOk, setEngineOk] = useState(true);
   const [projectId, setProjectId] = useState("");
   const [isolation, setIsolation] = useState<"current_folder" | "git_worktree">(
-    "git_worktree",
+    "current_folder",
   );
   const [prompt, setPrompt] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +78,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
+  const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
+  const [providerModelsMap, setProviderModelsMap] = useState<
+    Record<string, ProviderModelMeta>
+  >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [baseBranch, setBaseBranch] = useState("");
   const [branchProjectId, setBranchProjectId] = useState("");
@@ -109,6 +145,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           const connectedList = data.connected ?? [];
           const connected = new Set(connectedList);
           const options: ModelOption[] = [];
+          const map: Record<string, ProviderModelMeta> = {};
           for (const p of data.all ?? []) {
             if (connected.size > 0 && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
@@ -117,18 +154,33 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 label: m.name || mid,
                 group: p.name || p.id,
               });
+              map[`${p.id}::${mid}`] = {
+                name: m.name,
+                variants: m.variants,
+              };
             }
           }
           setModelOptions(options);
+          setProviderModelsMap(map);
 
-          // Prefer OpenCode config.model (provider/modelID), then provider defaults
+          // Prefer user-configured default model, then OpenCode config.model
+          // (provider/modelID), then provider defaults.
           let initial = "";
-          const cfg = config?.model?.trim();
-          if (cfg) {
-            const slash = cfg.indexOf("/");
-            if (slash > 0) {
-              const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-              if (options.some((o) => o.value === value)) initial = value;
+          const savedDefault = readDefaultModel();
+          if (
+            savedDefault &&
+            options.some((o) => o.value === savedDefault)
+          ) {
+            initial = savedDefault;
+          }
+          if (!initial) {
+            const cfg = config?.model?.trim();
+            if (cfg) {
+              const slash = cfg.indexOf("/");
+              if (slash > 0) {
+                const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+                if (options.some((o) => o.value === value)) initial = value;
+              }
             }
           }
           if (!initial) {
@@ -246,6 +298,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(agent ? { agent } : {}),
+        ...(intelligence ? { variant: intelligence } : {}),
       });
       notifyTasksChanged();
       router.push(`/task/${data.taskId}`);
@@ -261,6 +314,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     baseBranch,
     model,
     agent,
+    intelligence,
     submitting,
     engineOk,
     router,
@@ -268,6 +322,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
+
+  const intelligenceVariants = useMemo(() => {
+    if (!model) return [];
+    const modelMeta = providerModelsMap[model];
+    if (!modelMeta) return [];
+    return getIntelligenceVariants(modelMeta);
+  }, [model, providerModelsMap]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -355,15 +416,18 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   <option value="git_worktree">worktree</option>
                 </GhostSelect>
               </div>
-              <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible min-[480px]:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-[10rem_9rem_9rem]">
+              <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible min-[480px]:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-[8rem_6rem_7rem_9rem]">
                 {modelOptions.length > 0 && (
                   <GhostSelect
                     value={model}
                     disabled={submitting}
                     aria-label="モデル"
-                    icon={<Cpu className="h-3.5 w-3.5" />}
+                    icon={<ModelSelectIcon model={model} />}
                     valueLabel={selectedModel?.label ?? "モデル"}
-                    onChange={(e) => setModel(e.target.value)}
+                    onChange={(e) => {
+                      setModel(e.target.value);
+                      setIntelligence("");
+                    }}
                     className="w-full min-w-0"
                   >
                     {[...new Set(modelOptions.map((o) => o.group))].map(
@@ -381,6 +445,18 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     )}
                   </GhostSelect>
                 )}
+                {intelligenceVariants.length > 0 && (
+                  <IntelligenceSelect
+                    variants={intelligenceVariants}
+                    value={intelligence}
+                    onChange={(v) =>
+                      setIntelligence(
+                        v === "high" || v === "low" ? v : "",
+                      )
+                    }
+                    disabled={submitting}
+                  />
+                )}
                 {agents.length > 0 && (
                   <GhostSelect
                     value={agent}
@@ -389,7 +465,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={formatAgentLabel(agent)}
                     onChange={(e) => setAgent(e.target.value)}
-                    className="w-full min-w-0"
+                    className="w-full min-w-[9rem]"
                     title="エージェント（OpenCode agent）"
                   >
                     {agents.map((a) => (

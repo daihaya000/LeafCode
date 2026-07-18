@@ -93,8 +93,36 @@ async function proxy(
     headers.set("x-opencode-directory", directory);
   }
 
+  let requestBody: ArrayBuffer | undefined;
   let upstream: Response;
   try {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      requestBody = await req.arrayBuffer();
+      if (
+        req.method === "POST" &&
+        /^\/session\/[^/]+\/prompt_async$/.test(pathname) &&
+        req.headers.get("content-type")?.includes("application/json")
+      ) {
+        try {
+          const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;
+          const variant =
+            body && typeof body === "object" && !Array.isArray(body)
+              ? (body as { variant?: unknown }).variant
+              : undefined;
+          if (
+            variant !== undefined &&
+            variant !== null &&
+            variant !== "" &&
+            variant !== "high" &&
+            variant !== "low"
+          ) {
+            return NextResponse.json({ error: "invalid variant" }, { status: 400 });
+          }
+        } catch {
+          // Preserve the existing behavior for non-JSON or malformed bodies.
+        }
+      }
+    }
     const init: RequestInit = {
       method: req.method,
       headers,
@@ -102,7 +130,7 @@ async function proxy(
       cache: "no-store",
     };
     if (req.method !== "GET" && req.method !== "HEAD") {
-      init.body = await req.arrayBuffer();
+      init.body = requestBody;
     }
     upstream = await fetch(target, init);
   } catch (err) {

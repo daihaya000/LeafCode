@@ -155,6 +155,32 @@ export function providerIconSrc(id: string): string | null {
   return file ? `/plugins/codexbar/${file}` : null;
 }
 
+/**
+ * Map an OpenCode provider id (e.g. "openai", "anthropic", "ollama",
+ * "opencode-go") to the CodexBar brand icon key. CodexBar bundles a handful
+ * of brand icons (codex/claude/cursor/ollama/opencode); OpenCode provider ids
+ * are a superset, so we alias the common ones and fall back to null when no
+ * matching brand icon exists.
+ */
+const OPENCODE_TO_CODEXBAR: Record<string, string> = {
+  openai: "codex",
+  anthropic: "claude",
+  claude: "claude",
+  codex: "codex",
+  cursor: "cursor",
+  ollama: "ollama",
+  "opencode-go": "opencode-go",
+  opencode: "opencode",
+};
+
+/** Public path of a brand icon for an OpenCode provider id, or null. */
+export function providerIconSrcForOpencodeId(
+  opencodeId: string,
+): string | null {
+  const key = OPENCODE_TO_CODEXBAR[opencodeId];
+  return key ? providerIconSrc(key) : null;
+}
+
 export type UsageTone = "ok" | "warn" | "danger";
 
 export function usageTone(

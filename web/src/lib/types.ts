@@ -44,6 +44,8 @@ export type MessageInfo = {
   id: string;
   sessionID?: string;
   role: "user" | "assistant";
+  /** OpenCode agent that produced the message (e.g. "plan", "build"). */
+  agent?: string;
   time?: { created?: number; completed?: number };
   error?: { name?: string; data?: { message?: string } };
   summary?: boolean;

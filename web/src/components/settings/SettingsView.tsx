@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { PluginSettings } from "@/components/plugins/PluginSettings";
-import { Badge, Button, timeAgo } from "@/components/ui";
+import { Badge, Button, GhostSelect, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
@@ -16,7 +16,40 @@ import {
   type CostCurrency,
   type CostDisplayPrefs,
 } from "@/lib/currency";
+import {
+  readDefaultModel,
+  writeDefaultModel,
+} from "@/lib/default-model";
+import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import type { HealthDto, ProjectDto } from "@/lib/types";
+
+type ModelOption = { value: string; label: string; group: string };
+
+type ProviderResponse = {
+  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
+  connected: string[];
+  default: Record<string, string>;
+};
+
+function DefaultModelIcon({ model }: { model: string }) {
+  const providerID = model ? model.split("::")[0] : "";
+  const src = providerIconSrcForOpencodeId(providerID);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={14}
+        height={14}
+        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-faint" />;
+}
 
 type OrphanDto = {
   id: string;
@@ -57,6 +90,41 @@ export function SettingsView() {
   const [rateDraft, setRateDraft] = useState(() =>
     String(readCostDisplayPrefs().usdJpyRate),
   );
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [defaultModel, setDefaultModel] = useState<string>("");
+
+  useEffect(() => {
+    setDefaultModel(readDefaultModel() ?? "");
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/opencode/provider", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as ProviderResponse;
+        const connected = new Set(data.connected ?? []);
+        const options: ModelOption[] = [];
+        for (const p of data.all ?? []) {
+          if (connected.size > 0 && !connected.has(p.id)) continue;
+          for (const [mid, m] of Object.entries(p.models ?? {})) {
+            options.push({
+              value: `${p.id}::${mid}`,
+              label: m.name || mid,
+              group: p.name || p.id,
+            });
+          }
+        }
+        setModelOptions(options);
+        setDefaultModel((cur) => {
+          if (cur && options.some((o) => o.value === cur)) return cur;
+          return readDefaultModel() ?? "";
+        });
+      } catch {
+        /* non-fatal */
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const prefs = readCostDisplayPrefs();
@@ -218,6 +286,65 @@ export function SettingsView() {
               <span className="basis-full text-xs text-faint sm:basis-auto sm:ml-auto">
                 トレイの「再起動」で復旧してください
               </span>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-muted">
+            デフォルトモデル
+          </h2>
+          <p className="mb-3 text-xs text-faint">
+            新規タスク作成時の初期モデルです。各タスクで個別に上書きできます。
+          </p>
+          <div className="rounded-xl border border-border bg-surface px-4 py-3">
+            {modelOptions.length === 0 ? (
+              <p className="text-sm text-faint">
+                利用可能なモデルがありません。エンジン接続を確認してください。
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <GhostSelect
+                  value={defaultModel}
+                  aria-label="デフォルトモデル"
+                  icon={<DefaultModelIcon model={defaultModel} />}
+                  valueLabel={
+                    modelOptions.find((o) => o.value === defaultModel)?.label ??
+                    "選択してください"
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDefaultModel(v);
+                    writeDefaultModel(v || null);
+                  }}
+                  className="min-w-56 flex-1"
+                >
+                  {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
+                    <optgroup key={group} label={group}>
+                      {modelOptions
+                        .filter((o) => o.group === group)
+                        .map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </GhostSelect>
+                {defaultModel && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="デフォルトをクリア"
+                    onClick={() => {
+                      setDefaultModel("");
+                      writeDefaultModel(null);
+                    }}
+                  >
+                    クリア
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </section>

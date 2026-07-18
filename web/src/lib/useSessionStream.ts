@@ -477,6 +477,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         agent?: string;
         model?: { providerID: string; modelID: string };
         files?: { uri: string; mime: string; name?: string }[];
+        variant?: "high" | "low";
       },
     ) => {
       const sid = sessionRef.current;
@@ -496,6 +497,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (opts?.agent?.trim()) body.agent = opts.agent.trim();
       if (opts?.model?.providerID && opts.model.modelID) {
         body.model = opts.model;
+      }
+      if (opts?.variant) {
+        body.variant = opts.variant;
       }
       await ocJson(`/session/${sid}/prompt_async`, directory, {
         method: "POST",

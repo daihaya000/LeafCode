@@ -89,6 +89,8 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [projectsLoadError, setProjectsLoadError] = useState(false);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [engineOk, setEngineOk] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -101,16 +103,20 @@ export function Sidebar({
     : null;
 
   const refresh = useCallback(async () => {
-    try {
-      const [p, t] = await Promise.all([
-        getJson<{ projects: ProjectDto[] }>("/api/projects"),
-        getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
-      ]);
-      setProjects(p.projects ?? []);
-      setTasks(t.tasks ?? []);
-      setEngineOk(t.engineOk);
-    } catch {
-      /* keep previous */
+    const [projectsResult, tasksResult] = await Promise.allSettled([
+      getJson<{ projects: ProjectDto[] }>("/api/projects"),
+      getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
+    ]);
+    if (projectsResult.status === "fulfilled") {
+      setProjects(projectsResult.value.projects ?? []);
+      setProjectsLoaded(true);
+      setProjectsLoadError(false);
+    } else {
+      setProjectsLoadError(true);
+    }
+    if (tasksResult.status === "fulfilled") {
+      setTasks(tasksResult.value.tasks ?? []);
+      setEngineOk(tasksResult.value.engineOk);
     }
   }, []);
 
@@ -277,16 +283,16 @@ export function Sidebar({
         <Link
           href="/"
           onClick={() => onClose()}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <FolderGit2 className="h-4.5 w-4.5 shrink-0" />
-          <span className="truncate">OpenCode</span>
+          <span className="truncate">OpenCodeWebUI</span>
         </Link>
         <Link
           href="/"
           onClick={() => onClose()}
           title="新規タスク"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <Plus className="h-4 w-4" />
         </Link>
@@ -301,7 +307,7 @@ export function Sidebar({
           href="/settings"
           onClick={() => onClose()}
           title="設定"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <Settings className="h-4 w-4" />
         </Link>
@@ -315,9 +321,25 @@ export function Sidebar({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-2">
-        {projects.length === 0 ? (
+        {!projectsLoaded ? (
+          <div className="flex min-h-24 items-center justify-center px-2 py-4">
+            <div
+              role="status"
+              aria-label={
+                projectsLoadError
+                  ? "プロジェクトを読み込めませんでした"
+                  : "プロジェクトを読み込み中"
+              }
+              className="text-center text-xs text-muted"
+            >
+              {projectsLoadError
+                ? "プロジェクトを読み込めませんでした"
+                : "プロジェクトを読み込み中"}
+            </div>
+          </div>
+        ) : projects.length === 0 ? (
           <div className="px-2 py-4">
-            <p className="mb-3 text-center text-xs text-faint">
+            <p className="mb-3 text-center text-xs text-muted">
               プロジェクトがありません
             </p>
             <AddProjectButton
@@ -334,50 +356,75 @@ export function Sidebar({
               const children = tasksByProject.get(p.id) ?? [];
               return (
                 <li key={p.id} className="group/project">
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex min-w-0 items-center gap-0.5">
                     <button
                       type="button"
+                      aria-expanded={open}
+                      aria-label={`${p.name}を${open ? "折りたたむ" : "展開"}`}
                       onClick={() => toggleProject(p.id)}
-                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text"
+                      className="flex min-w-0 min-h-11 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:min-h-8"
                     >
                       <ChevronRight
                         className={cx(
                           "h-3.5 w-3.5 shrink-0 transition-transform",
                           open && "rotate-90",
                         )}
+                        aria-hidden="true"
                       />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                      <span className="tabular-nums text-[10px] text-faint">
+                      <span className="tabular-nums text-[10px] text-muted">
                         {children.length}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      title="お気に入り"
-                      onClick={(e) => void toggleFavorite(p, e)}
-                      className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md p-1 text-faint hover:bg-surface-2 md:hidden md:group-hover/project:inline-flex"
-                    >
-                      <Star
-                        className={
-                          p.favorite
-                            ? "h-3 w-3 fill-warning text-warning"
-                            : "h-3 w-3"
-                        }
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      title="プロジェクトを削除"
-                      onClick={(e) => void removeProject(p, e)}
-                      className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger md:hidden md:group-hover/project:inline-flex"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
+                    <div className="flex shrink-0 items-center">
+                      <button
+                        type="button"
+                        aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+                        title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                        onClick={(e) => void toggleFavorite(p, e)}
+                        className={cx(
+                          "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8",
+                          !p.favorite &&
+                            "md:pointer-events-none md:opacity-0 md:group-hover/project:pointer-events-auto md:group-hover/project:opacity-100 md:group-focus-within/project:pointer-events-auto md:group-focus-within/project:opacity-100",
+                        )}
+                      >
+                        <Star
+                          className={
+                            p.favorite
+                              ? "h-3 w-3 fill-warning text-warning"
+                              : "h-3 w-3"
+                          }
+                          aria-hidden="true"
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${p.name}に新規タスクを作成`}
+                        title="新規タスク"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          nav(`/?projectId=${encodeURIComponent(p.id)}`);
+                        }}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                      >
+                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${p.name}を削除`}
+                        title="プロジェクトを削除"
+                        onClick={(e) => void removeProject(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:pointer-events-none md:h-8 md:w-8 md:opacity-0 md:group-hover/project:pointer-events-auto md:group-hover/project:opacity-100 md:group-focus-within/project:pointer-events-auto md:group-focus-within/project:opacity-100"
+                      >
+                        <Trash2 className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                   {open && (
                     <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
                       {children.length === 0 ? (
-                        <li className="px-2 py-1.5 text-[11px] text-faint">
+                        <li className="px-2 py-1.5 text-[11px] text-muted">
                           タスクなし
                         </li>
                       ) : (
@@ -389,7 +436,7 @@ export function Sidebar({
                                 type="button"
                                 onClick={() => nav(`/task/${task.id}`)}
                                 className={cx(
-                                  "flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left",
+                                  "flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
@@ -412,12 +459,12 @@ export function Sidebar({
                                   <span className="min-w-0 flex-1 truncate text-xs font-medium">
                                     {task.title}
                                   </span>
-                                  <span className="shrink-0 text-[10px] text-faint">
+                                  <span className="shrink-0 text-[10px] text-muted">
                                     {timeAgo(task.updatedAt)}
                                   </span>
                                 </div>
                                 <div
-                                  className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-faint"
+                                  className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted"
                                   title={
                                     task.branch
                                       ? `${task.isolation}: ${task.branch}`
@@ -434,7 +481,7 @@ export function Sidebar({
                                 type="button"
                                 aria-label="タスクを削除"
                                 onClick={(e) => void removeTask(task, e)}
-                                className="absolute top-1.5 right-1 inline-flex min-h-9 min-w-9 items-center justify-center rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger md:hidden md:group-hover:inline-flex"
+                                className="absolute top-1.5 right-1 inline-flex min-h-9 min-w-9 items-center justify-center rounded-md p-1 text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:hidden md:group-hover:inline-flex"
                               >
                                 <Trash2 className="h-3 w-3" />
                               </button>
@@ -454,7 +501,7 @@ export function Sidebar({
           <Link
             href="/settings"
             onClick={() => onClose()}
-            className="mt-3 block rounded-lg px-2 py-2 text-center text-[11px] text-warning hover:bg-warning-bg"
+            className="mt-3 block rounded-lg px-2 py-2 text-center text-[11px] text-warning hover:bg-warning-bg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
             要復旧 {orphanCount} 件 → 設定
           </Link>

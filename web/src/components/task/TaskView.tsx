@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
@@ -40,6 +41,21 @@ import {
   writeAccessMode,
   type AccessMode,
 } from "@/lib/access-mode";
+import {
+  DEFAULT_MODEL_EVENT,
+  readDefaultModel,
+} from "@/lib/default-model";
+import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
+import {
+  readChatTab,
+  readShowDiff,
+  readSidePanel,
+  writeChatTab,
+  writeShowDiff,
+  writeSidePanel,
+  type ChatTab,
+  type SidePanelKind,
+} from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
 import {
@@ -49,13 +65,24 @@ import {
   type CostDisplayPrefs,
 } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
+import {
+  getIntelligenceVariants,
+  type IntelligenceVariant,
+  type ProviderModelMeta,
+} from "@/lib/model-variants";
 import { decideNotification, notificationText } from "@/lib/notify";
+import {
+  extractPlanMarkdownPath,
+  isPlanApproved,
+  PLAN_APPROVAL_PROMPT,
+} from "@/lib/plan-document";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
 import { GraphPanel } from "./GraphPanel";
 import { PartView } from "./PartView";
+import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
 import { PtyPanel } from "./PtyPanel";
 import { QuestionCard } from "./QuestionCard";
@@ -77,6 +104,7 @@ type ProviderResponse = {
           input?: ("text" | "audio" | "image" | "video" | "pdf")[];
           output?: ("text" | "audio" | "image" | "video" | "pdf")[];
         };
+        variants?: ProviderModelMeta["variants"];
       }
     >;
   }[];
@@ -94,6 +122,35 @@ type AgentResponse = {
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
 
 const IMAGE_MIME_RE = /^image\//i;
+
+function ModelSelectIcon({ model }: { model: string }) {
+  const providerID = model ? model.split("::")[0] : "";
+  const src = providerIconSrcForOpencodeId(providerID);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={14}
+        height={14}
+        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return <Cpu className="h-3.5 w-3.5" />;
+}
+
+function normalizedPlanPath(value: string | undefined) {
+  if (!value) return null;
+  let path = value.trim();
+  if (path.startsWith("`") && path.endsWith("`") && path.length > 2) {
+    path = path.slice(1, -1).trim();
+  }
+  return path;
+}
 
 function TodoPanel({
   todos,
@@ -193,11 +250,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const { setExtras } = useShellExtras();
   const [task, setTask] = useState<TaskSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"chat" | "diff">("chat");
+  const [tab, setTab] = useState<ChatTab>("chat");
   const [showDiff, setShowDiff] = useState(true);
-  const [sidePanel, setSidePanel] = useState<"diff" | "files" | "pty" | "graph">(
-    "diff",
-  );
+  const [sidePanel, setSidePanel] = useState<SidePanelKind>("diff");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);
   const [isLg, setIsLg] = useState(false);
@@ -217,6 +272,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
+  const [providerModelsMap, setProviderModelsMap] = useState<
+    Record<string, ProviderModelMeta>
+  >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
     readCostDisplayPrefs(),
@@ -234,6 +293,9 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   useEffect(() => {
     setSideWidth(loadSideWidth());
+    setTab(readChatTab());
+    setShowDiff(readShowDiff());
+    setSidePanel(readSidePanel());
     const mq = window.matchMedia("(min-width: 1024px)");
     const apply = () => setIsLg(mq.matches);
     apply();
@@ -292,9 +354,40 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
   }, []);
 
+  // Sync default model when changed in Settings while a task is open and the
+  // user has not manually picked a different model in this composer.
+  useEffect(() => {
+    const onDefault = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      const next = typeof detail === "string" && detail.length > 0 ? detail : "";
+      if (!next) return;
+      setModel((cur) => {
+        if (cur && cur === next) return cur;
+        if (modelOptions.some((o) => o.value === next)) return next;
+        return cur;
+      });
+    };
+    window.addEventListener(DEFAULT_MODEL_EVENT, onDefault);
+    return () => window.removeEventListener(DEFAULT_MODEL_EVENT, onDefault);
+  }, [modelOptions]);
+
   const changeAccessMode = useCallback((mode: AccessMode) => {
     setAccessMode(mode);
     writeAccessMode(mode);
+  }, []);
+
+  // Persist right-panel display state so it survives task/session switches.
+  const changeTab = useCallback((next: ChatTab) => {
+    setTab(next);
+    writeChatTab(next);
+  }, []);
+  const changeShowDiff = useCallback((next: boolean) => {
+    setShowDiff(next);
+    writeShowDiff(next);
+  }, []);
+  const changeSidePanel = useCallback((next: SidePanelKind) => {
+    setSidePanel(next);
+    writeSidePanel(next);
   }, []);
 
   const { permissions, replyPermission } = stream;
@@ -335,6 +428,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           const connected = new Set(connectedList);
           const options: ModelOption[] = [];
           const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
+          const map: Record<string, ProviderModelMeta> = {};
           for (const p of data.all ?? []) {
             if (connected.size > 0 && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
@@ -349,18 +443,34 @@ export function TaskView({ taskId }: { taskId: string }) {
                 attachment: m.attachment === true,
                 image: inputs.includes("image"),
               };
+              map[`${p.id}::${mid}`] = {
+                name: m.name,
+                variants: m.variants,
+              };
             }
           }
           setModelOptions(options);
           setModelCapabilities(caps);
+          setProviderModelsMap(map);
 
+          // Prefer user-configured default model, then OpenCode config.model
+          // (provider/modelID), then provider defaults.
           let initial = "";
-          const cfg = config?.model?.trim();
-          if (cfg) {
-            const slash = cfg.indexOf("/");
-            if (slash > 0) {
-              const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-              if (options.some((o) => o.value === value)) initial = value;
+          const savedDefault = readDefaultModel();
+          if (
+            savedDefault &&
+            options.some((o) => o.value === savedDefault)
+          ) {
+            initial = savedDefault;
+          }
+          if (!initial) {
+            const cfg = config?.model?.trim();
+            if (cfg) {
+              const slash = cfg.indexOf("/");
+              if (slash > 0) {
+                const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
+                if (options.some((o) => o.value === value)) initial = value;
+              }
             }
           }
           if (!initial) {
@@ -538,20 +648,21 @@ export function TaskView({ taskId }: { taskId: string }) {
         ...(agent ? { agent } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(files.length > 0 ? { files } : {}),
+        ...(intelligence ? { variant: intelligence } : {}),
       });
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
       setAttachments(attachments);
     }
-  }, [input, attachments, working, stream, model, agent]);
+  }, [input, attachments, working, stream, model, agent, intelligence]);
 
   // Resolve the model that will actually serve the prompt: the selected
   // agent's configured model takes priority over the manual model selector.
   const effectiveModelKey = (() => {
     const am = agent ? agentModels[agent] : undefined;
     if (am) return `${am.providerID}::${am.modelID}`;
-    return model || "";
+    return model || ``;
   })();
   const imageSupported = effectiveModelKey
     ? modelCapabilities[effectiveModelKey]?.image === true ||
@@ -563,8 +674,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+      reader.onload = () => resolve(String(reader.result ?? ``));
+      reader.onerror = () => reject(reader.error ?? new Error(`read failed`));
       reader.readAsDataURL(file);
     });
 
@@ -596,7 +707,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const imageFiles: File[] = [];
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        if (it.kind === "file" && IMAGE_MIME_RE.test(it.type)) {
+        if (it.kind === `file` && IMAGE_MIME_RE.test(it.type)) {
           const f = it.getAsFile();
           if (f) imageFiles.push(f);
         }
@@ -619,9 +730,23 @@ export function TaskView({ taskId }: { taskId: string }) {
   );
 
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+    if (e.dataTransfer?.types?.includes(`Files`)) e.preventDefault();
   }, []);
 
+  const approvePlan = useCallback(async () => {
+    if (working) throw new Error(`セッションの完了を待ってください`);
+    setSendError(null);
+    setAgent(`build`);
+    stickRef.current = true;
+    await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: `build` });
+  }, [working, stream]);
+
+  const intelligenceVariants = useMemo(() => {
+    if (!model) return [];
+    const modelMeta = providerModelsMap[model];
+    if (!modelMeta) return [];
+    return getIntelligenceVariants(modelMeta);
+  }, [model, providerModelsMap]);
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
   useEffect(() => {
@@ -632,6 +757,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const value = `${info.providerID}::${info.modelID}`;
       if (modelOptions.some((o) => o.value === value)) {
         setModel(value);
+        setIntelligence("");
         seededModelRef.current = true;
       }
       break;
@@ -681,7 +807,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
-    const base = task?.title ? `${task.title} · OpenCode` : "OpenCode WebUI";
+    const base = task?.title ? `${task.title} · OpenCodeWebUI` : "OpenCodeWebUI";
     const needsAttention =
       stream.permissions.length > 0 || stream.questions.length > 0;
     if (needsAttention) {
@@ -695,7 +821,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       applyFaviconBadge("idle");
     }
     return () => {
-      document.title = "OpenCode WebUI";
+      document.title = "OpenCodeWebUI";
       applyFaviconBadge("idle");
     };
   }, [
@@ -776,11 +902,11 @@ export function TaskView({ taskId }: { taskId: string }) {
       }
       rel = rel.replace(/^\.?\//, "");
       if (rel) setFocusFile(rel);
-      setShowDiff(true);
-      setTab("diff");
-      setSidePanel("diff");
+      changeShowDiff(true);
+      changeTab("diff");
+      changeSidePanel("diff");
     },
-    [task?.directory],
+    [task?.directory, changeShowDiff, changeTab, changeSidePanel],
   );
 
   useEffect(() => {
@@ -807,6 +933,25 @@ export function TaskView({ taskId }: { taskId: string }) {
       ),
     [stream.visibleMessages],
   );
+
+  const planPaths = useMemo(
+    () =>
+      new Map(
+        stream.visibleMessages.flatMap((message) => {
+          const path = extractPlanMarkdownPath(message);
+          return path ? [[message.info.id, path] as const] : [];
+        }),
+      ),
+    [stream.visibleMessages],
+  );
+  const actionablePlanMessageId = Array.from(planPaths.keys()).at(-1) ?? null;
+  const approvedPlanIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of planPaths.keys()) {
+      if (isPlanApproved(stream.visibleMessages, id)) ids.add(id);
+    }
+    return ids;
+  }, [planPaths, stream.visibleMessages]);
 
   if (loadError) {
     return (
@@ -930,9 +1075,9 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "files" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff(true);
-              setTab("diff");
-              setSidePanel("files");
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("files");
             }}
           >
             <FolderTree className="h-4 w-4" />
@@ -945,9 +1090,9 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff(true);
-              setTab("diff");
-              setSidePanel("graph");
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("graph");
             }}
           >
             <GitGraph className="h-4 w-4" />
@@ -961,9 +1106,9 @@ export function TaskView({ taskId }: { taskId: string }) {
               showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
             )}
             onClick={() => {
-              setShowDiff(true);
-              setTab("diff");
-              setSidePanel("pty");
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("pty");
             }}
           >
             <Terminal className="h-4 w-4" />
@@ -977,12 +1122,12 @@ export function TaskView({ taskId }: { taskId: string }) {
             )}
             onClick={() => {
               if (sidePanel === "diff" && showDiff && tab === "diff") {
-                setShowDiff(false);
-                setTab("chat");
+                changeShowDiff(false);
+                changeTab("chat");
               } else {
-                setSidePanel("diff");
-                setShowDiff(true);
-                setTab("diff");
+                changeSidePanel("diff");
+                changeShowDiff(true);
+                changeTab("diff");
               }
             }}
           >
@@ -1014,10 +1159,10 @@ export function TaskView({ taskId }: { taskId: string }) {
               key={`${t.key}-${t.panel ?? "main"}`}
               type="button"
               onClick={() => {
-                setTab(t.key);
+                changeTab(t.key);
                 if (t.panel) {
-                  setSidePanel(t.panel);
-                  setShowDiff(true);
+                  changeSidePanel(t.panel);
+                  changeShowDiff(true);
                 }
               }}
               className={cx(
@@ -1108,7 +1253,16 @@ export function TaskView({ taskId }: { taskId: string }) {
                 )}
                 {timeline.map((m) => (
                   <div key={m.info.id} className="group/msg flex flex-col gap-2">
-                    {m.parts.map((p) => (
+                    {m.parts
+                      .filter((p) => {
+                        const planPath = planPaths.get(m.info.id);
+                        if (!planPath) return true;
+                        return (
+                          normalizedPlanPath(p.text) !== planPath &&
+                          normalizedPlanPath(p.filename) !== planPath
+                        );
+                      })
+                      .map((p) => (
                       <PartView
                         key={p.id}
                         part={p}
@@ -1118,6 +1272,16 @@ export function TaskView({ taskId }: { taskId: string }) {
                         rootSessionId={task.sessionId}
                       />
                     ))}
+                    {planPaths.get(m.info.id) && (
+                      <PlanDocumentCard
+                        path={planPaths.get(m.info.id)!}
+                        directory={task.directory}
+                        actionable={m.info.id === actionablePlanMessageId}
+                        working={working}
+                        approved={approvedPlanIds.has(m.info.id)}
+                        onApprove={approvePlan}
+                      />
+                    )}
                     {m.info.role === "user" && task.sessionId && (
                       <div className="flex justify-end opacity-100 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100">
                         <MessageRevertButton
@@ -1303,10 +1467,13 @@ export function TaskView({ taskId }: { taskId: string }) {
                     {modelOptions.length > 0 && (
                       <GhostSelect
                         value={model}
-                        onChange={(e) => setModel(e.target.value)}
+                        onChange={(e) => {
+                          setModel(e.target.value);
+                          setIntelligence("");
+                        }}
                         disabled={!task.sessionId || working}
                         aria-label="モデル"
-                        icon={<Cpu className="h-3.5 w-3.5" />}
+                        icon={<ModelSelectIcon model={model} />}
                         valueLabel={
                           modelOptions.find((o) => o.value === model)?.label ??
                           "モデル"
@@ -1327,6 +1494,18 @@ export function TaskView({ taskId }: { taskId: string }) {
                           ),
                         )}
                       </GhostSelect>
+                    )}
+                    {intelligenceVariants.length > 0 && (
+                      <IntelligenceSelect
+                        variants={intelligenceVariants}
+                        value={intelligence}
+                        onChange={(v) =>
+                          setIntelligence(
+                            v === "high" || v === "low" ? v : "",
+                          )
+                        }
+                        disabled={!task.sessionId || working}
+                      />
                     )}
                     {agents.length > 0 && (
                       <GhostSelect
