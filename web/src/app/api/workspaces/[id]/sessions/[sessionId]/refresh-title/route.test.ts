@@ -76,8 +76,13 @@ describe("POST refresh-title", () => {
 
   it("generates title, cleans temp before patch, updates original + db + manifest", async () => {
     const calls: string[] = [];
+    let titlePrompt: Record<string, unknown> | undefined;
     ocServer.mockImplementation(
-      async (_dir: string, path: string, init?: { method?: string }) => {
+      async (
+        _dir: string,
+        path: string,
+        init?: { method?: string; body?: Record<string, unknown> },
+      ) => {
         calls.push(`${init?.method ?? "GET"} ${path}`);
         if (path === "/session/sess1/message" && init?.method === undefined)
           return [
@@ -95,16 +100,16 @@ describe("POST refresh-title", () => {
           ];
         if (path === "/session" && init?.method === "POST")
           return { id: "temp1" };
-        if (path === "/session/temp1/message" && init?.method === "POST")
+        if (path === "/session/temp1/message" && init?.method === "POST") {
+          titlePrompt = init.body;
           return {
             info: { id: "a1", role: "assistant" },
-            parts: [
-              { id: "y", messageID: "a1", type: "text", text: "Nice Title" },
-            ],
+            parts: [{ id: "y", messageID: "a1", type: "text", text: "会話の要約" }],
           };
+        }
         if (path === "/session/temp1" && init?.method === "DELETE") return true;
         if (path === "/session/sess1" && init?.method === "PATCH")
-          return { id: "sess1", title: "Nice Title" };
+          return { id: "sess1", title: "会話の要約" };
         throw new Error("unexpected " + path);
       },
     );
@@ -112,12 +117,13 @@ describe("POST refresh-title", () => {
     const res = await POST(req(), ctx());
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json.title).toBe("Nice Title");
+    expect(json.title).toBe("会話の要約");
+    expect(titlePrompt?.system).toContain("日本語タイトル");
     const delIdx = calls.indexOf("DELETE /session/temp1");
     const patchIdx = calls.indexOf("PATCH /session/sess1");
     expect(delIdx).toBeGreaterThan(-1);
     expect(patchIdx).toBeGreaterThan(delIdx);
-    expect(updateSessionTitle).toHaveBeenCalledWith("ws1", "sess1", "Nice Title");
+    expect(updateSessionTitle).toHaveBeenCalledWith("ws1", "sess1", "会話の要約");
     expect(persistProjectSessions).toHaveBeenCalledWith("prj1");
   });
 

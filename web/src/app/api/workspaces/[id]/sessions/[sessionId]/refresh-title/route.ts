@@ -15,8 +15,8 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string; sessionId: string }> };
 
 const TITLE_INSTRUCTION =
-  "Generate a concise, human-readable title (max 8 words) that summarizes " +
-  "the following conversation. Reply with the title only, no quotes.";
+  "以下の会話を要約する、簡潔で人間が読みやすい日本語タイトルを生成してください。" +
+  "最大20文字程度。タイトルのみを返し、引用符や説明は不要です。";
 
 export async function POST(_req: NextRequest, context: Ctx) {
   const { id, sessionId } = await context.params;
