@@ -13,6 +13,7 @@ export default defineConfig({
     jsxImportSource: "react",
   },
   test: {
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    environment: "jsdom",
   },
 });

@@ -34,7 +34,10 @@ import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
-import { useShellExtras } from "@/components/shell/ShellContext";
+import {
+  useShellExtras,
+  useShellSetActiveScope,
+} from "@/components/shell/ShellContext";
 import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
 import {
   readAccessMode,
@@ -248,6 +251,7 @@ function saveSideWidth(n: number) {
 export function TaskView({ taskId }: { taskId: string }) {
   const router = useRouter();
   const { setExtras } = useShellExtras();
+  const setActiveScope = useShellSetActiveScope();
   const [task, setTask] = useState<TaskSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<ChatTab>("chat");
@@ -917,6 +921,15 @@ export function TaskView({ taskId }: { taskId: string }) {
     setExtras({ directory: task.directory, onFile: openFileInDiff });
     return () => setExtras({});
   }, [task?.directory, openFileInDiff, setExtras]);
+
+  useEffect(() => {
+    if (task?.directory && task?.sessionId) {
+      setActiveScope({ directory: task.directory, sessionId: task.sessionId });
+    } else {
+      setActiveScope(null);
+    }
+    return () => setActiveScope(null);
+  }, [task?.directory, task?.sessionId, setActiveScope]);
 
   const timeline = useMemo(
     () =>
