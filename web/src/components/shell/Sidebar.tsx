@@ -283,7 +283,7 @@ export function Sidebar({
         <Link
           href="/"
           onClick={() => onClose()}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <FolderGit2 className="h-4.5 w-4.5 shrink-0" />
           <span className="truncate">OpenCodeWebUI</span>
@@ -372,7 +372,7 @@ export function Sidebar({
                         aria-hidden="true"
                       />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                      <span className="tabular-nums text-[10px] text-faint">
+                      <span className="tabular-nums text-[10px] text-muted">
                         {children.length}
                       </span>
                     </button>
@@ -424,7 +424,7 @@ export function Sidebar({
                   {open && (
                     <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
                       {children.length === 0 ? (
-                        <li className="px-2 py-1.5 text-[11px] text-faint">
+                        <li className="px-2 py-1.5 text-[11px] text-muted">
                           タスクなし
                         </li>
                       ) : (
@@ -436,7 +436,7 @@ export function Sidebar({
                                 type="button"
                                 onClick={() => nav(`/task/${task.id}`)}
                                 className={cx(
-                                  "flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left",
+                                  "flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
@@ -459,12 +459,12 @@ export function Sidebar({
                                   <span className="min-w-0 flex-1 truncate text-xs font-medium">
                                     {task.title}
                                   </span>
-                                  <span className="shrink-0 text-[10px] text-faint">
+                                  <span className="shrink-0 text-[10px] text-muted">
                                     {timeAgo(task.updatedAt)}
                                   </span>
                                 </div>
                                 <div
-                                  className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-faint"
+                                  className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted"
                                   title={
                                     task.branch
                                       ? `${task.isolation}: ${task.branch}`
@@ -501,7 +501,7 @@ export function Sidebar({
           <Link
             href="/settings"
             onClick={() => onClose()}
-            className="mt-3 block rounded-lg px-2 py-2 text-center text-[11px] text-warning hover:bg-warning-bg"
+            className="mt-3 block rounded-lg px-2 py-2 text-center text-[11px] text-warning hover:bg-warning-bg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
             要復旧 {orphanCount} 件 → 設定
           </Link>
