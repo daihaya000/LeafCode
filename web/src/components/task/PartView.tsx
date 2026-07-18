@@ -22,6 +22,10 @@ import { cx } from "@/components/ui";
 import type { Part, ToolState } from "@/lib/types";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
+import {
+  questionInputFields,
+  questionToolSummary,
+} from "./tool-part-summary";
 
 function toolIcon(tool: string) {
   const t = tool.toLowerCase();
@@ -61,7 +65,7 @@ function toolSummary(tool: string, state: ToolState | undefined): string {
     );
   }
   if (t === "question") {
-    return asString(input.question) ?? asString(input.header) ?? "回答待ち";
+    return questionToolSummary(state);
   }
   if (t.includes("bash") || t.includes("shell")) {
     return (
@@ -121,6 +125,9 @@ function inputFields(tool: string, input: Record<string, unknown> | undefined): 
     add("エージェント", "subagent_type", shortAgentName);
     add("指示", "prompt", (s) => (s.length > 200 ? s.slice(0, 200) + "…" : s));
     return fields;
+  }
+  if (t === "question") {
+    return questionInputFields(input);
   }
   if (t.includes("bash") || t.includes("shell")) {
     add("説明", "description");
