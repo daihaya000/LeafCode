@@ -42,6 +42,18 @@ describe("extractPlanMarkdownPath", () => {
     }))).toBe("/repo/spec.md");
   });
 
+  it("returns a Windows UNC Markdown path", () => {
+    expect(extractPlanMarkdownPath(message({
+      parts: [{ id: "p1", messageID: "m1", type: "text", text: "\\\\server\\share\\repo\\plan.md" }],
+    }))).toBe("\\\\server\\share\\repo\\plan.md");
+  });
+
+  it("returns a Windows extended-length Markdown path", () => {
+    expect(extractPlanMarkdownPath(message({
+      parts: [{ id: "p1", messageID: "m1", type: "text", text: "\\\\?\\C:\\repo\\plan.md" }],
+    }))).toBe("\\\\?\\C:\\repo\\plan.md");
+  });
+
   it.each([
     { info: { id: "m1", role: "assistant" as const, agent: "build", time: { completed: 1 } } },
     { info: { id: "m1", role: "assistant" as const, agent: "plan", time: {} } },
@@ -92,6 +104,16 @@ describe("isPlanApproved", () => {
 
   it("is false when the Plan message id is not present", () => {
     expect(isPlanApproved([plan, userApproval("u1")], "missing")).toBe(false);
+  });
+
+  it("rejects an exact approval prompt from the Plan agent", () => {
+    const messages = [plan, userApproval("u1", "plan")];
+    expect(isPlanApproved(messages, "plan-1")).toBe(false);
+  });
+
+  it("rejects an exact approval prompt from another agent", () => {
+    const messages = [plan, userApproval("u1", "other")];
+    expect(isPlanApproved(messages, "plan-1")).toBe(false);
   });
 
   it("ignores assistant messages that echo the prompt text", () => {

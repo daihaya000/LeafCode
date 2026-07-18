@@ -5,13 +5,17 @@ import type { MessageWithParts } from "./types";
 export const PLAN_APPROVAL_PROMPT =
   "この計画を承認します。計画に従って実装を開始してください。";
 
+function isAbsolutePlanPath(value: string): boolean {
+  return /^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(value);
+}
+
 function pathOnly(text: string): string | null {
   let value = text.trim();
   if (value.startsWith("`") && value.endsWith("`") && value.length > 2) {
     value = value.slice(1, -1).trim();
   }
   if (value.includes("\n") || !/\.md$/i.test(value)) return null;
-  return /^(?:[A-Za-z]:[\\/]|\/)/.test(value) ? value : null;
+  return isAbsolutePlanPath(value) ? value : null;
 }
 
 export function extractPlanMarkdownPath(message: MessageWithParts): string | null {
@@ -48,7 +52,10 @@ export function isPlanApproved(
       (part) =>
         part.type === "text" && part.text?.trim() === PLAN_APPROVAL_PROMPT,
     );
-    if (approved) return true;
+    if (!approved) continue;
+    const agent = message.info.agent;
+    if (agent && agent !== "build") continue;
+    return true;
   }
   return false;
 }
