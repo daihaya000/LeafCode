@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGlobalEvent, type AttentionItem } from "./attention";
+import { parseGlobalEvent } from "./attention";
 import type { PermissionRequest, QuestionRequest } from "./types";
 
 describe("parseGlobalEvent", () => {
