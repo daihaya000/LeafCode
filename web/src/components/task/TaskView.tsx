@@ -29,6 +29,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
@@ -41,6 +42,11 @@ import {
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
+import {
+  getIntelligenceVariants,
+  type IntelligenceVariant,
+  type ProviderModelMeta,
+} from "@/lib/model-variants";
 import { decideNotification, notificationText } from "@/lib/notify";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
@@ -57,7 +63,11 @@ import { SessionSwitcher } from "./SessionSwitcher";
 type ModelOption = { value: string; label: string; group: string };
 
 type ProviderResponse = {
-  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
+  all: {
+    id: string;
+    name: string;
+    models: Record<string, { name?: string; variants?: ProviderModelMeta["variants"] }>;
+  }[];
   connected: string[];
   default: Record<string, string>;
 };
@@ -180,6 +190,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
+  const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
+  const [providerModelsMap, setProviderModelsMap] = useState<
+    Record<string, ProviderModelMeta>
+  >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -282,6 +296,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           const connectedList = data.connected ?? [];
           const connected = new Set(connectedList);
           const options: ModelOption[] = [];
+          const map: Record<string, ProviderModelMeta> = {};
           for (const p of data.all ?? []) {
             if (connected.size > 0 && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
@@ -290,9 +305,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                 label: m.name || mid,
                 group: p.name || p.id,
               });
+              map[`${p.id}::${mid}`] = {
+                name: m.name,
+                variants: m.variants,
+              };
             }
           }
           setModelOptions(options);
+          setProviderModelsMap(map);
 
           let initial = "";
           const cfg = config?.model?.trim();
@@ -460,12 +480,20 @@ export function TaskView({ taskId }: { taskId: string }) {
       await stream.sendPrompt(text, {
         ...(agent ? { agent } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+        ...(intelligence ? { variant: intelligence } : {}),
       });
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
     }
-  }, [input, working, stream, model, agent]);
+  }, [input, working, stream, model, agent, intelligence]);
+
+  const intelligenceVariants = useMemo(() => {
+    if (!model) return [];
+    const modelMeta = providerModelsMap[model];
+    if (!modelMeta) return [];
+    return getIntelligenceVariants(modelMeta);
+  }, [model, providerModelsMap]);
 
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
@@ -1083,7 +1111,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                     {modelOptions.length > 0 && (
                       <GhostSelect
                         value={model}
-                        onChange={(e) => setModel(e.target.value)}
+                        onChange={(e) => {
+                          setModel(e.target.value);
+                          setIntelligence("");
+                        }}
                         disabled={!task.sessionId || working}
                         aria-label="モデル"
                         icon={<Cpu className="h-3.5 w-3.5" />}
@@ -1107,6 +1138,18 @@ export function TaskView({ taskId }: { taskId: string }) {
                           ),
                         )}
                       </GhostSelect>
+                    )}
+                    {intelligenceVariants.length > 0 && (
+                      <IntelligenceSelect
+                        variants={intelligenceVariants}
+                        value={intelligence}
+                        onChange={(v) =>
+                          setIntelligence(
+                            v === "high" || v === "low" ? v : "",
+                          )
+                        }
+                        disabled={!task.sessionId || working}
+                      />
                     )}
                     {agents.length > 0 && (
                       <GhostSelect
