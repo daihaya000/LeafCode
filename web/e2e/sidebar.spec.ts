@@ -78,6 +78,9 @@ test("renders enabled plugins below the sidebar add-project action without overf
   expect(pluginBox.x + pluginBox.width).toBeLessThanOrEqual(
     sidebarBox.x + sidebarBox.width,
   );
+  expect(sidebarBox.y + sidebarBox.height - (pluginBox.y + pluginBox.height)).toBeLessThan(
+    48,
+  );
   expect(
     await pluginHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
   ).toBe(true);
@@ -109,6 +112,9 @@ test("keeps enabled plugins in the mobile sidebar drawer", async ({ page }) => {
   expect(pluginBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
   expect(pluginBox.x + pluginBox.width).toBeLessThanOrEqual(
     sidebarBox.x + sidebarBox.width,
+  );
+  expect(sidebarBox.y + sidebarBox.height - (pluginBox.y + pluginBox.height)).toBeLessThan(
+    48,
   );
   expect(
     await pluginHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
