@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { apiUrl } from "@/lib/client";
 import { notifyAttentionCountChanged } from "@/lib/events";
-import { parseGlobalEvent, type AttentionItem, type AttentionScope } from "@/lib/attention";
+import { parseGlobalEvent, isResolvedEvent, type AttentionItem, type AttentionScope } from "@/lib/attention";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
 type GlobalAttentionContextValue = {
@@ -90,6 +90,11 @@ export function GlobalAttentionProvider({
       es?.close();
       es = new EventSource(apiUrl("/api/opencode/global/event"));
       es.onmessage = (ev) => {
+        const resolvedId = isResolvedEvent(ev.data);
+        if (resolvedId) {
+          remove(resolvedId);
+          return;
+        }
         const item = parseGlobalEvent(ev.data);
         if (item) add(item);
       };

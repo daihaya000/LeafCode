@@ -87,3 +87,25 @@ export function rejectPath(item: AttentionItem): string | null {
   }
   return `/question/${item.request.id}/reject`;
 }
+
+export function isResolvedEvent(raw: string): string | null {
+  let payload: { type?: string; properties?: Record<string, unknown>; data?: Record<string, unknown> };
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const type = payload.type ?? "";
+  const props = payload.properties ?? payload.data ?? {};
+  if (
+    type === "permission.replied" ||
+    type === "permission.v2.replied" ||
+    type === "question.replied" ||
+    type === "question.rejected" ||
+    type === "question.v2.replied" ||
+    type === "question.v2.rejected"
+  ) {
+    return String(props.requestID ?? props.id ?? "");
+  }
+  return null;
+}

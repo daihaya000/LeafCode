@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGlobalEvent } from "./attention";
+import { parseGlobalEvent, isResolvedEvent } from "./attention";
 import type { PermissionRequest, QuestionRequest } from "./types";
 
 describe("parseGlobalEvent", () => {
@@ -47,5 +47,20 @@ describe("parseGlobalEvent", () => {
 
   it("ignores malformed JSON", () => {
     expect(parseGlobalEvent("not json")).toBeNull();
+  });
+});
+
+describe("isResolvedEvent", () => {
+  it("returns id for permission.replied", () => {
+    expect(isResolvedEvent(JSON.stringify({ type: "permission.replied", properties: { id: "p1" } })))
+      .toBe("p1");
+  });
+  it("returns id for question.v2.rejected", () => {
+    expect(isResolvedEvent(JSON.stringify({ type: "question.v2.rejected", properties: { requestID: "q1" } })))
+      .toBe("q1");
+  });
+  it("returns null for asked", () => {
+    expect(isResolvedEvent(JSON.stringify({ type: "permission.asked", properties: { id: "p1" } })))
+      .toBeNull();
   });
 });
