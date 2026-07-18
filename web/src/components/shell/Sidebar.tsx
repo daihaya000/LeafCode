@@ -581,8 +581,12 @@ export function Sidebar({
           </div>
         )}
 
-        {includePlugins && <PluginHost />}
       </div>
+      {includePlugins && (
+        <div className="shrink-0 border-t border-border px-1.5 pb-[env(safe-area-inset-bottom)]">
+          <PluginHost />
+        </div>
+      )}
     </div>
   );
 
