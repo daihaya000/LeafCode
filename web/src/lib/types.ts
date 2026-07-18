@@ -128,6 +128,8 @@ export type TaskSummary = {
   additions: number;
   deletions: number;
   filesChanged: number;
+  /** Cumulative USD cost of the bound OpenCode session (from Session.cost), if known. */
+  cost?: number;
   createdAt: string;
   updatedAt: string;
 };

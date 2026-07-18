@@ -61,12 +61,7 @@ import {
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
-import {
-  COST_DISPLAY_EVENT,
-  formatCost,
-  readCostDisplayPrefs,
-  type CostDisplayPrefs,
-} from "@/lib/currency";
+import { formatCost, formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
   getIntelligenceVariants,
@@ -282,9 +277,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     Record<string, ProviderModelMeta>
   >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
-  const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
-    readCostDisplayPrefs(),
-  );
+  const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const composingRef = useRef(false);
@@ -345,18 +338,6 @@ export function TaskView({ taskId }: { taskId: string }) {
     };
     window.addEventListener("webui:access-mode", onMode);
     return () => window.removeEventListener("webui:access-mode", onMode);
-  }, []);
-
-  useEffect(() => {
-    setCostPrefs(readCostDisplayPrefs());
-    const onPrefs = (e: Event) => {
-      const detail = (e as CustomEvent<CostDisplayPrefs>).detail;
-      if (detail?.currency === "USD" || detail?.currency === "JPY") {
-        setCostPrefs(detail);
-      }
-    };
-    window.addEventListener(COST_DISPLAY_EVENT, onPrefs);
-    return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
   }, []);
 
   // Sync default model when changed in Settings while a task is open and the
@@ -1019,12 +1000,27 @@ export function TaskView({ taskId }: { taskId: string }) {
               <span className="hidden text-xs text-warning sm:inline">再接続中…</span>
             )}
           </div>
-          {task.branch && (
+          {(task.branch || (task.cost ?? 0) > 0) && (
             <div className="mt-0.5 hidden items-center gap-1 text-xs text-faint sm:flex">
-              <GitBranch className="h-3 w-3" />
-              <span className="truncate font-mono">{task.branch}</span>
-              <span className="mx-1">·</span>
+              {task.branch && (
+                <>
+                  <GitBranch className="h-3 w-3" />
+                  <span className="truncate font-mono">{task.branch}</span>
+                  <span className="mx-1">·</span>
+                </>
+              )}
               <span className="truncate">{task.projectName}</span>
+              {(task.cost ?? 0) > 0 && (
+                <>
+                  <span className="mx-1">·</span>
+                  <span
+                    className="shrink-0"
+                    title="このセッションの累計コスト"
+                  >
+                    累計 {formatCostValue(task.cost!, costPrefs)}
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>

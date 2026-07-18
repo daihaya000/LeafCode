@@ -2,6 +2,7 @@
  * Cost display currency preference.
  * OpenCode reports message cost in USD; JPY is a client-side conversion.
  */
+import { useEffect, useState } from "react";
 
 export type CostCurrency = "USD" | "JPY";
 
@@ -78,15 +79,43 @@ function formatYen(usd: number, usdJpyRate: number): string {
   return `¥${Math.round(yen).toLocaleString("ja-JP")}`;
 }
 
-/** Format a USD cost for display according to prefs. */
-export function formatCost(
+/** Bare amount string (no "cost " label), e.g. `$0.1542` or `¥23.1（$0.1542）`. */
+export function formatCostValue(
   usd: number,
   prefs: CostDisplayPrefs = DEFAULT_COST_PREFS,
 ): string {
   if (!Number.isFinite(usd) || usd <= 0) return "";
   const usdLabel = `$${usd.toFixed(4)}`;
-  if (prefs.currency !== "JPY") {
-    return `cost ${usdLabel}`;
-  }
-  return `cost ${formatYen(usd, prefs.usdJpyRate)}（${usdLabel}）`;
+  if (prefs.currency !== "JPY") return usdLabel;
+  return `${formatYen(usd, prefs.usdJpyRate)}（${usdLabel}）`;
+}
+
+/** Format a USD cost for display according to prefs. */
+export function formatCost(
+  usd: number,
+  prefs: CostDisplayPrefs = DEFAULT_COST_PREFS,
+): string {
+  const value = formatCostValue(usd, prefs);
+  return value ? `cost ${value}` : "";
+}
+
+/**
+ * Live cost-display prefs, kept in sync with Settings via
+ * `COST_DISPLAY_EVENT` (fired by `writeCostDisplayPrefs`). Client-only:
+ * returns `DEFAULT_COST_PREFS` during SSR/first paint.
+ */
+export function useCostDisplayPrefs(): CostDisplayPrefs {
+  const [prefs, setPrefs] = useState<CostDisplayPrefs>(DEFAULT_COST_PREFS);
+  useEffect(() => {
+    setPrefs(readCostDisplayPrefs());
+    const onPrefs = (e: Event) => {
+      const detail = (e as CustomEvent<CostDisplayPrefs>).detail;
+      if (detail?.currency === "USD" || detail?.currency === "JPY") {
+        setPrefs(detail);
+      }
+    };
+    window.addEventListener(COST_DISPLAY_EVENT, onPrefs);
+    return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
+  }, []);
+  return prefs;
 }

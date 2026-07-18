@@ -18,6 +18,7 @@ import { PluginHost } from "@/components/plugins/PluginHost";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { AttentionBadge } from "./AttentionBadge";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
@@ -91,6 +92,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const costPrefs = useCostDisplayPrefs();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsLoadError, setProjectsLoadError] = useState(false);
@@ -507,6 +509,14 @@ export function Sidebar({
                                     <span className="min-w-0 truncate font-mono">
                                       {sidebarBranchLabel(task)}
                                     </span>
+                                    {(task.cost ?? 0) > 0 && (
+                                      <span
+                                        className="shrink-0 whitespace-nowrap text-faint"
+                                        title="このセッションの累計コスト"
+                                      >
+                                        · {formatCostValue(task.cost!, costPrefs)}
+                                      </span>
+                                    )}
                                   </div>
                                 </button>
                                 <div className="flex shrink-0 items-center pt-0.5 pr-0.5">

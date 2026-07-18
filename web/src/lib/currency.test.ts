@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  COST_DISPLAY_EVENT,
   DEFAULT_COST_PREFS,
   DEFAULT_USD_JPY_RATE,
   clampUsdJpyRate,
   formatCost,
+  formatCostValue,
   sanitizeCostDisplayPrefs,
+  useCostDisplayPrefs,
+  writeCostDisplayPrefs,
 } from "./currency";
 
 describe("clampUsdJpyRate", () => {
@@ -57,5 +62,45 @@ describe("formatCost", () => {
     expect(
       formatCost(0.001, { currency: "JPY", usdJpyRate: 150 }),
     ).toBe("cost ¥0.15（$0.0010）");
+  });
+});
+
+describe("formatCostValue", () => {
+  it("returns the bare amount (no 'cost ' label)", () => {
+    expect(formatCostValue(0.1542)).toBe("$0.1542");
+    expect(formatCostValue(0)).toBe("");
+    expect(
+      formatCostValue(0.1542, { currency: "JPY", usdJpyRate: 150 }),
+    ).toBe("¥23.1（$0.1542）");
+  });
+
+  it("formatCost is formatCostValue prefixed with 'cost '", () => {
+    expect(formatCost(2.5)).toBe(`cost ${formatCostValue(2.5)}`);
+  });
+});
+
+describe("useCostDisplayPrefs", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("reads prefs on mount and updates on COST_DISPLAY_EVENT", () => {
+    const { result } = renderHook(() => useCostDisplayPrefs());
+    expect(result.current).toEqual(DEFAULT_COST_PREFS);
+
+    act(() => {
+      writeCostDisplayPrefs({ currency: "JPY", usdJpyRate: 130 });
+    });
+    expect(result.current).toEqual({ currency: "JPY", usdJpyRate: 130 });
+  });
+
+  it("ignores malformed event details", () => {
+    const { result } = renderHook(() => useCostDisplayPrefs());
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(COST_DISPLAY_EVENT, { detail: { currency: "EUR" } }),
+      );
+    });
+    expect(result.current).toEqual(DEFAULT_COST_PREFS);
   });
 });

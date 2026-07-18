@@ -1,0 +1,108 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({
+  workspaces: [] as unknown[],
+  bindings: new Map<string, unknown>(),
+  ocResponses: {} as Record<string, unknown>,
+  ocFail: new Set<string>(),
+}));
+
+vi.mock("./db", () => ({
+  listWorkspacesJoined: () => h.workspaces,
+  latestBindings: () => h.bindings,
+}));
+
+vi.mock("./dirstat", () => ({
+  dirStat: async () => ({
+    git: true,
+    branch: "main",
+    additions: 0,
+    deletions: 0,
+    files: 0,
+  }),
+}));
+
+vi.mock("./project-session-sync", () => ({
+  restoreAllKnownProjects: () => undefined,
+}));
+
+vi.mock("./oc-server", async () => {
+  const actual =
+    await vi.importActual<typeof import("./oc-server")>("./oc-server");
+  return {
+    ...actual,
+    ocServer: vi.fn(async (dir: string | null, path: string) => {
+      const key = `${dir ?? ""}${path}`;
+      if (h.ocFail.has(key)) throw new Error("engine unavailable");
+      if (path === "/session/status") return {};
+      if (path === "/global/health") return { healthy: true };
+      return h.ocResponses[key] ?? [];
+    }),
+  };
+});
+
+import { getTask, listTasks } from "./task-service";
+
+const WS = {
+  id: "ws1",
+  project_id: "prj1",
+  project_name: "Repo",
+  display_name: "Task title",
+  absolute_path: "/repo",
+  isolation: "current_folder" as const,
+  base_branch: null,
+  worktree_path: null,
+  status: "active" as const,
+  created_at: "2026-07-18T00:00:00Z",
+};
+
+const BINDING = {
+  workspace_id: "ws1",
+  opencode_session_id: "sess1",
+  title: "Task title",
+  updated_at: "2026-07-18T01:00:00Z",
+};
+
+beforeEach(() => {
+  h.workspaces = [WS];
+  h.bindings = new Map([["ws1", BINDING]]);
+  h.ocResponses = {};
+  h.ocFail = new Set();
+});
+
+describe("listTasks cost aggregation", () => {
+  it("attaches Session.cost from /session to the bound task", async () => {
+    h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 0.1234 }];
+    const { tasks } = await listTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].cost).toBe(0.1234);
+  });
+
+  it("leaves cost undefined when the session list has no matching entry", async () => {
+    h.ocResponses["/repo/session"] = [{ id: "other-session", cost: 5 }];
+    const { tasks } = await listTasks();
+    expect(tasks[0].cost).toBeUndefined();
+  });
+
+  it("leaves cost undefined (not throwing) when the /session call fails", async () => {
+    h.ocFail.add("/repo/session");
+    const { tasks } = await listTasks();
+    expect(tasks[0].cost).toBeUndefined();
+    expect(tasks[0].id).toBe("ws1");
+  });
+
+  it("leaves cost undefined when the task has no bound session", async () => {
+    h.bindings = new Map();
+    h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 9 }];
+    const { tasks } = await listTasks();
+    expect(tasks[0].cost).toBeUndefined();
+  });
+});
+
+describe("getTask cost aggregation", () => {
+  it("attaches Session.cost for the single task", async () => {
+    h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 2.5 }];
+    const task = await getTask("ws1");
+    expect(task?.cost).toBe(2.5);
+  });
+});
