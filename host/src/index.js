@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
 import { formatServiceStatus } from './service-status.js';
 import { getWebLaunchPlan, webRestartDelay } from './web-runtime.js';
+import { parseListeningPids } from './port-plan.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -30,13 +31,24 @@ const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
 const LOCK_FILE = join(DATA_DIR, 'host.lock');
-const OPENCODE_PORT = 4096;
-const WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
+/** Preferred OpenCode serve port. Override with OPENCODE_PORT. May bump on ghost sockets. */
+let OPENCODE_PORT = Number(process.env.OPENCODE_PORT) || 4096;
+let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
 /** Bind address for Next.js. Default 0.0.0.0 so VPN/LAN phone can reach it.
  *  OpenCode engine stays on 127.0.0.1. Override with OPENCODE_WEBUI_HOST=127.0.0.1 for local-only. */
 const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '0.0.0.0';
-const WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
-const OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
+let WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
+let OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
+
+function setOpencodePort(port) {
+  OPENCODE_PORT = port;
+  OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
+}
+
+function setWebuiPort(port) {
+  WEBUI_PORT = port;
+  WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
+}
 
 /** Optional Caddy reverse proxy (TLS / remote). Enable with OPENCODE_WEBUI_CADDY=1.
  *  Caddyfile path defaults to deploy/Caddyfile (auto-created from the example). */
@@ -183,16 +195,74 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isPortInUse(port) {
+function getListeningPids(port) {
   try {
-    const output = execSync(`netstat -ano | findstr :${port}`, {
+    const output = execSync('netstat -ano', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    return /LISTENING/.test(output);
+    return parseListeningPids(output, port);
   } catch {
-    return false;
+    return [];
   }
+}
+
+function isPortInUse(port) {
+  return getListeningPids(port).length > 0;
+}
+
+function findFreePort(startPort, maxAttempts = 20) {
+  for (let port = startPort; port < startPort + maxAttempts; port += 1) {
+    if (!isPortInUse(port)) return port;
+  }
+  return null;
+}
+
+/**
+ * If `port` is free → start fresh.
+ * If healthy HTTP → reuse.
+ * If occupied by a live but unhealthy process → kill and reuse the port.
+ * If occupied by a ghost/dead PID (Windows TCP leak) → fall back to the next free port.
+ */
+async function resolveOccupiedPort(port, healthUrl, label) {
+  if (!isPortInUse(port)) {
+    return { port, reuse: false };
+  }
+
+  if (await isHttpUp(healthUrl)) {
+    return { port, reuse: true };
+  }
+
+  const listeningPids = getListeningPids(port);
+  const livePids = listeningPids.filter((pid) => isProcessAlive(pid));
+
+  if (livePids.length > 0) {
+    for (const pid of livePids) {
+      log(
+        `Port ${port} holds unresponsive ${label} (PID ${pid}). Killing and retrying…`,
+      );
+      killProcessTree(pid);
+    }
+    for (let i = 0; i < 40; i += 1) {
+      await sleep(250);
+      if (!isPortInUse(port)) {
+        return { port, reuse: false };
+      }
+    }
+  }
+
+  // Ghost socket (LISTENING PID gone) or kill did not free the port.
+  const fallback = findFreePort(port + 1);
+  if (fallback == null) {
+    throw new Error(
+      `Port ${port} is stuck (PID ${listeningPids.join(',') || 'unknown'} not responding) ` +
+        `and no alternate port is free. Reboot Windows to clear the ghost socket, then retry.`,
+    );
+  }
+  log(
+    `Port ${port} is stuck (ghost/unresponsive ${label}). Falling back to :${fallback}`,
+  );
+  return { port: fallback, reuse: false, fallbackFrom: port };
 }
 
 function killProcessTree(pid) {
@@ -528,6 +598,8 @@ async function spawnWeb() {
     windowsHide: true,
     env: {
       ...process.env,
+      OPENCODE_BASE_URL: OPENCODE_URL,
+      OPENCODE_PORT: String(OPENCODE_PORT),
       OPENCODE_WEBUI_HOST: WEBUI_HOST,
       OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
       PORT: String(WEBUI_PORT),
@@ -784,28 +856,29 @@ async function acquireLock() {
 async function resolvePortPlan() {
   const plan = { startOpencode: true, startWeb: true };
 
-  if (isPortInUse(OPENCODE_PORT)) {
-    const healthy = await isHttpUp(`${OPENCODE_URL}/global/health`);
-    if (healthy) {
-      log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
-      plan.startOpencode = false;
-    } else {
-      throw new Error(
-        `Port ${OPENCODE_PORT} is in use but OpenCode health check failed. Free the port and retry.`,
-      );
-    }
+  const opencode = await resolveOccupiedPort(
+    OPENCODE_PORT,
+    `${OPENCODE_URL}/global/health`,
+    'OpenCode',
+  );
+  if (opencode.port !== OPENCODE_PORT) {
+    setOpencodePort(opencode.port);
+    process.env.OPENCODE_PORT = String(OPENCODE_PORT);
+    process.env.OPENCODE_BASE_URL = OPENCODE_URL;
+  }
+  if (opencode.reuse) {
+    log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
+    plan.startOpencode = false;
   }
 
-  if (isPortInUse(WEBUI_PORT)) {
-    const healthy = await isHttpUp(WEBUI_URL);
-    if (healthy) {
-      log(`Reusing existing WebUI on :${WEBUI_PORT}`);
-      plan.startWeb = false;
-    } else {
-      throw new Error(
-        `Port ${WEBUI_PORT} is in use but WebUI is not responding. Free the port and retry.`,
-      );
-    }
+  const webui = await resolveOccupiedPort(WEBUI_PORT, WEBUI_URL, 'WebUI');
+  if (webui.port !== WEBUI_PORT) {
+    setWebuiPort(webui.port);
+    process.env.OPENCODE_WEBUI_PORT = String(WEBUI_PORT);
+  }
+  if (webui.reuse) {
+    log(`Reusing existing WebUI on :${WEBUI_PORT}`);
+    plan.startWeb = false;
   }
 
   return plan;
