@@ -19,6 +19,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cx } from "@/components/ui";
+import { isTaskToolName } from "@/lib/match-child-session";
 import type { Part, ToolState } from "@/lib/types";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
@@ -56,7 +57,7 @@ function toolSummary(tool: string, state: ToolState | undefined): string {
   if (state?.title) return state.title;
   const input = state?.input ?? {};
   const t = tool.toLowerCase();
-  if (t === "task" || t.includes("task")) {
+  if (isTaskToolName(t)) {
     return (
       asString(input.description) ??
       asString(input.command) ??
@@ -156,24 +157,33 @@ function toolLabel(tool: string): string {
   return tool;
 }
 
+const EMPTY_TASK_CALL_IDS: string[] = [];
+
 const ToolPartView = memo(function ToolPartView({
   part,
   directory,
   rootSessionId,
+  siblingTaskCallIds = EMPTY_TASK_CALL_IDS,
 }: {
   part: Part;
   directory?: string | null;
   rootSessionId?: string | null;
+  siblingTaskCallIds?: string[];
 }) {
   const state = part.state;
   const status = state?.status ?? "pending";
   const tool = part.tool ?? "tool";
-  const isTaskTool = tool.toLowerCase() === "task" || tool.toLowerCase().includes("task");
+  const isTaskTool = isTaskToolName(tool);
   const nestedActive =
     isTaskTool &&
     (status === "running" || status === "pending") &&
     Boolean(directory && rootSessionId);
+  const terminalTask =
+    isTaskTool &&
+    (status === "completed" || status === "error") &&
+    Boolean(directory && rootSessionId);
   const [open, setOpen] = useState(nestedActive);
+  const showNested = nestedActive || (terminalTask && open);
   const Icon = toolIcon(tool);
   const summary = toolSummary(tool, state);
   const fields = useMemo(
@@ -190,12 +200,25 @@ const ToolPartView = memo(function ToolPartView({
       ? niceOutput.replace(/\s+/g, " ").slice(0, 100)
       : nestedActive
         ? "サブエージェント実行中…"
-        : "";
+        : terminalTask
+          ? "サブエージェントの経過を表示"
+          : "";
   const hasDetail =
     fields.length > 0 ||
     Boolean(niceOutput) ||
     Boolean(rawOutput) ||
-    nestedActive;
+    nestedActive ||
+    terminalTask;
+
+  const matchHint = useMemo(
+    () => ({
+      callID: part.callID,
+      metadata: state?.metadata ?? null,
+      input: state?.input ?? null,
+      siblingTaskCallIds,
+    }),
+    [part.callID, state?.metadata, state?.input, siblingTaskCallIds],
+  );
 
   return (
     <div
@@ -240,11 +263,12 @@ const ToolPartView = memo(function ToolPartView({
           />
         )}
       </button>
-      {nestedActive && directory && rootSessionId && (
+      {showNested && directory && rootSessionId && (
         <NestedAgentPanel
           directory={directory}
           parentSessionId={rootSessionId}
-          active={nestedActive}
+          active={showNested}
+          matchHint={matchHint}
         />
       )}
       {open && (
@@ -319,12 +343,14 @@ export const PartView = memo(function PartView({
   onFileClick,
   directory,
   rootSessionId,
+  siblingTaskCallIds,
 }: {
   part: Part;
   role: "user" | "assistant";
   onFileClick?: (path: string) => void;
   directory?: string | null;
   rootSessionId?: string | null;
+  siblingTaskCallIds?: string[];
 }) {
   switch (part.type) {
     case "text": {
@@ -347,6 +373,7 @@ export const PartView = memo(function PartView({
           part={part}
           directory={directory}
           rootSessionId={rootSessionId}
+          siblingTaskCallIds={siblingTaskCallIds}
         />
       );
     case "file": {

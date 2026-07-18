@@ -79,6 +79,7 @@ import {
   isPlanApproved,
   PLAN_APPROVAL_PROMPT,
 } from "@/lib/plan-document";
+import { collectTaskCallIds } from "@/lib/match-child-session";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
@@ -947,6 +948,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     [stream.visibleMessages],
   );
 
+  const siblingTaskCallIds = useMemo(
+    () => collectTaskCallIds(stream.visibleMessages),
+    [stream.visibleMessages],
+  );
+
   const planPaths = useMemo(
     () =>
       new Map(
@@ -1302,6 +1308,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         onFileClick={openFileInDiff}
                         directory={task.directory}
                         rootSessionId={task.sessionId}
+                        siblingTaskCallIds={siblingTaskCallIds}
                       />
                     ))}
                     {planPaths.get(m.info.id) && (

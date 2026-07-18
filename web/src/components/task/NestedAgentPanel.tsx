@@ -1,10 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Bot, ChevronRight, Loader2 } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from "react";
+import { Bot, Loader2 } from "lucide-react";
 import { cx } from "@/components/ui";
 import { ocJson } from "@/lib/client";
-import type { MessageWithParts, Part } from "@/lib/types";
+import {
+  collectTaskCallIds,
+  extractSessionIdFromMetadata,
+  isTimelinePartType,
+  matchChildSession,
+  messageHasTimelineParts,
+  type TaskMatchHint,
+} from "@/lib/match-child-session";
+import type { MessageWithParts } from "@/lib/types";
+import { PartView } from "./PartView";
 
 type ChildSession = {
   id: string;
@@ -12,160 +28,95 @@ type ChildSession = {
   parentID?: string;
 };
 
-type ChildFeed = {
+type MatchedFeed = {
   session: ChildSession;
   status: string;
-  latest: string;
+  messages: MessageWithParts[];
   runningTool: string | null;
-  children: ChildFeed[];
 };
 
-const MAX_DEPTH = 3;
 const POLL_MS = 2000;
 
-function summarizeParts(parts: Part[]): { latest: string; runningTool: string | null } {
-  let latest = "";
-  let runningTool: string | null = null;
-  for (const p of parts) {
-    if (p.type === "text" && p.text?.trim()) {
-      latest = p.text.trim().replace(/\s+/g, " ").slice(0, 120);
-    }
-    if (p.type === "tool") {
-      const tool = p.tool ?? "tool";
-      const title = p.state?.title ?? tool;
-      if (p.state?.status === "running" || p.state?.status === "pending") {
-        runningTool = title;
-        latest = title;
-      } else if (p.state?.status === "completed" && !runningTool) {
-        latest = title;
+function runningToolFromMessages(
+  messages: MessageWithParts[],
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const parts = messages[i]?.parts ?? [];
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const p = parts[j];
+      if (p?.type !== "tool") continue;
+      const st = p.state?.status;
+      if (st === "running" || st === "pending") {
+        return p.state?.title ?? p.tool ?? "tool";
       }
     }
   }
-  return { latest, runningTool };
+  return null;
 }
 
-async function loadChildTree(
+async function fetchChildren(
   directory: string,
   sessionId: string,
-  depth: number,
-  statuses: Record<string, { type?: string }>,
-): Promise<ChildFeed[]> {
-  if (depth > MAX_DEPTH) return [];
-  let children: ChildSession[] = [];
+): Promise<ChildSession[]> {
   try {
     const rows = await ocJson<ChildSession[] | { data?: ChildSession[] }>(
       `/session/${sessionId}/children`,
       directory,
     );
-    children = Array.isArray(rows)
+    const list = Array.isArray(rows)
       ? rows
       : Array.isArray(rows?.data)
         ? rows.data
         : [];
+    return list.filter((c) => Boolean(c?.id));
   } catch {
     return [];
   }
-
-  const feeds: ChildFeed[] = [];
-  for (const child of children) {
-    if (!child?.id) continue;
-    let latest = "";
-    let runningTool: string | null = null;
-    let status = "unknown";
-    try {
-      const messages = await ocJson<MessageWithParts[]>(
-        `/session/${child.id}/message`,
-        directory,
-      );
-      const last = Array.isArray(messages) ? messages[messages.length - 1] : null;
-      if (last) {
-        const s = summarizeParts(last.parts ?? []);
-        latest = s.latest;
-        runningTool = s.runningTool;
-      }
-      status = statuses[child.id]?.type ?? "idle";
-    } catch {
-      /* keep empty */
-    }
-    const nested = await loadChildTree(
-      directory,
-      child.id,
-      depth + 1,
-      statuses,
-    );
-    feeds.push({
-      session: child,
-      status,
-      latest,
-      runningTool,
-      children: nested,
-    });
-  }
-  return feeds;
 }
 
-function ChildNode({ feed, depth }: { feed: ChildFeed; depth: number }) {
-  const [open, setOpen] = useState(depth < 2);
-  const busy = feed.status === "busy" || Boolean(feed.runningTool);
-  return (
-    <div className={cx(depth > 0 && "ml-2 border-l border-border pl-2 sm:ml-3")}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface-2"
-      >
-        {busy ? (
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />
-        ) : (
-          <Bot className="h-3.5 w-3.5 shrink-0 text-muted" />
-        )}
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-text">
-          {feed.session.title || feed.session.id.slice(0, 12)}
-        </span>
-        {feed.runningTool && (
-          <span className="hidden max-w-[8rem] truncate text-[10px] text-working sm:inline">
-            {feed.runningTool}
-          </span>
-        )}
-        <ChevronRight
-          className={cx(
-            "h-3 w-3 shrink-0 text-faint transition-transform",
-            open && "rotate-90",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="space-y-1 pb-1">
-          {feed.latest && (
-            <p className="px-2 text-[11px] text-muted">{feed.latest}</p>
-          )}
-          {feed.children.map((c) => (
-            <ChildNode key={c.session.id} feed={c} depth={depth + 1} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Live nested sub-agent / grandchild progress under a running task tool. */
+/** Live nested sub-agent progress with Build-equivalent PartView timeline. */
 export function NestedAgentPanel({
   directory,
   parentSessionId,
   active,
+  matchHint,
 }: {
   directory: string;
   parentSessionId: string;
+  /** Poll while true (running task, or completed detail open). */
   active: boolean;
+  matchHint: TaskMatchHint;
 }) {
-  const [feeds, setFeeds] = useState<ChildFeed[]>([]);
+  const [feed, setFeed] = useState<MatchedFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [matching, setMatching] = useState(true);
+  const stickyIdRef = useRef<string | null>(null);
+  const genRef = useRef(0);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const stickBottomRef = useRef(true);
+
+  const hintCallID = matchHint.callID;
+  const hintSessionMeta = extractSessionIdFromMetadata(matchHint.metadata ?? null);
+  const hintDescription =
+    typeof matchHint.input?.description === "string"
+      ? matchHint.input.description
+      : typeof matchHint.input?.prompt === "string"
+        ? matchHint.input.prompt.slice(0, 120)
+        : null;
+  const hintSiblingsKey = matchHint.siblingTaskCallIds.join("\0");
 
   const refresh = useCallback(async () => {
     if (!directory || !parentSessionId) return;
+    const gen = ++genRef.current;
+    const hint: TaskMatchHint = {
+      callID: hintCallID,
+      metadata: hintSessionMeta ? { sessionID: hintSessionMeta } : null,
+      input: hintDescription
+        ? { description: hintDescription, prompt: hintDescription }
+        : null,
+      siblingTaskCallIds: hintSiblingsKey ? hintSiblingsKey.split("\0") : [],
+    };
     try {
-      // Fetch the global session status map once per refresh and reuse it for
-      // the whole tree instead of re-fetching it for every child/grandchild.
       let statuses: Record<string, { type?: string }> = {};
       try {
         statuses = await ocJson<Record<string, { type?: string }>>(
@@ -173,28 +124,120 @@ export function NestedAgentPanel({
           directory,
         );
       } catch {
-        /* status unavailable — nodes fall back to idle */
+        /* status unavailable */
       }
-      const tree = await loadChildTree(directory, parentSessionId, 1, statuses);
-      setFeeds(tree);
+
+      const children = await fetchChildren(directory, parentSessionId);
+      if (gen !== genRef.current) return;
+
+      const matchedId = matchChildSession(
+        children,
+        hint,
+        stickyIdRef.current,
+      );
+      if (!matchedId) {
+        stickyIdRef.current = null;
+        setFeed(null);
+        setMatching(true);
+        setError(null);
+        return;
+      }
+
+      stickyIdRef.current = matchedId;
+      const session =
+        children.find((c) => c.id === matchedId) ??
+        ({ id: matchedId } as ChildSession);
+
+      let messages: MessageWithParts[] = [];
+      try {
+        const rows = await ocJson<MessageWithParts[]>(
+          `/session/${matchedId}/message`,
+          directory,
+        );
+        messages = Array.isArray(rows) ? rows : [];
+      } catch {
+        /* keep empty; show error below if first load */
+      }
+      if (gen !== genRef.current) return;
+
+      setFeed({
+        session,
+        status: statuses[matchedId]?.type ?? "idle",
+        messages,
+        runningTool: runningToolFromMessages(messages),
+      });
+      setMatching(false);
       setError(null);
     } catch (err) {
+      if (gen !== genRef.current) return;
       setError(err instanceof Error ? err.message : "子セッション取得失敗");
     }
-  }, [directory, parentSessionId]);
+  }, [
+    directory,
+    parentSessionId,
+    hintCallID,
+    hintSessionMeta,
+    hintDescription,
+    hintSiblingsKey,
+  ]);
+
+  useEffect(() => {
+    if (!active) return;
+    void refresh();
+    const t = setInterval(() => void refresh(), POLL_MS);
+    return () => {
+      clearInterval(t);
+      genRef.current += 1;
+    };
+  }, [active, refresh]);
 
   useEffect(() => {
     if (!active) {
-      setFeeds([]);
-      return;
+      // Keep last feed for completed collapsed→expand, but stop matching spinner.
+      setMatching(false);
     }
-    void refresh();
-    const t = setInterval(() => void refresh(), POLL_MS);
-    return () => clearInterval(t);
-  }, [active, refresh]);
+  }, [active]);
 
-  if (!active && feeds.length === 0) return null;
-  if (feeds.length === 0 && !error) {
+  const busy =
+    feed?.status === "busy" ||
+    feed?.status === "retry" ||
+    Boolean(feed?.runningTool);
+
+  const siblingTaskCallIds = useMemo(
+    () => collectTaskCallIds(feed?.messages ?? []),
+    [feed?.messages],
+  );
+
+  const timeline = useMemo(() => {
+    const messages = feed?.messages ?? [];
+    return messages.filter((m) => messageHasTimelineParts(m.parts ?? []));
+  }, [feed?.messages]);
+
+  useEffect(() => {
+    if (!busy || !stickBottomRef.current) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [timeline, busy, feed?.runningTool]);
+
+  const onScroll = (e: UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    stickBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  };
+
+  if (!active && !feed) return null;
+
+  if (matching && !feed) {
+    return (
+      <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-[11px] text-faint">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        子セッションを特定中…
+      </div>
+    );
+  }
+
+  if (!feed) {
     return (
       <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-[11px] text-faint">
         <Loader2 className="h-3 w-3 animate-spin" />
@@ -204,14 +247,72 @@ export function NestedAgentPanel({
   }
 
   return (
-    <div className="space-y-1 border-t border-border bg-surface px-2 py-2">
-      <p className="px-1 text-[10px] font-medium tracking-wide text-faint uppercase">
-        サブエージェント
-      </p>
-      {error && <p className="px-1 text-[11px] text-danger">{error}</p>}
-      {feeds.map((f) => (
-        <ChildNode key={f.session.id} feed={f} depth={0} />
-      ))}
+    <div className="border-t border-border bg-surface">
+      <div className="flex items-center gap-2 px-3 py-2">
+        {busy ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />
+        ) : (
+          <Bot className="h-3.5 w-3.5 shrink-0 text-muted" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-text">
+          {feed.session.title || feed.session.id.slice(0, 12)}
+        </span>
+        {feed.runningTool && (
+          <span className="hidden max-w-[10rem] truncate text-[10px] text-working sm:inline">
+            {feed.runningTool}
+          </span>
+        )}
+      </div>
+      {error && (
+        <p className="px-3 pb-1 text-[11px] text-danger">{error}</p>
+      )}
+      <div
+        ref={scrollerRef}
+        onScroll={onScroll}
+        className={cx(
+          "max-h-72 space-y-3 overflow-y-auto border-t border-border px-3 py-3",
+        )}
+      >
+        {timeline.length === 0 && (
+          <p className="text-[11px] text-faint">
+            {busy ? "作業を開始しています…" : "タイムラインはまだありません"}
+          </p>
+        )}
+        {timeline.map((m) => (
+          <div key={m.info.id} className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] text-faint">
+              <Bot className="h-3 w-3" />
+              <span>
+                {m.info.agent && m.info.agent.length > 0
+                  ? m.info.agent
+                  : "サブエージェント"}
+              </span>
+            </div>
+            {(m.parts ?? [])
+              .filter((p) => {
+                if (!isTimelinePartType(p.type)) return false;
+                if (p.type === "text") return Boolean(p.text?.trim());
+                return true;
+              })
+              .map((p) => (
+                <PartView
+                  key={p.id}
+                  part={p}
+                  role={m.info.role}
+                  directory={directory}
+                  rootSessionId={feed.session.id}
+                  siblingTaskCallIds={siblingTaskCallIds}
+                />
+              ))}
+          </div>
+        ))}
+        {busy && (
+          <div className="flex items-center gap-2 text-[11px] text-faint">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            作業中…
+          </div>
+        )}
+      </div>
     </div>
   );
 }
