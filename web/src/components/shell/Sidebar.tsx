@@ -28,6 +28,7 @@ const WIDTH_KEY = "webui.sidebar.width";
 const DEFAULT_WIDTH = 240;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
+const ACTIVE_TASK_POLL_MS = 3000;
 
 function loadExpanded(): Set<string> {
   try {
@@ -106,6 +107,9 @@ export function Sidebar({
   const [resizing, setResizing] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
 
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
@@ -143,21 +147,28 @@ export function Sidebar({
     setWidth(loadWidth());
     setHydrated(true);
     void refresh();
-    const poll = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 8000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible) void refresh();
     };
     const onChanged = () => void refresh();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("webui:tasks-changed", onChanged);
     return () => {
-      clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("webui:tasks-changed", onChanged);
     };
   }, [refresh]);
+
+  const hasActiveTask = tasks.some(
+    (task) => task.status === "working" || task.status === "retry",
+  );
+  useEffect(() => {
+    if (!pageVisible || !hasActiveTask) return;
+    const poll = setInterval(() => void refresh(), ACTIVE_TASK_POLL_MS);
+    return () => clearInterval(poll);
+  }, [hasActiveTask, pageVisible, refresh]);
 
   // Ensure the project owning the active task is expanded
   useEffect(() => {

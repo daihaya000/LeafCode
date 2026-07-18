@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
@@ -70,6 +71,7 @@ describe("Sidebar", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -131,6 +133,61 @@ describe("Sidebar", () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
     expect(await screen.findByText("· $0.1234")).toBeTruthy();
+  });
+
+  it("refreshes a working task cost while the sidebar is visible", async () => {
+    let calls = 0;
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        calls += 1;
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Task title",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "working",
+            sessionId: "sess1",
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            cost: calls === 1 ? 0.1 : 0.2,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.useFakeTimers();
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("$0.1000");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("$0.2000");
   });
 
   it("omits the cost badge when the task has no known cost", async () => {
