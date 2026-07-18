@@ -334,9 +334,11 @@ export function Sidebar({
               const children = tasksByProject.get(p.id) ?? [];
               return (
                 <li key={p.id} className="group/project">
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex min-w-0 items-center gap-0.5">
                     <button
                       type="button"
+                      aria-expanded={open}
+                      aria-label={`${p.name}を${open ? "折りたたむ" : "展開"}`}
                       onClick={() => toggleProject(p.id)}
                       className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text"
                     >
@@ -345,34 +347,57 @@ export function Sidebar({
                           "h-3.5 w-3.5 shrink-0 transition-transform",
                           open && "rotate-90",
                         )}
+                        aria-hidden="true"
                       />
                       <span className="min-w-0 flex-1 truncate">{p.name}</span>
                       <span className="tabular-nums text-[10px] text-faint">
                         {children.length}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      title="お気に入り"
-                      onClick={(e) => void toggleFavorite(p, e)}
-                      className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md p-1 text-faint hover:bg-surface-2 md:hidden md:group-hover/project:inline-flex"
-                    >
-                      <Star
-                        className={
-                          p.favorite
-                            ? "h-3 w-3 fill-warning text-warning"
-                            : "h-3 w-3"
-                        }
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      title="プロジェクトを削除"
-                      onClick={(e) => void removeProject(p, e)}
-                      className="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger md:hidden md:group-hover/project:inline-flex"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
+                    <div className="flex shrink-0 items-center">
+                      <button
+                        type="button"
+                        aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+                        title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                        onClick={(e) => void toggleFavorite(p, e)}
+                        className={cx(
+                          "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-faint hover:bg-surface-2 md:h-8 md:w-8",
+                          !p.favorite &&
+                            "md:pointer-events-none md:opacity-0 md:group-hover/project:pointer-events-auto md:group-hover/project:opacity-100 md:group-focus-within/project:pointer-events-auto md:group-focus-within/project:opacity-100",
+                        )}
+                      >
+                        <Star
+                          className={
+                            p.favorite
+                              ? "h-3 w-3 fill-warning text-warning"
+                              : "h-3 w-3"
+                          }
+                          aria-hidden="true"
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${p.name}に新規タスクを作成`}
+                        title="新規タスク"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          nav(`/?projectId=${encodeURIComponent(p.id)}`);
+                        }}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text md:h-8 md:w-8"
+                      >
+                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${p.name}を削除`}
+                        title="プロジェクトを削除"
+                        onClick={(e) => void removeProject(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger md:pointer-events-none md:h-8 md:w-8 md:opacity-0 md:group-hover/project:pointer-events-auto md:group-hover/project:opacity-100 md:group-focus-within/project:pointer-events-auto md:group-focus-within/project:opacity-100"
+                      >
+                        <Trash2 className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                   {open && (
                     <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
