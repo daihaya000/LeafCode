@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { PluginSettings } from "@/components/plugins/PluginSettings";
-import { Badge, Button, GhostSelect, timeAgo } from "@/components/ui";
+import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
@@ -72,7 +72,10 @@ type AccessInfo = {
   }[];
 };
 
+type SettingsTab = "general" | "project" | "connectivity" | "plugins";
+
 export function SettingsView() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [health, setHealth] = useState<HealthDto | null>(null);
   const [hostOk, setHostOk] = useState<boolean | null>(null);
   const [restarting, setRestarting] = useState<"webui" | "opencode" | "all" | null>(
@@ -318,11 +321,47 @@ export function SettingsView() {
   const kindLabel = (kind: string) =>
     kind === "vpn" ? "VPN" : kind === "lan" ? "LAN" : "その他";
 
+  const requiresAttention = orphans.length + stray.length;
+  const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
+    { key: "general", label: "全般" },
+    {
+      key: "project",
+      label: "プロジェクト",
+      badge: requiresAttention > 0 ? requiresAttention : undefined,
+    },
+    { key: "connectivity", label: "接続" },
+    { key: "plugins", label: "プラグイン" },
+  ];
+
   return (
     <div className="h-full overflow-y-auto">
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-3xl items-center px-4">
-          <h1 className="text-sm font-semibold">設定</h1>
+        <div className="mx-auto max-w-3xl px-4">
+          <div className="flex h-14 items-center">
+            <h1 className="text-sm font-semibold">設定</h1>
+          </div>
+          <div className="flex gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                className={cx(
+                  "shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap",
+                  activeTab === t.key
+                    ? "border-primary text-text"
+                    : "border-transparent text-faint hover:text-muted",
+                )}
+              >
+                {t.label}
+                {Boolean(t.badge) && (
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/20 px-1 text-[10px] font-semibold text-warning">
+                    {t.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -333,380 +372,394 @@ export function SettingsView() {
           </p>
         )}
 
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
-          <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={health?.opencode.ok ? "success" : "danger"}>
-                {health?.opencode.ok ? "接続中" : "停止"}
-              </Badge>
-              <span className="text-sm text-muted">
-                OpenCode {health?.opencode.version ?? ""}
-              </span>
-              <Badge tone={hostOk ? "success" : "warning"}>
-                {hostOk ? "ホスト接続中" : "ホスト未検出"}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                busy={restarting === "webui"}
-                disabled={hostOk !== true || restarting !== null}
-                onClick={() => void restartService("webui")}
-              >
-                WebUI を再起動
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                busy={restarting === "opencode"}
-                disabled={hostOk !== true || restarting !== null}
-                onClick={() => void restartService("opencode")}
-              >
-                OpenCode を再起動
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                busy={restarting === "all"}
-                disabled={hostOk !== true || restarting !== null}
-                onClick={() => void restartService("all")}
-              >
-                すべて再起動
-              </Button>
-            </div>
-            <p className="text-xs text-faint">
-              {hostOk
-                ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"
-                : "再起動には start-webui.bat（トレイホスト）経由の起動が必要です。"}
-            </p>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">
-            デフォルトモデル
-          </h2>
-          <p className="mb-3 text-xs text-faint">
-            新規タスク作成時の初期モデルです。各タスクで個別に上書きできます。
-          </p>
-          <div className="rounded-xl border border-border bg-surface px-4 py-3">
-            {modelOptions.length === 0 ? (
-              <p className="text-sm text-faint">
-                利用可能なモデルがありません。エンジン接続を確認してください。
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <GhostSelect
-                  value={defaultModel}
-                  aria-label="デフォルトモデル"
-                  icon={<DefaultModelIcon model={defaultModel} />}
-                  valueLabel={
-                    modelOptions.find((o) => o.value === defaultModel)?.label ??
-                    "選択してください"
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDefaultModel(v);
-                    writeDefaultModel(v || null);
-                  }}
-                  className="min-w-56 flex-1"
-                >
-                  {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
-                    <optgroup key={group} label={group}>
-                      {modelOptions
-                        .filter((o) => o.group === group)
-                        .map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                    </optgroup>
-                  ))}
-                </GhostSelect>
-                {defaultModel && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    title="デフォルトをクリア"
-                    onClick={() => {
-                      setDefaultModel("");
-                      writeDefaultModel(null);
-                    }}
-                  >
-                    クリア
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">
-            スマホ / VPN アクセス
-          </h2>
-          <p className="mb-3 text-xs text-faint">
-            {access?.hint ??
-              "VPN 接続後、PC の VPN アドレス:3000 をスマホブラウザで開きます。"}
-          </p>
-          <ul className="space-y-2">
-            {(access?.addresses ?? []).map((a) => (
-              <li
-                key={`${a.name}-${a.address}`}
-                className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-nowrap"
-              >
-                <Badge tone={a.kind === "vpn" ? "success" : "neutral"}>
-                  {kindLabel(a.kind)}
-                </Badge>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-sm">{a.url}</p>
-                  <p className="truncate text-[11px] text-faint">{a.name}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title="URL をコピー"
-                  onClick={() => void copyUrl(a.url)}
-                >
-                  {copied === a.url ? (
-                    <Check className="h-4 w-4 text-success" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </li>
-            ))}
-            {access && access.addresses.length === 0 && (
-              <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
-                利用可能なネットワークアドレスがありません
-              </li>
-            )}
-          </ul>
-          <p className="mt-2 text-[11px] text-faint">
-            同一ネットワークでも開けない場合は Windows ファイアウォールが原因です。
-            管理者で{" "}
-            <code className="rounded bg-surface-2 px-1">
-              scripts\allow-firewall-3000.bat
-            </code>{" "}
-            を実行するか、PowerShell（管理者）で:
-            <br />
-            <code className="mt-1 block break-all rounded bg-surface-2 px-1 py-0.5">
-              netsh advfirewall firewall add rule name=&quot;OpenCode WebUI&quot;
-              dir=in action=allow protocol=TCP localport=
-              {access?.port ?? 3000}
-            </code>
-          </p>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">プロジェクト</h2>
-          <div className="mb-3">
-            <AddProjectButton onAdded={() => void refresh()} />
-          </div>
-          <ul className="space-y-2">
-            {projects.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
-                  <p className="truncate font-mono text-xs text-faint">
-                    {p.rootPath}
-                  </p>
-                </div>
-                {p.lastOpenedAt && (
-                  <span className="hidden text-xs text-faint sm:inline">
-                    {timeAgo(p.lastOpenedAt)}
+        {activeTab === "general" && (
+          <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
+              <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={health?.opencode.ok ? "success" : "danger"}>
+                    {health?.opencode.ok ? "接続中" : "停止"}
+                  </Badge>
+                  <span className="text-sm text-muted">
+                    OpenCode {health?.opencode.version ?? ""}
                   </span>
-                )}
-                <button
-                  type="button"
-                  disabled={busy}
-                  title="お気に入り"
-                  onClick={() => void toggleFavorite(p)}
-                  className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2"
-                >
-                  <Star
-                    className={
-                      p.favorite
-                        ? "h-4 w-4 fill-warning text-warning"
-                        : "h-4 w-4"
-                    }
-                  />
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  title="プロジェクトを削除"
-                  onClick={() => void removeProject(p)}
-                  className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-            {projects.length === 0 && (
-              <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
-                プロジェクトがありません
-              </li>
-            )}
-          </ul>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">
-            許可ルート（allowlist）
-          </h2>
-          <div className="mb-3 flex gap-2">
-            <input
-              value={newRoot}
-              onChange={(e) => setNewRoot(e.target.value)}
-              placeholder="C:\path\to\allow"
-              className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void addRoot();
-              }}
-            />
-            <Button busy={busy} onClick={() => void addRoot()}>
-              <Plus className="h-4 w-4" />
-              許可
-            </Button>
-          </div>
-          <ul className="space-y-1">
-            {roots.map((r) => (
-              <li
-                key={r}
-                className="truncate rounded-lg bg-surface-2 px-3 py-2 font-mono text-xs text-muted"
-              >
-                {r}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">コスト表示</h2>
-          <p className="mb-3 text-xs text-faint">
-            OpenCode のコストは USD 基準です。日本円表示は設定レートでの換算です。
-          </p>
-          <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  { value: "USD" as const, label: "米ドル ($)" },
-                  { value: "JPY" as const, label: "日本円 (¥)" },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setCurrency(opt.value)}
-                  className={
-                    costPrefs.currency === opt.value
-                      ? "rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent"
-                      : "rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
-                  }
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-              <span className="shrink-0 text-xs text-muted">USD/JPY レート</span>
-              <input
-                type="number"
-                min={1}
-                max={1000}
-                step={0.1}
-                value={rateDraft}
-                onChange={(e) => setRateDraft(e.target.value)}
-                onBlur={() => commitRate()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.currentTarget.blur();
-                  }
-                }}
-                className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
-              />
-              <span className="text-[11px] text-faint">
-                例:{" "}
-                {formatCost(0.1542, {
-                  currency: "JPY",
-                  usdJpyRate: Number(rateDraft) || costPrefs.usdJpyRate,
-                })}
-              </span>
-            </label>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">プラグイン</h2>
-          <p className="mb-3 text-xs text-faint">
-            右下に表示するウィジェットの有効/無効を切り替えます。
-          </p>
-          <PluginSettings />
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">MCP（読取）</h2>
-          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-            {mcpStatus}
-          </p>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-muted">Remote Workspace</h2>
-          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-            未実装（501）。VPN + ローカルパスで代替してください。
-          </p>
-        </section>
-
-        {(orphans.length > 0 || stray.length > 0) && (
-          <section>
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
-              <div>
-                <h2 className="text-sm font-semibold text-warning">
-                  要復旧の Workspace
-                </h2>
-                <p className="mt-0.5 text-[11px] text-muted">
-                  worktree 削除に失敗した残骸です。フォルダが既に無いものは設定を開いたときに自動削除されます。
+                  <Badge tone={hostOk ? "success" : "warning"}>
+                    {hostOk ? "ホスト接続中" : "ホスト未検出"}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    busy={restarting === "webui"}
+                    disabled={hostOk !== true || restarting !== null}
+                    onClick={() => void restartService("webui")}
+                  >
+                    WebUI を再起動
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    busy={restarting === "opencode"}
+                    disabled={hostOk !== true || restarting !== null}
+                    onClick={() => void restartService("opencode")}
+                  >
+                    OpenCode を再起動
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    busy={restarting === "all"}
+                    disabled={hostOk !== true || restarting !== null}
+                    onClick={() => void restartService("all")}
+                  >
+                    すべて再起動
+                  </Button>
+                </div>
+                <p className="text-xs text-faint">
+                  {hostOk
+                    ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"
+                    : "再起動には start-webui.bat（トレイホスト）経由の起動が必要です。"}
                 </p>
               </div>
-              <Button
-                variant="danger"
-                size="sm"
-                busy={busy}
-                disabled={orphans.length === 0 && stray.length === 0}
-                onClick={() => void cleanupOrphans()}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                orphan を掃除
-              </Button>
-            </div>
-            <ul className="space-y-1 text-sm">
-              {orphans.map((o) => (
-                <li
-                  key={o.id}
-                  className="truncate rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning"
-                >
-                  {o.displayName} · {o.absolutePath}
-                </li>
-              ))}
-              {stray.map((s) => (
-                <li
-                  key={s.path}
-                  className="truncate rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted"
-                >
-                  stray ({s.projectName}): {s.path}
-                </li>
-              ))}
-            </ul>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">
+                デフォルトモデル
+              </h2>
+              <p className="mb-3 text-xs text-faint">
+                新規タスク作成時の初期モデルです。各タスクで個別に上書きできます。
+              </p>
+              <div className="rounded-xl border border-border bg-surface px-4 py-3">
+                {modelOptions.length === 0 ? (
+                  <p className="text-sm text-faint">
+                    利用可能なモデルがありません。エンジン接続を確認してください。
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <GhostSelect
+                      value={defaultModel}
+                      aria-label="デフォルトモデル"
+                      icon={<DefaultModelIcon model={defaultModel} />}
+                      valueLabel={
+                        modelOptions.find((o) => o.value === defaultModel)?.label ??
+                        "選択してください"
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setDefaultModel(v);
+                        writeDefaultModel(v || null);
+                      }}
+                      className="min-w-56 flex-1"
+                    >
+                      {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
+                        <optgroup key={group} label={group}>
+                          {modelOptions
+                            .filter((o) => o.group === group)
+                            .map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
+                    </GhostSelect>
+                    {defaultModel && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="デフォルトをクリア"
+                        onClick={() => {
+                          setDefaultModel("");
+                          writeDefaultModel(null);
+                        }}
+                      >
+                        クリア
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">コスト表示</h2>
+              <p className="mb-3 text-xs text-faint">
+                OpenCode のコストは USD 基準です。日本円表示は設定レートでの換算です。
+              </p>
+              <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { value: "USD" as const, label: "米ドル ($)" },
+                      { value: "JPY" as const, label: "日本円 (¥)" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setCurrency(opt.value)}
+                      className={
+                        costPrefs.currency === opt.value
+                          ? "rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent"
+                          : "rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="shrink-0 text-xs text-muted">USD/JPY レート</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    step={0.1}
+                    value={rateDraft}
+                    onChange={(e) => setRateDraft(e.target.value)}
+                    onBlur={() => commitRate()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
+                  />
+                  <span className="text-[11px] text-faint">
+                    例:{" "}
+                    {formatCost(0.1542, {
+                      currency: "JPY",
+                      usdJpyRate: Number(rateDraft) || costPrefs.usdJpyRate,
+                    })}
+                  </span>
+                </label>
+              </div>
+            </section>
+          </>
+        )}
+
+        {activeTab === "project" && (
+          <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">プロジェクト</h2>
+              <div className="mb-3">
+                <AddProjectButton onAdded={() => void refresh()} />
+              </div>
+              <ul className="space-y-2">
+                {projects.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.name}</p>
+                      <p className="truncate font-mono text-xs text-faint">
+                        {p.rootPath}
+                      </p>
+                    </div>
+                    {p.lastOpenedAt && (
+                      <span className="hidden text-xs text-faint sm:inline">
+                        {timeAgo(p.lastOpenedAt)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      title="お気に入り"
+                      onClick={() => void toggleFavorite(p)}
+                      className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2"
+                    >
+                      <Star
+                        className={
+                          p.favorite
+                            ? "h-4 w-4 fill-warning text-warning"
+                            : "h-4 w-4"
+                        }
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      title="プロジェクトを削除"
+                      onClick={() => void removeProject(p)}
+                      className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+                {projects.length === 0 && (
+                  <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
+                    プロジェクトがありません
+                  </li>
+                )}
+              </ul>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">
+                許可ルート（allowlist）
+              </h2>
+              <div className="mb-3 flex gap-2">
+                <input
+                  value={newRoot}
+                  onChange={(e) => setNewRoot(e.target.value)}
+                  placeholder="C:\path\to\allow"
+                  className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void addRoot();
+                  }}
+                />
+                <Button busy={busy} onClick={() => void addRoot()}>
+                  <Plus className="h-4 w-4" />
+                  許可
+                </Button>
+              </div>
+              <ul className="space-y-1">
+                {roots.map((r) => (
+                  <li
+                    key={r}
+                    className="truncate rounded-lg bg-surface-2 px-3 py-2 font-mono text-xs text-muted"
+                  >
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            {(orphans.length > 0 || stray.length > 0) && (
+              <section>
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                  <div>
+                    <h2 className="text-sm font-semibold text-warning">
+                      要復旧の Workspace
+                    </h2>
+                    <p className="mt-0.5 text-[11px] text-muted">
+                      worktree 削除に失敗した残骸です。フォルダが既に無いものは設定を開いたときに自動削除されます。
+                    </p>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    busy={busy}
+                    disabled={orphans.length === 0 && stray.length === 0}
+                    onClick={() => void cleanupOrphans()}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    orphan を掃除
+                  </Button>
+                </div>
+                <ul className="space-y-1 text-sm">
+                  {orphans.map((o) => (
+                    <li
+                      key={o.id}
+                      className="truncate rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning"
+                    >
+                      {o.displayName} · {o.absolutePath}
+                    </li>
+                  ))}
+                  {stray.map((s) => (
+                    <li
+                      key={s.path}
+                      className="truncate rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted"
+                    >
+                      stray ({s.projectName}): {s.path}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </>
+        )}
+
+        {activeTab === "connectivity" && (
+          <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">
+                スマホ / VPN アクセス
+              </h2>
+              <p className="mb-3 text-xs text-faint">
+                {access?.hint ??
+                  "VPN 接続後、PC の VPN アドレス:3000 をスマホブラウザで開きます。"}
+              </p>
+              <ul className="space-y-2">
+                {(access?.addresses ?? []).map((a) => (
+                  <li
+                    key={`${a.name}-${a.address}`}
+                    className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-nowrap"
+                  >
+                    <Badge tone={a.kind === "vpn" ? "success" : "neutral"}>
+                      {kindLabel(a.kind)}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-mono text-sm">{a.url}</p>
+                      <p className="truncate text-[11px] text-faint">{a.name}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="URL をコピー"
+                      onClick={() => void copyUrl(a.url)}
+                    >
+                      {copied === a.url ? (
+                        <Check className="h-4 w-4 text-success" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </li>
+                ))}
+                {access && access.addresses.length === 0 && (
+                  <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
+                    利用可能なネットワークアドレスがありません
+                  </li>
+                )}
+              </ul>
+              <p className="mt-2 text-[11px] text-faint">
+                同一ネットワークでも開けない場合は Windows ファイアウォールが原因です。
+                管理者で{" "}
+                <code className="rounded bg-surface-2 px-1">
+                  scripts\allow-firewall-3000.bat
+                </code>{" "}
+                を実行するか、PowerShell（管理者）で:
+                <br />
+                <code className="mt-1 block break-all rounded bg-surface-2 px-1 py-0.5">
+                  netsh advfirewall firewall add rule name=&quot;OpenCode WebUI&quot;
+                  dir=in action=allow protocol=TCP localport=
+                  {access?.port ?? 3000}
+                </code>
+              </p>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">MCP（読取）</h2>
+              <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+                {mcpStatus}
+              </p>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">Remote Workspace</h2>
+              <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+                未実装（501）。VPN + ローカルパスで代替してください。
+              </p>
+            </section>
+          </>
+        )}
+
+        {activeTab === "plugins" && (
+          <section>
+            <h2 className="mb-3 text-sm font-semibold text-muted">プラグイン</h2>
+            <p className="mb-3 text-xs text-faint">
+              右下に表示するウィジェットの有効/無効を切り替えます。
+            </p>
+            <PluginSettings />
           </section>
         )}
       </main>
