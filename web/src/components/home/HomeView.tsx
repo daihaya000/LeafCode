@@ -372,7 +372,7 @@ export function HomeView() {
                   <option value="git_worktree">worktree</option>
                 </GhostSelect>
               </div>
-              <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible min-[480px]:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-[8rem_7rem_8rem_7rem]">
+              <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible min-[480px]:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-[8rem_7rem_8rem_9rem]">
                 {modelOptions.length > 0 && (
                   <GhostSelect
                     value={model}
@@ -421,7 +421,7 @@ export function HomeView() {
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={formatAgentLabel(agent)}
                     onChange={(e) => setAgent(e.target.value)}
-                    className="w-full min-w-0"
+                    className="w-full min-w-0 min-[480px]:min-w-[9rem]"
                     title="エージェント（OpenCode agent）"
                   >
                     {agents.map((a) => (
