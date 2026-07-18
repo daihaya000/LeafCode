@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { Button, cx } from "@/components/ui";
-import type { QuestionRequest } from "@/lib/types";
+import type { QuestionInfo, QuestionRequest } from "@/lib/types";
 
 export function QuestionCard({
   request,
@@ -22,6 +22,9 @@ export function QuestionCard({
   const [customs, setCustoms] = useState<string[]>(() =>
     request.questions.map(() => ""),
   );
+  const customRefs = useRef<(HTMLInputElement | null)[]>(
+    request.questions.map(() => null),
+  );
 
   const canSubmit = useMemo(() => {
     return request.questions.every((q, i) => {
@@ -32,6 +35,9 @@ export function QuestionCard({
       return false;
     });
   }, [request.questions, selected, customs]);
+
+  const isOnlyCustom = (q: QuestionInfo) =>
+    q.options.length === 0 && !!q.custom;
 
   const toggle = (qi: number, label: string, multiple?: boolean) => {
     setSelected((prev) => {
@@ -98,6 +104,47 @@ export function QuestionCard({
     }
   };
 
+  const handleCustomKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    qi: number,
+  ) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const q = request.questions[qi];
+    const custom = customs[qi]?.trim() ?? "";
+    if (!q || !custom) return;
+    // single-question, single/custom-only can submit immediately
+    if (
+      request.questions.length === 1 &&
+      (isOnlyCustom(q) || !q.multiple)
+    ) {
+      void reply();
+      return;
+    }
+    // otherwise just append the custom value to selected and clear input,
+    // leaving the explicit submit button to finish the form
+    setSelected((prev) => {
+      const next = prev.map((row) => row.slice());
+      const row = next[qi] ?? [];
+      next[qi] = q.multiple
+        ? row.includes(custom)
+          ? row
+          : [...row, custom]
+        : [custom];
+      return next;
+    });
+    setCustoms((prev) => {
+      const next = prev.slice();
+      next[qi] = "";
+      return next;
+    });
+    customRefs.current[qi]?.focus();
+  };
+
+  const needsSubmitButton =
+    request.questions.length > 1 ||
+    request.questions.some((q) => q.multiple || q.custom);
+
   return (
     <div className="rounded-xl border border-accent/40 bg-surface p-4 shadow-sm">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
@@ -138,27 +185,94 @@ export function QuestionCard({
               })}
             </div>
             {q.custom && (
-              <input
-                type="text"
-                value={customs[qi] ?? ""}
-                disabled={busy !== null}
-                onChange={(e) =>
-                  setCustoms((prev) => {
-                    const next = prev.slice();
-                    next[qi] = e.target.value;
-                    return next;
-                  })
-                }
-                placeholder="その他（自由入力）"
-                className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-border-strong"
-              />
+              <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2 p-2 focus-within:border-border-strong">
+                <input
+                  ref={(el) => {
+                    customRefs.current[qi] = el;
+                  }}
+                  type="text"
+                  value={customs[qi] ?? ""}
+                  disabled={busy !== null}
+                  onChange={(e) =>
+                    setCustoms((prev) => {
+                      const next = prev.slice();
+                      next[qi] = e.target.value;
+                      return next;
+                    })
+                  }
+                  onKeyDown={(e) => handleCustomKeyDown(e, qi)}
+                  placeholder={
+                    q.options.length > 0
+                      ? "その他（自由入力）"
+                      : "自由に入力してください"
+                  }
+                  className="w-full bg-transparent px-1 py-1 text-sm text-text outline-none placeholder:text-muted"
+                />
+                {customs[qi]?.trim() && !isOnlyCustom(q) && (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      const value = customs[qi]?.trim() ?? "";
+                      if (!value) return;
+                      setSelected((prev) => {
+                        const next = prev.map((row) => row.slice());
+                        const row = next[qi] ?? [];
+                        next[qi] = q.multiple
+                          ? row.includes(value)
+                            ? row
+                            : [...row, value]
+                          : [value];
+                        return next;
+                      });
+                      setCustoms((prev) => {
+                        const next = prev.slice();
+                        next[qi] = "";
+                        return next;
+                      });
+                      customRefs.current[qi]?.focus();
+                    }}
+                    className="self-start rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-accent/10 disabled:opacity-50"
+                  >
+                    追加する
+                  </button>
+                )}
+                {selected[qi]?.some((v) => !q.options.find((o) => o.label === v)) && (
+                  <div className="flex flex-wrap gap-1">
+                    {selected[qi]
+                      .filter((v) => !q.options.find((o) => o.label === v))
+                      .map((v) => (
+                        <span
+                          key={v}
+                          className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-2 py-0.5 text-xs text-text"
+                        >
+                          {v}
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => {
+                              setSelected((prev) => {
+                                const next = prev.map((row) => row.slice());
+                                next[qi] = next[qi].filter((x) => x !== v);
+                                return next;
+                                });
+                              }}
+                            className="text-faint hover:text-danger disabled:opacity-50"
+                            aria-label={`${v} を削除`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ))}
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {(request.questions.length > 1 ||
-          request.questions.some((q) => q.multiple || q.custom)) && (
+        {needsSubmitButton && (
           <Button
             variant="primary"
             size="md"
