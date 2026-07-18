@@ -35,7 +35,7 @@ import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
-import { Button, GhostSelect, Spinner, cx } from "@/components/ui";
+import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
 import {
   readAccessMode,
   writeAccessMode,
@@ -1251,8 +1251,27 @@ export function TaskView({ taskId }: { taskId: string }) {
                     <Spinner />
                   </div>
                 )}
-                {timeline.map((m) => (
+                {timeline.map((m) => {
+                  const messageTime =
+                    m.info.time?.completed ?? m.info.time?.created ?? null;
+                  return (
                   <div key={m.info.id} className="group/msg flex flex-col gap-2">
+                    <div
+                      className={cx(
+                        "flex items-center gap-1.5 text-[10px] text-faint",
+                        m.info.role === "user" ? "justify-end" : "justify-start",
+                      )}
+                    >
+                      {m.info.role === "assistant" && (
+                        <span className="inline-flex items-center gap-1">
+                          <Bot className="h-3 w-3" />
+                          {m.info.agent && m.info.agent.length > 0
+                            ? m.info.agent
+                            : "Assistant"}
+                        </span>
+                      )}
+                      {messageTime && <span>{formatMessageTime(messageTime)}</span>}
+                    </div>
                     {m.parts
                       .filter((p) => {
                         const planPath = planPaths.get(m.info.id);
@@ -1312,7 +1331,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                       </p>
                     )}
                   </div>
-                ))}
+                );
+                })}
                 {accessMode === "ask" &&
                   stream.permissions.map((p) => (
                   <PermissionCard

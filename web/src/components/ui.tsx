@@ -207,6 +207,21 @@ export function ThemeToggle() {
   );
 }
 
+/** Format an absolute date/time for message timestamps. */
+export function formatMessageTime(
+  iso: string | number | null | undefined,
+): string {
+  if (!iso) return "";
+  const t = typeof iso === "number" ? iso : Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  return new Date(t).toLocaleString("ja-JP", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** Codex-like relative time: 3m / 2h / 5d */
 export function timeAgo(iso: string | number | null | undefined): string {
   if (!iso) return "";
