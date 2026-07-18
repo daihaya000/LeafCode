@@ -499,10 +499,12 @@ export function Sidebar({
                                       }
                                       className={cx(
                                         "h-1.5 w-1.5 shrink-0 rounded-full",
+                                        task.status === "working" &&
+                                          "animate-pulse",
                                         waitingForQuestion && "bg-warning",
                                         !waitingForQuestion &&
                                           task.status === "working" &&
-                                          "animate-pulse bg-working",
+                                          "bg-working",
                                         !waitingForQuestion &&
                                           task.status === "ready" &&
                                           "bg-success",

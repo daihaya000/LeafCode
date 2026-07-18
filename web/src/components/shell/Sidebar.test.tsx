@@ -2,12 +2,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
-const { getJson, attentionItems } = vi.hoisted(() => ({
+const { getJson, attentionState } = vi.hoisted(() => ({
   getJson: vi.fn(),
-  attentionItems: [] as Array<{
-    kind: "question" | "permission";
-    request: { sessionID: string };
-  }>,
+  attentionState: {
+    items: [] as Array<{
+      kind: "question" | "permission";
+      request: { sessionID: string };
+    }>,
+  },
 }));
 
 vi.mock("next/link", () => ({
@@ -52,12 +54,12 @@ vi.mock("./AttentionBadge", () => ({
 }));
 
 vi.mock("./GlobalAttentionProvider", () => ({
-  useGlobalAttention: () => ({ items: attentionItems }),
+  useGlobalAttention: () => attentionState,
 }));
 
 describe("Sidebar", () => {
   beforeEach(() => {
-    attentionItems.splice(0);
+    attentionState.items = [];
     usePathname.mockReturnValue("/");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") return Promise.resolve({ projects: [] });
@@ -180,10 +182,10 @@ describe("Sidebar", () => {
   });
 
   it("shows a warning dot when the task session is waiting for a question answer", async () => {
-    attentionItems.push({
+    attentionState.items = [{
       kind: "question",
       request: { sessionID: "sess1" },
-    });
+    }];
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -227,16 +229,119 @@ describe("Sidebar", () => {
 
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    expect(
-      (await screen.findByLabelText("質問への回答待ち")).className,
-    ).toContain("bg-warning");
+    const dot = await screen.findByLabelText("質問への回答待ち");
+    expect(dot.className).toContain("animate-pulse");
+    expect(dot.className).toContain("bg-warning");
+    expect(dot.className).not.toContain("bg-working");
+  });
+
+  it("does not mark a permission request for the same session as waiting for a question", async () => {
+    attentionState.items = [{
+      kind: "permission",
+      request: { sessionID: "sess1" },
+    }];
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Task title",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "working",
+            sessionId: "sess1",
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const dot = await screen.findByLabelText("状態: working");
+    expect(dot.className).toContain("bg-working");
+    expect(dot.className).not.toContain("bg-warning");
+  });
+
+  it("returns to the working dot after the pending question is removed", async () => {
+    attentionState.items = [{
+      kind: "question",
+      request: { sessionID: "sess1" },
+    }];
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Task title",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "working",
+            sessionId: "sess1",
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const view = render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    expect(await screen.findByLabelText("質問への回答待ち")).toBeTruthy();
+    attentionState.items = [];
+    view.rerender(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const dot = await screen.findByLabelText("状態: working");
+    expect(dot.className).toContain("bg-working");
+    expect(dot.className).not.toContain("bg-warning");
   });
 
   it("does not mark a different session as waiting for a question answer", async () => {
-    attentionItems.push({
+    attentionState.items = [{
       kind: "question",
       request: { sessionID: "other" },
-    });
+    }];
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
