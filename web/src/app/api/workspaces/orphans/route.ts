@@ -113,25 +113,24 @@ async function purgeGoneOrphans(): Promise<number> {
   return purged;
 }
 
-export async function GET(req: NextRequest) {
-  const doScan = req.nextUrl.searchParams.get("scan") === "1";
-  let marked = 0;
-  let purged = 0;
-  if (doScan) {
-    marked = await scanAndMark();
-    purged = await purgeGoneOrphans();
-  }
+type StrayEntry = { projectId: string; projectName: string; path: string };
 
-  const orphans = listWorkspacesByStatus("orphaned").map(mapWorkspace);
-
-  // Also surface git worktrees under .webui-worktrees with no DB row
+/**
+ * Find git worktrees we own (under `<dataDir>/worktrees/…` or the legacy
+ * `<repoRoot>/.webui-worktrees/…`) that have no matching workspace row. These
+ * are pure disk+git residue — e.g. `git worktree add` succeeded but a later
+ * step in `provisionWorkspace` (allowlist check, session start) failed before
+ * the workspace row was ever created, so nothing will ever call
+ * `destroyWorkspace` on them. Read-only: does not mutate anything.
+ */
+async function findStrayWorktrees(): Promise<StrayEntry[]> {
   const projects = getDb().prepare(`SELECT id, root_path, name FROM projects`).all() as {
     id: string;
     root_path: string;
     name: string;
   }[];
 
-  const stray: { projectId: string; projectName: string; path: string }[] = [];
+  const stray: StrayEntry[] = [];
   const knownPaths = new Set(
     (
       getDb()
@@ -143,11 +142,11 @@ export async function GET(req: NextRequest) {
       )
       .map((p) => p.replace(/\//g, "\\").toLowerCase()),
   );
+  const worktreeBase = path.resolve(dataDir(), "worktrees");
 
   for (const p of projects) {
     try {
       const wts = await listGitWorktrees(p.root_path);
-      const worktreeBase = path.resolve(dataDir(), "worktrees");
       for (const wt of wts) {
         if (wt.bare) continue;
         // Legacy location: <repoRoot>/.webui-worktrees/…
@@ -168,6 +167,58 @@ export async function GET(req: NextRequest) {
       /* not a git repo or list failed */
     }
   }
+
+  return stray;
+}
+
+/**
+ * Remove stray git worktrees found by `findStrayWorktrees`. Uses the same
+ * `removeWorktree` helper as `destroyWorkspace` (handles Windows/OneDrive
+ * read-only retries), so this is safe to run even when the admin metadata
+ * under `<repoRoot>/.git/worktrees/…` is locked by OneDrive.
+ */
+async function cleanupStrayWorktrees(): Promise<{
+  removed: number;
+  errors: string[];
+}> {
+  const strays = await findStrayWorktrees();
+  const roots = new Map(
+    (
+      getDb().prepare(`SELECT id, root_path FROM projects`).all() as {
+        id: string;
+        root_path: string;
+      }[]
+    ).map((p) => [p.id, p.root_path]),
+  );
+
+  let removed = 0;
+  const errors: string[] = [];
+  for (const s of strays) {
+    const repoRoot = roots.get(s.projectId);
+    if (!repoRoot) continue;
+    try {
+      await removeWorktree({ repoRoot, worktreePath: s.path, force: true });
+      removed += 1;
+    } catch (err) {
+      errors.push(
+        `${s.projectName}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return { removed, errors };
+}
+
+export async function GET(req: NextRequest) {
+  const doScan = req.nextUrl.searchParams.get("scan") === "1";
+  let marked = 0;
+  let purged = 0;
+  if (doScan) {
+    marked = await scanAndMark();
+    purged = await purgeGoneOrphans();
+  }
+
+  const orphans = listWorkspacesByStatus("orphaned").map(mapWorkspace);
+  const stray = await findStrayWorktrees();
 
   return NextResponse.json({ orphans, stray, marked, purged });
 }
@@ -266,5 +317,16 @@ export async function POST(req: NextRequest) {
     results.push({ id: row.id, ok: true });
   }
 
-  return NextResponse.json({ results });
+  // Bulk "clean everything" (no explicit ids) also sweeps stray git
+  // worktrees that have no workspace row at all, so residue left behind by
+  // a failed provisionWorkspace step doesn't require manual git surgery.
+  let strayRemoved = 0;
+  let strayErrors: string[] = [];
+  if (!body.ids || body.ids.length === 0) {
+    const strayResult = await cleanupStrayWorktrees();
+    strayRemoved = strayResult.removed;
+    strayErrors = strayResult.errors;
+  }
+
+  return NextResponse.json({ results, strayRemoved, strayErrors });
 }

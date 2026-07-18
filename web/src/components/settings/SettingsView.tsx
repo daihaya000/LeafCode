@@ -295,14 +295,16 @@ export function SettingsView() {
 
   const cleanupOrphans = () =>
     guard(async () => {
-      const data = await sendJson<{ results?: { ok: boolean; error?: string }[] }>(
-        "POST",
-        "/api/workspaces/orphans",
-        { action: "cleanup" },
-      );
+      const data = await sendJson<{
+        results?: { ok: boolean; error?: string }[];
+        strayErrors?: string[];
+      }>("POST", "/api/workspaces/orphans", { action: "cleanup" });
       const failed = data.results?.filter((r) => !r.ok) ?? [];
-      if (failed.length > 0) {
-        throw new Error(failed.map((f) => f.error).join("; "));
+      const strayErrors = data.strayErrors ?? [];
+      if (failed.length > 0 || strayErrors.length > 0) {
+        throw new Error(
+          [...failed.map((f) => f.error), ...strayErrors].join("; "),
+        );
       }
     });
 
@@ -680,7 +682,7 @@ export function SettingsView() {
                 variant="danger"
                 size="sm"
                 busy={busy}
-                disabled={orphans.length === 0}
+                disabled={orphans.length === 0 && stray.length === 0}
                 onClick={() => void cleanupOrphans()}
               >
                 <Trash2 className="h-3.5 w-3.5" />
