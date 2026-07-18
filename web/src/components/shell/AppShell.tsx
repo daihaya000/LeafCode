@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { PluginHost } from "@/components/plugins/PluginHost";
 import { ShellProvider, useShellExtras } from "./ShellContext";
 import { Sidebar } from "./Sidebar";
+import { AttentionBadge } from "./AttentionBadge";
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -32,6 +33,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           <FolderGit2 className="h-4 w-4" />
           OpenCode
         </Link>
+        <div className="flex-1" />
+        <AttentionBadge />
       </div>
 
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />

@@ -16,6 +16,7 @@ import { AddProjectButton } from "@/components/AddProjectButton";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import { AttentionBadge } from "./AttentionBadge";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
 const EXPANDED_KEY = "webui.sidebar.expanded";
@@ -305,6 +306,7 @@ export function Sidebar({
         >
           <Settings className="h-4 w-4" />
         </Link>
+        <AttentionBadge />
         <ThemeToggle />
       </div>
 
