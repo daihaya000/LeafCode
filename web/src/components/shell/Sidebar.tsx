@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
+import { PluginHost } from "@/components/plugins/PluginHost";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
@@ -308,7 +309,7 @@ export function Sidebar({
     [refreshingId],
   );
 
-  const body = (
+  const body = (includePlugins: boolean) => (
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
         <Link
@@ -579,6 +580,8 @@ export function Sidebar({
             />
           </div>
         )}
+
+        {includePlugins && <PluginHost />}
       </div>
     </div>
   );
@@ -590,7 +593,7 @@ export function Sidebar({
         className="relative hidden h-full shrink-0 border-r border-border md:block"
         style={{ width }}
       >
-        {body}
+        {body(!mobileOpen)}
         <div
           role="separator"
           aria-orientation="vertical"
@@ -625,7 +628,7 @@ export function Sidebar({
             onClick={onClose}
           />
           <aside className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]">
-            {body}
+            {body(mobileOpen)}
           </aside>
         </div>
       )}

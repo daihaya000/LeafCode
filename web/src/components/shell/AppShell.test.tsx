@@ -54,4 +54,14 @@ describe("AppShell", () => {
     );
     expect(getByText("child")).toBeTruthy();
   });
+
+  it("does not render PluginHost outside the sidebar", () => {
+    const { container } = render(
+      <AppShell>
+        <div>child</div>
+      </AppShell>,
+    );
+
+    expect(container.querySelector('[data-testid="plugin-host"]')).toBeNull();
+  });
 });

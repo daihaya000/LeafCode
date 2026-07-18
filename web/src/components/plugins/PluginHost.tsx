@@ -11,10 +11,7 @@ import {
   type PluginPrefs,
 } from "@/lib/plugins/state";
 
-/**
- * Global overlay that renders every enabled plugin widget in the bottom-right
- * corner. Mounted once in the app shell so it appears on all pages.
- */
+/** Renders every enabled plugin widget in the sidebar below project controls. */
 export function PluginHost() {
   const pathname = usePathname();
   const [prefs, setPrefs] = useState<PluginPrefs>({});
@@ -41,17 +38,11 @@ export function PluginHost() {
 
   const active = PLUGINS.filter((p) => isEnabled(prefs, p.id, p.defaultEnabled));
   if (active.length === 0) return null;
-  const isTaskRoute = pathname.startsWith("/task/");
-  const positionClass = isTaskRoute
-    ? "bottom-[calc(env(safe-area-inset-bottom)+9rem)]"
-    : "bottom-4";
 
   return (
-    <div
-      className={`pointer-events-none fixed ${positionClass} right-0 z-30 flex w-full flex-col items-end gap-2 px-4 pb-[env(safe-area-inset-bottom)] sm:right-4 sm:w-auto sm:px-0`}
-    >
+    <div data-testid="plugin-host" className="mt-3 flex w-full min-w-0 flex-col gap-2">
       {active.map((p) => (
-        <div key={p.id} className="pointer-events-auto max-w-full">
+        <div key={p.id} className="w-full min-w-0">
           <p.Widget />
         </div>
       ))}

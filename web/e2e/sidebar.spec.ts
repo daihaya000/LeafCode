@@ -54,6 +54,54 @@ test("keeps mobile project actions visible and focusable", async ({ page }) => {
   }
 });
 
+test("renders enabled plugins below the sidebar add-project action without overflow", async ({
+  page,
+}) => {
+  const sidebar = page.locator("aside").first();
+  const addProject = sidebar
+    .locator("button")
+    .filter({ hasText: "プロジェクトを追加" });
+  const pluginHost = sidebar.getByTestId("plugin-host");
+
+  await expect(addProject).toBeVisible();
+  await expect(pluginHost).toBeVisible();
+  const [addBox, pluginBox] = await Promise.all([
+    addProject.boundingBox(),
+    pluginHost.boundingBox(),
+  ]);
+
+  expect(pluginBox?.y).toBeGreaterThan(addBox?.y ?? 0);
+  await expect(pluginHost).not.toHaveClass(/\bfixed\b/);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+});
+
+test("keeps enabled plugins in the mobile sidebar drawer", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "メニュー" }).click();
+
+  const sidebar = page.getByRole("complementary");
+  const addProject = sidebar
+    .locator("button")
+    .filter({ hasText: "プロジェクトを追加" });
+  const pluginHost = sidebar.getByTestId("plugin-host");
+
+  await expect(page.getByTestId("plugin-host")).toHaveCount(1);
+  await pluginHost.scrollIntoViewIfNeeded();
+  await expect(addProject).toBeVisible();
+  await expect(pluginHost).toBeVisible();
+  const [addBox, pluginBox] = await Promise.all([
+    addProject.boundingBox(),
+    pluginHost.boundingBox(),
+  ]);
+
+  expect(pluginBox?.y).toBeGreaterThan(addBox?.y ?? 0);
+  await expect(pluginHost).not.toHaveClass(/\bfixed\b/);
+});
+
 test("does not show the empty state before projects load", async ({ page }) => {
   await page.unroute("**/api/projects");
   let release: (() => void) | undefined;

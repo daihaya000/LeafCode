@@ -353,7 +353,7 @@ export function CodexBarWidget() {
         onClick={toggleCollapsed}
         aria-label="CodexBar 利用状況を開く"
         title="CodexBar 利用状況を開く（全体平均）"
-        className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs shadow-lg hover:bg-surface-2"
+        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs shadow-lg hover:bg-surface-2"
       >
         <Activity className={cx("h-3.5 w-3.5", textClass[summaryTone])} />
         <span className="font-medium text-text">CodexBar</span>
@@ -370,7 +370,7 @@ export function CodexBarWidget() {
   }
 
   return (
-    <div className="flex max-h-[80vh] w-[calc(100vw-2rem)] flex-col rounded-xl border border-border bg-surface shadow-xl sm:w-72">
+    <div className="flex max-h-[80vh] w-full min-w-0 flex-col rounded-xl border border-border bg-surface shadow-xl">
       <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
         <Activity className={cx("h-4 w-4", textClass[summaryTone])} />
         <span className="flex-1 truncate text-xs font-semibold text-text">

@@ -3,7 +3,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, FolderGit2 } from "lucide-react";
 import { CommandPalette } from "@/components/CommandPalette";
-import { PluginHost } from "@/components/plugins/PluginHost";
 import { ShellProvider, useShellActiveScope, useShellExtras } from "./ShellContext";
 import { Sidebar } from "./Sidebar";
 import { GlobalAttentionProvider } from "./GlobalAttentionProvider";
@@ -45,8 +44,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {children}
         </div>
-
-        <PluginHost />
       </div>
       <AttentionQueueModal />
     </GlobalAttentionProvider>
