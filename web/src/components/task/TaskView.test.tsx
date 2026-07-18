@@ -265,6 +265,31 @@ describe("TaskView", () => {
     expect(screen.queryByText("offline")).toBeNull();
   });
 
+  it("stops polling after idle even when the completion refresh fails", async () => {
+    getJson
+      .mockResolvedValueOnce({ task: task(0.1) })
+      .mockRejectedValueOnce(new Error("offline"));
+    vi.useFakeTimers();
+    const view = render(<TaskView taskId="ws1" />);
+
+    await flushTaskLoad();
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+    });
+    await act(async () => {
+      view.rerender(<TaskView taskId="ws1" />);
+      await Promise.resolve();
+    });
+
+    expect(getJson).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(getJson).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores an older task refresh after a newer refresh completes", async () => {
     let resolveInitial: ((value: { task: TaskSummary }) => void) | undefined;
     getJson

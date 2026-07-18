@@ -547,11 +547,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     void refreshTask();
   }, [refreshTask]);
 
-  const streamStatusType = stream.status?.type ?? null;
+  const streamStatusType = stream.status?.type;
+  const streamActive =
+    streamStatusType === "busy" || streamStatusType === "retry";
   const hasActiveTask =
-    task?.status === "working" ||
-    streamStatusType === "busy" ||
-    streamStatusType === "retry";
+    streamActive || (streamStatusType === undefined && task?.status === "working");
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -569,7 +569,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [hasActiveTask, pageVisible, refreshTask]);
 
   // busy → idle transition: refresh diff + task stats
-  const prevStatusRef = useRef<string | null>(null);
+  const prevStatusRef = useRef<string | null | undefined>(null);
   const refreshTodos = stream.refreshTodos;
   useEffect(() => {
     const cur = streamStatusType;
@@ -587,10 +587,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     prevStatusRef.current = cur;
   }, [refreshTask, refreshTodos, streamStatusType]);
 
-  const prevNotifiedStatusRef = useRef<string | null>(null);
+  const prevNotifiedStatusRef = useRef<string | null | undefined>(null);
   useEffect(() => {
     if (
       streamStatusType !== null &&
+      streamStatusType !== undefined &&
       prevNotifiedStatusRef.current !== streamStatusType
     ) {
       notifyTasksChanged();
