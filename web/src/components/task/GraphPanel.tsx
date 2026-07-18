@@ -19,6 +19,11 @@ import type {
 const LANE_W = 14;
 const ROW_H = 36;
 const DOT_R = 4;
+const DEFAULT_LIMIT = 80;
+/** Poll faster while the agent is actively working (likely to commit soon). */
+const POLL_ACTIVE_MS = 4000;
+/** Slower baseline poll to pick up commits made outside this session (other terminal, etc.). */
+const POLL_IDLE_MS = 15000;
 
 const LANE_STROKE = [
   "var(--accent)",
@@ -124,7 +129,17 @@ function GraphCell({ row }: { row: GraphRow }) {
   );
 }
 
-export function GraphPanel({ directory }: { directory: string }) {
+export function GraphPanel({
+  directory,
+  refreshKey,
+  working = false,
+}: {
+  directory: string;
+  /** Bump this to force an immediate refetch (e.g. after commit/merge/revert). */
+  refreshKey?: number;
+  /** Whether the agent is currently running; used to poll faster while it may be committing. */
+  working?: boolean;
+}) {
   const [payload, setPayload] = useState<GraphLogPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -140,18 +155,24 @@ export function GraphPanel({ directory }: { directory: string }) {
   } | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
   const commitCountRef = useRef(0);
+  const busyRef = useRef(false);
 
   const load = useCallback(
-    async (opts?: { append?: boolean }) => {
+    async (opts?: { append?: boolean; limit?: number; silent?: boolean }) => {
       const append = Boolean(opts?.append);
-      if (append) setLoadingMore(true);
-      else setLoading(true);
-      setError(null);
+      const silent = Boolean(opts?.silent);
+      busyRef.current = true;
+      if (!silent) {
+        if (append) setLoadingMore(true);
+        else setLoading(true);
+      }
+      if (!silent) setError(null);
       try {
         const skipCount = append ? commitCountRef.current : 0;
+        const limit = opts?.limit ?? DEFAULT_LIMIT;
         const data = await getJson<GraphLogPayload>("/api/git/log", {
           directory,
-          limit: "80",
+          limit: String(limit),
           skip: String(skipCount),
         });
         setPayload((prev) => {
@@ -167,14 +188,27 @@ export function GraphPanel({ directory }: { directory: string }) {
           return next;
         });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "ログの取得に失敗しました");
+        if (!silent) {
+          setError(err instanceof Error ? err.message : "ログの取得に失敗しました");
+        }
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        busyRef.current = false;
+        if (!silent) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [directory],
   );
+
+  // Always call the latest `load` from effects that must NOT re-fire merely
+  // because `load`'s identity changed (e.g. when `directory` changes, the
+  // directory-reset effect below already handles that case on its own).
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
 
   useEffect(() => {
     setPayload(null);
@@ -184,6 +218,48 @@ export function GraphPanel({ directory }: { directory: string }) {
     commitCountRef.current = 0;
     void load();
   }, [directory, load]);
+
+  // Refetch immediately when an external action (commit/merge/revert/resync)
+  // bumps refreshKey, preserving whatever depth the user had already loaded.
+  const skipNextRefreshKey = useRef(true);
+  useEffect(() => {
+    if (skipNextRefreshKey.current) {
+      skipNextRefreshKey.current = false;
+      return;
+    }
+    void loadRef.current({
+      limit: Math.max(commitCountRef.current, DEFAULT_LIMIT),
+    });
+  }, [refreshKey]);
+
+  // Poll in the background so commits made outside this UI (agent bash tool,
+  // another terminal, etc.) show up without a manual refresh. Poll faster
+  // while the agent is actively working, since that's when a commit is most
+  // likely to land.
+  useEffect(() => {
+    const delay = working ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible" || busyRef.current) return;
+      void loadRef.current({
+        limit: Math.max(commitCountRef.current, DEFAULT_LIMIT),
+        silent: true,
+      });
+    }, delay);
+    return () => clearInterval(id);
+  }, [working]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !busyRef.current) {
+        void loadRef.current({
+          limit: Math.max(commitCountRef.current, DEFAULT_LIMIT),
+          silent: true,
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   const rows = useMemo(
     () => (payload ? layoutGraph(payload.commits) : []),

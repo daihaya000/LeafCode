@@ -1652,7 +1652,11 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
           {sidePanel === "graph" && (
             <div className="flex min-h-0 w-full flex-1">
-              <GraphPanel directory={task.directory} />
+              <GraphPanel
+                directory={task.directory}
+                refreshKey={diffKey}
+                working={working}
+              />
             </div>
           )}
           {sidePanel === "pty" && (
