@@ -52,7 +52,10 @@ export async function GET(request: NextRequest) {
     return errorResponse("Markdown file was not found", 404);
   }
 
-  if (!isUnder(workspace, real)) {
+  if (
+    !isUnder(workspace, real) ||
+    path.extname(real).toLowerCase() !== ".md"
+  ) {
     return errorResponse("Markdown path is outside the project", 403);
   }
 

@@ -48,7 +48,11 @@ import {
 } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import { decideNotification, notificationText } from "@/lib/notify";
-import { extractPlanMarkdownPath } from "@/lib/plan-document";
+import {
+  extractPlanMarkdownPath,
+  isPlanApproved,
+  PLAN_APPROVAL_PROMPT,
+} from "@/lib/plan-document";
 import { useSessionStream } from "@/lib/useSessionStream";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
@@ -504,10 +508,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     setSendError(null);
     setAgent("build");
     stickRef.current = true;
-    await stream.sendPrompt(
-      "この計画を承認します。計画に従って実装を開始してください。",
-      { agent: "build" },
-    );
+    await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: "build" });
   }, [working, stream]);
 
   // Prefer last assistant message's model once stream is loaded
@@ -707,6 +708,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     [stream.visibleMessages],
   );
   const actionablePlanMessageId = Array.from(planPaths.keys()).at(-1) ?? null;
+  const approvedPlanIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of planPaths.keys()) {
+      if (isPlanApproved(stream.visibleMessages, id)) ids.add(id);
+    }
+    return ids;
+  }, [planPaths, stream.visibleMessages]);
 
   if (loadError) {
     return (
@@ -1033,6 +1041,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         directory={task.directory}
                         actionable={m.info.id === actionablePlanMessageId}
                         working={working}
+                        approved={approvedPlanIds.has(m.info.id)}
                         onApprove={approvePlan}
                       />
                     )}

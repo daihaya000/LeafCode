@@ -20,8 +20,10 @@ const task = {
 const planPrompt = "この計画を承認します。計画に従って実装を開始してください。";
 
 type PlanMockOptions = {
-  messages?: unknown[];
+  messages?: unknown[] | (() => unknown[]);
   status?: "idle" | "busy";
+  permissions?: unknown[];
+  questions?: unknown[];
   onPrompt?: (route: Route, body: unknown, attempt: number) => Promise<void> | void;
   onContent?: (route: Route, attempt: number) => Promise<void> | void;
 };
@@ -105,7 +107,11 @@ async function mockPlanTask(page: Page, options: PlanMockOptions = {}) {
       return;
     }
     if (url.pathname.endsWith("/session/session-1/message")) {
-      await route.fulfill({ json: options.messages ?? [] });
+      const messages =
+        typeof options.messages === "function"
+          ? options.messages()
+          : options.messages ?? [];
+      await route.fulfill({ json: messages });
       return;
     }
     if (url.pathname.endsWith("/session/status")) {
@@ -120,8 +126,12 @@ async function mockPlanTask(page: Page, options: PlanMockOptions = {}) {
       await route.fulfill({ json: {} });
       return;
     }
-    if (url.pathname.endsWith("/permission") || url.pathname.endsWith("/question")) {
-      await route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/permission")) {
+      await route.fulfill({ json: options.permissions ?? [] });
+      return;
+    }
+    if (url.pathname.endsWith("/question")) {
+      await route.fulfill({ json: options.questions ?? [] });
       return;
     }
     if (url.pathname.endsWith("/event")) {
@@ -350,4 +360,123 @@ test("does not treat an unfinished Plan response as actionable", async ({ page }
 
   await expect(page.getByRole("button", { name: "承認して実装" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Release Plan" })).toHaveCount(0);
+});
+
+function approvalUserMessage(id: string) {
+  return {
+    info: { id, sessionID: "session-1", role: "user", agent: "build", time: { created: 2 } },
+    parts: [{ id: `${id}-part`, messageID: id, type: "text", text: planPrompt }],
+  };
+}
+
+test("keeps the Plan approved after reload and blocks a duplicate approval POST", async ({ page }) => {
+  const prompts: unknown[] = [];
+  let approved = false;
+  await mockPlanTask(page, {
+    messages: () =>
+      approved
+        ? [planMessage("plan", "C:\\repo\\docs\\plan.md"), approvalUserMessage("approval")]
+        : [planMessage("plan", "C:\\repo\\docs\\plan.md")],
+    onPrompt: async (route, body) => {
+      prompts.push(body);
+      approved = true;
+      await route.fulfill({ json: {} });
+    },
+  });
+
+  await page.goto("/task/task-1");
+  await page.getByRole("button", { name: "承認して実装" }).click();
+
+  await expect.poll(() => prompts).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "実装を開始しました" })).toBeDisabled();
+
+  // Reload: the approval now lives in session history, so the card must stay
+  // disabled and expose no way to resubmit the same approval prompt.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Release Plan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "実装を開始しました" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "承認して実装" })).toHaveCount(0);
+
+  await page.waitForTimeout(300);
+  expect(prompts).toHaveLength(1);
+});
+
+test("keeps ordinary Plan Markdown body while suppressing only the path source part", async ({ page }) => {
+  await mockPlanTask(page, {
+    messages: [
+      {
+        info: {
+          id: "plan",
+          sessionID: "session-1",
+          role: "assistant",
+          agent: "plan",
+          time: { completed: 1 },
+        },
+        parts: [
+          { id: "plan-body", messageID: "plan", type: "text", text: "計画の概要はこちらです。" },
+          { id: "plan-path", messageID: "plan", type: "text", text: "C:\\repo\\docs\\plan.md" },
+        ],
+      },
+    ],
+  });
+
+  await page.goto("/task/task-1");
+
+  await expect(page.getByText("計画の概要はこちらです。")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Release Plan" })).toBeVisible();
+  await expect(page.getByText("C:\\repo\\docs\\plan.md")).toHaveCount(0);
+});
+
+test("requests Plan content with the task directory and path query", async ({ page }) => {
+  const contentUrls: string[] = [];
+  await mockPlanTask(page, {
+    messages: [planMessage("plan", "C:\\repo\\docs\\plan.md")],
+    onContent: async (route) => {
+      contentUrls.push(route.request().url());
+      await route.fulfill({
+        json: { name: "plan.md", content: "# Release Plan\n\n- Ship safely" },
+      });
+    },
+  });
+
+  await page.goto("/task/task-1");
+  await expect(page.getByRole("heading", { name: "Release Plan" })).toBeVisible();
+
+  expect(contentUrls).toHaveLength(1);
+  const query = new URL(contentUrls[0]).searchParams;
+  expect(query.get("directory")).toBe("C:\\repo");
+  expect(query.get("path")).toBe("C:\\repo\\docs\\plan.md");
+});
+
+test("does not replace permission, question, or generic file parts with a Plan card", async ({ page }) => {
+  await mockPlanTask(page, {
+    messages: [
+      {
+        info: { id: "generic", sessionID: "session-1", role: "assistant", time: { completed: 1 } },
+        parts: [
+          { id: "generic-part", messageID: "generic", type: "file", filename: "C:\\repo\\docs\\readme.md" },
+        ],
+      },
+    ],
+    permissions: [
+      { id: "perm-1", sessionID: "session-1", permission: "bash", patterns: ["ls"] },
+    ],
+    questions: [
+      {
+        id: "q-1",
+        sessionID: "session-1",
+        questions: [{ question: "続行しますか？", header: "確認事項", options: [] }],
+      },
+    ],
+  });
+
+  await page.goto("/task/task-1");
+
+  // Generic file part still renders and is not converted into a Plan card.
+  await expect(page.getByRole("button", { name: "C:\\repo\\docs\\readme.md" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "承認して実装" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Release Plan" })).toHaveCount(0);
+  // Permission and question surfaces are untouched by Plan rendering.
+  await expect(page.getByText("権限の承認が必要です")).toBeVisible();
+  await expect(page.getByText("確認事項")).toBeVisible();
 });

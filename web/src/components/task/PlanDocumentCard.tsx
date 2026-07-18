@@ -20,12 +20,15 @@ export function PlanDocumentCard({
   directory,
   actionable,
   working,
+  approved = false,
   onApprove,
 }: {
   path: string;
   directory: string;
   actionable: boolean;
   working: boolean;
+  /** Derived from session history: the plan was already approved (survives reload). */
+  approved?: boolean;
   onApprove: () => Promise<void>;
 }) {
   const [reload, setReload] = useState(0);
@@ -35,6 +38,7 @@ export function PlanDocumentCard({
   const [submitted, setSubmitted] = useState(false);
   const approvingRef = useRef(false);
   const fallbackName = basename(path);
+  const isSubmitted = submitted || approved;
 
   useEffect(() => {
     let active = true;
@@ -60,7 +64,7 @@ export function PlanDocumentCard({
   }, [path]);
 
   const approve = async () => {
-    if (working || submitted || approvingRef.current) return;
+    if (working || isSubmitted || approvingRef.current) return;
     approvingRef.current = true;
     setApproving(true);
     setApprovalError(false);
@@ -116,13 +120,13 @@ export function PlanDocumentCard({
             )}
             <Button
               variant="primary"
-              disabled={working || approving || submitted}
+              disabled={working || approving || isSubmitted}
               busy={approving}
               onClick={() => void approve()}
             >
-              {submitted ? "実装を開始しました" : "承認して実装"}
+              {isSubmitted ? "実装を開始しました" : "承認して実装"}
             </Button>
-            {submitted && (
+            {isSubmitted && (
               <span role="status" aria-live="polite" className="sr-only">
                 実装を開始しました
               </span>

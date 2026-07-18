@@ -91,6 +91,21 @@ describe("GET /api/files/content", () => {
     }
   });
 
+  it("rejects an in-workspace symlink whose real target is not Markdown", async () => {
+    const secret = path.join(workspace, "secret.txt");
+    const link = path.join(workspace, "linked.md");
+    fs.writeFileSync(secret, "secret");
+    try {
+      fs.symlinkSync(secret, link, "file");
+    } catch {
+      return;
+    }
+
+    const response = await GET(request(workspace, link));
+
+    expect(response.status).toBe(403);
+  });
+
   it("rejects a directory named with an .md suffix", async () => {
     const directory = path.join(workspace, "not-a-file.md");
     fs.mkdirSync(directory);
