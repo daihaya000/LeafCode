@@ -43,9 +43,9 @@ export function PluginHost() {
   if (active.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-30 flex flex-col items-end gap-2 pb-[env(safe-area-inset-bottom)]">
+    <div className="pointer-events-none fixed bottom-4 right-0 z-30 flex w-full flex-col items-end gap-2 px-4 pb-[env(safe-area-inset-bottom)] sm:right-4 sm:w-auto sm:px-0">
       {active.map((p) => (
-        <div key={p.id} className="pointer-events-auto">
+        <div key={p.id} className="pointer-events-auto max-w-full">
           <p.Widget />
         </div>
       ))}

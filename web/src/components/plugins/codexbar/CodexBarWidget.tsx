@@ -204,10 +204,10 @@ function ProviderRow({
         )}
       >
         <ProviderIcon id={p.id} tone={tone} />
-        <span className="truncate font-semibold text-text">{label}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-text">{label}</span>
         {p.plan && (
           <span
-            className="shrink-0 rounded border border-border bg-surface-3 px-1 text-[10px] font-medium text-muted"
+            className="max-w-20 shrink truncate rounded border border-border bg-surface-3 px-1 text-[10px] font-medium text-muted"
             title={`プラン: ${p.plan}`}
           >
             {p.plan}
@@ -370,7 +370,7 @@ export function CodexBarWidget() {
   }
 
   return (
-    <div className="flex max-h-[80vh] w-72 flex-col rounded-xl border border-border bg-surface shadow-xl">
+    <div className="flex max-h-[80vh] w-[calc(100vw-2rem)] flex-col rounded-xl border border-border bg-surface shadow-xl sm:w-72">
       <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
         <Activity className={cx("h-4 w-4", textClass[summaryTone])} />
         <span className="flex-1 truncate text-xs font-semibold text-text">
