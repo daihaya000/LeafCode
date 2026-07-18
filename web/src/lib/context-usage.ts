@@ -31,12 +31,6 @@ export function computeContextUsage(
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const info = messages[i]?.info;
     if (info?.role !== "assistant" || !info.tokens) continue;
-    const key =
-      info.providerID && info.modelID
-        ? `${info.providerID}::${info.modelID}`
-        : "";
-    const limit = providerModelsMap[key]?.limit?.context;
-    if (!limit || limit <= 0) return null;
     const t = info.tokens;
     const used =
       t.total ??
@@ -45,6 +39,13 @@ export function computeContextUsage(
         (t.reasoning ?? 0) +
         (t.cache?.read ?? 0) +
         (t.cache?.write ?? 0);
+    if (used === 0) continue;
+    const key =
+      info.providerID && info.modelID
+        ? `${info.providerID}::${info.modelID}`
+        : "";
+    const limit = providerModelsMap[key]?.limit?.context;
+    if (!limit || limit <= 0) return null;
     return { used, limit, pct: Math.min(100, Math.round((used / limit) * 100)) };
   }
   return null;

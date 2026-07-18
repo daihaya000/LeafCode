@@ -92,6 +92,30 @@ describe("computeContextUsage", () => {
     });
   });
 
+  it("skips a trailing assistant record with zero token usage", () => {
+    const messages = [
+      assistant({
+        id: "m1",
+        tokens: { total: 10_000, input: 8_000, output: 1_000, reasoning: 1_000 },
+      }),
+      assistant({
+        id: "m2",
+        tokens: {
+          total: 0,
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+      }),
+    ];
+    expect(computeContextUsage(messages, modelsWithLimit)).toEqual({
+      used: 10_000,
+      limit: 200_000,
+      pct: 5,
+    });
+  });
+
   it("ignores user messages even if they are last", () => {
     const messages = [
       assistant({ tokens: { total: 50_000, input: 0, output: 0, reasoning: 0 } }),
