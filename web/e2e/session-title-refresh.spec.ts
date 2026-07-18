@@ -85,12 +85,11 @@ test.describe("sidebar session title refresh", () => {
     const row = page.getByRole("button", { name: /Old title/ });
     await expect(row).toBeVisible();
 
-    // Reveal the hover-only refresh button by hovering the row (desktop).
-    await row.hover();
     const refresh = page.getByRole("button", {
       name: "会話からタイトルを再生成",
     });
-    await refresh.click({ force: true });
+    await expect(refresh).toBeVisible();
+    await refresh.click();
 
     // Title row should update to the generated title.
     await expect(page.getByText("New AI title")).toBeVisible();
@@ -109,11 +108,10 @@ test.describe("sidebar session title refresh", () => {
 
     await page.goto("/");
     await page.getByRole("button", { name: "Projectを展開" }).click();
-    const row = page.getByRole("button", { name: /Old title/ });
-    await row.hover();
+    await expect(page.getByRole("button", { name: /Old title/ })).toBeVisible();
     await page
       .getByRole("button", { name: "会話からタイトルを再生成" })
-      .click({ force: true });
+      .click();
 
     // Old title stays.
     await expect(page.getByText("Old title")).toBeVisible();

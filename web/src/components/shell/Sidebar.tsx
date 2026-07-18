@@ -387,7 +387,7 @@ export function Sidebar({
               const open = expanded.has(p.id);
               const children = tasksByProject.get(p.id) ?? [];
               return (
-                <li key={p.id} className="group/project">
+                <li key={p.id}>
                   <div className="flex min-w-0 items-center gap-0.5">
                     <button
                       type="button"
@@ -414,11 +414,7 @@ export function Sidebar({
                         aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
                         title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
                         onClick={(e) => void toggleFavorite(p, e)}
-                        className={cx(
-                          "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8",
-                          !p.favorite &&
-                            "md:pointer-events-none md:opacity-0 md:group-hover/project:pointer-events-auto md:group-hover/project:opacity-100 md:group-focus-within/project:pointer-events-auto md:group-focus-within/project:opacity-100",
-                        )}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
                       >
                         <Star
                           className={
@@ -447,7 +443,7 @@ export function Sidebar({
                         aria-label={`${p.name}を削除`}
                         title="プロジェクトを削除"
                         onClick={(e) => void removeProject(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:pointer-events-none md:h-8 md:w-8 md:opacity-0 md:group-hover/project:pointer-events-auto md:group-hover/project:opacity-100 md:group-focus-within/project:pointer-events-auto md:group-focus-within/project:opacity-100"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
                       </button>
@@ -463,79 +459,86 @@ export function Sidebar({
                         children.map((task) => {
                           const active = task.id === activeTaskId;
                           return (
-                            <li key={task.id} className="group relative">
-                              <button
-                                type="button"
-                                onClick={() => nav(`/task/${task.id}`)}
+                            <li key={task.id}>
+                              <div
                                 className={cx(
-                                  "flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+                                  "flex items-start gap-0.5 rounded-lg",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
                                 )}
                               >
-                                <div className="flex items-center gap-1.5 pr-5">
-                                  <span
-                                    className={cx(
-                                      "h-1.5 w-1.5 shrink-0 rounded-full",
-                                      task.status === "working" &&
-                                        "animate-pulse bg-working",
-                                      task.status === "ready" && "bg-success",
-                                      task.status === "merged" && "bg-success",
-                                      task.status === "error" && "bg-danger",
-                                      (task.status === "idle" ||
-                                        task.status === "unknown") &&
-                                        "bg-faint",
-                                    )}
-                                  />
-                                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                                    {task.title}
-                                  </span>
-                                  <span className="shrink-0 text-[10px] text-muted">
-                                    {timeAgo(task.updatedAt)}
-                                  </span>
-                                </div>
-                                <div
-                                  className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted"
-                                  title={
-                                    task.branch
-                                      ? `${task.isolation}: ${task.branch}`
-                                      : task.isolation
-                                  }
-                                >
-                                  <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
-                                  <span className="min-w-0 truncate font-mono">
-                                    {sidebarBranchLabel(task)}
-                                  </span>
-                                </div>
-                              </button>
-                              {task.sessionId && (
                                 <button
                                   type="button"
-                                  aria-label="会話からタイトルを再生成"
-                                  title="会話からタイトルを再生成"
-                                  aria-busy={refreshingId === task.id}
-                                  disabled={refreshingId === task.id}
-                                  onClick={(e) => void refreshTitle(task, e)}
-                                  className="absolute top-1.5 right-8 inline-flex min-h-9 min-w-9 items-center justify-center rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text disabled:opacity-50 md:hidden md:group-hover:inline-flex"
+                                  onClick={() => nav(`/task/${task.id}`)}
+                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
-                                  <RefreshCw
-                                    className={cx(
-                                      "h-3 w-3",
-                                      refreshingId === task.id &&
-                                        "motion-safe:animate-spin",
-                                    )}
-                                  />
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className={cx(
+                                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                                        task.status === "working" &&
+                                          "animate-pulse bg-working",
+                                        task.status === "ready" && "bg-success",
+                                        task.status === "merged" && "bg-success",
+                                        task.status === "error" && "bg-danger",
+                                        (task.status === "idle" ||
+                                          task.status === "unknown") &&
+                                          "bg-faint",
+                                      )}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                                      {task.title}
+                                    </span>
+                                    <span className="shrink-0 text-[10px] text-muted">
+                                      {timeAgo(task.updatedAt)}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted"
+                                    title={
+                                      task.branch
+                                        ? `${task.isolation}: ${task.branch}`
+                                        : task.isolation
+                                    }
+                                  >
+                                    <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                                    <span className="min-w-0 truncate font-mono">
+                                      {sidebarBranchLabel(task)}
+                                    </span>
+                                  </div>
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                aria-label="タスクを削除"
-                                onClick={(e) => void removeTask(task, e)}
-                                className="absolute top-1.5 right-1 inline-flex min-h-9 min-w-9 items-center justify-center rounded-md p-1 text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:hidden md:group-hover:inline-flex"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
+                                <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
+                                  {task.sessionId && (
+                                    <button
+                                      type="button"
+                                      aria-label="会話からタイトルを再生成"
+                                      title="会話からタイトルを再生成"
+                                      aria-busy={refreshingId === task.id}
+                                      disabled={refreshingId === task.id}
+                                      onClick={(e) => void refreshTitle(task, e)}
+                                      className="inline-flex h-11 w-11 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50 md:h-8 md:w-8"
+                                    >
+                                      <RefreshCw
+                                        className={cx(
+                                          "h-3 w-3",
+                                          refreshingId === task.id &&
+                                            "motion-safe:animate-spin",
+                                        )}
+                                      />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    aria-label="タスクを削除"
+                                    title="タスクを削除"
+                                    onClick={(e) => void removeTask(task, e)}
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
                             </li>
                           );
                         })

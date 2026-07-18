@@ -23,26 +23,20 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("keeps project actions stable across hover and focus", async ({ page }) => {
+test("keeps project actions always visible", async ({ page }) => {
   const expand = page.getByRole("button", { name: "Project Aを展開" });
   await expect(expand).toBeVisible();
 
-  const row = expand.locator("..");
-  const before = await row.boundingBox();
-
-  await expect(
-    page.getByRole("button", { name: "Project Aをお気に入りから外す" }),
-  ).toHaveCSS("opacity", "1");
-
-  await row.hover();
-  const afterHover = await row.boundingBox();
-
-  await page.getByRole("button", { name: "Project Aに新規タスクを作成" }).focus();
-  const afterFocus = await row.boundingBox();
-
-  expect(before).not.toBeNull();
-  expect(afterHover).toEqual(before);
-  expect(afterFocus).toEqual(before);
+  for (const name of [
+    "Project Aをお気に入りから外す",
+    "Project Aに新規タスクを作成",
+    "Project Aを削除",
+    "Project Bをお気に入りに追加",
+    "Project Bに新規タスクを作成",
+    "Project Bを削除",
+  ]) {
+    await expect(page.getByRole("button", { name })).toBeVisible();
+  }
 });
 
 test("keeps mobile project actions visible and focusable", async ({ page }) => {
