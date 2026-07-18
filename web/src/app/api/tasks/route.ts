@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bindSession, touchProjectOpened } from "@/lib/db";
+import { isIntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import { listTasks } from "@/lib/task-service";
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
     title?: string;
     model?: { providerID?: string; modelID?: string };
     agent?: string;
+    variant?: unknown;
   } | null;
 
   const prompt = body?.prompt?.trim();
@@ -40,6 +42,22 @@ export async function POST(req: NextRequest) {
   const isolation = body.isolation ?? "git_worktree";
   if (!isIsolation(isolation)) {
     return NextResponse.json({ error: "invalid isolation" }, { status: 400 });
+  }
+
+  // Validate the optional intelligence variant before provisioning any
+  // workspace. Only "high" and "low" are supported; any other non-empty
+  // value is rejected. An empty string is treated as "default" (omitted).
+  const variantRaw = body?.variant;
+  let variant: "high" | "low" | "";
+  if (variantRaw === undefined || variantRaw === "") {
+    variant = "";
+  } else if (typeof variantRaw === "string" && isIntelligenceVariant(variantRaw)) {
+    variant = variantRaw;
+  } else {
+    return NextResponse.json(
+      { error: "invalid variant" },
+      { status: 400 },
+    );
   }
 
   const title =
@@ -80,6 +98,7 @@ export async function POST(req: NextRequest) {
       };
     }
     if (body.agent?.trim()) promptBody.agent = body.agent.trim();
+    if (variant) promptBody.variant = variant;
     await ocServer(
       workspace.absolute_path,
       `/session/${session.id}/prompt_async`,

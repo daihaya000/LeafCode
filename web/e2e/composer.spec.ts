@@ -140,12 +140,16 @@ test.describe("home composer", () => {
 
     await page.goto("/");
     const project = page.getByRole("combobox", { name: "プロジェクト" });
+    const workspace = page.getByRole("combobox", { name: "作業場所" });
     const submit = page.getByRole("button", { name: "タスク開始" });
     const prompt = page.getByPlaceholder(
       "タスクを説明してください…（Ctrl+Enter で開始）",
     );
     await expect(project).toHaveValue("project-a");
     await project.selectOption("project-b");
+    // The default isolation is now current_folder; explicitly opt into a
+    // worktree so the base-branch wait still gates submission.
+    await workspace.selectOption("git_worktree");
     await prompt.fill("branch race regression");
 
     await expect(submit).toBeDisabled();
@@ -185,5 +189,282 @@ test.describe("home composer", () => {
     await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
       "project-a",
     );
+  });
+
+  test("defaults workspace to current_folder", async ({ page }) => {
+    await page.route("**/api/projects", (route) =>
+      route.fulfill({
+        json: {
+          projects: [
+            {
+              id: "project-1",
+              name: "opencode",
+              rootPath: "C:\\repo",
+              favorite: true,
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/git/branches**", (route) =>
+      route.fulfill({
+        json: {
+          branches: ["master"],
+          current: "master",
+          defaultTarget: "master",
+        },
+      }),
+    );
+
+    await page.goto("/");
+    const workspace = page.getByRole("combobox", { name: "作業場所" });
+    await expect(workspace).toHaveValue("current_folder");
+  });
+
+  async function mockVariantProvider(page: import("@playwright/test").Page) {
+    await page.route("**/api/opencode/provider", (route) =>
+      route.fulfill({
+        json: {
+          all: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: {
+                "gpt-5.6-sol": {
+                  name: "GPT-5.6 Sol",
+                  variants: { high: {}, low: {} },
+                },
+              },
+            },
+          ],
+          connected: ["openai"],
+          default: { openai: "gpt-5.6-sol" },
+        },
+      }),
+    );
+    await page.route("**/api/opencode/config", (route) =>
+      route.fulfill({
+        json: { model: "openai/gpt-5.6-sol", agent: "build" },
+      }),
+    );
+    await page.route("**/api/opencode/agent", (route) =>
+      route.fulfill({ json: [{ name: "build" }] }),
+    );
+    await page.route("**/api/projects", (route) =>
+      route.fulfill({
+        json: {
+          projects: [
+            {
+              id: "project-1",
+              name: "opencode",
+              rootPath: "C:\\repo",
+              favorite: true,
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/git/branches**", (route) =>
+      route.fulfill({
+        json: {
+          branches: ["master"],
+          current: "master",
+          defaultTarget: "master",
+        },
+      }),
+    );
+  }
+
+  test("shows intelligence selector when model declares variants", async ({
+    page,
+  }) => {
+    await mockVariantProvider(page);
+
+    await page.goto("/");
+    const intelligence = page.getByRole("combobox", {
+      name: "インテリジェンス",
+    });
+    await expect(intelligence).toBeVisible();
+    await expect(intelligence).toHaveValue("");
+    const options = await intelligence.locator("option").allTextContents();
+    expect(options).toEqual(["デフォルト", "high", "low"]);
+  });
+
+  test("hides intelligence selector when model has no variants", async ({
+    page,
+  }) => {
+    await page.route("**/api/opencode/provider", (route) =>
+      route.fulfill({
+        json: {
+          all: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: { "gpt-4": { name: "GPT-4" } },
+            },
+          ],
+          connected: ["openai"],
+          default: { openai: "gpt-4" },
+        },
+      }),
+    );
+    await page.route("**/api/opencode/config", (route) =>
+      route.fulfill({ json: { model: "openai/gpt-4", agent: "build" } }),
+    );
+    await page.route("**/api/opencode/agent", (route) =>
+      route.fulfill({ json: [{ name: "build" }] }),
+    );
+    await page.route("**/api/projects", (route) =>
+      route.fulfill({
+        json: {
+          projects: [
+            {
+              id: "project-1",
+              name: "opencode",
+              rootPath: "C:\\repo",
+              favorite: true,
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/git/branches**", (route) =>
+      route.fulfill({
+        json: {
+          branches: ["master"],
+          current: "master",
+          defaultTarget: "master",
+        },
+      }),
+    );
+
+    await page.goto("/");
+    await expect(
+      page.getByRole("combobox", { name: "インテリジェンス" }),
+    ).toHaveCount(0);
+  });
+
+  test("resets intelligence to default when model changes", async ({
+    page,
+  }) => {
+    await page.route("**/api/opencode/provider", (route) =>
+      route.fulfill({
+        json: {
+          all: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: {
+                "gpt-5.6-sol": {
+                  name: "GPT-5.6 Sol",
+                  variants: { high: {}, low: {} },
+                },
+                "gpt-4": { name: "GPT-4" },
+              },
+            },
+          ],
+          connected: ["openai"],
+          default: { openai: "gpt-5.6-sol" },
+        },
+      }),
+    );
+    await page.route("**/api/opencode/config", (route) =>
+      route.fulfill({
+        json: { model: "openai/gpt-5.6-sol", agent: "build" },
+      }),
+    );
+    await page.route("**/api/opencode/agent", (route) =>
+      route.fulfill({ json: [{ name: "build" }] }),
+    );
+    await page.route("**/api/projects", (route) =>
+      route.fulfill({
+        json: {
+          projects: [
+            {
+              id: "project-1",
+              name: "opencode",
+              rootPath: "C:\\repo",
+              favorite: true,
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/git/branches**", (route) =>
+      route.fulfill({
+        json: {
+          branches: ["master"],
+          current: "master",
+          defaultTarget: "master",
+        },
+      }),
+    );
+
+    await page.goto("/");
+    const intelligence = page.getByRole("combobox", {
+      name: "インテリジェンス",
+    });
+    await expect(intelligence).toBeVisible();
+    await intelligence.selectOption("high");
+    await expect(intelligence).toHaveValue("high");
+
+    // Switch to a model without variants — selector disappears, state resets
+    const model = page.getByRole("combobox", { name: "モデル" });
+    await model.selectOption("openai::gpt-4");
+    await expect(intelligence).toHaveCount(0);
+  });
+
+  test("sends variant in POST body when non-default is selected", async ({
+    page,
+  }) => {
+    let postedBody: Record<string, unknown> | null = null;
+    await mockVariantProvider(page);
+    await page.route("**/api/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        postedBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({ json: { taskId: "created-task" } });
+        return;
+      }
+      await route.fulfill({ json: { tasks: [], engineOk: true } });
+    });
+
+    await page.goto("/");
+    const prompt = page.getByPlaceholder(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    await prompt.fill("build a feature");
+    const intelligence = page.getByRole("combobox", {
+      name: "インテリジェンス",
+    });
+    await intelligence.selectOption("high");
+    await page.getByRole("button", { name: "タスク開始" }).click();
+    await expect.poll(() => postedBody).not.toBeNull();
+    expect(postedBody).toMatchObject({
+      variant: "high",
+    });
+  });
+
+  test("omits variant from POST body when default is selected", async ({
+    page,
+  }) => {
+    let postedBody: Record<string, unknown> | null = null;
+    await mockVariantProvider(page);
+    await page.route("**/api/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        postedBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({ json: { taskId: "created-task" } });
+        return;
+      }
+      await route.fulfill({ json: { tasks: [], engineOk: true } });
+    });
+
+    await page.goto("/");
+    const prompt = page.getByPlaceholder(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    await prompt.fill("build a feature");
+    await page.getByRole("button", { name: "タスク開始" }).click();
+    await expect.poll(() => postedBody).not.toBeNull();
+    expect(postedBody).not.toHaveProperty("variant");
   });
 });

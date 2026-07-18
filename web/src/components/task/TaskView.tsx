@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { useShellExtras } from "@/components/shell/ShellContext";
@@ -64,6 +65,11 @@ import {
   type CostDisplayPrefs,
 } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
+import {
+  getIntelligenceVariants,
+  type IntelligenceVariant,
+  type ProviderModelMeta,
+} from "@/lib/model-variants";
 import { decideNotification, notificationText } from "@/lib/notify";
 import {
   extractPlanMarkdownPath,
@@ -98,6 +104,7 @@ type ProviderResponse = {
           input?: ("text" | "audio" | "image" | "video" | "pdf")[];
           output?: ("text" | "audio" | "image" | "video" | "pdf")[];
         };
+        variants?: ProviderModelMeta["variants"];
       }
     >;
   }[];
@@ -265,6 +272,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
+  const [providerModelsMap, setProviderModelsMap] = useState<
+    Record<string, ProviderModelMeta>
+  >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
     readCostDisplayPrefs(),
@@ -417,6 +428,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           const connected = new Set(connectedList);
           const options: ModelOption[] = [];
           const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
+          const map: Record<string, ProviderModelMeta> = {};
           for (const p of data.all ?? []) {
             if (connected.size > 0 && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
@@ -431,10 +443,15 @@ export function TaskView({ taskId }: { taskId: string }) {
                 attachment: m.attachment === true,
                 image: inputs.includes("image"),
               };
+              map[`${p.id}::${mid}`] = {
+                name: m.name,
+                variants: m.variants,
+              };
             }
           }
           setModelOptions(options);
           setModelCapabilities(caps);
+          setProviderModelsMap(map);
 
           // Prefer user-configured default model, then OpenCode config.model
           // (provider/modelID), then provider defaults.
@@ -631,20 +648,21 @@ export function TaskView({ taskId }: { taskId: string }) {
         ...(agent ? { agent } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(files.length > 0 ? { files } : {}),
+        ...(intelligence ? { variant: intelligence } : {}),
       });
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
       setAttachments(attachments);
     }
-  }, [input, attachments, working, stream, model, agent]);
+  }, [input, attachments, working, stream, model, agent, intelligence]);
 
   // Resolve the model that will actually serve the prompt: the selected
   // agent's configured model takes priority over the manual model selector.
   const effectiveModelKey = (() => {
     const am = agent ? agentModels[agent] : undefined;
     if (am) return `${am.providerID}::${am.modelID}`;
-    return model || "";
+    return model || ``;
   })();
   const imageSupported = effectiveModelKey
     ? modelCapabilities[effectiveModelKey]?.image === true ||
@@ -656,8 +674,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+      reader.onload = () => resolve(String(reader.result ?? ``));
+      reader.onerror = () => reject(reader.error ?? new Error(`read failed`));
       reader.readAsDataURL(file);
     });
 
@@ -689,7 +707,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const imageFiles: File[] = [];
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        if (it.kind === "file" && IMAGE_MIME_RE.test(it.type)) {
+        if (it.kind === `file` && IMAGE_MIME_RE.test(it.type)) {
           const f = it.getAsFile();
           if (f) imageFiles.push(f);
         }
@@ -712,17 +730,23 @@ export function TaskView({ taskId }: { taskId: string }) {
   );
 
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (e.dataTransfer?.types?.includes("Files")) e.preventDefault();
+    if (e.dataTransfer?.types?.includes(`Files`)) e.preventDefault();
   }, []);
 
   const approvePlan = useCallback(async () => {
-    if (working) throw new Error("セッションの完了を待ってください");
+    if (working) throw new Error(`セッションの完了を待ってください`);
     setSendError(null);
-    setAgent("build");
+    setAgent(`build`);
     stickRef.current = true;
-    await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: "build" });
+    await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: `build` });
   }, [working, stream]);
 
+  const intelligenceVariants = useMemo(() => {
+    if (!model) return [];
+    const modelMeta = providerModelsMap[model];
+    if (!modelMeta) return [];
+    return getIntelligenceVariants(modelMeta);
+  }, [model, providerModelsMap]);
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
   useEffect(() => {
@@ -733,6 +757,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const value = `${info.providerID}::${info.modelID}`;
       if (modelOptions.some((o) => o.value === value)) {
         setModel(value);
+        setIntelligence("");
         seededModelRef.current = true;
       }
       break;
@@ -1442,7 +1467,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                     {modelOptions.length > 0 && (
                       <GhostSelect
                         value={model}
-                        onChange={(e) => setModel(e.target.value)}
+                        onChange={(e) => {
+                          setModel(e.target.value);
+                          setIntelligence("");
+                        }}
                         disabled={!task.sessionId || working}
                         aria-label="モデル"
                         icon={<ModelSelectIcon model={model} />}
@@ -1466,6 +1494,18 @@ export function TaskView({ taskId }: { taskId: string }) {
                           ),
                         )}
                       </GhostSelect>
+                    )}
+                    {intelligenceVariants.length > 0 && (
+                      <IntelligenceSelect
+                        variants={intelligenceVariants}
+                        value={intelligence}
+                        onChange={(v) =>
+                          setIntelligence(
+                            v === "high" || v === "low" ? v : "",
+                          )
+                        }
+                        disabled={!task.sessionId || working}
+                      />
                     )}
                     {agents.length > 0 && (
                       <GhostSelect
