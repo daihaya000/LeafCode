@@ -20,6 +20,7 @@ import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { AttentionBadge } from "./AttentionBadge";
+import { useGlobalAttention } from "./GlobalAttentionProvider";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
 const EXPANDED_KEY = "webui.sidebar.expanded";
@@ -93,6 +94,7 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const costPrefs = useCostDisplayPrefs();
+  const { items: attentionItems } = useGlobalAttention();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsLoadError, setProjectsLoadError] = useState(false);
@@ -108,6 +110,15 @@ export function Sidebar({
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
     : null;
+  const questionSessionIds = useMemo(
+    () =>
+      new Set(
+        attentionItems
+          .filter((item) => item.kind === "question")
+          .map((item) => item.request.sessionID),
+      ),
+    [attentionItems],
+  );
 
   const refresh = useCallback(async () => {
     const [projectsResult, tasksResult] = await Promise.allSettled([
@@ -461,6 +472,9 @@ export function Sidebar({
                       ) : (
                         children.map((task) => {
                           const active = task.id === activeTaskId;
+                          const waitingForQuestion =
+                            task.sessionId !== null &&
+                            questionSessionIds.has(task.sessionId);
                           return (
                             <li key={task.id}>
                               <div
@@ -478,15 +492,29 @@ export function Sidebar({
                                 >
                                   <div className="flex items-center gap-1.5">
                                     <span
+                                      aria-label={
+                                        waitingForQuestion
+                                          ? "質問への回答待ち"
+                                          : `状態: ${task.status}`
+                                      }
                                       className={cx(
                                         "h-1.5 w-1.5 shrink-0 rounded-full",
-                                        task.status === "working" &&
+                                        waitingForQuestion && "bg-warning",
+                                        !waitingForQuestion &&
+                                          task.status === "working" &&
                                           "animate-pulse bg-working",
-                                        task.status === "ready" && "bg-success",
-                                        task.status === "merged" && "bg-success",
-                                        task.status === "error" && "bg-danger",
-                                        (task.status === "idle" ||
-                                          task.status === "unknown") &&
+                                        !waitingForQuestion &&
+                                          task.status === "ready" &&
+                                          "bg-success",
+                                        !waitingForQuestion &&
+                                          task.status === "merged" &&
+                                          "bg-success",
+                                        !waitingForQuestion &&
+                                          task.status === "error" &&
+                                          "bg-danger",
+                                        !waitingForQuestion &&
+                                          (task.status === "idle" ||
+                                            task.status === "unknown") &&
                                           "bg-faint",
                                       )}
                                     />

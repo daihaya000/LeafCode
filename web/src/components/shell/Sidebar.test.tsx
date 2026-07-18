@@ -2,7 +2,13 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
-const { getJson } = vi.hoisted(() => ({ getJson: vi.fn() }));
+const { getJson, attentionItems } = vi.hoisted(() => ({
+  getJson: vi.fn(),
+  attentionItems: [] as Array<{
+    kind: "question" | "permission";
+    request: { sessionID: string };
+  }>,
+}));
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -45,8 +51,13 @@ vi.mock("./AttentionBadge", () => ({
   AttentionBadge: () => null,
 }));
 
+vi.mock("./GlobalAttentionProvider", () => ({
+  useGlobalAttention: () => ({ items: attentionItems }),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
+    attentionItems.splice(0);
     usePathname.mockReturnValue("/");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") return Promise.resolve({ projects: [] });
@@ -166,5 +177,159 @@ describe("Sidebar", () => {
 
     await screen.findByText("Task title");
     expect(screen.queryByTitle("このセッションの累計コスト")).toBeNull();
+  });
+
+  it("shows a warning dot when the task session is waiting for a question answer", async () => {
+    attentionItems.push({
+      kind: "question",
+      request: { sessionID: "sess1" },
+    });
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Task title",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "working",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    expect(
+      (await screen.findByLabelText("質問への回答待ち")).className,
+    ).toContain("bg-warning");
+  });
+
+  it("does not mark a different session as waiting for a question answer", async () => {
+    attentionItems.push({
+      kind: "question",
+      request: { sessionID: "other" },
+    });
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Task title",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "working",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await screen.findByText("Task title");
+    expect(screen.queryByLabelText("質問への回答待ち")).toBeNull();
+  });
+
+  it("keeps the working color when the task has no pending question", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Task title",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "working",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const dot = await screen.findByLabelText("状態: working");
+    expect(dot.className).toContain("bg-working");
+    expect(dot.className).not.toContain("bg-warning");
   });
 });
