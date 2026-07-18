@@ -30,6 +30,7 @@ vi.mock("@/lib/plugins/state", () => ({
 describe("PluginHost", () => {
   beforeEach(() => {
     pathname = "/";
+    document.body.innerHTML = "";
   });
 
   it("renders enabled widgets in normal sidebar flow", async () => {
@@ -41,4 +42,14 @@ describe("PluginHost", () => {
     expect(host?.className).toContain("w-full");
     expect(host?.className).not.toMatch(/\bfixed\b|\bright-\d/);
   });
+
+  it.each(["/settings", "/settings/plugins"])(
+    "does not render widgets on %s",
+    (settingsPath) => {
+      pathname = settingsPath;
+      render(<PluginHost />);
+
+      expect(screen.queryByTestId("plugin-host")).toBeNull();
+    },
+  );
 });

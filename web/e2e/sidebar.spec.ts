@@ -72,10 +72,14 @@ test("renders enabled plugins below the sidebar add-project action without overf
 
   expect(pluginBox?.y).toBeGreaterThan(addBox?.y ?? 0);
   await expect(pluginHost).not.toHaveClass(/\bfixed\b/);
+  const sidebarBox = await sidebar.boundingBox();
+  if (!pluginBox || !sidebarBox) throw new Error("sidebar or plugin host is not measurable");
+  expect(pluginBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
+  expect(pluginBox.x + pluginBox.width).toBeLessThanOrEqual(
+    sidebarBox.x + sidebarBox.width,
+  );
   expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-    ),
+    await pluginHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
   ).toBe(true);
 });
 
@@ -100,6 +104,15 @@ test("keeps enabled plugins in the mobile sidebar drawer", async ({ page }) => {
 
   expect(pluginBox?.y).toBeGreaterThan(addBox?.y ?? 0);
   await expect(pluginHost).not.toHaveClass(/\bfixed\b/);
+  const sidebarBox = await sidebar.boundingBox();
+  if (!pluginBox || !sidebarBox) throw new Error("sidebar or plugin host is not measurable");
+  expect(pluginBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
+  expect(pluginBox.x + pluginBox.width).toBeLessThanOrEqual(
+    sidebarBox.x + sidebarBox.width,
+  );
+  expect(
+    await pluginHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
 });
 
 test("does not show the empty state before projects load", async ({ page }) => {
