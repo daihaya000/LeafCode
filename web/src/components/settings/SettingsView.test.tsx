@@ -67,6 +67,18 @@ function mockFetch() {
           { status: 200 },
         );
       }
+      if (url.includes("/api/opencode/agent")) {
+        return new Response(
+          JSON.stringify([
+            {
+              name: "a-explorer-openai-gpt-5",
+              mode: "subagent",
+              model: { providerID: "openai", modelID: "gpt-5" },
+            },
+          ]),
+          { status: 200 },
+        );
+      }
       return new Response("{}", { status: 404 });
     }),
   );
@@ -103,6 +115,16 @@ describe("SettingsView", () => {
     fireEvent.click(screen.getByRole("button", { name: "プラグイン" }));
 
     expect(await screen.findByTestId("plugin-settings")).toBeTruthy();
+    expect(screen.queryByText("エンジン")).toBeNull();
+  });
+
+  it("shows the エージェント tab and lists agents when selected", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("button", { name: "エージェント" }));
+
+    expect(await screen.findByRole("heading", { name: "Rank A" })).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
   });
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
+import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { PluginSettings } from "@/components/plugins/PluginSettings";
 import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
@@ -72,7 +73,7 @@ type AccessInfo = {
   }[];
 };
 
-type SettingsTab = "general" | "project" | "connectivity" | "plugins";
+type SettingsTab = "general" | "project" | "connectivity" | "plugins" | "agents";
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
@@ -331,6 +332,7 @@ export function SettingsView() {
     },
     { key: "connectivity", label: "接続" },
     { key: "plugins", label: "プラグイン" },
+    { key: "agents", label: "エージェント" },
   ];
 
   return (
@@ -762,6 +764,8 @@ export function SettingsView() {
             <PluginSettings />
           </section>
         )}
+
+        {activeTab === "agents" && <AgentsSettings />}
       </main>
     </div>
   );
