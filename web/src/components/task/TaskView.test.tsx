@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskSummary } from "@/lib/types";
 import { TaskView } from "./TaskView";
 
-const { getJson, useSessionStream } = vi.hoisted(() => ({
+const { getJson, notifyTasksChanged, useSessionStream } = vi.hoisted(() => ({
   getJson: vi.fn(),
+  notifyTasksChanged: vi.fn(),
   useSessionStream: vi.fn(),
 }));
 
@@ -21,6 +22,8 @@ vi.mock("@/lib/client", () => ({
   ocJson: vi.fn(),
   sendJson: vi.fn(),
 }));
+
+vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
 
 vi.mock("@/lib/currency", () => ({
   formatCost: (cost: number) => `$${cost.toFixed(4)}`,
@@ -94,6 +97,10 @@ describe("TaskView", () => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
     setVisible(true);
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
@@ -167,6 +174,19 @@ describe("TaskView", () => {
     expect(getJson).toHaveBeenCalledTimes(1);
   });
 
+  it("polls when the current task is idle but the session is busy", async () => {
+    taskStatus = "idle";
+    vi.useFakeTimers();
+    render(<TaskView taskId="ws1" />);
+
+    await flushTaskLoad();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(getJson).toHaveBeenCalledTimes(2);
+  });
+
   it("polls while the current session is retrying", async () => {
     taskStatus = "idle";
     useSessionStream.mockReturnValue({
@@ -182,6 +202,34 @@ describe("TaskView", () => {
     });
 
     expect(getJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("notifies task changes when the stream status type changes", async () => {
+    taskStatus = "idle";
+    vi.useFakeTimers();
+    const view = render(<TaskView taskId="ws1" />);
+
+    await flushTaskLoad();
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "retry" },
+    });
+    await act(async () => {
+      view.rerender(<TaskView taskId="ws1" />);
+    });
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(2);
+
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+    });
+    await act(async () => {
+      view.rerender(<TaskView taskId="ws1" />);
+    });
+
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(3);
   });
 
   it("refreshes immediately when a working task becomes visible", async () => {

@@ -547,7 +547,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     void refreshTask();
   }, [refreshTask]);
 
-  const hasActiveTask = task?.status === "working" || stream.status?.type === "retry";
+  const streamStatusType = stream.status?.type ?? null;
+  const hasActiveTask =
+    task?.status === "working" ||
+    streamStatusType === "busy" ||
+    streamStatusType === "retry";
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -566,8 +570,9 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // busy → idle transition: refresh diff + task stats
   const prevStatusRef = useRef<string | null>(null);
+  const refreshTodos = stream.refreshTodos;
   useEffect(() => {
-    const cur = stream.status?.type ?? null;
+    const cur = streamStatusType;
     const wasBusy =
       prevStatusRef.current === "busy" || prevStatusRef.current === "retry";
     const nowIdle = cur === "idle" || cur === null;
@@ -577,10 +582,21 @@ export function TaskView({ taskId }: { taskId: string }) {
       // The engine sometimes omits the final `todo.updated` SSE event when a
       // session transitions to idle, leaving the plan badge stuck on "進行中".
       // Reconcile the todo list from the server here.
-      void stream.refreshTodos();
+      void refreshTodos();
     }
     prevStatusRef.current = cur;
-  }, [stream.status, stream, refreshTask]);
+  }, [refreshTask, refreshTodos, streamStatusType]);
+
+  const prevNotifiedStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      streamStatusType !== null &&
+      prevNotifiedStatusRef.current !== streamStatusType
+    ) {
+      notifyTasksChanged();
+    }
+    prevNotifiedStatusRef.current = streamStatusType;
+  }, [streamStatusType]);
 
   // Refresh Diff when patch / edit tools land in the timeline
   const patchSignature = useMemo(() => {
