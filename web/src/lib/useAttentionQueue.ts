@@ -13,7 +13,13 @@ export type AttentionQueueAction =
   | { kind: "add"; item: AttentionItem }
   | { kind: "remove"; requestId: string }
   | { kind: "setActiveScope"; scope: AttentionScope | null }
-  | { kind: "setTasks"; tasks: TaskSummary[] };
+  | { kind: "setTasks"; tasks: TaskSummary[] }
+  | {
+      kind: "reconcileDirectory";
+      directory: string;
+      questions: AttentionItem[];
+      syncStartedAt: number;
+    };
 
 export function shouldQueueAttention(
   item: AttentionItem,
@@ -46,6 +52,18 @@ export function attentionQueueReducer(
         items: state.items.filter((item) => shouldQueueAttention(item, action.scope)),
       };
     }
+    case "reconcileDirectory": {
+      const restIds = new Set(action.questions.map((q) => q.request.id));
+      const kept = state.items.filter((item) => {
+        if (item.kind !== "question") return true;
+        if (item.directory !== action.directory) return true;
+        if (restIds.has(item.request.id)) return true;
+        return item.request.receivedAt > action.syncStartedAt;
+      });
+      const keptIds = new Set(kept.map((i) => i.request.id));
+      const additions = action.questions.filter((q) => !keptIds.has(q.request.id));
+      return { ...state, items: [...kept, ...additions] };
+    }
     case "setTasks":
       return { ...state, tasks: action.tasks };
     default:
@@ -69,6 +87,13 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
   const remove = useCallback((requestId: string) => {
     dispatch({ kind: "remove", requestId });
   }, []);
+
+  const reconcileDirectory = useCallback(
+    (directory: string, questions: AttentionItem[], syncStartedAt: number) => {
+      dispatch({ kind: "reconcileDirectory", directory, questions, syncStartedAt });
+    },
+    [],
+  );
 
   useEffect(() => {
     dispatch({ kind: "setActiveScope", scope: activeScope });
@@ -103,6 +128,7 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
     items: state.items,
     add,
     remove,
+    reconcileDirectory,
     refreshTasks,
     resolveTask,
   };

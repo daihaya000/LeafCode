@@ -21,7 +21,12 @@ function permissionItem(directory: string, sessionID: string, id: string): Atten
   };
 }
 
-function questionItem(directory: string, sessionID: string, id: string): AttentionItem {
+function questionItem(
+  directory: string,
+  sessionID: string,
+  id: string,
+  receivedAt = 1,
+): AttentionItem {
   return {
     kind: "question",
     directory,
@@ -30,7 +35,7 @@ function questionItem(directory: string, sessionID: string, id: string): Attenti
       version: "v1",
       sessionID,
       questions: [],
-      receivedAt: 1,
+      receivedAt,
     },
   };
 }
@@ -78,6 +83,67 @@ describe("attentionQueueReducer", () => {
     state = attentionQueueReducer(state, { kind: "add", item: permissionItem("/a", "s1", "p1") });
     state = attentionQueueReducer(state, { kind: "setActiveScope", scope: { directory: "/b", sessionId: "s2" } });
     expect(state.items).toHaveLength(1);
+  });
+
+  it("replaces target-directory questions with the sync result", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, { kind: "add", item: questionItem("/a", "s1", "q1", 1) });
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [questionItem("/a", "s1", "q2", 50)],
+      syncStartedAt: 10,
+    });
+    expect(state.items.map((i) => i.request.id)).toEqual(["q2"]);
+  });
+
+  it("keeps items in other directories during reconcile", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, { kind: "add", item: questionItem("/a", "s1", "q1", 1) });
+    state = attentionQueueReducer(state, { kind: "add", item: questionItem("/b", "s2", "q2", 1) });
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [],
+      syncStartedAt: 10,
+    });
+    expect(state.items.map((i) => i.request.id)).toEqual(["q2"]);
+  });
+
+  it("keeps questions added after sync started", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, { kind: "add", item: questionItem("/a", "s1", "q1", 20) });
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [],
+      syncStartedAt: 10,
+    });
+    expect(state.items.map((i) => i.request.id)).toEqual(["q1"]);
+  });
+
+  it("does not duplicate a question already present during reconcile", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, { kind: "add", item: questionItem("/a", "s1", "q1", 1) });
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [questionItem("/a", "s1", "q1", 99)],
+      syncStartedAt: 10,
+    });
+    expect(state.items).toHaveLength(1);
+  });
+
+  it("keeps permissions in the target directory during reconcile", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, { kind: "add", item: permissionItem("/a", "s1", "p1") });
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [],
+      syncStartedAt: 10,
+    });
+    expect(state.items.map((i) => i.request.id)).toEqual(["p1"]);
   });
 });
 
