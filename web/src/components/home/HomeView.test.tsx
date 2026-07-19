@@ -191,32 +191,40 @@ describe("HomeView image attachments", () => {
     expect(screen.getByRole("img", { name: "failed.png" })).toBeTruthy();
   });
 
-  it("keeps the composer toolbar as one flex row without fixed rem columns", async () => {
+  it("keeps the composer toolbar as two fixed rows (place + settings)", async () => {
     render(<HomeView />);
 
     const form = await screen.findByRole("form", { name: "タスク作成" });
     const toolbar = form.querySelector(":scope > div.px-3.pb-3");
     expect(toolbar).not.toBeNull();
     expect(toolbar?.className).toMatch(/\bflex\b/);
+    expect(toolbar?.className).toMatch(/\bflex-col\b/);
     expect(toolbar?.className).not.toMatch(/\bgrid\b/);
     expect(toolbar?.className).not.toContain("xl:grid-cols-");
-    expect(toolbar?.className).not.toContain("8rem_6rem_7rem_9rem");
+    expect(toolbar?.className).not.toMatch(/\bflex-wrap\b/);
 
-    const access = screen.getByLabelText("アクセスモード");
-    const accessWrap = access.closest("span");
+    const rows = toolbar?.querySelectorAll(":scope > div");
+    expect(rows?.length).toBe(2);
+
+    const row1 = rows![0];
+    const row2 = rows![1];
+    expect(row1.className).toMatch(/\bflex\b/);
+    expect(row1.className).toMatch(/justify-between/);
+    expect(row2.className).toMatch(/\bflex\b/);
+
+    // 1 段目: プロジェクト・作業場所・送信
+    expect(row1.contains(screen.getByLabelText("プロジェクト"))).toBe(true);
+    expect(row1.contains(screen.getByLabelText("作業場所"))).toBe(true);
+    expect(row1.contains(screen.getByRole("button", { name: "タスク開始" }))).toBe(
+      true,
+    );
+
+    // 2 段目: アクセスモード（モデル/知性/エージェントはモック次第で非表示可）
+    expect(row2.contains(screen.getByLabelText("アクセスモード"))).toBe(true);
+
+    const accessWrap = screen.getByLabelText("アクセスモード").closest("span");
     expect(accessWrap?.className).not.toContain("order-first");
     expect(accessWrap?.className).not.toContain("xl:order-none");
-
-    const project = screen.getByLabelText("プロジェクト");
-    const projectWrap = project.closest("span");
-    expect(projectWrap?.className).not.toContain("xl:min-w-40");
-    expect(projectWrap?.className).not.toContain("xl:max-w-44");
-
-    const isolation = screen.getByLabelText("作業場所");
-    const isolationWrap = isolation.closest("span");
-    expect(isolationWrap?.className).not.toContain("xl:min-w-32");
-    expect(isolationWrap?.className).not.toContain("xl:max-w-32");
-
-    expect(screen.getByRole("button", { name: "タスク開始" })).toBeTruthy();
+    expect(accessWrap?.className).not.toMatch(/max-w-\[/);
   });
 });
