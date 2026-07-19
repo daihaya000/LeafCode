@@ -63,7 +63,7 @@ import {
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
-import { formatCost, formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
+import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
   formatModelLabel,
@@ -87,6 +87,7 @@ import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
 import { GraphPanel } from "./GraphPanel";
+import { MessageMetaHeader } from "./MessageMetaHeader";
 import { PartView } from "./PartView";
 import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
@@ -280,6 +281,13 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const modelLabels = useMemo<Readonly<Record<string, string>>>(
+    () =>
+      Object.fromEntries(
+        modelOptions.map((option) => [option.value, option.label]),
+      ),
+    [modelOptions],
+  );
   const [modelCapabilities, setModelCapabilities] = useState<
     Record<string, { attachment?: boolean; image?: boolean }>
   >({});
@@ -1380,15 +1388,19 @@ export function TaskView({ taskId }: { taskId: string }) {
                         m.info.role === "user" ? "justify-end" : "justify-start",
                       )}
                     >
-                      {m.info.role === "assistant" && (
-                        <span className="inline-flex items-center gap-1">
-                          <Bot className="h-3 w-3" />
-                          {m.info.agent && m.info.agent.length > 0
-                            ? m.info.agent
-                            : "Assistant"}
-                        </span>
+                      {m.info.role === "assistant" ? (
+                        <MessageMetaHeader
+                          info={m.info}
+                          modelLabel={
+                            m.info.providerID && m.info.modelID
+                              ? modelLabels[`${m.info.providerID}::${m.info.modelID}`]
+                              : undefined
+                          }
+                          costPrefs={costPrefs}
+                        />
+                      ) : (
+                        messageTime && <span>{formatMessageTime(messageTime)}</span>
                       )}
-                      {messageTime && <span>{formatMessageTime(messageTime)}</span>}
                     </div>
                     {m.parts
                       .filter((p) => {
@@ -1408,6 +1420,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                         directory={task.directory}
                         rootSessionId={task.sessionId}
                         siblingTaskCallIds={siblingTaskCallIds}
+                        modelLabels={modelLabels}
+                        costPrefs={costPrefs}
                       />
                     ))}
                     {planPaths.get(m.info.id) && (
@@ -1436,14 +1450,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                         />
                       </div>
                     )}
-                    {m.info.role === "assistant" &&
-                      typeof m.info.cost === "number" &&
-                      m.info.cost > 0 && (
-                        <p className="break-all text-[10px] text-faint">
-                          {formatCost(m.info.cost, costPrefs)}
-                          {m.info.modelID ? ` · ${m.info.modelID}` : ""}
-                        </p>
-                      )}
                     {m.info.error?.data?.message && (
                       <p className="break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
                         {m.info.error.data.message}

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaskSummary } from "@/lib/types";
 import { TaskView } from "./TaskView";
@@ -26,7 +26,7 @@ vi.mock("@/lib/client", () => ({
 vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
 
 vi.mock("@/lib/currency", () => ({
-  formatCost: (cost: number) => `$${cost.toFixed(4)}`,
+  formatCost: (cost: number) => `cost $${cost.toFixed(4)}`,
   formatCostValue: (cost: number) => `$${cost.toFixed(4)}`,
   useCostDisplayPrefs: () => ({ currency: "USD", usdJpyRate: 150 }),
 }));
@@ -315,5 +315,65 @@ describe("TaskView", () => {
     });
 
     expect(screen.getByText("累計 $0.2000")).toBeTruthy();
+  });
+
+  it("consolidates assistant model and turn cost into the response header", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/opencode/provider")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              all: [{
+                id: "openai",
+                name: "OpenAI",
+                models: { "gpt-5.6-sol": { name: "GPT-5.6 Sol" } },
+              }],
+              connected: ["openai"],
+              default: { openai: "gpt-5.6-sol" },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      messages: [{
+        info: {
+          id: "assistant-1",
+          role: "assistant",
+          agent: "build",
+          providerID: "openai",
+          modelID: "gpt-5.6-sol",
+          cost: 0.25,
+          time: { created: 1 },
+        },
+        parts: [{ id: "text-1", type: "text", text: "回答" }],
+      }],
+      visibleMessages: [{
+        info: {
+          id: "assistant-1",
+          role: "assistant",
+          agent: "build",
+          providerID: "openai",
+          modelID: "gpt-5.6-sol",
+          cost: 0.25,
+          time: { created: 1 },
+        },
+        parts: [{ id: "text-1", type: "text", text: "回答" }],
+      }],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    // Scope to the response header (aria-label from Task 1's MessageMetaHeader):
+    // the model label also legitimately renders in the composer's model selector.
+    const header = await screen.findByLabelText("応答メタデータ");
+    await within(header).findByText("GPT-5.6 Sol");
+    expect(within(header).getByText("cost $0.2500")).toBeTruthy();
+    expect(screen.queryByText("build")).toBeNull();
+    expect(screen.getAllByText("cost $0.2500")).toHaveLength(1);
   });
 });

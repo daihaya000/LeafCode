@@ -19,6 +19,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cx } from "@/components/ui";
+import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
 import type { Part, ToolState } from "@/lib/types";
 import { Markdown } from "./Markdown";
@@ -169,6 +170,9 @@ const ToolPartView = memo(function ToolPartView({
   directory?: string | null;
   rootSessionId?: string | null;
   siblingTaskCallIds?: string[];
+  // Accepted for forward-compat; forwarded into NestedAgentPanel in Task 3.
+  modelLabels?: Readonly<Record<string, string>>;
+  costPrefs?: CostDisplayPrefs;
 }) {
   const state = part.state;
   const status = state?.status ?? "pending";
@@ -344,6 +348,8 @@ export const PartView = memo(function PartView({
   directory,
   rootSessionId,
   siblingTaskCallIds,
+  modelLabels,
+  costPrefs,
 }: {
   part: Part;
   role: "user" | "assistant";
@@ -351,6 +357,8 @@ export const PartView = memo(function PartView({
   directory?: string | null;
   rootSessionId?: string | null;
   siblingTaskCallIds?: string[];
+  modelLabels?: Readonly<Record<string, string>>;
+  costPrefs?: CostDisplayPrefs;
 }) {
   switch (part.type) {
     case "text": {
@@ -374,6 +382,8 @@ export const PartView = memo(function PartView({
           directory={directory}
           rootSessionId={rootSessionId}
           siblingTaskCallIds={siblingTaskCallIds}
+          modelLabels={modelLabels}
+          costPrefs={costPrefs}
         />
       );
     case "file": {
