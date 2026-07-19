@@ -52,8 +52,8 @@ export function providerSortKey(providerID: string): number {
 }
 
 /**
- * Higher score = smarter. Tuned for current frontier naming
- * (GPT-5.6 sol/terra/luna, Claude fable/opus/sonnet/haiku, etc.).
+ * Higher score = earlier in the dropdown. Tuned for preferred GPT order
+ * (Sol → Terra → Luna → 5.5) and Claude fable/opus/sonnet/haiku, etc.
  */
 export function modelIntelligenceScore(modelID: string): number {
   const id = modelID.toLowerCase().replaceAll("_", "-");
@@ -61,10 +61,11 @@ export function modelIntelligenceScore(modelID: string): number {
 
   if (/gpt-/.test(id)) {
     score += 400_000;
+    // Preferred order: Sol → Terra → Luna → 5.5 (and other non-codename GPT)
     if (/\bsol\b/.test(id)) score += 100_000;
-    else if (/\bterra\b/.test(id)) score += 40_000;
-    else if (/\bluna\b/.test(id)) score += 10_000;
-    else score += 80_000; // e.g. gpt-5.5 ≈ flagship of that line
+    else if (/\bterra\b/.test(id)) score += 80_000;
+    else if (/\bluna\b/.test(id)) score += 40_000;
+    else score += 10_000; // e.g. gpt-5.5 after the 5.6 codenames
   } else if (/claude-/.test(id)) {
     score += 400_000;
     if (id.includes("fable")) score += 120_000;

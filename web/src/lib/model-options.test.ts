@@ -60,12 +60,12 @@ describe("providerSortKey", () => {
 });
 
 describe("modelIntelligenceScore", () => {
-  it("ranks OpenAI models smartest-first", () => {
+  it("ranks OpenAI models Sol → Terra → Luna → 5.5", () => {
     const order = [
       "gpt-5.6-sol",
-      "gpt-5.5",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
+      "gpt-5.5",
     ];
     const scores = order.map(modelIntelligenceScore);
     for (let i = 0; i < scores.length - 1; i++) {
@@ -115,6 +115,16 @@ describe("sortModelOptions", () => {
         group: "OpenAI",
       },
       {
+        value: "openai::gpt-5.5",
+        label: "GPT-5.5",
+        group: "OpenAI",
+      },
+      {
+        value: "openai::gpt-5.6-terra",
+        label: "GPT-5.6 Terra",
+        group: "OpenAI",
+      },
+      {
         value: "anthropic::claude-haiku-4-5",
         label: "Claude Haiku 4.5",
         group: "Anthropic",
@@ -144,7 +154,9 @@ describe("sortModelOptions", () => {
     const sorted = sortModelOptions(input).map((o) => o.value);
     expect(sorted).toEqual([
       "openai::gpt-5.6-sol",
+      "openai::gpt-5.6-terra",
       "openai::gpt-5.6-luna",
+      "openai::gpt-5.5",
       "anthropic::claude-fable-5",
       "anthropic::claude-haiku-4-5",
       "ollama-cloud::deepseek-v4-pro",
