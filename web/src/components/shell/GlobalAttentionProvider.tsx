@@ -41,13 +41,16 @@ export function GlobalAttentionProvider({
   const openRef = useRef(open);
   openRef.current = open;
   const autoOpenedRef = useRef(false);
+  const previousItemCountRef = useRef(0);
 
   const setOpen = useCallback((next: boolean) => {
+    if (!next) autoOpenedRef.current = true;
     setOpenState(next);
   }, []);
 
   const openNext = useCallback(() => {
     if (items.length === 0) return;
+    autoOpenedRef.current = true;
     setOpenState(true);
   }, [items.length]);
 
@@ -56,25 +59,47 @@ export function GlobalAttentionProvider({
     notifyAttentionCountChanged();
   }, [items.length]);
 
-  // Auto-open the modal once when the queue becomes non-empty, unless:
-  // - already auto-opened
-  // - an input/textarea currently has focus
+  // Auto-open for new queue items. While the user is editing, defer until focus leaves.
   useEffect(() => {
+    const previousItemCount = previousItemCountRef.current;
+    previousItemCountRef.current = items.length;
     if (items.length === 0) {
       autoOpenedRef.current = false;
       return;
     }
+    if (items.length > previousItemCount) autoOpenedRef.current = false;
     if (autoOpenedRef.current) return;
-    const focused = document.activeElement;
-    if (
-      focused instanceof HTMLInputElement ||
-      focused instanceof HTMLTextAreaElement ||
-      focused?.getAttribute("contenteditable") === "true"
-    ) {
-      return;
-    }
-    autoOpenedRef.current = true;
-    setOpenState(true);
+
+    const hasEditingFocus = () => {
+      const focused = document.activeElement;
+      return (
+        focused instanceof HTMLInputElement ||
+        focused instanceof HTMLTextAreaElement ||
+        focused?.getAttribute("contenteditable") === "true"
+      );
+    };
+    const tryAutoOpen = () => {
+      if (autoOpenedRef.current || hasEditingFocus()) return false;
+      autoOpenedRef.current = true;
+      setOpenState(true);
+      return true;
+    };
+
+    if (tryAutoOpen()) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onFocusOut = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (tryAutoOpen()) window.removeEventListener("focusout", onFocusOut);
+      }, 0);
+    };
+    window.addEventListener("focusout", onFocusOut);
+    return () => {
+      window.removeEventListener("focusout", onFocusOut);
+      if (timer) clearTimeout(timer);
+    };
   }, [items.length]);
 
   // Global EventSource subscription
