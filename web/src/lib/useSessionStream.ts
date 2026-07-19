@@ -299,6 +299,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   );
   const sessionRef = useRef(sessionId);
   const scopeRef = useRef(scopeKey);
+  const resyncGenRef = useRef(0);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
 
@@ -310,7 +311,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     const sid = sessionRef.current;
     if (!directory || !sid) return;
     const requestedScope = `${directory}\u0000${sid}`;
-    const stale = () => scopeRef.current !== requestedScope;
+    const gen = ++resyncGenRef.current;
+    const stale = () =>
+      scopeRef.current !== requestedScope || gen !== resyncGenRef.current;
     try {
       const rows = await ocJson<MessageWithParts[]>(
         `/session/${sid}/message`,
@@ -543,7 +546,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
       if (type === "message.updated") {
         const info = props.info as MessageInfo | undefined;
-        if (info && info.sessionID === sid) {
+        const eventSession =
+          (props.sessionID as string | undefined) ?? info?.sessionID;
+        if (info && eventSession === sid) {
           dispatch({ kind: "messageUpdated", info });
         }
         return;
@@ -588,6 +593,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }
         return;
       }
+      if (type === "session.compacted") {
+        if (props.sessionID === sid) {
+          scheduleNextResync();
+        }
+        return;
+      }
       if (type === "session.error") {
         const err = props.error as { data?: { message?: string } } | undefined;
         // Only surface errors that clearly belong to this session.
@@ -625,6 +636,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         return;
       }
       if (type === "permission.replied" || type === "permission.v2.replied") {
+        if (props.sessionID && props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
         if (requestId) dispatch({ kind: "permissionReplied", requestId });
         return;
@@ -652,6 +664,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         type === "question.v2.replied" ||
         type === "question.v2.rejected"
       ) {
+        if (props.sessionID && props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
         if (requestId) dispatch({ kind: "questionReplied", requestId });
         return;
@@ -1028,7 +1041,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       method: "POST",
       timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
     });
-  }, [directory]);
+    // SSE may omit session.idle after abort; unlock composer immediately and
+    // reconcile from REST so we do not stay stuck in working/readOnly.
+    if (sessionRef.current === sid) {
+      dispatch({ kind: "status", status: { type: "idle" } });
+    }
+    await resync();
+  }, [directory, resync]);
 
   const replyPermission = useCallback(
     async (request: PermissionRequest, response: "once" | "always" | "reject") => {

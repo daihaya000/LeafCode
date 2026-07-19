@@ -316,6 +316,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
+  const [autoReplyFailedIds, setAutoReplyFailedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [cursor, setCursor] = useState(0);
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
@@ -430,20 +433,37 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const { permissions, replyPermission } = stream;
 
-  // フルアクセス: pending 権限を自動承認
+  // フルアクセス: pending 権限を自動承認（失敗時は手動カードへフォールバック）
   useEffect(() => {
     if (accessMode !== "full") {
       autoReplyIdsRef.current.clear();
+      setAutoReplyFailedIds(new Set());
       return;
     }
     for (const p of permissions) {
       if (autoReplyIdsRef.current.has(p.id)) continue;
+      if (autoReplyFailedIds.has(p.id)) continue;
       autoReplyIdsRef.current.add(p.id);
-      void replyPermission(p, "once").catch(() => {
-        autoReplyIdsRef.current.delete(p.id);
-      });
+      void replyPermission(p, "once")
+        .then(() => {
+          setAutoReplyFailedIds((prev) => {
+            if (!prev.has(p.id)) return prev;
+            const next = new Set(prev);
+            next.delete(p.id);
+            return next;
+          });
+        })
+        .catch(() => {
+          autoReplyIdsRef.current.delete(p.id);
+          setAutoReplyFailedIds((prev) => {
+            if (prev.has(p.id)) return prev;
+            const next = new Set(prev);
+            next.add(p.id);
+            return next;
+          });
+        });
     }
-  }, [accessMode, permissions, replyPermission]);
+  }, [accessMode, autoReplyFailedIds, permissions, replyPermission]);
 
   useEffect(() => {
     void (async () => {
@@ -1527,8 +1547,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </div>
                 );
                 })}
-                {accessMode === "ask" &&
-                  stream.permissions.map((p) => (
+                {(accessMode === "ask"
+                  ? stream.permissions
+                  : stream.permissions.filter((p) => autoReplyFailedIds.has(p.id))
+                ).map((p) => (
                   <PermissionCard
                     key={p.id}
                     request={p}
@@ -1536,9 +1558,15 @@ export function TaskView({ taskId }: { taskId: string }) {
                     onEnableFullAccess={() => changeAccessMode("full")}
                   />
                 ))}
-                {accessMode === "full" && stream.permissions.length > 0 && (
+                {accessMode === "full" &&
+                  stream.permissions.some((p) => !autoReplyFailedIds.has(p.id)) && (
                   <p className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
                     フルアクセス: 権限要求を自動承認中…
+                  </p>
+                )}
+                {accessMode === "full" && autoReplyFailedIds.size > 0 && (
+                  <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
+                    自動承認に失敗した権限があります。下のカードから手動で応答してください。
                   </p>
                 )}
                 {stream.questions.map((q) => (

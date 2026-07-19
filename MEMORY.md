@@ -1,5 +1,21 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド2
+
+### 追加修正
+1. **フルアクセス権限デッドロック**: 自動承認失敗時は PermissionCard をフォールバック表示
+2. **resync 競合**: `resyncGenRef` で古いレスポンスの `init` 上書きを防止
+3. **abort 後凍結**: abort 成功後に即 `idle` + `resync()` で composer 解除
+4. **session.compacted**: 未処理だったため debounced resync
+5. **permission/question replied**: sessionID 不一致は無視
+6. **message.updated**: `props.sessionID` フォールバック
+
+### 検証
+- 関連 Vitest + tsc OK
+- ループ `AGENT_LOOP_TICK_agent_debug` 継続中
+
+---
+
 ## 2026-07-20 エージェント会話パスの致命的バグ修正（ループ第1ラウンド）
 
 ### 対象
