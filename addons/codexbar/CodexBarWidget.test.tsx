@@ -57,3 +57,51 @@ describe("CodexBarWidget credits", () => {
     expect(screen.getByText("残高 $287.50")).not.toBeNull();
   });
 });
+
+describe("CodexBarWidget error collapse", () => {
+  beforeEach(() => {
+    localStorage.setItem("webui:addon:codexbar:collapsed", "0");
+    localStorage.removeItem("webui:addon:codexbar:providers");
+    getJson.mockReset();
+    getJson.mockImplementation((url: string) => {
+      if (url.endsWith("/tokens")) {
+        return Promise.resolve({ available: false });
+      }
+      return Promise.resolve({
+        available: true,
+        reason: null,
+        schema: "codexbar.usage-snapshot/v1",
+        generatedAt: null,
+        subscriptionTotalMonthlyUsd: null,
+        providers: [
+          {
+            id: "synthetic",
+            opencodeId: "synthetic",
+            plan: null,
+            planMonthlyUsd: null,
+            usedPercent: null,
+            limited: false,
+            maxed: false,
+            resetsAt: null,
+            updatedAt: null,
+            error: "API キーが未設定です",
+            windows: [],
+            credits: null,
+          },
+        ],
+      });
+    });
+  });
+
+  it("can collapse and expand an errored provider", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<CodexBarWidget />);
+
+    expect(await screen.findByText("API キーが未設定です")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Synthetic を最小化" }));
+    expect(screen.queryByText("API キーが未設定です")).toBeNull();
+    expect(screen.getByText("エラー")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Synthetic を展開" }));
+    expect(screen.getByText("API キーが未設定です")).not.toBeNull();
+  });
+});

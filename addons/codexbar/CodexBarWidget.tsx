@@ -261,7 +261,9 @@ function ProviderRow({
   const tone = usageTone(p);
   const resets = formatResetsIn(p.resetsAt, now);
   const hasWindows = p.windows.length > 0;
-  const canExpand = !p.error && (hasWindows || p.usedPercent !== null || p.credits !== null);
+  // Error detail is also expandable so long messages can be collapsed.
+  const canExpand =
+    !!p.error || hasWindows || p.usedPercent !== null || p.credits !== null;
   const label = providerLabel(p.id);
   const planBadge = formatPlanBadge(p.plan, p.planMonthlyUsd);
 
@@ -306,12 +308,14 @@ function ProviderRow({
           ))}
       </button>
 
-      {p.error ? (
+      {collapsed ? (
+        p.error ? null : (
+          <div className="pl-6">
+            <UsageBar tone={tone} percent={p.usedPercent} />
+          </div>
+        )
+      ) : p.error ? (
         <p className="pl-6 text-[10px] text-faint">{p.error}</p>
-      ) : collapsed ? (
-        <div className="pl-6">
-          <UsageBar tone={tone} percent={p.usedPercent} />
-        </div>
       ) : canExpand ? (
         <div className="flex flex-col gap-1.5 pl-6">
           {p.windows.map((w) => (
