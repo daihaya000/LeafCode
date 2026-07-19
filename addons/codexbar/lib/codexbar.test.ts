@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   clampPercent,
   emptyUsage,
+  formatMonthlyTotal,
+  formatMonthlyUsd,
+  formatPlanBadge,
   formatResetsIn,
   isStale,
   limitedCount,
@@ -100,6 +103,30 @@ describe("parseCodexBarSnapshot", () => {
     expect(u.providers[0].plan).toBe("Max");
     expect(u.providers[1].plan).toBeNull();
     expect(u.providers[2].plan).toBeNull();
+  });
+
+  it("parses planMonthlyUsd and subscriptionTotalMonthlyUsd", () => {
+    const u = parseCodexBarSnapshot({
+      subscriptionTotalMonthlyUsd: 100,
+      providers: [
+        { codexBarProviderId: "cursor", plan: "Pro", planMonthlyUsd: 20, usedPercent: 10 },
+        { codexBarProviderId: "claude", plan: "Team", planMonthlyUsd: 25, usedPercent: 10 },
+        { codexBarProviderId: "synthetic", plan: null, usedPercent: 0 },
+      ],
+    });
+    expect(u.subscriptionTotalMonthlyUsd).toBe(100);
+    expect(u.providers[0].planMonthlyUsd).toBe(20);
+    expect(u.providers[2].planMonthlyUsd).toBeNull();
+  });
+
+  it("sums planMonthlyUsd when root total is absent", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "cursor", planMonthlyUsd: 20 },
+        { codexBarProviderId: "ollama", planMonthlyUsd: 20 },
+      ],
+    });
+    expect(u.subscriptionTotalMonthlyUsd).toBe(40);
   });
 
   it("skips non-object provider entries", () => {
@@ -270,6 +297,7 @@ describe("providerLabel", () => {
   it("maps known ids and title-cases unknown ones", () => {
     expect(providerLabel("codex")).toBe("Codex");
     expect(providerLabel("opencode-go")).toBe("OpenCode");
+    expect(providerLabel("synthetic")).toBe("Synthetic");
     expect(providerLabel("mystery")).toBe("Mystery");
     expect(providerLabel("")).toBe("Unknown");
   });
@@ -280,6 +308,7 @@ describe("providerIconSrc", () => {
     expect(providerIconSrc("codex")).toBe("/addons/codexbar/codex.png");
     expect(providerIconSrc("opencode-go")).toBe("/addons/codexbar/opencode.png");
     expect(providerIconSrc("cursor")).toBe("/addons/codexbar/cursor.png");
+    expect(providerIconSrc("synthetic")).toBe("/addons/codexbar/synthetic.png");
     expect(providerIconSrc("mystery")).toBeNull();
     expect(providerIconSrc("")).toBeNull();
   });
@@ -294,8 +323,20 @@ describe("providerIconSrcForOpencodeId", () => {
     expect(providerIconSrcForOpencodeId("ollama")).toBe("/addons/codexbar/ollama.png");
     expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/addons/codexbar/ollama.png");
     expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/addons/codexbar/opencode.png");
+    expect(providerIconSrcForOpencodeId("synthetic")).toBe("/addons/codexbar/synthetic.png");
     expect(providerIconSrcForOpencodeId("mystery")).toBeNull();
     expect(providerIconSrcForOpencodeId("")).toBeNull();
+  });
+});
+
+describe("formatPlanBadge", () => {
+  it("appends monthly price when known", () => {
+    expect(formatPlanBadge("Pro", 20)).toBe("Pro · $20");
+    expect(formatPlanBadge("Team", 25)).toBe("Team · $25");
+    expect(formatPlanBadge("Pro", null)).toBe("Pro");
+    expect(formatPlanBadge(null, 20)).toBeNull();
+    expect(formatMonthlyUsd(20)).toBe("$20");
+    expect(formatMonthlyTotal(100)).toBe("$100/月");
   });
 });
 

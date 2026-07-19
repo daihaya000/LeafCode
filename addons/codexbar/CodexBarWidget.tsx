@@ -14,6 +14,8 @@ import { cx, timeAgo } from "@/components/ui";
 import { getJson } from "@/lib/client";
 import {
   clampPercent,
+  formatMonthlyTotal,
+  formatPlanBadge,
   formatResetsIn,
   isStale,
   limitedCount,
@@ -107,13 +109,27 @@ function saveProviderCollapsed(map: Record<string, boolean>) {
   }
 }
 
-function OverallRow({ percent }: { percent: number }) {
+function OverallRow({
+  percent,
+  subscriptionTotalMonthlyUsd,
+}: {
+  percent: number;
+  subscriptionTotalMonthlyUsd: number | null;
+}) {
   const tone = percentTone(percent);
   return (
     <div className="mb-2.5 border-b border-border pb-2.5">
-      <div className="flex items-center justify-between gap-2 text-xs">
+      <div className="flex items-center gap-2 text-xs">
         <span className="font-semibold text-text">全体</span>
-        <span className={cx("font-mono", textClass[tone])}>
+        {subscriptionTotalMonthlyUsd !== null && subscriptionTotalMonthlyUsd > 0 && (
+          <span
+            className="shrink-0 rounded border border-border bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-muted"
+            title="サブスク合計（公開定価の概算）"
+          >
+            {formatMonthlyTotal(subscriptionTotalMonthlyUsd)}
+          </span>
+        )}
+        <span className={cx("ml-auto font-mono", textClass[tone])}>
           {Math.round(percent)}%
         </span>
       </div>
@@ -247,6 +263,7 @@ function ProviderRow({
   const hasWindows = p.windows.length > 0;
   const canExpand = !p.error && (hasWindows || p.usedPercent !== null || p.credits !== null);
   const label = providerLabel(p.id);
+  const planBadge = formatPlanBadge(p.plan, p.planMonthlyUsd);
 
   return (
     <li className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2/40 p-2">
@@ -264,12 +281,12 @@ function ProviderRow({
       >
         <ProviderIcon id={p.id} tone={tone} />
         <span className="min-w-0 flex-1 truncate font-semibold text-text">{label}</span>
-        {p.plan && (
+        {planBadge && (
           <span
-            className="max-w-20 shrink truncate rounded border border-border bg-surface-3 px-1 text-[10px] font-medium text-muted"
-            title={`プラン: ${p.plan}`}
+            className="max-w-28 shrink truncate rounded border border-border bg-surface-3 px-1 text-[10px] font-medium text-muted"
+            title={`プラン: ${planBadge}`}
           >
-            {p.plan}
+            {planBadge}
           </span>
         )}
         {p.error ? (
@@ -474,7 +491,12 @@ export function CodexBarWidget() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
-        {usage?.available && overall !== null && <OverallRow percent={overall} />}
+        {usage?.available && overall !== null && (
+          <OverallRow
+            percent={overall}
+            subscriptionTotalMonthlyUsd={usage.subscriptionTotalMonthlyUsd}
+          />
+        )}
         {tokens?.available && tokens.totals.totalTokens > 0 && (
           <div
             className="mb-2.5 flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-2 py-1.5 text-[11px]"

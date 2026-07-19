@@ -25,11 +25,13 @@ export type CodexBarCredits = {
 };
 
 export type CodexBarProvider = {
-  /** codexBarProviderId (codex/claude/cursor/opencode-go/ollama), falls back to opencode id. */
+  /** codexBarProviderId (codex/claude/cursor/opencode-go/ollama/synthetic), falls back to opencode id. */
   id: string;
   opencodeId: string | null;
   /** Subscription/plan label (e.g. Pro/Max/Go), or null when unknown. */
   plan: string | null;
+  /** Approximate public list price USD/month for the plan, when known. */
+  planMonthlyUsd: number | null;
   /** Max usage percent across windows (0..100+), or null if unknown. */
   usedPercent: number | null;
   limited: boolean;
@@ -52,6 +54,8 @@ export type CodexBarUsage = {
   reason: string | null;
   schema: string | null;
   generatedAt: string | null;
+  /** Sum of known planMonthlyUsd across providers (from CodexBar export). */
+  subscriptionTotalMonthlyUsd: number | null;
   providers: CodexBarProvider[];
 };
 
@@ -61,6 +65,7 @@ export function emptyUsage(reason: string): CodexBarUsage {
     reason,
     schema: null,
     generatedAt: null,
+    subscriptionTotalMonthlyUsd: null,
     providers: [],
   };
 }
@@ -124,6 +129,7 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
         id: asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown",
         opencodeId: asString(p.opencodeProviderId),
         plan: asString(p.plan),
+        planMonthlyUsd: asNumber(p.planMonthlyUsd),
         usedPercent,
         limited,
         maxed,
@@ -135,11 +141,22 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
       };
     });
 
+  let subscriptionTotalMonthlyUsd = asNumber(obj.subscriptionTotalMonthlyUsd);
+  if (subscriptionTotalMonthlyUsd === null) {
+    const prices = providers
+      .map((p) => p.planMonthlyUsd)
+      .filter((v): v is number => v !== null);
+    if (prices.length > 0) {
+      subscriptionTotalMonthlyUsd = prices.reduce((a, b) => a + b, 0);
+    }
+  }
+
   return {
     available: true,
     reason: null,
     schema: asString(obj.schema),
     generatedAt: asString(obj.generatedAt),
+    subscriptionTotalMonthlyUsd,
     providers,
   };
 }
@@ -150,6 +167,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   cursor: "Cursor",
   "opencode-go": "OpenCode",
   ollama: "Ollama",
+  synthetic: "Synthetic",
 };
 
 export function providerLabel(id: string): string {
@@ -167,6 +185,7 @@ const PROVIDER_ICONS: Record<string, string> = {
   ollama: "ollama.png",
   "opencode-go": "opencode.png",
   opencode: "opencode.png",
+  synthetic: "synthetic.png",
 };
 
 /** Public path of a provider's icon, or null when there is no bundled icon. */
@@ -178,7 +197,7 @@ export function providerIconSrc(id: string): string | null {
 /**
  * Map an OpenCode provider id (e.g. "openai", "anthropic", "ollama",
  * "opencode-go") to the CodexBar brand icon key. CodexBar bundles a handful
- * of brand icons (codex/claude/cursor/ollama/opencode); OpenCode provider ids
+ * of brand icons (codex/claude/cursor/ollama/opencode/synthetic); OpenCode provider ids
  * are a superset, so we alias the common ones and fall back to null when no
  * matching brand icon exists.
  */
@@ -193,6 +212,7 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   "ollama-cloud": "ollama",
   "opencode-go": "opencode-go",
   opencode: "opencode",
+  synthetic: "synthetic",
 };
 
 /** Public path of a brand icon for an OpenCode provider id, or null. */
@@ -201,6 +221,30 @@ export function providerIconSrcForOpencodeId(
 ): string | null {
   const key = OPENCODE_TO_CODEXBAR[opencodeId];
   return key ? providerIconSrc(key) : null;
+}
+
+/** Format a whole-dollar monthly price like CodexBar (`$20` / `$100/月`). */
+export function formatMonthlyUsd(usd: number): string {
+  if (Math.abs(usd - Math.round(usd)) < 0.001) {
+    return `$${Math.round(usd)}`;
+  }
+  return `$${usd.toFixed(2)}`;
+}
+
+export function formatMonthlyTotal(usd: number): string {
+  return `${formatMonthlyUsd(usd)}/月`;
+}
+
+/** Plan badge text: `Pro · $20` when a price is known. */
+export function formatPlanBadge(
+  plan: string | null,
+  planMonthlyUsd: number | null,
+): string | null {
+  if (!plan) return null;
+  if (planMonthlyUsd !== null && planMonthlyUsd > 0) {
+    return `${plan} · ${formatMonthlyUsd(planMonthlyUsd)}`;
+  }
+  return plan;
 }
 
 export type UsageTone = "ok" | "warn" | "danger";

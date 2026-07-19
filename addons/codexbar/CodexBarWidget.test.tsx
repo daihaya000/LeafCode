@@ -23,11 +23,13 @@ describe("CodexBarWidget credits", () => {
         reason: null,
         schema: "codexbar.usage-snapshot/v1",
         generatedAt: null,
+        subscriptionTotalMonthlyUsd: 100,
         providers: [
           {
             id: "claude",
             opencodeId: "anthropic",
             plan: "Max",
+            planMonthlyUsd: 100,
             usedPercent: null,
             limited: false,
             maxed: false,
