@@ -23,6 +23,7 @@ import {
   providerLabel,
   usageTone,
   worstProvider,
+  type CodexBarCredits,
   type CodexBarProvider,
   type CodexBarUsage,
   type UsageTone,
@@ -172,6 +173,50 @@ function WindowRow({
   );
 }
 
+function formatCreditAmount(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function CreditsRow({ credits }: { credits: CodexBarCredits }) {
+  const percent =
+    credits.used !== null && credits.limit !== null && credits.limit > 0
+      ? (credits.used / credits.limit) * 100
+      : null;
+  const tone = percentTone(percent);
+  const amount =
+    credits.used !== null && credits.limit !== null
+      ? `${formatCreditAmount(credits.used)} / ${formatCreditAmount(credits.limit)}`
+      : credits.used !== null
+        ? formatCreditAmount(credits.used)
+        : credits.limit !== null
+          ? `上限 ${formatCreditAmount(credits.limit)}`
+          : null;
+
+  return (
+    <div className="flex flex-col gap-0.5 border-t border-border pt-1.5">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="truncate text-muted">
+          {credits.title ?? "利用クレジット"}
+        </span>
+        {amount && <span className="shrink-0 font-mono text-text">{amount}</span>}
+      </div>
+      {percent !== null && (
+        <>
+          <UsageBar tone={tone} percent={percent} />
+          <div className={cx("text-right text-[10px] font-mono", textClass[tone])}>
+            {Math.round(percent)}%
+          </div>
+        </>
+      )}
+      {credits.balance !== null && (
+        <div className="text-right text-[10px] text-faint">
+          残高 {formatCreditAmount(credits.balance)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProviderRow({
   p,
   now,
@@ -186,7 +231,7 @@ function ProviderRow({
   const tone = usageTone(p);
   const resets = formatResetsIn(p.resetsAt, now);
   const hasWindows = p.windows.length > 0;
-  const canExpand = !p.error && (hasWindows || p.usedPercent !== null);
+  const canExpand = !p.error && (hasWindows || p.usedPercent !== null || p.credits !== null);
   const label = providerLabel(p.id);
 
   return (
@@ -236,7 +281,7 @@ function ProviderRow({
         <div className="pl-6">
           <UsageBar tone={tone} percent={p.usedPercent} />
         </div>
-      ) : hasWindows ? (
+      ) : canExpand ? (
         <div className="flex flex-col gap-1.5 pl-6">
           {p.windows.map((w) => (
             <WindowRow
@@ -247,13 +292,21 @@ function ProviderRow({
               now={now}
             />
           ))}
+          {!hasWindows && p.usedPercent !== null && (
+            <div>
+              <UsageBar tone={tone} percent={p.usedPercent} />
+              {resets && (
+                <div className="text-right text-[10px] text-faint">
+                  リセット {resets}
+                </div>
+              )}
+            </div>
+          )}
+          {p.credits && <CreditsRow credits={p.credits} />}
         </div>
       ) : (
         <div className="pl-6">
           <UsageBar tone={tone} percent={p.usedPercent} />
-          {resets && (
-            <div className="text-right text-[10px] text-faint">リセット {resets}</div>
-          )}
         </div>
       )}
     </li>
