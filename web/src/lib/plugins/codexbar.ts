@@ -17,6 +17,13 @@ export type CodexBarWindow = {
   windowMinutes: number | null;
 };
 
+export type CodexBarCredits = {
+  title: string | null;
+  used: number | null;
+  limit: number | null;
+  balance: number | null;
+};
+
 export type CodexBarProvider = {
   /** codexBarProviderId (codex/claude/cursor/opencode-go/ollama), falls back to opencode id. */
   id: string;
@@ -35,6 +42,8 @@ export type CodexBarProvider = {
   error: string | null;
   /** Per-window detail (5時間/週間/…). Empty for older snapshots. */
   windows: CodexBarWindow[];
+  /** Optional monetary credit allowance, separate from rate-limit windows. */
+  credits: CodexBarCredits | null;
 };
 
 export type CodexBarUsage = {
@@ -101,6 +110,16 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
               windowMinutes: asNumber(w.windowMinutes),
             }))
         : [];
+      const creditValue = p.credits;
+      const credits: CodexBarCredits | null =
+        creditValue && typeof creditValue === "object" && !Array.isArray(creditValue)
+          ? {
+              title: asString((creditValue as Record<string, unknown>).title),
+              used: asNumber((creditValue as Record<string, unknown>).used),
+              limit: asNumber((creditValue as Record<string, unknown>).limit),
+              balance: asNumber((creditValue as Record<string, unknown>).balance),
+            }
+          : null;
       return {
         id: asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown",
         opencodeId: asString(p.opencodeProviderId),
@@ -112,6 +131,7 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
         updatedAt: asString(p.updatedAt),
         error: asString(p.error),
         windows,
+        credits,
       };
     });
 

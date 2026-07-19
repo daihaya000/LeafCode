@@ -149,6 +149,78 @@ describe("parseCodexBarSnapshot windows", () => {
   });
 });
 
+describe("parseCodexBarSnapshot credits", () => {
+  it("parses complete credit information", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        {
+          codexBarProviderId: "claude",
+          usedPercent: 10,
+          credits: {
+            title: "利用クレジット",
+            used: 12.5,
+            limit: 300,
+            balance: 287.5,
+          },
+        },
+      ],
+    });
+
+    expect(u.providers[0].credits).toEqual({
+      title: "利用クレジット",
+      used: 12.5,
+      limit: 300,
+      balance: 287.5,
+    });
+  });
+
+  it("normalizes missing and invalid credit fields independently", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "a", credits: { used: 4, limit: Number.NaN } },
+        { codexBarProviderId: "b", credits: { title: "", balance: Infinity } },
+        { codexBarProviderId: "c", credits: "invalid" },
+        { codexBarProviderId: "d", credits: [] },
+        { codexBarProviderId: "e" },
+      ],
+    });
+
+    expect(u.providers[0].credits).toEqual({
+      title: null,
+      used: 4,
+      limit: null,
+      balance: null,
+    });
+    expect(u.providers[1].credits).toEqual({
+      title: null,
+      used: null,
+      limit: null,
+      balance: null,
+    });
+    expect(u.providers.slice(2).map((provider) => provider.credits)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("keeps credits separate from rate-limit aggregates", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        {
+          codexBarProviderId: "claude",
+          usedPercent: 20,
+          credits: { used: 300, limit: 300, balance: 0 },
+        },
+      ],
+    });
+
+    expect(overallUsedPercent(u)).toBe(20);
+    expect(limitedCount(u)).toBe(0);
+    expect(u.providers[0]).toMatchObject({ limited: false, maxed: false });
+  });
+});
+
 describe("percentTone", () => {
   it("maps thresholds and null", () => {
     expect(percentTone(null)).toBe("ok");
