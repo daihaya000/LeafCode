@@ -109,17 +109,56 @@ export function formatCost(
  * Live cost-display prefs, kept in sync with Settings via
  * `COST_DISPLAY_EVENT` (fired by `writeCostDisplayPrefs`). Client-only:
  * returns `DEFAULT_COST_PREFS` during SSR/first paint.
+ *
+ * When `rateMode` is `"auto"`, fetches the daily USD/JPY rate once on mount
+ * and writes it back to prefs (failures are ignored).
  */
 export function useCostDisplayPrefs(): CostDisplayPrefs {
   const [prefs, setPrefs] = useState<CostDisplayPrefs>(DEFAULT_COST_PREFS);
   useEffect(() => {
+    let cancelled = false;
+
     setPrefs(readCostDisplayPrefs());
+
     const onPrefs = (e: Event) => {
       const detail = (e as CustomEvent<CostDisplayPrefs>).detail;
       setPrefs(sanitizeCostDisplayPrefs(detail));
     };
     window.addEventListener(COST_DISPLAY_EVENT, onPrefs);
-    return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
+
+    const current = readCostDisplayPrefs();
+    if (current.rateMode === "auto") {
+      fetch("/api/fx/usd-jpy", { cache: "no-store" })
+        .then(async (res) => {
+          if (cancelled || !res.ok) return;
+          const data = (await res.json()) as { rate?: unknown };
+          const rate =
+            typeof data.rate === "number"
+              ? data.rate
+              : typeof data.rate === "string"
+                ? Number(data.rate)
+                : Number.NaN;
+          if (!Number.isFinite(rate)) return;
+
+          const latest = readCostDisplayPrefs();
+          if (cancelled || latest.rateMode !== "auto") return;
+          if (Math.abs(latest.usdJpyRate - rate) < 1e-9) return;
+
+          writeCostDisplayPrefs({
+            ...latest,
+            rateMode: "auto",
+            usdJpyRate: rate,
+          });
+        })
+        .catch(() => {
+          /* keep existing prefs on FX failure */
+        });
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
+    };
   }, []);
   return prefs;
 }

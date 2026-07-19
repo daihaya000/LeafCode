@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   COST_DISPLAY_EVENT,
   DEFAULT_COST_PREFS,
@@ -99,6 +99,7 @@ describe("formatCostValue", () => {
 describe("useCostDisplayPrefs", () => {
   afterEach(() => {
     localStorage.clear();
+    vi.unstubAllGlobals();
   });
 
   it("reads prefs on mount and updates on COST_DISPLAY_EVENT", () => {
@@ -119,5 +120,53 @@ describe("useCostDisplayPrefs", () => {
       );
     });
     expect(result.current).toEqual(DEFAULT_COST_PREFS);
+  });
+
+  it("fetches daily rate when rateMode is auto and writes it back", async () => {
+    writeCostDisplayPrefs({
+      currency: "JPY",
+      rateMode: "auto",
+      usdJpyRate: 150,
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        rate: 157.32,
+        asOf: "2026-07-17",
+        source: "frankfurter",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useCostDisplayPrefs());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/fx/usd-jpy",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+    expect(result.current.usdJpyRate).toBe(157.32);
+    expect(result.current.rateMode).toBe("auto");
+  });
+
+  it("does not fetch when rateMode is manual", async () => {
+    writeCostDisplayPrefs({
+      currency: "JPY",
+      rateMode: "manual",
+      usdJpyRate: 130,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useCostDisplayPrefs());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.usdJpyRate).toBe(130);
   });
 });
