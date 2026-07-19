@@ -519,7 +519,9 @@ test("does not replace permission, question, or generic file parts with a Plan c
   await expect(page.getByRole("heading", { name: "Release Plan" })).toHaveCount(0);
   // Permission and question surfaces are untouched by Plan rendering.
   await expect(page.getByText("権限の承認が必要です")).toBeVisible();
-  await expect(page.getByText("確認事項")).toBeVisible();
+  await expect(
+    page.getByLabel("確認が必要です").getByText("確認事項"),
+  ).toBeVisible();
 });
 
 
