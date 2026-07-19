@@ -26,3 +26,17 @@ web/.playwright/
 
 # Superpowers agent scratch state
 .superpowers/
+
+# Internal AI agent working notes / session logs (not part of the shipped
+# program; excluded from public history on 2026-07-19). These files still
+# exist locally for the agent's own workflow but must not be tracked again.
+/MEMORY.md
+/LESSONS.md
+/architecture.md
+/docs/improvement-plan.md
+/docs/home-composer-redesign.md
+/docs/agent-guidance/
+/docs/superpowers/
+/prompts/build.md
+/.cursor/rules/
+/.claude/launch.json
