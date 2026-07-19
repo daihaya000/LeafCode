@@ -193,6 +193,10 @@ export function SettingsView() {
     if (rateMode === "auto") void refreshAutoRate();
   };
 
+  const setShowUsdSuffix = (showUsdSuffix: boolean) => {
+    applyCostPrefs({ ...costPrefs, showUsdSuffix });
+  };
+
   const commitRate = () => {
     const n = Number(rateDraft);
     const usdJpyRate = Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE;
@@ -608,9 +612,21 @@ export function SettingsView() {
                       currency: "JPY",
                       rateMode: costPrefs.rateMode,
                       usdJpyRate: Number(rateDraft) || costPrefs.usdJpyRate,
+                      showUsdSuffix: costPrefs.showUsdSuffix,
                     })}
                   </span>
                 </label>
+                {costPrefs.currency === "JPY" && (
+                  <label className="flex items-center gap-2 text-sm text-muted">
+                    <input
+                      type="checkbox"
+                      checked={costPrefs.showUsdSuffix}
+                      onChange={(e) => setShowUsdSuffix(e.target.checked)}
+                      className="h-4 w-4 shrink-0 accent-accent"
+                    />
+                    <span>USD ($) を併記</span>
+                  </label>
+                )}
                 {costPrefs.rateMode === "auto" && (
                   <p className="text-[11px] text-faint">
                     {fxStatus.kind === "loading" && "読み込み中…"}

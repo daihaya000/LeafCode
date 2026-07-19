@@ -131,7 +131,7 @@ describe("Sidebar", () => {
 
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    expect(await screen.findByText("· $0.1234")).toBeTruthy();
+    expect(await screen.findByText("· ¥18.5")).toBeTruthy();
   });
 
   it("refreshes a working task cost while the sidebar is visible", async () => {
@@ -181,12 +181,12 @@ describe("Sidebar", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("$0.1000");
+    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("¥15.0");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
-    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("$0.2000");
+    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("¥30.0");
   });
 
   it("omits the cost badge when the task has no known cost", async () => {

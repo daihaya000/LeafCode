@@ -13,6 +13,11 @@ export type CostDisplayPrefs = {
   rateMode: CostRateMode;
   /** Yen per 1 USD. Used only when currency is JPY. */
   usdJpyRate: number;
+  /**
+   * When currency is JPY, also append the USD amount in parentheses
+   * (e.g. `¥23.1（$0.1542）`). Defaults to false. Ignored for USD.
+   */
+  showUsdSuffix: boolean;
 };
 
 const STORAGE_KEY = "webui:cost-display";
@@ -25,6 +30,7 @@ export const DEFAULT_COST_PREFS: CostDisplayPrefs = {
   currency: "JPY",
   rateMode: "auto",
   usdJpyRate: DEFAULT_USD_JPY_RATE,
+  showUsdSuffix: false,
 };
 
 const MIN_RATE = 1;
@@ -52,6 +58,7 @@ export function sanitizeCostDisplayPrefs(raw: unknown): CostDisplayPrefs {
     currency,
     rateMode,
     usdJpyRate: clampUsdJpyRate(rate),
+    showUsdSuffix: obj.showUsdSuffix === true,
   };
 }
 
@@ -85,7 +92,7 @@ function formatYen(usd: number, usdJpyRate: number): string {
   return `¥${Math.round(yen).toLocaleString("ja-JP")}`;
 }
 
-/** Bare amount string (no "cost " label), e.g. `$0.1542` or `¥23.1（$0.1542）`. */
+/** Bare amount string (no "cost " label), e.g. `$0.1542` or `¥23.1` (`¥23.1（$0.1542）` when showUsdSuffix). */
 export function formatCostValue(
   usd: number,
   prefs: CostDisplayPrefs = DEFAULT_COST_PREFS,
@@ -93,7 +100,8 @@ export function formatCostValue(
   if (!Number.isFinite(usd) || usd <= 0) return "";
   const usdLabel = `$${usd.toFixed(4)}`;
   if (prefs.currency !== "JPY") return usdLabel;
-  return `${formatYen(usd, prefs.usdJpyRate)}（${usdLabel}）`;
+  const yenLabel = formatYen(usd, prefs.usdJpyRate);
+  return prefs.showUsdSuffix ? `${yenLabel}（${usdLabel}）` : yenLabel;
 }
 
 /** Format a USD cost for display according to prefs. */

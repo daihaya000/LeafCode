@@ -58,8 +58,8 @@ export function MessageMetaHeader({
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
   const fields = [
     model ? { key: "model", text: model } : null,
-    cost ? { key: "cost", text: cost } : null,
     time ? { key: "time", text: time } : null,
+    cost ? { key: "cost", text: cost } : null,
   ].filter((field): field is { key: string; text: string } => field !== null);
 
   if (fields.length === 0) return null;

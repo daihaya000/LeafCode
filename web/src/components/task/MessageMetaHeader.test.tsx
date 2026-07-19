@@ -11,7 +11,7 @@ vi.mock("@/lib/plugins/codexbar", () => ({
 afterEach(() => cleanup());
 
 describe("MessageMetaHeader", () => {
-  it("shows provider icon, resolved model label, cost, and time", () => {
+  it("shows provider icon, resolved model label, time, then cost (cost last, no USD suffix by default)", () => {
     render(
       <MessageMetaHeader
         info={{
@@ -29,10 +29,15 @@ describe("MessageMetaHeader", () => {
     expect(screen.getByText("GPT-5.6 Sol").getAttribute("title")).toBe(
       "GPT-5.6 Sol",
     );
-    expect(screen.getByText("cost ¥18.8（$0.1250）")).toBeTruthy();
-    expect(screen.getByLabelText("応答メタデータ").textContent).toContain(
-      "14:32",
-    );
+    // Default prefs → JPY without USD suffix.
+    expect(screen.getByText("cost ¥18.8")).toBeTruthy();
+    const meta = screen.getByLabelText("応答メタデータ");
+    expect(meta.textContent).toContain("14:32");
+    expect(meta.textContent).not.toContain("$0.1250");
+    // Cost renders after model and time (cost is last).
+    const text = meta.textContent ?? "";
+    expect(text.indexOf("GPT-5.6 Sol")).toBeLessThan(text.indexOf("14:32"));
+    expect(text.indexOf("14:32")).toBeLessThan(text.indexOf("cost ¥18.8"));
   });
 
   it("falls back to modelID and hides a zero cost without stray separators", () => {

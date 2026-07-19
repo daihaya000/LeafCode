@@ -78,7 +78,12 @@ describe("NestedAgentPanel", () => {
         active
         matchHint={hint}
         modelLabels={{ "anthropic::claude-sonnet-5": "Claude Sonnet 5" }}
-        costPrefs={{ currency: "USD", rateMode: "manual", usdJpyRate: 150 }}
+        costPrefs={{
+          currency: "USD",
+          rateMode: "manual",
+          usdJpyRate: 150,
+          showUsdSuffix: false,
+        }}
       />,
     );
     expect(await screen.findByText("子エージェント")).toBeTruthy();
