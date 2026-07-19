@@ -1,5 +1,21 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド3
+
+### 追加修正
+1. **resync 分離**: message 失敗でも permission/question 同期は実行
+2. **busy 中の init 抑止**: ストリーム中の REST 全置換によるテキスト巻き戻り防止
+3. **reconcileDirectory**: active-scope 項目を global queue に再投入しない
+4. **AttentionQueueModal**: 404 時もキューから除去
+5. **matchChildSession**: metadata.sessionID を sticky より優先
+6. **replied イベント**: sessionID 必須（欠落時は無視）
+
+### 検証
+- Vitest 41 PASS / tsc OK
+- ループ継続中（致命バグが無くなるまで）
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド2
 
 ### 追加修正

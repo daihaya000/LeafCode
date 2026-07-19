@@ -300,8 +300,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const sessionRef = useRef(sessionId);
   const scopeRef = useRef(scopeKey);
   const resyncGenRef = useRef(0);
+  const statusRef = useRef(state.status);
+  const loadedRef = useRef(state.loaded);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
+  statusRef.current = state.status;
+  loadedRef.current = state.loaded;
 
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
@@ -314,189 +318,212 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     const gen = ++resyncGenRef.current;
     const stale = () =>
       scopeRef.current !== requestedScope || gen !== resyncGenRef.current;
+
+    let messageError: unknown = null;
     try {
       const rows = await ocJson<MessageWithParts[]>(
         `/session/${sid}/message`,
         directory,
       );
       if (stale()) return;
-      dispatch({ kind: "init", messages: Array.isArray(rows) ? rows : [] });
+      // While streaming, a full REST replace can wipe in-flight session.next
+      // deltas that the server snapshot has not caught up to yet.
+      const streaming =
+        loadedRef.current &&
+        (statusRef.current?.type === "busy" ||
+          statusRef.current?.type === "retry");
+      if (!streaming) {
+        dispatch({ kind: "init", messages: Array.isArray(rows) ? rows : [] });
+      }
+    } catch (err) {
+      messageError = err;
+    }
+
+    try {
       const statuses = await ocJson<Record<string, SessionStatus>>(
         "/session/status",
         directory,
       );
       if (stale()) return;
       if (statuses[sid]) dispatch({ kind: "status", status: statuses[sid] });
+    } catch (err) {
+      if (!messageError) messageError = err;
+    }
 
+    try {
+      const session = await ocJson<{ revert?: SessionRevert | null }>(
+        `/session/${sid}`,
+        directory,
+      );
+      if (stale()) return;
+      dispatch({ kind: "revert", revert: session.revert ?? null });
+    } catch {
+      if (stale()) return;
+      dispatch({ kind: "revert", revert: null });
+    }
+
+    // Recover todos
+    try {
+      const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
+      if (stale()) return;
+      if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
+    } catch {
+      /* non-fatal */
+    }
+
+    // Recover pending permissions (v1 list + v2 session-scoped list).
+    // Always attempted even when message fetch failed, so answered cards clear.
+    try {
+      type PermRow = {
+        id?: string;
+        sessionID?: string;
+        permission?: string;
+        action?: string;
+        patterns?: string[];
+        resources?: string[];
+      };
+      const normalizeList = (pending: unknown): PermRow[] => {
+        if (Array.isArray(pending)) return pending as PermRow[];
+        if (
+          pending &&
+          typeof pending === "object" &&
+          Array.isArray((pending as { data?: unknown }).data)
+        ) {
+          return (pending as { data: PermRow[] }).data;
+        }
+        return [];
+      };
+      const toRequest = (
+        p: PermRow,
+        version: "v1" | "v2",
+      ): PermissionRequest | null => {
+        const id = String(p.id ?? "");
+        const sessionID = String(p.sessionID ?? sid);
+        if (!id || sessionID !== sid) return null;
+        return {
+          id,
+          version,
+          sessionID,
+          permission: String(p.permission ?? p.action ?? "permission"),
+          patterns: (p.patterns ?? p.resources ?? []) as string[],
+          receivedAt: Date.now(),
+        };
+      };
+      const v1raw = await ocJson<unknown>("/permission", directory).catch(
+        () => [],
+      );
+      let v2ok = false;
+      let v2raw: unknown = [];
       try {
-        const session = await ocJson<{ revert?: SessionRevert | null }>(
-          `/session/${sid}`,
+        v2raw = await ocJson<unknown>(
+          `/api/session/${sid}/permission`,
           directory,
         );
-        if (stale()) return;
-        dispatch({ kind: "revert", revert: session.revert ?? null });
+        v2ok = true;
       } catch {
-        if (stale()) return;
-        dispatch({ kind: "revert", revert: null });
+        v2ok = false;
       }
-
-      // Recover todos
-      try {
-        const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
-        if (stale()) return;
-        if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
-      } catch {
-        /* non-fatal */
-      }
-
-      // Recover pending permissions (v1 list + v2 session-scoped list).
-      try {
-        type PermRow = {
-          id?: string;
-          sessionID?: string;
-          permission?: string;
-          action?: string;
-          patterns?: string[];
-          resources?: string[];
-        };
-        const normalizeList = (pending: unknown): PermRow[] => {
-          if (Array.isArray(pending)) return pending as PermRow[];
-          if (
-            pending &&
-            typeof pending === "object" &&
-            Array.isArray((pending as { data?: unknown }).data)
-          ) {
-            return (pending as { data: PermRow[] }).data;
-          }
-          return [];
-        };
-        const toRequest = (
-          p: PermRow,
-          version: "v1" | "v2",
-        ): PermissionRequest | null => {
-          const id = String(p.id ?? "");
-          const sessionID = String(p.sessionID ?? sid);
-          if (!id || sessionID !== sid) return null;
-          return {
-            id,
-            version,
-            sessionID,
-            permission: String(p.permission ?? p.action ?? "permission"),
-            patterns: (p.patterns ?? p.resources ?? []) as string[],
-            receivedAt: Date.now(),
-          };
-        };
-        const v1raw = await ocJson<unknown>("/permission", directory).catch(
-          () => [],
-        );
-        let v2ok = false;
-        let v2raw: unknown = [];
-        try {
-          v2raw = await ocJson<unknown>(
-            `/api/session/${sid}/permission`,
-            directory,
-          );
-          v2ok = true;
-        } catch {
-          v2ok = false;
-        }
-        if (stale()) return;
-        const byId = new Map<string, PermissionRequest>();
-        for (const p of normalizeList(v1raw)) {
-          const req = toRequest(p, "v1");
-          if (req) byId.set(req.id, req);
-        }
-        if (v2ok) {
-          for (const p of normalizeList(v2raw)) {
-            const req = toRequest(p, "v2");
-            if (req) byId.set(req.id, req);
-          }
-        }
-        dispatch({
-          kind: "permissionsSynced",
-          requests: [...byId.values()],
-          keepLocalV2: !v2ok,
-        });
-      } catch {
-        /* non-fatal */
-      }
-
-      // Recover pending questions (v1 + v2). Same merge rationale as permissions.
-      try {
-        type QRow = {
-          id?: string;
-          sessionID?: string;
-          questions?: QuestionInfo[];
-        };
-        const normalizeList = (pending: unknown): QRow[] => {
-          if (Array.isArray(pending)) return pending as QRow[];
-          if (
-            pending &&
-            typeof pending === "object" &&
-            Array.isArray((pending as { data?: unknown }).data)
-          ) {
-            return (pending as { data: QRow[] }).data;
-          }
-          return [];
-        };
-        const toRequest = (
-          q: QRow,
-          version: "v1" | "v2",
-        ): QuestionRequest | null => {
-          const id = String(q.id ?? "");
-          const sessionID = String(q.sessionID ?? sid);
-          if (!id || sessionID !== sid) return null;
-          return {
-            id,
-            version,
-            sessionID,
-            questions: q.questions ?? [],
-            receivedAt: Date.now(),
-          };
-        };
-        const v1raw = await ocJson<unknown>("/question", directory).catch(
-          () => [],
-        );
-        let v2ok = false;
-        let v2raw: unknown = [];
-        try {
-          v2raw = await ocJson<unknown>(
-            `/api/session/${sid}/question`,
-            directory,
-          );
-          v2ok = true;
-        } catch {
-          v2ok = false;
-        }
-        if (stale()) return;
-        const byId = new Map<string, QuestionRequest>();
-        for (const q of normalizeList(v1raw)) {
-          const req = toRequest(q, "v1");
-          if (req) byId.set(req.id, req);
-        }
-        if (v2ok) {
-          for (const q of normalizeList(v2raw)) {
-            const req = toRequest(q, "v2");
-            if (req) byId.set(req.id, req);
-          }
-        }
-        dispatch({
-          kind: "questionsSynced",
-          requests: [...byId.values()],
-          keepLocalV2: !v2ok,
-        });
-      } catch {
-        /* non-fatal: SSE will deliver question.asked */
-      }
-
-      if (!stale()) dispatch({ kind: "sessionError", message: null });
-    } catch (err) {
       if (stale()) return;
+      const byId = new Map<string, PermissionRequest>();
+      for (const p of normalizeList(v1raw)) {
+        const req = toRequest(p, "v1");
+        if (req) byId.set(req.id, req);
+      }
+      if (v2ok) {
+        for (const p of normalizeList(v2raw)) {
+          const req = toRequest(p, "v2");
+          if (req) byId.set(req.id, req);
+        }
+      }
+      dispatch({
+        kind: "permissionsSynced",
+        requests: [...byId.values()],
+        keepLocalV2: !v2ok,
+      });
+    } catch {
+      /* non-fatal */
+    }
+
+    // Recover pending questions (v1 + v2). Same merge rationale as permissions.
+    try {
+      type QRow = {
+        id?: string;
+        sessionID?: string;
+        questions?: QuestionInfo[];
+      };
+      const normalizeList = (pending: unknown): QRow[] => {
+        if (Array.isArray(pending)) return pending as QRow[];
+        if (
+          pending &&
+          typeof pending === "object" &&
+          Array.isArray((pending as { data?: unknown }).data)
+        ) {
+          return (pending as { data: QRow[] }).data;
+        }
+        return [];
+      };
+      const toRequest = (
+        q: QRow,
+        version: "v1" | "v2",
+      ): QuestionRequest | null => {
+        const id = String(q.id ?? "");
+        const sessionID = String(q.sessionID ?? sid);
+        if (!id || sessionID !== sid) return null;
+        return {
+          id,
+          version,
+          sessionID,
+          questions: q.questions ?? [],
+          receivedAt: Date.now(),
+        };
+      };
+      const v1raw = await ocJson<unknown>("/question", directory).catch(
+        () => [],
+      );
+      let v2ok = false;
+      let v2raw: unknown = [];
+      try {
+        v2raw = await ocJson<unknown>(
+          `/api/session/${sid}/question`,
+          directory,
+        );
+        v2ok = true;
+      } catch {
+        v2ok = false;
+      }
+      if (stale()) return;
+      const byId = new Map<string, QuestionRequest>();
+      for (const q of normalizeList(v1raw)) {
+        const req = toRequest(q, "v1");
+        if (req) byId.set(req.id, req);
+      }
+      if (v2ok) {
+        for (const q of normalizeList(v2raw)) {
+          const req = toRequest(q, "v2");
+          if (req) byId.set(req.id, req);
+        }
+      }
+      dispatch({
+        kind: "questionsSynced",
+        requests: [...byId.values()],
+        keepLocalV2: !v2ok,
+      });
+    } catch {
+      /* non-fatal: SSE will deliver question.asked */
+    }
+
+    if (stale()) return;
+    if (messageError) {
       dispatch({
         kind: "sessionError",
-        message: err instanceof Error ? err.message : "読み込みに失敗しました",
+        message:
+          messageError instanceof Error
+            ? messageError.message
+            : "読み込みに失敗しました",
       });
+      return;
     }
+    dispatch({ kind: "sessionError", message: null });
   }, [directory]);
 
   useEffect(() => {
@@ -636,7 +663,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         return;
       }
       if (type === "permission.replied" || type === "permission.v2.replied") {
-        if (props.sessionID && props.sessionID !== sid) return;
+        if (!props.sessionID || props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
         if (requestId) dispatch({ kind: "permissionReplied", requestId });
         return;
@@ -664,7 +691,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         type === "question.v2.replied" ||
         type === "question.v2.rejected"
       ) {
-        if (props.sessionID && props.sessionID !== sid) return;
+        if (!props.sessionID || props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
         if (requestId) dispatch({ kind: "questionReplied", requestId });
         return;

@@ -20,6 +20,7 @@ export type AttentionQueueAction =
       questions?: AttentionItem[];
       permissions?: AttentionItem[];
       syncStartedAt: number;
+      activeScope?: AttentionScope | null;
     };
 
 export function shouldQueueAttention(
@@ -82,7 +83,11 @@ export function attentionQueueReducer(
       const additions = [
         ...(action.questions ?? []),
         ...(action.permissions ?? []),
-      ].filter((item) => !keptIds.has(item.request.id));
+      ].filter(
+        (item) =>
+          !keptIds.has(item.request.id) &&
+          shouldQueueAttention(item, action.activeScope ?? null),
+      );
       return { ...state, items: [...kept, ...additions] };
     }
     case "setTasks":
@@ -122,6 +127,7 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
         questions,
         permissions,
         syncStartedAt,
+        activeScope: scopeRef.current,
       });
     },
     [],

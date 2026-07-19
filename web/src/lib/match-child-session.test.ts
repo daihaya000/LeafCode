@@ -66,6 +66,20 @@ describe("matchChildSession", () => {
     ).toBe("c-aaa");
   });
 
+  it("prefers explicit metadata over sticky id", () => {
+    expect(
+      matchChildSession(
+        children,
+        {
+          callID: "t1",
+          siblingTaskCallIds: ["t1", "t2"],
+          metadata: { sessionID: "c-bbb" },
+        },
+        "c-aaa",
+      ),
+    ).toBe("c-bbb");
+  });
+
   it("matches explicit metadata session id", () => {
     expect(
       matchChildSession(children, {

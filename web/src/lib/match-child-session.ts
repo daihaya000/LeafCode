@@ -93,10 +93,11 @@ export function matchChildSession(
 
   const byId = new Map(children.map((c) => [c.id, c]));
 
-  if (stickyId && byId.has(stickyId)) return stickyId;
-
+  // Explicit metadata from the tool part always wins over a sticky guess.
   const explicit = extractSessionIdFromMetadata(hint.metadata ?? null);
   if (explicit && byId.has(explicit)) return explicit;
+
+  if (stickyId && byId.has(stickyId)) return stickyId;
 
   const title = hintTitle(hint.input ?? null);
   if (title) {

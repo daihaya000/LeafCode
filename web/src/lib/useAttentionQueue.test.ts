@@ -145,6 +145,18 @@ describe("attentionQueueReducer", () => {
     });
     expect(state.items.map((i) => i.request.id)).toEqual(["p1"]);
   });
+  it("does not re-queue active-scope items during reconcile", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [questionItem("/a", "s1", "q1", 50)],
+      permissions: [permissionItem("/a", "s1", "p1")],
+      syncStartedAt: 10,
+      activeScope: { directory: "/a", sessionId: "s1" },
+    });
+    expect(state.items).toEqual([]);
+  });
 });
 
 describe("shouldQueueAttention", () => {

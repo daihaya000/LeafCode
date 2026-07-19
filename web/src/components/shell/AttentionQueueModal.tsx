@@ -11,7 +11,7 @@ import { HelpCircle, ShieldAlert, X } from "lucide-react";
 import { PermissionCard } from "@/components/task/PermissionCard";
 import { QuestionCard } from "@/components/task/QuestionCard";
 import { Button, cx } from "@/components/ui";
-import { ocJson } from "@/lib/client";
+import { ApiError, ocJson } from "@/lib/client";
 import { replyPath, rejectPath, type AttentionItem } from "@/lib/attention";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
@@ -86,6 +86,14 @@ export function AttentionQueueModal() {
         await fn();
         remove(item.request.id);
       } catch (err) {
+        // Already answered elsewhere (e.g. TaskView) — drop from queue.
+        if (
+          (err instanceof ApiError && err.status === 404) ||
+          (err instanceof Error && /404/.test(err.message))
+        ) {
+          remove(item.request.id);
+          return;
+        }
         setError(err instanceof Error ? err.message : "応答に失敗しました");
       } finally {
         setBusy(false);
