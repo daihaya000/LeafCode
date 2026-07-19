@@ -1,5 +1,16 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド8
+
+### 追加修正
+1. **stale idle 抑止**: SSE が busy のとき REST の idle で status を上書きしない（二重送信防止）
+2. **回答済み ID 抑制**: resync / reconcile で locally replied な permission/question を再投入しない
+
+### 検証
+- Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド7
 
 ### 追加修正

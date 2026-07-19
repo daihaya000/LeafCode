@@ -116,7 +116,14 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
     dispatch({ kind: "add", item });
   }, []);
 
+  const recentlyRemovedRef = useRef<Map<string, number>>(new Map());
+
   const remove = useCallback((requestId: string, sessionID?: string) => {
+    const now = Date.now();
+    recentlyRemovedRef.current.set(requestId, now);
+    for (const [id, at] of recentlyRemovedRef.current) {
+      if (now - at > 60_000) recentlyRemovedRef.current.delete(id);
+    }
     dispatch({ kind: "remove", requestId, sessionID });
   }, []);
 
@@ -127,11 +134,24 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
       syncStartedAt: number,
       permissions?: AttentionItem[],
     ) => {
+      const now = Date.now();
+      const drop = (items: AttentionItem[] | undefined) => {
+        if (!items) return items;
+        return items.filter((item) => {
+          const at = recentlyRemovedRef.current.get(item.request.id);
+          if (at === undefined) return true;
+          if (now - at > 60_000) {
+            recentlyRemovedRef.current.delete(item.request.id);
+            return true;
+          }
+          return false;
+        });
+      };
       dispatch({
         kind: "reconcileDirectory",
         directory,
-        questions,
-        permissions,
+        questions: drop(questions),
+        permissions: drop(permissions),
         syncStartedAt,
         activeScope: scopeRef.current,
       });

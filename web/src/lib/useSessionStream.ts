@@ -314,9 +314,32 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const scopeRef = useRef(scopeKey);
   const resyncGenRef = useRef(0);
   const statusRef = useRef(state.status);
+  /** Ids replied locally while a resync was in flight — drop from REST snapshots. */
+  const recentlyRepliedIdsRef = useRef<Map<string, number>>(new Map());
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
   statusRef.current = state.status;
+
+  const rememberReplied = useCallback((requestId: string) => {
+    const now = Date.now();
+    recentlyRepliedIdsRef.current.set(requestId, now);
+    for (const [id, at] of recentlyRepliedIdsRef.current) {
+      if (now - at > 60_000) recentlyRepliedIdsRef.current.delete(id);
+    }
+  }, []);
+
+  const dropRecentlyReplied = useCallback(<T extends { id: string }>(rows: T[]): T[] => {
+    const now = Date.now();
+    return rows.filter((r) => {
+      const at = recentlyRepliedIdsRef.current.get(r.id);
+      if (at === undefined) return true;
+      if (now - at > 60_000) {
+        recentlyRepliedIdsRef.current.delete(r.id);
+        return true;
+      }
+      return false;
+    });
+  }, []);
 
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
@@ -358,7 +381,16 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         directory,
       );
       if (stale()) return;
-      if (statuses[sid]) dispatch({ kind: "status", status: statuses[sid] });
+      if (statuses[sid]) {
+        const next = statuses[sid]!;
+        const cur = statusRef.current?.type;
+        // Same race as message init: REST can still report idle after SSE busy.
+        const staleIdle =
+          (cur === "busy" || cur === "retry") && next.type === "idle";
+        if (!staleIdle) {
+          dispatch({ kind: "status", status: next });
+        }
+      }
     } catch (err) {
       if (!messageError) messageError = err;
     }
@@ -450,7 +482,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       dispatch({
         kind: "permissionsSynced",
-        requests: [...byId.values()],
+        requests: dropRecentlyReplied([...byId.values()]),
         keepLocalV2: !v2ok,
         syncStartedAt,
       });
@@ -519,7 +551,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       dispatch({
         kind: "questionsSynced",
-        requests: [...byId.values()],
+        requests: dropRecentlyReplied([...byId.values()]),
         keepLocalV2: !v2ok,
         syncStartedAt,
       });
@@ -539,7 +571,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       return;
     }
     dispatch({ kind: "sessionError", message: null });
-  }, [directory]);
+  }, [directory, dropRecentlyReplied]);
 
   useEffect(() => {
     if (!directory || !sessionId) return;
@@ -1192,9 +1224,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         // 404 = already answered elsewhere; drop it from the queue either way
         if (!(err instanceof Error && /404/.test(err.message))) throw err;
       }
+      rememberReplied(request.id);
       dispatch({ kind: "permissionReplied", requestId: request.id });
     },
-    [directory],
+    [directory, rememberReplied],
   );
 
   const replyQuestion = useCallback(
@@ -1216,9 +1249,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       } catch (err) {
         if (!(err instanceof Error && /404/.test(err.message))) throw err;
       }
+      rememberReplied(request.id);
       dispatch({ kind: "questionReplied", requestId: request.id });
     },
-    [directory],
+    [directory, rememberReplied],
   );
 
   const rejectQuestion = useCallback(
@@ -1239,9 +1273,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       } catch (err) {
         if (!(err instanceof Error && /404/.test(err.message))) throw err;
       }
+      rememberReplied(request.id);
       dispatch({ kind: "questionReplied", requestId: request.id });
     },
-    [directory],
+    [directory, rememberReplied],
   );
 
   // Effects reset the reducer after a scope change. Gate the render as well so
