@@ -24,10 +24,9 @@ node src\index.js
 
 | 文書 | 役割 |
 |------|------|
-| [`architecture.md`](./architecture.md) | 企画・アーキテクチャ |
-| [`docs/improvement-plan.md`](./docs/improvement-plan.md) | 改善・開発計画（UI/UX を Codex に寄せる） |
-| [`MEMORY.md`](./MEMORY.md) | 実装状況メモ |
 | [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
+
+企画・アーキテクチャや開発途中の計画・作業メモは非公開のローカル文書として管理しており、本リポジトリには含まれません。
 
 ## 構成
 
@@ -45,7 +44,7 @@ node src\index.js
 | 1 | worktree / Diff / orphan / SessionBinding |
 | 2 | Commit / Merge / PR(`gh` 任意) |
 | 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
-| UI-0〜4 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ / モバイル / ⌘K）※ [docs/improvement-plan.md](./docs/improvement-plan.md) |
+| UI-0〜4 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ / モバイル / ⌘K） |
 | R | リモート: トレイ管理の Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`）|
 
 ## 最短フロー
@@ -83,7 +82,7 @@ scripts\allow-firewall-8443.bat
 ```
 
 - アクセス URL: `https://localhost:8443` / `https://<LAN もしくは VPN の IP>:8443`
-- **アクセスする名前/IP は `deploy/Caddyfile` の site 行に列挙**してください（列挙した名前にだけ証明書が発行されます）。既定は `localhost, 127.0.0.1, 192.168.0.102`。LAN IP が変わる場合は DHCP 予約推奨。
+- **アクセスする名前/IP は `deploy/Caddyfile` の site 行に列挙**してください（列挙した名前にだけ証明書が発行されます）。既定は `localhost, 127.0.0.1` に加えて、ご自身の環境のLAN IP（例: `192.168.1.100`）を追記します。LAN IP が変わる場合は DHCP 予約推奨。
 - スマホは警告なしにするには CA(`%APPDATA%\Caddy\pki\authorities\local\root.crt`)を端末へインストール。未インストールでも「警告を無視して続行」で利用可（ただし PWA/Service Worker は信頼済み証明書が必要）。
 - 公開ドメインがある場合は Caddyfile の Let's Encrypt ブロック（コメント）を使うと、全端末で警告なしの正規 TLS になります（80/443 到達性 + DNS 必須）。
 - HTTP(:8080) に戻したい場合は Caddyfile の該当ブロックのコメントを解除してください。
