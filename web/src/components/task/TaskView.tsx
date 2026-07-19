@@ -628,9 +628,10 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () => clearInterval(poll);
   }, [hasActiveTask, pageVisible, refreshTask]);
 
-  // busy → idle transition: refresh diff + task stats
+  // busy → idle transition: refresh diff + task stats + full message resync
   const prevStatusRef = useRef<string | null | undefined>(null);
   const refreshTodos = stream.refreshTodos;
+  const resync = stream.resync;
   useEffect(() => {
     const cur = streamStatusType;
     const wasBusy =
@@ -643,9 +644,11 @@ export function TaskView({ taskId }: { taskId: string }) {
       // session transitions to idle, leaving the plan badge stuck on "進行中".
       // Reconcile the todo list from the server here.
       void refreshTodos();
+      // R3 skips message init while busy; reconcile the final REST snapshot now.
+      void resync();
     }
     prevStatusRef.current = cur;
-  }, [refreshTask, refreshTodos, streamStatusType]);
+  }, [refreshTask, refreshTodos, resync, streamStatusType]);
 
   const prevNotifiedStatusRef = useRef<string | null | undefined>(null);
   useEffect(() => {

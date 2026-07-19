@@ -1,5 +1,20 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド5
+
+### 追加修正
+1. **busy→idle resync**: TaskView + `session.idle` で REST メッセージ再同期（R3 の busy 中 init 抑止の後始末）
+2. **AttentionQueueModal**: PermissionCard/QuestionCard に `key` を付与（フォーム状態漏洩防止）
+3. **session.next.tool.input.delta/ended**: ツール入力ストリームを蓄積・反映
+
+### ループ
+- 旧 PID 35792 は停止していたため再起動（新 PID 33436 / 2分）
+
+### 検証
+- 関連 Vitest + tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド4（/loop 2m 継続）
 
 ### 追加修正

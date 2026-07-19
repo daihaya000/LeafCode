@@ -537,6 +537,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     let timer: ReturnType<typeof setTimeout> | null = null;
     let nextResyncTimer: ReturnType<typeof setTimeout> | null = null;
     let lastActivityAt = Date.now();
+    /** Accrue session.next.tool.input.delta fragments until .ended / .called. */
+    const toolInputBuf = new Map<string, string>();
     const markActivity = () => {
       lastActivityAt = Date.now();
     };
@@ -617,6 +619,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (type === "session.idle") {
         if (props.sessionID === sid) {
           dispatch({ kind: "status", status: { type: "idle" } });
+          // After busy-period init skip, pull the authoritative message list.
+          scheduleNextResync();
         }
         return;
       }
@@ -780,6 +784,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           const callID = String(props.callID ?? "");
           const messageID = String(props.assistantMessageID ?? "");
           if (callID && messageID) {
+            toolInputBuf.set(callID, "");
             dispatch({
               kind: "partUpdated",
               part: {
@@ -798,10 +803,85 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           }
           return;
         }
+        if (type === "session.next.tool.input.delta") {
+          const callID = String(props.callID ?? "");
+          const messageID = String(props.assistantMessageID ?? "");
+          const delta = typeof props.delta === "string" ? props.delta : "";
+          if (callID && messageID && delta) {
+            const raw = (toolInputBuf.get(callID) ?? "") + delta;
+            toolInputBuf.set(callID, raw);
+            let input: Record<string, unknown> = { _partial: raw };
+            try {
+              const parsed = JSON.parse(raw) as unknown;
+              if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                input = parsed as Record<string, unknown>;
+              }
+            } catch {
+              /* partial JSON while streaming */
+            }
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: callID,
+                messageID,
+                sessionID: sid,
+                type: "tool",
+                tool: "tool",
+                callID,
+                state: {
+                  status: "pending",
+                  input,
+                },
+              },
+            });
+          }
+          return;
+        }
+        if (type === "session.next.tool.input.ended") {
+          const callID = String(props.callID ?? "");
+          const messageID = String(props.assistantMessageID ?? "");
+          if (callID && messageID) {
+            const text =
+              typeof props.text === "string"
+                ? props.text
+                : (toolInputBuf.get(callID) ?? "");
+            toolInputBuf.delete(callID);
+            let input: Record<string, unknown> = {};
+            if (text) {
+              try {
+                const parsed = JSON.parse(text) as unknown;
+                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                  input = parsed as Record<string, unknown>;
+                } else {
+                  input = { raw: text };
+                }
+              } catch {
+                input = { raw: text };
+              }
+            }
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: callID,
+                messageID,
+                sessionID: sid,
+                type: "tool",
+                tool: "tool",
+                callID,
+                state: {
+                  status: "pending",
+                  input,
+                },
+              },
+            });
+          }
+          return;
+        }
         if (type === "session.next.tool.called") {
           const callID = String(props.callID ?? "");
           const messageID = String(props.assistantMessageID ?? "");
           if (callID && messageID) {
+            toolInputBuf.delete(callID);
             dispatch({
               kind: "partUpdated",
               part: {

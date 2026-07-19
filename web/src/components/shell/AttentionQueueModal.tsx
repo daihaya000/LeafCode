@@ -185,6 +185,7 @@ export function AttentionQueueModal() {
         <div className="max-h-[70vh] overflow-y-auto p-4">
           {current.kind === "permission" ? (
             <PermissionCard
+              key={current.request.id}
               request={current.request}
               onReply={async (req, response) =>
                 await replyPermission(
@@ -195,6 +196,7 @@ export function AttentionQueueModal() {
             />
           ) : (
             <QuestionCard
+              key={current.request.id}
               request={current.request}
               onReply={async (req, answers) =>
                 await replyQuestion(
