@@ -1,5 +1,17 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド6
+
+### 追加修正
+1. **busy 中 init 抑止**: `loaded` 条件を外し、既 busy セッションを開いたときの delta 消失を防止
+2. **busy→idle 誤発火**: セッション切替時に status ref をリセットし、`null` を idle 扱いしない
+3. **activeScope**: session 切替 cleanup で `null` を挟まない（unmount 時のみ clear）
+
+### 検証
+- Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド5
 
 ### 追加修正

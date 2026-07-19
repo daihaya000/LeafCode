@@ -630,13 +630,21 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // busy → idle transition: refresh diff + task stats + full message resync
   const prevStatusRef = useRef<string | null | undefined>(null);
+  const streamScopeKey = `${task?.directory ?? ""}\u0000${task?.sessionId ?? ""}`;
+  const prevStreamScopeKeyRef = useRef(streamScopeKey);
   const refreshTodos = stream.refreshTodos;
   const resync = stream.resync;
   useEffect(() => {
+    if (prevStreamScopeKeyRef.current !== streamScopeKey) {
+      prevStreamScopeKeyRef.current = streamScopeKey;
+      prevStatusRef.current = streamStatusType ?? null;
+      return;
+    }
     const cur = streamStatusType;
     const wasBusy =
       prevStatusRef.current === "busy" || prevStatusRef.current === "retry";
-    const nowIdle = cur === "idle" || cur === null;
+    // Only treat explicit idle — null is the post-reset placeholder, not idle.
+    const nowIdle = cur === "idle";
     if (wasBusy && nowIdle) {
       setDiffKey((k) => k + 1);
       void refreshTask();
@@ -648,7 +656,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       void resync();
     }
     prevStatusRef.current = cur;
-  }, [refreshTask, refreshTodos, resync, streamStatusType]);
+  }, [refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType]);
 
   const prevNotifiedStatusRef = useRef<string | null | undefined>(null);
   useEffect(() => {
@@ -1083,8 +1091,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     } else {
       setActiveScope(null);
     }
-    return () => setActiveScope(null);
   }, [task?.directory, task?.sessionId, setActiveScope]);
+
+  // Clear only on TaskView unmount — not on every session switch cleanup.
+  useEffect(() => {
+    return () => setActiveScope(null);
+  }, [setActiveScope]);
 
   const timeline = useMemo(
     () =>

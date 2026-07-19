@@ -301,11 +301,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const scopeRef = useRef(scopeKey);
   const resyncGenRef = useRef(0);
   const statusRef = useRef(state.status);
-  const loadedRef = useRef(state.loaded);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
   statusRef.current = state.status;
-  loadedRef.current = state.loaded;
 
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
@@ -328,10 +326,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (stale()) return;
       // While streaming, a full REST replace can wipe in-flight session.next
       // deltas that the server snapshot has not caught up to yet.
+      // Do not require `loaded` — opening an already-busy session can receive
+      // SSE deltas before the first resync completes.
       const streaming =
-        loadedRef.current &&
-        (statusRef.current?.type === "busy" ||
-          statusRef.current?.type === "retry");
+        statusRef.current?.type === "busy" ||
+        statusRef.current?.type === "retry";
       if (!streaming) {
         dispatch({ kind: "init", messages: Array.isArray(rows) ? rows : [] });
       }
