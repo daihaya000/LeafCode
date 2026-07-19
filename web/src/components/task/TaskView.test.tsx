@@ -132,6 +132,7 @@ describe("TaskView", () => {
       replyQuestion: vi.fn(),
       resync: vi.fn(),
       sendPrompt: vi.fn(),
+      sendCommand: vi.fn(),
     });
     getJson.mockImplementation(() =>
       Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) }),

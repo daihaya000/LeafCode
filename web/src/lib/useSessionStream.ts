@@ -545,6 +545,45 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     [directory, resync],
   );
 
+  const sendCommand = useCallback(
+    async (
+      command: string,
+      args: string,
+      opts?: {
+        agent?: string;
+        model?: { providerID: string; modelID: string };
+        files?: { uri: string; mime: string; name?: string }[];
+        variant?: IntelligenceVariant;
+      },
+    ) => {
+      const sid = sessionRef.current;
+      if (!directory || !sid) throw new Error("session not ready");
+      const body: Record<string, unknown> = {
+        command,
+        arguments: args,
+      };
+      if (opts?.agent?.trim()) body.agent = opts.agent.trim();
+      if (opts?.model?.providerID && opts.model.modelID) {
+        body.model = `${opts.model.providerID}/${opts.model.modelID}`;
+      }
+      if (opts?.variant) body.variant = opts.variant;
+      if (opts?.files && opts.files.length > 0) {
+        body.parts = opts.files.map((f) => ({
+          type: "file",
+          mime: f.mime,
+          url: f.uri,
+          ...(f.name ? { filename: f.name } : {}),
+        }));
+      }
+      await ocJson(`/session/${sid}/command`, directory, {
+        method: "POST",
+        body,
+      });
+      setTimeout(() => void resync(), 800);
+    },
+    [directory, resync],
+  );
+
   // Re-fetch the todo list on demand. The engine occasionally skips the final
   // `todo.updated` event when a session goes idle, which left the "進行中" badge
   // stuck after completion. Callers (e.g. TaskView on busy→idle) use this to
@@ -654,6 +693,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     visibleMessages,
     resync,
     sendPrompt,
+    sendCommand,
     abort,
     refreshTodos,
     replyPermission,

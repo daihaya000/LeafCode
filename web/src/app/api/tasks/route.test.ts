@@ -197,6 +197,40 @@ describe("POST /api/tasks variant validation", () => {
     const body = promptCall?.[2]?.body as Record<string, unknown>;
     expect(body).not.toHaveProperty("variant");
   });
+
+  it("sends known slash commands via session.command", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    (ocServer as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_dir: string | null, path: string) => {
+        if (path === "/session") return { id: "session-1" };
+        if (path === "/command") {
+          return [{ name: "init", template: "init", hints: [] }];
+        }
+        return {};
+      },
+    );
+    (ocServer as ReturnType<typeof vi.fn>).mockClear();
+    await post({
+      projectId: "project-1",
+      prompt: "/init",
+      isolation: "current_folder",
+      variant: "high",
+    });
+    const calls = (ocServer as ReturnType<typeof vi.fn>).mock.calls;
+    const commandCall = calls.find((c) =>
+      String(c[1]).includes("/command") && String(c[1]).includes("/session/"),
+    );
+    const promptCall = calls.find((c) =>
+      String(c[1]).includes("/prompt_async"),
+    );
+    expect(commandCall).toBeDefined();
+    expect(promptCall).toBeUndefined();
+    expect(commandCall?.[2]?.body).toMatchObject({
+      command: "init",
+      arguments: "",
+      variant: "high",
+    });
+  });
 });
 
 describe("POST /api/tasks image attachments", () => {

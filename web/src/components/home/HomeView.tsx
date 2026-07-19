@@ -6,6 +6,7 @@ import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Paperclip, X } from "lucide-r
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
+import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { Button, GhostSelect } from "@/components/ui";
 import {
   readAccessMode,
@@ -13,7 +14,7 @@ import {
   type AccessMode,
 } from "@/lib/access-mode";
 import { readDefaultModel } from "@/lib/default-model";
-import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
+import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import {
@@ -27,6 +28,12 @@ import {
   type IntelligenceVariant,
   type ProviderModelMeta,
 } from "@/lib/model-variants";
+import {
+  applySlashCompletion,
+  filterCommands,
+  parseSlashQuery,
+} from "@/lib/slash-command";
+import { useSlashCommands } from "@/lib/useSlashCommands";
 import type { ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
@@ -93,6 +100,25 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
+  const [cursor, setCursor] = useState(0);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const slashCommands = useSlashCommands();
+  const slashQuery = useMemo(
+    () => parseSlashQuery(prompt, cursor),
+    [prompt, cursor],
+  );
+  const slashItems = useMemo(
+    () =>
+      slashQuery ? filterCommands(slashCommands, slashQuery.query) : [],
+    [slashCommands, slashQuery],
+  );
+  const slashOpen = !slashDismissed && slashItems.length > 0;
+
+  useEffect(() => {
+    setSlashIndex(0);
+    setSlashDismissed(false);
+  }, [slashQuery?.query, slashQuery?.start]);
 
   useEffect(() => {
     setAccessMode(readAccessMode());
@@ -240,7 +266,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         cancelled = true;
       };
     }
-    setDefaultBranchLabel("隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ窶ｦ");
+    setDefaultBranchLabel("読み込み中…");
     void (async () => {
       try {
         const info = await getJson<{
@@ -265,7 +291,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         // Omitting baseBranch makes git use this repository's current HEAD,
         // which is safer than guessing "master" for a main/develop repository.
         setBaseBranch("");
-        setDefaultBranchLabel("迴ｾ蝨ｨ縺ｮ HEAD");
+        setDefaultBranchLabel("現在の HEAD");
       } finally {
         if (!cancelled) setBranchProjectId(project.id);
       }
@@ -281,6 +307,29 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, []);
+
+  const syncCursor = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) setCursor(el.selectionStart ?? 0);
+  }, []);
+
+  const applySlash = useCallback(
+    (name: string) => {
+      const query = parseSlashQuery(prompt, cursor);
+      if (!query) return;
+      const next = applySlashCompletion(prompt, query, name);
+      setPrompt(next.text);
+      setCursor(next.cursor);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(next.cursor, next.cursor);
+        autoResize();
+      });
+    },
+    [prompt, cursor, autoResize],
+  );
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
@@ -324,7 +373,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       notifyTasksChanged();
       router.push(`/task/${data.taskId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "繧ｿ繧ｹ繧ｯ菴懈・縺ｫ螟ｱ謨励＠縺ｾ縺励◆");
+      setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
     }
   }, [
@@ -395,30 +444,74 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]">
         <section>
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
-            菴輔ｒ縺､縺上ｊ縺ｾ縺吶°・・
+            何をつくりますか？
           </h1>
           <form
-            aria-label="繧ｿ繧ｹ繧ｯ菴懈・"
-            className="mx-auto max-w-4xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            aria-label="タスク作成"
+            className="relative mx-auto max-w-4xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
             }}
           >
+            {slashOpen && (
+              <SlashSuggestMenu
+                items={slashItems}
+                activeIndex={slashIndex}
+                onHover={setSlashIndex}
+                onSelect={(cmd) => applySlash(cmd.name)}
+              />
+            )}
             <textarea
               ref={textareaRef}
               value={prompt}
               rows={2}
-              aria-label="繧ｿ繧ｹ繧ｯ縺ｮ隱ｬ譏・
+              aria-label="タスクの説明"
+              aria-autocomplete="list"
+              aria-expanded={slashOpen}
+              aria-activedescendant={
+                slashOpen && slashItems[slashIndex]
+                  ? `slash-cmd-${slashItems[slashIndex].name}`
+                  : undefined
+              }
               readOnly={submitting}
               onChange={(e) => {
                 setPrompt(e.target.value);
+                setCursor(e.target.selectionStart ?? e.target.value.length);
                 autoResize();
               }}
+              onClick={syncCursor}
+              onKeyUp={syncCursor}
+              onSelect={syncCursor}
               onPaste={onPaste}
               onCompositionStart={() => (composingRef.current = true)}
               onCompositionEnd={() => (composingRef.current = false)}
               onKeyDown={(e) => {
+                if (slashOpen && !composingRef.current) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setSlashIndex((i) => (i + 1) % slashItems.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSlashIndex(
+                      (i) => (i - 1 + slashItems.length) % slashItems.length,
+                    );
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    const item = slashItems[slashIndex];
+                    if (item) applySlash(item.name);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setSlashDismissed(true);
+                    return;
+                  }
+                }
                 if (
                   e.key === "Enter" &&
                   (e.metaKey || e.ctrlKey) &&
@@ -428,7 +521,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   void submit();
                 }
               }}
-              placeholder="繧ｿ繧ｹ繧ｯ繧定ｪｬ譏弱＠縺ｦ縺上□縺輔＞窶ｦ・・trl+Enter 縺ｧ髢句ｧ具ｼ・
+              placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
             />
             {attachments.length > 0 && (
@@ -442,7 +535,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={attachment.preview}
-                        alt={attachment.name ?? "豺ｻ莉倡判蜒・}
+                        alt={attachment.name ?? "添付画像"}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -454,7 +547,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       type="button"
                       onClick={() => removeAttachment(index)}
                       disabled={submitting}
-                      aria-label={`${attachment.name ?? "豺ｻ莉倡判蜒・}繧貞炎髯､`}
+                      aria-label={`${attachment.name ?? "添付画像"}を削除`}
                       className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
                     >
                       <X className="h-3 w-3" aria-hidden="true" />
@@ -472,7 +565,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     accept="image/*"
                     multiple
                     disabled={submitting}
-                    aria-label="逕ｻ蜒上ヵ繧｡繧､繝ｫ繧帝∈謚・
+                    aria-label="画像ファイルを選択"
                     className="hidden"
                     onChange={(event) => {
                       if (event.target.files) void addImageFiles(event.target.files);
@@ -483,8 +576,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={submitting}
-                    aria-label="逕ｻ蜒上ｒ豺ｻ莉・
-                    title="逕ｻ蜒上ｒ豺ｻ莉・
+                    aria-label="画像を添付"
+                    title="画像を添付"
                     className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
                   >
                     <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
@@ -492,27 +585,27 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   <GhostSelect
                     value={projectId}
                     disabled={projects.length === 0 || submitting}
-                    aria-label="繝励Ο繧ｸ繧ｧ繧ｯ繝・
+                    aria-label="プロジェクト"
                     icon={<FolderGit2 className="h-3.5 w-3.5" />}
                     valueLabel={
                       selectedProject
-                        ? `${selectedProject.favorite ? "笘・" : ""}${selectedProject.name}`
-                        : "繝励Ο繧ｸ繧ｧ繧ｯ繝医↑縺・
+                        ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                        : "プロジェクトなし"
                     }
                     onChange={(e) => setProjectId(e.target.value)}
                     className="min-w-0"
                     title={
                       selectedProject
-                        ? `${selectedProject.favorite ? "笘・" : ""}${selectedProject.name}`
-                        : "繝励Ο繧ｸ繧ｧ繧ｯ繝医↑縺・
+                        ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                        : "プロジェクトなし"
                     }
                   >
                     {projects.length === 0 && (
-                      <option value="">繝励Ο繧ｸ繧ｧ繧ｯ繝医↑縺・/option>
+                      <option value="">プロジェクトなし</option>
                     )}
                     {projects.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.favorite ? "笘・" : ""}
+                        {p.favorite ? "★ " : ""}
                         {p.name}
                       </option>
                     ))}
@@ -520,7 +613,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   <GhostSelect
                     value={isolation}
                     disabled={submitting}
-                    aria-label="菴懈･ｭ蝣ｴ謇"
+                    aria-label="作業場所"
                     icon={<GitBranch className="h-3.5 w-3.5" />}
                     valueLabel={
                       isolation === "current_folder"
@@ -533,7 +626,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       )
                     }
                     className="min-w-0"
-                    title="master: 迴ｾ蝨ｨ繝悶Λ繝ｳ繝√〒菴懈･ｭ / worktree: 蛻・屬繝悶Λ繝ｳ繝・
+                    title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
                   >
                     <option value="current_folder">{defaultBranchLabel}</option>
                     <option value="git_worktree">worktree</option>
@@ -543,7 +636,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   variant="primary"
                   size="icon"
                   type="submit"
-                  aria-label="繧ｿ繧ｹ繧ｯ髢句ｧ・
+                  aria-label="タスク開始"
                   className="shrink-0"
                   busy={submitting}
                   disabled={
@@ -563,15 +656,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   <GhostSelect
                     value={model}
                     disabled={submitting}
-                    aria-label="繝｢繝・Ν"
+                    aria-label="モデル"
                     icon={<ModelSelectIcon model={model} />}
-                    valueLabel={selectedModel?.label ?? "繝｢繝・Ν"}
+                    valueLabel={selectedModel?.label ?? "モデル"}
                     onChange={(e) => {
                       setModel(e.target.value);
                       setIntelligence("");
                     }}
                     className="min-w-0"
-                    title={selectedModel?.label ?? "繝｢繝・Ν"}
+                    title={selectedModel?.label ?? "モデル"}
                   >
                     {[...new Set(modelOptions.map((o) => o.group))].map(
                       (group) => (
@@ -602,12 +695,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   <GhostSelect
                     value={agent}
                     disabled={submitting}
-                    aria-label="繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝・
+                    aria-label="エージェント"
                     icon={<Bot className="h-3.5 w-3.5" />}
-                    valueLabel={agent || "繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝・}
+                    valueLabel={agent || "エージェント"}
                     onChange={(e) => setAgent(e.target.value)}
                     className="min-w-0"
-                    title={agent || "繧ｨ繝ｼ繧ｸ繧ｧ繝ｳ繝・}
+                    title={agent || "エージェント"}
                   >
                     {agents.map((a) => (
                       <option key={a} value={a}>
@@ -631,14 +724,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
           {loaded && !engineOk && (
             <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">
-              繧ｨ繝ｳ繧ｸ繝ｳ譛ｪ謗･邯壹りｨｭ螳壹∪縺溘・繝医Ξ繧､縺九ｉ OpenCode 繧貞・襍ｷ蜍輔＠縺ｦ縺上□縺輔＞縲・
+              エンジン未接続。設定またはトレイから OpenCode を再起動してください。
             </p>
           )}
 
           {loaded && projects.length === 0 && (
             <div className="mx-auto mt-4 max-w-2xl">
               <p className="mb-3 text-center text-sm text-muted">
-                縺ｾ縺壹・繝ｭ繧ｸ繧ｧ繧ｯ繝医ヵ繧ｩ繝ｫ繝繧定ｿｽ蜉縺励※縺上□縺輔＞
+                まずプロジェクトフォルダを追加してください
               </p>
               <AddProjectButton
                 onAdded={(project) => {

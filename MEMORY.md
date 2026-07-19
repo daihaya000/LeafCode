@@ -1,3 +1,28 @@
+# MEMORY.md — OpenCode WebUI
+
+## 2026-07-20 Composer スラッシュコマンド予測表示
+
+### 要望
+- Cursor 風に、入力欄で `/` を打つとコマンド候補を予測表示する。
+
+### 実装
+- `lib/slash-command.ts`: `/token` 検出・フィルタ・補完・送信時の command 分解
+- `SlashSuggestMenu` + `useSlashCommands`: OpenCode `GET /command` から候補取得
+- `HomeView` / `TaskView` の textarea 直上に候補メニュー（↑↓ / Enter・Tab 確定 / Esc 閉じ）
+- 選択時は `/name ` を挿入
+- 送信時: 既知コマンドなら `POST /session/{id}/command`（Home の初回作成も tasks route で分岐）
+- Proxy: directory なしで `GET /command` / `GET /skill` を許可
+
+### 注意
+- 未知の `/foo` は従来どおり通常プロンプト
+- ピン留め・履歴は未対応
+- `HomeView.tsx` の日本語は UTF-8 で保存すること（壊れたコミット `6fff0e3` の再発防止）
+
+### 検証
+- Vitest: slash-command / tasks route / HomeView / TaskView PASS
+
+---
+
 ﻿# MEMORY.md — OpenCode WebUI
 
 ## 2026-07-20 WebUI「プラグイン」→「アドオン」改名（OpenCode 混同防止）

@@ -3,6 +3,10 @@ import { bindSession, touchProjectOpened } from "@/lib/db";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
 import { persistProjectSessions } from "@/lib/project-session-sync";
+import {
+  normalizeCommands,
+  parseCommandSubmit,
+} from "@/lib/slash-command";
 import { listTasks } from "@/lib/task-service";
 import {
   ServiceError,
@@ -131,30 +135,65 @@ export async function POST(req: NextRequest) {
     // Bind before prompt so create-failure rollback can delete the OpenCode
     // session via destroyWorkspace (bindings are the only id source there).
     bindSession(workspace.id, session.id, title);
-    const promptBody: Record<string, unknown> = {
-      parts: [
-        { type: "text", text: prompt },
-        ...files.map((file) => ({
+
+    const commandList = await ocServer<unknown>(
+      workspace.absolute_path,
+      "/command",
+    ).catch(() => []);
+    const parsedCommand = parseCommandSubmit(
+      prompt,
+      normalizeCommands(commandList),
+    );
+
+    if (parsedCommand) {
+      const commandBody: Record<string, unknown> = {
+        command: parsedCommand.command,
+        arguments: parsedCommand.arguments,
+      };
+      if (files.length > 0) {
+        commandBody.parts = files.map((file) => ({
           type: "file",
           url: file.uri,
           mime: file.mime,
           ...(file.name ? { filename: file.name } : {}),
-        })),
-      ],
-    };
-    if (body.model?.providerID && body.model.modelID) {
-      promptBody.model = {
-        providerID: body.model.providerID,
-        modelID: body.model.modelID,
+        }));
+      }
+      if (body.model?.providerID && body.model.modelID) {
+        commandBody.model = `${body.model.providerID}/${body.model.modelID}`;
+      }
+      if (body.agent?.trim()) commandBody.agent = body.agent.trim();
+      if (variant) commandBody.variant = variant;
+      await ocServer(
+        workspace.absolute_path,
+        `/session/${session.id}/command`,
+        { method: "POST", body: commandBody },
+      );
+    } else {
+      const promptBody: Record<string, unknown> = {
+        parts: [
+          { type: "text", text: prompt },
+          ...files.map((file) => ({
+            type: "file",
+            url: file.uri,
+            mime: file.mime,
+            ...(file.name ? { filename: file.name } : {}),
+          })),
+        ],
       };
+      if (body.model?.providerID && body.model.modelID) {
+        promptBody.model = {
+          providerID: body.model.providerID,
+          modelID: body.model.modelID,
+        };
+      }
+      if (body.agent?.trim()) promptBody.agent = body.agent.trim();
+      if (variant) promptBody.variant = variant;
+      await ocServer(
+        workspace.absolute_path,
+        `/session/${session.id}/prompt_async`,
+        { method: "POST", body: promptBody },
+      );
     }
-    if (body.agent?.trim()) promptBody.agent = body.agent.trim();
-    if (variant) promptBody.variant = variant;
-    await ocServer(
-      workspace.absolute_path,
-      `/session/${session.id}/prompt_async`,
-      { method: "POST", body: promptBody },
-    );
     touchProjectOpened(workspace.project_id);
     persistProjectSessions(workspace.project_id);
     return NextResponse.json({

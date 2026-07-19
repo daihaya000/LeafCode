@@ -48,8 +48,7 @@ import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
 } from "@/lib/default-model";
-import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
-import { formatTokens } from "@/lib/addons/codex-tokens";
+import { formatTokens, providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { computeContextUsage } from "@/lib/context-usage";
 import {
   readChatTab,
@@ -83,10 +82,18 @@ import {
   PLAN_APPROVAL_PROMPT,
 } from "@/lib/plan-document";
 import { collectTaskCallIds } from "@/lib/match-child-session";
+import {
+  applySlashCompletion,
+  filterCommands,
+  parseCommandSubmit,
+  parseSlashQuery,
+} from "@/lib/slash-command";
 import { useSessionStream } from "@/lib/useSessionStream";
+import { useSlashCommands } from "@/lib/useSlashCommands";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
+import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { GraphPanel } from "./GraphPanel";
 import { MessageMetaHeader } from "./MessageMetaHeader";
 import { PartView } from "./PartView";
@@ -309,6 +316,25 @@ export function TaskView({ taskId }: { taskId: string }) {
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
+  const [cursor, setCursor] = useState(0);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const slashCommands = useSlashCommands(task?.directory ?? null);
+  const slashQuery = useMemo(
+    () => parseSlashQuery(input, cursor),
+    [input, cursor],
+  );
+  const slashItems = useMemo(
+    () =>
+      slashQuery ? filterCommands(slashCommands, slashQuery.query) : [],
+    [slashCommands, slashQuery],
+  );
+  const slashOpen = !slashDismissed && slashItems.length > 0;
+
+  useEffect(() => {
+    setSlashIndex(0);
+    setSlashDismissed(false);
+  }, [slashQuery?.query, slashQuery?.start]);
 
   const stream = useSessionStream(
     task?.directory ?? null,
@@ -715,18 +741,57 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
       const [providerID, modelID] = model ? model.split("::") : [];
-      await stream.sendPrompt(text, {
+      const opts = {
         ...(agent ? { agent } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(files.length > 0 ? { files } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
-      });
+      };
+      const parsed = parseCommandSubmit(text, slashCommands);
+      if (parsed) {
+        await stream.sendCommand(parsed.command, parsed.arguments, opts);
+      } else {
+        await stream.sendPrompt(text, opts);
+      }
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
       setAttachments(attachments);
     }
-  }, [input, attachments, working, stream, model, agent, intelligence]);
+  }, [
+    input,
+    attachments,
+    working,
+    stream,
+    model,
+    agent,
+    intelligence,
+    slashCommands,
+  ]);
+
+  const syncCursor = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) setCursor(el.selectionStart ?? 0);
+  }, []);
+
+  const applySlash = useCallback(
+    (name: string) => {
+      const query = parseSlashQuery(input, cursor);
+      if (!query) return;
+      const next = applySlashCompletion(input, query, name);
+      setInput(next.text);
+      setCursor(next.cursor);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(next.cursor, next.cursor);
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      });
+    },
+    [input, cursor],
+  );
 
   // Resolve the model that will actually serve the prompt: the selected
   // agent's configured model takes priority over the manual model selector.
@@ -1519,8 +1584,16 @@ export function TaskView({ taskId }: { taskId: string }) {
               <div
                 onDrop={onDrop}
                 onDragOver={onDragOver}
-                className="mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+                className="relative mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
               >
+                {slashOpen && (
+                  <SlashSuggestMenu
+                    items={slashItems}
+                    activeIndex={slashIndex}
+                    onHover={setSlashIndex}
+                    onSelect={(cmd) => applySlash(cmd.name)}
+                  />
+                )}
                 {attachments.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-2">
                     {attachments.map((a, i) => (
@@ -1558,16 +1631,53 @@ export function TaskView({ taskId }: { taskId: string }) {
                   rows={1}
                   disabled={!task.sessionId}
                   readOnly={working}
+                  aria-autocomplete="list"
+                  aria-expanded={slashOpen}
+                  aria-activedescendant={
+                    slashOpen && slashItems[slashIndex]
+                      ? `slash-cmd-${slashItems[slashIndex].name}`
+                      : undefined
+                  }
                   onChange={(e) => {
                     setInput(e.target.value);
+                    setCursor(e.target.selectionStart ?? e.target.value.length);
                     const el = e.currentTarget;
                     el.style.height = "auto";
                     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
                   }}
+                  onClick={syncCursor}
+                  onKeyUp={syncCursor}
+                  onSelect={syncCursor}
                   onPaste={onPaste}
                   onCompositionStart={() => (composingRef.current = true)}
                   onCompositionEnd={() => (composingRef.current = false)}
                   onKeyDown={(e) => {
+                    if (slashOpen && !composingRef.current) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setSlashIndex((i) => (i + 1) % slashItems.length);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setSlashIndex(
+                          (i) =>
+                            (i - 1 + slashItems.length) % slashItems.length,
+                        );
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        const item = slashItems[slashIndex];
+                        if (item) applySlash(item.name);
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setSlashDismissed(true);
+                        return;
+                      }
+                    }
                     if (
                       e.key === "Enter" &&
                       !e.shiftKey &&

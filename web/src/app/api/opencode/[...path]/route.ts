@@ -71,6 +71,8 @@ async function proxy(
         pathname.startsWith("/mcp") ||
         pathname === "/path" ||
         pathname === "/agent" ||
+        pathname === "/command" ||
+        pathname === "/skill" ||
         pathname.startsWith("/event"));
     if (!allowWithoutDir) {
       return NextResponse.json(
