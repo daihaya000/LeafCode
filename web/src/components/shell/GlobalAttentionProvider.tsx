@@ -8,9 +8,10 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { apiUrl } from "@/lib/client";
+import { apiUrl, getJson, ocJson } from "@/lib/client";
 import { notifyAttentionCountChanged } from "@/lib/events";
 import { parseGlobalEvent, isResolvedEvent, type AttentionItem, type AttentionScope } from "@/lib/attention";
+import type { QuestionInfo, TaskSummary } from "@/lib/types";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
 type GlobalAttentionContextValue = {
@@ -29,6 +30,26 @@ export function useGlobalAttention() {
   return ctx;
 }
 
+type RestQuestion = {
+  id: string;
+  sessionID: string;
+  questions?: QuestionInfo[];
+};
+
+function toQuestionItem(directory: string, q: RestQuestion): AttentionItem {
+  return {
+    kind: "question",
+    directory,
+    request: {
+      id: q.id,
+      version: "v1",
+      sessionID: q.sessionID,
+      questions: q.questions ?? [],
+      receivedAt: Date.now(),
+    },
+  };
+}
+
 export function GlobalAttentionProvider({
   children,
   activeScope,
@@ -36,7 +57,7 @@ export function GlobalAttentionProvider({
   children: React.ReactNode;
   activeScope: AttentionScope | null;
 }) {
-  const { items, add, remove } = useAttentionQueue(activeScope);
+  const { items, add, remove, reconcileDirectory } = useAttentionQueue(activeScope);
   const [open, setOpenState] = useState(false);
   const openRef = useRef(open);
   openRef.current = open;
@@ -53,6 +74,28 @@ export function GlobalAttentionProvider({
     autoOpenedRef.current = true;
     setOpenState(true);
   }, [items.length]);
+
+  const syncPendingQuestions = useCallback(async () => {
+    const syncStartedAt = Date.now();
+    let tasks: TaskSummary[];
+    try {
+      const data = await getJson<{ tasks: TaskSummary[] }>("/api/tasks");
+      tasks = data.tasks ?? [];
+    } catch {
+      return;
+    }
+    const directories = [...new Set(tasks.map((t) => t.directory).filter(Boolean))];
+    await Promise.allSettled(
+      directories.map(async (directory) => {
+        const list = await ocJson<RestQuestion[]>("/question", directory);
+        reconcileDirectory(
+          directory,
+          list.map((q) => toQuestionItem(directory, q)),
+          syncStartedAt,
+        );
+      }),
+    );
+  }, [reconcileDirectory]);
 
   // Notify badge subscribers whenever queue length changes
   useEffect(() => {
@@ -125,6 +168,7 @@ export function GlobalAttentionProvider({
       };
       es.onopen = () => {
         retryMs = 1000;
+        void syncPendingQuestions();
       };
       es.onerror = () => {
         es?.close();
@@ -139,7 +183,7 @@ export function GlobalAttentionProvider({
       if (timer) clearTimeout(timer);
       es?.close();
     };
-  }, [add]);
+  }, [add, syncPendingQuestions]);
 
   const value = {
     items,

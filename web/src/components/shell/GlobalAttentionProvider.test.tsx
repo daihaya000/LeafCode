@@ -3,6 +3,17 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { GlobalAttentionProvider, useGlobalAttention } from "./GlobalAttentionProvider";
 import type { AttentionItem } from "@/lib/attention";
 
+const { getJsonMock, ocJsonMock } = vi.hoisted(() => ({
+  getJsonMock: vi.fn(),
+  ocJsonMock: vi.fn(),
+}));
+
+vi.mock("@/lib/client", () => ({
+  apiUrl: (p: string) => p,
+  getJson: getJsonMock,
+  ocJson: ocJsonMock,
+}));
+
 const TestConsumer = ({ onItems }: { onItems: (items: AttentionItem[]) => void }) => {
   const { items, open, openNext, setOpen } = useGlobalAttention();
   onItems(items);
@@ -40,10 +51,20 @@ function emitQuestion(id = "q1") {
   });
 }
 
+function openConnection() {
+  act(() => {
+    FakeEventSource.latest?.onopen?.();
+  });
+}
+
 describe("GlobalAttentionProvider", () => {
   beforeEach(() => {
     FakeEventSource.latest = null;
     vi.stubGlobal("EventSource", FakeEventSource);
+    getJsonMock.mockReset();
+    ocJsonMock.mockReset();
+    getJsonMock.mockResolvedValue({ tasks: [] });
+    ocJsonMock.mockResolvedValue([]);
   });
   afterEach(() => {
     cleanup();
@@ -92,5 +113,128 @@ describe("GlobalAttentionProvider", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByTestId("open-state").textContent).toBe("closed");
+  });
+
+  it("restores pending questions on first connect", async () => {
+    getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });
+    ocJsonMock.mockImplementation(async (path: string, directory: string) => {
+      if (path === "/question" && directory === "/repo") {
+        return [{ id: "q1", sessionID: "s1", questions: [] }];
+      }
+      return [];
+    });
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    await act(async () => {
+      FakeEventSource.latest?.onopen?.();
+    });
+    await waitFor(() => expect(latest.map((i) => i.request.id)).toContain("q1"));
+  });
+
+  it("restores pending questions after a reconnect", async () => {
+    vi.useFakeTimers();
+    getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });
+    ocJsonMock.mockResolvedValue([{ id: "q1", sessionID: "s1", questions: [] }]);
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    const es1 = FakeEventSource.latest;
+    await act(async () => {
+      es1?.onerror?.();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    const es2 = FakeEventSource.latest;
+    expect(es2).not.toBe(es1);
+    await act(async () => {
+      es2?.onopen?.();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(latest.map((i) => i.request.id)).toContain("q1");
+    vi.useRealTimers();
+  });
+
+  it("does not duplicate a question present from both SSE and REST", async () => {
+    getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });
+    ocJsonMock.mockResolvedValue([{ id: "q1", sessionID: "s1", questions: [] }]);
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    emitQuestion("q1");
+    await act(async () => {
+      FakeEventSource.latest?.onopen?.();
+    });
+    await waitFor(() => expect(latest).toHaveLength(1));
+    expect(latest.map((i) => i.request.id)).toEqual(["q1"]);
+  });
+
+  it("removes a question resolved during disconnect", async () => {
+    getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });
+    ocJsonMock.mockResolvedValue([]);
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    emitQuestion("q1");
+    await waitFor(() => expect(latest).toHaveLength(1));
+    await act(async () => {
+      FakeEventSource.latest?.onopen?.();
+    });
+    await waitFor(() => expect(latest).toHaveLength(0));
+  });
+
+  it("keeps existing items when a directory sync fails", async () => {
+    getJsonMock.mockResolvedValue({
+      tasks: [
+        { directory: "/a", sessionId: "s1" },
+        { directory: "/b", sessionId: "s2" },
+      ],
+    });
+    ocJsonMock.mockImplementation(async (path: string, directory: string) => {
+      if (directory === "/a") throw new Error("boom");
+      return [];
+    });
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    act(() => {
+      FakeEventSource.latest?.onmessage?.({
+        data: JSON.stringify({
+          type: "question.asked",
+          directory: "/a",
+          properties: { id: "qa", sessionID: "s1", questions: [] },
+        }),
+      } as MessageEvent);
+      FakeEventSource.latest?.onmessage?.({
+        data: JSON.stringify({
+          type: "question.asked",
+          directory: "/b",
+          properties: { id: "qb", sessionID: "s2", questions: [] },
+        }),
+      } as MessageEvent);
+    });
+    await waitFor(() => expect(latest).toHaveLength(2));
+    await act(async () => {
+      FakeEventSource.latest?.onopen?.();
+    });
+    await waitFor(() => expect(latest.map((i) => i.request.id)).toEqual(["qa"]));
   });
 });
