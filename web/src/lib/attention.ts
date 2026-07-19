@@ -109,7 +109,9 @@ export function rejectPath(item: AttentionItem): string | null {
   return `/question/${item.request.id}/reject`;
 }
 
-export function isResolvedEvent(raw: string): string | null {
+export function isResolvedEvent(
+  raw: string,
+): { requestId: string; sessionID: string } | null {
   let envelope: GlobalEventEnvelope;
   try {
     envelope = JSON.parse(raw);
@@ -125,7 +127,10 @@ export function isResolvedEvent(raw: string): string | null {
     type === "question.v2.replied" ||
     type === "question.v2.rejected"
   ) {
-    return String(props.requestID ?? props.id ?? "");
+    const requestId = String(props.requestID ?? props.id ?? "");
+    const sessionID = String(props.sessionID ?? "");
+    if (!requestId || !sessionID) return null;
+    return { requestId, sessionID };
   }
   return null;
 }

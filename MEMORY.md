@@ -1,5 +1,20 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド4（/loop 2m 継続）
+
+### 追加修正
+1. **activeScope 離脱**: scope 変更時に `syncPendingAttention()` で global queue 復元
+2. **NestedAgentPanel**: callID 変更時に sticky 子セッション ID をリセット
+3. **isResolvedEvent**: sessionID 必須。`remove(requestId, sessionID)` で誤削除防止
+
+### ループ
+- 既存 `AGENT_LOOP_TICK_agent_debug`（PID 35792 / 2分）を継続。重複起動なし。
+
+### 検証
+- Vitest 49 PASS / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド3
 
 ### 追加修正

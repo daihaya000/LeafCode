@@ -19,7 +19,7 @@ type GlobalAttentionContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
   openNext: () => void;
-  remove: (requestId: string) => void;
+  remove: (requestId: string, sessionID?: string) => void;
 };
 
 const GlobalAttentionContext = createContext<GlobalAttentionContextValue | null>(null);
@@ -271,9 +271,9 @@ export function GlobalAttentionProvider({
       es?.close();
       es = new EventSource(apiUrl("/api/opencode/global/event"));
       es.onmessage = (ev) => {
-        const resolvedId = isResolvedEvent(ev.data);
-        if (resolvedId) {
-          remove(resolvedId);
+        const resolved = isResolvedEvent(ev.data);
+        if (resolved) {
+          remove(resolved.requestId, resolved.sessionID);
           return;
         }
         const item = parseGlobalEvent(ev.data);
@@ -297,6 +297,20 @@ export function GlobalAttentionProvider({
       es?.close();
     };
   }, [add, remove, syncPendingAttention]);
+
+  // Leaving or switching the active task must restore pending attention into
+  // the global queue (setActiveScope only filters items out, never back in).
+  const prevScopeKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = activeScope
+      ? `${activeScope.directory}\u0000${activeScope.sessionId}`
+      : "";
+    const prev = prevScopeKeyRef.current;
+    prevScopeKeyRef.current = key;
+    if (prev === null) return; // skip first mount — onopen sync covers it
+    if (prev === key) return;
+    void syncPendingAttention();
+  }, [activeScope, syncPendingAttention]);
 
   const value = {
     items,

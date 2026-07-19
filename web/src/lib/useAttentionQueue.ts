@@ -11,7 +11,7 @@ export type AttentionQueueState = {
 
 export type AttentionQueueAction =
   | { kind: "add"; item: AttentionItem }
-  | { kind: "remove"; requestId: string }
+  | { kind: "remove"; requestId: string; sessionID?: string }
   | { kind: "setActiveScope"; scope: AttentionScope | null }
   | { kind: "setTasks"; tasks: TaskSummary[] }
   | {
@@ -47,7 +47,13 @@ export function attentionQueueReducer(
     case "remove":
       return {
         ...state,
-        items: state.items.filter((i) => i.request.id !== action.requestId),
+        items: state.items.filter((i) => {
+          if (i.request.id !== action.requestId) return true;
+          if (action.sessionID && i.request.sessionID !== action.sessionID) {
+            return true;
+          }
+          return false;
+        }),
       };
     case "setActiveScope": {
       if (!action.scope) return state;
@@ -110,8 +116,8 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
     dispatch({ kind: "add", item });
   }, []);
 
-  const remove = useCallback((requestId: string) => {
-    dispatch({ kind: "remove", requestId });
+  const remove = useCallback((requestId: string, sessionID?: string) => {
+    dispatch({ kind: "remove", requestId, sessionID });
   }, []);
 
   const reconcileDirectory = useCallback(

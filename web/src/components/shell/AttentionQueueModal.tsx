@@ -84,14 +84,14 @@ export function AttentionQueueModal() {
       setError(null);
       try {
         await fn();
-        remove(item.request.id);
+        remove(item.request.id, item.request.sessionID);
       } catch (err) {
         // Already answered elsewhere (e.g. TaskView) — drop from queue.
         if (
           (err instanceof ApiError && err.status === 404) ||
           (err instanceof Error && /404/.test(err.message))
         ) {
-          remove(item.request.id);
+          remove(item.request.id, item.request.sessionID);
           return;
         }
         setError(err instanceof Error ? err.message : "応答に失敗しました");

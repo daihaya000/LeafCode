@@ -88,23 +88,45 @@ describe("parseGlobalEvent", () => {
 });
 
 describe("isResolvedEvent", () => {
-  it("returns id for permission.replied", () => {
-    expect(isResolvedEvent(JSON.stringify({ type: "permission.replied", properties: { id: "p1" } })))
-      .toBe("p1");
+  it("returns requestId+sessionID for permission.replied", () => {
+    expect(
+      isResolvedEvent(
+        JSON.stringify({
+          type: "permission.replied",
+          properties: { id: "p1", sessionID: "s1" },
+        }),
+      ),
+    ).toEqual({ requestId: "p1", sessionID: "s1" });
   });
-  it("returns id for question.v2.rejected", () => {
-    expect(isResolvedEvent(JSON.stringify({ type: "question.v2.rejected", properties: { requestID: "q1" } })))
-      .toBe("q1");
+  it("returns requestId+sessionID for question.v2.rejected", () => {
+    expect(
+      isResolvedEvent(
+        JSON.stringify({
+          type: "question.v2.rejected",
+          properties: { requestID: "q1", sessionID: "s1" },
+        }),
+      ),
+    ).toEqual({ requestId: "q1", sessionID: "s1" });
+  });
+  it("returns null when sessionID is missing", () => {
+    expect(
+      isResolvedEvent(
+        JSON.stringify({ type: "permission.replied", properties: { id: "p1" } }),
+      ),
+    ).toBeNull();
   });
   it("returns id for a nested question.v2.rejected envelope", () => {
     expect(
       isResolvedEvent(
         JSON.stringify({
           directory: "/workspace/c",
-          payload: { type: "question.v2.rejected", properties: { requestID: "q9" } },
+          payload: {
+            type: "question.v2.rejected",
+            properties: { requestID: "q9", sessionID: "s9" },
+          },
         }),
       ),
-    ).toBe("q9");
+    ).toEqual({ requestId: "q9", sessionID: "s9" });
   });
   it("returns null for asked", () => {
     expect(isResolvedEvent(JSON.stringify({ type: "permission.asked", properties: { id: "p1" } })))

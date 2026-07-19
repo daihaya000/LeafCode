@@ -106,6 +106,7 @@ export function NestedAgentPanel({
   const [error, setError] = useState<string | null>(null);
   const [matching, setMatching] = useState(true);
   const stickyIdRef = useRef<string | null>(null);
+  const stickyCallIdRef = useRef<string | undefined>(undefined);
   const genRef = useRef(0);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const stickBottomRef = useRef(true);
@@ -119,6 +120,12 @@ export function NestedAgentPanel({
         ? matchHint.input.prompt.slice(0, 120)
         : null;
   const hintSiblingsKey = matchHint.siblingTaskCallIds.join("\0");
+
+  // New task tool call must not reuse the previous child session sticky id.
+  if (stickyCallIdRef.current !== hintCallID) {
+    stickyCallIdRef.current = hintCallID;
+    stickyIdRef.current = null;
+  }
 
   const refresh = useCallback(async () => {
     if (!directory || !parentSessionId) return;
