@@ -30,7 +30,7 @@ export function IntelligenceSelect({
       icon={<Cpu className="h-3.5 w-3.5" />}
       valueLabel={value || "デフォルト"}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full min-w-0"
+      className="min-w-0"
     >
       <option value="">デフォルト</option>
       {variants.includes("high") && <option value="high">high</option>}
