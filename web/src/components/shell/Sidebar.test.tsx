@@ -86,7 +86,7 @@ describe("Sidebar", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("shows the session's cumulative cost next to the branch label", async () => {
+  it("shows the session's cumulative cost at the end of the branch row", async () => {
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -119,6 +119,7 @@ describe("Sidebar", () => {
               deletions: 0,
               filesChanged: 0,
               cost: 0.1234,
+              providerID: "openai",
               createdAt: "2026-07-18T00:00:00Z",
               updatedAt: "2026-07-18T00:00:00Z",
             },
@@ -131,7 +132,17 @@ describe("Sidebar", () => {
 
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    expect(await screen.findByText("· ¥18.5")).toBeTruthy();
+    const cost = await screen.findByTitle("このセッションの累計コスト");
+    expect(cost.textContent).toContain("¥18.5");
+    const row = cost.parentElement;
+    expect(row).toBeTruthy();
+    const text = row!.textContent ?? "";
+    const provider = screen.getByTestId("sidebar-provider-icon");
+    // Cost is after the provider icon (row ends with cost).
+    expect(
+      Array.from(row!.children).indexOf(provider.closest("span")!),
+    ).toBeLessThan(Array.from(row!.children).indexOf(cost));
+    expect(text.indexOf("main")).toBeLessThan(text.indexOf("¥18.5"));
   });
 
   it("refreshes a working task cost while the sidebar is visible", async () => {
@@ -596,6 +607,64 @@ describe("Sidebar", () => {
     await screen.findByText("Task title");
     // A bundled brand icon exists for "anthropic" (→ claude), so the <img> renders.
     expect(screen.getByTestId("sidebar-provider-icon")).toBeTruthy();
+  });
+
+  it("renders cost after the provider icon when both are present", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Task title",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "idle",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              cost: 0.1,
+              providerID: "anthropic",
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await screen.findByText("Task title");
+    const icon = screen.getByTestId("sidebar-provider-icon");
+    const cost = screen.getByTitle("このセッションの累計コスト");
+    const row = icon.closest(".flex.min-w-0.items-center") ?? icon.parentElement;
+    expect(row).toBeTruthy();
+    const html = row!.innerHTML;
+    expect(html.indexOf("sidebar-provider-icon")).toBeLessThan(
+      html.indexOf("このセッションの累計コスト"),
+    );
+    expect(cost.textContent).toContain("¥15.0");
   });
 
   it("falls back to a generic icon when the providerID has no bundled brand icon", async () => {
