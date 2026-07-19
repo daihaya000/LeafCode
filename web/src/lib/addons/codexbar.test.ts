@@ -277,9 +277,9 @@ describe("providerLabel", () => {
 
 describe("providerIconSrc", () => {
   it("maps known providers to bundled icons and null otherwise", () => {
-    expect(providerIconSrc("codex")).toBe("/plugins/codexbar/codex.png");
-    expect(providerIconSrc("opencode-go")).toBe("/plugins/codexbar/opencode.png");
-    expect(providerIconSrc("cursor")).toBe("/plugins/codexbar/cursor.png");
+    expect(providerIconSrc("codex")).toBe("/addons/codexbar/codex.png");
+    expect(providerIconSrc("opencode-go")).toBe("/addons/codexbar/opencode.png");
+    expect(providerIconSrc("cursor")).toBe("/addons/codexbar/cursor.png");
     expect(providerIconSrc("mystery")).toBeNull();
     expect(providerIconSrc("")).toBeNull();
   });
@@ -287,13 +287,13 @@ describe("providerIconSrc", () => {
 
 describe("providerIconSrcForOpencodeId", () => {
   it("aliases OpenCode provider ids to bundled brand icons", () => {
-    expect(providerIconSrcForOpencodeId("openai")).toBe("/plugins/codexbar/codex.png");
-    expect(providerIconSrcForOpencodeId("anthropic")).toBe("/plugins/codexbar/claude.png");
-    expect(providerIconSrcForOpencodeId("cursor")).toBe("/plugins/codexbar/cursor.png");
-    expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/plugins/codexbar/cursor.png");
-    expect(providerIconSrcForOpencodeId("ollama")).toBe("/plugins/codexbar/ollama.png");
-    expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/plugins/codexbar/ollama.png");
-    expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/plugins/codexbar/opencode.png");
+    expect(providerIconSrcForOpencodeId("openai")).toBe("/addons/codexbar/codex.png");
+    expect(providerIconSrcForOpencodeId("anthropic")).toBe("/addons/codexbar/claude.png");
+    expect(providerIconSrcForOpencodeId("cursor")).toBe("/addons/codexbar/cursor.png");
+    expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/addons/codexbar/cursor.png");
+    expect(providerIconSrcForOpencodeId("ollama")).toBe("/addons/codexbar/ollama.png");
+    expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/addons/codexbar/ollama.png");
+    expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/addons/codexbar/opencode.png");
     expect(providerIconSrcForOpencodeId("mystery")).toBeNull();
     expect(providerIconSrcForOpencodeId("")).toBeNull();
   });

@@ -27,15 +27,17 @@ import {
   type CodexBarProvider,
   type CodexBarUsage,
   type UsageTone,
-} from "@/lib/plugins/codexbar";
-import { formatTokens, type CodexTokensResult } from "@/lib/plugins/codex-tokens";
-import { writePluginEnabled } from "@/lib/plugins/state";
+} from "@/lib/addons/codexbar";
+import { formatTokens, type CodexTokensResult } from "@/lib/addons/codex-tokens";
+import { writeAddonEnabled } from "@/lib/addons/state";
 
-export const CODEXBAR_PLUGIN_ID = "codexbar-usage";
+export const CODEXBAR_ADDON_ID = "codexbar-usage";
 
 const POLL_MS = 30_000;
-const COLLAPSED_KEY = "webui:plugin:codexbar:collapsed";
-const PROVIDERS_KEY = "webui:plugin:codexbar:providers";
+const COLLAPSED_KEY = "webui:addon:codexbar:collapsed";
+const LEGACY_COLLAPSED_KEY = "webui:plugin:codexbar:collapsed";
+const PROVIDERS_KEY = "webui:addon:codexbar:providers";
+const LEGACY_PROVIDERS_KEY = "webui:plugin:codexbar:providers";
 
 const barClass: Record<UsageTone, string> = {
   ok: "bg-success",
@@ -48,9 +50,19 @@ const textClass: Record<UsageTone, string> = {
   danger: "text-danger",
 };
 
+function readMigratedItem(key: string, legacyKey: string): string | null {
+  const saved = localStorage.getItem(key);
+  if (saved !== null) return saved;
+  const legacy = localStorage.getItem(legacyKey);
+  if (legacy === null) return null;
+  localStorage.setItem(key, legacy);
+  localStorage.removeItem(legacyKey);
+  return legacy;
+}
+
 function loadCollapsed(): boolean {
   try {
-    const saved = localStorage.getItem(COLLAPSED_KEY);
+    const saved = readMigratedItem(COLLAPSED_KEY, LEGACY_COLLAPSED_KEY);
     // An expanded fixed widget obscures the composer on phones and narrower
     // desktop windows. Keep it discoverable as a compact pill until the user
     // explicitly opens it, while preserving an existing preference.
@@ -62,6 +74,7 @@ function loadCollapsed(): boolean {
 function saveCollapsed(v: boolean) {
   try {
     localStorage.setItem(COLLAPSED_KEY, v ? "1" : "0");
+    localStorage.removeItem(LEGACY_COLLAPSED_KEY);
   } catch {
     /* ignore */
   }
@@ -70,7 +83,7 @@ function saveCollapsed(v: boolean) {
 /** Per-provider collapsed map: { [providerId]: true } means minimized. */
 function loadProviderCollapsed(): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(PROVIDERS_KEY);
+    const raw = readMigratedItem(PROVIDERS_KEY, LEGACY_PROVIDERS_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -88,6 +101,7 @@ function loadProviderCollapsed(): Record<string, boolean> {
 function saveProviderCollapsed(map: Record<string, boolean>) {
   try {
     localStorage.setItem(PROVIDERS_KEY, JSON.stringify(map));
+    localStorage.removeItem(LEGACY_PROVIDERS_KEY);
   } catch {
     /* ignore */
   }
@@ -328,7 +342,7 @@ export function CodexBarWidget() {
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const data = await getJson<CodexBarUsage>("/api/plugins/codexbar/usage");
+      const data = await getJson<CodexBarUsage>("/api/addons/codexbar/usage");
       if (!mounted.current) return;
       setUsage(data);
       setLoadError(null);
@@ -340,7 +354,7 @@ export function CodexBarWidget() {
     }
     // Token totals are best-effort and independent of the usage snapshot.
     try {
-      const tok = await getJson<CodexTokensResult>("/api/plugins/codexbar/tokens", {
+      const tok = await getJson<CodexTokensResult>("/api/addons/codexbar/tokens", {
         days: "1",
       });
       if (mounted.current) setTokens(tok);
@@ -451,7 +465,7 @@ export function CodexBarWidget() {
         </button>
         <button
           type="button"
-          onClick={() => writePluginEnabled(CODEXBAR_PLUGIN_ID, false)}
+          onClick={() => writeAddonEnabled(CODEXBAR_ADDON_ID, false)}
           title="このウィジェットを閉じる（設定から再表示できます）"
           className="rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger"
         >

@@ -131,7 +131,7 @@ test("theme toggle switches the color scheme", async ({ page }) => {
   await expect(html).not.toHaveClass(before);
 });
 
-test("CodexBar plugin starts compact and can be expanded", async ({ page }) => {
+test("CodexBar addon starts compact and can be expanded", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("CodexBar 利用状況")).toHaveCount(0);
   const compact = page.getByRole("button", { name: "CodexBar 利用状況を開く" });
@@ -140,9 +140,9 @@ test("CodexBar plugin starts compact and can be expanded", async ({ page }) => {
   await expect(page.getByText("CodexBar 利用状況")).toBeVisible();
 });
 
-test("settings exposes the plugin toggle", async ({ page }) => {
+test("settings exposes the addon toggle", async ({ page }) => {
   await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "プラグイン" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "アドオン" })).toBeVisible();
   await expect(
     page.getByTitle("このウィジェットを閉じる（設定から再表示できます）"),
   ).toHaveCount(0);

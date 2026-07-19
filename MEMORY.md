@@ -1,5 +1,23 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 WebUI「プラグイン」→「アドオン」改名（OpenCode 混同防止）
+
+### 背景
+- WebUI の拡張ウィジェットを「プラグイン」と呼んでいたが、OpenCode 本体の plugin と混同しやすい。
+
+### 変更
+- 用語・パス・識別子を一括で **addon / アドオン** に変更（OpenCode schema の `plugin.*` は触らない）。
+- ディレクトリ: `lib/plugins`→`lib/addons`、`components/plugins`→`components/addons`、`api/plugins`→`api/addons`、`public/plugins`→`public/addons`
+- コンポーネント: `PluginHost`/`PluginSettings` → `AddonHost`/`AddonSettings`
+- 設定タブ UI: 「プラグイン」→「アドオン」、`SettingsTab` `"plugins"`→`"addons"`
+- API: `/api/addons/codexbar/{usage,tokens}`、静的アイコン `/addons/codexbar/*.png`
+- localStorage: `webui:addons` / `webui:addon:codexbar:*`（旧 `webui:plugins` / `webui:plugin:codexbar:*` は初回読取で移行）
+
+### 検証
+- Vitest: addons / shell / settings / ProviderIcon 関連 70 tests PASS
+
+---
+
 ## 2026-07-20 cursor-acp/Auto 画像認識の再発修正（ゾンビプロキシ + OneDrive mkdir）
 
 ### 症状

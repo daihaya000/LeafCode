@@ -6,6 +6,7 @@ import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Paperclip, X } from "lucide-r
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
+import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { Button, GhostSelect } from "@/components/ui";
 import {
   readAccessMode,
@@ -13,7 +14,7 @@ import {
   type AccessMode,
 } from "@/lib/access-mode";
 import { readDefaultModel } from "@/lib/default-model";
-import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
+import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import {
@@ -27,6 +28,12 @@ import {
   type IntelligenceVariant,
   type ProviderModelMeta,
 } from "@/lib/model-variants";
+import {
+  applySlashCompletion,
+  filterCommands,
+  parseSlashQuery,
+} from "@/lib/slash-command";
+import { useSlashCommands } from "@/lib/useSlashCommands";
 import type { ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
@@ -93,6 +100,24 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
+  const [cursor, setCursor] = useState(0);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const slashCommands = useSlashCommands();
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const slashQuery = useMemo(
+    () => parseSlashQuery(prompt, cursor),
+    [prompt, cursor],
+  );
+  const slashItems = useMemo(
+    () =>
+      slashQuery ? filterCommands(slashCommands, slashQuery.query) : [],
+    [slashCommands, slashQuery],
+  );
+  const slashOpen = slashItems.length > 0;
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [slashQuery?.query, slashQuery?.start]);
 
   useEffect(() => {
     setAccessMode(readAccessMode());

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { emptyUsage, parseCodexBarSnapshot } from "@/lib/plugins/codexbar";
+import { emptyUsage, parseCodexBarSnapshot } from "@/lib/addons/codexbar";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

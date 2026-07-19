@@ -5,11 +5,13 @@ import { CodexBarWidget } from "./CodexBarWidget";
 const { getJson } = vi.hoisted(() => ({ getJson: vi.fn() }));
 
 vi.mock("@/lib/client", () => ({ getJson }));
-vi.mock("@/lib/plugins/state", () => ({ writePluginEnabled: vi.fn() }));
+vi.mock("@/lib/addons/state", () => ({ writeAddonEnabled: vi.fn() }));
 
 describe("CodexBarWidget credits", () => {
   beforeEach(() => {
-    localStorage.setItem("webui:plugin:codexbar:collapsed", "0");
+    localStorage.setItem("webui:addon:codexbar:collapsed", "0");
+    localStorage.removeItem("webui:addon:codexbar:providers");
+    localStorage.removeItem("webui:plugin:codexbar:collapsed");
     localStorage.removeItem("webui:plugin:codexbar:providers");
     getJson.mockReset();
     getJson.mockImplementation((url: string) => {

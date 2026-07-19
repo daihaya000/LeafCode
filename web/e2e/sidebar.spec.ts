@@ -54,39 +54,39 @@ test("keeps mobile project actions visible and focusable", async ({ page }) => {
   }
 });
 
-test("renders enabled plugins below the sidebar add-project action without overflow", async ({
+test("renders enabled addons below the sidebar add-project action without overflow", async ({
   page,
 }) => {
   const sidebar = page.locator("aside").first();
   const addProject = sidebar
     .locator("button")
     .filter({ hasText: "プロジェクトを追加" });
-  const pluginHost = sidebar.getByTestId("plugin-host");
+  const addonHost = sidebar.getByTestId("addon-host");
 
   await expect(addProject).toBeVisible();
-  await expect(pluginHost).toBeVisible();
-  const [addBox, pluginBox] = await Promise.all([
+  await expect(addonHost).toBeVisible();
+  const [addBox, addonBox] = await Promise.all([
     addProject.boundingBox(),
-    pluginHost.boundingBox(),
+    addonHost.boundingBox(),
   ]);
 
-  expect(pluginBox?.y).toBeGreaterThan(addBox?.y ?? 0);
-  await expect(pluginHost).not.toHaveClass(/\bfixed\b/);
+  expect(addonBox?.y).toBeGreaterThan(addBox?.y ?? 0);
+  await expect(addonHost).not.toHaveClass(/\bfixed\b/);
   const sidebarBox = await sidebar.boundingBox();
-  if (!pluginBox || !sidebarBox) throw new Error("sidebar or plugin host is not measurable");
-  expect(pluginBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
-  expect(pluginBox.x + pluginBox.width).toBeLessThanOrEqual(
+  if (!addonBox || !sidebarBox) throw new Error("sidebar or addon host is not measurable");
+  expect(addonBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
+  expect(addonBox.x + addonBox.width).toBeLessThanOrEqual(
     sidebarBox.x + sidebarBox.width,
   );
-  expect(sidebarBox.y + sidebarBox.height - (pluginBox.y + pluginBox.height)).toBeLessThan(
+  expect(sidebarBox.y + sidebarBox.height - (addonBox.y + addonBox.height)).toBeLessThan(
     48,
   );
   expect(
-    await pluginHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
+    await addonHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
   ).toBe(true);
 });
 
-test("keeps enabled plugins in the mobile sidebar drawer", async ({ page }) => {
+test("keeps enabled addons in the mobile sidebar drawer", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "メニュー" }).click();
 
@@ -94,30 +94,30 @@ test("keeps enabled plugins in the mobile sidebar drawer", async ({ page }) => {
   const addProject = sidebar
     .locator("button")
     .filter({ hasText: "プロジェクトを追加" });
-  const pluginHost = sidebar.getByTestId("plugin-host");
+  const addonHost = sidebar.getByTestId("addon-host");
 
-  await expect(page.getByTestId("plugin-host")).toHaveCount(1);
-  await pluginHost.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("addon-host")).toHaveCount(1);
+  await addonHost.scrollIntoViewIfNeeded();
   await expect(addProject).toBeVisible();
-  await expect(pluginHost).toBeVisible();
-  const [addBox, pluginBox] = await Promise.all([
+  await expect(addonHost).toBeVisible();
+  const [addBox, addonBox] = await Promise.all([
     addProject.boundingBox(),
-    pluginHost.boundingBox(),
+    addonHost.boundingBox(),
   ]);
 
-  expect(pluginBox?.y).toBeGreaterThan(addBox?.y ?? 0);
-  await expect(pluginHost).not.toHaveClass(/\bfixed\b/);
+  expect(addonBox?.y).toBeGreaterThan(addBox?.y ?? 0);
+  await expect(addonHost).not.toHaveClass(/\bfixed\b/);
   const sidebarBox = await sidebar.boundingBox();
-  if (!pluginBox || !sidebarBox) throw new Error("sidebar or plugin host is not measurable");
-  expect(pluginBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
-  expect(pluginBox.x + pluginBox.width).toBeLessThanOrEqual(
+  if (!addonBox || !sidebarBox) throw new Error("sidebar or addon host is not measurable");
+  expect(addonBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
+  expect(addonBox.x + addonBox.width).toBeLessThanOrEqual(
     sidebarBox.x + sidebarBox.width,
   );
-  expect(sidebarBox.y + sidebarBox.height - (pluginBox.y + pluginBox.height)).toBeLessThan(
+  expect(sidebarBox.y + sidebarBox.height - (addonBox.y + addonBox.height)).toBeLessThan(
     48,
   );
   expect(
-    await pluginHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
+    await addonHost.locator("..").evaluate((el) => el.scrollWidth <= el.clientWidth),
   ).toBe(true);
 });
 

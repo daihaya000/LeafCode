@@ -2,34 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { cx } from "@/components/ui";
-import { PLUGINS } from "@/lib/plugins/registry";
+import { ADDONS } from "@/lib/addons/registry";
 import {
   isEnabled,
-  readPluginPrefs,
+  readAddonPrefs,
   sanitizePrefs,
-  writePluginEnabled,
-  PLUGINS_CHANGED_EVENT,
-  type PluginPrefs,
-} from "@/lib/plugins/state";
+  writeAddonEnabled,
+  ADDONS_CHANGED_EVENT,
+  type AddonPrefs,
+} from "@/lib/addons/state";
 
-export function PluginSettings() {
-  const [prefs, setPrefs] = useState<PluginPrefs>({});
+export function AddonSettings() {
+  const [prefs, setPrefs] = useState<AddonPrefs>({});
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setPrefs(readPluginPrefs());
+    setPrefs(readAddonPrefs());
     setHydrated(true);
     const onChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      setPrefs(detail ? sanitizePrefs(detail) : readPluginPrefs());
+      setPrefs(detail ? sanitizePrefs(detail) : readAddonPrefs());
     };
-    window.addEventListener(PLUGINS_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(PLUGINS_CHANGED_EVENT, onChange);
+    window.addEventListener(ADDONS_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(ADDONS_CHANGED_EVENT, onChange);
   }, []);
 
   return (
     <ul className="space-y-2">
-      {PLUGINS.map((p) => {
+      {ADDONS.map((p) => {
         const enabled = hydrated
           ? isEnabled(prefs, p.id, p.defaultEnabled)
           : p.defaultEnabled;
@@ -48,7 +48,7 @@ export function PluginSettings() {
               aria-checked={enabled}
               aria-label={`${p.name} を${enabled ? "無効化" : "有効化"}`}
               disabled={!hydrated}
-              onClick={() => writePluginEnabled(p.id, !enabled)}
+              onClick={() => writeAddonEnabled(p.id, !enabled)}
               className={cx(
                 "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-40",
                 enabled ? "bg-primary" : "bg-surface-3",

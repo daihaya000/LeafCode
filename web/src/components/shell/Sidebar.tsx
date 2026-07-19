@@ -16,12 +16,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
-import { PluginHost } from "@/components/plugins/PluginHost";
+import { AddonHost } from "@/components/addons/AddonHost";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
-import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
+import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
 import { AttentionBadge } from "./AttentionBadge";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
@@ -369,7 +369,7 @@ export function Sidebar({
     [refreshingId],
   );
 
-  const body = (includePlugins: boolean) => (
+  const body = (includeAddons: boolean) => (
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
         <Link
@@ -694,9 +694,9 @@ export function Sidebar({
         )}
 
       </div>
-      {includePlugins && (
+      {includeAddons && (
         <div className="shrink-0 border-t border-border px-1.5 pb-[env(safe-area-inset-bottom)]">
-          <PluginHost />
+          <AddonHost />
         </div>
       )}
     </div>

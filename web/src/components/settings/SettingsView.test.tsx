@@ -23,8 +23,8 @@ vi.mock("@/components/AddProjectButton", () => ({
   AddProjectButton: () => <button type="button">プロジェクトを追加</button>,
 }));
 
-vi.mock("@/components/plugins/PluginSettings", () => ({
-  PluginSettings: () => <div data-testid="plugin-settings">plugins</div>,
+vi.mock("@/components/addons/AddonSettings", () => ({
+  AddonSettings: () => <div data-testid="addon-settings">addons</div>,
 }));
 
 type OrphansPayload = {
@@ -119,16 +119,16 @@ describe("SettingsView", () => {
     // "プロジェクト" appears as a tab label regardless of the active tab;
     // its section heading should NOT be rendered on the 全般 tab.
     expect(screen.queryAllByText("プロジェクト")).toHaveLength(1);
-    expect(screen.queryByTestId("plugin-settings")).toBeNull();
+    expect(screen.queryByTestId("addon-settings")).toBeNull();
   });
 
   it("switches visible content when a tab is clicked", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "プラグイン" }));
+    fireEvent.click(screen.getByRole("button", { name: "アドオン" }));
 
-    expect(await screen.findByTestId("plugin-settings")).toBeTruthy();
+    expect(await screen.findByTestId("addon-settings")).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
   });
 

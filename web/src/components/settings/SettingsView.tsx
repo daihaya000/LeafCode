@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
-import { PluginSettings } from "@/components/plugins/PluginSettings";
+import { AddonSettings } from "@/components/addons/AddonSettings";
 import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
@@ -26,7 +26,7 @@ import {
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
-import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
+import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
@@ -76,7 +76,7 @@ type AccessInfo = {
   }[];
 };
 
-type SettingsTab = "general" | "project" | "connectivity" | "plugins" | "agents";
+type SettingsTab = "general" | "project" | "connectivity" | "addons" | "agents";
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
@@ -382,7 +382,7 @@ export function SettingsView() {
       badge: requiresAttention > 0 ? requiresAttention : undefined,
     },
     { key: "connectivity", label: "接続" },
-    { key: "plugins", label: "プラグイン" },
+    { key: "addons", label: "アドオン" },
     { key: "agents", label: "エージェント" },
   ];
 
@@ -850,13 +850,14 @@ export function SettingsView() {
           </>
         )}
 
-        {activeTab === "plugins" && (
+        {activeTab === "addons" && (
           <section>
-            <h2 className="mb-3 text-sm font-semibold text-muted">プラグイン</h2>
+            <h2 className="mb-3 text-sm font-semibold text-muted">アドオン</h2>
             <p className="mb-3 text-xs text-faint">
-              右下に表示するウィジェットの有効/無効を切り替えます。
+              サイドバーに表示するウィジェットの有効/無効を切り替えます。
+              OpenCode 本体のプラグインとは別物です。
             </p>
-            <PluginSettings />
+            <AddonSettings />
           </section>
         )}
 

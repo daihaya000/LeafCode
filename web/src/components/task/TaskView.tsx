@@ -48,8 +48,8 @@ import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
 } from "@/lib/default-model";
-import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
-import { formatTokens } from "@/lib/plugins/codex-tokens";
+import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
+import { formatTokens } from "@/lib/addons/codex-tokens";
 import { computeContextUsage } from "@/lib/context-usage";
 import {
   readChatTab,

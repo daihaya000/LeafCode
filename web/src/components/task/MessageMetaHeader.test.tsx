@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_COST_PREFS } from "@/lib/currency";
 import { MessageMetaHeader } from "./MessageMetaHeader";
 
-vi.mock("@/lib/plugins/codexbar", () => ({
+vi.mock("@/lib/addons/codexbar", () => ({
   providerIconSrcForOpencodeId: (id?: string) =>
     id === "openai" ? "/openai.svg" : null,
 }));

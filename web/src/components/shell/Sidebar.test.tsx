@@ -45,8 +45,8 @@ vi.mock("@/components/AddProjectButton", () => ({
     ),
 }));
 
-vi.mock("@/components/plugins/PluginHost", () => ({
-  PluginHost: () => <div data-testid="plugin-host">Plugin widget</div>,
+vi.mock("@/components/addons/AddonHost", () => ({
+  AddonHost: () => <div data-testid="addon-host">Addon widget</div>,
 }));
 
 vi.mock("./AttentionBadge", () => ({
@@ -74,14 +74,14 @@ describe("Sidebar", () => {
     vi.clearAllMocks();
   });
 
-  it("renders plugins directly below the labelled add-project button", async () => {
+  it("renders addons directly below the labelled add-project button", async () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
     const addProject = await screen.findByTestId("add-project-button");
-    const pluginHost = screen.getByTestId("plugin-host");
+    const addonHost = screen.getByTestId("addon-host");
 
     expect(
-      addProject.compareDocumentPosition(pluginHost) &
+      addProject.compareDocumentPosition(addonHost) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });

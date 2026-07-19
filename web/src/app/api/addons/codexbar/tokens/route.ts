@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { aggregateCodexTokens } from "@/lib/plugins/codex-tokens-server";
+import { aggregateCodexTokens } from "@/lib/addons/codex-tokens-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

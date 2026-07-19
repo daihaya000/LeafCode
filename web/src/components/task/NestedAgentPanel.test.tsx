@@ -207,6 +207,6 @@ describe("NestedAgentPanel", () => {
     const img = header.querySelector("img");
     expect(img).not.toBeNull();
     expect(img?.getAttribute("alt")).toBe("");
-    expect(img?.getAttribute("src")).toContain("/plugins/codexbar/claude.png");
+    expect(img?.getAttribute("src")).toContain("/addons/codexbar/claude.png");
   });
 });

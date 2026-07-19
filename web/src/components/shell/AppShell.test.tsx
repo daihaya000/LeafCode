@@ -23,8 +23,8 @@ vi.mock("next-themes", () => ({
   useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }),
 }));
 
-vi.mock("@/components/plugins/PluginHost", () => ({
-  PluginHost: () => <div data-testid="plugin-host" />,
+vi.mock("@/components/addons/AddonHost", () => ({
+  AddonHost: () => <div data-testid="addon-host" />,
 }));
 
 vi.mock("./Sidebar", () => ({
@@ -55,13 +55,13 @@ describe("AppShell", () => {
     expect(getByText("child")).toBeTruthy();
   });
 
-  it("does not render PluginHost outside the sidebar", () => {
+  it("does not render AddonHost outside the sidebar", () => {
     const { container } = render(
       <AppShell>
         <div>child</div>
       </AppShell>,
     );
 
-    expect(container.querySelector('[data-testid="plugin-host"]')).toBeNull();
+    expect(container.querySelector('[data-testid="addon-host"]')).toBeNull();
   });
 });
