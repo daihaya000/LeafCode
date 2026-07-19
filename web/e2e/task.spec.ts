@@ -155,6 +155,12 @@ async function mockPlanTask(page: Page, options: PlanMockOptions = {}) {
 }
 
 test("shows consolidated response metadata", async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "webui:cost-display",
+      JSON.stringify({ currency: "USD", rateMode: "manual", usdJpyRate: 150 }),
+    ),
+  );
   await mockPlanTask(page, {
     messages: [{
       info: {

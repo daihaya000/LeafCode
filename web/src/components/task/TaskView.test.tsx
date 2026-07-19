@@ -28,7 +28,11 @@ vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
 vi.mock("@/lib/currency", () => ({
   formatCost: (cost: number) => `cost $${cost.toFixed(4)}`,
   formatCostValue: (cost: number) => `$${cost.toFixed(4)}`,
-  useCostDisplayPrefs: () => ({ currency: "USD", usdJpyRate: 150 }),
+  useCostDisplayPrefs: () => ({
+    currency: "USD",
+    rateMode: "manual",
+    usdJpyRate: 150,
+  }),
 }));
 
 vi.mock("@/lib/useSessionStream", () => ({ useSessionStream }));

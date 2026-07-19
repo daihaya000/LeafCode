@@ -29,7 +29,7 @@ describe("MessageMetaHeader", () => {
     expect(screen.getByText("GPT-5.6 Sol").getAttribute("title")).toBe(
       "GPT-5.6 Sol",
     );
-    expect(screen.getByText("cost $0.1250")).toBeTruthy();
+    expect(screen.getByText("cost ¥18.8（$0.1250）")).toBeTruthy();
     expect(screen.getByLabelText("応答メタデータ").textContent).toContain(
       "14:32",
     );
