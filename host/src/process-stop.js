@@ -1,0 +1,210 @@
+/**
+ * Windows-safe process stop helpers.
+ *
+ * Ghost LISTENING sockets often appear after `taskkill /F` (TerminateProcess)
+ * when child processes still hold an inherited listen handle, or when the
+ * server never gets to close() the socket. Prefer dispose → soft kill → hard kill.
+ */
+
+import { execSync as defaultExecSync } from 'child_process';
+
+/**
+ * @param {number} pid
+ * @param {{ execSync?: typeof import('child_process').execSync }} [deps]
+ */
+export function softKillTree(pid, deps = {}) {
+  if (!pid) return false;
+  const run = deps.execSync ?? defaultExecSync;
+  try {
+    // Without /F: asks the process to close (WM_CLOSE / console break). Gives
+    // Bun/Node a chance to release the listen socket before the kernel orphans it.
+    run(`taskkill /T /PID ${pid}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {number} pid
+ * @param {{ execSync?: typeof import('child_process').execSync }} [deps]
+ */
+export function hardKillTree(pid, deps = {}) {
+  if (!pid) return false;
+  const run = deps.execSync ?? defaultExecSync;
+  try {
+    run(`taskkill /T /F /PID ${pid}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Direct children of `pid` (one level). Used to reap inheritors after a crash.
+ * @param {number} pid
+ * @param {{ execSync?: typeof import('child_process').execSync }} [deps]
+ * @returns {number[]}
+ */
+export function listChildPids(pid, deps = {}) {
+  if (!pid) return [];
+  const run = deps.execSync ?? defaultExecSync;
+  try {
+    const output = run(
+      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${pid}\\").ProcessId"`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
+    );
+    return parseChildPidOutput(output);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * @param {string} output
+ * @returns {number[]}
+ */
+export function parseChildPidOutput(output) {
+  if (!output) return [];
+  const ids = [];
+  for (const line of String(output).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!/^\d+$/.test(trimmed)) continue;
+    const n = Number(trimmed);
+    if (Number.isFinite(n) && n > 0) ids.push(n);
+  }
+  return [...new Set(ids)];
+}
+
+/**
+ * Build Basic auth headers when OPENCODE_SERVER_PASSWORD is set.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {Record<string, string>}
+ */
+export function disposeAuthHeaders(env = process.env) {
+  const password = env.OPENCODE_SERVER_PASSWORD;
+  if (!password) return {};
+  const user = env.OPENCODE_SERVER_USERNAME || 'opencode';
+  return {
+    Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+  };
+}
+
+/**
+ * Ask OpenCode to tear down MCP/LSP/instance resources before process kill.
+ * Does not exit the serve process, but reduces inherited-handle ghosts.
+ * @param {string} baseUrl
+ * @param {{ fetch?: typeof fetch, timeoutMs?: number, env?: NodeJS.ProcessEnv }} [opts]
+ * @returns {Promise<boolean>}
+ */
+export async function disposeOpencodeServer(baseUrl, opts = {}) {
+  if (!baseUrl) return false;
+  const doFetch = opts.fetch ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 5000;
+  const headers = disposeAuthHeaders(opts.env);
+  try {
+    const res = await doFetch(new URL('/global/dispose', baseUrl), {
+      method: 'POST',
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Soft → wait → hard kill of a process tree.
+ * @param {{
+ *   pid: number,
+ *   softKill?: (pid: number) => boolean,
+ *   hardKill?: (pid: number) => boolean,
+ *   isAlive?: (pid: number) => boolean,
+ *   sleep?: (ms: number) => Promise<void>,
+ *   softWaitMs?: number,
+ *   pollMs?: number,
+ * }} input
+ * @returns {Promise<'soft' | 'hard' | 'gone'>}
+ */
+export async function stopProcessTreeGracefully(input) {
+  const pid = Number(input.pid);
+  if (!Number.isFinite(pid) || pid <= 0) return 'gone';
+
+  const softKill = input.softKill ?? ((id) => softKillTree(id));
+  const hardKill = input.hardKill ?? ((id) => hardKillTree(id));
+  const isAlive =
+    input.isAlive ??
+    ((id) => {
+      try {
+        process.kill(id, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  const sleep =
+    input.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const softWaitMs = input.softWaitMs ?? 3000;
+  const pollMs = input.pollMs ?? 250;
+
+  if (!isAlive(pid)) return 'gone';
+
+  softKill(pid);
+  const deadline = Date.now() + softWaitMs;
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) return 'soft';
+    await sleep(pollMs);
+  }
+
+  if (!isAlive(pid)) return 'soft';
+  hardKill(pid);
+  return isAlive(pid) ? 'hard' : 'hard';
+}
+
+/**
+ * After OpenCode crashes or is force-killed, kill leftover children that may
+ * still hold an inherited listen handle (netstat often still shows the dead parent PID).
+ * @param {{
+ *   exitedPid?: number | null,
+ *   listeningPids?: number[],
+ *   listChildren?: (pid: number) => number[],
+ *   isAlive?: (pid: number) => boolean,
+ *   hardKill?: (pid: number) => void,
+ * }} input
+ * @returns {number[]} killed PIDs
+ */
+export function reapInheritedHolders(input) {
+  const isAlive =
+    input.isAlive ??
+    ((id) => {
+      try {
+        process.kill(id, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  const listChildren = input.listChildren ?? (() => []);
+  const hardKill = input.hardKill ?? (() => {});
+  const killed = new Set();
+
+  const exited = Number(input.exitedPid);
+  if (Number.isFinite(exited) && exited > 0) {
+    for (const child of listChildren(exited)) {
+      if (!isAlive(child)) continue;
+      hardKill(child);
+      killed.add(child);
+    }
+  }
+
+  for (const pid of input.listeningPids ?? []) {
+    const n = Number(pid);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    if (!isAlive(n)) continue;
+    hardKill(n);
+    killed.add(n);
+  }
+
+  return [...killed];
+}

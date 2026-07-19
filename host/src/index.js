@@ -23,6 +23,14 @@ import {
   listenControlServer,
 } from './control-server.js';
 import { resolveKillPids } from './restart-targets.js';
+import {
+  disposeOpencodeServer,
+  hardKillTree,
+  listChildPids,
+  reapInheritedHolders,
+  softKillTree,
+  stopProcessTreeGracefully,
+} from './process-stop.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -253,11 +261,27 @@ async function resolveOccupiedPort(port, healthUrl, label) {
   const livePids = listeningPids.filter((pid) => isProcessAlive(pid));
 
   if (livePids.length > 0) {
+    if (label === 'OpenCode') {
+      const disposed = await disposeOpencodeServer(OPENCODE_URL);
+      if (disposed) await sleep(750);
+    }
     for (const pid of livePids) {
       log(
-        `Port ${port} holds unresponsive ${label} (PID ${pid}). Killing and retrying…`,
+        `Port ${port} holds unresponsive ${label} (PID ${pid}). Stopping gently then force-killing if needed…`,
       );
-      killProcessTree(pid);
+      if (label === 'OpenCode') {
+        await stopProcessTreeGracefully({
+          pid,
+          softKill: softKillTree,
+          hardKill: killProcessTree,
+          isAlive: isProcessAlive,
+          sleep,
+          softWaitMs: 2000,
+          pollMs: 250,
+        });
+      } else {
+        killProcessTree(pid);
+      }
     }
     for (let i = 0; i < 40; i += 1) {
       await sleep(250);
@@ -282,11 +306,56 @@ async function resolveOccupiedPort(port, healthUrl, label) {
 }
 
 function killProcessTree(pid) {
-  if (!pid) return;
-  try {
-    execSync(`taskkill /T /F /PID ${pid}`, { stdio: 'ignore' });
-  } catch {
-    // already exited
+  hardKillTree(pid);
+}
+
+/**
+ * Prefer dispose + soft kill so Windows does not orphan the listen socket.
+ * Falls back to taskkill /F only if the process is still alive.
+ */
+async function stopOpencodeProcessTree(pids) {
+  const unique = [...new Set(pids.filter(Boolean))];
+  if (unique.length === 0) return;
+
+  const disposed = await disposeOpencodeServer(OPENCODE_URL);
+  if (disposed) {
+    log('OpenCode /global/dispose acknowledged — waiting for children to release handles');
+    await sleep(750);
+  }
+
+  for (const pid of unique) {
+    if (!isProcessAlive(pid)) continue;
+    const how = await stopProcessTreeGracefully({
+      pid,
+      softKill: softKillTree,
+      hardKill: killProcessTree,
+      isAlive: isProcessAlive,
+      sleep,
+      softWaitMs: 3000,
+      pollMs: 250,
+    });
+    if (how === 'soft') {
+      log(`OpenCode PID ${pid} stopped without force-kill`);
+    } else if (how === 'hard') {
+      log(`OpenCode PID ${pid} required force-kill (/F)`);
+    }
+  }
+}
+
+/** After crash/force-kill, reap children that may still hold an inherited listen handle. */
+function reapOpencodePortHolders(exitedPid) {
+  const listeningPids = getListeningPids(OPENCODE_PORT);
+  const killed = reapInheritedHolders({
+    exitedPid,
+    listeningPids,
+    listChildren: listChildPids,
+    isAlive: isProcessAlive,
+    hardKill: killProcessTree,
+  });
+  if (killed.length > 0) {
+    log(
+      `Reaped ${killed.length} leftover process(es) that may hold :${OPENCODE_PORT} (${killed.join(', ')})`,
+    );
   }
 }
 
@@ -349,7 +418,7 @@ function findOpencode() {
 
 function spawnOpencode(opencodePath) {
   const useShell = /\.(cmd|bat)$/i.test(opencodePath);
-  opencodeProc = spawn(
+  const child = spawn(
     opencodePath,
     ['serve', '--hostname', '127.0.0.1', '--port', String(OPENCODE_PORT)],
     {
@@ -359,22 +428,35 @@ function spawnOpencode(opencodePath) {
       windowsHide: true,
     },
   );
+  opencodeProc = child;
 
-  opencodeProc.on('error', (err) => {
+  child.on('error', (err) => {
     error(`OpenCode spawn error: ${err.message}`);
   });
 
-  opencodeProc.stdout?.on('data', (chunk) => {
+  child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[opencode] ${chunk}`);
   });
-  opencodeProc.stderr?.on('data', (chunk) => {
+  child.stderr?.on('data', (chunk) => {
     process.stderr.write(`[opencode] ${chunk}`);
   });
-  opencodeProc.on('exit', (code, signal) => {
+  child.on('exit', (code, signal) => {
+    const exitedPid = child.pid;
     if (!quitting) {
       log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
     }
-    opencodeProc = null;
+    if (opencodeProc === child) opencodeProc = null;
+    // Crash / abrupt exit can leave children holding an inherited listen handle.
+    // Reap them quickly so :OPENCODE_PORT does not become a permanent ghost.
+    if (!quitting && exitedPid) {
+      try {
+        reapOpencodePortHolders(exitedPid);
+      } catch (err) {
+        error(
+          `OpenCode orphan reap failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     refreshStatusMenu();
   });
 }
@@ -995,14 +1077,12 @@ async function stopOpencodeOnly() {
     ownedPid: opencodeProc?.pid,
     listeningPids: getListeningPids(OPENCODE_PORT),
   });
-  for (const pid of pids) {
-    killProcessTree(pid);
-  }
   opencodeProc = null;
+  await stopOpencodeProcessTree(pids);
   await waitForPortFree(OPENCODE_PORT);
 }
 
-function stopChildren() {
+async function stopChildren() {
   if (webRestartTimer) {
     clearTimeout(webRestartTimer);
     webRestartTimer = null;
@@ -1013,16 +1093,18 @@ function stopChildren() {
   }
   webRestarts = 0;
   if (webProc?.pid) expectedWebExitPids.add(webProc.pid);
-  const pids = [
-    opencodeProc?.pid,
-    webProc?.pid,
-    webBuildProc?.pid,
-    caddyProc?.pid,
-  ].filter(Boolean);
-  for (const pid of pids) {
+
+  const opencodePids = resolveKillPids({
+    ownedPid: opencodeProc?.pid,
+    listeningPids: getListeningPids(OPENCODE_PORT),
+  });
+  opencodeProc = null;
+  await stopOpencodeProcessTree(opencodePids);
+
+  const otherPids = [webProc?.pid, webBuildProc?.pid, caddyProc?.pid].filter(Boolean);
+  for (const pid of otherPids) {
     killProcessTree(pid);
   }
-  opencodeProc = null;
   webProc = null;
   webBuildProc = null;
   caddyProc = null;
@@ -1155,11 +1237,11 @@ async function restartServices() {
   restartingServices = true;
   log('Restarting services…');
   try {
-    stopChildren();
+    await stopChildren();
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await startChildren();
   } catch (err) {
-    stopChildren();
+    await stopChildren();
     throw err;
   } finally {
     restartingServices = false;
@@ -1216,7 +1298,7 @@ async function quit() {
     clearTimeout(trayStableTimer);
     trayStableTimer = null;
   }
-  stopChildren();
+  await stopChildren();
   await closeControlServer(controlServer);
   controlServer = null;
   removeControlFile();
@@ -1420,7 +1502,7 @@ async function main() {
     await startControlServer();
     await startChildren();
   } catch (err) {
-    stopChildren();
+    await stopChildren();
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
@@ -1452,7 +1534,7 @@ async function main() {
     await startTray();
   } catch (err) {
     removeLock();
-    stopChildren();
+    await stopChildren();
     error(`Tray failed to start: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
