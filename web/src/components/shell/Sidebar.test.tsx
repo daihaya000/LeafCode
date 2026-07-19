@@ -289,6 +289,7 @@ describe("Sidebar", () => {
     expect(dot.className).toContain("animate-pulse");
     expect(dot.className).toContain("bg-warning");
     expect(dot.className).not.toContain("bg-working");
+    expect(screen.queryByLabelText("エージェントが処理中")).toBeNull();
   });
 
   it("does not mark a permission request for the same session as waiting for a question", async () => {
@@ -335,12 +336,13 @@ describe("Sidebar", () => {
 
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    const dot = await screen.findByLabelText("状態: working");
-    expect(dot.className).toContain("bg-working");
-    expect(dot.className).not.toContain("bg-warning");
+    const spinner = await screen.findByLabelText("エージェントが処理中");
+    expect(spinner.getAttribute("class")).toContain("animate-spin");
+    expect(spinner.getAttribute("class")).toContain("text-working");
+    expect(screen.queryByLabelText("質問への回答待ち")).toBeNull();
   });
 
-  it("returns to the working dot after the pending question is removed", async () => {
+  it("returns to the working spinner after the pending question is removed", async () => {
     attentionState.items = [{
       kind: "question",
       request: { sessionID: "sess1" },
@@ -388,9 +390,9 @@ describe("Sidebar", () => {
     attentionState.items = [];
     view.rerender(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    const dot = await screen.findByLabelText("状態: working");
-    expect(dot.className).toContain("bg-working");
-    expect(dot.className).not.toContain("bg-warning");
+    const spinner = await screen.findByLabelText("エージェントが処理中");
+    expect(spinner.getAttribute("class")).toContain("animate-spin");
+    expect(screen.queryByLabelText("質問への回答待ち")).toBeNull();
   });
 
   it("does not mark a different session as waiting for a question answer", async () => {
@@ -445,7 +447,7 @@ describe("Sidebar", () => {
     expect(screen.queryByLabelText("質問への回答待ち")).toBeNull();
   });
 
-  it("keeps the working color when the task has no pending question", async () => {
+  it("shows a spinning ring when the task is working without a pending question", async () => {
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -489,8 +491,58 @@ describe("Sidebar", () => {
 
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    const dot = await screen.findByLabelText("状態: working");
-    expect(dot.className).toContain("bg-working");
-    expect(dot.className).not.toContain("bg-warning");
+    const spinner = await screen.findByLabelText("エージェントが処理中");
+    expect(spinner.getAttribute("class")).toContain("animate-spin");
+    expect(spinner.getAttribute("class")).toContain("text-working");
+    expect(screen.queryByLabelText("状態: working")).toBeNull();
+  });
+
+  it("does not show a spinner for a non-working session", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Task title",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "ready",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const dot = await screen.findByLabelText("状態: ready");
+    expect(dot.className).toContain("bg-success");
+    expect(screen.queryByLabelText("エージェントが処理中")).toBeNull();
   });
 });

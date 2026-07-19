@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FolderGit2,
   GitBranch,
+  Loader2,
   Plus,
   RefreshCw,
   Settings,
@@ -502,35 +503,42 @@ export function Sidebar({
                                   className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
                                   <div className="flex items-center gap-1.5">
-                                    <span
-                                      aria-label={
-                                        waitingForQuestion
-                                          ? "質問への回答待ち"
-                                          : `状態: ${task.status}`
-                                      }
-                                      className={cx(
-                                        "h-1.5 w-1.5 shrink-0 rounded-full",
-                                        task.status === "working" &&
-                                          "animate-pulse",
-                                        waitingForQuestion && "bg-warning",
-                                        !waitingForQuestion &&
-                                          task.status === "working" &&
-                                          "bg-working",
-                                        !waitingForQuestion &&
-                                          task.status === "ready" &&
-                                          "bg-success",
-                                        !waitingForQuestion &&
-                                          task.status === "merged" &&
-                                          "bg-success",
-                                        !waitingForQuestion &&
-                                          task.status === "error" &&
-                                          "bg-danger",
-                                        !waitingForQuestion &&
-                                          (task.status === "idle" ||
-                                            task.status === "unknown") &&
-                                          "bg-faint",
+                                    <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                                      {!waitingForQuestion &&
+                                      task.status === "working" ? (
+                                        <Loader2
+                                          aria-label="エージェントが処理中"
+                                          className="h-3 w-3 animate-spin text-working"
+                                        />
+                                      ) : (
+                                        <span
+                                          aria-label={
+                                            waitingForQuestion
+                                              ? "質問への回答待ち"
+                                              : `状態: ${task.status}`
+                                          }
+                                          className={cx(
+                                            "h-1.5 w-1.5 rounded-full",
+                                            task.status === "working" &&
+                                              "animate-pulse",
+                                            waitingForQuestion && "bg-warning",
+                                            !waitingForQuestion &&
+                                              task.status === "ready" &&
+                                              "bg-success",
+                                            !waitingForQuestion &&
+                                              task.status === "merged" &&
+                                              "bg-success",
+                                            !waitingForQuestion &&
+                                              task.status === "error" &&
+                                              "bg-danger",
+                                            !waitingForQuestion &&
+                                              (task.status === "idle" ||
+                                                task.status === "unknown") &&
+                                              "bg-faint",
+                                          )}
+                                        />
                                       )}
-                                    />
+                                    </span>
                                     <span className="min-w-0 flex-1 truncate text-xs font-medium">
                                       {task.title}
                                     </span>
