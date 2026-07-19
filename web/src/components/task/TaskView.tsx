@@ -590,6 +590,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     streamStatusType === "busy" || streamStatusType === "retry";
   const hasActiveTask =
     streamActive || (streamStatusType === undefined && task?.status === "working");
+  // Block composer while the task is known-busy even before stream.status loads.
+  const working = hasActiveTask;
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -677,8 +679,6 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!el) return;
     stickRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
   }, []);
-
-  const working = stream.status !== null && stream.status.type !== "idle";
 
   const currentTool = useMemo(() => {
     for (let i = stream.messages.length - 1; i >= 0; i--) {
@@ -1148,6 +1148,9 @@ export function TaskView({ taskId }: { taskId: string }) {
             )}
             {stream.connection === "reconnecting" && (
               <span className="hidden text-xs text-warning sm:inline">再接続中…</span>
+            )}
+            {stream.connection === "down" && (
+              <span className="hidden text-xs text-danger sm:inline">切断（再試行中）</span>
             )}
           </div>
           {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (

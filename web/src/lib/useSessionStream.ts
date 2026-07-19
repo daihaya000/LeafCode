@@ -35,18 +35,31 @@ export type StreamAction =
   | { kind: "reset"; scopeKey: string }
   | { kind: "init"; messages: MessageWithParts[] }
   | { kind: "messageUpdated"; info: MessageInfo }
+  | { kind: "messageRemoved"; messageID: string }
   | { kind: "partUpdated"; part: Part }
+  | { kind: "partRemoved"; messageID: string; partID: string }
+  | {
+      kind: "partTextDelta";
+      messageID: string;
+      partID: string;
+      delta: string;
+      partType: "text" | "reasoning";
+      sessionID?: string;
+    }
   | { kind: "status"; status: SessionStatus }
   | { kind: "permissionAsked"; request: PermissionRequest }
   | { kind: "permissionReplied"; requestId: string }
-  | { kind: "permissionsSynced"; requests: PermissionRequest[] }
+  | { kind: "permissionsSynced"; requests: PermissionRequest[]; keepLocalV2?: boolean }
   | { kind: "questionAsked"; request: QuestionRequest }
-  | { kind: "questionsSynced"; requests: QuestionRequest[] }
+  | { kind: "questionsSynced"; requests: QuestionRequest[]; keepLocalV2?: boolean }
   | { kind: "questionReplied"; requestId: string }
   | { kind: "todos"; todos: Todo[] }
   | { kind: "revert"; revert: SessionRevert | null }
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "sessionError"; message: string | null };
+
+/** Default timeout for prompt/command/abort so a hung engine cannot freeze the composer. */
+export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
 export function createInitialStreamState(scopeKey = ""): StreamState {
   return {
@@ -88,7 +101,45 @@ export function filterRevertedMessages(
 function upsertPart(parts: Part[], part: Part): Part[] {
   const idx = parts.findIndex((p) => p.id === part.id);
   if (idx === -1) return [...parts, part];
+  const prev = parts[idx]!;
   const next = parts.slice();
+  // Merge tool parts so streaming session.next.* patches keep the tool name
+  // and prior state fields when later events omit them.
+  if (prev.type === "tool" && part.type === "tool") {
+    next[idx] = {
+      ...prev,
+      ...part,
+      tool:
+        part.tool && part.tool !== "tool" ? part.tool : (prev.tool ?? part.tool),
+      state: {
+        status: part.state?.status ?? prev.state?.status ?? "pending",
+        input: part.state?.input ?? prev.state?.input,
+        output: part.state?.output ?? prev.state?.output,
+        title: part.state?.title ?? prev.state?.title,
+        error: part.state?.error ?? prev.state?.error,
+        metadata: part.state?.metadata ?? prev.state?.metadata,
+        time: { ...prev.state?.time, ...part.state?.time },
+      },
+      time: { ...prev.time, ...part.time },
+    };
+    return next;
+  }
+  if (
+    (prev.type === "text" || prev.type === "reasoning") &&
+    prev.type === part.type
+  ) {
+    const nextText =
+      part.text !== undefined && part.text.length > 0
+        ? part.text
+        : (prev.text ?? part.text);
+    next[idx] = {
+      ...prev,
+      ...part,
+      text: nextText,
+      time: { ...prev.time, ...part.time },
+    };
+    return next;
+  }
   next[idx] = part;
   return next;
 }
@@ -114,6 +165,11 @@ export function sessionStreamReducer(
       messages[idx] = { ...messages[idx], info: action.info };
       return { ...state, messages };
     }
+    case "messageRemoved":
+      return {
+        ...state,
+        messages: state.messages.filter((m) => m.info.id !== action.messageID),
+      };
     case "partUpdated": {
       const { part } = action;
       const idx = state.messages.findIndex((m) => m.info.id === part.messageID);
@@ -137,6 +193,49 @@ export function sessionStreamReducer(
       };
       return { ...state, messages };
     }
+    case "partRemoved": {
+      const idx = state.messages.findIndex((m) => m.info.id === action.messageID);
+      if (idx === -1) return state;
+      const messages = state.messages.slice();
+      messages[idx] = {
+        ...messages[idx],
+        parts: messages[idx].parts.filter((p) => p.id !== action.partID),
+      };
+      return { ...state, messages };
+    }
+    case "partTextDelta": {
+      const idx = state.messages.findIndex((m) => m.info.id === action.messageID);
+      const existing =
+        idx === -1
+          ? undefined
+          : state.messages[idx].parts.find((p) => p.id === action.partID);
+      const nextPart: Part = {
+        id: action.partID,
+        messageID: action.messageID,
+        sessionID: action.sessionID ?? existing?.sessionID,
+        type: action.partType,
+        text: `${existing?.text ?? ""}${action.delta}`,
+        ...(existing?.time ? { time: existing.time } : {}),
+      };
+      if (idx === -1) {
+        return {
+          ...state,
+          messages: [
+            ...state.messages,
+            {
+              info: { id: action.messageID, role: "assistant" },
+              parts: [nextPart],
+            },
+          ],
+        };
+      }
+      const messages = state.messages.slice();
+      messages[idx] = {
+        ...messages[idx],
+        parts: upsertPart(messages[idx].parts, nextPart),
+      };
+      return { ...state, messages };
+    }
     case "status":
       return { ...state, status: action.status };
     case "permissionAsked": {
@@ -148,14 +247,30 @@ export function sessionStreamReducer(
         ...state,
         permissions: state.permissions.filter((p) => p.id !== action.requestId),
       };
-    case "permissionsSynced":
+    case "permissionsSynced": {
+      if (action.keepLocalV2) {
+        const restIds = new Set(action.requests.map((r) => r.id));
+        const keptV2 = state.permissions.filter(
+          (p) => p.version === "v2" && !restIds.has(p.id),
+        );
+        return { ...state, permissions: [...action.requests, ...keptV2] };
+      }
       return { ...state, permissions: action.requests };
+    }
     case "questionAsked": {
       if (state.questions.some((q) => q.id === action.request.id)) return state;
       return { ...state, questions: [...state.questions, action.request] };
     }
-    case "questionsSynced":
+    case "questionsSynced": {
+      if (action.keepLocalV2) {
+        const restIds = new Set(action.requests.map((r) => r.id));
+        const keptV2 = state.questions.filter(
+          (q) => q.version === "v2" && !restIds.has(q.id),
+        );
+        return { ...state, questions: [...action.requests, ...keptV2] };
+      }
       return { ...state, questions: action.requests };
+    }
     case "questionReplied":
       return {
         ...state,
@@ -231,75 +346,141 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         /* non-fatal */
       }
 
-      // Recover pending permissions
+      // Recover pending permissions (v1 list + v2 session-scoped list).
       try {
-        const pending = await ocJson<
-          | Array<{
-              id: string;
-              sessionID: string;
-              permission?: string;
-              action?: string;
-              patterns?: string[];
-              resources?: string[];
-            }>
-          | { data?: Array<Record<string, unknown>> }
-        >("/permission", directory);
+        type PermRow = {
+          id?: string;
+          sessionID?: string;
+          permission?: string;
+          action?: string;
+          patterns?: string[];
+          resources?: string[];
+        };
+        const normalizeList = (pending: unknown): PermRow[] => {
+          if (Array.isArray(pending)) return pending as PermRow[];
+          if (
+            pending &&
+            typeof pending === "object" &&
+            Array.isArray((pending as { data?: unknown }).data)
+          ) {
+            return (pending as { data: PermRow[] }).data;
+          }
+          return [];
+        };
+        const toRequest = (
+          p: PermRow,
+          version: "v1" | "v2",
+        ): PermissionRequest | null => {
+          const id = String(p.id ?? "");
+          const sessionID = String(p.sessionID ?? sid);
+          if (!id || sessionID !== sid) return null;
+          return {
+            id,
+            version,
+            sessionID,
+            permission: String(p.permission ?? p.action ?? "permission"),
+            patterns: (p.patterns ?? p.resources ?? []) as string[],
+            receivedAt: Date.now(),
+          };
+        };
+        const v1raw = await ocJson<unknown>("/permission", directory).catch(
+          () => [],
+        );
+        let v2ok = false;
+        let v2raw: unknown = [];
+        try {
+          v2raw = await ocJson<unknown>(
+            `/api/session/${sid}/permission`,
+            directory,
+          );
+          v2ok = true;
+        } catch {
+          v2ok = false;
+        }
         if (stale()) return;
-        const list = Array.isArray(pending)
-          ? pending
-          : Array.isArray((pending as { data?: unknown[] })?.data)
-            ? ((pending as { data: Array<Record<string, unknown>> }).data)
-            : [];
+        const byId = new Map<string, PermissionRequest>();
+        for (const p of normalizeList(v1raw)) {
+          const req = toRequest(p, "v1");
+          if (req) byId.set(req.id, req);
+        }
+        if (v2ok) {
+          for (const p of normalizeList(v2raw)) {
+            const req = toRequest(p, "v2");
+            if (req) byId.set(req.id, req);
+          }
+        }
         dispatch({
           kind: "permissionsSynced",
-          requests: list
-            .filter((p) => String(p.sessionID ?? "") === sid)
-            .map((p) => ({
-              id: String(p.id),
-              version: "v1" as const,
-              sessionID: String(p.sessionID),
-              permission: String(
-                (p as { permission?: string }).permission ??
-                  (p as { action?: string }).action ??
-                  "permission",
-              ),
-              patterns: ((p as { patterns?: string[] }).patterns ??
-                (p as { resources?: string[] }).resources ??
-                []) as string[],
-              receivedAt: Date.now(),
-            })),
+          requests: [...byId.values()],
+          keepLocalV2: !v2ok,
         });
       } catch {
         /* non-fatal */
       }
 
-      // Recover pending questions missed while disconnected
+      // Recover pending questions (v1 + v2). Same merge rationale as permissions.
       try {
-        const pending = await ocJson<
-          | Array<{
-              id: string;
-              sessionID: string;
-              questions: QuestionInfo[];
-            }>
-          | { data?: Array<{ id: string; sessionID: string; questions: QuestionInfo[] }> }
-        >("/question", directory);
+        type QRow = {
+          id?: string;
+          sessionID?: string;
+          questions?: QuestionInfo[];
+        };
+        const normalizeList = (pending: unknown): QRow[] => {
+          if (Array.isArray(pending)) return pending as QRow[];
+          if (
+            pending &&
+            typeof pending === "object" &&
+            Array.isArray((pending as { data?: unknown }).data)
+          ) {
+            return (pending as { data: QRow[] }).data;
+          }
+          return [];
+        };
+        const toRequest = (
+          q: QRow,
+          version: "v1" | "v2",
+        ): QuestionRequest | null => {
+          const id = String(q.id ?? "");
+          const sessionID = String(q.sessionID ?? sid);
+          if (!id || sessionID !== sid) return null;
+          return {
+            id,
+            version,
+            sessionID,
+            questions: q.questions ?? [],
+            receivedAt: Date.now(),
+          };
+        };
+        const v1raw = await ocJson<unknown>("/question", directory).catch(
+          () => [],
+        );
+        let v2ok = false;
+        let v2raw: unknown = [];
+        try {
+          v2raw = await ocJson<unknown>(
+            `/api/session/${sid}/question`,
+            directory,
+          );
+          v2ok = true;
+        } catch {
+          v2ok = false;
+        }
         if (stale()) return;
-        const list = Array.isArray(pending)
-          ? pending
-          : Array.isArray(pending?.data)
-            ? pending.data
-            : [];
+        const byId = new Map<string, QuestionRequest>();
+        for (const q of normalizeList(v1raw)) {
+          const req = toRequest(q, "v1");
+          if (req) byId.set(req.id, req);
+        }
+        if (v2ok) {
+          for (const q of normalizeList(v2raw)) {
+            const req = toRequest(q, "v2");
+            if (req) byId.set(req.id, req);
+          }
+        }
         dispatch({
           kind: "questionsSynced",
-          requests: list
-            .filter((q) => q.sessionID === sid)
-            .map((q) => ({
-              id: q.id,
-              version: "v1" as const,
-              sessionID: q.sessionID,
-              questions: q.questions ?? [],
-              receivedAt: Date.now(),
-            })),
+          requests: [...byId.values()],
+          keepLocalV2: !v2ok,
         });
       } catch {
         /* non-fatal: SSE will deliver question.asked */
@@ -322,10 +503,20 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     let cancelled = false;
     let es: EventSource | null = null;
     let retryMs = 1000;
+    let failStreak = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let nextResyncTimer: ReturnType<typeof setTimeout> | null = null;
     let lastActivityAt = Date.now();
     const markActivity = () => {
       lastActivityAt = Date.now();
+    };
+    const scheduleNextResync = () => {
+      if (nextResyncTimer) clearTimeout(nextResyncTimer);
+      nextResyncTimer = setTimeout(() => {
+        nextResyncTimer = null;
+        if (scopeRef.current !== effectScope) return;
+        void resync();
+      }, 300);
     };
 
     void resync();
@@ -357,11 +548,31 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }
         return;
       }
+      if (type === "message.removed") {
+        if (props.sessionID === sid && typeof props.messageID === "string") {
+          dispatch({ kind: "messageRemoved", messageID: props.messageID });
+        }
+        return;
+      }
       if (type === "message.part.updated") {
         const part = props.part as Part | undefined;
         const eventSession = (props.sessionID as string) ?? part?.sessionID;
         if (part && eventSession === sid) {
           dispatch({ kind: "partUpdated", part });
+        }
+        return;
+      }
+      if (type === "message.part.removed") {
+        if (
+          props.sessionID === sid &&
+          typeof props.messageID === "string" &&
+          typeof props.partID === "string"
+        ) {
+          dispatch({
+            kind: "partRemoved",
+            messageID: props.messageID,
+            partID: props.partID,
+          });
         }
         return;
       }
@@ -379,7 +590,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       if (type === "session.error") {
         const err = props.error as { data?: { message?: string } } | undefined;
-        if (!props.sessionID || props.sessionID === sid) {
+        // Only surface errors that clearly belong to this session.
+        if (props.sessionID === sid) {
           dispatch({
             kind: "sessionError",
             message: err?.data?.message ?? "セッションでエラーが発生しました",
@@ -444,6 +656,206 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         if (requestId) dispatch({ kind: "questionReplied", requestId });
         return;
       }
+
+      // OpenCode "session.next.*" streaming events (v2 path).
+      if (type.startsWith("session.next.") && sid && props.sessionID === sid) {
+        if (
+          type === "session.next.text.started" ||
+          type === "session.next.reasoning.started"
+        ) {
+          const partType =
+            type === "session.next.reasoning.started" ? "reasoning" : "text";
+          const partID = String(
+            (partType === "text" ? props.textID : props.reasoningID) ?? "",
+          );
+          const messageID = String(props.assistantMessageID ?? "");
+          if (partID && messageID) {
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: partID,
+                messageID,
+                sessionID: sid,
+                type: partType,
+                text: "",
+                time: { start: Number(props.timestamp) || undefined },
+              },
+            });
+          }
+          return;
+        }
+        if (
+          type === "session.next.text.delta" ||
+          type === "session.next.reasoning.delta"
+        ) {
+          const partType =
+            type === "session.next.reasoning.delta" ? "reasoning" : "text";
+          const partID = String(
+            (partType === "text" ? props.textID : props.reasoningID) ?? "",
+          );
+          const messageID = String(props.assistantMessageID ?? "");
+          const delta = typeof props.delta === "string" ? props.delta : "";
+          if (partID && messageID && delta) {
+            dispatch({
+              kind: "partTextDelta",
+              messageID,
+              partID,
+              delta,
+              partType,
+              sessionID: sid,
+            });
+          }
+          return;
+        }
+        if (
+          type === "session.next.text.ended" ||
+          type === "session.next.reasoning.ended"
+        ) {
+          const partType =
+            type === "session.next.reasoning.ended" ? "reasoning" : "text";
+          const partID = String(
+            (partType === "text" ? props.textID : props.reasoningID) ?? "",
+          );
+          const messageID = String(props.assistantMessageID ?? "");
+          if (partID && messageID) {
+            const endedText =
+              typeof props.text === "string" ? props.text : undefined;
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: partID,
+                messageID,
+                sessionID: sid,
+                type: partType,
+                ...(endedText !== undefined ? { text: endedText } : {}),
+                time: {
+                  end: Number(props.timestamp) || undefined,
+                },
+              },
+            });
+          }
+          return;
+        }
+        if (type === "session.next.tool.input.started") {
+          const callID = String(props.callID ?? "");
+          const messageID = String(props.assistantMessageID ?? "");
+          if (callID && messageID) {
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: callID,
+                messageID,
+                sessionID: sid,
+                type: "tool",
+                tool: String(props.name ?? "tool"),
+                callID,
+                state: {
+                  status: "pending",
+                  time: { start: Number(props.timestamp) || undefined },
+                },
+              },
+            });
+          }
+          return;
+        }
+        if (type === "session.next.tool.called") {
+          const callID = String(props.callID ?? "");
+          const messageID = String(props.assistantMessageID ?? "");
+          if (callID && messageID) {
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: callID,
+                messageID,
+                sessionID: sid,
+                type: "tool",
+                tool: String(props.tool ?? "tool"),
+                callID,
+                state: {
+                  status: "running",
+                  input: (props.input as Record<string, unknown>) ?? {},
+                  time: { start: Number(props.timestamp) || undefined },
+                },
+              },
+            });
+          }
+          return;
+        }
+        if (type === "session.next.tool.success") {
+          const callID = String(props.callID ?? "");
+          const messageID = String(props.assistantMessageID ?? "");
+          if (callID && messageID) {
+            const content = Array.isArray(props.content) ? props.content : [];
+            const output = content
+              .map((c) => {
+                if (c && typeof c === "object" && "text" in c) {
+                  return String((c as { text?: string }).text ?? "");
+                }
+                return "";
+              })
+              .filter(Boolean)
+              .join("\n");
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: callID,
+                messageID,
+                sessionID: sid,
+                type: "tool",
+                tool: "tool",
+                callID,
+                state: {
+                  status: "completed",
+                  output,
+                  metadata: (props.structured as Record<string, unknown>) ?? {},
+                  time: { end: Number(props.timestamp) || undefined },
+                },
+              },
+            });
+          }
+          scheduleNextResync();
+          return;
+        }
+        if (type === "session.next.tool.failed") {
+          const callID = String(props.callID ?? "");
+          const messageID = String(props.assistantMessageID ?? "");
+          if (callID && messageID) {
+            const err = props.error as { message?: string } | undefined;
+            dispatch({
+              kind: "partUpdated",
+              part: {
+                id: callID,
+                messageID,
+                sessionID: sid,
+                type: "tool",
+                tool: "tool",
+                callID,
+                state: {
+                  status: "error",
+                  error: err?.message ?? "tool failed",
+                  time: { end: Number(props.timestamp) || undefined },
+                },
+              },
+            });
+          }
+          scheduleNextResync();
+          return;
+        }
+        if (type === "session.next.step.failed") {
+          const err = props.error as { data?: { message?: string }; message?: string } | undefined;
+          dispatch({
+            kind: "sessionError",
+            message:
+              err?.data?.message ??
+              err?.message ??
+              "セッションのステップが失敗しました",
+          });
+          scheduleNextResync();
+          return;
+        }
+        // Compaction / revert / prompt lifecycle: rely on REST resync.
+        scheduleNextResync();
+      }
     };
 
     const connect = (isReconnect: boolean) => {
@@ -465,6 +877,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       es.onopen = () => {
         markActivity();
         retryMs = 1000;
+        failStreak = 0;
         dispatch({ kind: "connection", connection: "live" });
         if (isReconnect) void resync();
       };
@@ -475,7 +888,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       es.onerror = () => {
         if (cancelled) return;
         es?.close();
-        dispatch({ kind: "connection", connection: "reconnecting" });
+        failStreak += 1;
+        dispatch({
+          kind: "connection",
+          connection: failStreak >= 5 ? "down" : "reconnecting",
+        });
         timer = setTimeout(() => connect(true), retryMs);
         retryMs = Math.min(retryMs * 2, 15_000);
       };
@@ -498,6 +915,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      if (nextResyncTimer) clearTimeout(nextResyncTimer);
       clearInterval(silenceWatch);
       document.removeEventListener("visibilitychange", onVisible);
       es?.close();
@@ -538,6 +956,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       await ocJson(`/session/${sid}/prompt_async`, directory, {
         method: "POST",
         body,
+        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       });
       // safety net: events normally arrive first, resync fills any gap
       setTimeout(() => void resync(), 800);
@@ -564,6 +983,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       };
       if (opts?.agent?.trim()) body.agent = opts.agent.trim();
       if (opts?.model?.providerID && opts.model.modelID) {
+        // OpenAPI session.command expects model as "provider/model" string.
         body.model = `${opts.model.providerID}/${opts.model.modelID}`;
       }
       if (opts?.variant) body.variant = opts.variant;
@@ -578,6 +998,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       await ocJson(`/session/${sid}/command`, directory, {
         method: "POST",
         body,
+        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       });
       setTimeout(() => void resync(), 800);
     },
@@ -603,7 +1024,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const abort = useCallback(async () => {
     const sid = sessionRef.current;
     if (!directory || !sid) return;
-    await ocJson(`/session/${sid}/abort`, directory, { method: "POST" });
+    await ocJson(`/session/${sid}/abort`, directory, {
+      method: "POST",
+      timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+    });
   }, [directory]);
 
   const replyPermission = useCallback(

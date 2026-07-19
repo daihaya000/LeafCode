@@ -43,3 +43,162 @@ describe("session stream scope changes", () => {
     expect(reset.loaded).toBe(false);
   });
 });
+
+describe("session stream message/part removal", () => {
+  it("removes a message by id", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "init",
+      messages: [
+        { info: { id: "m1", role: "user" }, parts: [] },
+        { info: { id: "m2", role: "assistant" }, parts: [] },
+      ],
+    });
+    state = sessionStreamReducer(state, {
+      kind: "messageRemoved",
+      messageID: "m1",
+    });
+    expect(state.messages.map((m) => m.info.id)).toEqual(["m2"]);
+  });
+
+  it("removes a part from a message", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "init",
+      messages: [
+        {
+          info: { id: "m1", role: "assistant" },
+          parts: [
+            { id: "p1", messageID: "m1", type: "text", text: "a" },
+            { id: "p2", messageID: "m1", type: "text", text: "b" },
+          ],
+        },
+      ],
+    });
+    state = sessionStreamReducer(state, {
+      kind: "partRemoved",
+      messageID: "m1",
+      partID: "p1",
+    });
+    expect(state.messages[0]!.parts.map((p) => p.id)).toEqual(["p2"]);
+  });
+});
+
+describe("session stream session.next text deltas", () => {
+  it("appends text deltas and preserves prior content", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: {
+        id: "t1",
+        messageID: "a1",
+        type: "text",
+        text: "Hello",
+      },
+    });
+    state = sessionStreamReducer(state, {
+      kind: "partTextDelta",
+      messageID: "a1",
+      partID: "t1",
+      delta: " world",
+      partType: "text",
+      sessionID: "s1",
+    });
+    expect(state.messages[0]!.parts[0]!.text).toBe("Hello world");
+  });
+
+  it("creates a placeholder message when delta arrives first", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partTextDelta",
+      messageID: "a1",
+      partID: "t1",
+      delta: "Hi",
+      partType: "text",
+    });
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]!.info).toEqual({ id: "a1", role: "assistant" });
+    expect(state.messages[0]!.parts[0]!.text).toBe("Hi");
+  });
+
+  it("merges tool patches without wiping the tool name", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: {
+        id: "c1",
+        messageID: "a1",
+        type: "tool",
+        tool: "bash",
+        callID: "c1",
+        state: { status: "running", input: { cmd: "ls" } },
+      },
+    });
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: {
+        id: "c1",
+        messageID: "a1",
+        type: "tool",
+        tool: "tool",
+        callID: "c1",
+        state: { status: "completed", output: "ok" },
+      },
+    });
+    const part = state.messages[0]!.parts[0]!;
+    expect(part.tool).toBe("bash");
+    expect(part.state?.status).toBe("completed");
+    expect(part.state?.output).toBe("ok");
+    expect(part.state?.input).toEqual({ cmd: "ls" });
+  });
+
+  it("does not wipe streamed text when ended arrives without text", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: { id: "t1", messageID: "a1", type: "text", text: "Hello" },
+    });
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: {
+        id: "t1",
+        messageID: "a1",
+        type: "text",
+        text: "",
+        time: { end: 2 },
+      },
+    });
+    expect(state.messages[0]!.parts[0]!.text).toBe("Hello");
+    expect(state.messages[0]!.parts[0]!.time?.end).toBe(2);
+  });
+
+  it("keeps local v2 permissions when REST sync lacks v2", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "permissionAsked",
+      request: {
+        id: "p-v2",
+        version: "v2",
+        sessionID: "s1",
+        permission: "edit",
+        patterns: ["*"],
+        receivedAt: 1,
+      },
+    });
+    state = sessionStreamReducer(state, {
+      kind: "permissionsSynced",
+      requests: [
+        {
+          id: "p-v1",
+          version: "v1",
+          sessionID: "s1",
+          permission: "bash",
+          patterns: [],
+          receivedAt: 2,
+        },
+      ],
+      keepLocalV2: true,
+    });
+    expect(state.permissions.map((p) => p.id).sort()).toEqual(["p-v1", "p-v2"]);
+  });
+});

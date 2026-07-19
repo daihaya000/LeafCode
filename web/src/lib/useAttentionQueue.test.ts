@@ -71,11 +71,11 @@ describe("attentionQueueReducer", () => {
     expect(state.items).toHaveLength(0);
   });
 
-  it("keeps questions matching active scope", () => {
+  it("removes questions matching active scope", () => {
     let state: AttentionQueueState = { items: [], tasks: [] };
     state = attentionQueueReducer(state, { kind: "add", item: questionItem("/a", "s1", "q1") });
     state = attentionQueueReducer(state, { kind: "setActiveScope", scope: { directory: "/a", sessionId: "s1" } });
-    expect(state.items).toHaveLength(1);
+    expect(state.items).toHaveLength(0);
   });
 
   it("keeps non-matching items when scope changes", () => {
@@ -150,8 +150,12 @@ describe("attentionQueueReducer", () => {
 describe("shouldQueueAttention", () => {
   const activeScope = { directory: "/a", sessionId: "s1" };
 
-  it("queues a question from the active scope", () => {
-    expect(shouldQueueAttention(questionItem("/a", "s1", "q1"), activeScope)).toBe(true);
+  it("does not queue a question from the active scope", () => {
+    expect(shouldQueueAttention(questionItem("/a", "s1", "q1"), activeScope)).toBe(false);
+  });
+
+  it("queues a question from another session", () => {
+    expect(shouldQueueAttention(questionItem("/a", "s2", "q1"), activeScope)).toBe(true);
   });
 
   it("does not queue a permission from the active scope", () => {

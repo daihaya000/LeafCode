@@ -17,7 +17,8 @@ export type AttentionQueueAction =
   | {
       kind: "reconcileDirectory";
       directory: string;
-      questions: AttentionItem[];
+      questions?: AttentionItem[];
+      permissions?: AttentionItem[];
       syncStartedAt: number;
     };
 
@@ -25,7 +26,9 @@ export function shouldQueueAttention(
   item: AttentionItem,
   activeScope: AttentionScope | null,
 ): boolean {
-  if (!activeScope || item.kind === "question") return true;
+  // Active session renders permission/question inline in TaskView — keep them
+  // out of the global modal queue to avoid duplicate replies.
+  if (!activeScope) return true;
   return `${item.directory}\u0000${item.request.sessionID}` !== scopeKey(activeScope);
 }
 
@@ -53,15 +56,33 @@ export function attentionQueueReducer(
       };
     }
     case "reconcileDirectory": {
-      const restIds = new Set(action.questions.map((q) => q.request.id));
+      const syncQuestions = action.questions !== undefined;
+      const syncPermissions = action.permissions !== undefined;
+      const questionIds = new Set(
+        (action.questions ?? []).map((q) => q.request.id),
+      );
+      const permissionIds = new Set(
+        (action.permissions ?? []).map((p) => p.request.id),
+      );
       const kept = state.items.filter((item) => {
-        if (item.kind !== "question") return true;
         if (item.directory !== action.directory) return true;
-        if (restIds.has(item.request.id)) return true;
-        return item.request.receivedAt > action.syncStartedAt;
+        if (item.kind === "question") {
+          if (!syncQuestions) return true;
+          if (questionIds.has(item.request.id)) return true;
+          return item.request.receivedAt > action.syncStartedAt;
+        }
+        if (item.kind === "permission") {
+          if (!syncPermissions) return true;
+          if (permissionIds.has(item.request.id)) return true;
+          return item.request.receivedAt > action.syncStartedAt;
+        }
+        return true;
       });
       const keptIds = new Set(kept.map((i) => i.request.id));
-      const additions = action.questions.filter((q) => !keptIds.has(q.request.id));
+      const additions = [
+        ...(action.questions ?? []),
+        ...(action.permissions ?? []),
+      ].filter((item) => !keptIds.has(item.request.id));
       return { ...state, items: [...kept, ...additions] };
     }
     case "setTasks":
@@ -89,8 +110,19 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
   }, []);
 
   const reconcileDirectory = useCallback(
-    (directory: string, questions: AttentionItem[], syncStartedAt: number) => {
-      dispatch({ kind: "reconcileDirectory", directory, questions, syncStartedAt });
+    (
+      directory: string,
+      questions: AttentionItem[] | undefined,
+      syncStartedAt: number,
+      permissions?: AttentionItem[],
+    ) => {
+      dispatch({
+        kind: "reconcileDirectory",
+        directory,
+        questions,
+        permissions,
+        syncStartedAt,
+      });
     },
     [],
   );

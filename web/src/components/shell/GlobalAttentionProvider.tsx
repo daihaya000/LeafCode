@@ -36,15 +36,47 @@ type RestQuestion = {
   questions?: QuestionInfo[];
 };
 
-function toQuestionItem(directory: string, q: RestQuestion): AttentionItem {
+type RestPermission = {
+  id: string;
+  sessionID: string;
+  permission?: string;
+  action?: string;
+  patterns?: string[];
+  resources?: string[];
+};
+
+function toQuestionItem(
+  directory: string,
+  q: RestQuestion,
+  version: "v1" | "v2" = "v1",
+): AttentionItem {
   return {
     kind: "question",
     directory,
     request: {
       id: q.id,
-      version: "v1",
+      version,
       sessionID: q.sessionID,
       questions: q.questions ?? [],
+      receivedAt: Date.now(),
+    },
+  };
+}
+
+function toPermissionItem(
+  directory: string,
+  p: RestPermission,
+  version: "v1" | "v2" = "v1",
+): AttentionItem {
+  return {
+    kind: "permission",
+    directory,
+    request: {
+      id: p.id,
+      version,
+      sessionID: p.sessionID,
+      permission: p.permission ?? p.action ?? "permission",
+      patterns: p.patterns ?? p.resources ?? [],
       receivedAt: Date.now(),
     },
   };
@@ -75,7 +107,7 @@ export function GlobalAttentionProvider({
     setOpenState(true);
   }, [items.length]);
 
-  const syncPendingQuestions = useCallback(async () => {
+  const syncPendingAttention = useCallback(async () => {
     const syncStartedAt = Date.now();
     let tasks: TaskSummary[];
     try {
@@ -87,11 +119,92 @@ export function GlobalAttentionProvider({
     const directories = [...new Set(tasks.map((t) => t.directory).filter(Boolean))];
     await Promise.allSettled(
       directories.map(async (directory) => {
-        const list = await ocJson<RestQuestion[]>("/question", directory);
+        let questionsOk = false;
+        let permissionsOk = false;
+        let questions: RestQuestion[] = [];
+        let permissions: RestPermission[] = [];
+        try {
+          const list = await ocJson<RestQuestion[]>("/question", directory);
+          questions = Array.isArray(list) ? list : [];
+          questionsOk = true;
+        } catch {
+          /* leave questions unsynced for this directory */
+        }
+        try {
+          const list = await ocJson<RestPermission[]>("/permission", directory);
+          permissions = Array.isArray(list) ? list : [];
+          permissionsOk = true;
+        } catch {
+          /* leave permissions unsynced for this directory */
+        }
+        if (!questionsOk && !permissionsOk) return;
+
+        const sessionIds = [
+          ...new Set(
+            tasks
+              .filter((t) => t.directory === directory && t.sessionId)
+              .map((t) => t.sessionId as string),
+          ),
+        ];
+        const v2Permissions: AttentionItem[] = [];
+        const v2Questions: AttentionItem[] = [];
+        await Promise.allSettled(
+          sessionIds.map(async (sessionID) => {
+            const [pq, pp] = await Promise.all([
+              ocJson<RestQuestion[]>(
+                `/api/session/${sessionID}/question`,
+                directory,
+              ).catch(() => null),
+              ocJson<RestPermission[]>(
+                `/api/session/${sessionID}/permission`,
+                directory,
+              ).catch(() => null),
+            ]);
+            if (Array.isArray(pq)) {
+              for (const q of pq) {
+                v2Questions.push(
+                  toQuestionItem(
+                    directory,
+                    { ...q, sessionID: q.sessionID || sessionID },
+                    "v2",
+                  ),
+                );
+              }
+            }
+            if (Array.isArray(pp)) {
+              for (const p of pp) {
+                v2Permissions.push(
+                  toPermissionItem(
+                    directory,
+                    { ...p, sessionID: p.sessionID || sessionID },
+                    "v2",
+                  ),
+                );
+              }
+            }
+          }),
+        );
+        const questionById = new Map<string, AttentionItem>();
+        if (questionsOk) {
+          for (const q of questions.map((q) => toQuestionItem(directory, q))) {
+            questionById.set(q.request.id, q);
+          }
+          for (const q of v2Questions) questionById.set(q.request.id, q);
+        }
+        const permissionById = new Map<string, AttentionItem>();
+        if (permissionsOk) {
+          for (const p of permissions.map((p) =>
+            toPermissionItem(directory, p, "v1"),
+          )) {
+            permissionById.set(p.request.id, p);
+          }
+          for (const p of v2Permissions) permissionById.set(p.request.id, p);
+        }
         reconcileDirectory(
           directory,
-          list.map((q) => toQuestionItem(directory, q)),
+          questionsOk ? [...questionById.values()] : undefined,
           syncStartedAt,
+          permissionsOk ? [...permissionById.values()] : undefined,
         );
       }),
     );
@@ -168,7 +281,7 @@ export function GlobalAttentionProvider({
       };
       es.onopen = () => {
         retryMs = 1000;
-        void syncPendingQuestions();
+        void syncPendingAttention();
       };
       es.onerror = () => {
         es?.close();
@@ -183,7 +296,7 @@ export function GlobalAttentionProvider({
       if (timer) clearTimeout(timer);
       es?.close();
     };
-  }, [add, remove, syncPendingQuestions]);
+  }, [add, remove, syncPendingAttention]);
 
   const value = {
     items,

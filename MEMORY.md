@@ -1,5 +1,30 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パスの致命的バグ修正（ループ第1ラウンド）
+
+### 対象
+`useSessionStream` / `TaskView` / `GlobalAttentionProvider` / `useAttentionQueue` — 送受信・SSE・権限/質問が止まる系。
+
+### 修正内容
+1. **SSE**: `message.removed` / `message.part.removed` 処理。`session.next.*` の text/reasoning/tool デルタ対応。失敗5回で `connection: "down"`。
+2. **session.error**: `sessionID` 一致時のみ表示（他セッション混入防止）。
+3. **送信**: `prompt_async` / `command` / `abort` に 60s タイムアウト。
+4. **resync**: v1+v2 の permission/question を取得。v2 取得失敗時はローカル v2 を保持（`keepLocalV2`）。
+5. **composer**: `working = hasActiveTask`（status 未ロード中の二重送信防止）。
+6. **質問二重表示**: アクティブ scope の question も global queue から除外。
+7. **GlobalAttention**: 再接続時に permission も REST 復元。ディレクトリ同期失敗時は既存項目を消さない。
+8. **text.ended**: 空 text でストリーム済み本文を消さない。
+
+### 検証
+- Vitest: useSessionStream / useAttentionQueue / GlobalAttentionProvider / TaskView PASS
+- `tsc --noEmit` OK
+
+### ループ
+- sentinel: `AGENT_LOOP_TICK_agent_debug`（2分間隔）
+- バグが無くなるまで継続。停止はユーザー指示または致命バグ0確認時。
+
+---
+
 ## 2026-07-20 Anthropic が WebUI で「provider に弾かれる」原因
 
 ### 結論
