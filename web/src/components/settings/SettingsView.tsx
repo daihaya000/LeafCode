@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
@@ -107,6 +107,7 @@ export function SettingsView() {
     | { kind: "ok"; rate: number; asOf: string }
     | { kind: "error" }
   >({ kind: "idle" });
+  const autoRateRequestGeneration = useRef(0);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [defaultModel, setDefaultModel] = useState<string>("");
 
@@ -156,6 +157,7 @@ export function SettingsView() {
   }, []);
 
   const refreshAutoRate = useCallback(async () => {
+    const requestGeneration = ++autoRateRequestGeneration.current;
     setFxStatus({ kind: "loading" });
     try {
       const res = await fetch("/api/fx/usd-jpy", { cache: "no-store" });
@@ -170,12 +172,15 @@ export function SettingsView() {
       if (!Number.isFinite(rate) || typeof data.asOf !== "string") {
         throw new Error("Invalid FX response");
       }
+      if (requestGeneration !== autoRateRequestGeneration.current) return;
       const latest = readCostDisplayPrefs();
       if (latest.rateMode !== "auto") return;
       applyCostPrefs({ ...latest, rateMode: "auto", usdJpyRate: rate });
       setFxStatus({ kind: "ok", rate, asOf: data.asOf });
     } catch {
-      setFxStatus({ kind: "error" });
+      if (requestGeneration === autoRateRequestGeneration.current) {
+        setFxStatus({ kind: "error" });
+      }
     }
   }, [applyCostPrefs]);
 

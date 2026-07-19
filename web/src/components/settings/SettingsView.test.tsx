@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
@@ -92,6 +99,7 @@ function mockFetch() {
 
 describe("SettingsView", () => {
   beforeEach(() => {
+    localStorage.clear();
     getJson.mockReset();
     sendJson.mockReset();
     mockGetJson();
@@ -155,5 +163,61 @@ describe("SettingsView", () => {
 
     expect(await screen.findByText("本日 156.2円（2026-07-19）")).toBeTruthy();
     expect(screen.getByRole("spinbutton")).toHaveProperty("disabled", true);
+  });
+
+  it("keeps the latest auto-rate response when requests resolve out of order", async () => {
+    const responses: {
+      resolve: (response: Response) => void;
+    }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/fx/usd-jpy")) {
+          return new Promise<Response>((resolve) => responses.push({ resolve }));
+        }
+        if (url.includes("/api/opencode/mcp")) {
+          return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+        }
+        if (url.includes("/api/host")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ ok: true }), { status: 200 }),
+          );
+        }
+        if (url.includes("/api/opencode/provider")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ all: [], connected: [], default: {} }),
+              { status: 200 },
+            ),
+          );
+        }
+        return Promise.resolve(new Response("{}", { status: 404 }));
+      }),
+    );
+
+    render(<SettingsView />);
+    await waitFor(() => expect(responses).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "手動" }));
+    fireEvent.click(screen.getByRole("button", { name: "自動（本日）" }));
+    await waitFor(() => expect(responses).toHaveLength(2));
+
+    await act(async () => {
+      responses[1].resolve(
+        new Response(JSON.stringify({ rate: 157.5, asOf: "2026-07-19" })),
+      );
+    });
+    expect(await screen.findByText("本日 157.5円（2026-07-19）")).toBeTruthy();
+
+    await act(async () => {
+      responses[0].resolve(
+        new Response(JSON.stringify({ rate: 155.1, asOf: "2026-07-18" })),
+      );
+    });
+    await act(async () => {});
+
+    expect(screen.queryByText("本日 155.1円（2026-07-18）")).toBeNull();
+    expect(screen.getByText("本日 157.5円（2026-07-19）")).toBeTruthy();
   });
 });
