@@ -66,6 +66,7 @@ import { copyText } from "@/lib/clipboard";
 import { formatCost, formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
+  formatModelLabel,
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
@@ -437,7 +438,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               const value = `${p.id}::${mid}`;
               options.push({
                 value,
-                label: m.name || mid,
+                label: formatModelLabel(m.name, mid),
                 group: p.name || p.id,
               });
               const inputs = m.modalities?.input ?? [];

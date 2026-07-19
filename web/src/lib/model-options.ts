@@ -7,6 +7,17 @@
 
 export type ModelOption = { value: string; label: string; group: string };
 
+/**
+ * Normalize OpenCode provider model display names for the dropdown.
+ * Upstream sometimes tags a single alias (e.g. Claude Haiku) with
+ * trailing "(latest)" while sibling models omit it — strip that marker
+ * so labels stay consistent. Value / modelID are left untouched.
+ */
+export function formatModelLabel(name: string | undefined | null, fallback: string): string {
+  const raw = (name?.trim() || fallback).trim();
+  return raw.replace(/\s*\(\s*latest\s*\)\s*$/i, "").trim() || fallback;
+}
+
 /** Canonical provider priority (lower = earlier in the dropdown). */
 const PROVIDER_PRIORITY: Record<string, number> = {
   openai: 0,

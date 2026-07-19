@@ -1,11 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatModelLabel,
   modelIntelligenceScore,
   normalizeProviderBucket,
   providerSortKey,
   sortModelOptions,
   type ModelOption,
 } from "./model-options";
+
+describe("formatModelLabel", () => {
+  it("strips a trailing (latest) marker from upstream names", () => {
+    expect(formatModelLabel("Claude Haiku 4.5 (latest)", "claude-haiku-4-5")).toBe(
+      "Claude Haiku 4.5",
+    );
+    expect(formatModelLabel("Claude Haiku 4.5 (Latest)", "x")).toBe("Claude Haiku 4.5");
+    expect(formatModelLabel("Foo ( latest )", "x")).toBe("Foo");
+  });
+
+  it("leaves other model names unchanged", () => {
+    expect(formatModelLabel("Claude Opus 4.8", "claude-opus-4-8")).toBe(
+      "Claude Opus 4.8",
+    );
+    expect(formatModelLabel("GPT-5.6 Sol", "gpt-5.6-sol")).toBe("GPT-5.6 Sol");
+    expect(formatModelLabel("latest-preview", "id")).toBe("latest-preview");
+  });
+
+  it("falls back when name is empty", () => {
+    expect(formatModelLabel("", "claude-haiku-4-5")).toBe("claude-haiku-4-5");
+    expect(formatModelLabel(null, "mid")).toBe("mid");
+    expect(formatModelLabel("  (latest)  ", "mid")).toBe("mid");
+  });
+});
 
 describe("normalizeProviderBucket", () => {
   it("maps known aliases onto the five UI buckets", () => {

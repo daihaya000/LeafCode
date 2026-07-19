@@ -22,6 +22,7 @@ import {
   writeDefaultModel,
 } from "@/lib/default-model";
 import {
+  formatModelLabel,
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
@@ -120,7 +121,7 @@ export function SettingsView() {
           for (const [mid, m] of Object.entries(p.models ?? {})) {
             options.push({
               value: `${p.id}::${mid}`,
-              label: m.name || mid,
+              label: formatModelLabel(m.name, mid),
               group: p.name || p.id,
             });
           }

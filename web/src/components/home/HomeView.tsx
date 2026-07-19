@@ -17,6 +17,7 @@ import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import {
+  formatModelLabel,
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
@@ -159,7 +160,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             for (const [mid, m] of Object.entries(p.models ?? {})) {
               options.push({
                 value: `${p.id}::${mid}`,
-                label: m.name || mid,
+                label: formatModelLabel(m.name, mid),
                 group: p.name || p.id,
               });
               map[`${p.id}::${mid}`] = {
