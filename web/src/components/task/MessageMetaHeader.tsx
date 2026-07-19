@@ -1,43 +1,15 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { Cpu } from "lucide-react";
+import { Fragment } from "react";
 import { cx, formatMessageTime } from "@/components/ui";
 import { formatCost, type CostDisplayPrefs } from "@/lib/currency";
-import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import type { MessageInfo } from "@/lib/types";
+import { ProviderIcon } from "./ProviderIcon";
 
 type MetaInfo = Pick<
   MessageInfo,
   "providerID" | "modelID" | "cost" | "time"
 >;
-
-function ProviderIcon({ providerID }: { providerID?: string }) {
-  const src = providerIconSrcForOpencodeId(providerID ?? "");
-  const [broken, setBroken] = useState(false);
-
-  if (src && !broken) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        width={14}
-        height={14}
-        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-
-  return (
-    <Cpu
-      aria-hidden="true"
-      data-testid="provider-icon-fallback"
-      className="h-3.5 w-3.5 shrink-0"
-    />
-  );
-}
 
 export function MessageMetaHeader({
   info,

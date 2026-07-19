@@ -9,6 +9,7 @@ import {
   parseCodexBarSnapshot,
   percentTone,
   providerIconSrc,
+  providerIconSrcForOpencodeId,
   providerLabel,
   STALE_AFTER_MS,
   usageTone,
@@ -281,6 +282,18 @@ describe("providerIconSrc", () => {
     expect(providerIconSrc("cursor")).toBe("/plugins/codexbar/cursor.png");
     expect(providerIconSrc("mystery")).toBeNull();
     expect(providerIconSrc("")).toBeNull();
+  });
+});
+
+describe("providerIconSrcForOpencodeId", () => {
+  it("aliases OpenCode provider ids to bundled brand icons", () => {
+    expect(providerIconSrcForOpencodeId("openai")).toBe("/plugins/codexbar/codex.png");
+    expect(providerIconSrcForOpencodeId("anthropic")).toBe("/plugins/codexbar/claude.png");
+    expect(providerIconSrcForOpencodeId("ollama")).toBe("/plugins/codexbar/ollama.png");
+    expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/plugins/codexbar/ollama.png");
+    expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/plugins/codexbar/opencode.png");
+    expect(providerIconSrcForOpencodeId("mystery")).toBeNull();
+    expect(providerIconSrcForOpencodeId("")).toBeNull();
   });
 });
 

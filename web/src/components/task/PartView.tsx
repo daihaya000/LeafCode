@@ -21,9 +21,11 @@ import {
 import { cx } from "@/components/ui";
 import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
+import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
+import { ProviderIcon } from "./ProviderIcon";
 import {
   questionInputFields,
   questionToolSummary,
@@ -190,6 +192,9 @@ const ToolPartView = memo(function ToolPartView({
   const [open, setOpen] = useState(nestedActive);
   const showNested = nestedActive || (terminalTask && open);
   const Icon = toolIcon(tool);
+  const guessedProviderId = isTaskTool
+    ? providerIdFromSubagentType(state?.input?.subagent_type as string | undefined)
+    : null;
   const summary = toolSummary(tool, state);
   const fields = useMemo(
     () => inputFields(tool, state?.input),
@@ -240,7 +245,14 @@ const ToolPartView = memo(function ToolPartView({
           hasDetail && "cursor-pointer hover:bg-surface-3",
         )}
       >
-        <Icon className="h-4 w-4 shrink-0 text-muted" />
+        {guessedProviderId ? (
+          <ProviderIcon
+            providerID={guessedProviderId}
+            className="h-4 w-4 shrink-0"
+          />
+        ) : (
+          <Icon className="h-4 w-4 shrink-0 text-muted" />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="shrink-0 text-xs font-medium text-muted">

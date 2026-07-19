@@ -8,9 +8,10 @@ import {
   useState,
   type UIEvent,
 } from "react";
-import { Bot, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cx } from "@/components/ui";
 import { ocJson } from "@/lib/client";
+import { ProviderIcon } from "./ProviderIcon";
 import {
   DEFAULT_COST_PREFS,
   type CostDisplayPrefs,
@@ -237,6 +238,13 @@ export function NestedAgentPanel({
     return messages.filter((m) => messageHasTimelineParts(m.parts ?? []));
   }, [feed?.messages]);
 
+  const headerProviderId = useMemo(() => {
+    for (const m of feed?.messages ?? []) {
+      if (m.info?.providerID) return m.info.providerID;
+    }
+    return undefined;
+  }, [feed?.messages]);
+
   useEffect(() => {
     if (!busy || !stickBottomRef.current) return;
     const el = scrollerRef.current;
@@ -276,7 +284,7 @@ export function NestedAgentPanel({
         {busy ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />
         ) : (
-          <Bot className="h-3.5 w-3.5 shrink-0 text-muted" />
+          <ProviderIcon providerID={headerProviderId} />
         )}
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-text">
           {feed.session.title || feed.session.id.slice(0, 12)}

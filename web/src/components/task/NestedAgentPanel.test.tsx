@@ -163,4 +163,50 @@ describe("NestedAgentPanel", () => {
     expect(ocJson.mock.calls.length).toBeGreaterThan(afterHiddenMount);
     await screen.findByText("子エージェント");
   });
+
+  it("shows the provider brand icon in the header when not busy", async () => {
+    // Same child data as mockChildApis (providerID: "anthropic") but idle
+    // status so the header renders the provider icon instead of the spinner.
+    ocJson.mockImplementation(async (path: string) => {
+      if (path === "/session/status") {
+        return { [CHILD_ID]: { type: "idle" } };
+      }
+      if (path === `/session/${PARENT_ID}/children`) {
+        return [{ id: CHILD_ID, title: "子エージェント", parentID: PARENT_ID }];
+      }
+      if (path === `/session/${CHILD_ID}/message`) {
+        return [
+          {
+            info: {
+              id: "m1",
+              role: "assistant",
+              agent: "explore",
+              providerID: "anthropic",
+              modelID: "claude-sonnet-5",
+              cost: 0.0312,
+              time: { created: 1 },
+            },
+            parts: [{ id: "p1", type: "text", text: "完了テキスト" }],
+          },
+        ];
+      }
+      return null;
+    });
+
+    render(
+      <NestedAgentPanel
+        directory="/repo"
+        parentSessionId={PARENT_ID}
+        active
+        matchHint={hint}
+      />,
+    );
+
+    const title = await screen.findByText("子エージェント");
+    const header = title.parentElement as HTMLElement;
+    const img = header.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("alt")).toBe("");
+    expect(img?.getAttribute("src")).toContain("/plugins/codexbar/claude.png");
+  });
 });
