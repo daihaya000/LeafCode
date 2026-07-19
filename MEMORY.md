@@ -1,5 +1,42 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 Anthropic が WebUI で「provider に弾かれる」原因
+
+### 結論
+**認証拒否ではない。** UI 上の「provider に拒否された」は OpenCode の `ContentFilterError`（`The response was blocked by the provider's content filter`）をそのまま表示している。
+
+### 証拠（`~/.local/share/opencode/log/opencode.log`）
+- `ProviderAuthError`: **0**
+- `ContentFilterError`: ≈132（うち anthropic 明示 ≈66）
+- anthropic 成功（`hasError=false`）: 大量 → 全面拒否ではない
+- 失敗例: `inputModel=anthropic/claude-sonnet-5` → `llm.runtime=ai-sdk` → 数秒後 `ContentFilterError`
+
+### Claude Code との差
+| | Claude Code | OpenCode / WebUI |
+|--|-------------|------------------|
+| 資格情報 | `~/.claude/.credentials.json` | `~/.local/share/opencode/auth.json` |
+| トークン | OAuth 同一 | OAuth 同一 |
+| 呼び出し経路 | first-party Claude Code | `ai-sdk` → Anthropic Messages API |
+| WebUI の役割 | なし | model を透過転送するだけ（auth は持たない） |
+
+同じ OAuth でも、OpenCode の agent/tools/system 文脈＋ third-party API 経路だと content filter に当たりやすい。WebUI に Anthropic 拒否ロジックは無い。
+
+### 否定した仮説
+- API key 未設定 / 別クレデンシャル
+- BFF が model を壊す / Authorization を落とす
+- WebUI の allowlist 除外
+
+### 副次（別症状）
+- anthropic `APIError`: `tool_use` に対応する `tool_result` 欠落、assistant prefill 非対応など（セッション履歴依存）
+
+### 切り分け
+1. エラー文が `blocked by the provider's content filter` か確認
+2. 短い無害プロンプトで WebUI vs Claude Code 比較
+3. content filter → OpenCode 側（system/agent/tools）を疑う。WebUI 修正では直らない
+4. tool_result / prefill 系 → 新規セッションを試す
+
+---
+
 ## 2026-07-20 アドオンを repo 直下 `addons/` に集約
 
 ### 要望
