@@ -129,9 +129,7 @@ describe("GlobalAttentionProvider", () => {
         <TestConsumer onItems={(items) => (latest = items)} />
       </GlobalAttentionProvider>,
     );
-    await act(async () => {
-      FakeEventSource.latest?.onopen?.();
-    });
+    openConnection();
     await waitFor(() => expect(latest.map((i) => i.request.id)).toContain("q1"));
   });
 
@@ -154,9 +152,7 @@ describe("GlobalAttentionProvider", () => {
     });
     const es2 = FakeEventSource.latest;
     expect(es2).not.toBe(es1);
-    await act(async () => {
-      es2?.onopen?.();
-    });
+    openConnection();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -174,9 +170,7 @@ describe("GlobalAttentionProvider", () => {
       </GlobalAttentionProvider>,
     );
     emitQuestion("q1");
-    await act(async () => {
-      FakeEventSource.latest?.onopen?.();
-    });
+    openConnection();
     await waitFor(() => expect(latest).toHaveLength(1));
     expect(latest.map((i) => i.request.id)).toEqual(["q1"]);
   });
@@ -192,9 +186,7 @@ describe("GlobalAttentionProvider", () => {
     );
     emitQuestion("q1");
     await waitFor(() => expect(latest).toHaveLength(1));
-    await act(async () => {
-      FakeEventSource.latest?.onopen?.();
-    });
+    openConnection();
     await waitFor(() => expect(latest).toHaveLength(0));
   });
 
@@ -232,9 +224,7 @@ describe("GlobalAttentionProvider", () => {
       } as MessageEvent);
     });
     await waitFor(() => expect(latest).toHaveLength(2));
-    await act(async () => {
-      FakeEventSource.latest?.onopen?.();
-    });
+    openConnection();
     await waitFor(() => expect(latest.map((i) => i.request.id)).toEqual(["qa"]));
   });
 });

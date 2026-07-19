@@ -183,7 +183,7 @@ export function GlobalAttentionProvider({
       if (timer) clearTimeout(timer);
       es?.close();
     };
-  }, [add, syncPendingQuestions]);
+  }, [add, remove, syncPendingQuestions]);
 
   const value = {
     items,
