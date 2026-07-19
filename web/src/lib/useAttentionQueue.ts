@@ -15,6 +15,14 @@ export type AttentionQueueAction =
   | { kind: "setActiveScope"; scope: AttentionScope | null }
   | { kind: "setTasks"; tasks: TaskSummary[] };
 
+export function shouldQueueAttention(
+  item: AttentionItem,
+  activeScope: AttentionScope | null,
+): boolean {
+  if (!activeScope || item.kind === "question") return true;
+  return `${item.directory}\u0000${item.request.sessionID}` !== scopeKey(activeScope);
+}
+
 export function attentionQueueReducer(
   state: AttentionQueueState,
   action: AttentionQueueAction,
@@ -33,10 +41,9 @@ export function attentionQueueReducer(
       };
     case "setActiveScope": {
       if (!action.scope) return state;
-      const key = scopeKey(action.scope);
       return {
         ...state,
-        items: state.items.filter((i) => `${i.directory}\u0000${i.request.sessionID}` !== key),
+        items: state.items.filter((item) => shouldQueueAttention(item, action.scope)),
       };
     }
     case "setTasks":
@@ -55,10 +62,7 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
   scopeRef.current = activeScope;
 
   const add = useCallback((item: AttentionItem) => {
-    const scope = scopeRef.current;
-    if (scope && `${item.directory}\u0000${item.request.sessionID}` === scopeKey(scope)) {
-      return;
-    }
+    if (!shouldQueueAttention(item, scopeRef.current)) return;
     dispatch({ kind: "add", item });
   }, []);
 
