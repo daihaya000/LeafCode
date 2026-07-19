@@ -106,3 +106,69 @@ describe("getTask cost aggregation", () => {
     expect(task?.cost).toBe(2.5);
   });
 });
+
+describe("listTasks agent/provider aggregation", () => {
+  it("attaches agent and model provider/id from /session to the bound task", async () => {
+    h.ocResponses["/repo/session"] = [
+      {
+        id: "sess1",
+        cost: 0.5,
+        agent: "build",
+        model: { id: "claude-opus", providerID: "anthropic" },
+      },
+    ];
+    const { tasks } = await listTasks();
+    expect(tasks[0].agent).toBe("build");
+    expect(tasks[0].providerID).toBe("anthropic");
+    expect(tasks[0].modelID).toBe("claude-opus");
+    // cost still flows through the same single fetch
+    expect(tasks[0].cost).toBe(0.5);
+  });
+
+  it("leaves agent/provider/model undefined when the /session entry omits them", async () => {
+    h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 0.1 }];
+    const { tasks } = await listTasks();
+    expect(tasks[0].agent).toBeUndefined();
+    expect(tasks[0].providerID).toBeUndefined();
+    expect(tasks[0].modelID).toBeUndefined();
+  });
+
+  it("leaves agent/provider/model undefined when the /session call fails", async () => {
+    h.ocFail.add("/repo/session");
+    const { tasks } = await listTasks();
+    expect(tasks[0].agent).toBeUndefined();
+    expect(tasks[0].providerID).toBeUndefined();
+    expect(tasks[0].modelID).toBeUndefined();
+  });
+
+  it("leaves agent/provider/model undefined when the task has no bound session", async () => {
+    h.bindings = new Map();
+    h.ocResponses["/repo/session"] = [
+      {
+        id: "sess1",
+        agent: "build",
+        model: { id: "claude-opus", providerID: "anthropic" },
+      },
+    ];
+    const { tasks } = await listTasks();
+    expect(tasks[0].agent).toBeUndefined();
+    expect(tasks[0].providerID).toBeUndefined();
+    expect(tasks[0].modelID).toBeUndefined();
+  });
+});
+
+describe("getTask agent/provider aggregation", () => {
+  it("attaches agent and model provider/id for the single task", async () => {
+    h.ocResponses["/repo/session"] = [
+      {
+        id: "sess1",
+        agent: "plan",
+        model: { id: "gpt-5", providerID: "openai" },
+      },
+    ];
+    const task = await getTask("ws1");
+    expect(task?.agent).toBe("plan");
+    expect(task?.providerID).toBe("openai");
+    expect(task?.modelID).toBe("gpt-5");
+  });
+});

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronRight,
+  Cpu,
   FolderGit2,
   GitBranch,
   Loader2,
@@ -20,6 +21,7 @@ import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
+import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import { AttentionBadge } from "./AttentionBadge";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
@@ -84,6 +86,39 @@ function sidebarBranchLabel(task: TaskSummary): string {
     return task.branch.slice("webui/".length);
   }
   return task.branch;
+}
+
+/**
+ * Tiny brand icon for the provider of a task's current/last session model.
+ * Mirrors the ProviderIcon in MessageMetaHeader: resolve a bundled brand icon
+ * and fall back to a generic CPU glyph when there is no matching image.
+ */
+function ProviderIcon({ providerID }: { providerID?: string }) {
+  const src = providerIconSrcForOpencodeId(providerID ?? "");
+  const [broken, setBroken] = useState(false);
+
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={12}
+        height={12}
+        data-testid="sidebar-provider-icon"
+        className="h-3 w-3 shrink-0 rounded-[3px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+
+  return (
+    <Cpu
+      aria-hidden="true"
+      data-testid="provider-icon-fallback"
+      className="h-3 w-3 shrink-0"
+    />
+  );
 }
 
 export function Sidebar({
@@ -564,6 +599,21 @@ export function Sidebar({
                                         title="このセッションの累計コスト"
                                       >
                                         · {formatCostValue(task.cost!, costPrefs)}
+                                      </span>
+                                    )}
+                                    {task.providerID && (
+                                      <span
+                                        className="ml-auto flex shrink-0 items-center"
+                                        title={
+                                          task.agent
+                                            ? `エージェント: ${task.agent}`
+                                            : `プロバイダ: ${task.providerID}`
+                                        }
+                                      >
+                                        <ProviderIcon
+                                          key={task.providerID}
+                                          providerID={task.providerID}
+                                        />
                                       </span>
                                     )}
                                   </div>

@@ -11,7 +11,15 @@ import { deriveTaskStatus } from "./task-status";
 import type { SessionStatus, TaskSummary } from "./types";
 
 type StatusMap = Record<string, SessionStatus>;
-type CostMap = Record<string, number>;
+
+/** Per-session metadata collected from a single /session listing. */
+type SessionMeta = {
+  cost?: number;
+  agent?: string;
+  providerID?: string;
+  modelID?: string;
+};
+type MetaMap = Record<string, SessionMeta>;
 
 const EMPTY_STAT: DirStat = {
   git: false,
@@ -63,27 +71,38 @@ async function sessionStatusFor(dirs: string[]): Promise<{
 }
 
 /**
- * Fetch each directory's OpenCode session list and collect `Session.cost`
- * (the cumulative USD cost OpenCode itself tracks per session) into a
- * sessionId → cost map. Best-effort: a directory whose engine call fails
- * simply contributes no cost entries, same tolerance as sessionStatusFor.
+ * Fetch each directory's OpenCode session list once and collect per-session
+ * metadata (cumulative `Session.cost`, bound `Session.agent`, and the current
+ * `Session.model` provider/id) into a sessionId → SessionMeta map. A single
+ * /session call feeds all fields — no double fetching. Best-effort: a
+ * directory whose engine call fails simply contributes no entries, same
+ * tolerance as sessionStatusFor.
  */
-async function sessionCostFor(dirs: string[]): Promise<CostMap> {
-  const costs: CostMap = {};
-  if (dirs.length === 0) return costs;
+async function sessionMetaFor(dirs: string[]): Promise<MetaMap> {
+  const metas: MetaMap = {};
+  if (dirs.length === 0) return metas;
   await Promise.allSettled(
     dirs.map(async (dir) => {
-      const sessions = await ocServer<{ id: string; cost?: number }[]>(
-        dir,
-        "/session",
-        { timeoutMs: 1500 },
-      );
+      const sessions = await ocServer<
+        {
+          id: string;
+          cost?: number;
+          agent?: string;
+          model?: { id?: string; providerID?: string; variant?: string };
+        }[]
+      >(dir, "/session", { timeoutMs: 1500 });
       for (const s of sessions) {
-        if (typeof s.cost === "number") costs[s.id] = s.cost;
+        const meta: SessionMeta = {};
+        if (typeof s.cost === "number") meta.cost = s.cost;
+        if (typeof s.agent === "string") meta.agent = s.agent;
+        if (typeof s.model?.providerID === "string")
+          meta.providerID = s.model.providerID;
+        if (typeof s.model?.id === "string") meta.modelID = s.model.id;
+        metas[s.id] = meta;
       }
     }),
   );
-  return costs;
+  return metas;
 }
 
 function toTask(
@@ -92,7 +111,7 @@ function toTask(
   stat: DirStat,
   sessionStatus: SessionStatus | undefined,
   engineOk: boolean,
-  cost: number | undefined,
+  meta: SessionMeta | undefined,
 ): TaskSummary {
   const status = deriveTaskStatus({
     workspaceStatus: ws.status,
@@ -115,7 +134,10 @@ function toTask(
     additions: stat.additions,
     deletions: stat.deletions,
     filesChanged: stat.files,
-    cost,
+    cost: meta?.cost,
+    agent: meta?.agent,
+    providerID: meta?.providerID,
+    modelID: meta?.modelID,
     createdAt: ws.created_at,
     updatedAt: binding?.updated_at ?? ws.created_at,
   };
@@ -146,10 +168,10 @@ export async function listTasks(): Promise<{
   const bindings = latestBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
 
-  const [{ engineOk, statuses }, stats, costs] = await Promise.all([
+  const [{ engineOk, statuses }, stats, metas] = await Promise.all([
     sessionStatusFor(dirs),
     Promise.all(dirs.map((d) => dirStat(d))),
-    sessionCostFor(dirs),
+    sessionMetaFor(dirs),
   ]);
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
 
@@ -161,7 +183,7 @@ export async function listTasks(): Promise<{
       statByDir.get(ws.absolute_path) ?? EMPTY_STAT,
       binding ? statuses[binding.opencode_session_id] : undefined,
       engineOk,
-      binding ? costs[binding.opencode_session_id] : undefined,
+      binding ? metas[binding.opencode_session_id] : undefined,
     );
   });
 
@@ -177,12 +199,12 @@ export async function getTask(id: string): Promise<TaskSummary | null> {
   // non-503 API error still means the engine is up. The previous inline fetch
   // treated any /session/status failure as engineOk=false, which made a single
   // task view flip to "unknown" while the task list showed the real status.
-  const [stat, { engineOk, statuses }, costs] = await Promise.all([
+  const [stat, { engineOk, statuses }, metas] = await Promise.all([
     dirStat(ws.absolute_path, 3000),
     sessionStatusFor([ws.absolute_path]),
-    sessionCostFor([ws.absolute_path]),
+    sessionMetaFor([ws.absolute_path]),
   ]);
   const status = binding ? statuses[binding.opencode_session_id] : undefined;
-  const cost = binding ? costs[binding.opencode_session_id] : undefined;
-  return toTask(ws, binding, stat, status, engineOk, cost);
+  const meta = binding ? metas[binding.opencode_session_id] : undefined;
+  return toTask(ws, binding, stat, status, engineOk, meta);
 }

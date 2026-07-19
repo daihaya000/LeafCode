@@ -138,6 +138,12 @@ export type TaskSummary = {
   filesChanged: number;
   /** Cumulative USD cost of the bound OpenCode session (from Session.cost), if known. */
   cost?: number;
+  /** OpenCode agent bound to the session (e.g. "build", "plan"), if known. */
+  agent?: string;
+  /** Provider id of the session's current/last model (from Session.model.providerID). */
+  providerID?: string;
+  /** Model id of the session's current/last model (from Session.model.id). */
+  modelID?: string;
   createdAt: string;
   updatedAt: string;
 };
