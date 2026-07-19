@@ -539,7 +539,7 @@ export function SettingsView() {
             <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">コスト表示</h2>
               <p className="mb-3 text-xs text-faint">
-                OpenCode のコストは USD 基準です。日本円表示は設定レートでの換算です。
+                OpenCode のコストは USD 基準です。日本円は自動（当日レート）または手動レートで換算します。
               </p>
               <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
                 <div className="flex flex-wrap gap-2">
