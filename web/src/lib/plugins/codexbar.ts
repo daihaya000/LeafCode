@@ -188,6 +188,7 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   claude: "claude",
   codex: "codex",
   cursor: "cursor",
+  "cursor-acp": "cursor",
   ollama: "ollama",
   "ollama-cloud": "ollama",
   "opencode-go": "opencode-go",

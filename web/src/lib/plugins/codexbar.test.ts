@@ -289,6 +289,8 @@ describe("providerIconSrcForOpencodeId", () => {
   it("aliases OpenCode provider ids to bundled brand icons", () => {
     expect(providerIconSrcForOpencodeId("openai")).toBe("/plugins/codexbar/codex.png");
     expect(providerIconSrcForOpencodeId("anthropic")).toBe("/plugins/codexbar/claude.png");
+    expect(providerIconSrcForOpencodeId("cursor")).toBe("/plugins/codexbar/cursor.png");
+    expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/plugins/codexbar/cursor.png");
     expect(providerIconSrcForOpencodeId("ollama")).toBe("/plugins/codexbar/ollama.png");
     expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/plugins/codexbar/ollama.png");
     expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/plugins/codexbar/opencode.png");
