@@ -67,6 +67,12 @@ function mockFetch() {
           { status: 200 },
         );
       }
+      if (url.includes("/api/fx/usd-jpy")) {
+        return new Response(
+          JSON.stringify({ rate: 156.2, asOf: "2026-07-19", source: "test" }),
+          { status: 200 },
+        );
+      }
       if (url.includes("/api/opencode/agent")) {
         return new Response(
           JSON.stringify([
@@ -142,5 +148,12 @@ describe("SettingsView", () => {
       name: /プロジェクト/,
     });
     expect(projectTab.textContent).toContain("1");
+  });
+
+  it("shows the daily rate and disables editing in auto mode", async () => {
+    render(<SettingsView />);
+
+    expect(await screen.findByText("本日 156.2円（2026-07-19）")).toBeTruthy();
+    expect(screen.getByRole("spinbutton")).toHaveProperty("disabled", true);
   });
 });

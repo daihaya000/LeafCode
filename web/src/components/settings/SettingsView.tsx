@@ -101,6 +101,12 @@ export function SettingsView() {
   const [rateDraft, setRateDraft] = useState(() =>
     String(readCostDisplayPrefs().usdJpyRate),
   );
+  const [fxStatus, setFxStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ok"; rate: number; asOf: string }
+    | { kind: "error" }
+  >({ kind: "idle" });
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [defaultModel, setDefaultModel] = useState<string>("");
 
@@ -143,21 +149,54 @@ export function SettingsView() {
     setRateDraft(String(prefs.usdJpyRate));
   }, []);
 
-  const applyCostPrefs = (next: CostDisplayPrefs) => {
+  const applyCostPrefs = useCallback((next: CostDisplayPrefs) => {
     setCostPrefs(next);
     setRateDraft(String(next.usdJpyRate));
     writeCostDisplayPrefs(next);
-  };
+  }, []);
+
+  const refreshAutoRate = useCallback(async () => {
+    setFxStatus({ kind: "loading" });
+    try {
+      const res = await fetch("/api/fx/usd-jpy", { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { rate?: unknown; asOf?: unknown };
+      const rate =
+        typeof data.rate === "number"
+          ? data.rate
+          : typeof data.rate === "string"
+            ? Number(data.rate)
+            : Number.NaN;
+      if (!Number.isFinite(rate) || typeof data.asOf !== "string") {
+        throw new Error("Invalid FX response");
+      }
+      const latest = readCostDisplayPrefs();
+      if (latest.rateMode !== "auto") return;
+      applyCostPrefs({ ...latest, rateMode: "auto", usdJpyRate: rate });
+      setFxStatus({ kind: "ok", rate, asOf: data.asOf });
+    } catch {
+      setFxStatus({ kind: "error" });
+    }
+  }, [applyCostPrefs]);
 
   const setCurrency = (currency: CostCurrency) => {
     applyCostPrefs({ ...costPrefs, currency });
   };
 
+  const setRateMode = (rateMode: CostDisplayPrefs["rateMode"]) => {
+    applyCostPrefs({ ...costPrefs, rateMode });
+    if (rateMode === "auto") void refreshAutoRate();
+  };
+
   const commitRate = () => {
     const n = Number(rateDraft);
     const usdJpyRate = Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE;
-    applyCostPrefs({ ...costPrefs, usdJpyRate });
+    applyCostPrefs({ ...costPrefs, rateMode: "manual", usdJpyRate });
   };
+
+  useEffect(() => {
+    if (readCostDisplayPrefs().rateMode === "auto") void refreshAutoRate();
+  }, [refreshAutoRate]);
 
   const refresh = useCallback(async () => {
     const [h, p, r, o, a, m, host] = await Promise.allSettled([
@@ -519,6 +558,27 @@ export function SettingsView() {
                     </button>
                   ))}
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      { value: "auto" as const, label: "自動（本日）" },
+                      { value: "manual" as const, label: "手動" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setRateMode(opt.value)}
+                      className={
+                        costPrefs.rateMode === opt.value
+                          ? "rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent"
+                          : "rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
                 <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <span className="shrink-0 text-xs text-muted">USD/JPY レート</span>
                   <input
@@ -527,6 +587,7 @@ export function SettingsView() {
                     max={1000}
                     step={0.1}
                     value={rateDraft}
+                    disabled={costPrefs.rateMode === "auto"}
                     onChange={(e) => setRateDraft(e.target.value)}
                     onBlur={() => commitRate()}
                     onKeyDown={(e) => {
@@ -540,10 +601,20 @@ export function SettingsView() {
                     例:{" "}
                     {formatCost(0.1542, {
                       currency: "JPY",
+                      rateMode: costPrefs.rateMode,
                       usdJpyRate: Number(rateDraft) || costPrefs.usdJpyRate,
                     })}
                   </span>
                 </label>
+                {costPrefs.rateMode === "auto" && (
+                  <p className="text-[11px] text-faint">
+                    {fxStatus.kind === "loading" && "読み込み中…"}
+                    {fxStatus.kind === "ok" &&
+                      `本日 ${fxStatus.rate}円（${fxStatus.asOf}）`}
+                    {fxStatus.kind === "error" &&
+                      `取得失敗 — 既存レート ${costPrefs.usdJpyRate} を使用`}
+                  </p>
+                )}
               </div>
             </section>
           </>
