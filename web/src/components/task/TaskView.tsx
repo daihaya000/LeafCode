@@ -1094,17 +1094,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                 </>
               )}
               <span className="truncate">{task.projectName}</span>
-              {(task.cost ?? 0) > 0 && (
-                <>
-                  <span className="mx-1">·</span>
-                  <span
-                    className="shrink-0"
-                    title="このセッションの累計コスト"
-                  >
-                    累計 {formatCostValue(task.cost!, costPrefs)}
-                  </span>
-                </>
-              )}
               {contextUsage && (
                 <>
                   <span className="mx-1">·</span>
@@ -1129,6 +1118,17 @@ export function TaskView({ taskId }: { taskId: string }) {
                       {formatTokens(contextUsage.used)}/
                       {formatTokens(contextUsage.limit)} ({contextUsage.pct}%)
                     </span>
+                  </span>
+                </>
+              )}
+              {(task.cost ?? 0) > 0 && (
+                <>
+                  <span className="mx-1">·</span>
+                  <span
+                    className="shrink-0"
+                    title="このセッションの累計コスト"
+                  >
+                    累計 {formatCostValue(task.cost!, costPrefs)}
                   </span>
                 </>
               )}

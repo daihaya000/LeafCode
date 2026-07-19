@@ -593,14 +593,6 @@ export function Sidebar({
                                     <span className="min-w-0 truncate font-mono">
                                       {sidebarBranchLabel(task)}
                                     </span>
-                                    {(task.cost ?? 0) > 0 && (
-                                      <span
-                                        className="shrink-0 whitespace-nowrap text-faint"
-                                        title="このセッションの累計コスト"
-                                      >
-                                        · {formatCostValue(task.cost!, costPrefs)}
-                                      </span>
-                                    )}
                                     {task.providerID && (
                                       <span
                                         className="ml-auto flex shrink-0 items-center"
@@ -614,6 +606,17 @@ export function Sidebar({
                                           key={task.providerID}
                                           providerID={task.providerID}
                                         />
+                                      </span>
+                                    )}
+                                    {(task.cost ?? 0) > 0 && (
+                                      <span
+                                        className={cx(
+                                          "shrink-0 whitespace-nowrap text-faint",
+                                          !task.providerID && "ml-auto",
+                                        )}
+                                        title="このセッションの累計コスト"
+                                      >
+                                        · {formatCostValue(task.cost!, costPrefs)}
                                       </span>
                                     )}
                                   </div>
