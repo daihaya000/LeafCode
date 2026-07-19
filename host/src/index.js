@@ -11,7 +11,11 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
 import { formatServiceStatus } from './service-status.js';
-import { getWebLaunchPlan, webRestartDelay } from './web-runtime.js';
+import {
+  getWebLaunchPlan,
+  isWebBuildStale,
+  webRestartDelay,
+} from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
 import {
   closeControlServer,
@@ -531,11 +535,15 @@ function spawnNpm(args, options) {
   });
 }
 
-/** Build the production WebUI when prod mode has no usable BUILD_ID. */
-function buildWebProduction() {
+/** Build the production WebUI when prod mode has no usable or stale BUILD_ID. */
+function buildWebProduction(reason = 'missing') {
   return new Promise((resolve, reject) => {
     removeBrokenWebBuild();
-    log('Production WebUI build is missing; rebuilding before start…');
+    const reasonText =
+      reason === 'stale'
+        ? 'Production WebUI build is stale (sources newer than BUILD_ID); rebuilding before start…'
+        : 'Production WebUI build is missing; rebuilding before start…';
+    log(reasonText);
     const child = spawnNpm(['run', 'build'], {
       cwd: WEB_DIR,
       stdio: 'pipe',
@@ -588,11 +596,13 @@ function armWebStableReset(child) {
 
 async function spawnWeb() {
   let hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
-  let plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild);
+  let buildStale = hasBuild && isWebBuildStale(WEB_DIR);
+  let plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
   if (plan.needsBuild) {
-    await buildWebProduction();
+    await buildWebProduction(hasBuild && buildStale ? 'stale' : 'missing');
     hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
-    plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild);
+    buildStale = hasBuild && isWebBuildStale(WEB_DIR);
+    plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
   }
   if (plan.needsBuild) throw new Error('WebUI production build is unavailable');
   const useProd = plan.useProd;

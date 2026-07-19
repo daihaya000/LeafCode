@@ -16,6 +16,10 @@ if not exist "web\node_modules\" (
   popd
 )
 
+rem Production rebuild (missing or stale BUILD_ID vs sources) is handled by
+rem host/src/index.js on start and on tray/WebUI restart. Optional first-run
+rem build here only when .next is completely absent, so the tray can come up
+rem with a usable bundle sooner.
 if not exist "web\.next\BUILD_ID" (
   echo [OpenCode WebUI] Building web ^(first run^)...
   pushd web
@@ -26,6 +30,8 @@ if not exist "web\.next\BUILD_ID" (
     exit /b 1
   )
   popd
+) else (
+  echo [OpenCode WebUI] Existing build found; host will rebuild if sources are newer.
 )
 
 if not exist "host\node_modules\" (

@@ -5,7 +5,7 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 ## 起動（Windows）
 
 1. PATH に `opencode`
-2. `start-webui.bat`（初回は web build あり）
+2. `start-webui.bat`（prod: `.next` 欠落やソースより古い場合は起動・トレイ/WebUI再起動時に自動 build）
 3. トレイ常駐後、`http://127.0.0.1:3000` が開く
 
 トラブル時:
