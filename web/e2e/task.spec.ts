@@ -95,7 +95,19 @@ async function mockPlanTask(page: Page, options: PlanMockOptions = {}) {
       return;
     }
     if (url.pathname.endsWith("/provider")) {
-      await route.fulfill({ json: { all: [], connected: [], default: {} } });
+      await route.fulfill({
+        json: {
+          all: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: { "gpt-5.6-sol": { name: "GPT-5.6 Sol" } },
+            },
+          ],
+          connected: ["openai"],
+          default: { openai: "gpt-5.6-sol" },
+        },
+      });
       return;
     }
     if (url.pathname.endsWith("/config")) {
@@ -141,6 +153,35 @@ async function mockPlanTask(page: Page, options: PlanMockOptions = {}) {
     await route.fulfill({ json: {} });
   });
 }
+
+test("shows consolidated response metadata", async ({ page }) => {
+  await mockPlanTask(page, {
+    messages: [{
+      info: {
+        id: "response-1",
+        sessionID: "session-1",
+        role: "assistant",
+        providerID: "openai",
+        modelID: "gpt-5.6-sol",
+        cost: 0.0042,
+        agent: "build",
+        time: { completed: 1 },
+      },
+      parts: [{
+        id: "response-part-1",
+        messageID: "response-1",
+        type: "text",
+        text: "回答本文",
+      }],
+    }],
+  });
+  await page.goto("/task/task-1");
+  const metadata = page.getByLabel("応答メタデータ").first();
+  await expect(metadata).toContainText("GPT-5.6 Sol");
+  await expect(metadata).toContainText("cost $0.0042");
+  await expect(metadata).not.toContainText("build");
+  await expect(page.getByText("cost $0.0042", { exact: true })).toHaveCount(1);
+});
 
 async function mockBusyTask(page: Page, onPrompt: () => void) {
   await page.route("**/api/projects", (route) =>
