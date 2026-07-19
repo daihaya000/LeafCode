@@ -178,3 +178,59 @@ describe("POST /api/tasks variant validation", () => {
     expect(body).not.toHaveProperty("variant");
   });
 });
+
+describe("POST /api/tasks image attachments", () => {
+  const image = {
+    uri: "data:image/png;base64,iVBORw0KGgo=",
+    mime: "image/png",
+    name: "reference.png",
+  };
+
+  it("accepts an image-only task and forwards its file part to OpenCode", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    (ocServer as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "",
+      isolation: "current_folder",
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    const calls = (ocServer as ReturnType<typeof vi.fn>).mock.calls;
+    const sessionCall = calls.find((c) => c[1] === "/session");
+    expect(sessionCall?.[2]?.body).toEqual({ title: "画像タスク" });
+    const promptCall = calls.find((c) =>
+      String(c[1]).includes("/prompt_async"),
+    );
+    expect(promptCall?.[2]?.body).toEqual({
+      parts: [
+        { type: "text", text: "" },
+        {
+          type: "file",
+          url: image.uri,
+          mime: image.mime,
+          filename: image.name,
+        },
+      ],
+    });
+  });
+
+  it("rejects image files whose declared MIME type does not match the data URL", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "",
+      isolation: "current_folder",
+      files: [
+        {
+          uri: "data:image/jpeg;base64,/9j/4AAQ",
+          mime: "image/png",
+        },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "invalid files" });
+  });
+});

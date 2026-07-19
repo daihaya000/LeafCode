@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch } from "lucide-react";
+import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Paperclip, X } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
@@ -36,6 +36,10 @@ type ProviderResponse = {
 };
 
 type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+
+type Attachment = { uri: string; mime: string; name?: string; preview?: string };
+
+const IMAGE_MIME_RE = /^image\//i;
 
 function ModelSelectIcon({ model }: { model: string }) {
   const providerID = model ? model.split("::")[0] : "";
@@ -72,6 +76,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     "current_folder",
   );
   const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
@@ -88,6 +93,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
   const [loaded, setLoaded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
 
   useEffect(() => {
@@ -282,7 +288,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     const text = prompt.trim();
     const branchReady =
       isolation !== "git_worktree" || branchProjectId === projectId;
-    if (!text || !projectId || submitting || !engineOk || !branchReady) return;
+    if (
+      (!text && attachments.length === 0) ||
+      !projectId ||
+      submitting ||
+      !engineOk ||
+      !branchReady
+    ) {
+      return;
+    }
     const requestBaseBranch =
       isolation === "git_worktree" && branchProjectId === projectId
         ? baseBranch
@@ -295,6 +309,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         projectId,
         prompt: text,
         isolation,
+        ...(attachments.length > 0
+          ? {
+              files: attachments.map(({ uri, mime, name }) => ({
+                uri,
+                mime,
+                ...(name ? { name } : {}),
+              })),
+            }
+          : {}),
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(agent ? { agent } : {}),
@@ -308,6 +331,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     }
   }, [
     prompt,
+    attachments,
     projectId,
     isolation,
     branchProjectId,
@@ -319,6 +343,44 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     engineOk,
     router,
   ]);
+
+  const addImageFiles = useCallback(async (files: FileList | File[]) => {
+    const next: Attachment[] = [];
+    for (const file of Array.from(files)) {
+      if (!IMAGE_MIME_RE.test(file.type)) continue;
+      try {
+        const uri = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result ?? ""));
+          reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+          reader.readAsDataURL(file);
+        });
+        next.push({ uri, mime: file.type, name: file.name, preview: uri });
+      } catch {
+        /* skip unreadable file */
+      }
+    }
+    if (next.length > 0) setAttachments((current) => [...current, ...next]);
+  }, []);
+
+  const onPaste = useCallback(
+    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (submitting) return;
+      const imageFiles = Array.from(event.clipboardData?.items ?? [])
+        .filter((item) => item.kind === "file" && IMAGE_MIME_RE.test(item.type))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (imageFiles.length > 0) {
+        event.preventDefault();
+        void addImageFiles(imageFiles);
+      }
+    },
+    [addImageFiles, submitting],
+  );
+
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  }, []);
 
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
@@ -349,11 +411,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               ref={textareaRef}
               value={prompt}
               rows={2}
+              aria-label="タスクの説明"
               readOnly={submitting}
               onChange={(e) => {
                 setPrompt(e.target.value);
                 autoResize();
               }}
+              onPaste={onPaste}
               onCompositionStart={() => (composingRef.current = true)}
               onCompositionEnd={() => (composingRef.current = false)}
               onKeyDown={(e) => {
@@ -369,8 +433,63 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
             />
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-3 pb-2">
+                {attachments.map((attachment, index) => (
+                  <div
+                    key={`${attachment.name ?? attachment.uri}-${index}`}
+                    className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-surface"
+                  >
+                    {attachment.preview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={attachment.preview}
+                        alt={attachment.name ?? "添付画像"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-faint">
+                        <Paperclip className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(index)}
+                      disabled={submitting}
+                      aria-label={`${attachment.name ?? "添付画像"}を削除`}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 px-3 pb-3 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-2">
               <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 xl:col-start-1 xl:row-start-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={submitting}
+                  aria-label="画像ファイルを選択"
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files) void addImageFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={submitting}
+                  aria-label="画像を添付"
+                  title="画像を添付"
+                  className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
+                >
+                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
                 <GhostSelect
                   value={projectId}
                   disabled={projects.length === 0 || submitting}
@@ -493,8 +612,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 className="col-start-2 row-start-1 shrink-0 xl:col-start-3 xl:row-start-1"
                 busy={submitting}
                 disabled={
-                  !prompt.trim() ||
+                  (!prompt.trim() && attachments.length === 0) ||
                   !projectId ||
+                  submitting ||
                   !engineOk ||
                   (isolation === "git_worktree" &&
                     branchProjectId !== projectId)

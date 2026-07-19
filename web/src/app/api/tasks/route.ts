@@ -14,6 +14,36 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type ImageFile = { uri: string; mime: string; name?: string };
+
+const IMAGE_MIME_RE = /^image\/[a-z0-9.+-]+$/i;
+const DATA_URL_RE = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([a-z0-9+/]+={0,2})$/i;
+
+function parseImageFiles(value: unknown): ImageFile[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+
+  const files: ImageFile[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") return null;
+    const { uri, mime, name } = entry as Record<string, unknown>;
+    if (typeof uri !== "string" || typeof mime !== "string" || !IMAGE_MIME_RE.test(mime)) {
+      return null;
+    }
+    const match = DATA_URL_RE.exec(uri);
+    if (
+      !match ||
+      match[2].length % 4 !== 0 ||
+      match[1].toLowerCase() !== mime.toLowerCase() ||
+      (name !== undefined && typeof name !== "string")
+    ) {
+      return null;
+    }
+    files.push({ uri, mime, ...(name ? { name } : {}) });
+  }
+  return files;
+}
+
 export async function GET() {
   const result = await listTasks();
   return NextResponse.json(result);
@@ -30,12 +60,17 @@ export async function POST(req: NextRequest) {
     model?: { providerID?: string; modelID?: string };
     agent?: string;
     variant?: unknown;
+    files?: unknown;
   } | null;
 
-  const prompt = body?.prompt?.trim();
-  if (!body?.projectId || !prompt) {
+  const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+  const files = parseImageFiles(body?.files);
+  if (files === null) {
+    return NextResponse.json({ error: "invalid files" }, { status: 400 });
+  }
+  if (!body?.projectId || (!prompt && files.length === 0)) {
     return NextResponse.json(
-      { error: "projectId and prompt are required" },
+      { error: "projectId and prompt or files are required" },
       { status: 400 },
     );
   }
@@ -61,8 +96,10 @@ export async function POST(req: NextRequest) {
   }
 
   const title =
-    body.title?.trim() ||
-    prompt.replace(/\s+/g, " ").slice(0, 48) + (prompt.length > 48 ? "…" : "");
+    (typeof body.title === "string" ? body.title.trim() : "") ||
+    (prompt
+      ? prompt.replace(/\s+/g, " ").slice(0, 48) + (prompt.length > 48 ? "…" : "")
+      : "画像タスク");
 
   let workspace;
   let note: string | undefined;
@@ -89,7 +126,15 @@ export async function POST(req: NextRequest) {
       { method: "POST", body: { title } },
     );
     const promptBody: Record<string, unknown> = {
-      parts: [{ type: "text", text: prompt }],
+      parts: [
+        { type: "text", text: prompt },
+        ...files.map((file) => ({
+          type: "file",
+          url: file.uri,
+          mime: file.mime,
+          ...(file.name ? { filename: file.name } : {}),
+        })),
+      ],
     };
     if (body.model?.providerID && body.model.modelID) {
       promptBody.model = {
