@@ -8,7 +8,6 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [OK] Firewall rule added: TCP 3000 inbound allow
-echo Phone URL examples:
-echo   http://192.168.0.192:3000
-echo   http://192.168.0.102:3000
+echo Phone URL example (replace with your PC's LAN IP from `ipconfig`):
+echo   http://192.168.1.100:3000
 pause

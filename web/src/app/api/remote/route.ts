@@ -12,7 +12,7 @@ export async function GET() {
     supported: false,
     modes: ["ssh", "tunnel"],
     message:
-      "Remote Workspace is planned. Use VPN + local OpenCode serve for now (see architecture.md §6).",
+      "Remote Workspace is planned. Use VPN + local OpenCode serve for now.",
   });
 }
 

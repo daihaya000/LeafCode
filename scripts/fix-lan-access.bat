@@ -28,9 +28,9 @@ echo Current IPs / profiles:
 powershell -NoProfile -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.*' } | ForEach-Object { $p = Get-NetConnectionProfile -InterfaceAlias $_.InterfaceAlias -ErrorAction SilentlyContinue; Write-Host ('  ' + $_.IPAddress + '  ' + $_.InterfaceAlias + '  ' + $(if($p){$p.NetworkCategory}else{'?'})) }"
 
 echo.
-echo Use the IP that matches how the OTHER PC connects:
-echo   Other PC on Wi-Fi  -^> http://192.168.0.192:3000
-echo   Other PC on cable  -^> http://192.168.0.102:3000
+echo Use the IP shown above that matches how the OTHER PC connects
+echo (Wi-Fi adapter IP for Wi-Fi clients, Ethernet adapter IP for wired clients),
+echo e.g. http://192.168.1.100:3000
 echo.
 echo If Surfshark is installed: Settings -^> Allow LAN / Disable Kill Switch while testing.
 echo.

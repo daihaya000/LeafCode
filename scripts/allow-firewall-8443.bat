@@ -8,6 +8,6 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [OK] Firewall rule added: TCP 8443 inbound allow
-echo Phone URL example:
-echo   https://192.168.0.102:8443
+echo Phone URL example (replace with your PC's LAN IP from `ipconfig`):
+echo   https://192.168.1.100:8443
 pause

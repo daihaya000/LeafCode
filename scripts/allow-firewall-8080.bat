@@ -8,6 +8,6 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [OK] Firewall rule added: TCP 8080 inbound allow
-echo Phone URL example:
-echo   http://192.168.0.102:8080
+echo Phone URL example (replace with your PC's LAN IP from `ipconfig`):
+echo   http://192.168.1.100:8080
 pause
