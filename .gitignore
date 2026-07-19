@@ -21,6 +21,9 @@ web/.playwright/
 # OpenCode loop runtime state (per-session, machine-local)
 .opencode/opencode-loop/
 
+# cursor-acp materialized image attachments (for cursor-agent Read)
+.opencode-cursor-attachments/
+
 # OpenCode WebUI runtime state (per-session, machine-local)
 .opencode-webui/
 
