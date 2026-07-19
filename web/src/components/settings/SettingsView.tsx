@@ -21,10 +21,12 @@ import {
   readDefaultModel,
   writeDefaultModel,
 } from "@/lib/default-model";
+import {
+  sortModelOptions,
+  type ModelOption,
+} from "@/lib/model-options";
 import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import type { HealthDto, ProjectDto } from "@/lib/types";
-
-type ModelOption = { value: string; label: string; group: string };
 
 type ProviderResponse = {
   all: { id: string; name: string; models: Record<string, { name?: string }> }[];
@@ -123,7 +125,7 @@ export function SettingsView() {
             });
           }
         }
-        setModelOptions(options);
+        setModelOptions(sortModelOptions(options));
         setDefaultModel((cur) => {
           if (cur && options.some((o) => o.value === cur)) return cur;
           return readDefaultModel() ?? "";

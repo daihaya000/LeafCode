@@ -66,6 +66,10 @@ import { copyText } from "@/lib/clipboard";
 import { formatCost, formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
+  sortModelOptions,
+  type ModelOption,
+} from "@/lib/model-options";
+import {
   getIntelligenceVariants,
   type IntelligenceVariant,
   type ProviderModelMeta,
@@ -89,8 +93,6 @@ import { PtyPanel } from "./PtyPanel";
 import { QuestionCard } from "./QuestionCard";
 import { SessionActions, MessageRevertButton } from "./SessionActions";
 import { SessionSwitcher } from "./SessionSwitcher";
-
-type ModelOption = { value: string; label: string; group: string };
 
 type ProviderResponse = {
   all: {
@@ -450,7 +452,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               };
             }
           }
-          setModelOptions(options);
+          setModelOptions(sortModelOptions(options));
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 

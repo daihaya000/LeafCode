@@ -17,13 +17,15 @@ import { providerIconSrcForOpencodeId } from "@/lib/plugins/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import {
+  sortModelOptions,
+  type ModelOption,
+} from "@/lib/model-options";
+import {
   getIntelligenceVariants,
   type IntelligenceVariant,
   type ProviderModelMeta,
 } from "@/lib/model-variants";
 import type { ProjectDto } from "@/lib/types";
-
-type ModelOption = { value: string; label: string; group: string };
 
 type ProviderResponse = {
   all: {
@@ -166,7 +168,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               };
             }
           }
-          setModelOptions(options);
+          setModelOptions(sortModelOptions(options));
           setProviderModelsMap(map);
 
           // Prefer user-configured default model, then OpenCode config.model
