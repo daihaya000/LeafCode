@@ -64,7 +64,7 @@ test("desktop composer keeps selection labels readable", async ({ page }) => {
       .locator('span[aria-hidden="true"]')
       .nth(1);
   await expect(displayLabel("モデル")).toHaveText("GPT-5.6 Sol");
-  await expect(displayLabel("エージェント")).toHaveText("build（Code）");
+  await expect(displayLabel("エージェント")).toHaveText("build");
   expect((await form.boundingBox())?.width).toBeGreaterThanOrEqual(850);
 
   const selectionNames = [

@@ -7,9 +7,10 @@ import type { IntelligenceVariant } from "@/lib/model-variants";
 /**
  * Intelligence variant selector built on top of GhostSelect.
  *
- * Renders `デフォルト` plus the supplied variants in fixed order
- * (`high` then `low`). The empty string represents `デフォルト` and is
- * omitted from request payloads by the caller.
+ * Renders `デフォルト` plus the supplied variants in the order provided by
+ * the caller (typically the model-specific list from
+ * `getIntelligenceVariants`). The empty string represents `デフォルト` and
+ * is omitted from request payloads by the caller.
  */
 export function IntelligenceSelect({
   variants,
@@ -33,8 +34,11 @@ export function IntelligenceSelect({
       className="min-w-0"
     >
       <option value="">デフォルト</option>
-      {variants.includes("high") && <option value="high">high</option>}
-      {variants.includes("low") && <option value="low">low</option>}
+      {variants.map((variant) => (
+        <option key={variant} value={variant}>
+          {variant}
+        </option>
+      ))}
     </GhostSelect>
   );
 }

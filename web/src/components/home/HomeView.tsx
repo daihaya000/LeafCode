@@ -23,6 +23,7 @@ import {
 } from "@/lib/model-options";
 import {
   getIntelligenceVariants,
+  isIntelligenceVariant,
   type IntelligenceVariant,
   type ProviderModelMeta,
 } from "@/lib/model-variants";
@@ -62,12 +63,6 @@ function ModelSelectIcon({ model }: { model: string }) {
     );
   }
   return <Cpu className="h-3.5 w-3.5" />;
-}
-
-function formatAgentLabel(agent: string): string {
-  if (agent === "build") return "build（Code）";
-  if (agent === "plan") return "plan（Plan）";
-  return /ask|explore/i.test(agent) ? `${agent}（Ask）` : agent;
 }
 
 export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
@@ -598,9 +593,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     variants={intelligenceVariants}
                     value={intelligence}
                     onChange={(v) =>
-                      setIntelligence(
-                        v === "high" || v === "low" ? v : "",
-                      )
+                      setIntelligence(isIntelligenceVariant(v) ? v : "")
                     }
                     disabled={submitting}
                   />
@@ -611,14 +604,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     disabled={submitting}
                     aria-label="エージェント"
                     icon={<Bot className="h-3.5 w-3.5" />}
-                    valueLabel={formatAgentLabel(agent)}
+                    valueLabel={agent || "エージェント"}
                     onChange={(e) => setAgent(e.target.value)}
                     className="min-w-0"
-                    title={formatAgentLabel(agent)}
+                    title={agent || "エージェント"}
                   >
                     {agents.map((a) => (
                       <option key={a} value={a}>
-                        {formatAgentLabel(a)}
+                        {a}
                       </option>
                     ))}
                   </GhostSelect>

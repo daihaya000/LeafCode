@@ -25,22 +25,37 @@ describe("getIntelligenceVariants", () => {
     ).toEqual(["low"]);
   });
 
-  it("returns ['high', 'low'] when both are declared and enabled", () => {
+  it("returns low then high when both are declared and enabled", () => {
     expect(
       getIntelligenceVariants({
         name: "GPT-4",
         variants: { high: {}, low: {} },
       }),
-    ).toEqual(["high", "low"]);
+    ).toEqual(["low", "high"]);
+  });
+
+  it("returns model-declared effort keys in preferred order", () => {
+    expect(
+      getIntelligenceVariants({
+        name: "GPT-5.6 Sol",
+        variants: {
+          xhigh: {},
+          none: {},
+          high: {},
+          medium: {},
+          low: {},
+        },
+      }),
+    ).toEqual(["none", "low", "medium", "high", "xhigh"]);
   });
 
   it("excludes variants with disabled: true", () => {
     expect(
       getIntelligenceVariants({
         name: "GPT-4",
-        variants: { high: { disabled: true }, low: {} },
+        variants: { high: { disabled: true }, low: {}, medium: {} },
       }),
-    ).toEqual(["low"]);
+    ).toEqual(["low", "medium"]);
   });
 
   it("returns [] when all variants are disabled", () => {
@@ -56,28 +71,31 @@ describe("getIntelligenceVariants", () => {
     expect(
       getIntelligenceVariants({
         name: "GPT-4",
-        variants: { high: {}, turbo: {}, low: {} },
+        variants: { high: {}, turbo: {}, low: {}, medium: {} },
       }),
-    ).toEqual(["high", "low"]);
+    ).toEqual(["low", "medium", "high"]);
   });
 
-  it("keeps fixed ['high','low'] order regardless of input key order", () => {
+  it("keeps preferred order regardless of input key order", () => {
     expect(
       getIntelligenceVariants({
         name: "GPT-4",
         variants: { low: {}, high: {} },
       }),
-    ).toEqual(["high", "low"]);
+    ).toEqual(["low", "high"]);
   });
 });
 
 describe("isIntelligenceVariant", () => {
-  it("returns true for 'high'", () => {
-    expect(isIntelligenceVariant("high")).toBe(true);
-  });
-
-  it("returns true for 'low'", () => {
+  it("returns true for known effort keys", () => {
+    expect(isIntelligenceVariant("none")).toBe(true);
+    expect(isIntelligenceVariant("minimal")).toBe(true);
     expect(isIntelligenceVariant("low")).toBe(true);
+    expect(isIntelligenceVariant("medium")).toBe(true);
+    expect(isIntelligenceVariant("high")).toBe(true);
+    expect(isIntelligenceVariant("xhigh")).toBe(true);
+    expect(isIntelligenceVariant("max")).toBe(true);
+    expect(isIntelligenceVariant("thinking")).toBe(true);
   });
 
   it("returns false for empty string", () => {

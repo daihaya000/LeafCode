@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bindSession, touchProjectOpened } from "@/lib/db";
-import { isIntelligenceVariant } from "@/lib/model-variants";
+import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import { listTasks } from "@/lib/task-service";
@@ -80,10 +80,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Validate the optional intelligence variant before provisioning any
-  // workspace. Only "high" and "low" are supported; any other non-empty
-  // value is rejected. An empty string is treated as "default" (omitted).
+  // workspace. Known effort keys (none/minimal/low/medium/high/xhigh/max/
+  // thinking) are accepted; any other non-empty value is rejected. An empty
+  // string is treated as "default" (omitted from the OpenCode payload).
   const variantRaw = body?.variant;
-  let variant: "high" | "low" | "";
+  let variant: IntelligenceVariant | "";
   if (variantRaw === undefined || variantRaw === "") {
     variant = "";
   } else if (typeof variantRaw === "string" && isIntelligenceVariant(variantRaw)) {

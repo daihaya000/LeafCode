@@ -1,13 +1,21 @@
 /**
  * Intelligence variant domain shared by the home and task detail composers.
  *
- * The OpenCode provider API exposes per-model `variants` metadata. We only
- * surface the `high` and `low` intelligence variants in the UI; any other
- * declared variant keys are ignored. Variants with `disabled: true` are
- * excluded from the available options.
+ * The OpenCode provider API exposes per-model `variants` metadata. We surface
+ * the known intelligence / reasoning-effort keys that a model declares and
+ * does not disable. The available options therefore change with the selected
+ * model (e.g. GPT-5.6 Sol → none/low/medium/high/xhigh).
  */
 
-export type IntelligenceVariant = "high" | "low";
+export type IntelligenceVariant =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | "thinking";
 
 /**
  * Metadata for a single model from the provider API, used to extract
@@ -28,13 +36,25 @@ export type ProviderModelMeta = {
   limit?: { context: number; output?: number; input?: number };
 };
 
-const INTELLIGENCE_KEYS: readonly IntelligenceVariant[] = ["high", "low"];
+/** Preferred display / sort order from least to most effort. */
+const INTELLIGENCE_KEYS: readonly IntelligenceVariant[] = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "thinking",
+];
+
+const INTELLIGENCE_KEY_SET = new Set<string>(INTELLIGENCE_KEYS);
 
 /**
  * Returns the subset of IntelligenceVariant values that the given model
  * declares and does not disable. Variants with `disabled: true` are excluded.
- * The result is always in fixed order ["high", "low"], independent of input
- * key order.
+ * The result follows {@link INTELLIGENCE_KEYS} order, independent of input
+ * key order. Unknown variant keys are ignored.
  */
 export function getIntelligenceVariants(
   model: ModelVariantMeta | undefined,
@@ -59,5 +79,5 @@ export function getIntelligenceVariants(
 export function isIntelligenceVariant(
   value: unknown,
 ): value is IntelligenceVariant {
-  return value === "high" || value === "low";
+  return typeof value === "string" && INTELLIGENCE_KEY_SET.has(value);
 }

@@ -99,6 +99,26 @@ describe("POST /api/tasks variant validation", () => {
     expect(res.status).not.toBe(400);
   });
 
+  it("accepts variant 'medium'", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      variant: "medium",
+    });
+    expect(res.status).not.toBe(400);
+  });
+
+  it("accepts variant 'xhigh'", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      variant: "xhigh",
+    });
+    expect(res.status).not.toBe(400);
+  });
+
   it("returns 400 for variant 'turbo'", async () => {
     const res = await post({
       projectId: "project-1",

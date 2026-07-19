@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { isIntelligenceVariant } from "@/lib/model-variants";
 import {
   OPENCODE_BASE_URL,
   isBlockedOpencodeWrite,
@@ -117,8 +118,7 @@ async function proxy(
             variant !== undefined &&
             variant !== null &&
             variant !== "" &&
-            variant !== "high" &&
-            variant !== "low"
+            !(typeof variant === "string" && isIntelligenceVariant(variant))
           ) {
             return NextResponse.json({ error: "invalid variant" }, { status: 400 });
           }

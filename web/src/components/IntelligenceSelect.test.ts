@@ -33,18 +33,21 @@ describe("IntelligenceSelect", () => {
     expect(markup).not.toContain('value="high"');
   });
 
-  it("renders デフォルト + high + low when both are available", () => {
+  it("renders all supplied variants in order", () => {
     const markup = renderToStaticMarkup(
       createElement(IntelligenceSelect, {
-        variants: ["high", "low"],
+        variants: ["none", "low", "medium", "high", "xhigh"],
         value: "",
         onChange: () => {},
         disabled: false,
       }),
     );
     expect(markup).toContain(">デフォルト<");
-    expect(markup).toContain(">high<");
+    expect(markup).toContain(">none<");
     expect(markup).toContain(">low<");
+    expect(markup).toContain(">medium<");
+    expect(markup).toContain(">high<");
+    expect(markup).toContain(">xhigh<");
   });
 
   it("marks the selected value", () => {
@@ -86,13 +89,12 @@ describe("IntelligenceSelect", () => {
   it("uses the selected variant as the visible label when set", () => {
     const markup = renderToStaticMarkup(
       createElement(IntelligenceSelect, {
-        variants: ["high", "low"],
-        value: "low",
+        variants: ["medium", "high"],
+        value: "medium",
         onChange: () => {},
         disabled: false,
       }),
     );
-    // The valueLabel span should show "low" (the selected variant)
-    expect(markup).toContain(">low<");
+    expect(markup).toContain(">medium<");
   });
 });

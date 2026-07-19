@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiUrl, ocJson } from "./client";
+import type { IntelligenceVariant } from "./model-variants";
 import { isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import type {
   MessageInfo,
@@ -510,7 +511,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         agent?: string;
         model?: { providerID: string; modelID: string };
         files?: { uri: string; mime: string; name?: string }[];
-        variant?: "high" | "low";
+        variant?: IntelligenceVariant;
       },
     ) => {
       const sid = sessionRef.current;

@@ -287,7 +287,7 @@ test.describe("home composer", () => {
     await expect(intelligence).toBeVisible();
     await expect(intelligence).toHaveValue("");
     const options = await intelligence.locator("option").allTextContents();
-    expect(options).toEqual(["デフォルト", "high", "low"]);
+    expect(options).toEqual(["デフォルト", "low", "high"]);
   });
 
   test("hides intelligence selector when model has no variants", async ({

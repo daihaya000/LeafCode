@@ -72,6 +72,7 @@ import {
 } from "@/lib/model-options";
 import {
   getIntelligenceVariants,
+  isIntelligenceVariant,
   type IntelligenceVariant,
   type ProviderModelMeta,
 } from "@/lib/model-variants";
@@ -1603,12 +1604,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                     >
                       <Paperclip className="h-3.5 w-3.5" />
                     </button>
-                    <AccessModeSelect
-                      value={accessMode}
-                      onChange={changeAccessMode}
-                      disabled={!task.sessionId}
-                      className="h-8 shrink-0"
-                    />
                     {modelOptions.length > 0 && (
                       <GhostSelect
                         value={model}
@@ -1616,7 +1611,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                           setModel(e.target.value);
                           setIntelligence("");
                         }}
-                        disabled={!task.sessionId || working}
+                        disabled={!task.sessionId}
                         aria-label="モデル"
                         icon={<ModelSelectIcon model={model} />}
                         valueLabel={
@@ -1645,18 +1640,16 @@ export function TaskView({ taskId }: { taskId: string }) {
                         variants={intelligenceVariants}
                         value={intelligence}
                         onChange={(v) =>
-                          setIntelligence(
-                            v === "high" || v === "low" ? v : "",
-                          )
+                          setIntelligence(isIntelligenceVariant(v) ? v : "")
                         }
-                        disabled={!task.sessionId || working}
+                        disabled={!task.sessionId}
                       />
                     )}
                     {agents.length > 0 && (
                       <GhostSelect
                         value={agent}
                         onChange={(e) => setAgent(e.target.value)}
-                        disabled={!task.sessionId || working}
+                        disabled={!task.sessionId}
                         aria-label="エージェント"
                         icon={<Bot className="h-3.5 w-3.5" />}
                         valueLabel={agent || "エージェント"}
@@ -1669,6 +1662,12 @@ export function TaskView({ taskId }: { taskId: string }) {
                         ))}
                       </GhostSelect>
                     )}
+                    <AccessModeSelect
+                      value={accessMode}
+                      onChange={changeAccessMode}
+                      disabled={!task.sessionId}
+                      className="h-8 shrink-0"
+                    />
                   </div>
                   {working ? (
                     <Button

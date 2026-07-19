@@ -49,4 +49,22 @@ describe("POST /api/opencode/session/:id/prompt_async variant validation", () =>
     expect(await new Response(init?.body).text()).toBe(body);
     fetchMock.mockRestore();
   });
+
+  it("forwards a medium variant body to upstream", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    const body = JSON.stringify({
+      model: { modelID: "model-1" },
+      variant: "medium",
+    });
+
+    const response = await post(body);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(await new Response(init?.body).text()).toBe(body);
+    fetchMock.mockRestore();
+  });
 });
