@@ -86,10 +86,10 @@ describe("modelIntelligenceScore", () => {
     }
   });
 
-  it("ranks Ollama / OpenCode cloud models smartest-first", () => {
+  it("ranks Ollama / OpenCode cloud models by coding ability", () => {
     const order = [
-      "deepseek-v4-pro",
       "glm-5.2",
+      "deepseek-v4-pro",
       "kimi-k2.7-code",
       "deepseek-v4-flash",
     ];
@@ -101,12 +101,17 @@ describe("modelIntelligenceScore", () => {
 });
 
 describe("sortModelOptions", () => {
-  it("orders providers then models smartest-first", () => {
+  it("orders providers then models by preferred / coding ability", () => {
     const input: ModelOption[] = [
       { value: "cursor-acp::auto", label: "Auto", group: "Cursor" },
       {
         value: "ollama-cloud::deepseek-v4-flash",
         label: "DeepSeek V4 Flash",
+        group: "Ollama Cloud",
+      },
+      {
+        value: "ollama-cloud::kimi-k2.7-code",
+        label: "kimi-k2.7-code",
         group: "Ollama Cloud",
       },
       {
@@ -149,6 +154,11 @@ describe("sortModelOptions", () => {
         label: "DeepSeek V4 Pro",
         group: "Ollama Cloud",
       },
+      {
+        value: "ollama-cloud::glm-5.2",
+        label: "GLM-5.2",
+        group: "Ollama Cloud",
+      },
     ];
 
     const sorted = sortModelOptions(input).map((o) => o.value);
@@ -159,7 +169,9 @@ describe("sortModelOptions", () => {
       "openai::gpt-5.5",
       "anthropic::claude-fable-5",
       "anthropic::claude-haiku-4-5",
+      "ollama-cloud::glm-5.2",
       "ollama-cloud::deepseek-v4-pro",
+      "ollama-cloud::kimi-k2.7-code",
       "ollama-cloud::deepseek-v4-flash",
       "opencode-go::glm-5.2",
       "cursor-acp::auto",

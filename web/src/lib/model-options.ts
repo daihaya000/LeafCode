@@ -52,8 +52,10 @@ export function providerSortKey(providerID: string): number {
 }
 
 /**
- * Higher score = earlier in the dropdown. Tuned for preferred GPT order
- * (Sol → Terra → Luna → 5.5) and Claude fable/opus/sonnet/haiku, etc.
+ * Higher score = earlier in the dropdown.
+ * GPT: Sol → Terra → Luna → 5.5. Claude: fable/opus/sonnet/haiku.
+ * Ollama/OpenCode cloud coding ability (OpenCode/Codex 系の目安):
+ * GLM → DeepSeek Pro → Kimi → DeepSeek Flash.
  */
 export function modelIntelligenceScore(modelID: string): number {
   const id = modelID.toLowerCase().replaceAll("_", "-");
@@ -75,7 +77,8 @@ export function modelIntelligenceScore(modelID: string): number {
   } else if (/\bo[1-9]\b/.test(id) || /^o[1-9]/.test(id)) {
     score += 390_000;
   } else if (/glm-/.test(id)) {
-    score += 320_000;
+    // Above DeepSeek Pro (base+pro ≈ 350k) for coding-ability order
+    score += 360_000;
   } else if (/deepseek/.test(id)) {
     score += 300_000;
   } else if (/kimi/.test(id)) {
