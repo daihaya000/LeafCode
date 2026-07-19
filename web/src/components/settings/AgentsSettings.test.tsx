@@ -99,16 +99,29 @@ describe("AgentsSettings", () => {
     await screen.findByText("表示できるエージェントがありません。");
   });
 
-  it("shows an error with a working retry button", async () => {
-    stubFetch(() => new Response("boom", { status: 500 }));
+  it("keeps the error visible while retrying and recovers", async () => {
+    let resolveRetry!: (response: Response) => void;
+    const retryResponse = new Promise<Response>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchMock = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }))
+      .mockReturnValueOnce(retryResponse);
+    vi.stubGlobal("fetch", fetchMock);
+
     render(<AgentsSettings />);
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("エージェントを取得できませんでした");
 
-    // Next fetch succeeds → retry recovers.
-    stubFetch(() => new Response(JSON.stringify(AGENTS), { status: 200 }));
-    fireEvent.click(screen.getByRole("button", { name: "再試行" }));
+    const retryButton = screen.getByRole("button", { name: "再試行" });
+    fireEvent.click(retryButton);
+
+    expect((retryButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("alert")).toBe(alert);
+
+    resolveRetry(new Response(JSON.stringify(AGENTS), { status: 200 }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Rank A" })).toBeTruthy();

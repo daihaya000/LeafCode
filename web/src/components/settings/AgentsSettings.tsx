@@ -18,9 +18,9 @@ function modeTone(mode: ParsedAgent["mode"]): "working" | "neutral" {
 }
 
 function ModelLabel({ agent }: { agent: ParsedAgent }) {
-  if (!agent.model) return <span className="text-faint">未設定</span>;
+  if (!agent.model) return <span className="text-muted">未設定</span>;
   return (
-    <span className="font-mono text-xs text-muted">
+    <span className="min-w-0 break-words font-mono text-xs text-muted">
       {agent.model.providerID} / {agent.model.modelID}
     </span>
   );
@@ -38,7 +38,7 @@ function AgentGroupTable({ group }: { group: AgentGroup }) {
       <div className="hidden overflow-hidden rounded-xl border border-border bg-surface sm:block">
         <table className="w-full table-fixed text-left text-sm">
           <thead>
-            <tr className="border-b border-border text-xs text-faint">
+            <tr className="border-b border-border text-xs text-muted">
               <th scope="col" className="w-24 px-4 py-2 font-medium">
                 Rank
               </th>
@@ -111,7 +111,7 @@ function AgentGroupTable({ group }: { group: AgentGroup }) {
               <Badge tone={modeTone(agent.mode)}>{agent.mode}</Badge>
             </div>
             {agent.role && (
-              <p className="mt-1 truncate font-mono text-xs text-faint">
+              <p className="mt-1 truncate font-mono text-xs text-muted">
                 {agent.name}
               </p>
             )}
@@ -134,10 +134,15 @@ export function AgentsSettings() {
   const [state, setState] = useState<LoadState>("loading");
   const [agents, setAgents] = useState<ParsedAgent[]>([]);
   const [query, setQuery] = useState("");
+  const [retrying, setRetrying] = useState(false);
 
   const load = useMemo(
-    () => async () => {
-      setState("loading");
+    () => async ({ retry = false }: { retry?: boolean } = {}) => {
+      if (retry) {
+        setRetrying(true);
+      } else {
+        setState("loading");
+      }
       try {
         const res = await fetch("/api/opencode/agent", { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
@@ -147,6 +152,8 @@ export function AgentsSettings() {
         setState("ready");
       } catch {
         setState("error");
+      } finally {
+        if (retry) setRetrying(false);
       }
     },
     [],
@@ -179,11 +186,17 @@ export function AgentsSettings() {
         role="alert"
         className="space-y-3 rounded-xl border border-danger/30 bg-danger-bg px-4 py-4 text-sm text-danger"
       >
-        <p>
+        <p className="text-muted">
           エージェントを取得できませんでした。OpenCode
           サーバーが起動しているか確認してください。
         </p>
-        <Button variant="secondary" size="sm" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          size="sm"
+          busy={retrying}
+          onClick={() => void load({ retry: true })}
+          className="focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+        >
           再試行
         </Button>
       </div>
@@ -199,17 +212,17 @@ export function AgentsSettings() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="エージェントを検索"
-          placeholder="名前・役割・モデルで検索"
-          className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong sm:max-w-xs"
+          placeholder="名前・役割・提供元・モデル・説明・Modeで検索"
+          className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary sm:max-w-xs"
         />
       </div>
 
       {agents.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-faint">
+        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted">
           表示できるエージェントがありません。
         </p>
       ) : groups.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-faint">
+        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted">
           「{query}」に一致するエージェントはありません。
         </p>
       ) : (
