@@ -19,6 +19,10 @@ import {
   messageHasTimelineParts,
   type TaskMatchHint,
 } from "@/lib/match-child-session";
+import {
+  NESTED_POLL_TIMEOUT_MS,
+  shouldPollWhileVisible,
+} from "@/lib/sse-health";
 import type { MessageWithParts } from "@/lib/types";
 import { PartView } from "./PartView";
 
@@ -62,6 +66,7 @@ async function fetchChildren(
     const rows = await ocJson<ChildSession[] | { data?: ChildSession[] }>(
       `/session/${sessionId}/children`,
       directory,
+      { timeoutMs: NESTED_POLL_TIMEOUT_MS },
     );
     const list = Array.isArray(rows)
       ? rows
@@ -122,6 +127,7 @@ export function NestedAgentPanel({
         statuses = await ocJson<Record<string, { type?: string }>>(
           "/session/status",
           directory,
+          { timeoutMs: NESTED_POLL_TIMEOUT_MS },
         );
       } catch {
         /* status unavailable */
@@ -153,6 +159,7 @@ export function NestedAgentPanel({
         const rows = await ocJson<MessageWithParts[]>(
           `/session/${matchedId}/message`,
           directory,
+          { timeoutMs: NESTED_POLL_TIMEOUT_MS },
         );
         messages = Array.isArray(rows) ? rows : [];
       } catch {
@@ -184,9 +191,17 @@ export function NestedAgentPanel({
   useEffect(() => {
     if (!active) return;
     void refresh();
-    const t = setInterval(() => void refresh(), POLL_MS);
+    const t = setInterval(() => {
+      if (!shouldPollWhileVisible(document.visibilityState)) return;
+      void refresh();
+    }, POLL_MS);
+    const onVisible = () => {
+      if (shouldPollWhileVisible(document.visibilityState)) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
       genRef.current += 1;
     };
   }, [active, refresh]);

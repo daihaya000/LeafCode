@@ -59,22 +59,47 @@ export async function sendJson<T>(
 export async function ocJson<T>(
   path: string,
   directory: string,
-  init?: { method?: string; body?: unknown },
+  init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
-  const res = await fetch(apiUrl(`/api/opencode${path}`, { directory }), {
-    method: init?.method ?? "GET",
-    headers: {
-      "x-opencode-directory": directory,
-      ...(init?.body !== undefined ? { "content-type": "application/json" } : {}),
-    },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    cache: "no-store",
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg =
-      (data as { error?: string } | null)?.error ?? `${path} failed: ${res.status}`;
-    throw new ApiError(msg, res.status);
+  const controller =
+    typeof init?.timeoutMs === "number" && init.timeoutMs > 0
+      ? new AbortController()
+      : null;
+  const timer =
+    controller && init?.timeoutMs
+      ? setTimeout(() => controller.abort(), init.timeoutMs)
+      : null;
+  try {
+    const res = await fetch(apiUrl(`/api/opencode${path}`, { directory }), {
+      method: init?.method ?? "GET",
+      headers: {
+        "x-opencode-directory": directory,
+        ...(init?.body !== undefined
+          ? { "content-type": "application/json" }
+          : {}),
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      cache: "no-store",
+      signal: controller?.signal,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg =
+        (data as { error?: string } | null)?.error ??
+        `${path} failed: ${res.status}`;
+      throw new ApiError(msg, res.status);
+    }
+    return data as T;
+  } catch (err) {
+    if (
+      controller &&
+      err instanceof DOMException &&
+      err.name === "AbortError"
+    ) {
+      throw new ApiError(`${path} timed out`, 408);
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return data as T;
 }

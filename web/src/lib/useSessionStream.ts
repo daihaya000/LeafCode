@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiUrl, ocJson } from "./client";
+import { isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import type {
   MessageInfo,
   MessageWithParts,
@@ -321,10 +322,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     let es: EventSource | null = null;
     let retryMs = 1000;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastActivityAt = Date.now();
+    const markActivity = () => {
+      lastActivityAt = Date.now();
+    };
 
     void resync();
 
     const handleEvent = (raw: string) => {
+      markActivity();
       if (scopeRef.current !== effectScope) return;
       let payload: {
         type?: string;
@@ -441,7 +447,14 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     const connect = (isReconnect: boolean) => {
       if (cancelled) return;
-      es?.close();
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (es) {
+        es.onerror = null;
+        es.close();
+      }
       dispatch({
         kind: "connection",
         connection: isReconnect ? "reconnecting" : "connecting",
@@ -449,12 +462,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       es = new EventSource(apiUrl("/api/opencode/event", { directory }));
 
       es.onopen = () => {
+        markActivity();
         retryMs = 1000;
         dispatch({ kind: "connection", connection: "live" });
         if (isReconnect) void resync();
       };
       es.onmessage = (ev) => handleEvent(ev.data);
+      es.addEventListener("heartbeat", () => {
+        markActivity();
+      });
       es.onerror = () => {
+        if (cancelled) return;
         es?.close();
         dispatch({ kind: "connection", connection: "reconnecting" });
         timer = setTimeout(() => connect(true), retryMs);
@@ -462,10 +480,25 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       };
     };
 
+    const silenceWatch = setInterval(() => {
+      if (cancelled || !es || es.readyState !== EventSource.OPEN) return;
+      if (!isSseSilent(lastActivityAt, Date.now(), SSE_SILENCE_MS)) return;
+      connect(true);
+    }, 5_000);
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      markActivity();
+      void resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     connect(false);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      clearInterval(silenceWatch);
+      document.removeEventListener("visibilitychange", onVisible);
       es?.close();
     };
   }, [directory, sessionId, resync]);

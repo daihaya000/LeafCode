@@ -5,6 +5,10 @@ import {
   isBlockedOpencodeWrite,
   maskSecrets,
 } from "@/lib/opencode";
+import {
+  SSE_HEARTBEAT_MS,
+  encodeSseHeartbeat,
+} from "@/lib/sse-health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -179,6 +183,13 @@ async function proxy(
         const encoder = new TextEncoder();
         // Initial comment heartbeat help for some proxies
         controller.enqueue(encoder.encode(": connected\n\n"));
+        const heartbeat = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(encodeSseHeartbeat()));
+          } catch {
+            clearInterval(heartbeat);
+          }
+        }, SSE_HEARTBEAT_MS);
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -188,6 +199,7 @@ async function proxy(
         } catch {
           // client or upstream closed
         } finally {
+          clearInterval(heartbeat);
           try {
             controller.close();
           } catch {
