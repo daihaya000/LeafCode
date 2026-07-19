@@ -10,21 +10,42 @@ export function scopeKey(scope: AttentionScope): string {
   return `${scope.directory}\u0000${scope.sessionId}`;
 }
 
-export function parseGlobalEvent(raw: string): AttentionItem | null {
-  let payload: {
+type GlobalEventEnvelope = {
+  type?: string;
+  directory?: string;
+  properties?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  payload?: {
     type?: string;
     directory?: string;
     properties?: Record<string, unknown>;
-    data?: Record<string, unknown>;
   };
+};
+
+function normalizeEnvelope(envelope: GlobalEventEnvelope): {
+  type: string;
+  directory: string;
+  props: Record<string, unknown>;
+} {
+  const nested = envelope.payload;
+  return {
+    type: String(nested?.type ?? envelope.type ?? ""),
+    directory: String(envelope.directory ?? nested?.directory ?? ""),
+    props: (nested?.properties ?? envelope.properties ?? envelope.data ?? {}) as Record<
+      string,
+      unknown
+    >,
+  };
+}
+
+export function parseGlobalEvent(raw: string): AttentionItem | null {
+  let envelope: GlobalEventEnvelope;
   try {
-    payload = JSON.parse(raw);
+    envelope = JSON.parse(raw);
   } catch {
     return null;
   }
-  const type = payload.type ?? "";
-  const directory = String(payload.directory ?? "");
-  const props = (payload.properties ?? payload.data ?? {}) as Record<string, unknown>;
+  const { type, directory, props } = normalizeEnvelope(envelope);
   const id = String(props.id ?? "");
   const sessionID = String(props.sessionID ?? "");
   if (!id || !sessionID || !directory) return null;
@@ -89,14 +110,13 @@ export function rejectPath(item: AttentionItem): string | null {
 }
 
 export function isResolvedEvent(raw: string): string | null {
-  let payload: { type?: string; properties?: Record<string, unknown>; data?: Record<string, unknown> };
+  let envelope: GlobalEventEnvelope;
   try {
-    payload = JSON.parse(raw);
+    envelope = JSON.parse(raw);
   } catch {
     return null;
   }
-  const type = payload.type ?? "";
-  const props = payload.properties ?? payload.data ?? {};
+  const { type, props } = normalizeEnvelope(envelope);
   if (
     type === "permission.replied" ||
     type === "permission.v2.replied" ||
