@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   Bot,
   Brain,
@@ -17,6 +17,7 @@ import {
   Search,
   Terminal,
   Wrench,
+  X,
 } from "lucide-react";
 import { cx } from "@/components/ui";
 import type { CostDisplayPrefs } from "@/lib/currency";
@@ -356,6 +357,63 @@ const ReasoningView = memo(function ReasoningView({ text }: { text: string }) {
   );
 });
 
+const IMAGE_MIME_RE = /^image\//i;
+
+/** Thumbnail for a sent/received image attachment, with a click-to-expand lightbox. */
+function FileImagePreview({ url, name }: { url: string; name: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [expanded]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        aria-label={`${name} を拡大表示`}
+        className="block h-28 w-28 cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface-2"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={name} className="h-full w-full object-cover" />
+      </button>
+      {expanded && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={name}
+          onClick={() => setExpanded(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={name}
+            className="max-h-full max-w-full cursor-zoom-out rounded-lg object-contain"
+          />
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpanded(false);
+            }}
+            aria-label="閉じる"
+            className="absolute right-4 top-4 rounded-full bg-bg/80 p-2 text-muted hover:text-text"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export const PartView = memo(function PartView({
   part,
   role,
@@ -403,6 +461,9 @@ export const PartView = memo(function PartView({
       );
     case "file": {
       const name = part.filename ?? "file";
+      if (part.url && IMAGE_MIME_RE.test(part.mime ?? "")) {
+        return <FileImagePreview url={part.url} name={name} />;
+      }
       return (
         <button
           type="button"
