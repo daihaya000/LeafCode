@@ -917,11 +917,16 @@ async function isHttpUp(url) {
   }
 }
 
-async function waitUntilReady(url, label, attempts = 60) {
+async function waitUntilReady(url, label, attempts = 60, { proc } = {}) {
   for (let i = 0; i < attempts; i += 1) {
     if (await isHttpUp(url)) {
       log(`${label} is ready`);
       return true;
+    }
+    // ServeError / crash: fail fast instead of waiting the full timeout.
+    if (proc && !procRunning(proc())) {
+      error(`${label} exited before becoming ready (${url})`);
+      return false;
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
@@ -1080,13 +1085,59 @@ async function restartOpencode() {
   }
   restartingServices = true;
   log('Restarting OpenCode…');
+  const previousPort = OPENCODE_PORT;
   try {
     await stopOpencodeOnly();
     await sleep(500);
-    const opencodePath = findOpencode();
-    log(`Starting OpenCode: ${opencodePath}`);
-    spawnOpencode(opencodePath);
-    await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45);
+
+    // Same ghost/unhealthy handling as cold start. Crash+taskkill often leaves a
+    // Windows LISTENING socket whose PID is already dead; rebinding then fails
+    // with ServeError unless we fall back to the next free port.
+    const resolved = await resolveOccupiedPort(
+      OPENCODE_PORT,
+      `${OPENCODE_URL}/global/health`,
+      'OpenCode',
+    );
+    if (resolved.port !== OPENCODE_PORT) {
+      setOpencodePort(resolved.port);
+      process.env.OPENCODE_PORT = String(OPENCODE_PORT);
+      process.env.OPENCODE_BASE_URL = OPENCODE_URL;
+    }
+
+    if (resolved.reuse) {
+      log(`Reusing existing OpenCode on :${OPENCODE_PORT}`);
+    } else {
+      const opencodePath = findOpencode();
+      log(`Starting OpenCode: ${opencodePath}`);
+      spawnOpencode(opencodePath);
+      const ready = await waitUntilReady(
+        `${OPENCODE_URL}/global/health`,
+        'OpenCode',
+        45,
+        { proc: () => opencodeProc },
+      );
+      if (!ready) {
+        throw new Error(
+          `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
+        );
+      }
+    }
+
+    // WebUI bakes OPENCODE_BASE_URL at spawn time — follow port changes.
+    if (OPENCODE_PORT !== previousPort) {
+      log(
+        `OpenCode port changed ${previousPort} → ${OPENCODE_PORT}; restarting WebUI to follow…`,
+      );
+      await stopWebOnly();
+      await sleep(500);
+      await spawnWeb();
+      const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+        proc: () => webProc,
+      });
+      if (!webReady) {
+        throw new Error(`WebUI failed to become ready after OpenCode port change (${WEBUI_URL})`);
+      }
+    }
   } catch (err) {
     error(`OpenCode restart failed: ${err instanceof Error ? err.message : String(err)}`);
     throw err;
@@ -1385,8 +1436,12 @@ async function main() {
     setInterval(() => {
       refreshStatusMenu().catch(() => {});
     }, 5000);
-    const webReady = await waitUntilReady(WEBUI_URL, 'WebUI');
-    await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode');
+    const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+      proc: () => webProc,
+    });
+    await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+      proc: () => opencodeProc,
+    });
     if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
       openBrowser(WEBUI_URL);
     }
@@ -1406,8 +1461,12 @@ async function main() {
     refreshStatusMenu().catch(() => {});
   }, 5000);
   await refreshStatusMenu();
-  const webReady = await waitUntilReady(WEBUI_URL, 'WebUI');
-  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode');
+  const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+    proc: () => webProc,
+  });
+  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+    proc: () => opencodeProc,
+  });
   if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
     openBrowser(WEBUI_URL);
   }
