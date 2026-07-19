@@ -6,8 +6,11 @@ import { useEffect, useState } from "react";
 
 export type CostCurrency = "USD" | "JPY";
 
+export type CostRateMode = "auto" | "manual";
+
 export type CostDisplayPrefs = {
   currency: CostCurrency;
+  rateMode: CostRateMode;
   /** Yen per 1 USD. Used only when currency is JPY. */
   usdJpyRate: number;
 };
@@ -19,7 +22,8 @@ export const COST_DISPLAY_EVENT = "webui:cost-display";
 export const DEFAULT_USD_JPY_RATE = 150;
 
 export const DEFAULT_COST_PREFS: CostDisplayPrefs = {
-  currency: "USD",
+  currency: "JPY",
+  rateMode: "auto",
   usdJpyRate: DEFAULT_USD_JPY_RATE,
 };
 
@@ -36,7 +40,8 @@ export function sanitizeCostDisplayPrefs(raw: unknown): CostDisplayPrefs {
     return { ...DEFAULT_COST_PREFS };
   }
   const obj = raw as Record<string, unknown>;
-  const currency: CostCurrency = obj.currency === "JPY" ? "JPY" : "USD";
+  const currency: CostCurrency = obj.currency === "USD" ? "USD" : "JPY";
+  const rateMode: CostRateMode = obj.rateMode === "auto" ? "auto" : "manual";
   const rate =
     typeof obj.usdJpyRate === "number"
       ? obj.usdJpyRate
@@ -45,6 +50,7 @@ export function sanitizeCostDisplayPrefs(raw: unknown): CostDisplayPrefs {
         : DEFAULT_USD_JPY_RATE;
   return {
     currency,
+    rateMode,
     usdJpyRate: clampUsdJpyRate(rate),
   };
 }
@@ -60,7 +66,7 @@ export function readCostDisplayPrefs(): CostDisplayPrefs {
   }
 }
 
-export function writeCostDisplayPrefs(prefs: CostDisplayPrefs): void {
+export function writeCostDisplayPrefs(prefs: Partial<CostDisplayPrefs>): void {
   const next = sanitizeCostDisplayPrefs(prefs);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -110,9 +116,7 @@ export function useCostDisplayPrefs(): CostDisplayPrefs {
     setPrefs(readCostDisplayPrefs());
     const onPrefs = (e: Event) => {
       const detail = (e as CustomEvent<CostDisplayPrefs>).detail;
-      if (detail?.currency === "USD" || detail?.currency === "JPY") {
-        setPrefs(detail);
-      }
+      setPrefs(sanitizeCostDisplayPrefs(detail));
     };
     window.addEventListener(COST_DISPLAY_EVENT, onPrefs);
     return () => window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);

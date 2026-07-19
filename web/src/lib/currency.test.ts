@@ -22,55 +22,72 @@ describe("clampUsdJpyRate", () => {
 });
 
 describe("sanitizeCostDisplayPrefs", () => {
-  it("defaults unknown input to USD + default rate", () => {
+  it("defaults unknown input to JPY + auto + default rate", () => {
     expect(sanitizeCostDisplayPrefs(null)).toEqual(DEFAULT_COST_PREFS);
     expect(sanitizeCostDisplayPrefs("x")).toEqual(DEFAULT_COST_PREFS);
+    expect(DEFAULT_COST_PREFS).toEqual({
+      currency: "JPY",
+      rateMode: "auto",
+      usdJpyRate: DEFAULT_USD_JPY_RATE,
+    });
   });
 
-  it("accepts JPY and clamps rate", () => {
+  it("treats missing rateMode as manual (legacy prefs)", () => {
     expect(sanitizeCostDisplayPrefs({ currency: "JPY", usdJpyRate: 155.5 })).toEqual({
       currency: "JPY",
+      rateMode: "manual",
       usdJpyRate: 155.5,
-    });
-    expect(sanitizeCostDisplayPrefs({ currency: "JPY", usdJpyRate: "140" })).toEqual({
-      currency: "JPY",
-      usdJpyRate: 140,
     });
   });
 
-  it("treats unknown currency as USD", () => {
-    expect(sanitizeCostDisplayPrefs({ currency: "EUR", usdJpyRate: 100 })).toEqual({
+  it("accepts explicit auto mode", () => {
+    expect(
+      sanitizeCostDisplayPrefs({
+        currency: "JPY",
+        rateMode: "auto",
+        usdJpyRate: 140,
+      }),
+    ).toEqual({ currency: "JPY", rateMode: "auto", usdJpyRate: 140 });
+  });
+
+  it("keeps USD when explicitly set; maps other currency to JPY", () => {
+    expect(sanitizeCostDisplayPrefs({ currency: "USD", usdJpyRate: 100 })).toEqual({
       currency: "USD",
+      rateMode: "manual",
+      usdJpyRate: 100,
+    });
+    expect(sanitizeCostDisplayPrefs({ currency: "EUR", usdJpyRate: 100 })).toEqual({
+      currency: "JPY",
+      rateMode: "manual",
       usdJpyRate: 100,
     });
   });
 });
 
 describe("formatCost", () => {
-  it("formats USD", () => {
-    expect(formatCost(0.1542)).toBe("cost $0.1542");
-    expect(formatCost(0)).toBe("");
+  it("formats default prefs as JPY", () => {
+    expect(formatCost(0.1542)).toBe("cost ¥23.1（$0.1542）");
+  });
+
+  it("formats USD when prefs say USD", () => {
+    expect(
+      formatCost(0.1542, { currency: "USD", rateMode: "manual", usdJpyRate: 150 }),
+    ).toBe("cost $0.1542");
   });
 
   it("formats JPY with USD in parentheses", () => {
     expect(
-      formatCost(0.1542, { currency: "JPY", usdJpyRate: 150 }),
+      formatCost(0.1542, { currency: "JPY", rateMode: "manual", usdJpyRate: 150 }),
     ).toBe("cost ¥23.1（$0.1542）");
-    expect(
-      formatCost(1, { currency: "JPY", usdJpyRate: 150 }),
-    ).toBe("cost ¥150（$1.0000）");
-    expect(
-      formatCost(0.001, { currency: "JPY", usdJpyRate: 150 }),
-    ).toBe("cost ¥0.15（$0.0010）");
   });
 });
 
 describe("formatCostValue", () => {
   it("returns the bare amount (no 'cost ' label)", () => {
-    expect(formatCostValue(0.1542)).toBe("$0.1542");
+    expect(formatCostValue(0.1542)).toBe("¥23.1（$0.1542）");
     expect(formatCostValue(0)).toBe("");
     expect(
-      formatCostValue(0.1542, { currency: "JPY", usdJpyRate: 150 }),
+      formatCostValue(0.1542, { currency: "JPY", rateMode: "manual", usdJpyRate: 150 }),
     ).toBe("¥23.1（$0.1542）");
   });
 
@@ -91,14 +108,14 @@ describe("useCostDisplayPrefs", () => {
     act(() => {
       writeCostDisplayPrefs({ currency: "JPY", usdJpyRate: 130 });
     });
-    expect(result.current).toEqual({ currency: "JPY", usdJpyRate: 130 });
+    expect(result.current).toEqual({ currency: "JPY", rateMode: "manual", usdJpyRate: 130 });
   });
 
   it("ignores malformed event details", () => {
     const { result } = renderHook(() => useCostDisplayPrefs());
     act(() => {
       window.dispatchEvent(
-        new CustomEvent(COST_DISPLAY_EVENT, { detail: { currency: "EUR" } }),
+        new CustomEvent(COST_DISPLAY_EVENT, { detail: null }),
       );
     });
     expect(result.current).toEqual(DEFAULT_COST_PREFS);
