@@ -22,6 +22,8 @@ const WATCHED_ROOT_FILES = [
 ];
 
 const WATCHED_DIRS = ['src', 'public'];
+/** Sibling of `web/` — repo-root addons (CodexBar etc.). */
+const WATCHED_SIBLING_DIRS = ['addons'];
 
 const WATCHED_EXTENSIONS = new Set([
   '.ts',
@@ -97,6 +99,14 @@ export function isWebBuildStale(webDir, fsApi = {}) {
 
   for (const dirName of WATCHED_DIRS) {
     const root = join(webDir, dirName);
+    if (!existsSync(root)) continue;
+    if (hasNewerFile(root, buildMtimeMs, { existsSync, statSync, readdirSync })) {
+      return true;
+    }
+  }
+
+  for (const dirName of WATCHED_SIBLING_DIRS) {
+    const root = join(webDir, '..', dirName);
     if (!existsSync(root)) continue;
     if (hasNewerFile(root, buildMtimeMs, { existsSync, statSync, readdirSync })) {
       return true;

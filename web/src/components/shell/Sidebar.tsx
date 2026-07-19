@@ -21,7 +21,7 @@ import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
-import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
+import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { AttentionBadge } from "./AttentionBadge";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 import type { ProjectDto, TaskSummary } from "@/lib/types";

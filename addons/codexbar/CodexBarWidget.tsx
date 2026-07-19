@@ -27,8 +27,8 @@ import {
   type CodexBarProvider,
   type CodexBarUsage,
   type UsageTone,
-} from "@/lib/addons/codexbar";
-import { formatTokens, type CodexTokensResult } from "@/lib/addons/codex-tokens";
+} from "./lib/codexbar";
+import { formatTokens, type CodexTokensResult } from "./lib/codex-tokens";
 import { writeAddonEnabled } from "@/lib/addons/state";
 
 export const CODEXBAR_ADDON_ID = "codexbar-usage";

@@ -17,6 +17,7 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"
@@ -25,6 +26,33 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@addons/*": [
+        "../addons/*"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react-dom": [
+        "./node_modules/@types/react-dom"
+      ],
+      "react/jsx-runtime": [
+        "./node_modules/@types/react/jsx-runtime"
+      ],
+      "next": [
+        "./node_modules/next"
+      ],
+      "next/*": [
+        "./node_modules/next/*"
+      ],
+      "lucide-react": [
+        "./node_modules/lucide-react"
+      ],
+      "vitest": [
+        "./node_modules/vitest"
+      ],
+      "@testing-library/react": [
+        "./node_modules/@testing-library/react"
       ]
     }
   },
@@ -32,6 +60,8 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "../addons/**/*.ts",
+    "../addons/**/*.tsx",
     ".next/types/**/*.ts"
   ],
   "exclude": [

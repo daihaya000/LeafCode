@@ -2,7 +2,8 @@ import type { ComponentType } from "react";
 
 /**
  * A WebUI addon contributes a small widget rendered by `AddonHost` in the
- * sidebar. Register addons in `registry.ts`.
+ * sidebar. Implement each addon under repo-root `addons/<name>/` and register
+ * it in `registry.ts`.
  *
  * Named "addon" (not "plugin") to avoid confusion with OpenCode plugins.
  */

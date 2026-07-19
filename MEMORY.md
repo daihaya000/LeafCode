@@ -1,5 +1,26 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 アドオンを repo 直下 `addons/` に集約
+
+### 要望
+- CodexBar を `OpenCodeWebUI/addons/codexbar` に集約し、今後のアドオンもここに追加したい。
+
+### 構成
+- **本体**: `addons/<name>/`（CodexBar: widget / lib / api / public / index）
+- **共有ホスト**: `web/src/lib/addons`（types/registry/state）+ `web/src/components/addons`（AddonHost/Settings）
+- **薄いシム**: `web/src/app/api/addons/<name>/…/route.ts` は re-export のみ
+- **静的ファイル**: 正は `addons/<name>/public/` → `npm run sync:addons` で `web/public/addons/` へコピー（gitignore）
+- **alias**: `@addons/*` → `../addons/*`（tsconfig + vitest）、Next `experimental.externalDir`
+- **stale 判定**: host が sibling `addons/` も監視
+
+### 新アドオン手順
+`addons/README.md` 参照。`registry.ts` に 1 行登録。
+
+### 検証
+- Vitest（addons 含む）96 PASS / typecheck OK / host web-runtime 9 PASS
+
+---
+
 ## 2026-07-20 Composer スラッシュコマンド予測表示
 
 ### 要望

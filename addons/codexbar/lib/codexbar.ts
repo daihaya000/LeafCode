@@ -159,7 +159,7 @@ export function providerLabel(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
-/** Brand icons shared with the CodexBar desktop app (web/public/addons/codexbar). */
+/** Brand icons: source in `addons/codexbar/public`, served as `/addons/codexbar/…`. */
 const PROVIDER_ICONS: Record<string, string> = {
   codex: "codex.png",
   claude: "claude.png",

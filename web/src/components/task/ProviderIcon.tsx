@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Cpu } from "lucide-react";
-import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
+import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 
 /**
  * Brand icon for an OpenCode provider id (e.g. "anthropic", "openai",

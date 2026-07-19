@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "sync:addons": "node scripts/sync-addon-assets.mjs",
+    "predev": "npm run sync:addons",
+    "prebuild": "npm run sync:addons",
+    "prestart": "npm run sync:addons",
+    "pretest": "npm run sync:addons",
+    "pretypecheck": "npm run sync:addons",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

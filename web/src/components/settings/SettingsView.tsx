@@ -26,7 +26,7 @@ import {
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
-import { providerIconSrcForOpencodeId } from "@/lib/addons/codexbar";
+import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
