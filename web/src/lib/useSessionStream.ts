@@ -49,9 +49,9 @@ export type StreamAction =
   | { kind: "status"; status: SessionStatus }
   | { kind: "permissionAsked"; request: PermissionRequest }
   | { kind: "permissionReplied"; requestId: string }
-  | { kind: "permissionsSynced"; requests: PermissionRequest[]; keepLocalV2?: boolean }
+  | { kind: "permissionsSynced"; requests: PermissionRequest[]; keepLocalV2?: boolean; syncStartedAt?: number }
   | { kind: "questionAsked"; request: QuestionRequest }
-  | { kind: "questionsSynced"; requests: QuestionRequest[]; keepLocalV2?: boolean }
+  | { kind: "questionsSynced"; requests: QuestionRequest[]; keepLocalV2?: boolean; syncStartedAt?: number }
   | { kind: "questionReplied"; requestId: string }
   | { kind: "todos"; todos: Todo[] }
   | { kind: "revert"; revert: SessionRevert | null }
@@ -158,12 +158,13 @@ export function sessionStreamReducer(
       if (idx === -1) {
         return {
           ...state,
+          loaded: true,
           messages: [...state.messages, { info: action.info, parts: [] }],
         };
       }
       const messages = state.messages.slice();
       messages[idx] = { ...messages[idx], info: action.info };
-      return { ...state, messages };
+      return { ...state, loaded: true, messages };
     }
     case "messageRemoved":
       return {
@@ -177,6 +178,7 @@ export function sessionStreamReducer(
         // part for an unseen message — create a placeholder entry
         return {
           ...state,
+          loaded: true,
           messages: [
             ...state.messages,
             {
@@ -191,7 +193,7 @@ export function sessionStreamReducer(
         ...messages[idx],
         parts: upsertPart(messages[idx].parts, part),
       };
-      return { ...state, messages };
+      return { ...state, loaded: true, messages };
     }
     case "partRemoved": {
       const idx = state.messages.findIndex((m) => m.info.id === action.messageID);
@@ -220,6 +222,7 @@ export function sessionStreamReducer(
       if (idx === -1) {
         return {
           ...state,
+          loaded: true,
           messages: [
             ...state.messages,
             {
@@ -234,7 +237,7 @@ export function sessionStreamReducer(
         ...messages[idx],
         parts: upsertPart(messages[idx].parts, nextPart),
       };
-      return { ...state, messages };
+      return { ...state, loaded: true, messages };
     }
     case "status":
       return { ...state, status: action.status };
@@ -248,28 +251,38 @@ export function sessionStreamReducer(
         permissions: state.permissions.filter((p) => p.id !== action.requestId),
       };
     case "permissionsSynced": {
-      if (action.keepLocalV2) {
-        const restIds = new Set(action.requests.map((r) => r.id));
-        const keptV2 = state.permissions.filter(
-          (p) => p.version === "v2" && !restIds.has(p.id),
-        );
-        return { ...state, permissions: [...action.requests, ...keptV2] };
-      }
-      return { ...state, permissions: action.requests };
+      const restIds = new Set(action.requests.map((r) => r.id));
+      const keptLocal = state.permissions.filter((p) => {
+        if (restIds.has(p.id)) return false;
+        if (action.keepLocalV2 && p.version === "v2") return true;
+        if (
+          typeof action.syncStartedAt === "number" &&
+          p.receivedAt > action.syncStartedAt
+        ) {
+          return true;
+        }
+        return false;
+      });
+      return { ...state, permissions: [...action.requests, ...keptLocal] };
     }
     case "questionAsked": {
       if (state.questions.some((q) => q.id === action.request.id)) return state;
       return { ...state, questions: [...state.questions, action.request] };
     }
     case "questionsSynced": {
-      if (action.keepLocalV2) {
-        const restIds = new Set(action.requests.map((r) => r.id));
-        const keptV2 = state.questions.filter(
-          (q) => q.version === "v2" && !restIds.has(q.id),
-        );
-        return { ...state, questions: [...action.requests, ...keptV2] };
-      }
-      return { ...state, questions: action.requests };
+      const restIds = new Set(action.requests.map((r) => r.id));
+      const keptLocal = state.questions.filter((q) => {
+        if (restIds.has(q.id)) return false;
+        if (action.keepLocalV2 && q.version === "v2") return true;
+        if (
+          typeof action.syncStartedAt === "number" &&
+          q.receivedAt > action.syncStartedAt
+        ) {
+          return true;
+        }
+        return false;
+      });
+      return { ...state, questions: [...action.requests, ...keptLocal] };
     }
     case "questionReplied":
       return {
@@ -314,6 +327,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     if (!directory || !sid) return;
     const requestedScope = `${directory}\u0000${sid}`;
     const gen = ++resyncGenRef.current;
+    const syncStartedAt = Date.now();
     const stale = () =>
       scopeRef.current !== requestedScope || gen !== resyncGenRef.current;
 
@@ -438,6 +452,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         kind: "permissionsSynced",
         requests: [...byId.values()],
         keepLocalV2: !v2ok,
+        syncStartedAt,
       });
     } catch {
       /* non-fatal */
@@ -506,6 +521,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         kind: "questionsSynced",
         requests: [...byId.values()],
         keepLocalV2: !v2ok,
+        syncStartedAt,
       });
     } catch {
       /* non-fatal: SSE will deliver question.asked */

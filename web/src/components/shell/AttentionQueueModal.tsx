@@ -29,6 +29,10 @@ export function AttentionQueueModal() {
   const current = sorted[0];
   const total = sorted.length;
 
+  useEffect(() => {
+    setError(null);
+  }, [current?.request.id, current?.request.sessionID]);
+
   // Close automatically when queue becomes empty
   useEffect(() => {
     if (total === 0 && open) setOpen(false);

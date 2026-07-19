@@ -201,4 +201,25 @@ describe("session stream session.next text deltas", () => {
     });
     expect(state.permissions.map((p) => p.id).sort()).toEqual(["p-v1", "p-v2"]);
   });
+
+  it("keeps SSE permissions newer than syncStartedAt", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "permissionAsked",
+      request: {
+        id: "p-sse",
+        version: "v1",
+        sessionID: "s1",
+        permission: "edit",
+        patterns: ["*"],
+        receivedAt: 100,
+      },
+    });
+    state = sessionStreamReducer(state, {
+      kind: "permissionsSynced",
+      requests: [],
+      syncStartedAt: 50,
+    });
+    expect(state.permissions.map((p) => p.id)).toEqual(["p-sse"]);
+  });
 });

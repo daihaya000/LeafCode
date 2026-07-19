@@ -917,6 +917,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   // Prefer last assistant message's model once stream is loaded
   const seededModelRef = useRef(false);
   useEffect(() => {
+    seededModelRef.current = false;
+  }, [streamScopeKey]);
+  useEffect(() => {
     if (seededModelRef.current || !stream.loaded || modelOptions.length === 0) return;
     for (let i = stream.messages.length - 1; i >= 0; i--) {
       const info = stream.messages[i]?.info;
@@ -930,6 +933,11 @@ export function TaskView({ taskId }: { taskId: string }) {
       break;
     }
   }, [stream.loaded, stream.messages, modelOptions]);
+
+  useEffect(() => {
+    autoReplyIdsRef.current.clear();
+    setAutoReplyFailedIds(new Set());
+  }, [streamScopeKey]);
 
   const copyPath = useCallback(async () => {
     if (!task) return;
@@ -1476,7 +1484,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               className="flex-1 overflow-y-auto overscroll-contain"
             >
               <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
-                {!stream.loaded && (
+                {!stream.loaded && stream.messages.length === 0 && (
                   <div className="flex justify-center py-10">
                     <Spinner />
                   </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Brain,
@@ -191,6 +191,19 @@ const ToolPartView = memo(function ToolPartView({
     (status === "completed" || status === "error") &&
     Boolean(directory && rootSessionId);
   const [open, setOpen] = useState(nestedActive);
+  const wasNestedActiveRef = useRef(false);
+  useEffect(() => {
+    if (nestedActive) {
+      wasNestedActiveRef.current = true;
+      return;
+    }
+    // Reveal the nested panel once when the task finishes, even if the user
+    // collapsed the header while it was still running.
+    if (terminalTask && wasNestedActiveRef.current) {
+      setOpen(true);
+      wasNestedActiveRef.current = false;
+    }
+  }, [nestedActive, terminalTask]);
   const showNested = nestedActive || (terminalTask && open);
   const Icon = toolIcon(tool);
   const guessedProviderId = isTaskTool

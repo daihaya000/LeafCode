@@ -1,5 +1,20 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド7
+
+### 追加修正
+1. **resync マージ**: `syncStartedAt` 以降の SSE permission/question を REST 未反映でも保持
+2. **モデルシード**: セッション切替で `seededModelRef` をリセット
+3. **自動承認失敗状態**: scope 切替でクリア
+4. **NestedAgentPanel**: 実行中に折りたたんでも完了時に再表示
+5. **loaded/スピナー**: SSE 受信で `loaded=true`、空のときだけスピナー
+6. **AttentionQueueModal**: アイテム切替で error クリア
+
+### 検証
+- Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド6
 
 ### 追加修正
