@@ -12,11 +12,13 @@ import {
   getDb,
   getWorkspace,
   listProjects,
+  listSessionBindings,
   listWorkspaces,
   removeAllowedRoot,
   setWorkspaceStatus,
 } from "./db";
 import { addWorktree, removeWorktree, runGit } from "./git";
+import { ocServer } from "./oc-server";
 import { dataDir, ensureDataDir } from "./paths";
 import { persistProjectSessions } from "./project-session-sync";
 import { makeWorktreeBranchName } from "./workspace-branch";
@@ -167,10 +169,35 @@ export async function provisionWorkspace(input: {
   return { workspace: row, note };
 }
 
+/**
+ * Delete OpenCode engine sessions bound to an isolated workspace before the
+ * on-disk directory disappears. Skipping this leaves session.directory pointing
+ * at a deleted worktree; cursor-agent then fails with
+ * "Workspace directory does not exist". Best-effort: disk cleanup continues
+ * even if the engine is down. current_folder / devcontainer share a durable
+ * directory, so their OpenCode sessions are left alone.
+ */
+async function deleteBoundOpenCodeSessions(row: WorkspaceRow): Promise<void> {
+  if (row.isolation !== "git_worktree" && row.isolation !== "temporary_copy") {
+    return;
+  }
+  const directory = row.absolute_path;
+  const bindings = listSessionBindings(row.id);
+  await Promise.all(
+    bindings.map((b) =>
+      ocServer(directory, `/session/${b.opencode_session_id}`, {
+        method: "DELETE",
+      }).catch(() => undefined),
+    ),
+  );
+}
+
 /** Remove worktree/copy and metadata. Marks orphaned + throws 409 on disk failure. */
 export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   const row = getWorkspace(id);
   if (!row) throw new ServiceError("workspace not found", 404);
+
+  await deleteBoundOpenCodeSessions(row);
 
   const project = getDb()
     .prepare("SELECT root_path FROM projects WHERE id = ?")

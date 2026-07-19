@@ -119,12 +119,17 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
+  let createdSessionId: string | undefined;
   try {
     const session = await ocServer<{ id: string }>(
       workspace.absolute_path,
       "/session",
       { method: "POST", body: { title } },
     );
+    createdSessionId = session.id;
+    // Bind before prompt so create-failure rollback can delete the OpenCode
+    // session via destroyWorkspace (bindings are the only id source there).
+    bindSession(workspace.id, session.id, title);
     const promptBody: Record<string, unknown> = {
       parts: [
         { type: "text", text: prompt },
@@ -149,7 +154,6 @@ export async function POST(req: NextRequest) {
       `/session/${session.id}/prompt_async`,
       { method: "POST", body: promptBody },
     );
-    bindSession(workspace.id, session.id, title);
     touchProjectOpened(workspace.project_id);
     persistProjectSessions(workspace.project_id);
     return NextResponse.json({
@@ -159,7 +163,15 @@ export async function POST(req: NextRequest) {
       note,
     });
   } catch (err) {
-    // Roll back the freshly provisioned workspace so no orphan remains
+    // Roll back the freshly provisioned workspace so no orphan remains.
+    // If bind never ran, still best-effort delete the OpenCode session.
+    if (createdSessionId) {
+      await ocServer(
+        workspace.absolute_path,
+        `/session/${createdSessionId}`,
+        { method: "DELETE" },
+      ).catch(() => undefined);
+    }
     await destroyWorkspace(workspace.id).catch(() => undefined);
     const status = err instanceof OcError && err.status === 503 ? 503 : 502;
     return NextResponse.json(
