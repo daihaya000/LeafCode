@@ -468,8 +468,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 ))}
               </div>
             )}
-            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 px-3 pb-3 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-2">
-              <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 xl:col-start-1 xl:row-start-1">
+            <div className="flex min-w-0 items-center gap-2 px-3 pb-3">
+              <div className="flex min-w-0 shrink items-center gap-1.5">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -504,7 +504,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       : "プロジェクトなし"
                   }
                   onChange={(e) => setProjectId(e.target.value)}
-                  className="min-w-0 flex-1 xl:min-w-40 xl:max-w-44"
+                  className="min-w-0 max-w-[9rem]"
                 >
                   {projects.length === 0 && (
                     <option value="">プロジェクトなし</option>
@@ -531,14 +531,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       e.target.value as "current_folder" | "git_worktree",
                     )
                   }
-                  className="min-w-0 flex-1 xl:min-w-32 xl:max-w-32"
+                  className="min-w-0 max-w-[6.5rem]"
                   title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
                 >
                   <option value="current_folder">{defaultBranchLabel}</option>
                   <option value="git_worktree">worktree</option>
                 </GhostSelect>
               </div>
-              <div className="col-span-2 row-start-2 grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible min-[480px]:grid-cols-3 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:grid-cols-[8rem_6rem_7rem_9rem]">
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-hidden">
                 {modelOptions.length > 0 && (
                   <GhostSelect
                     value={model}
@@ -550,7 +550,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       setModel(e.target.value);
                       setIntelligence("");
                     }}
-                    className="w-full min-w-0"
+                    className="min-w-0 max-w-[11rem]"
                   >
                     {[...new Set(modelOptions.map((o) => o.group))].map(
                       (group) => (
@@ -587,7 +587,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={formatAgentLabel(agent)}
                     onChange={(e) => setAgent(e.target.value)}
-                    className="w-full min-w-[9rem]"
+                    className="min-w-0 max-w-[9rem]"
                     title="エージェント（OpenCode agent）"
                   >
                     {agents.map((a) => (
@@ -604,7 +604,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     setAccessMode(m);
                     writeAccessMode(m);
                   }}
-                  className="order-first w-full min-w-0 xl:order-none"
+                  className="min-w-0 max-w-[7.5rem] shrink"
                 />
               </div>
               <Button
@@ -612,7 +612,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 size="icon"
                 type="submit"
                 aria-label="タスク開始"
-                className="col-start-2 row-start-1 shrink-0 xl:col-start-3 xl:row-start-1"
+                className="shrink-0"
                 busy={submitting}
                 disabled={
                   (!prompt.trim() && attachments.length === 0) ||
