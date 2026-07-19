@@ -33,7 +33,15 @@ function mockChildApis() {
     if (path === `/session/${CHILD_ID}/message`) {
       return [
         {
-          info: { id: "m1", role: "assistant", agent: "explore" },
+          info: {
+            id: "m1",
+            role: "assistant",
+            agent: "explore",
+            providerID: "anthropic",
+            modelID: "claude-sonnet-5",
+            cost: 0.0312,
+            time: { created: 1 },
+          },
           parts: [{ id: "p1", type: "text", text: "作業中テキスト" }],
         },
       ];
@@ -61,6 +69,24 @@ describe("NestedAgentPanel", () => {
     input: { description: "調査" },
     siblingTaskCallIds: ["call-1"],
   };
+
+  it("uses the shared model and cost metadata for child messages", async () => {
+    render(
+      <NestedAgentPanel
+        directory="/repo"
+        parentSessionId={PARENT_ID}
+        active
+        matchHint={hint}
+        modelLabels={{ "anthropic::claude-sonnet-5": "Claude Sonnet 5" }}
+        costPrefs={{ currency: "USD", usdJpyRate: 150 }}
+      />,
+    );
+    expect(await screen.findByText("子エージェント")).toBeTruthy();
+    expect(await screen.findByText("Claude Sonnet 5")).toBeTruthy();
+    expect(screen.getByText("cost $0.0312")).toBeTruthy();
+    expect(screen.queryByText("explore")).toBeNull();
+    expect(screen.getByText("子エージェント")).toBeTruthy();
+  });
 
   it("polls child messages while active and visible", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

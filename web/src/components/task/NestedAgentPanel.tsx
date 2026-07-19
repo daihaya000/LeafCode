@@ -12,6 +12,11 @@ import { Bot, Loader2 } from "lucide-react";
 import { cx } from "@/components/ui";
 import { ocJson } from "@/lib/client";
 import {
+  DEFAULT_COST_PREFS,
+  type CostDisplayPrefs,
+} from "@/lib/currency";
+import { MessageMetaHeader } from "./MessageMetaHeader";
+import {
   collectTaskCallIds,
   extractSessionIdFromMetadata,
   isTimelinePartType,
@@ -85,12 +90,16 @@ export function NestedAgentPanel({
   parentSessionId,
   active,
   matchHint,
+  modelLabels = {},
+  costPrefs = DEFAULT_COST_PREFS,
 }: {
   directory: string;
   parentSessionId: string;
   /** Poll while true (running task, or completed detail open). */
   active: boolean;
   matchHint: TaskMatchHint;
+  modelLabels?: Readonly<Record<string, string>>;
+  costPrefs?: CostDisplayPrefs;
 }) {
   const [feed, setFeed] = useState<MatchedFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -295,14 +304,16 @@ export function NestedAgentPanel({
         )}
         {timeline.map((m) => (
           <div key={m.info.id} className="flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] text-faint">
-              <Bot className="h-3 w-3" />
-              <span>
-                {m.info.agent && m.info.agent.length > 0
-                  ? m.info.agent
-                  : "サブエージェント"}
-              </span>
-            </div>
+            <MessageMetaHeader
+              info={m.info}
+              modelLabel={
+                m.info.providerID && m.info.modelID
+                  ? modelLabels[`${m.info.providerID}::${m.info.modelID}`]
+                  : undefined
+              }
+              costPrefs={costPrefs}
+              compact
+            />
             {(m.parts ?? [])
               .filter((p) => {
                 if (!isTimelinePartType(p.type)) return false;

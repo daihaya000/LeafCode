@@ -165,12 +165,13 @@ const ToolPartView = memo(function ToolPartView({
   directory,
   rootSessionId,
   siblingTaskCallIds = EMPTY_TASK_CALL_IDS,
+  modelLabels,
+  costPrefs,
 }: {
   part: Part;
   directory?: string | null;
   rootSessionId?: string | null;
   siblingTaskCallIds?: string[];
-  // Accepted for forward-compat; forwarded into NestedAgentPanel in Task 3.
   modelLabels?: Readonly<Record<string, string>>;
   costPrefs?: CostDisplayPrefs;
 }) {
@@ -273,6 +274,8 @@ const ToolPartView = memo(function ToolPartView({
           parentSessionId={rootSessionId}
           active={showNested}
           matchHint={matchHint}
+          modelLabels={modelLabels}
+          costPrefs={costPrefs}
         />
       )}
       {open && (
