@@ -416,8 +416,57 @@ function findOpencode() {
   }
 }
 
+/**
+ * Pick a cursor-acp proxy port that is free or healthy. Avoids Windows ghost
+ * sockets on :32124 (TCP accept, no /health) that make Auto hang forever —
+ * including image prompts that never reach cursor-agent.
+ * @returns {number}
+ */
+function resolveCursorAcpProxyPort() {
+  const primary = 32124;
+  const fallback = 32125;
+  const forced = Number(process.env.CURSOR_ACP_PROXY_PORT);
+  if (Number.isFinite(forced) && forced > 0) {
+    // Honor explicit override only when that port is free or already healthy.
+    if (!isPortInUse(forced)) return forced;
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          '-e',
+          `fetch('http://127.0.0.1:${forced}/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))`,
+        ],
+        { timeout: 2500, stdio: 'ignore', windowsHide: true },
+      );
+      return forced;
+    } catch {
+      log(
+        `CURSOR_ACP_PROXY_PORT=${forced} is hung; ignoring and re-resolving`,
+      );
+    }
+  }
+  if (!isPortInUse(primary)) return primary;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `fetch('http://127.0.0.1:${primary}/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))`,
+      ],
+      { timeout: 2500, stdio: 'ignore', windowsHide: true },
+    );
+    return primary;
+  } catch {
+    log(
+      `cursor-acp proxy :${primary} is hung/unhealthy; OpenCode will use :${fallback}`,
+    );
+    return fallback;
+  }
+}
+
 function spawnOpencode(opencodePath) {
   const useShell = /\.(cmd|bat)$/i.test(opencodePath);
+  const proxyPort = resolveCursorAcpProxyPort();
   const child = spawn(
     opencodePath,
     ['serve', '--hostname', '127.0.0.1', '--port', String(OPENCODE_PORT)],
@@ -426,6 +475,10 @@ function spawnOpencode(opencodePath) {
       shell: useShell,
       stdio: 'pipe',
       windowsHide: true,
+      env: {
+        ...process.env,
+        CURSOR_ACP_PROXY_PORT: String(proxyPort),
+      },
     },
   );
   opencodeProc = child;
