@@ -190,4 +190,33 @@ describe("HomeView image attachments", () => {
     expect((prompt as HTMLTextAreaElement).value).toBe("describe this");
     expect(screen.getByRole("img", { name: "failed.png" })).toBeTruthy();
   });
+
+  it("keeps the composer toolbar as one flex row without fixed rem columns", async () => {
+    render(<HomeView />);
+
+    const form = await screen.findByRole("form", { name: "タスク作成" });
+    const toolbar = form.querySelector(":scope > div.px-3.pb-3");
+    expect(toolbar).not.toBeNull();
+    expect(toolbar?.className).toMatch(/\bflex\b/);
+    expect(toolbar?.className).not.toMatch(/\bgrid\b/);
+    expect(toolbar?.className).not.toContain("xl:grid-cols-");
+    expect(toolbar?.className).not.toContain("8rem_6rem_7rem_9rem");
+
+    const access = screen.getByLabelText("アクセスモード");
+    const accessWrap = access.closest("span");
+    expect(accessWrap?.className).not.toContain("order-first");
+    expect(accessWrap?.className).not.toContain("xl:order-none");
+
+    const project = screen.getByLabelText("プロジェクト");
+    const projectWrap = project.closest("span");
+    expect(projectWrap?.className).not.toContain("xl:min-w-40");
+    expect(projectWrap?.className).not.toContain("xl:max-w-44");
+
+    const isolation = screen.getByLabelText("作業場所");
+    const isolationWrap = isolation.closest("span");
+    expect(isolationWrap?.className).not.toContain("xl:min-w-32");
+    expect(isolationWrap?.className).not.toContain("xl:max-w-32");
+
+    expect(screen.getByRole("button", { name: "タスク開始" })).toBeTruthy();
+  });
 });
