@@ -62,7 +62,7 @@ import {
   type ChatTab,
   type SidePanelKind,
 } from "@/lib/side-panel-state";
-import { getJson, ocJson, sendJson } from "@/lib/client";
+import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
@@ -537,9 +537,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     void (async () => {
       try {
         const [providerRes, configRes, agentRes] = await Promise.all([
-          fetch("/api/opencode/provider", { cache: "no-store" }),
-          fetch("/api/opencode/config", { cache: "no-store" }),
-          fetch("/api/opencode/agent", { cache: "no-store" }),
+          timedFetch("/api/opencode/provider"),
+          timedFetch("/api/opencode/config"),
+          timedFetch("/api/opencode/agent"),
         ]);
 
         const data = providerRes.ok

@@ -1,5 +1,18 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 ネットワーク デバッグ ラウンド3
+
+### 修正
+1. **client.ts**: `timedFetch` 追加（デフォルト 30s Abort）。`getJson`/`ocJson` 外のアドホック BFF 呼び出し用
+2. **生 fetch 置換**: HomeView / TaskView / AgentsSettings / SettingsView / currency / useSlashCommands
+3. `cache: "no-store"` 付き生 fetch は `web/src` から一掃を確認
+
+### 検証
+- tsc OK / `client.test.ts` 4件 PASS
+- ループ継続（sentinel: `AGENT_LOOP_TICK_network_debug`）
+
+---
+
 ## 2026-07-20 ネットワーク デバッグ ラウンド2
 
 ### 修正

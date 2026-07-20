@@ -3,6 +3,7 @@
  * OpenCode reports message cost in USD; JPY is a client-side conversion.
  */
 import { useEffect, useState } from "react";
+import { timedFetch } from "./client";
 
 export type CostCurrency = "USD" | "JPY";
 
@@ -136,7 +137,7 @@ export function useCostDisplayPrefs(): CostDisplayPrefs {
 
     const current = readCostDisplayPrefs();
     if (current.rateMode === "auto") {
-      fetch("/api/fx/usd-jpy", { cache: "no-store" })
+      timedFetch("/api/fx/usd-jpy")
         .then(async (res) => {
           if (cancelled || !res.ok) return;
           const data = (await res.json()) as { rate?: unknown };

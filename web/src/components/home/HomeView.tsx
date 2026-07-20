@@ -16,7 +16,7 @@ import {
 import { readDefaultModel } from "@/lib/default-model";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
-import { getJson, sendJson } from "@/lib/client";
+import { getJson, sendJson, timedFetch } from "@/lib/client";
 import {
   formatModelLabel,
   sortModelOptions,
@@ -159,9 +159,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     void (async () => {
       try {
         const [providerRes, configRes, agentRes] = await Promise.all([
-          fetch("/api/opencode/provider", { cache: "no-store" }),
-          fetch("/api/opencode/config", { cache: "no-store" }),
-          fetch("/api/opencode/agent", { cache: "no-store" }),
+          timedFetch("/api/opencode/provider"),
+          timedFetch("/api/opencode/config"),
+          timedFetch("/api/opencode/agent"),
         ]);
 
         const data = providerRes.ok

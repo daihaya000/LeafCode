@@ -47,6 +47,27 @@ function asTimeoutError(path: string, err: unknown, timedOut: boolean): never {
   throw err;
 }
 
+/** fetch with default timeout; use for ad-hoc BFF calls outside getJson/ocJson. */
+export async function timedFetch(
+  input: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<Response> {
+  const { timeoutMs, signal: _ignored, ...rest } = init ?? {};
+  void _ignored;
+  const { signal, clear } = withTimeoutSignal(timeoutMs);
+  try {
+    return await fetch(input, {
+      cache: "no-store",
+      ...rest,
+      signal,
+    });
+  } catch (err) {
+    asTimeoutError(input, err, signal?.aborted === true);
+  } finally {
+    clear();
+  }
+}
+
 export async function getJson<T>(
   path: string,
   params?: Record<string, string | undefined>,

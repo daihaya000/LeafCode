@@ -1,5 +1,6 @@
 "use client";
 
+import { timedFetch } from "@/lib/client";
 import { useEffect, useState } from "react";
 import {
   normalizeCommands,
@@ -18,7 +19,7 @@ export function useSlashCommands(directory?: string | null): SlashCommand[] {
       ? `/api/opencode/command?directory=${encodeURIComponent(directory)}`
       : "/api/opencode/command";
 
-    void fetch(url, { cache: "no-store", headers })
+    void timedFetch(url, { headers })
       .then((res) => (res.ok ? res.json() : []))
       .then((data: unknown) => {
         if (!cancelled) setCommands(normalizeCommands(data));

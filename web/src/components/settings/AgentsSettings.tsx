@@ -1,5 +1,6 @@
 "use client";
 
+import { timedFetch } from "@/lib/client";
 import { useEffect, useMemo, useState } from "react";
 import { Badge, Button } from "@/components/ui";
 import {
@@ -144,7 +145,7 @@ export function AgentsSettings() {
         setState("loading");
       }
       try {
-        const res = await fetch("/api/opencode/agent", { cache: "no-store" });
+        const res = await timedFetch("/api/opencode/agent");
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as AgentDto[];
         const list = Array.isArray(data) ? data : [];

@@ -7,7 +7,7 @@ import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
-import { getJson, sendJson } from "@/lib/client";
+import { getJson, sendJson, timedFetch } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
 import {
   DEFAULT_USD_JPY_RATE,
@@ -118,7 +118,7 @@ export function SettingsView() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/opencode/provider", { cache: "no-store" });
+        const res = await timedFetch("/api/opencode/provider");
         if (!res.ok) return;
         const data = (await res.json()) as ProviderResponse;
         const connected = new Set(data.connected ?? []);
@@ -160,7 +160,7 @@ export function SettingsView() {
     const requestGeneration = ++autoRateRequestGeneration.current;
     setFxStatus({ kind: "loading" });
     try {
-      const res = await fetch("/api/fx/usd-jpy", { cache: "no-store" });
+      const res = await timedFetch("/api/fx/usd-jpy");
       if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as { rate?: unknown; asOf?: unknown };
       const rate =
@@ -217,11 +217,11 @@ export function SettingsView() {
         { scan: "1" },
       ),
       getJson<AccessInfo>("/api/access"),
-      fetch("/api/opencode/mcp", { cache: "no-store" }).then(async (res) => {
+      timedFetch("/api/opencode/mcp").then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         return res.json();
       }),
-      fetch("/api/host", { cache: "no-store" }).then(async (res) => {
+      timedFetch("/api/host", { timeoutMs: 1500 }).then(async (res) => {
         const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
         return { ok: res.ok && Boolean(body.ok) };
       }),
@@ -291,7 +291,7 @@ export function SettingsView() {
         for (let i = 0; i < 60; i += 1) {
           await new Promise((r) => setTimeout(r, 1000));
           try {
-            const h = await fetch("/api/health", { cache: "no-store" });
+            const h = await timedFetch("/api/health", { timeoutMs: 1500 });
             if (h.ok) break;
           } catch {
             // still down
