@@ -768,12 +768,21 @@ export function TaskView({ taskId }: { taskId: string }) {
     prevPatchRef.current = patchSignature;
   }, [patchSignature]);
 
-  // Auto-stick scroll to bottom
+  // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
+  // mobile Safari can ignore scrollTo during inertial scrolling; re-running
+  // the effect when the stream changes keeps the conversation pinned without
+  // fighting the user when they manually scroll up.
   useEffect(() => {
-    if (stickRef.current) {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-    }
-  }, [stream.messages, stream.permissions, stream.questions, stream.status]);
+    if (!stickRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+  }, [
+    stream.messages,
+    stream.permissions,
+    stream.questions,
+    stream.status,
+  ]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;

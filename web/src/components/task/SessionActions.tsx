@@ -177,6 +177,9 @@ export function SessionActions({
 }
 
 /** Put this user comment into the composer and revert from here onward. */
+const REVERT_BUTTON_BASE =
+  "inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-faint transition-colors hover:bg-surface-2 hover:text-muted active:bg-surface-3 active:text-text disabled:opacity-40 min-h-[28px] min-w-[44px] touch-manipulation";
+
 export function MessageRevertButton({
   directory,
   sessionId,
@@ -229,7 +232,7 @@ export function MessageRevertButton({
           }
         })();
       }}
-      className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-faint hover:bg-surface-2 hover:text-muted disabled:opacity-40"
+      className={REVERT_BUTTON_BASE}
     >
       <RotateCcw className={busy ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
       入力欄に戻す

@@ -21,6 +21,7 @@ vi.mock("@/lib/client", () => ({
   getJson,
   ocJson: vi.fn(),
   sendJson: vi.fn(),
+  timedFetch: vi.fn(),
 }));
 
 vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
@@ -36,6 +37,10 @@ vi.mock("@/lib/currency", () => ({
 }));
 
 vi.mock("@/lib/useSessionStream", () => ({ useSessionStream }));
+
+vi.mock("@/lib/useSlashCommands", () => ({
+  useSlashCommands: () => [],
+}));
 
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellExtras: () => ({ setExtras: vi.fn() }),
