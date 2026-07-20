@@ -146,7 +146,6 @@ export function GlobalAttentionProvider({
         } catch {
           /* leave permissions unsynced for this directory */
         }
-        if (!questionsOk && !permissionsOk) return;
 
         const sessionIds = [
           ...new Set(
@@ -157,6 +156,8 @@ export function GlobalAttentionProvider({
         ];
         const v2Permissions: AttentionItem[] = [];
         const v2Questions: AttentionItem[] = [];
+        let v2QuestionsFetched = false;
+        let v2PermissionsFetched = false;
         await Promise.allSettled(
           sessionIds.map(async (sessionID) => {
             const [pq, pp] = await Promise.all([
@@ -170,6 +171,7 @@ export function GlobalAttentionProvider({
               ).catch(() => null),
             ]);
             if (Array.isArray(pq)) {
+              v2QuestionsFetched = true;
               for (const q of pq) {
                 v2Questions.push(
                   toQuestionItem(
@@ -181,6 +183,7 @@ export function GlobalAttentionProvider({
               }
             }
             if (Array.isArray(pp)) {
+              v2PermissionsFetched = true;
               for (const p of pp) {
                 v2Permissions.push(
                   toPermissionItem(
@@ -193,13 +196,20 @@ export function GlobalAttentionProvider({
             }
           }),
         );
+
+        // Merge v2 even when v1 failed (parity with useSessionStream).
+        const syncQuestions = questionsOk || v2QuestionsFetched;
+        const syncPermissions = permissionsOk || v2PermissionsFetched;
+        if (!syncQuestions && !syncPermissions) return;
+
         const questionById = new Map<string, AttentionItem>();
         if (questionsOk) {
           for (const q of questions.map((q) => toQuestionItem(directory, q))) {
             questionById.set(q.request.id, q);
           }
-          for (const q of v2Questions) questionById.set(q.request.id, q);
         }
+        for (const q of v2Questions) questionById.set(q.request.id, q);
+
         const permissionById = new Map<string, AttentionItem>();
         if (permissionsOk) {
           for (const p of permissions.map((p) =>
@@ -207,13 +217,14 @@ export function GlobalAttentionProvider({
           )) {
             permissionById.set(p.request.id, p);
           }
-          for (const p of v2Permissions) permissionById.set(p.request.id, p);
         }
+        for (const p of v2Permissions) permissionById.set(p.request.id, p);
+
         reconcileDirectory(
           directory,
-          questionsOk ? [...questionById.values()] : undefined,
+          syncQuestions ? [...questionById.values()] : undefined,
           syncStartedAt,
-          permissionsOk ? [...permissionById.values()] : undefined,
+          syncPermissions ? [...permissionById.values()] : undefined,
         );
       }),
     );

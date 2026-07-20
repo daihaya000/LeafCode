@@ -64,8 +64,10 @@ export async function GET(req: NextRequest) {
     const base =
       baseParam &&
       baseParam.length <= 200 &&
-      /^[A-Za-z0-9._/+][A-Za-z0-9._/+-]*$/.test(baseParam) &&
-      !baseParam.includes("..")
+      /^[\p{L}\p{N}._/+-][\p{L}\p{N}._/+-]*$/u.test(baseParam) &&
+      !baseParam.includes("..") &&
+      !baseParam.startsWith("-") &&
+      !baseParam.includes("//")
         ? baseParam
         : null;
 

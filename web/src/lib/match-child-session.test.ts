@@ -100,21 +100,30 @@ describe("matchChildSession", () => {
     ).toBe("c-bbb");
   });
 
-  it("falls back to sibling index order", () => {
+  it("does not guess from sibling index when title is ambiguous", () => {
     expect(
       matchChildSession(children, {
         callID: "t1",
         siblingTaskCallIds: ["t1", "t2"],
         input: { description: "Ambiguous" },
       }),
-    ).toBe("c-aaa");
+    ).toBe(null);
     expect(
       matchChildSession(children, {
         callID: "t2",
         siblingTaskCallIds: ["t1", "t2"],
         input: { description: "Ambiguous" },
       }),
-    ).toBe("c-bbb");
+    ).toBe(null);
+  });
+
+  it("returns the sole child when no metadata/title match", () => {
+    expect(
+      matchChildSession([{ id: "only" }], {
+        callID: "t1",
+        siblingTaskCallIds: ["t1"],
+      }),
+    ).toBe("only");
   });
 
   it("returns null when unresolved", () => {

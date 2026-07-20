@@ -13,6 +13,19 @@
 
 ---
 
+## 2026-07-20 その他未デバッグ分野 ラウンド2
+
+### 修正（P1）
+1. **NestedAgentPanel**: `/children` 一時失敗を空配列と区別し、sticky feed を消さない
+2. **GlobalAttentionProvider**: v1 permission/question 失敗でも v2 を取得・reconcile（useSessionStream と同等）
+3. **match-child-session**: sibling-index フォールバック削除（誤子セッション sticky 防止）
+4. **assertSafeBranchName / diff base**: 日本語など Unicode ブランチ名を許可（注入・`..` は拒否）
+
+### 検証
+- tsc / match-child-session・git・NestedAgentPanel・useAttentionQueue Vitest
+
+---
+
 ## 2026-07-20 その他未デバッグ分野 ラウンド1
 
 ### ループ

@@ -67,7 +67,7 @@ function runningToolFromMessages(
 async function fetchChildren(
   directory: string,
   sessionId: string,
-): Promise<ChildSession[]> {
+): Promise<ChildSession[] | null> {
   try {
     const rows = await ocJson<ChildSession[] | { data?: ChildSession[] }>(
       `/session/${sessionId}/children`,
@@ -81,7 +81,9 @@ async function fetchChildren(
         : [];
     return list.filter((c) => Boolean(c?.id));
   } catch {
-    return [];
+    // Distinguish transport failure from a real empty children list so a
+    // transient error does not wipe sticky match + feed.
+    return null;
   }
 }
 
@@ -152,6 +154,16 @@ export function NestedAgentPanel({
 
       const children = await fetchChildren(directory, parentSessionId);
       if (gen !== genRef.current) return;
+
+      if (children === null) {
+        // Keep showing the last matched feed while /children is unreachable.
+        if (stickyIdRef.current) {
+          setMatching(false);
+          return;
+        }
+        setMatching(true);
+        return;
+      }
 
       const matchedId = matchChildSession(
         children,

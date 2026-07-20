@@ -108,13 +108,8 @@ export function matchChildSession(
     if (matches.length === 1) return matches[0]!.id;
   }
 
-  const sorted = [...children].sort((a, b) => a.id.localeCompare(b.id));
-  const callID = hint.callID;
-  if (callID && hint.siblingTaskCallIds.length > 0) {
-    const index = hint.siblingTaskCallIds.indexOf(callID);
-    if (index >= 0 && index < sorted.length) return sorted[index]!.id;
-  }
-
-  if (sorted.length === 1) return sorted[0]!.id;
+  // Do not map sibling task-call order onto children sorted by id — those
+  // sequences are unrelated and previously sticky-matched the wrong child.
+  if (children.length === 1) return children[0]!.id;
   return null;
 }

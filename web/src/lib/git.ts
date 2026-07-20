@@ -3,13 +3,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { dataDir } from "./paths";
 
-const SAFE_BRANCH = /^[A-Za-z0-9._\/-]+$/;
+/**
+ * Reject option injection / path traversal / shell-dangerous chars while
+ * allowing Unicode branch names (e.g. 機能/ログイン).
+ */
+const SAFE_BRANCH = /^[\p{L}\p{N}._/+-]+$/u;
 
 export function assertSafeBranchName(name: string): void {
   if (
+    !name ||
+    name.length > 200 ||
     !SAFE_BRANCH.test(name) ||
     name.startsWith("-") ||
-    name.includes("..")
+    name.startsWith("/") ||
+    name.endsWith("/") ||
+    name.includes("..") ||
+    name.includes("//")
   ) {
     throw new Error("invalid branch name");
   }
