@@ -2816,3 +2816,28 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 
 ### 変更
 - コード変更なし（調査のみ）
+
+---
+
+## 2026-07-21 bash常駐プロセスタイムアウト防止（再発防止ルール）
+
+### やったこと
+ユーザー「修正できる？」に対し、アプリコードではなくエージェント指示で再発防止した。
+
+1. プロジェクト `AGENTS.md` 新設（追跡対象）— `next dev` / watch 系のフォアグラウンド起動禁止
+2. `.cursor/rules/no-long-running-bash.mdc`（alwaysApply、gitignore 対象だがローカル有効）
+3. `LESSONS.md` エントリ追加（pain_count: 1、手動で prompts-build-md 昇格）※gitignore
+4. `prompts/build.md` 学習済みルールへ1行追記 ※gitignore
+5. グローバル `~/.config/opencode/AGENTS.md` 作業原則へ同趣旨を追加（kimi 等サブエージェント共有）
+
+並列セッションが同趣旨を重複追記したため、LESSONS / build.md / MEMORY の重複を整理し LESSONS 全文を復元した。
+
+### 判断理由
+- タイムアウトはアプリバグではなくエージェント行動。指示レイヤが最短
+- ハードブロック（bash ラッパー拒否）は OpenCode 本体変更が必要で本リポジトリ範囲外
+- 他セッションの未追跡 `error.tsx` は混在コミットしない
+
+### 教訓
+- タイムアウト頻発の一次対応は timeout 延長ではなく「終了しないコマンドを起動しない」こと
+- build 専用 prompts だけではサブエージェントに届かない。共通 AGENTS.md にも書く
+- 並列セッション前提: 同一修正の多重書き込みでファイル欠落・重複が起きうる。コミット前に再読込と重複整理
