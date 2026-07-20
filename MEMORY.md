@@ -2700,3 +2700,29 @@ Windows で `taskkill /F` (= TerminateProcess) すると、listen ソケット�
 - 判断理由: `start-webui.bat` は初回のみ build。手動で本番バンドルを作り直す入口が無かった。
 - 検証: スクリプト構文は `start-webui.bat` と同型。`BUILD_ID` 欠落時は exit 1。
 - 矛盾の明記: MEMORY.md は gitignore のためローカル追記のみ。コード変更（build.bat）はコミット対象。
+
+## 2026-07-20 CodexBar synthetic の API未設定がエラー表示されない
+
+### 症状
+CodexBar アドオンで Synthetic（APIキー未登録）が「エラー」ではなく `0%` と表示されていた。
+
+### 根本原因
+CodexBar の実スナップショットは `error: "API キーが未設定です"` と同時に `usedPercent: 0`（空 windows）を出す。WebUI は `usedPercent === null` のときだけエラーカードにしていたため、プレースホルダ 0 を「健全な使用率」と誤判定した。
+
+### 修正
+- `hasLastGoodUsage()` を追加: error + usedPercent 0 + 空 windows/credits は last-good ではない
+- `usageTone` / `overallUsedPercent` / `worstProvider` / `ProviderRow.showErrorOnly` がこれを共有
+- 回帰テスト: 実スナップショット形（usedPercent:0）でエラー表示、0%非表示
+
+### 検証
+`npx vitest run ../addons/codexbar/lib/codexbar.test.ts ../addons/codexbar/CodexBarWidget.test.tsx` → 36 passed
+
+### 教訓
+外部エクスポートの「0」は null と同義のプレースホルダになり得る。エラー有無と windows/credits の有無をセットで判定する。
+
+## 2026-07-20 CodexBar Synthetic API未登録でエラー表示されない修正
+
+- やったこと: hasLastGoodUsage を追加し、CodexBar が API キー未設定時に出す error + usedPercent: 0 + 空 windows を last-good 扱いしないようにした。ウィジェットは「エラー」+ メッセージ表示、overall 平均からも除外。
+- 判断理由: 実スナップショット (%APPDATA%\CodexBar\usage-snapshot.json) の synthetic が usedPercent: 0（null ではない）だったため、旧条件 usedPercent === null だと 0% 表示になっていた。
+- 教訓: CodexBar のエラー時プレースホルダ 0 と、正当な 0% 使用率を区別する。回帰テストはライブ JSON 形（usedPercent: 0）で書く。
+- 検証: vitest codexbar 36 passed。
