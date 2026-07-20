@@ -2603,3 +2603,10 @@ Windows で `taskkill /F` (= TerminateProcess) すると、listen ソケット�
 
 ### 限界
 - OpenCode 自身のネイティブクラッシュは dispose 不能。完全防止は OS/エンジン側。ホスト再起動でフォールバック継続。
+
+## 2026-07-20 build.bat 作成
+
+- やったこと: ルートに `build.bat` を追加。web/host の依存が無ければ `npm install`、続けて `web` で `npm run build` を実行し、`BUILD_ID` の有無で成否を判定。
+- 判断理由: `start-webui.bat` は初回のみ build。手動で本番バンドルを作り直す入口が無かった。
+- 検証: スクリプト構文は `start-webui.bat` と同型。`BUILD_ID` 欠落時は exit 1。
+- 矛盾の明記: MEMORY.md は gitignore のためローカル追記のみ。コード変更（build.bat）はコミット対象。
