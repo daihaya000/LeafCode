@@ -1,5 +1,15 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド14
+
+### 追加修正
+1. **abort + preferRestStatus**: 即 idle 解除後、abort 失敗でセッションがまだ busy なら REST busy を再適用（staleBusy 抑止を preferRest 時は無効化）
+
+### 検証
+- useSessionStream Vitest 12 PASS / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド13
 
 ### 追加修正

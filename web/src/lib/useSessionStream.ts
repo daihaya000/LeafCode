@@ -83,14 +83,18 @@ export function resolveResyncStatus(opts: {
   }
   const cur = opts.currentType;
   // While SSE is live, REST can lag and report idle mid-turn. After SSE
-  // disconnect/reconnect, preferRestStatus trusts REST idle again.
+  // disconnect/reconnect or abort, preferRestStatus trusts the REST snapshot.
   const staleIdle =
     !opts.preferRestStatus &&
     opts.connection === "live" &&
     (cur === "busy" || cur === "retry") &&
     opts.next.type === "idle";
+  // After genuine idle, lagging REST busy must not re-lock — unless we just
+  // optimistically unlocked (abort) and need the truth from REST.
   const staleBusy =
-    cur === "idle" && (opts.next.type === "busy" || opts.next.type === "retry");
+    !opts.preferRestStatus &&
+    cur === "idle" &&
+    (opts.next.type === "busy" || opts.next.type === "retry");
   return { apply: !staleIdle && !staleBusy, clearPending: false };
 }
 
@@ -1251,13 +1255,19 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     pendingMutationRef.current = false;
     statusRef.current = { type: "idle" };
     dispatch({ kind: "status", status: { type: "idle" } });
+    // If abort fails and the session is still busy, REST must re-lock.
+    preferRestStatusRef.current = true;
     try {
       await ocJson(`/session/${sid}/abort`, directory, {
         method: "POST",
         timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       });
     } finally {
-      if (sessionRef.current === sid) await resync();
+      try {
+        if (sessionRef.current === sid) await resync();
+      } finally {
+        preferRestStatusRef.current = false;
+      }
     }
   }, [directory, resync]);
 

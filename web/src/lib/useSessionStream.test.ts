@@ -36,6 +36,26 @@ describe("resolveResyncStatus", () => {
     });
     expect(decision).toEqual({ apply: false, clearPending: false });
   });
+
+  it("suppresses stale busy after idle unless preferRestStatus", () => {
+    const suppressed = resolveResyncStatus({
+      pendingMutation: false,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "idle",
+      next: { type: "busy" },
+    });
+    expect(suppressed).toEqual({ apply: false, clearPending: false });
+
+    const trusted = resolveResyncStatus({
+      pendingMutation: false,
+      preferRestStatus: true,
+      connection: "live",
+      currentType: "idle",
+      next: { type: "busy" },
+    });
+    expect(trusted).toEqual({ apply: true, clearPending: false });
+  });
 });
 
 describe("session stream scope changes", () => {
