@@ -150,6 +150,13 @@ export function Sidebar({
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
     : null;
+  const attentionSessionIds = useMemo(
+    () =>
+      new Set(
+        attentionItems.map((item) => item.request.sessionID),
+      ),
+    [attentionItems],
+  );
   const questionSessionIds = useMemo(
     () =>
       new Set(
@@ -519,6 +526,9 @@ export function Sidebar({
                       ) : (
                         children.map((task) => {
                           const active = task.id === activeTaskId;
+                          const waitingForAttention =
+                            task.sessionId !== null &&
+                            attentionSessionIds.has(task.sessionId);
                           const waitingForQuestion =
                             task.sessionId !== null &&
                             questionSessionIds.has(task.sessionId);
@@ -539,7 +549,7 @@ export function Sidebar({
                                 >
                                   <div className="flex items-center gap-1.5">
                                     <span className="flex h-3 w-3 shrink-0 items-center justify-center">
-                                      {!waitingForQuestion &&
+                                      {!waitingForAttention &&
                                       task.status === "working" ? (
                                         <Loader2
                                           aria-label="エージェントが処理中"
@@ -550,23 +560,25 @@ export function Sidebar({
                                           aria-label={
                                             waitingForQuestion
                                               ? "質問への回答待ち"
-                                              : `状態: ${task.status}`
+                                              : waitingForAttention
+                                                ? "権限の承認待ち"
+                                                : `状態: ${task.status}`
                                           }
                                           className={cx(
                                             "h-1.5 w-1.5 rounded-full",
                                             task.status === "working" &&
                                               "animate-pulse",
-                                            waitingForQuestion && "bg-warning",
-                                            !waitingForQuestion &&
+                                            waitingForAttention && "bg-warning",
+                                            !waitingForAttention &&
                                               task.status === "ready" &&
                                               "bg-success",
-                                            !waitingForQuestion &&
+                                            !waitingForAttention &&
                                               task.status === "merged" &&
                                               "bg-success",
-                                            !waitingForQuestion &&
+                                            !waitingForAttention &&
                                               task.status === "error" &&
                                               "bg-danger",
-                                            !waitingForQuestion &&
+                                            !waitingForAttention &&
                                               (task.status === "idle" ||
                                                 task.status === "unknown") &&
                                               "bg-faint",

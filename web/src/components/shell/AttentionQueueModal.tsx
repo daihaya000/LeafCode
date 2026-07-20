@@ -159,7 +159,7 @@ export function AttentionQueueModal() {
   return (
     <div
       className={cx(
-        "fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4",
+        "fixed inset-0 z-[70] flex items-start justify-center bg-black/50 px-4",
         "pt-[max(12vh,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)]",
       )}
       onMouseDown={(e) => {

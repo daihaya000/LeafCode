@@ -467,6 +467,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               value={prompt}
               rows={2}
               aria-label="タスクの説明"
+              aria-busy={submitting || undefined}
               aria-autocomplete="list"
               aria-expanded={slashOpen}
               aria-activedescendant={
@@ -548,7 +549,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       onClick={() => removeAttachment(index)}
                       disabled={submitting}
                       aria-label={`${attachment.name ?? "添付画像"}を削除`}
-                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
                     >
                       <X className="h-3 w-3" aria-hidden="true" />
                     </button>

@@ -1,5 +1,20 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 UI/UX デバッグ ラウンド2
+
+### 修正
+1. **CommandPalette**: 権限モーダル表示中は Ctrl/Cmd+K を抑止・強制クローズ。dialog/aria、フォーカストラップ、z-[60]
+2. **AttentionQueueModal**: z-[70] でパレットより前面
+3. **Sidebar**: 権限待ちも警告ドット表示（question/permission 共通）
+4. **HomeView**: 添付削除 `max-sm:opacity-100`、textarea `aria-busy`
+5. **QuestionCard**: `aria-pressed` / radiogroup・group、自由入力 `aria-label`
+6. **DiffPane**: 各 select に `aria-label`
+
+### 検証
+- tsc / 関連 Vitest PASS
+
+---
+
 ## 2026-07-20 UI/UX デバッグ ラウンド1
 
 ### ループ

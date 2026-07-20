@@ -374,6 +374,7 @@ export function DiffPane({
               if (e.target.value && panel === "commit") setPanel(null);
             }}
             title="比較の基準（選択したブランチとの分岐点から比較）"
+            aria-label="比較の基準ブランチ"
             className={cx(
               "h-8 max-w-[11rem] cursor-pointer rounded-lg border px-2 text-[11px] outline-none",
               baseCompare
@@ -397,6 +398,7 @@ export function DiffPane({
             setFilter(e.target.value as "all" | "tracked" | "untracked")
           }
           title="表示する変更の種類"
+          aria-label="表示する変更の種類"
           className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none"
         >
           <option value="all">すべての変更</option>
@@ -515,6 +517,7 @@ export function DiffPane({
           <select
             value={mergeTarget}
             onChange={(e) => setMergeTarget(e.target.value)}
+            aria-label="マージ先ブランチ"
             className="h-9 min-w-32 flex-1 cursor-pointer rounded-lg border border-border bg-bg px-2 text-sm outline-none"
           >
             <option value="">ブランチを選択</option>

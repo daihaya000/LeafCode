@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cx } from "@/components/ui";
+import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
 import { getJson } from "@/lib/client";
 import type { TaskSummary } from "@/lib/types";
 
@@ -38,25 +39,65 @@ export function CommandPalette({
 }) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
+  const attention = useOptionalGlobalAttention();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [files, setFiles] = useState<string[]>([]);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const attentionOpen = attention?.open ?? false;
 
-  // Global shortcut
+  // Global shortcut — do not open over an active attention modal.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        if (attentionOpen) return;
         setOpen((v) => !v);
       }
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [attentionOpen]);
+
+  useEffect(() => {
+    if (attentionOpen && open) setOpen(false);
+  }, [attentionOpen, open]);
+
+  useEffect(() => {
+    if (!open) {
+      if (previousFocusRef.current) {
+        previousFocusRef.current.focus();
+        previousFocusRef.current = null;
+      }
+      return;
+    }
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !(el as HTMLButtonElement).disabled);
+      if (focusables.length === 0) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   // Load tasks when opened
   useEffect(() => {
@@ -181,10 +222,14 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[max(12vh,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 px-4 pt-[max(12vh,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)]"
       onMouseDown={close}
+      role="dialog"
+      aria-modal="true"
+      aria-label="コマンドパレット"
     >
       <div
+        ref={panelRef}
         className="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -194,6 +239,7 @@ export function CommandPalette({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="コマンドを検索"
             placeholder={
               directory ? "タスク・ファイル・アクションを検索…" : "タスク・アクションを検索…"
             }

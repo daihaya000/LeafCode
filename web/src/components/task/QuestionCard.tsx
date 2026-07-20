@@ -158,7 +158,12 @@ export function QuestionCard({
               <p className="mb-0.5 text-xs font-medium text-faint">{q.header}</p>
             )}
             <p className="mb-2 break-words text-sm text-text">{q.question}</p>
-            <div className="flex flex-col gap-1.5">
+            <div
+              className="flex flex-col gap-1.5"
+              role={q.multiple ? "group" : "radiogroup"}
+              aria-label={q.header ?? q.question}
+              aria-multiselectable={q.multiple || undefined}
+            >
               {q.options.map((opt) => {
                 const on = (selected[qi] ?? []).includes(opt.label);
                 return (
@@ -166,6 +171,7 @@ export function QuestionCard({
                     key={opt.label}
                     type="button"
                     disabled={busy !== null}
+                    aria-pressed={on}
                     onClick={() => void quickReply(qi, opt.label)}
                     className={cx(
                       "cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50",
@@ -193,6 +199,11 @@ export function QuestionCard({
                   type="text"
                   value={customs[qi] ?? ""}
                   disabled={busy !== null}
+                  aria-label={
+                    q.header
+                      ? `${q.header}（自由入力）`
+                      : `${q.question}（自由入力）`
+                  }
                   onChange={(e) =>
                     setCustoms((prev) => {
                       const next = prev.slice();
