@@ -1022,7 +1022,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
     };
 
-    const connect = (isReconnect: boolean) => {
+    const connect = (
+      isReconnect: boolean,
+      reason: "initial" | "error" | "silence" = "initial",
+    ) => {
       if (cancelled) return;
       if (timer) {
         clearTimeout(timer);
@@ -1044,7 +1047,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         failStreak = 0;
         dispatch({ kind: "connection", connection: "live" });
         if (isReconnect) {
-          preferRestStatusRef.current = true;
+          // Only trust REST idle after a real error disconnect. Silence
+          // reconnects can happen mid-turn while the session is still busy.
+          preferRestStatusRef.current = reason === "error";
           void resync().finally(() => {
             preferRestStatusRef.current = false;
           });
@@ -1062,7 +1067,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           kind: "connection",
           connection: failStreak >= 5 ? "down" : "reconnecting",
         });
-        timer = setTimeout(() => connect(true), retryMs);
+        timer = setTimeout(() => connect(true, "error"), retryMs);
         retryMs = Math.min(retryMs * 2, 15_000);
       };
     };
@@ -1070,7 +1075,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     const silenceWatch = setInterval(() => {
       if (cancelled || !es || es.readyState !== EventSource.OPEN) return;
       if (!isSseSilent(lastActivityAt, Date.now(), SSE_SILENCE_MS)) return;
-      connect(true);
+      connect(true, "silence");
     }, 5_000);
 
     const onVisible = () => {
@@ -1103,6 +1108,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     ) => {
       const sid = sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
+      // Guard resync init for the whole POST window, not only after success.
+      pendingMutationRef.current = true;
+      dispatch({ kind: "status", status: { type: "busy" } });
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
       if (opts?.files && opts.files.length > 0) {
         for (const f of opts.files) {
@@ -1122,13 +1130,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (opts?.variant) {
         body.variant = opts.variant;
       }
-      await ocJson(`/session/${sid}/prompt_async`, directory, {
-        method: "POST",
-        body,
-        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
-      });
-      pendingMutationRef.current = true;
-      dispatch({ kind: "status", status: { type: "busy" } });
+      try {
+        await ocJson(`/session/${sid}/prompt_async`, directory, {
+          method: "POST",
+          body,
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+        });
+      } catch (err) {
+        pendingMutationRef.current = false;
+        dispatch({ kind: "status", status: { type: "idle" } });
+        throw err;
+      }
       // safety net: events normally arrive first, resync fills any gap
       setTimeout(() => void resync(), 800);
     },
@@ -1148,6 +1160,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     ) => {
       const sid = sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
+      pendingMutationRef.current = true;
+      dispatch({ kind: "status", status: { type: "busy" } });
       const body: Record<string, unknown> = {
         command,
         arguments: args,
@@ -1166,13 +1180,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           ...(f.name ? { filename: f.name } : {}),
         }));
       }
-      await ocJson(`/session/${sid}/command`, directory, {
-        method: "POST",
-        body,
-        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
-      });
-      pendingMutationRef.current = true;
-      dispatch({ kind: "status", status: { type: "busy" } });
+      try {
+        await ocJson(`/session/${sid}/command`, directory, {
+          method: "POST",
+          body,
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+        });
+      } catch (err) {
+        pendingMutationRef.current = false;
+        dispatch({ kind: "status", status: { type: "idle" } });
+        throw err;
+      }
       setTimeout(() => void resync(), 800);
     },
     [directory, resync],
@@ -1219,13 +1237,21 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           await ocJson(
             `/api/session/${request.sessionID}/permission/${request.id}/reply`,
             directory,
-            { method: "POST", body: { reply: response } },
+            {
+              method: "POST",
+              body: { reply: response },
+              timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+            },
           );
         } else {
           await ocJson(
             `/session/${request.sessionID}/permissions/${request.id}`,
             directory,
-            { method: "POST", body: { response } },
+            {
+              method: "POST",
+              body: { response },
+              timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+            },
           );
         }
       } catch (err) {
@@ -1246,12 +1272,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           await ocJson(
             `/api/session/${request.sessionID}/question/${request.id}/reply`,
             directory,
-            { method: "POST", body: { answers } },
+            {
+              method: "POST",
+              body: { answers },
+              timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+            },
           );
         } else {
           await ocJson(`/question/${request.id}/reply`, directory, {
             method: "POST",
             body: { answers },
+            timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
           });
         }
       } catch (err) {
@@ -1271,11 +1302,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           await ocJson(
             `/api/session/${request.sessionID}/question/${request.id}/reject`,
             directory,
-            { method: "POST" },
+            { method: "POST", timeoutMs: SESSION_MUTATION_TIMEOUT_MS },
           );
         } else {
           await ocJson(`/question/${request.id}/reject`, directory, {
             method: "POST",
+            timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
           });
         }
       } catch (err) {

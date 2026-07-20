@@ -13,6 +13,7 @@ import { QuestionCard } from "@/components/task/QuestionCard";
 import { Button, cx } from "@/components/ui";
 import { ApiError, ocJson } from "@/lib/client";
 import { replyPath, rejectPath, type AttentionItem } from "@/lib/attention";
+import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
 export function AttentionQueueModal() {
@@ -113,6 +114,7 @@ export function AttentionQueueModal() {
         ocJson(replyPath(item), item.directory, {
           method: "POST",
           body: item.request.version === "v2" ? { reply: response } : { response },
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         }),
       );
     },
@@ -126,6 +128,7 @@ export function AttentionQueueModal() {
         ocJson(replyPath(item), item.directory, {
           method: "POST",
           body: { answers },
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         }),
       );
     },
@@ -137,7 +140,12 @@ export function AttentionQueueModal() {
       if (item.kind !== "question") return;
       const path = rejectPath(item);
       if (!path) return;
-      await respond(item, () => ocJson(path, item.directory, { method: "POST" }));
+      await respond(item, () =>
+        ocJson(path, item.directory, {
+          method: "POST",
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+        }),
+      );
     },
     [respond],
   );

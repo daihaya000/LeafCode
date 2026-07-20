@@ -1,5 +1,20 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド11
+
+### 追加修正
+1. **pendingMutation**: `sendPrompt`/`sendCommand` の POST 前に `pendingMutationRef=true` + optimistic busy。失敗時は idle に戻す
+2. **preferRestStatus**: 再接続を `error` / `silence` に分離。error のみ REST idle を信頼（silence では mid-turn idle 上書きしない）
+3. **権限・質問 mutation**: permission/question/reject と AttentionQueueModal の reply/reject に `timeoutMs: SESSION_MUTATION_TIMEOUT_MS`
+
+### ループ
+- 再起動（PID 32792 / 2分）
+
+### 検証
+- 関連 Vitest 32 PASS / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド10
 
 ### 追加修正
