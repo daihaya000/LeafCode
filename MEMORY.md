@@ -1,5 +1,17 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 ネットワーク デバッグ ラウンド5
+
+### 結果
+- **ZERO_CONFIRMED_BUGS**（P0/P1 の新規ネットワークハングなし）
+- R1–R4 のタイムアウト／再接続対策を再監査し維持を確認
+- 既知の低優先（git/`gh` 子プロセス、SSE CONNECTING、folder dialog、SW）は据え置き
+
+### ループ
+- sentinel `AGENT_LOOP_TICK_network_debug` を停止（収束）
+
+---
+
 ## 2026-07-20 ネットワーク デバッグ ラウンド4
 
 ### 修正
