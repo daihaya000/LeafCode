@@ -1,5 +1,17 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 ネットワーク デバッグ ラウンド2
+
+### 修正
+1. **BFF `/api/opencode/[...path]`**: 非 SSE の upstream `fetch` に 90s `AbortSignal.timeout`。`/event`・`/global/event` は除外してストリームを維持
+2. **`/api/health`**: OpenCode health に 1.5s タイムアウト（ハング防止）
+3. **`/api/diff`**: session diff の upstream fetch に 30s タイムアウト
+
+### 検証
+- tsc OK / 関連 Vitest PASS
+
+---
+
 ## 2026-07-20 ネットワーク デバッグ ラウンド1
 
 ### ループ
