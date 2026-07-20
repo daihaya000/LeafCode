@@ -132,7 +132,10 @@ export function CommandPalette({
       fetch(u.toString(), {
         headers: { "x-opencode-directory": directory },
         cache: "no-store",
-        signal: controller.signal,
+        signal: AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(30_000),
+        ]),
       })
         .then((r) => (r.ok ? r.json() : []))
         .then((d) => {

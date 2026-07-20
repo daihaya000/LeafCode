@@ -39,6 +39,9 @@ describe("fetchUsdJpyQuote", () => {
     const q2 = await fetchUsdJpyQuote(fetchImpl);
     expect(q2.rate).toBe(157.32);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("rejects non-finite or out-of-range rates", async () => {

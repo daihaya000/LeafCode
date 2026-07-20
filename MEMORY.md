@@ -1,5 +1,18 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 ネットワーク デバッグ ラウンド4
+
+### 修正
+1. **fx-usd-jpy**: Frankfurter upstream に 8s `AbortSignal.timeout`（BFF ワーカーハング防止・P1）
+2. **CommandPalette**: ファイル検索 fetch に 30s タイムアウトを `AbortSignal.any` で合成（クエリ abort も維持）
+3. **SettingsView**: `/api/host/restart` を `timedFetch`（10s）へ
+
+### 検証
+- tsc OK / fx・client Vitest PASS
+- ループ継続（sentinel: `AGENT_LOOP_TICK_network_debug`）
+
+---
+
 ## 2026-07-20 ネットワーク デバッグ ラウンド3
 
 ### 修正

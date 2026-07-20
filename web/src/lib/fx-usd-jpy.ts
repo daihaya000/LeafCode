@@ -7,6 +7,9 @@ export type UsdJpyQuote = {
 const FRANKFURTER_URL =
   "https://api.frankfurter.app/latest?from=USD&to=JPY";
 
+/** Cap Frankfurter wait so a hung upstream cannot pin a BFF worker. */
+const FRANKFURTER_TIMEOUT_MS = 8_000;
+
 const MIN_RATE = 1;
 const MAX_RATE = 1000;
 
@@ -61,7 +64,9 @@ export async function fetchUsdJpyQuote(
     return cached;
   }
 
-  const res = await fetchImpl(FRANKFURTER_URL);
+  const res = await fetchImpl(FRANKFURTER_URL, {
+    signal: AbortSignal.timeout(FRANKFURTER_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`Frankfurter upstream error: ${res.status}`);
   }

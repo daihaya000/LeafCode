@@ -270,11 +270,11 @@ export function SettingsView() {
     setRestarting(target);
     setError(null);
     try {
-      const res = await fetch("/api/host/restart", {
+      const res = await timedFetch("/api/host/restart", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ target }),
-        cache: "no-store",
+        timeoutMs: 10_000,
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
