@@ -39,7 +39,22 @@ export function SessionSwitcher({
 
   useEffect(() => {
     void refresh();
-  }, [refresh, currentSessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
+
+  // Rebind only bumps updated_at server-side; the visible list stays valid.
+  // Avoid a full refresh on every select change to prevent dropdown flicker.
+  const updateSessionOrder = useCallback(
+    async (id: string) => {
+      const title =
+        sessions.find((s) => s.opencodeSessionId === id)?.title ?? "Session";
+      await sendJson("POST", `/api/workspaces/${workspaceId}/sessions`, {
+        opencodeSessionId: id,
+        title,
+      });
+    },
+    [sessions, workspaceId],
+  );
 
   const create = async () => {
     setBusy(true);
@@ -90,13 +105,7 @@ export function SessionSwitcher({
           if (!id || id === currentSessionId) return;
           setBusy(true);
           try {
-            // Re-bind as latest by posting same session (updated_at bump)
-            const title =
-              sessions.find((s) => s.opencodeSessionId === id)?.title ?? "Session";
-            await sendJson("POST", `/api/workspaces/${workspaceId}/sessions`, {
-              opencodeSessionId: id,
-              title,
-            });
+            await updateSessionOrder(id);
             onSwitch();
           } catch {
             // Bind failed (engine down, etc.): resync the dropdown to real state
@@ -106,6 +115,7 @@ export function SessionSwitcher({
             setBusy(false);
           }
         }}
+        onFocus={() => void refresh()}
         disabled={busy}
         className={cx(
           "h-8 max-w-[7rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs outline-none sm:max-w-[9rem]",
