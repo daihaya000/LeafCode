@@ -341,12 +341,22 @@ describe("formatPlanBadge", () => {
 });
 
 describe("usageTone", () => {
-  it("prioritizes error, then maxed/limited, then thresholds", () => {
-    expect(usageTone({ usedPercent: 10, limited: false, maxed: false, error: "x" })).toBe("danger");
-    expect(usageTone({ usedPercent: 10, limited: true, maxed: false, error: null })).toBe("danger");
-    expect(usageTone({ usedPercent: 80, limited: false, maxed: false, error: null })).toBe("warn");
-    expect(usageTone({ usedPercent: 20, limited: false, maxed: false, error: null })).toBe("ok");
-    expect(usageTone({ usedPercent: null, limited: false, maxed: false, error: null })).toBe("ok");
+  it("prioritizes error only when no usage data, then maxed/limited, then thresholds", () => {
+    expect(usageTone({ usedPercent: null, limited: false, maxed: false, error: "x", windows: [], credits: null })).toBe("danger");
+    expect(
+      usageTone({
+        usedPercent: 74,
+        limited: false,
+        maxed: false,
+        error: "stale refresh failed",
+        windows: [{ id: "m", title: "月間", usedPercent: 74, resetsAt: null, windowMinutes: null }],
+        credits: null,
+      }),
+    ).toBe("ok");
+    expect(usageTone({ usedPercent: 10, limited: true, maxed: false, error: null, windows: [], credits: null })).toBe("danger");
+    expect(usageTone({ usedPercent: 80, limited: false, maxed: false, error: null, windows: [], credits: null })).toBe("warn");
+    expect(usageTone({ usedPercent: 20, limited: false, maxed: false, error: null, windows: [], credits: null })).toBe("ok");
+    expect(usageTone({ usedPercent: null, limited: false, maxed: false, error: null, windows: [], credits: null })).toBe("ok");
   });
 });
 

@@ -261,9 +261,12 @@ function ProviderRow({
   const tone = usageTone(p);
   const resets = formatResetsIn(p.resetsAt, now);
   const hasWindows = p.windows.length > 0;
-  // Error detail is also expandable so long messages can be collapsed.
+  // Prefer last-good usage when present (matches CodexBar WinForms). Only treat
+  // as a pure error card when there is nothing else to show.
+  const showErrorOnly =
+    !!p.error && !hasWindows && p.usedPercent === null && p.credits === null;
   const canExpand =
-    !!p.error || hasWindows || p.usedPercent !== null || p.credits !== null;
+    showErrorOnly || hasWindows || p.usedPercent !== null || p.credits !== null;
   const label = providerLabel(p.id);
   const planBadge = formatPlanBadge(p.plan, p.planMonthlyUsd);
 
@@ -281,7 +284,7 @@ function ProviderRow({
           canExpand && "cursor-pointer rounded-md -mx-1 px-1 py-0.5 hover:bg-surface-3",
         )}
       >
-        <ProviderIcon id={p.id} tone={tone} />
+        <ProviderIcon id={p.id} tone={showErrorOnly ? "danger" : tone} />
         <span className="min-w-0 flex-1 truncate font-semibold text-text">{label}</span>
         {planBadge && (
           <span
@@ -291,7 +294,7 @@ function ProviderRow({
             {planBadge}
           </span>
         )}
-        {p.error ? (
+        {showErrorOnly ? (
           <span className="ml-auto flex shrink-0 items-center gap-1 text-danger">
             <AlertTriangle className="h-3 w-3" /> エラー
           </span>
@@ -309,12 +312,12 @@ function ProviderRow({
       </button>
 
       {collapsed ? (
-        p.error ? null : (
+        showErrorOnly ? null : (
           <div className="pl-6">
             <UsageBar tone={tone} percent={p.usedPercent} />
           </div>
         )
-      ) : p.error ? (
+      ) : showErrorOnly ? (
         <p className="pl-6 text-[10px] text-faint">{p.error}</p>
       ) : canExpand ? (
         <div className="flex flex-col gap-1.5 pl-6">

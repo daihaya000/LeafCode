@@ -104,4 +104,52 @@ describe("CodexBarWidget error collapse", () => {
     fireEvent.click(screen.getByRole("button", { name: "Synthetic を展開" }));
     expect(screen.getByText("API キーが未設定です")).not.toBeNull();
   });
+
+  it("shows last-good usage instead of error when windows exist", async () => {
+    getJson.mockReset();
+    getJson.mockImplementation((url: string) => {
+      if (url.endsWith("/tokens")) {
+        return Promise.resolve({ available: false });
+      }
+      return Promise.resolve({
+        available: true,
+        reason: null,
+        schema: "codexbar.usage-snapshot/v1",
+        generatedAt: null,
+        subscriptionTotalMonthlyUsd: 10,
+        providers: [
+          {
+            id: "opencode-go",
+            opencodeId: "opencode-go",
+            plan: "Go",
+            planMonthlyUsd: 10,
+            usedPercent: 74,
+            limited: false,
+            maxed: false,
+            resetsAt: null,
+            updatedAt: null,
+            error: "workspace ID が不明です",
+            windows: [
+              {
+                id: "opencode-go-monthly",
+                title: "月間",
+                usedPercent: 74,
+                resetsAt: null,
+                windowMinutes: null,
+              },
+            ],
+            credits: null,
+          },
+        ],
+      });
+    });
+
+    const { container } = render(<CodexBarWidget />);
+    expect(await screen.findByText("OpenCode")).not.toBeNull();
+    const openCodeRow = screen.getByRole("button", { name: /OpenCode/ }).closest("li");
+    expect(openCodeRow).not.toBeNull();
+    expect(openCodeRow!.textContent).toContain("74%");
+    expect(openCodeRow!.textContent).not.toContain("エラー");
+    expect(container.textContent).not.toContain("workspace ID が不明です");
+  });
 });

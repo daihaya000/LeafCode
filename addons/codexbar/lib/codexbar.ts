@@ -250,9 +250,12 @@ export function formatPlanBadge(
 export type UsageTone = "ok" | "warn" | "danger";
 
 export function usageTone(
-  p: Pick<CodexBarProvider, "usedPercent" | "limited" | "maxed" | "error">,
+  p: Pick<CodexBarProvider, "usedPercent" | "limited" | "maxed" | "error" | "windows" | "credits">,
 ): UsageTone {
-  if (p.error) return "danger";
+  const hasUsage =
+    (p.windows?.length ?? 0) > 0 || p.usedPercent !== null || p.credits !== null;
+  // Last-good snapshot wins over a refresh error (CodexBar WinForms parity).
+  if (p.error && !hasUsage) return "danger";
   if (p.maxed || p.limited) return "danger";
   const u = p.usedPercent ?? 0;
   if (u >= 75) return "warn";
@@ -331,7 +334,9 @@ export function isStale(
 export function worstProvider(usage: CodexBarUsage): CodexBarProvider | null {
   let worst: CodexBarProvider | null = null;
   for (const p of usage.providers) {
-    if (p.error) return p;
+    const hasUsage =
+      p.windows.length > 0 || p.usedPercent !== null || p.credits !== null;
+    if (p.error && !hasUsage) return p;
     if (!worst || (p.usedPercent ?? -1) > (worst.usedPercent ?? -1)) worst = p;
   }
   return worst;
