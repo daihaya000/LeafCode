@@ -70,7 +70,7 @@ describe("parseManifest (defensive)", () => {
       workspaces: [
         "bad",
         { id: "", absolutePath: "/x" },
-        { id: "ok", absolutePath: "/repo/ok", sessions: ["bad", { title: "no id" }, { opencodeSessionId: "ses_1" }] },
+        { id: "ok", absolutePath: "/repo/ok", sessions: ["bad", { title: "no id" }, { opencodeSessionId: "ses_1" }, { opencodeSessionId: "../../auth/openai" }] },
       ],
     });
     expect(parsed).not.toBeNull();

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isSafeOpenCodeSessionId } from "./opencode-id";
 
 /**
  * Project-local persistence of session metadata.
@@ -84,7 +85,7 @@ export function parseManifest(raw: unknown): ProjectSessionManifest | null {
     for (const s of sessionsRaw) {
       if (!isRecord(s)) continue;
       const sid = str(s.opencodeSessionId);
-      if (!sid) continue;
+      if (!sid || !isSafeOpenCodeSessionId(sid)) continue;
       sessions.push({
         opencodeSessionId: sid,
         title: str(s.title),

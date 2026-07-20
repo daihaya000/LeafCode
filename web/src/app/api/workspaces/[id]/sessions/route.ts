@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bindSession, getDb, getWorkspace } from "@/lib/db";
+import { assertSafeOpenCodeSessionId } from "@/lib/opencode-id";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 
 export const runtime = "nodejs";
@@ -51,6 +52,15 @@ export async function POST(req: NextRequest, context: Ctx) {
   if (!body?.opencodeSessionId) {
     return NextResponse.json(
       { error: "opencodeSessionId is required" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    assertSafeOpenCodeSessionId(body.opencodeSessionId);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "invalid opencodeSessionId" },
       { status: 400 },
     );
   }

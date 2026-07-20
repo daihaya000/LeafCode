@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { dbPath, ensureDataDir } from "./paths";
 
 let db: Database.Database | null = null;
@@ -212,6 +213,12 @@ export function bindSession(
   title: string,
   updatedAt?: string,
 ): void {
+  if (!isSafeOpenCodeSessionId(opencodeSessionId)) {
+    console.warn(
+      `[db] refused bindSession: unsafe opencode_session_id ${JSON.stringify(opencodeSessionId)}`,
+    );
+    return;
+  }
   getDb()
     .prepare(
       `INSERT INTO session_bindings (workspace_id, opencode_session_id, title, updated_at)

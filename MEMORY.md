@@ -13,6 +13,17 @@
 
 ---
 
+## 2026-07-20 その他未デバッグ分野 ラウンド4
+
+### 修正（P0/P1）
+1. **opencode session id パストラバーサル**: `../../auth/{provider}` 等が `new URL` で `/auth/...` に解決され DELETE 可能だった
+2. **防御層**: `opencode-id.ts`（allowlist + `assertSafeOpenCodePath`）、`ocServer`/`ocJson`/BFF proxy で `..` 拒否、`bindSession`/manifest/API で不正 id 拒否、destroy 時は `openCodeSessionPath`
+
+### 検証
+- tsc / opencode-id・project-session-store・client・workspace-service Vitest PASS
+
+---
+
 ## 2026-07-20 その他未デバッグ分野 ラウンド3
 
 ### 修正

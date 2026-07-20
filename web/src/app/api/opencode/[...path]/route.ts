@@ -6,6 +6,7 @@ import {
   isBlockedOpencodeWrite,
   maskSecrets,
 } from "@/lib/opencode";
+import { assertSafeOpenCodePath } from "@/lib/opencode-id";
 import {
   SSE_HEARTBEAT_MS,
   encodeSseHeartbeat,
@@ -40,6 +41,12 @@ async function proxy(
 ): Promise<Response> {
   const { path: segments } = await context.params;
   const pathname = "/" + (segments?.join("/") ?? "");
+
+  try {
+    assertSafeOpenCodePath(pathname);
+  } catch {
+    return NextResponse.json({ error: "invalid path" }, { status: 400 });
+  }
 
   if (isBlockedOpencodeWrite(req.method, pathname)) {
     return NextResponse.json(

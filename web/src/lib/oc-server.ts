@@ -1,4 +1,5 @@
 import { OPENCODE_BASE_URL } from "./opencode";
+import { assertSafeOpenCodePath } from "./opencode-id";
 
 export class OcError extends Error {
   status: number;
@@ -14,6 +15,15 @@ export async function ocServer<T>(
   path: string,
   init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
+  try {
+    assertSafeOpenCodePath(path);
+  } catch (err) {
+    throw new OcError(
+      err instanceof Error ? err.message : "invalid OpenCode path",
+      400,
+    );
+  }
+
   const headers: Record<string, string> = {};
   if (directory) headers["x-opencode-directory"] = directory;
   if (init?.body !== undefined) headers["content-type"] = "application/json";

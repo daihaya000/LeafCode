@@ -128,6 +128,15 @@ export async function ocJson<T>(
   directory: string,
   init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
+  // Reject traversal before apiUrl() collapses `/api/opencode/session/../..`.
+  if (
+    !path.startsWith("/") ||
+    path.includes("\\") ||
+    path.includes("\0") ||
+    path.split("/").some((s) => s === "." || s === "..")
+  ) {
+    throw new ApiError("invalid OpenCode path", 400);
+  }
   const { signal, clear } = withTimeoutSignal(init?.timeoutMs);
   try {
     const res = await fetch(apiUrl(`/api/opencode${path}`, { directory }), {

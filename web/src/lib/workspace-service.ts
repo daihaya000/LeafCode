@@ -19,6 +19,7 @@ import {
 } from "./db";
 import { addWorktree, removeWorktree, runGit } from "./git";
 import { ocServer } from "./oc-server";
+import { openCodeSessionPath } from "./opencode-id";
 import { dataDir, ensureDataDir } from "./paths";
 import { persistProjectSessions } from "./project-session-sync";
 import { makeWorktreeBranchName } from "./workspace-branch";
@@ -184,11 +185,16 @@ async function deleteBoundOpenCodeSessions(row: WorkspaceRow): Promise<void> {
   const directory = row.absolute_path;
   const bindings = listSessionBindings(row.id);
   await Promise.all(
-    bindings.map((b) =>
-      ocServer(directory, `/session/${b.opencode_session_id}`, {
-        method: "DELETE",
-      }).catch(() => undefined),
-    ),
+    bindings.map((b) => {
+      try {
+        return ocServer(directory, openCodeSessionPath(b.opencode_session_id), {
+          method: "DELETE",
+        }).catch(() => undefined);
+      } catch {
+        // Unsafe id (e.g. crafted manifest) — never forward to the engine.
+        return Promise.resolve();
+      }
+    }),
   );
 }
 
