@@ -1,5 +1,17 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 UI/UX デバッグ ラウンド4
+
+### 修正
+1. **P0 TaskView 文字化け**: `d8eba9a` で壊れた日本語を `ae013c0` から復元し、active-session-attention 効果のみ再適用（PowerShell 経由の破壊を回避）
+2. **DiffPane**: Merge/PR をモバイルでも表示、コミット/PR 入力と折りたたみボタンに aria
+3. **SlashSuggestMenu**: `id="slash-suggest-listbox"`、HomeView/TaskView に combobox + `aria-controls`
+
+### 検証
+- tsc / 関連 Vitest PASS、TaskView の `???` 件数 0
+
+---
+
 ## 2026-07-20 UI/UX デバッグ ラウンド3
 
 ### 修正

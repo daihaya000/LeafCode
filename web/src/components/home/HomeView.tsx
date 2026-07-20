@@ -472,8 +472,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               value={prompt}
               rows={2}
               aria-label="タスクの説明"
+              role="combobox"
               aria-busy={submitting || undefined}
               aria-autocomplete="list"
+              aria-controls="slash-suggest-listbox"
               aria-expanded={slashOpen}
               aria-activedescendant={
                 slashOpen && slashItems[slashIndex]

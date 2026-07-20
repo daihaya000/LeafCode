@@ -19,6 +19,7 @@ export function SlashSuggestMenu({
 
   return (
     <div
+      id="slash-suggest-listbox"
       role="listbox"
       aria-label="スラッシュコマンド"
       className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-56 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-lg"

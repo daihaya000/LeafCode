@@ -70,6 +70,8 @@ function FileDiffBlock({
         <button
           type="button"
           onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`${file.path} の差分を${expanded ? "折りたたむ" : "展開"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"
         >
           <ChevronRight
@@ -408,7 +410,7 @@ export function DiffPane({
         <Button
           variant={sideBySide ? "secondary" : "ghost"}
           size="sm"
-          className="hidden sm:inline-flex"
+          className="inline-flex"
           title="左右に並べて差分表示"
           onClick={() => setSideBySide((v) => !v)}
         >
@@ -431,7 +433,7 @@ export function DiffPane({
         <Button
           variant={panel === "merge" ? "secondary" : "ghost"}
           size="sm"
-          className="hidden sm:inline-flex"
+          className="inline-flex"
           onClick={() => setPanel(panel === "merge" ? null : "merge")}
         >
           <GitMerge className="h-3.5 w-3.5" />
@@ -440,7 +442,7 @@ export function DiffPane({
         <Button
           variant={panel === "pr" ? "secondary" : "ghost"}
           size="sm"
-          className="hidden sm:inline-flex"
+          className="inline-flex"
           disabled={prAvailable === false}
           title={prAvailable === false ? "gh CLI が必要です" : undefined}
           onClick={() => setPanel(panel === "pr" ? null : "pr")}
@@ -473,6 +475,7 @@ export function DiffPane({
           <input
             value={commitMsg}
             onChange={(e) => setCommitMsg(e.target.value)}
+            aria-label="コミットメッセージ"
             placeholder="コミットメッセージ"
             className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
             onKeyDown={(e) => {
@@ -554,6 +557,7 @@ export function DiffPane({
           <input
             value={prTitle}
             onChange={(e) => setPrTitle(e.target.value)}
+            aria-label="PR タイトル"
             placeholder="PR タイトル"
             className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
           />

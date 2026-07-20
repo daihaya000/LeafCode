@@ -190,10 +190,10 @@ function TodoPanel({
         className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs text-muted"
       >
         <ListTodo className="h-3.5 w-3.5" />
-        ??? {done}/{todos.length}
+        プラン {done}/{todos.length}
         {active > 0 && (
           <span className="rounded-full bg-working/15 px-1.5 py-0.5 text-[10px] text-working">
-            ??? {active}
+            進行中 {active}
           </span>
         )}
         <ChevronRight
@@ -501,7 +501,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [task?.sessionId, permissions.length, stream.questions.length]);
 
 
-  // Full-access: auto-approve pending permissions
+  // フルアクセス: pending 権限を自動承認（失敗時は手動カードへフォールバック）
   useEffect(() => {
     if (accessMode !== "full") {
       autoReplyIdsRef.current.clear();
@@ -665,7 +665,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         return;
       }
       if (taskRef.current?.id === requestedTaskId) return;
-      setLoadError(err instanceof Error ? err.message : "???????????");
+      setLoadError(err instanceof Error ? err.message : "タスクを読み込めません");
     }
   }, [taskId]);
 
@@ -698,7 +698,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () => clearInterval(poll);
   }, [hasActiveTask, pageVisible, refreshTask]);
 
-  // busy ? idle transition: refresh diff + task stats + full message resync
+  // busy → idle transition: refresh diff + task stats + full message resync
   const prevStatusRef = useRef<string | null | undefined>(null);
   const streamScopeKey = `${task?.directory ?? ""}\u0000${task?.sessionId ?? ""}`;
   const prevStreamScopeKeyRef = useRef(streamScopeKey);
@@ -713,13 +713,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     const cur = streamStatusType;
     const wasBusy =
       prevStatusRef.current === "busy" || prevStatusRef.current === "retry";
-    // Only treat explicit idle ? null is the post-reset placeholder, not idle.
+    // Only treat explicit idle — null is the post-reset placeholder, not idle.
     const nowIdle = cur === "idle";
     if (wasBusy && nowIdle) {
       setDiffKey((k) => k + 1);
       void refreshTask();
       // The engine sometimes omits the final `todo.updated` SSE event when a
-      // session transitions to idle, leaving the plan badge stuck on "???".
+      // session transitions to idle, leaving the plan badge stuck on "進行中".
       // Reconcile the todo list from the server here.
       void refreshTodos();
       // R3 skips message init while busy; reconcile the final REST snapshot now.
@@ -856,7 +856,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         await stream.sendPrompt(text, opts);
       }
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "?????????");
+      setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
       setAttachments(attachments);
     } finally {
@@ -974,7 +974,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, []);
 
   const approvePlan = useCallback(async () => {
-    if (working) throw new Error(`????????????????`);
+    if (working) throw new Error(`セッションの完了を待ってください`);
     setSendError(null);
     setAgent(`build`);
     stickRef.current = true;
@@ -1024,15 +1024,15 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!task) return;
     const label =
       task.isolation === "current_folder"
-        ? "????????????????????????????"
-        : "????????????? worktree/???????????";
+        ? "このタスクを一覧から削除しますか？（フォルダは残ります）"
+        : "このタスクを削除しますか？ worktree/コピーも削除されます。";
     if (!window.confirm(label)) return;
     try {
       await sendJson("DELETE", `/api/tasks/${task.id}`);
       notifyTasksChanged();
       router.push("/");
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "?????????");
+      setSendError(err instanceof Error ? err.message : "削除に失敗しました");
     }
   }, [task, router]);
 
@@ -1049,20 +1049,20 @@ export function TaskView({ taskId }: { taskId: string }) {
       });
       await refreshTask();
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "??????????????");
+      setSendError(err instanceof Error ? err.message : "セッション作成に失敗しました");
     }
   }, [task, refreshTask]);
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
-    const base = task?.title ? `${task.title} � OpenCodeWebUI` : "OpenCodeWebUI";
+    const base = task?.title ? `${task.title} · OpenCodeWebUI` : "OpenCodeWebUI";
     const needsAttention =
       stream.permissions.length > 0 || stream.questions.length > 0;
     if (needsAttention) {
-      document.title = `(???) ${base}`;
+      document.title = `(要確認) ${base}`;
       applyFaviconBadge("attention");
     } else if (working) {
-      document.title = `(???) ${base}`;
+      document.title = `(実行中) ${base}`;
       applyFaviconBadge("working");
     } else {
       document.title = base;
@@ -1174,7 +1174,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [task?.directory, task?.sessionId, setActiveScope]);
 
-  // Clear only on TaskView unmount ? not on every session switch cleanup.
+  // Clear only on TaskView unmount — not on every session switch cleanup.
   useEffect(() => {
     return () => setActiveScope(null);
   }, [setActiveScope]);
@@ -1224,7 +1224,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
         <p className="text-sm text-danger">{loadError}</p>
         <Link href="/" className="text-sm text-accent underline">
-          ??????
+          ホームへ戻る
         </Link>
       </div>
     );
@@ -1263,10 +1263,10 @@ export function TaskView({ taskId }: { taskId: string }) {
               </span>
             )}
             {stream.connection === "reconnecting" && (
-              <span className="hidden text-xs text-warning sm:inline">?????</span>
+              <span className="hidden text-xs text-warning sm:inline">再接続中…</span>
             )}
             {stream.connection === "down" && (
-              <span className="hidden text-xs text-danger sm:inline">????????</span>
+              <span className="hidden text-xs text-danger sm:inline">切断（再試行中）</span>
             )}
           </div>
           {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
@@ -1275,16 +1275,16 @@ export function TaskView({ taskId }: { taskId: string }) {
                 <>
                   <GitBranch className="h-3 w-3" />
                   <span className="truncate font-mono">{task.branch}</span>
-                  <span className="mx-1">�</span>
+                  <span className="mx-1">·</span>
                 </>
               )}
               <span className="truncate">{task.projectName}</span>
               {contextUsage && (
                 <>
-                  <span className="mx-1">�</span>
+                  <span className="mx-1">·</span>
                   <span
                     className="flex shrink-0 items-center gap-1.5"
-                    title={`?????????: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}?????${contextUsage.pct}%?`}
+                    title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
                   >
                     <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-2">
                       <span
@@ -1308,12 +1308,12 @@ export function TaskView({ taskId }: { taskId: string }) {
               )}
               {(task.cost ?? 0) > 0 && (
                 <>
-                  <span className="mx-1">�</span>
+                  <span className="mx-1">·</span>
                   <span
                     className="shrink-0"
-                    title="?????????????"
+                    title="このセッションの累計コスト"
                   >
-                    ?? {formatCostValue(task.cost!, costPrefs)}
+                    累計 {formatCostValue(task.cost!, costPrefs)}
                   </span>
                 </>
               )}
@@ -1324,14 +1324,14 @@ export function TaskView({ taskId }: { taskId: string }) {
           {working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
-              <span className="hidden sm:inline">??</span>
+              <span className="hidden sm:inline">停止</span>
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon"
             className="hidden sm:inline-flex"
-            title={copied ? "???????" : "????????"}
+            title={copied ? "コピーしました" : "作業パスをコピー"}
             onClick={() => void copyPath()}
           >
             {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
@@ -1340,7 +1340,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             variant="ghost"
             size="icon"
             className="hidden sm:inline-flex"
-            title="???"
+            title="再同期"
             onClick={() => {
               void stream.resync();
               setDiffKey((k) => k + 1);
@@ -1373,7 +1373,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             variant="ghost"
             size="icon"
             className="hidden sm:inline-flex"
-            title="??????"
+            title="タスクを削除"
             onClick={() => void removeTask()}
           >
             <Trash2 className="h-4 w-4" />
@@ -1381,7 +1381,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            title="???????"
+            title="ファイルツリー"
             className={cx(
               showDiff && sidePanel === "files" && "bg-surface-2 text-text",
             )}
@@ -1396,7 +1396,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            title="???"
+            title="グラフ"
             className={cx(
               showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
             )}
@@ -1411,7 +1411,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            title="?????"
+            title="ターミナル"
             className={cx(
               "hidden md:inline-flex",
               showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
@@ -1427,7 +1427,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            title="Diff ???"
+            title="Diff パネル"
             className={cx(
               showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
             )}
@@ -1451,15 +1451,15 @@ export function TaskView({ taskId }: { taskId: string }) {
       <div className="flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
         {(
           [
-            { key: "chat" as const, label: "??", panel: null },
+            { key: "chat" as const, label: "会話", panel: null },
             {
               key: "diff" as const,
               label:
-                task.filesChanged > 0 ? `?? (${task.filesChanged})` : "??",
+                task.filesChanged > 0 ? `変更 (${task.filesChanged})` : "変更",
               panel: "diff" as const,
             },
-            { key: "diff" as const, label: "????", panel: "files" as const },
-            { key: "diff" as const, label: "???", panel: "graph" as const },
+            { key: "diff" as const, label: "ファイル", panel: "files" as const },
+            { key: "diff" as const, label: "グラフ", panel: "graph" as const },
           ] as const
         ).map((t) => {
           const active =
@@ -1506,25 +1506,25 @@ export function TaskView({ taskId }: { taskId: string }) {
           {!task.sessionId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4">
               <p className="text-sm text-muted">
-                ?? Workspace ????????????????
+                この Workspace にはまだセッションがありません。
               </p>
               <Button variant="primary" onClick={() => void ensureSession()}>
-                ????????
+                セッションを開始
               </Button>
             </div>
           ) : (
             <>
               {task.status === "merged" && (
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b border-success/30 bg-success-bg px-4 py-2 text-sm text-success">
-                  <span>????? ? worktree ???????</span>
+                  <span>マージ済み — worktree を削除できます</span>
                   <Button variant="danger" size="sm" onClick={() => void removeTask()}>
-                    ???????
+                    クリーンアップ
                   </Button>
                 </div>
               )}
               {stream.revert && (
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b border-warning/30 bg-warning-bg px-4 py-2 text-sm text-warning">
-                  <span>???????????????????</span>
+                  <span>巻き戻し中（以降のメッセージは非表示）</span>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1541,13 +1541,13 @@ export function TaskView({ taskId }: { taskId: string }) {
                           window.alert(
                             err instanceof Error
                               ? err.message
-                              : "?????????",
+                              : "復元に失敗しました",
                           );
                         }
                       })();
                     }}
                   >
-                    ??
+                    復元
                   </Button>
                 </div>
               )}
@@ -1657,12 +1657,12 @@ export function TaskView({ taskId }: { taskId: string }) {
                 {accessMode === "full" &&
                   stream.permissions.some((p) => !autoReplyFailedIds.has(p.id)) && (
                   <p className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
-                    ??????: ???????????
+                    フルアクセス: 権限要求を自動承認中…
                   </p>
                 )}
                 {accessMode === "full" && autoReplyFailedIds.size > 0 && (
                   <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
-                    ????????????????????????????????????
+                    自動承認に失敗した権限があります。下のカードから手動で応答してください。
                   </p>
                 )}
                 {stream.questions.map((q) => (
@@ -1677,10 +1677,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                   <div className="flex items-center gap-2 text-sm text-muted">
                     <Loader2 className="h-4 w-4 animate-spin text-working" />
                     {stream.status?.type === "retry"
-                      ? `?????? ${stream.status.message ?? ""}`
+                      ? `リトライ中… ${stream.status.message ?? ""}`
                       : currentTool
-                        ? `${currentTool}?`
-                        : "????"}
+                        ? `${currentTool}…`
+                        : "作業中…"}
                   </div>
                 )}
               </div>
@@ -1705,7 +1705,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   role="alert"
                   className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
                 >
-                  ??????????/??????????????????????????????????????????
+                  選択中のエージェント/モデルは画像入力に対応していない可能性があります。画像が反映されない場合があります。
                 </p>
               )}
               <div
@@ -1732,7 +1732,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={a.preview}
-                            alt={a.name ?? "????"}
+                            alt={a.name ?? "添付画像"}
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -1743,7 +1743,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         <button
                           type="button"
                           onClick={() => removeAttachment(i)}
-                          aria-label="?????"
+                          aria-label="添付を削除"
                           className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           <X className="h-3 w-3" />
@@ -1756,8 +1756,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                   ref={textareaRef}
                   value={input}
                   rows={1}
-                  aria-label="??????????"
+                  aria-label="フォローアップを送信"
+                  role="combobox"
                   aria-busy={composerLocked || undefined}
+                  aria-controls="slash-suggest-listbox"
                   disabled={!task.sessionId}
                   readOnly={composerLocked}
                   aria-autocomplete="list"
@@ -1817,7 +1819,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       void send();
                     }
                   }}
-                  placeholder="???????????"
+                  placeholder="フォローアップを送信…"
                   className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
                 />
                 <div className="flex items-center gap-2 pt-1">
@@ -1837,8 +1839,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={!task.sessionId || working}
-                      aria-label="?????"
-                      title="?????"
+                      aria-label="画像を添付"
+                      title="画像を添付"
                       className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
                     >
                       <Paperclip className="h-3.5 w-3.5" />
@@ -1851,11 +1853,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                           setIntelligence("");
                         }}
                         disabled={!task.sessionId}
-                        aria-label="???"
+                        aria-label="モデル"
                         icon={<ModelSelectIcon model={model} />}
                         valueLabel={
                           modelOptions.find((o) => o.value === model)?.label ??
-                          "???"
+                          "モデル"
                         }
                         className="max-w-[11rem] shrink-0 sm:max-w-48"
                       >
@@ -1889,9 +1891,9 @@ export function TaskView({ taskId }: { taskId: string }) {
                         value={agent}
                         onChange={(e) => setAgent(e.target.value)}
                         disabled={!task.sessionId}
-                        aria-label="??????"
+                        aria-label="エージェント"
                         icon={<Bot className="h-3.5 w-3.5" />}
-                        valueLabel={agent || "??????"}
+                        valueLabel={agent || "エージェント"}
                         className="max-w-[10rem] shrink-0 sm:max-w-40"
                       >
                         {agents.map((a) => (
@@ -1913,7 +1915,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       variant="secondary"
                       size="icon"
                       className="shrink-0"
-                      aria-label="??"
+                      aria-label="停止"
                       onClick={() => void stream.abort()}
                     >
                       <Square className="h-3.5 w-3.5 fill-current" />
@@ -1923,7 +1925,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       variant="primary"
                       size="icon"
                       className="shrink-0"
-                      aria-label="??"
+                      aria-label="送信"
                       disabled={
                         (!input.trim() && attachments.length === 0) ||
                         !task.sessionId
@@ -1954,11 +1956,11 @@ export function TaskView({ taskId }: { taskId: string }) {
             <div
               role="separator"
               aria-orientation="vertical"
-              aria-label="????????"
+              aria-label="右パネル幅を調整"
               aria-valuenow={sideWidth}
               aria-valuemin={SIDE_MIN}
               aria-valuemax={SIDE_MAX}
-              title="???????????????????????"
+              title="ドラッグで幅を変更（ダブルクリックでリセット）"
               onPointerDown={(e) => {
                 e.preventDefault();
                 sideDragRef.current = { x: e.clientX, w: sideWidth };
