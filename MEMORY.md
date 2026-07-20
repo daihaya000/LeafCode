@@ -1,5 +1,16 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド17
+
+### 結果
+- **ZERO_CONFIRMED_BUGS** — 致命経路（composer 永久ロック / permission・question 応答不能 / sessionError 誤消去）の再監査で新規 P0/P1 なし
+- デバッグループ（2分 tick）を停止
+
+### 検証対象
+- useSessionStream / TaskView / useAttentionQueue / AttentionQueueModal / GlobalAttentionProvider / NestedAgentPanel / PermissionCard / QuestionCard
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド16
 
 ### 追加修正
