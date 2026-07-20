@@ -996,7 +996,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!modelMeta) return [];
     return getIntelligenceVariants(modelMeta);
   }, [model, providerModelsMap]);
-  // Prefer last assistant message's model once stream is loaded
+  // Prefer last assistant message's model once stream is loaded.
+  // Seeding runs at most once per session scope: once a model is resolved
+  // (either from a prior assistant message or from a user's manual choice),
+  // later assistant turns must NOT clobber the user-selected model /
+  // intelligence. Without this guard, the first assistant reply on a new
+  // session resets a user-selected intelligence back to デフォルト, making
+  // the intelligence selector appear "stuck" / unchangeable.
   const seededModelRef = useRef(false);
   useEffect(() => {
     seededModelRef.current = false;
@@ -1008,13 +1014,19 @@ export function TaskView({ taskId }: { taskId: string }) {
       if (info?.role !== "assistant" || !info.providerID || !info.modelID) continue;
       const value = `${info.providerID}::${info.modelID}`;
       if (modelOptions.some((o) => o.value === value)) {
-        setModel(value);
-        setIntelligence("");
+        // Only swap the model when it actually differs from the current
+        // selection. Resetting intelligence when the model is unchanged
+        // would discard a user-selected variant on the first assistant
+        // reply of a new session (the "cannot change intelligence" bug).
+        if (value !== model) {
+          setModel(value);
+          setIntelligence("");
+        }
         seededModelRef.current = true;
       }
       break;
     }
-  }, [stream.loaded, stream.messages, modelOptions]);
+  }, [stream.loaded, stream.messages, modelOptions, model]);
 
   useEffect(() => {
     autoReplyIdsRef.current.clear();
@@ -1860,6 +1872,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                         onChange={(e) => {
                           setModel(e.target.value);
                           setIntelligence("");
+                          // The user explicitly picked a model; suppress the
+                          // auto-seed effect so later assistant turns can't
+                          // reset the model/intelligence back to defaults.
+                          seededModelRef.current = true;
                         }}
                         disabled={!task.sessionId}
                         aria-label="モデル"
