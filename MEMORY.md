@@ -13,6 +13,18 @@
 
 ---
 
+## 2026-07-20 その他未デバッグ分野 ラウンド6
+
+### 結果
+- **ZERO_CONFIRMED_BUGS** — R1–R5 の再監査で新規 P0/P1 なし
+- `%2e%2e` / 二重エンコード、`PATCH /global/config`、解決後パスの二重ブロックを確認
+- 既知の低優先（LAN 無認証 browse/roots/host、PR orphan、FK off 等）は据え置き
+
+### ループ
+- sentinel `AGENT_LOOP_TICK_misc_debug` を停止（収束）
+
+---
+
 ## 2026-07-20 その他未デバッグ分野 ラウンド5
 
 ### 修正
