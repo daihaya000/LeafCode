@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
       const res = await fetch(url, {
         headers: { "x-opencode-directory": check.path },
         cache: "no-store",
+        signal: AbortSignal.timeout(30_000),
       });
       if (res.ok) {
         const ct = res.headers.get("content-type") ?? "";

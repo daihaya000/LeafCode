@@ -11,6 +11,9 @@ import {
   encodeSseHeartbeat,
 } from "@/lib/sse-health";
 
+/** Upstream JSON/proxy timeout; SSE paths omit this so streams stay open. */
+const UPSTREAM_TIMEOUT_MS = 90_000;
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -129,11 +132,15 @@ async function proxy(
         }
       }
     }
+    const wantsSse =
+      pathname === "/event" || pathname === "/global/event";
     const init: RequestInit = {
       method: req.method,
       headers,
       redirect: "manual",
       cache: "no-store",
+      // Long-lived SSE must not inherit a request timeout.
+      ...(wantsSse ? {} : { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) }),
     };
     if (req.method !== "GET" && req.method !== "HEAD") {
       init.body = requestBody;

@@ -11,6 +11,7 @@ export async function GET() {
   try {
     const res = await fetch(`${OPENCODE_BASE_URL}/global/health`, {
       cache: "no-store",
+      signal: AbortSignal.timeout(1500),
     });
     if (res.ok) {
       const body = (await res.json()) as { healthy?: boolean; version?: string };
