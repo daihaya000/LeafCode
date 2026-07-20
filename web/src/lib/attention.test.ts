@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { parseGlobalEvent, isResolvedEvent } from "./attention";
+import { parseGlobalEvent, isResolvedEvent, normalizeOcList } from "./attention";
 import type { PermissionRequest, QuestionRequest } from "./types";
+
+describe("normalizeOcList", () => {
+  it("unwraps { data: [] } envelopes and bare arrays", () => {
+    expect(normalizeOcList([{ id: "a" }])).toEqual([{ id: "a" }]);
+    expect(normalizeOcList({ data: [{ id: "b" }] })).toEqual([{ id: "b" }]);
+    expect(normalizeOcList(null)).toEqual([]);
+    expect(normalizeOcList({ data: "nope" })).toEqual([]);
+  });
+});
 
 describe("parseGlobalEvent", () => {
   it("parses a permission event", () => {

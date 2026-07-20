@@ -10,6 +10,19 @@ export function scopeKey(scope: AttentionScope): string {
   return `${scope.directory}\u0000${scope.sessionId}`;
 }
 
+/** OpenCode REST often wraps lists as `{ data: T[] }` instead of a bare array. */
+export function normalizeOcList<T>(pending: unknown): T[] {
+  if (Array.isArray(pending)) return pending as T[];
+  if (
+    pending &&
+    typeof pending === "object" &&
+    Array.isArray((pending as { data?: unknown }).data)
+  ) {
+    return (pending as { data: T[] }).data;
+  }
+  return [];
+}
+
 type GlobalEventEnvelope = {
   type?: string;
   directory?: string;

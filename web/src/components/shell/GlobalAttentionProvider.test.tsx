@@ -152,6 +152,42 @@ describe("GlobalAttentionProvider", () => {
     await waitFor(() => expect(latest.map((i) => i.request.id)).toContain("q1"));
   });
 
+  it("restores v2 permissions from { data } envelopes when v1 is empty", async () => {
+    getJsonMock.mockResolvedValue({
+      tasks: [{ directory: "/repo", sessionId: "s1", title: "bg" }],
+    });
+    ocJsonMock.mockImplementation(async (path: string) => {
+      if (path === "/question" || path === "/permission") return [];
+      if (path === "/api/session/s1/permission") {
+        return {
+          data: [
+            {
+              id: "pv2",
+              sessionID: "s1",
+              permission: "edit",
+              patterns: ["*.ts"],
+            },
+          ],
+        };
+      }
+      if (path === "/api/session/s1/question") return { data: [] };
+      return [];
+    });
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    openConnection();
+    await waitFor(() => {
+      expect(latest.map((i) => i.request.id)).toContain("pv2");
+      expect(latest.find((i) => i.request.id === "pv2")?.request.version).toBe(
+        "v2",
+      );
+    });
+  });
+
   it("restores pending questions after a reconnect", async () => {
     vi.useFakeTimers();
     getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });

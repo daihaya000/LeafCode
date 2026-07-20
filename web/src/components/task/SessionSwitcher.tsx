@@ -24,6 +24,7 @@ export function SessionSwitcher({
 }) {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -42,6 +43,7 @@ export function SessionSwitcher({
 
   const create = async () => {
     setBusy(true);
+    setCreateError(null);
     try {
       const session = await ocJson<{ id: string }>("/session", directory, {
         method: "POST",
@@ -53,8 +55,10 @@ export function SessionSwitcher({
       });
       await refresh();
       onSwitch();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : "セッションを作成できませんでした",
+      );
     } finally {
       setBusy(false);
     }
@@ -65,7 +69,8 @@ export function SessionSwitcher({
       <Button
         variant="ghost"
         size="sm"
-        title="セッションを追加"
+        title={createError ?? "セッションを追加"}
+        aria-label={createError ? `セッション追加失敗: ${createError}` : "セッションを追加"}
         busy={busy}
         onClick={() => void create()}
       >
@@ -115,7 +120,8 @@ export function SessionSwitcher({
       <Button
         variant="ghost"
         size="icon"
-        title="新セッション"
+        title={createError ?? "新セッション"}
+        aria-label={createError ? `セッション追加失敗: ${createError}` : "新セッション"}
         busy={busy}
         onClick={() => void create()}
       >

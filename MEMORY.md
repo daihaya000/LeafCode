@@ -13,6 +13,17 @@
 
 ---
 
+## 2026-07-20 その他未デバッグ分野 ラウンド3
+
+### 修正
+1. **P1 GlobalAttention**: v2 permission/question の `{ data: [] }` envelope を `normalizeOcList` で展開。v1 空成功時に v2 pending が消える／復元できない問題を解消
+2. **SessionSwitcher**: セッション作成失敗を握りつぶさず title/aria に表示
+
+### 検証
+- tsc / attention・GlobalAttentionProvider Vitest PASS
+
+---
+
 ## 2026-07-20 その他未デバッグ分野 ラウンド2
 
 ### 修正（P1）

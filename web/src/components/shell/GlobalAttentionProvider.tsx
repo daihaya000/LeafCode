@@ -11,7 +11,7 @@ import React, {
 import { apiUrl, getJson, ocJson } from "@/lib/client";
 import { isSseSilent, SSE_SILENCE_MS } from "@/lib/sse-health";
 import { notifyAttentionCountChanged } from "@/lib/events";
-import { parseGlobalEvent, isResolvedEvent, type AttentionItem, type AttentionScope } from "@/lib/attention";
+import { parseGlobalEvent, isResolvedEvent, normalizeOcList, type AttentionItem, type AttentionScope } from "@/lib/attention";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
@@ -133,15 +133,15 @@ export function GlobalAttentionProvider({
         let questions: RestQuestion[] = [];
         let permissions: RestPermission[] = [];
         try {
-          const list = await ocJson<RestQuestion[]>("/question", directory);
-          questions = Array.isArray(list) ? list : [];
+          const list = await ocJson<unknown>("/question", directory);
+          questions = normalizeOcList<RestQuestion>(list);
           questionsOk = true;
         } catch {
           /* leave questions unsynced for this directory */
         }
         try {
-          const list = await ocJson<RestPermission[]>("/permission", directory);
-          permissions = Array.isArray(list) ? list : [];
+          const list = await ocJson<unknown>("/permission", directory);
+          permissions = normalizeOcList<RestPermission>(list);
           permissionsOk = true;
         } catch {
           /* leave permissions unsynced for this directory */
@@ -161,18 +161,18 @@ export function GlobalAttentionProvider({
         await Promise.allSettled(
           sessionIds.map(async (sessionID) => {
             const [pq, pp] = await Promise.all([
-              ocJson<RestQuestion[]>(
+              ocJson<unknown>(
                 `/api/session/${sessionID}/question`,
                 directory,
               ).catch(() => null),
-              ocJson<RestPermission[]>(
+              ocJson<unknown>(
                 `/api/session/${sessionID}/permission`,
                 directory,
               ).catch(() => null),
             ]);
-            if (Array.isArray(pq)) {
+            if (pq !== null) {
               v2QuestionsFetched = true;
-              for (const q of pq) {
+              for (const q of normalizeOcList<RestQuestion>(pq)) {
                 v2Questions.push(
                   toQuestionItem(
                     directory,
@@ -182,9 +182,9 @@ export function GlobalAttentionProvider({
                 );
               }
             }
-            if (Array.isArray(pp)) {
+            if (pp !== null) {
               v2PermissionsFetched = true;
-              for (const p of pp) {
+              for (const p of normalizeOcList<RestPermission>(pp)) {
                 v2Permissions.push(
                   toPermissionItem(
                     directory,
