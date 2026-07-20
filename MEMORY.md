@@ -1,4 +1,4 @@
-# MEMORY.md — OpenCode WebUI
+﻿# MEMORY.md — OpenCode WebUI
 
 ## 2026-07-20 タブレット/スマホでの自動スクロールと巻き戻しボタン改善
 
@@ -2766,3 +2766,32 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 - seededModelRef のような「初回一回」ガードは、対象データ到着前にガードが false のままだと初回到着時に副作用が走る。ガードの評価タイミングと副作用の冪等性をセットで考える
 - 並列セッション（Cursor）が codexbar/タブレット修正を同時進行していた。コミット時に git show --stat で自コミットに他所差分が混入していないか必ず確認
 - コミット: e90ee34
+## 2026-07-21 画像非対応モデルへの画像送信ブロック（引数不正エラー防止）
+
+### 背景・ユーザー指摘
+画像添付時に OpenCode エンジンが `this model does not support image input` エラーを返すバグ。従来 TaskView/HomeView は「画像非対応モデルの可能性」警告表示のみで送信を許可し、結果的にエンジン側で引数不正として弾かれていた。
+
+### 原因
+- TaskView の `imageSupported` 判定は `effectiveModelKey`（エージェント設定モデル優先）で行っていたが、警告表示のみで送信はブロックしていなかった。
+- HomeView には modelCapabilities 構築すらなく、画像対応判定が一切なかった。
+- エージェント選択時は手動セレクタ(model)が無視されエージェントモデルで処理されるのに、警告は model 基準で出る不一致もあった。
+
+### 修正
+- TaskView: send 内で実際にプロンプトを処理するモデル（agentModels優先→model）の画像入力対応を確認し、非対応なら setSendError で送信ブロック。capabilities が未判明(undefined)の場合はブロックしない（過剰ブロック防止）。
+- HomeView: ProviderResponse 型に attachment/modalities を追加し modelCapabilities を構築。submit で選択モデルが非対応なら setError でブロック。
+- HomeView.test の `@/lib/client` モックに timedFetch を追加し、既存の失敗を修正。
+
+### 判定の境界
+- `modelCapabilities[key] !== undefined` で「プロバイダ応答にモデルが含まれていた」ことを確認してからブロック。未選択(model=='')や capabilities 未取得時は従来通り送信を許可（過剰ブロック回避）。
+
+### 検証
+- tsc --noEmit: エラーなし
+- eslint: クリーン
+- vitest HomeView.test.tsx: 6 passed
+- vitest route.test.ts: 14 passed
+- TaskView.test.tsx は既存から jsdom heap OOM で落ちる重いテスト（本変更と無関係、stash でも再現）
+
+### 教訓
+- 警告表示のみで送信を許可する UX は、下流エンジンエラーをそのままユーザーに見せる原因になる。クライアント側でブロックできる引数不正は送信前に止める。
+- capabilities 未取得時は過剰ブロックを避け「判明した上で非対応」の時だけブロックするのが安全。
+- コミット 556f987
