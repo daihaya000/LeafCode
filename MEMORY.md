@@ -1,5 +1,19 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド13
+
+### 追加修正
+1. **abort**: POST 前に idle 解除。失敗・タイムアウトでも composer がロックしたままにならない
+2. **SSE permission/question.asked**: `wasRecentlyReplied` なら再投入しない（モーダル回答後の遅延イベント対策）
+
+### ループ
+- 旧重複ループは停止済み。稼働中は PID 32792 のみ
+
+### 検証
+- 関連 Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド12
 
 ### 追加修正

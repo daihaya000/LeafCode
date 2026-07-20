@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiUrl, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
-import { dropRecentlyReplied, rememberReplied } from "./recently-replied";
+import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import { isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import type {
   MessageInfo,
@@ -725,6 +725,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         const id = String(props.id ?? "");
         const sessionID = String(props.sessionID ?? "");
         if (!id || sessionID !== sid) return;
+        if (wasRecentlyReplied(id)) return;
         dispatch({
           kind: "permissionAsked",
           request: {
@@ -750,6 +751,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         const id = String(props.id ?? "");
         const sessionID = String(props.sessionID ?? "");
         if (!id || sessionID !== sid) return;
+        if (wasRecentlyReplied(id)) return;
         const questions = (props.questions ?? []) as QuestionInfo[];
         dispatch({
           kind: "questionAsked",
@@ -1245,18 +1247,18 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const abort = useCallback(async () => {
     const sid = sessionRef.current;
     if (!directory || !sid) return;
-    await ocJson(`/session/${sid}/abort`, directory, {
-      method: "POST",
-      timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
-    });
-    // SSE may omit session.idle after abort; unlock composer immediately and
-    // reconcile from REST so we do not stay stuck in working/readOnly.
-    if (sessionRef.current === sid) {
-      pendingMutationRef.current = false;
-      statusRef.current = { type: "idle" };
-      dispatch({ kind: "status", status: { type: "idle" } });
+    // Unlock immediately so a hung/failed abort POST cannot freeze the composer.
+    pendingMutationRef.current = false;
+    statusRef.current = { type: "idle" };
+    dispatch({ kind: "status", status: { type: "idle" } });
+    try {
+      await ocJson(`/session/${sid}/abort`, directory, {
+        method: "POST",
+        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+      });
+    } finally {
+      if (sessionRef.current === sid) await resync();
     }
-    await resync();
   }, [directory, resync]);
 
   const replyPermission = useCallback(
