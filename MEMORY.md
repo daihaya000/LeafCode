@@ -13,6 +13,18 @@
 
 ---
 
+## 2026-07-20 その他未デバッグ分野 ラウンド5
+
+### 修正
+1. **P0**: percent-encoded `%2e%2e` / 二重エンコードが `assertSafeOpenCodePath` をすり抜け `/auth/...` に解決されていた → セグメント decode + `resolvedOpenCodePathname` 後にも `isBlockedOpencodeWrite` を適用（BFF/`ocServer`）
+2. **P1**: `PATCH /global/config` が `isBlockedOpencodeWrite` から漏れていた → ブロック追加
+
+### 検証
+- tsc / opencode-id・client Vitest PASS
+- ループ継続
+
+---
+
 ## 2026-07-20 その他未デバッグ分野 ラウンド4
 
 ### 修正（P0/P1）

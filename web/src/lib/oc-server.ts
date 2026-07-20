@@ -1,5 +1,5 @@
-import { OPENCODE_BASE_URL } from "./opencode";
-import { assertSafeOpenCodePath } from "./opencode-id";
+import { OPENCODE_BASE_URL, isBlockedOpencodeWrite } from "./opencode";
+import { resolvedOpenCodePathname } from "./opencode-id";
 
 export class OcError extends Error {
   status: number;
@@ -15,12 +15,23 @@ export async function ocServer<T>(
   path: string,
   init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
+  let resolved: string;
   try {
-    assertSafeOpenCodePath(path);
+    resolved = resolvedOpenCodePathname(path, OPENCODE_BASE_URL);
   } catch (err) {
     throw new OcError(
       err instanceof Error ? err.message : "invalid OpenCode path",
       400,
+    );
+  }
+  const method = init?.method ?? "GET";
+  if (
+    isBlockedOpencodeWrite(method, path) ||
+    isBlockedOpencodeWrite(method, resolved)
+  ) {
+    throw new OcError(
+      "OpenCode config/auth/mcp writes are disabled in WebUI",
+      403,
     );
   }
 
@@ -31,7 +42,7 @@ export async function ocServer<T>(
   let res: Response;
   try {
     res = await fetch(new URL(path, OPENCODE_BASE_URL), {
-      method: init?.method ?? "GET",
+      method,
       headers,
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
       cache: "no-store",

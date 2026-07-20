@@ -2,6 +2,8 @@
 
 /** Client-side fetch helpers (browser → BFF). */
 
+import { assertSafeOpenCodePath } from "./opencode-id";
+
 /** Default abort for hung BFF/engine calls that omit an explicit timeout. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
@@ -128,13 +130,9 @@ export async function ocJson<T>(
   directory: string,
   init?: { method?: string; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
-  // Reject traversal before apiUrl() collapses `/api/opencode/session/../..`.
-  if (
-    !path.startsWith("/") ||
-    path.includes("\\") ||
-    path.includes("\0") ||
-    path.split("/").some((s) => s === "." || s === "..")
-  ) {
+  try {
+    assertSafeOpenCodePath(path);
+  } catch {
     throw new ApiError("invalid OpenCode path", 400);
   }
   const { signal, clear } = withTimeoutSignal(init?.timeoutMs);

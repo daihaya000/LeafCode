@@ -6,7 +6,7 @@ import {
   isBlockedOpencodeWrite,
   maskSecrets,
 } from "@/lib/opencode";
-import { assertSafeOpenCodePath } from "@/lib/opencode-id";
+import { resolvedOpenCodePathname } from "@/lib/opencode-id";
 import {
   SSE_HEARTBEAT_MS,
   encodeSseHeartbeat,
@@ -42,13 +42,17 @@ async function proxy(
   const { path: segments } = await context.params;
   const pathname = "/" + (segments?.join("/") ?? "");
 
+  let resolvedPathname: string;
   try {
-    assertSafeOpenCodePath(pathname);
+    resolvedPathname = resolvedOpenCodePathname(pathname, OPENCODE_BASE_URL);
   } catch {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
   }
 
-  if (isBlockedOpencodeWrite(req.method, pathname)) {
+  if (
+    isBlockedOpencodeWrite(req.method, pathname) ||
+    isBlockedOpencodeWrite(req.method, resolvedPathname)
+  ) {
     return NextResponse.json(
       { error: "OpenCode config/auth/mcp writes are disabled in WebUI" },
       { status: 403 },

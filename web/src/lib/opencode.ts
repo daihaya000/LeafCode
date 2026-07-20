@@ -6,7 +6,15 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   const m = method.toUpperCase();
   const p = pathname.replace(/\/+$/, "") || "/";
 
-  if (m === "PATCH" && (p === "/config" || p.startsWith("/config/"))) return true;
+  if (
+    m === "PATCH" &&
+    (p === "/config" ||
+      p.startsWith("/config/") ||
+      p === "/global/config" ||
+      p.startsWith("/global/config/"))
+  ) {
+    return true;
+  }
   if (m === "PUT" && (p === "/auth" || p.startsWith("/auth/"))) return true;
   if (m === "POST" && (p === "/mcp" || p.startsWith("/mcp/"))) return true;
   if (m === "DELETE" && (p === "/auth" || p.startsWith("/auth/"))) return true;

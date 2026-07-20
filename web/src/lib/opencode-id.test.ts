@@ -4,7 +4,9 @@ import {
   assertSafeOpenCodeSessionId,
   isSafeOpenCodeSessionId,
   openCodeSessionPath,
+  resolvedOpenCodePathname,
 } from "./opencode-id";
+import { isBlockedOpencodeWrite } from "./opencode";
 
 describe("isSafeOpenCodeSessionId", () => {
   it("accepts ordinary engine ids", () => {
@@ -34,6 +36,23 @@ describe("assertSafeOpenCodePath", () => {
     ).toThrow(/invalid OpenCode path/);
     expect(() => assertSafeOpenCodePath("/session/./x")).toThrow();
   });
+
+  it("rejects percent-encoded traversal", () => {
+    expect(() =>
+      assertSafeOpenCodePath("/session/%2e%2e/%2e%2e/auth/openai"),
+    ).toThrow(/invalid OpenCode path/);
+    expect(() =>
+      assertSafeOpenCodePath("/session/%252e%252e/auth/openai"),
+    ).toThrow(/invalid OpenCode path/);
+  });
+});
+
+describe("resolvedOpenCodePathname", () => {
+  it("returns the resolved pathname for safe paths", () => {
+    expect(
+      resolvedOpenCodePathname("/session/ses_1", "http://127.0.0.1:4096"),
+    ).toBe("/session/ses_1");
+  });
 });
 
 describe("openCodeSessionPath", () => {
@@ -52,5 +71,17 @@ describe("openCodeSessionPath", () => {
 describe("assertSafeOpenCodeSessionId", () => {
   it("throws on unsafe ids", () => {
     expect(() => assertSafeOpenCodeSessionId("../../auth/x")).toThrow();
+  });
+});
+
+describe("isBlockedOpencodeWrite", () => {
+  it("blocks PATCH /config and /global/config", () => {
+    expect(isBlockedOpencodeWrite("PATCH", "/config")).toBe(true);
+    expect(isBlockedOpencodeWrite("PATCH", "/global/config")).toBe(true);
+    expect(isBlockedOpencodeWrite("GET", "/global/config")).toBe(false);
+  });
+
+  it("blocks auth DELETE on resolved pathnames", () => {
+    expect(isBlockedOpencodeWrite("DELETE", "/auth/openai")).toBe(true);
   });
 });
