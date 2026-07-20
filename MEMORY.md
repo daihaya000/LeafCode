@@ -2825,12 +2825,12 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 ユーザー「修正できる？」に対し、アプリコードではなくエージェント指示で再発防止した。
 
 1. プロジェクト `AGENTS.md` 新設（追跡対象）— `next dev` / watch 系のフォアグラウンド起動禁止
-2. `.cursor/rules/no-long-running-bash.mdc`（alwaysApply、gitignore 対象だがローカル有効）
-3. `LESSONS.md` エントリ追加（pain_count: 1、手動で prompts-build-md 昇格）※gitignore
+2. `.cursor/rules/no-long-running-dev-servers.mdc`（alwaysApply、gitignore 対象だがローカル有効）
+3. `LESSONS.md` エントリ追加（pain_count: 1）※gitignore。重複破壊後に全文復元
 4. `prompts/build.md` 学習済みルールへ1行追記 ※gitignore
 5. グローバル `~/.config/opencode/AGENTS.md` 作業原則へ同趣旨を追加（kimi 等サブエージェント共有）
 
-並列セッションが同趣旨を重複追記したため、LESSONS / build.md / MEMORY の重複を整理し LESSONS 全文を復元した。
+並列セッションが同趣旨を重複追記したため、LESSONS / build.md / MEMORY の重複を整理した。
 
 ### 判断理由
 - タイムアウトはアプリバグではなくエージェント行動。指示レイヤが最短
