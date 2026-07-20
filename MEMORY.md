@@ -2825,7 +2825,7 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 ユーザー「修正できる？」に対し、アプリコードではなくエージェント指示で再発防止した。
 
 1. プロジェクト `AGENTS.md` 新設（追跡対象）— `next dev` / watch 系のフォアグラウンド起動禁止
-2. `.cursor/rules/no-long-running-dev-servers.mdc`（alwaysApply、gitignore 対象だがローカル有効）
+2. `.cursor/rules/no-long-running-bash.mdc`（alwaysApply、gitignore 対象だがローカル有効）
 3. `LESSONS.md` エントリ追加（pain_count: 1）※gitignore。重複破壊後に全文復元
 4. `prompts/build.md` 学習済みルールへ1行追記 ※gitignore
 5. グローバル `~/.config/opencode/AGENTS.md` 作業原則へ同趣旨を追加（kimi 等サブエージェント共有）
@@ -2841,3 +2841,24 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 - タイムアウト頻発の一次対応は timeout 延長ではなく「終了しないコマンドを起動しない」こと
 - build 専用 prompts だけではサブエージェントに届かない。共通 AGENTS.md にも書く
 - 並列セッション前提: 同一修正の多重書き込みでファイル欠落・重複が起きうる。コミット前に再読込と重複整理
+
+---
+
+## 2026-07-21 bash permission で next/dev を deny（ハードガード）
+
+### 背景
+指示ルールだけでは弱いモデルが `npx next dev` を起動しうる。ユーザー「修正できる？」への追加対応。
+
+### やったこと（`~/.config/opencode`、コミット `6c8918f`）
+1. `opencode.jsonc` の build `permission.bash` に `*next dev*` / `*next start*` / `npm|pnpm|yarn|bun` の dev 起動を deny
+2. programmer / explore / lead-programmer / debugger / test-writer（bash が `*: allow` 系）へ同 deny を追加
+3. `AGENTS.md` / `prompts/build.md` の常駐禁止指示を維持
+4. `node --test tests/agent-config.test.mjs` 9件パス
+
+### 判断理由（過去エントリとの関係）
+- 直前エントリの「ハードブロックは本体変更が必要で範囲外」は不正確だった旨を明記。`permission.bash` の glob deny で OpenCode 設定側から拒否可能
+- deny 既定エージェント（finance 等）への誤適用は checkout で撤回
+
+### 教訓
+- ソフト指示 + `permission.bash` deny の二段が再発防止に有効
+- bash glob 編集は `"*": allow` 行だけを対象にする（`curl *: allow` への部分一致に注意）
