@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronRight,
   Folder,
@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { Button, Spinner, cx } from "@/components/ui";
+import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto } from "@/lib/types";
@@ -44,6 +45,49 @@ export function AddProjectButton({
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [quickAccess, setQuickAccess] = useState<DirEntry[]>([]);
   const [manualPath, setManualPath] = useState("");
+  const attention = useOptionalGlobalAttention();
+  const attentionOpen = attention?.open ?? false;
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const prevFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (attentionOpen && open) setOpen(false);
+  }, [attentionOpen, open]);
+
+  useEffect(() => {
+    if (!open) {
+      if (prevFocusRef.current) {
+        prevFocusRef.current.focus();
+        prevFocusRef.current = null;
+      }
+      return;
+    }
+    prevFocusRef.current = document.activeElement as HTMLElement | null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (!busy) setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !(el as HTMLButtonElement).disabled);
+      if (focusables.length === 0) return;
+      const first = focusables[0]!;
+      const last = focusables[focusables.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy]);
 
   const load = useCallback(async (dir: string | null) => {
     setLoading(true);
@@ -96,6 +140,7 @@ export function AddProjectButton({
   };
 
   const openPicker = () => {
+    if (attentionOpen) return;
     setError(null);
     setOpen(true);
   };
@@ -106,6 +151,7 @@ export function AddProjectButton({
         <button
           type="button"
           title={label}
+          aria-label={label}
           onClick={openPicker}
           className={cx(
             "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text",
@@ -124,19 +170,30 @@ export function AddProjectButton({
       )}
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+        <div
+          className="fixed inset-0 z-[65] flex items-end justify-center sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-project-title"
+        >
           <button
             type="button"
             aria-label="閉じる"
             className="absolute inset-0 bg-black/50"
             onClick={() => !busy && setOpen(false)}
           />
-          <div className="relative flex max-h-[85dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface shadow-xl sm:rounded-2xl">
+          <div
+            ref={panelRef}
+            className="relative flex max-h-[85dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface shadow-xl sm:rounded-2xl"
+          >
             <div className="flex items-center gap-2 border-b border-border px-3 py-3">
-              <h2 className="flex-1 text-sm font-semibold">フォルダを選択</h2>
+              <h2 id="add-project-title" className="flex-1 text-sm font-semibold">
+                フォルダを選択
+              </h2>
               <button
                 type="button"
                 disabled={busy}
+                aria-label="閉じる"
                 onClick={() => setOpen(false)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2"
               >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -20,6 +20,10 @@ import { AddonHost } from "@/components/addons/AddonHost";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import {
+  getActiveSessionAttention,
+  type ActiveSessionAttention,
+} from "@/lib/active-session-attention";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { AttentionBadge } from "./AttentionBadge";
@@ -146,26 +150,90 @@ export function Sidebar({
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
+  const mobileDrawerRef = useRef<HTMLElement | null>(null);
+  const mobilePrevFocusRef = useRef<HTMLElement | null>(null);
 
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
     : null;
-  const attentionSessionIds = useMemo(
-    () =>
-      new Set(
-        attentionItems.map((item) => item.request.sessionID),
-      ),
-    [attentionItems],
-  );
-  const questionSessionIds = useMemo(
-    () =>
-      new Set(
-        attentionItems
-          .filter((item) => item.kind === "question")
-          .map((item) => item.request.sessionID),
-      ),
-    [attentionItems],
-  );
+  const [activeSessionAttention, setActiveSessionAttentionState] =
+    useState<ActiveSessionAttention | null>(() => getActiveSessionAttention());
+
+  useEffect(() => {
+    const onAttention = (e: Event) => {
+      const detail = (e as CustomEvent<ActiveSessionAttention | null>).detail;
+      setActiveSessionAttentionState(detail ?? null);
+    };
+    window.addEventListener("webui:active-session-attention", onAttention);
+    return () =>
+      window.removeEventListener("webui:active-session-attention", onAttention);
+  }, []);
+
+  const attentionSessionIds = useMemo(() => {
+    const ids = new Set(attentionItems.map((item) => item.request.sessionID));
+    if (activeSessionAttention) {
+      if (
+        activeSessionAttention.permissions > 0 ||
+        activeSessionAttention.questions > 0
+      ) {
+        ids.add(activeSessionAttention.sessionId);
+      }
+    }
+    return ids;
+  }, [attentionItems, activeSessionAttention]);
+
+  const questionSessionIds = useMemo(() => {
+    const ids = new Set(
+      attentionItems
+        .filter((item) => item.kind === "question")
+        .map((item) => item.request.sessionID),
+    );
+    if (activeSessionAttention && activeSessionAttention.questions > 0) {
+      ids.add(activeSessionAttention.sessionId);
+    }
+    return ids;
+  }, [attentionItems, activeSessionAttention]);
+
+  useEffect(() => {
+    if (!mobileOpen) {
+      if (mobilePrevFocusRef.current) {
+        mobilePrevFocusRef.current.focus();
+        mobilePrevFocusRef.current = null;
+      }
+      return;
+    }
+    mobilePrevFocusRef.current = document.activeElement as HTMLElement | null;
+    const panel = mobileDrawerRef.current;
+    const first = panel?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    first?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !panel) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !(el as HTMLButtonElement).disabled);
+      if (focusables.length === 0) return;
+      const firstEl = focusables[0]!;
+      const lastEl = focusables[focusables.length - 1]!;
+      if (e.shiftKey && document.activeElement === firstEl) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (!e.shiftKey && document.activeElement === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen, onClose]);
 
   const refresh = useCallback(async () => {
     const [projectsResult, tasksResult] = await Promise.allSettled([
@@ -755,7 +823,13 @@ export function Sidebar({
             className="absolute inset-0 bg-black/40"
             onClick={onClose}
           />
-          <aside className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]">
+          <aside
+            ref={mobileDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="ナビゲーション"
+            className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]"
+          >
             {body(mobileOpen)}
           </aside>
         </div>

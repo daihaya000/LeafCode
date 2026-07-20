@@ -258,7 +258,7 @@ const ToolPartView = memo(function ToolPartView({
         onClick={() => hasDetail && setOpen((v) => !v)}
         aria-expanded={hasDetail ? open : undefined}
         className={cx(
-          "flex w-full items-center gap-2.5 bg-surface-2 px-3 py-2.5 text-left",
+          "flex w-full items-center gap-2.5 bg-surface-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
           hasDetail && "cursor-pointer hover:bg-surface-3",
         )}
       >
@@ -382,7 +382,10 @@ function FileImagePreview({ url, name }: { url: string; name: string }) {
   useEffect(() => {
     if (!expanded) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExpanded(false);
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setExpanded(false);
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -405,7 +408,7 @@ function FileImagePreview({ url, name }: { url: string; name: string }) {
           aria-modal="true"
           aria-label={name}
           onClick={() => setExpanded(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-6"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

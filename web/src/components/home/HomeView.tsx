@@ -7,7 +7,7 @@ import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
-import { Button, GhostSelect } from "@/components/ui";
+import { Button, GhostSelect, cx } from "@/components/ui";
 import {
   readAccessMode,
   writeAccessMode,
@@ -440,8 +440,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   }, [model, providerModelsMap]);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <main className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]">
+    <div className="h-full overflow-y-auto overflow-x-clip">
+      <main
+        className={cx(
+          "mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]",
+          slashOpen && "pt-64",
+        )}
+      >
         <section>
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
             何をつくりますか？

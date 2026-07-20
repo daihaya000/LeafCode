@@ -1,5 +1,19 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 UI/UX デバッグ ラウンド3
+
+### 修正
+1. **モバイル Sidebar**: Escape / フォーカストラップ / dialog 属性 / フォーカス復帰
+2. **現行セッション Sidebar バッジ**: `active-session-attention` モジュールで TaskView → Sidebar に pending を通知
+3. **AddProjectButton**: dialog/Escape/トラップ、Attention 中は抑止、z-[65]、aria-label
+4. **PartView**: ツールヘッダー inset focus ring、lightbox z-[80] + Escape stopPropagation
+5. **HomeView**: スラッシュ開時に `pt-64` でメニュークリップ緩和、`cx` 利用
+
+### 検証
+- tsc / HomeView・PartView・GlobalAttention Vitest PASS
+
+---
+
 ## 2026-07-20 UI/UX デバッグ ラウンド2
 
 ### 修正
