@@ -1,5 +1,25 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 タブレット/スマホでの自動スクロールと巻き戻しボタン改善
+
+### 変更
+- **TaskView.tsx**: 自動スクロールを `scrollTo({ top: el.scrollHeight, behavior: "auto" })` に簡潔化。慣性スクロール中の rAF/timeout は逆効果なため避け、ストリーム変化時に同期スクロールを実行
+- **SessionActions.tsx**: `MessageRevertButton` に `active:bg-surface-3 active:text-text`、`min-h-[28px] min-w-[44px]`、`touch-manipulation` を追加し、モバイルでのタップ領域と視覚フィードバックを強化
+- **TaskView.test.tsx**: `@/lib/client` mock に `timedFetch`、`@/lib/useSlashCommands` mock を追加
+
+### 検証
+- `tsc --noEmit` OK
+- `npx eslint` OK（対象ファイル）
+- `npx next build` OK
+- Vitest: `TaskView.test.tsx` は既存のメモリ制限問題で実行不可（stash した元コードでも同様）。`NestedAgentPanel.test.tsx` 等の他の task 系テストは PASS
+
+### 判断・教訓
+- モバイル Safari の慣性スクロールに対抗するために複雑なタイミング調整を入れると、かえって無視されたり遅延が生じたりする。シンプルな同期 scrollTo が最も安定
+- タッチデバイスでは `:hover` だけでなく `:active` と十分なタップ領域が必須
+- 既存テストのメモリ問題は本件と無関係。修正前後で再現するため、切り分けて別対応とすべき
+
+---
+
 ## 2026-07-20 質問ポップアップにセッション名表示
 
 ### 変更
