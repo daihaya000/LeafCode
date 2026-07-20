@@ -1,5 +1,23 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 その他未デバッグ分野 ラウンド1
+
+### ループ
+- `/loop 2m` 開始（sentinel: `AGENT_LOOP_TICK_misc_debug`, PID 26604）
+- 既カバー外: git / DB マニフェスト / diff / ネスト残 / PWA 等
+
+### 修正（P1）
+1. **git/merge**: into=branch で復帰 checkout 失敗時は 500/409（`ok:true` + `restored:null` を廃止）。コンフリクト後の復帰失敗も明示
+2. **DiffPane**: アーカイブは `restored` がある場合のみ。diff 失敗時は「変更なし」ではなく error 表示
+3. **git/commit**: `all:false` / paths なしは 400（暗黙の `git add -A` を禁止）
+4. **project-session-sync**: workspace ID 衝突時、他プロジェクトの行へ session bind しない
+5. **diff/files**: base 比較の両失敗を空成功にせず error payload
+
+### 検証
+- tsc OK / project-session-sync Vitest 5件 PASS
+
+---
+
 ## 2026-07-20 ネットワーク デバッグ ラウンド5
 
 ### 結果

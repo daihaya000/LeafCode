@@ -5,6 +5,7 @@ import {
   bindSession,
   getProject,
   importWorkspaceRow,
+  getWorkspace,
   listProjects,
   listSessionBindings,
   listWorkspaces,
@@ -130,7 +131,20 @@ export function restoreProjectFromManifest(
         status,
         createdAt: ws.createdAt,
       });
-      if (inserted) result.workspaces += 1;
+      if (inserted) {
+        result.workspaces += 1;
+      } else {
+        // ID collision with another project's workspace: never bind sessions
+        // onto a foreign row (copied repo + shared sessions.json).
+        const existing = getWorkspace(ws.id);
+        if (!existing || existing.project_id !== projectId) {
+          log(
+            `restore ${rootPath}`,
+            `skipped sessions for workspace ${ws.id}: id already owned by another project`,
+          );
+          continue;
+        }
+      }
       for (const s of ws.sessions) {
         bindSession(ws.id, s.opencodeSessionId, s.title, s.updatedAt);
         result.sessions += 1;

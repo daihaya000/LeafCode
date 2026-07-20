@@ -86,7 +86,20 @@ export async function POST(req: NextRequest) {
       // to resolve your current index first", which would strand this worktree
       // on the target branch with conflict markers. --abort restores HEAD/index.
       await runGit(check.path, ["merge", "--abort"]).catch(() => undefined);
-      await runGit(check.path, ["checkout", currentBranch]);
+      const back = await runGit(check.path, ["checkout", currentBranch]);
+      if (back.code !== 0) {
+        return NextResponse.json(
+          {
+            error:
+              (merge.stderr.trim() || merge.stdout.trim() || "merge failed") +
+              `（元ブランチ「${currentBranch}」への復帰にも失敗: ${back.stderr.trim() || "checkout failed"}。現在は「${branch}」上の可能性があります）`,
+            conflict: /CONFLICT/i.test(merge.stdout + merge.stderr),
+            strandedOn: branch,
+            restored: null,
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json(
         {
           error: merge.stderr.trim() || merge.stdout.trim() || "merge failed",
@@ -99,12 +112,26 @@ export async function POST(req: NextRequest) {
     // this the worktree is left checked out on the merge target (e.g. main),
     // so subsequent diffs/commits in this workspace would silently target it.
     const restore = await runGit(check.path, ["checkout", currentBranch]);
+    if (restore.code !== 0) {
+      return NextResponse.json(
+        {
+          error: `マージは成功しましたが元ブランチ「${currentBranch}」へ戻れませんでした: ${restore.stderr.trim() || "checkout failed"}。作業ツリーは「${branch}」上です`,
+          mergeSucceeded: true,
+          merged: currentBranch,
+          into: branch,
+          summary: merge.stdout.trim(),
+          restored: null,
+          strandedOn: branch,
+        },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({
       ok: true,
       merged: currentBranch,
       into: branch,
       summary: merge.stdout.trim(),
-      restored: restore.code === 0 ? currentBranch : null,
+      restored: currentBranch,
     });
   }
 

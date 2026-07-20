@@ -90,7 +90,15 @@ export async function GET(req: NextRequest) {
           "-M",
         ]);
       }
-      if (diff.code !== 0) diff = { code: 0, stdout: "", stderr: "" };
+      if (diff.code !== 0) {
+        return NextResponse.json(
+          emptyPayload({
+            git: true,
+            branch,
+            error: diff.stderr.trim() || `diff against ${base} failed`,
+          }),
+        );
+      }
     } else {
       // Tracked changes (staged + unstaged vs HEAD); fresh repos fall back
       diff = await runGit(dir, [

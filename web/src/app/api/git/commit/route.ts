@@ -31,8 +31,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: check.error }, { status: check.status });
   }
 
-  // Stage
-  if (body.all || !body.paths?.length) {
+  // Stage — require an explicit all:true or a non-empty paths list. Treating
+  // missing/`all:false` with no paths as "stage everything" made accidental
+  // full-tree commits too easy for any API client.
+  if (body.all === true) {
     // Never let "commit everything" sweep in our own metadata (session manifest
     // and worktree dirs), which appear as untracked in the user's repo.
     const add = await runGit(check.path, [
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
-  } else {
+  } else if (body.paths?.length) {
     for (const p of body.paths) {
       if (p.includes("..") || p.startsWith("-")) {
         return NextResponse.json({ error: `unsafe path: ${p}` }, { status: 400 });
@@ -64,6 +66,11 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+  } else {
+    return NextResponse.json(
+      { error: "paths or all:true is required" },
+      { status: 400 },
+    );
   }
 
   // For a partial (paths) selection, scope the commit to those paths too.

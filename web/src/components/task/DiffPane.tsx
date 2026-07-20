@@ -333,12 +333,21 @@ export function DiffPane({
 
   const merge = (into: "current" | "branch") =>
     run(async () => {
-      const res = await sendJson<{ summary?: string; merged?: string; into?: string }>(
-        "POST",
-        "/api/git/merge",
-        { directory, branch: mergeTarget, into, noFf: true },
-      );
-      if (into === "branch" && workspaceId) {
+      const res = await sendJson<{
+        summary?: string;
+        merged?: string;
+        into?: string;
+        restored?: string | null;
+      }>("POST", "/api/git/merge", {
+        directory,
+        branch: mergeTarget,
+        into,
+        noFf: true,
+      });
+      // Only archive after into=branch when the worktree was restored to the
+      // feature branch. A successful merge that left HEAD on main must not
+      // look like a completed handoff.
+      if (into === "branch" && workspaceId && res.restored) {
         await sendJson("PATCH", "/api/workspaces", {
           id: workspaceId,
           status: "archived",
@@ -615,7 +624,9 @@ export function DiffPane({
           </p>
         )}
         {payload?.git && files.length === 0 && (
-          <p className="py-10 text-center text-sm text-faint">変更はありません</p>
+          <p className="py-10 text-center text-sm text-faint">
+            {payload.error || "変更はありません"}
+          </p>
         )}
         {files.map((f) => (
           <FileDiffBlock
