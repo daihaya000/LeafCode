@@ -236,10 +236,15 @@ const SIDE_WIDTH_KEY = "webui.sidepanel.width";
 const SIDE_DEFAULT = 520;
 const SIDE_MIN = 280;
 const SIDE_MAX = 900;
+/** Keep enough room for the chat column when the right panel is wide. */
+const SIDE_CHAT_MIN = 320;
 const ACTIVE_TASK_POLL_MS = 3000;
 
 function clampSideWidth(n: number) {
-  return Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(n)));
+  const viewport =
+    typeof window !== "undefined" ? window.innerWidth : SIDE_MAX + SIDE_CHAT_MIN;
+  const maxByViewport = Math.max(SIDE_MIN, viewport - SIDE_CHAT_MIN);
+  return Math.min(SIDE_MAX, maxByViewport, Math.max(SIDE_MIN, Math.round(n)));
 }
 
 function loadSideWidth(): number {
@@ -351,10 +356,17 @@ export function TaskView({ taskId }: { taskId: string }) {
     setShowDiff(readShowDiff());
     setSidePanel(readSidePanel());
     const mq = window.matchMedia("(min-width: 1024px)");
-    const apply = () => setIsLg(mq.matches);
+    const apply = () => {
+      setIsLg(mq.matches);
+      setSideWidth((w) => clampSideWidth(w));
+    };
     apply();
     mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    window.addEventListener("resize", apply);
+    return () => {
+      mq.removeEventListener("change", apply);
+      window.removeEventListener("resize", apply);
+    };
   }, []);
 
   useEffect(() => {
@@ -464,6 +476,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     },
     [rejectQuestion, attention],
   );
+
+  // Mobile/tablet: chat column is hidden on the diff tab, but active-session
+  // permission/question cards only render inline there (not in the global modal).
+  useEffect(() => {
+    if (isLg || tab === "chat") return;
+    if (permissions.length === 0 && stream.questions.length === 0) return;
+    changeTab("chat");
+  }, [isLg, tab, permissions.length, stream.questions.length, changeTab]);
 
   // フルアクセス: pending 権限を自動承認（失敗時は手動カードへフォールバック）
   useEffect(() => {
@@ -1708,7 +1728,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                           type="button"
                           onClick={() => removeAttachment(i)}
                           aria-label="添付を削除"
-                          className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                          className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -1720,6 +1740,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                   ref={textareaRef}
                   value={input}
                   rows={1}
+                  aria-label="フォローアップを送信"
+                  aria-busy={composerLocked || undefined}
                   disabled={!task.sessionId}
                   readOnly={composerLocked}
                   aria-autocomplete="list"

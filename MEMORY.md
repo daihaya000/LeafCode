@@ -1,5 +1,23 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 UI/UX デバッグ ラウンド1
+
+### ループ
+- `/loop 2m` UI/UX 中心デバッグ開始（sentinel: `AGENT_LOOP_TICK_uiux_debug`, PID 37076）
+
+### 修正
+1. **P0 モバイル**: `<lg` で diff タブ中に権限/質問が来たら chat タブへ自動切替（インラインカードが hidden で応答不能になる問題）
+2. **NestedAgentPanel**: 実行中もヘッダーで折りたたみ可能（`(nestedActive||terminal)&&open`）。開始時・完了時は自動展開
+3. **添付削除**: タッチで見えるよう `max-sm:opacity-100` + focus-visible
+4. **右パネル幅**: ビューポートに合わせてクランプ（chat 列確保）+ resize 再クランプ
+5. **AttentionQueueModal**: busy 中は Esc/背景閉じ禁止
+6. **a11y**: composer `aria-label`/`aria-busy`、ツールヘッダー `aria-expanded`
+
+### 検証
+- tsc / 関連 Vitest PASS
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド17
 
 ### 結果

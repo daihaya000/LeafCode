@@ -59,6 +59,7 @@ export function AttentionQueueModal() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
+        if (busy) return;
         setOpen(false);
       }
       if (e.key === "Tab" && panelRef.current) {
@@ -81,7 +82,7 @@ export function AttentionQueueModal() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, setOpen]);
+  }, [open, setOpen, busy]);
 
   const respond = useCallback(
     async (item: AttentionItem, fn: () => Promise<void>) => {
@@ -162,7 +163,7 @@ export function AttentionQueueModal() {
         "pt-[max(12vh,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)]",
       )}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) setOpen(false);
+        if (e.target === e.currentTarget && !busy) setOpen(false);
       }}
       role="dialog"
       aria-modal="true"

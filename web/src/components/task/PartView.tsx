@@ -194,6 +194,8 @@ const ToolPartView = memo(function ToolPartView({
   const wasNestedActiveRef = useRef(false);
   useEffect(() => {
     if (nestedActive) {
+      // Expand on first run start; allow collapse while still running.
+      if (!wasNestedActiveRef.current) setOpen(true);
       wasNestedActiveRef.current = true;
       return;
     }
@@ -204,7 +206,7 @@ const ToolPartView = memo(function ToolPartView({
       wasNestedActiveRef.current = false;
     }
   }, [nestedActive, terminalTask]);
-  const showNested = nestedActive || (terminalTask && open);
+  const showNested = (nestedActive || terminalTask) && open;
   const Icon = toolIcon(tool);
   const guessedProviderId = isTaskTool
     ? providerIdFromSubagentType(state?.input?.subagent_type as string | undefined)
@@ -254,6 +256,7 @@ const ToolPartView = memo(function ToolPartView({
       <button
         type="button"
         onClick={() => hasDetail && setOpen((v) => !v)}
+        aria-expanded={hasDetail ? open : undefined}
         className={cx(
           "flex w-full items-center gap-2.5 bg-surface-2 px-3 py-2.5 text-left",
           hasDetail && "cursor-pointer hover:bg-surface-3",
