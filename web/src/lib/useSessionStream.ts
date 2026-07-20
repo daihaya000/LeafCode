@@ -416,6 +416,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         if (decision.clearPending) pendingMutationRef.current = false;
         if (decision.apply) {
           dispatch({ kind: "status", status: next });
+          // Clear error banner only once the turn is actually idle — a successful
+          // message fetch must not hide session.error while status is still busy.
+          if (next.type === "idle") {
+            dispatch({ kind: "sessionError", message: null });
+          }
         }
       }
     } catch (err) {
@@ -595,9 +600,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             ? messageError.message
             : "読み込みに失敗しました",
       });
-      return;
     }
-    dispatch({ kind: "sessionError", message: null });
   }, [directory]);
 
   useEffect(() => {
@@ -691,6 +694,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             pendingMutationRef.current = false;
           }
           dispatch({ kind: "status", status });
+          if (status.type === "idle") {
+            dispatch({ kind: "sessionError", message: null });
+          }
         }
         return;
       }
@@ -698,6 +704,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         if (props.sessionID === sid) {
           pendingMutationRef.current = false;
           dispatch({ kind: "status", status: { type: "idle" } });
+          dispatch({ kind: "sessionError", message: null });
           // After busy-period init skip, pull the authoritative message list.
           scheduleNextResync();
         }
@@ -1163,6 +1170,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (!directory || !sid) throw new Error("session not ready");
       // Guard resync init for the whole POST window, not only after success.
       pendingMutationRef.current = true;
+      dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
       if (opts?.files && opts.files.length > 0) {
@@ -1214,6 +1222,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       const sid = sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
       pendingMutationRef.current = true;
+      dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
       const body: Record<string, unknown> = {
         command,

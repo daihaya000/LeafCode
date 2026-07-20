@@ -1,5 +1,16 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド16
+
+### 追加修正
+1. **sessionError クリア条件**: メッセージ resync 成功では消さない。idle 適用時（REST / SSE status / session.idle）または新規送信時のみクリア — エラー後に busy 残留でもバナーが残る
+2. **sendPrompt/sendCommand**: 送信開始時に sessionError をクリア
+
+### 検証
+- 関連 Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド15
 
 ### 追加修正
