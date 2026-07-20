@@ -364,6 +364,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
     pendingMutationRef.current = false;
+    preferRestStatusRef.current = false;
   }, [scopeKey]);
 
   const resync = useCallback(async () => {
@@ -712,9 +713,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         const err = props.error as { data?: { message?: string } } | undefined;
         // Only surface errors that clearly belong to this session.
         if (props.sessionID === sid) {
+          pendingMutationRef.current = false;
           dispatch({
             kind: "sessionError",
             message: err?.data?.message ?? "セッションでエラーが発生しました",
+          });
+          // Engine may omit idle after error — trust REST status/messages.
+          preferRestStatusRef.current = true;
+          void resync().finally(() => {
+            preferRestStatusRef.current = false;
           });
         }
         return;
@@ -748,7 +755,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (type === "permission.replied" || type === "permission.v2.replied") {
         if (!props.sessionID || props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
-        if (requestId) dispatch({ kind: "permissionReplied", requestId });
+        if (requestId) {
+          rememberReplied(requestId);
+          dispatch({ kind: "permissionReplied", requestId });
+        }
         return;
       }
       if (type === "question.asked" || type === "question.v2.asked") {
@@ -777,7 +787,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       ) {
         if (!props.sessionID || props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
-        if (requestId) dispatch({ kind: "questionReplied", requestId });
+        if (requestId) {
+          rememberReplied(requestId);
+          dispatch({ kind: "questionReplied", requestId });
+        }
         return;
       }
 
@@ -1043,6 +1056,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }
         if (type === "session.next.step.failed") {
           const err = props.error as { data?: { message?: string }; message?: string } | undefined;
+          pendingMutationRef.current = false;
           dispatch({
             kind: "sessionError",
             message:
@@ -1050,7 +1064,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
               err?.message ??
               "セッションのステップが失敗しました",
           });
-          scheduleNextResync();
+          preferRestStatusRef.current = true;
+          void resync().finally(() => {
+            preferRestStatusRef.current = false;
+          });
           return;
         }
         // Compaction / revert / prompt lifecycle: rely on REST resync.

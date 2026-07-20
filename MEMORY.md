@@ -1,5 +1,18 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド15
+
+### 追加修正
+1. **session.error / step.failed**: pendingMutation クリア + preferRest 付き resync（idle 欠落で composer がロックし続けない）
+2. **PermissionCard フルアクセス**: 先に reply、成功後に mode 切替（自動承認との二重 POST 防止）
+3. **SSE *.replied**: `rememberReplied` して REST resync によるカード再表示を防止
+4. **scope 切替**: `preferRestStatusRef` もリセット
+
+### 検証
+- 関連 Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド14
 
 ### 追加修正

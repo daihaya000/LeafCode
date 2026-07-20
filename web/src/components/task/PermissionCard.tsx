@@ -42,8 +42,10 @@ export function PermissionCard({
       setBusy("full");
       setError(null);
       try {
-        onEnableFullAccess?.();
+        // Reply first so enabling full-access auto-approve cannot race a
+        // second POST for this same request id.
         await onReply(request, "once");
+        onEnableFullAccess?.();
       } catch (err) {
         setError(err instanceof Error ? err.message : "応答に失敗しました");
         setBusy(null);
