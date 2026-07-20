@@ -1,8 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
   createInitialStreamState,
+  resolveResyncStatus,
   sessionStreamReducer,
 } from "./useSessionStream";
+
+describe("resolveResyncStatus", () => {
+  it("applies REST and clears pendingMutation after a send without SSE", () => {
+    const idle = resolveResyncStatus({
+      pendingMutation: true,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "busy",
+      next: { type: "idle" },
+    });
+    expect(idle).toEqual({ apply: true, clearPending: true });
+
+    const busy = resolveResyncStatus({
+      pendingMutation: true,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "busy",
+      next: { type: "busy" },
+    });
+    expect(busy).toEqual({ apply: true, clearPending: true });
+  });
+
+  it("still suppresses stale idle while SSE is live without pendingMutation", () => {
+    const decision = resolveResyncStatus({
+      pendingMutation: false,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "busy",
+      next: { type: "idle" },
+    });
+    expect(decision).toEqual({ apply: false, clearPending: false });
+  });
+});
 
 describe("session stream scope changes", () => {
   it("clears all session-owned state when switching sessions", () => {

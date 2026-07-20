@@ -62,6 +62,38 @@ export type StreamAction =
 /** Default timeout for prompt/command/abort so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
+/**
+ * Decide whether a REST `/session/status` snapshot should replace local status.
+ * After sendPrompt/sendCommand we hold `pendingMutation` until SSE busy/idle; if
+ * those events are missed, REST must still unlock the composer and clear the flag.
+ */
+export function resolveResyncStatus(opts: {
+  pendingMutation: boolean;
+  preferRestStatus: boolean;
+  connection: ConnectionState;
+  currentType: SessionStatus["type"] | undefined | null;
+  next: SessionStatus;
+}): { apply: boolean; clearPending: boolean } {
+  if (opts.pendingMutation) {
+    const clearPending =
+      opts.next.type === "busy" ||
+      opts.next.type === "retry" ||
+      opts.next.type === "idle";
+    return { apply: true, clearPending };
+  }
+  const cur = opts.currentType;
+  // While SSE is live, REST can lag and report idle mid-turn. After SSE
+  // disconnect/reconnect, preferRestStatus trusts REST idle again.
+  const staleIdle =
+    !opts.preferRestStatus &&
+    opts.connection === "live" &&
+    (cur === "busy" || cur === "retry") &&
+    opts.next.type === "idle";
+  const staleBusy =
+    cur === "idle" && (opts.next.type === "busy" || opts.next.type === "retry");
+  return { apply: !staleIdle && !staleBusy, clearPending: false };
+}
+
 export function createInitialStreamState(scopeKey = ""): StreamState {
   return {
     scopeKey,
@@ -369,17 +401,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (stale()) return;
       if (statuses[sid]) {
         const next = statuses[sid]!;
-        const cur = statusRef.current?.type;
-        // While SSE is live, REST can lag and report idle mid-turn. After SSE
-        // disconnect/reconnect, preferRestStatus trusts REST idle again.
-        const staleIdle =
-          !preferRestStatusRef.current &&
-          connectionRef.current === "live" &&
-          (cur === "busy" || cur === "retry") &&
-          next.type === "idle";
-        const staleBusy =
-          cur === "idle" && (next.type === "busy" || next.type === "retry");
-        if (!staleIdle && !staleBusy) {
+        const decision = resolveResyncStatus({
+          pendingMutation: pendingMutationRef.current,
+          preferRestStatus: preferRestStatusRef.current,
+          connection: connectionRef.current,
+          currentType: statusRef.current?.type,
+          next,
+        });
+        if (decision.clearPending) pendingMutationRef.current = false;
+        if (decision.apply) {
           dispatch({ kind: "status", status: next });
         }
       }

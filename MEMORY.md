@@ -1,5 +1,16 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド12
+
+### 追加修正
+1. **pendingMutation + REST status**: 送信後に SSE busy/idle を取りこぼすと composer が永久ロックされる問題を修正。`resolveResyncStatus` で pending 中は REST を信頼して `pendingMutation` をクリア
+2. 重複デバッグループ（旧 PID）を停止し、単一ループ（PID 32792）に統一
+
+### 検証
+- 関連 Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド11
 
 ### 追加修正
