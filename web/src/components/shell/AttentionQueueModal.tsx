@@ -13,6 +13,7 @@ import { QuestionCard } from "@/components/task/QuestionCard";
 import { Button, cx } from "@/components/ui";
 import { ApiError, ocJson } from "@/lib/client";
 import { replyPath, rejectPath, type AttentionItem } from "@/lib/attention";
+import { writeAccessMode } from "@/lib/access-mode";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
@@ -200,6 +201,7 @@ export function AttentionQueueModal() {
             <PermissionCard
               key={current.request.id}
               request={current.request}
+              onEnableFullAccess={() => writeAccessMode("full")}
               onReply={async (req, response) =>
                 await replyPermission(
                   { kind: "permission", directory: current.directory, request: req },

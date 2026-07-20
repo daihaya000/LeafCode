@@ -1263,10 +1263,10 @@ export function TaskView({ taskId }: { taskId: string }) {
               </span>
             )}
             {stream.connection === "reconnecting" && (
-              <span className="hidden text-xs text-warning sm:inline">再接続中…</span>
+              <span className="text-xs text-warning">再接続中…</span>
             )}
             {stream.connection === "down" && (
-              <span className="hidden text-xs text-danger sm:inline">切断（再試行中）</span>
+              <span className="text-xs text-danger">切断（再試行中）</span>
             )}
           </div>
           {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
@@ -1339,7 +1339,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            className="hidden sm:inline-flex"
+            className="inline-flex"
             title="再同期"
             onClick={() => {
               void stream.resync();
@@ -1759,7 +1759,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   aria-label="フォローアップを送信"
                   role="combobox"
                   aria-busy={composerLocked || undefined}
-                  aria-controls="slash-suggest-listbox"
+                  aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
                   disabled={!task.sessionId}
                   readOnly={composerLocked}
                   aria-autocomplete="list"

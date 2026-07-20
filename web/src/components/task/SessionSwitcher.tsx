@@ -78,6 +78,7 @@ export function SessionSwitcher({
   return (
     <div className="flex items-center gap-1">
       <select
+        aria-label="セッション切替"
         value={currentSessionId ?? ""}
         onChange={async (e) => {
           const id = e.target.value;

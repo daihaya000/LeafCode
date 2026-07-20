@@ -475,7 +475,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               role="combobox"
               aria-busy={submitting || undefined}
               aria-autocomplete="list"
-              aria-controls="slash-suggest-listbox"
+              aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
               aria-expanded={slashOpen}
               aria-activedescendant={
                 slashOpen && slashItems[slashIndex]

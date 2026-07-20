@@ -1,5 +1,19 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 UI/UX デバッグ ラウンド5
+
+### 修正
+1. **AttentionQueueModal**: 「フルアクセス」で `writeAccessMode("full")` を呼ぶ（TaskView と同期）
+2. **TaskView モバイル**: SSE 再接続/切断表示を常時表示、再同期ボタンをモバイルでも利用可
+3. **slash a11y**: `aria-controls` を `slashOpen` 時のみ付与（HomeView/TaskView）
+4. **SessionSwitcher**: `aria-label="セッション切替"`
+
+### 検証
+- TaskView UTF-8 正常（`???` 0）
+- tsc / 関連 Vitest PASS
+
+---
+
 ## 2026-07-20 UI/UX デバッグ ラウンド4
 
 ### 修正
