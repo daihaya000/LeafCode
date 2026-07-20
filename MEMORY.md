@@ -2740,3 +2740,29 @@ CodexBar の実スナップショットは `error: "API キーが未設定です
 ### 教訓
 外部エクスポートの「0」は null と同義のプレースホルダになり得る。エラー有無と windows/credits の有無をセットで判定する。
 - コミット: `9c9aaa7`
+
+## 2026-07-20 セッション入力欄のインテリジェンスがリセットされる不具合修正
+
+### 問題
+ユーザー報告「セッションの入力欄でモデルのインテリジェンスが変更できない」。TaskView でユーザーがインテリジェンスを選んでも、最初のアシスタント応答到着時に デフォルト に巻き戻るため、実質的に選択が維持されない状態。
+
+### 根因
+TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, modelOptions] に依存し、stream.messages 変更のたび発火。新規セッションでは最初の assistant メッセージ到着まで seededModelRef.current===false のまま。最初の assistant 到着で setModel(value)+setIntelligence('') が呼ばれ、ユーザー選択のインテリジェンスがリセットされていた。モデルが同一でも無条件に setIntelligence('') を呼ぶのが問題。
+
+### 修正（web/src/components/task/TaskView.tsx）
+- seededModelRef useEffect で、アシスタントメッセージのモデル value !== model の場合のみ setModel+setIntelligence('') を呼ぶ。同一モデルならインテリジェンスを保持
+- モデル手動変更時は onChange で seededModelRef.current=true を設定し、以降の自動復元を抑制
+- 依存配列に model を追加（setModel 後の再発火は seededModelRef.current===true で早期リターン、無限ループなし）
+
+### 検証
+- tsc --noEmit: 型エラーなし
+- vitest model-variants.test.ts: 15 passed
+- TaskView.test.tsx は jsdom のメモリ制限（heap OOM）で実行不可（既存問題、stash 元コードでも同様）
+- e2e（task.spec.ts）は Playwright webServer の better-sqlite3 ネイティブモジュールロードエラーで起動せず（既存環境問題、本修正とは無関係）
+- 実セッション画面は開発サーバーの /api/opencode/session/.../message が 500 を返し確認不能（OpenCode バックエンド未接続、既存環境問題）
+
+### 判断・教訓
+- 実行時検証が環境問題で不能だったため、コード静的解析から最も可能性の高い根因を推定して修正。推測ベースである点は残るリスク
+- seededModelRef のような「初回一回」ガードは、対象データ到着前にガードが false のままだと初回到着時に副作用が走る。ガードの評価タイミングと副作用の冪等性をセットで考える
+- 並列セッション（Cursor）が codexbar/タブレット修正を同時進行していた。コミット時に git show --stat で自コミットに他所差分が混入していないか必ず確認
+- コミット: e90ee34
