@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { apiUrl, getJson, ocJson } from "@/lib/client";
+import { isSseSilent, SSE_SILENCE_MS } from "@/lib/sse-health";
 import { notifyAttentionCountChanged } from "@/lib/events";
 import { parseGlobalEvent, isResolvedEvent, type AttentionItem, type AttentionScope } from "@/lib/attention";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
@@ -269,13 +270,26 @@ export function GlobalAttentionProvider({
     let retryMs = 1000;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
+    let lastActivityAt = Date.now();
+
+    const markActivity = () => {
+      lastActivityAt = Date.now();
+    };
 
     const connect = (isReconnect: boolean) => {
       void isReconnect;
       if (cancelled) return;
-      es?.close();
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (es) {
+        es.onerror = null;
+        es.close();
+      }
       es = new EventSource(apiUrl("/api/opencode/global/event"));
       es.onmessage = (ev) => {
+        markActivity();
         const resolved = isResolvedEvent(ev.data);
         if (resolved) {
           remove(resolved.requestId, resolved.sessionID);
@@ -284,21 +298,41 @@ export function GlobalAttentionProvider({
         const item = parseGlobalEvent(ev.data);
         if (item) add(item);
       };
+      es.addEventListener("heartbeat", () => {
+        markActivity();
+      });
       es.onopen = () => {
+        markActivity();
         retryMs = 1000;
         void syncPendingAttention();
       };
       es.onerror = () => {
+        if (cancelled) return;
         es?.close();
         timer = setTimeout(() => connect(true), retryMs);
         retryMs = Math.min(retryMs * 2, 15_000);
       };
     };
 
+    const silenceWatch = setInterval(() => {
+      if (cancelled || !es || es.readyState !== EventSource.OPEN) return;
+      if (!isSseSilent(lastActivityAt, Date.now(), SSE_SILENCE_MS)) return;
+      connect(true);
+    }, 5_000);
+
+    const onOnline = () => {
+      if (cancelled) return;
+      markActivity();
+      connect(true);
+    };
+    window.addEventListener("online", onOnline);
+
     connect(false);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      clearInterval(silenceWatch);
+      window.removeEventListener("online", onOnline);
       es?.close();
     };
   }, [add, remove, syncPendingAttention]);

@@ -1145,6 +1145,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     };
     document.addEventListener("visibilitychange", onVisible);
 
+    const onOnline = () => {
+      if (cancelled) return;
+      markActivity();
+      connect(true, "error");
+    };
+    window.addEventListener("online", onOnline);
+
     connect(false);
     return () => {
       cancelled = true;
@@ -1152,6 +1159,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (nextResyncTimer) clearTimeout(nextResyncTimer);
       clearInterval(silenceWatch);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
       es?.close();
     };
   }, [directory, sessionId, resync]);

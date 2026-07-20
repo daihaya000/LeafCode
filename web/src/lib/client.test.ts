@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, ocJson } from "./client";
+import { ApiError, getJson, ocJson } from "./client";
 
 describe("ocJson timeout", () => {
   afterEach(() => {
@@ -56,5 +56,33 @@ describe("ocJson timeout", () => {
     );
 
     await expect(ocJson("/session/status", "/repo")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+
+describe("getJson timeout", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("aborts when the default timeout elapses", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        });
+      }),
+    );
+
+    const pending = getJson("/api/tasks");
+    const expectation = expect(pending).rejects.toThrow(/timed out/i);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expectation;
   });
 });

@@ -1,5 +1,20 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 ネットワーク デバッグ ラウンド1
+
+### ループ
+- `/loop 2m` ネットワーク中心デバッグ開始（sentinel: `AGENT_LOOP_TICK_network_debug`, PID 26516）
+
+### 修正
+1. **client.ts**: `getJson` / `sendJson` / `ocJson` にデフォルト 30s タイムアウト（明示指定時はそれを優先）。ハングした BFF/エンジン呼び出しで UI が永久待ちしない
+2. **GlobalAttentionProvider**: SSE 沈黙検知（heartbeat + silenceWatch）と `online` 再接続。半開き接続の放置を防止
+3. **useSessionStream**: `window.online` で error 扱い再接続 + preferRest resync
+
+### 検証
+- tsc / client・GlobalAttention・sse-health Vitest PASS
+
+---
+
 ## 2026-07-20 UI/UX デバッグ ラウンド6
 
 ### 結果
