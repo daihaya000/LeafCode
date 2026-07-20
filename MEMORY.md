@@ -1,5 +1,19 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド10
+
+### 追加修正
+1. **abort**: `pendingMutationRef` をクリアし、停止後も message init がスキップされ続けないようにする
+2. **SSE 切断後 idle 復帰**: 再接続 resync は `preferRestStatus` で REST idle を信頼。live 中のみ staleIdle 抑止
+
+### ループ
+- 停止していたため再起動（PID 26720）
+
+### 検証
+- Vitest / tsc OK
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド9
 
 ### 追加修正

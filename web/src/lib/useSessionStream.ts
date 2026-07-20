@@ -317,9 +317,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const statusRef = useRef(state.status);
   /** After sendPrompt/sendCommand until busy/idle SSE — suppress message init races. */
   const pendingMutationRef = useRef(false);
+  const connectionRef = useRef<ConnectionState>(state.connection);
+  /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
+  const preferRestStatusRef = useRef(false);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
   statusRef.current = state.status;
+  connectionRef.current = state.connection;
 
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
@@ -366,9 +370,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (statuses[sid]) {
         const next = statuses[sid]!;
         const cur = statusRef.current?.type;
-        // REST can lag SSE in either direction after a turn starts/ends.
+        // While SSE is live, REST can lag and report idle mid-turn. After SSE
+        // disconnect/reconnect, preferRestStatus trusts REST idle again.
         const staleIdle =
-          (cur === "busy" || cur === "retry") && next.type === "idle";
+          !preferRestStatusRef.current &&
+          connectionRef.current === "live" &&
+          (cur === "busy" || cur === "retry") &&
+          next.type === "idle";
         const staleBusy =
           cur === "idle" && (next.type === "busy" || next.type === "retry");
         if (!staleIdle && !staleBusy) {
@@ -1035,7 +1043,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         retryMs = 1000;
         failStreak = 0;
         dispatch({ kind: "connection", connection: "live" });
-        if (isReconnect) void resync();
+        if (isReconnect) {
+          preferRestStatusRef.current = true;
+          void resync().finally(() => {
+            preferRestStatusRef.current = false;
+          });
+        }
       };
       es.onmessage = (ev) => handleEvent(ev.data);
       es.addEventListener("heartbeat", () => {
@@ -1191,6 +1204,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     // SSE may omit session.idle after abort; unlock composer immediately and
     // reconcile from REST so we do not stay stuck in working/readOnly.
     if (sessionRef.current === sid) {
+      pendingMutationRef.current = false;
+      statusRef.current = { type: "idle" };
       dispatch({ kind: "status", status: { type: "idle" } });
     }
     await resync();
