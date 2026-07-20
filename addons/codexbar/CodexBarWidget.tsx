@@ -17,6 +17,7 @@ import {
   formatMonthlyTotal,
   formatPlanBadge,
   formatResetsIn,
+  hasLastGoodUsage,
   isStale,
   limitedCount,
   overallUsedPercent,
@@ -262,11 +263,11 @@ function ProviderRow({
   const resets = formatResetsIn(p.resetsAt, now);
   const hasWindows = p.windows.length > 0;
   // Prefer last-good usage when present (matches CodexBar WinForms). Only treat
-  // as a pure error card when there is nothing else to show.
-  const showErrorOnly =
-    !!p.error && !hasWindows && p.usedPercent === null && p.credits === null;
-  const canExpand =
-    showErrorOnly || hasWindows || p.usedPercent !== null || p.credits !== null;
+  // as a pure error card when there is nothing else to show. CodexBar may export
+  // usedPercent: 0 with error + empty windows when an API key is missing — that
+  // placeholder 0 must still show as error (see hasLastGoodUsage).
+  const showErrorOnly = !!p.error && !hasLastGoodUsage(p);
+  const canExpand = showErrorOnly || hasLastGoodUsage(p);
   const label = providerLabel(p.id);
   const planBadge = formatPlanBadge(p.plan, p.planMonthlyUsd);
 

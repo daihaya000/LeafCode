@@ -249,13 +249,26 @@ export function formatPlanBadge(
 
 export type UsageTone = "ok" | "warn" | "danger";
 
+/**
+ * True when the provider has displayable last-good usage.
+ * CodexBar often exports `usedPercent: 0` with `error` and empty windows when
+ * an API key is missing — that placeholder 0 is NOT last-good usage.
+ */
+export function hasLastGoodUsage(
+  p: Pick<CodexBarProvider, "usedPercent" | "error" | "windows" | "credits">,
+): boolean {
+  if ((p.windows?.length ?? 0) > 0) return true;
+  if (p.credits !== null) return true;
+  if (p.usedPercent === null) return false;
+  if (p.error && p.usedPercent === 0) return false;
+  return true;
+}
+
 export function usageTone(
   p: Pick<CodexBarProvider, "usedPercent" | "limited" | "maxed" | "error" | "windows" | "credits">,
 ): UsageTone {
-  const hasUsage =
-    (p.windows?.length ?? 0) > 0 || p.usedPercent !== null || p.credits !== null;
   // Last-good snapshot wins over a refresh error (CodexBar WinForms parity).
-  if (p.error && !hasUsage) return "danger";
+  if (p.error && !hasLastGoodUsage(p)) return "danger";
   if (p.maxed || p.limited) return "danger";
   const u = p.usedPercent ?? 0;
   if (u >= 75) return "warn";
@@ -277,8 +290,8 @@ export function percentTone(usedPercent: number | null): UsageTone {
  */
 export function overallUsedPercent(usage: CodexBarUsage): number | null {
   const vals = usage.providers
-    .map((p) => p.usedPercent)
-    .filter((v): v is number => v !== null);
+    .filter((p) => hasLastGoodUsage(p) && p.usedPercent !== null)
+    .map((p) => p.usedPercent as number);
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
@@ -334,9 +347,7 @@ export function isStale(
 export function worstProvider(usage: CodexBarUsage): CodexBarProvider | null {
   let worst: CodexBarProvider | null = null;
   for (const p of usage.providers) {
-    const hasUsage =
-      p.windows.length > 0 || p.usedPercent !== null || p.credits !== null;
-    if (p.error && !hasUsage) return p;
+    if (p.error && !hasLastGoodUsage(p)) return p;
     if (!worst || (p.usedPercent ?? -1) > (worst.usedPercent ?? -1)) worst = p;
   }
   return worst;

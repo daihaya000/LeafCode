@@ -6,6 +6,7 @@ import {
   formatMonthlyUsd,
   formatPlanBadge,
   formatResetsIn,
+  hasLastGoodUsage,
   isStale,
   limitedCount,
   overallUsedPercent,
@@ -271,6 +272,62 @@ describe("overallUsedPercent", () => {
     expect(overallUsedPercent(u)).toBe(30); // (10+50)/2
     expect(overallUsedPercent(emptyUsage("x"))).toBeNull();
   });
+
+  it("excludes error-only providers that export placeholder usedPercent:0", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "a", usedPercent: 50 },
+        {
+          codexBarProviderId: "synthetic",
+          usedPercent: 0,
+          error: "API キーが未設定です",
+          windows: [],
+        },
+      ],
+    });
+    expect(overallUsedPercent(u)).toBe(50);
+  });
+});
+
+describe("hasLastGoodUsage", () => {
+  it("rejects placeholder usedPercent:0 when error is set and windows/credits are empty", () => {
+    // Live CodexBar export for synthetic with missing API key.
+    expect(
+      hasLastGoodUsage({
+        usedPercent: 0,
+        error: "API キーが未設定です",
+        windows: [],
+        credits: null,
+      }),
+    ).toBe(false);
+    expect(
+      hasLastGoodUsage({
+        usedPercent: null,
+        error: "API キーが未設定です",
+        windows: [],
+        credits: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps real last-good usage even when a refresh error is present", () => {
+    expect(
+      hasLastGoodUsage({
+        usedPercent: 74,
+        error: "stale refresh failed",
+        windows: [{ id: "m", title: "月間", usedPercent: 74, resetsAt: null, windowMinutes: null }],
+        credits: null,
+      }),
+    ).toBe(true);
+    expect(
+      hasLastGoodUsage({
+        usedPercent: 0,
+        error: null,
+        windows: [],
+        credits: null,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("limitedCount", () => {
@@ -343,6 +400,17 @@ describe("formatPlanBadge", () => {
 describe("usageTone", () => {
   it("prioritizes error only when no usage data, then maxed/limited, then thresholds", () => {
     expect(usageTone({ usedPercent: null, limited: false, maxed: false, error: "x", windows: [], credits: null })).toBe("danger");
+    // CodexBar synthetic (API key missing): usedPercent 0 + error must still be danger.
+    expect(
+      usageTone({
+        usedPercent: 0,
+        limited: false,
+        maxed: false,
+        error: "API キーが未設定です",
+        windows: [],
+        credits: null,
+      }),
+    ).toBe("danger");
     expect(
       usageTone({
         usedPercent: 74,
@@ -408,5 +476,16 @@ describe("worstProvider", () => {
       providers: [{ codexBarProviderId: "a", usedPercent: 10 }, { codexBarProviderId: "b", error: "boom" }],
     });
     expect(worstProvider(withErr)?.id).toBe("b");
+    const syntheticErr = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "a", usedPercent: 10 },
+        {
+          codexBarProviderId: "synthetic",
+          usedPercent: 0,
+          error: "API キーが未設定です",
+        },
+      ],
+    });
+    expect(worstProvider(syntheticErr)?.id).toBe("synthetic");
   });
 });
