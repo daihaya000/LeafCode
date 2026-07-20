@@ -38,6 +38,7 @@ import {
   useShellExtras,
   useShellSetActiveScope,
 } from "@/components/shell/ShellContext";
+import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
 import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
 import {
   readAccessMode,
@@ -431,7 +432,38 @@ export function TaskView({ taskId }: { taskId: string }) {
     writeSidePanel(next);
   }, []);
 
-  const { permissions, replyPermission } = stream;
+  const { permissions, replyPermission, replyQuestion, rejectQuestion } = stream;
+  const attention = useOptionalGlobalAttention();
+
+  const onReplyPermission = useCallback(
+    async (
+      request: (typeof permissions)[number],
+      response: "once" | "always" | "reject",
+    ) => {
+      await replyPermission(request, response);
+      attention?.remove(request.id, request.sessionID);
+    },
+    [replyPermission, attention],
+  );
+
+  const onReplyQuestion = useCallback(
+    async (
+      request: Parameters<typeof replyQuestion>[0],
+      answers: string[][],
+    ) => {
+      await replyQuestion(request, answers);
+      attention?.remove(request.id, request.sessionID);
+    },
+    [replyQuestion, attention],
+  );
+
+  const onRejectQuestion = useCallback(
+    async (request: Parameters<typeof rejectQuestion>[0]) => {
+      await rejectQuestion(request);
+      attention?.remove(request.id, request.sessionID);
+    },
+    [rejectQuestion, attention],
+  );
 
   // フルアクセス: pending 権限を自動承認（失敗時は手動カードへフォールバック）
   useEffect(() => {
@@ -444,7 +476,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       if (autoReplyIdsRef.current.has(p.id)) continue;
       if (autoReplyFailedIds.has(p.id)) continue;
       autoReplyIdsRef.current.add(p.id);
-      void replyPermission(p, "once")
+      void onReplyPermission(p, "once")
         .then(() => {
           setAutoReplyFailedIds((prev) => {
             if (!prev.has(p.id)) return prev;
@@ -463,7 +495,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           });
         });
     }
-  }, [accessMode, autoReplyFailedIds, permissions, replyPermission]);
+  }, [accessMode, autoReplyFailedIds, permissions, onReplyPermission]);
 
   useEffect(() => {
     void (async () => {
@@ -612,6 +644,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     streamActive || (streamStatusType === undefined && task?.status === "working");
   // Block composer while the task is known-busy even before stream.status loads.
   const working = hasActiveTask;
+  const [sending, setSending] = useState(false);
+  const composerLocked = working || sending;
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -759,7 +793,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if ((!text && attachments.length === 0) || working) return;
+    if ((!text && attachments.length === 0) || composerLocked) return;
     const files = attachments.map((a) => ({
       uri: a.uri,
       mime: a.mime,
@@ -768,6 +802,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     setInput("");
     setAttachments([]);
     setSendError(null);
+    setSending(true);
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
@@ -788,11 +823,13 @@ export function TaskView({ taskId }: { taskId: string }) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);
       setAttachments(attachments);
+    } finally {
+      setSending(false);
     }
   }, [
     input,
     attachments,
-    working,
+    composerLocked,
     stream,
     model,
     agent,
@@ -1577,7 +1614,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   <PermissionCard
                     key={p.id}
                     request={p}
-                    onReply={stream.replyPermission}
+                    onReply={onReplyPermission}
                     onEnableFullAccess={() => changeAccessMode("full")}
                   />
                 ))}
@@ -1596,8 +1633,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                   <QuestionCard
                     key={q.id}
                     request={q}
-                    onReply={stream.replyQuestion}
-                    onReject={stream.rejectQuestion}
+                    onReply={onReplyQuestion}
+                    onReject={onRejectQuestion}
                   />
                 ))}
                 {working && stream.questions.length === 0 && (
@@ -1684,7 +1721,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   value={input}
                   rows={1}
                   disabled={!task.sessionId}
-                  readOnly={working}
+                  readOnly={composerLocked}
                   aria-autocomplete="list"
                   aria-expanded={slashOpen}
                   aria-activedescendant={
@@ -1735,7 +1772,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     if (
                       e.key === "Enter" &&
                       !e.shiftKey &&
-                      !working &&
+                      !composerLocked &&
                       !composingRef.current
                     ) {
                       e.preventDefault();

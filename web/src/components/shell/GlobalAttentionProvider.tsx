@@ -30,6 +30,11 @@ export function useGlobalAttention() {
   return ctx;
 }
 
+/** Safe for components that may render outside the provider (e.g. unit tests). */
+export function useOptionalGlobalAttention() {
+  return useContext(GlobalAttentionContext);
+}
+
 type RestQuestion = {
   id: string;
   sessionID: string;

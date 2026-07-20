@@ -1,5 +1,19 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 エージェント会話パス デバッグ ラウンド9
+
+### 追加修正
+1. **stale busy 抑止**: idle 後に REST の stale busy で composer を再ロックしない
+2. **pendingMutationRef**: 送信直後〜busy/idle まで message init を抑止 + optimistic busy
+3. **recently-replied モジュール化**: TaskView アンマウント後も回答済み ID を共有保持
+4. **送信中ロック**: `sending` 状態で busy SSE 前の二重送信を防止
+5. TaskView 返答時に optional global attention `remove` も呼ぶ
+
+### 検証
+- 関連 Vitest 33 PASS / tsc OK（TaskView.test は環境 OOM で未完走）
+
+---
+
 ## 2026-07-20 エージェント会話パス デバッグ ラウンド8
 
 ### 追加修正

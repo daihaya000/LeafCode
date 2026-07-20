@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiUrl, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
+import { dropRecentlyReplied, rememberReplied } from "./recently-replied";
 import { isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import type {
   MessageInfo,
@@ -314,35 +315,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const scopeRef = useRef(scopeKey);
   const resyncGenRef = useRef(0);
   const statusRef = useRef(state.status);
-  /** Ids replied locally while a resync was in flight — drop from REST snapshots. */
-  const recentlyRepliedIdsRef = useRef<Map<string, number>>(new Map());
+  /** After sendPrompt/sendCommand until busy/idle SSE — suppress message init races. */
+  const pendingMutationRef = useRef(false);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
   statusRef.current = state.status;
 
-  const rememberReplied = useCallback((requestId: string) => {
-    const now = Date.now();
-    recentlyRepliedIdsRef.current.set(requestId, now);
-    for (const [id, at] of recentlyRepliedIdsRef.current) {
-      if (now - at > 60_000) recentlyRepliedIdsRef.current.delete(id);
-    }
-  }, []);
-
-  const dropRecentlyReplied = useCallback(<T extends { id: string }>(rows: T[]): T[] => {
-    const now = Date.now();
-    return rows.filter((r) => {
-      const at = recentlyRepliedIdsRef.current.get(r.id);
-      if (at === undefined) return true;
-      if (now - at > 60_000) {
-        recentlyRepliedIdsRef.current.delete(r.id);
-        return true;
-      }
-      return false;
-    });
-  }, []);
-
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
+    pendingMutationRef.current = false;
   }, [scopeKey]);
 
   const resync = useCallback(async () => {
@@ -366,6 +347,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       // Do not require `loaded` — opening an already-busy session can receive
       // SSE deltas before the first resync completes.
       const streaming =
+        pendingMutationRef.current ||
         statusRef.current?.type === "busy" ||
         statusRef.current?.type === "retry";
       if (!streaming) {
@@ -384,10 +366,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (statuses[sid]) {
         const next = statuses[sid]!;
         const cur = statusRef.current?.type;
-        // Same race as message init: REST can still report idle after SSE busy.
+        // REST can lag SSE in either direction after a turn starts/ends.
         const staleIdle =
           (cur === "busy" || cur === "retry") && next.type === "idle";
-        if (!staleIdle) {
+        const staleBusy =
+          cur === "idle" && (next.type === "busy" || next.type === "retry");
+        if (!staleIdle && !staleBusy) {
           dispatch({ kind: "status", status: next });
         }
       }
@@ -571,7 +555,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       return;
     }
     dispatch({ kind: "sessionError", message: null });
-  }, [directory, dropRecentlyReplied]);
+  }, [directory]);
 
   useEffect(() => {
     if (!directory || !sessionId) return;
@@ -659,12 +643,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       if (type === "session.status") {
         if (props.sessionID === sid && props.status) {
-          dispatch({ kind: "status", status: props.status as SessionStatus });
+          const status = props.status as SessionStatus;
+          if (status.type === "busy" || status.type === "retry" || status.type === "idle") {
+            pendingMutationRef.current = false;
+          }
+          dispatch({ kind: "status", status });
         }
         return;
       }
       if (type === "session.idle") {
         if (props.sessionID === sid) {
+          pendingMutationRef.current = false;
           dispatch({ kind: "status", status: { type: "idle" } });
           // After busy-period init skip, pull the authoritative message list.
           scheduleNextResync();
@@ -1125,6 +1114,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         body,
         timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       });
+      pendingMutationRef.current = true;
+      dispatch({ kind: "status", status: { type: "busy" } });
       // safety net: events normally arrive first, resync fills any gap
       setTimeout(() => void resync(), 800);
     },
@@ -1167,6 +1158,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         body,
         timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       });
+      pendingMutationRef.current = true;
+      dispatch({ kind: "status", status: { type: "busy" } });
       setTimeout(() => void resync(), 800);
     },
     [directory, resync],
@@ -1227,7 +1220,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       rememberReplied(request.id);
       dispatch({ kind: "permissionReplied", requestId: request.id });
     },
-    [directory, rememberReplied],
+    [directory],
   );
 
   const replyQuestion = useCallback(
@@ -1252,7 +1245,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       rememberReplied(request.id);
       dispatch({ kind: "questionReplied", requestId: request.id });
     },
-    [directory, rememberReplied],
+    [directory],
   );
 
   const rejectQuestion = useCallback(
@@ -1276,7 +1269,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       rememberReplied(request.id);
       dispatch({ kind: "questionReplied", requestId: request.id });
     },
-    [directory, rememberReplied],
+    [directory],
   );
 
   // Effects reset the reducer after a scope change. Gate the render as well so

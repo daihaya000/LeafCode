@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { getJson } from "./client";
 import type { AttentionItem, AttentionScope } from "./attention";
 import { scopeKey } from "./attention";
+import { rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import type { TaskSummary } from "./types";
 
 export type AttentionQueueState = {
@@ -113,17 +114,12 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
 
   const add = useCallback((item: AttentionItem) => {
     if (!shouldQueueAttention(item, scopeRef.current)) return;
+    if (wasRecentlyReplied(item.request.id)) return;
     dispatch({ kind: "add", item });
   }, []);
 
-  const recentlyRemovedRef = useRef<Map<string, number>>(new Map());
-
   const remove = useCallback((requestId: string, sessionID?: string) => {
-    const now = Date.now();
-    recentlyRemovedRef.current.set(requestId, now);
-    for (const [id, at] of recentlyRemovedRef.current) {
-      if (now - at > 60_000) recentlyRemovedRef.current.delete(id);
-    }
+    rememberReplied(requestId);
     dispatch({ kind: "remove", requestId, sessionID });
   }, []);
 
@@ -134,18 +130,9 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
       syncStartedAt: number,
       permissions?: AttentionItem[],
     ) => {
-      const now = Date.now();
       const drop = (items: AttentionItem[] | undefined) => {
         if (!items) return items;
-        return items.filter((item) => {
-          const at = recentlyRemovedRef.current.get(item.request.id);
-          if (at === undefined) return true;
-          if (now - at > 60_000) {
-            recentlyRemovedRef.current.delete(item.request.id);
-            return true;
-          }
-          return false;
-        });
+        return items.filter((item) => !wasRecentlyReplied(item.request.id));
       };
       dispatch({
         kind: "reconcileDirectory",
