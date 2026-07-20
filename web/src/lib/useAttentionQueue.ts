@@ -34,6 +34,22 @@ export function shouldQueueAttention(
   return `${item.directory}\u0000${item.request.sessionID}` !== scopeKey(activeScope);
 }
 
+/** Resolve a human-readable session title for an attention item. */
+export function resolveAttentionSessionTitle(
+  item: AttentionItem,
+  tasks: TaskSummary[],
+): string | null {
+  const exact = tasks.find(
+    (t) =>
+      t.directory === item.directory &&
+      t.sessionId === item.request.sessionID,
+  );
+  if (exact?.title.trim()) return exact.title.trim();
+  const bySession = tasks.find((t) => t.sessionId === item.request.sessionID);
+  if (bySession?.title.trim()) return bySession.title.trim();
+  return null;
+}
+
 export function attentionQueueReducer(
   state: AttentionQueueState,
   action: AttentionQueueAction,
@@ -159,6 +175,10 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
     }
   }, []);
 
+  const setTasks = useCallback((tasks: TaskSummary[]) => {
+    dispatch({ kind: "setTasks", tasks });
+  }, []);
+
   useEffect(() => {
     void refreshTasks();
     const onChange = () => void refreshTasks();
@@ -175,12 +195,21 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
     [state.tasks],
   );
 
+  const resolveSessionTitle = useCallback(
+    (item: AttentionItem): string | null =>
+      resolveAttentionSessionTitle(item, state.tasks),
+    [state.tasks],
+  );
+
   return {
     items: state.items,
+    tasks: state.tasks,
     add,
     remove,
     reconcileDirectory,
     refreshTasks,
+    setTasks,
     resolveTask,
+    resolveSessionTitle,
   };
 }

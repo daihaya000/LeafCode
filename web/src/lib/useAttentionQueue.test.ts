@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   attentionQueueReducer,
+  resolveAttentionSessionTitle,
   shouldQueueAttention,
   type AttentionQueueState,
 } from "./useAttentionQueue";
 import type { AttentionItem } from "./attention";
+import type { TaskSummary } from "./types";
 
 function permissionItem(directory: string, sessionID: string, id: string): AttentionItem {
   return {
@@ -172,5 +174,49 @@ describe("shouldQueueAttention", () => {
 
   it("does not queue a permission from the active scope", () => {
     expect(shouldQueueAttention(permissionItem("/a", "s1", "p1"), activeScope)).toBe(false);
+  });
+});
+
+function task(partial: Partial<TaskSummary> & Pick<TaskSummary, "directory" | "sessionId" | "title">): TaskSummary {
+  return {
+    id: "ws1",
+    projectId: "p1",
+    projectName: "Proj",
+    isolation: "git_worktree",
+    status: "idle",
+    branch: null,
+    additions: 0,
+    deletions: 0,
+    filesChanged: 0,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...partial,
+  };
+}
+
+describe("resolveAttentionSessionTitle", () => {
+  const item = questionItem("/repo", "ses_1", "q1");
+
+  it("prefers directory + sessionId exact match", () => {
+    const tasks = [
+      task({ directory: "/other", sessionId: "ses_1", title: "他" }),
+      task({ directory: "/repo", sessionId: "ses_1", title: "対象セッション" }),
+    ];
+    expect(resolveAttentionSessionTitle(item, tasks)).toBe("対象セッション");
+  });
+
+  it("falls back to sessionId-only match", () => {
+    const tasks = [task({ directory: "/other", sessionId: "ses_1", title: "別ディレクトリ" })];
+    expect(resolveAttentionSessionTitle(item, tasks)).toBe("別ディレクトリ");
+  });
+
+  it("returns null when no task matches", () => {
+    const tasks = [task({ directory: "/repo", sessionId: "ses_other", title: "別" })];
+    expect(resolveAttentionSessionTitle(item, tasks)).toBeNull();
+  });
+
+  it("ignores blank titles", () => {
+    const tasks = [task({ directory: "/repo", sessionId: "ses_1", title: "   " })];
+    expect(resolveAttentionSessionTitle(item, tasks)).toBeNull();
   });
 });

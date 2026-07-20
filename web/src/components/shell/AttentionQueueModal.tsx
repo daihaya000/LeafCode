@@ -18,7 +18,7 @@ import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
 export function AttentionQueueModal() {
-  const { items, open, setOpen, remove } = useGlobalAttention();
+  const { items, open, setOpen, remove, resolveSessionTitle } = useGlobalAttention();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -30,6 +30,9 @@ export function AttentionQueueModal() {
 
   const current = sorted[0];
   const total = sorted.length;
+  const sessionLabel = current
+    ? resolveSessionTitle(current) ?? current.request.sessionID
+    : null;
 
   useEffect(() => {
     setError(null);
@@ -176,13 +179,23 @@ export function AttentionQueueModal() {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-text">
-            {icon}
-            <span id="attention-modal-title" className="truncate">
-              {title}
-            </span>
-            {total > 1 && (
-              <span className="shrink-0 text-xs text-faint">1/{total}</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-text">
+              {icon}
+              <span id="attention-modal-title" className="truncate">
+                {title}
+              </span>
+              {total > 1 && (
+                <span className="shrink-0 text-xs text-faint">1/{total}</span>
+              )}
+            </div>
+            {sessionLabel && (
+              <p
+                className="mt-0.5 truncate pl-6 text-xs text-faint"
+                title={current.request.sessionID}
+              >
+                {sessionLabel}
+              </p>
             )}
           </div>
           <button
@@ -231,10 +244,7 @@ export function AttentionQueueModal() {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-border px-4 py-3">
-          <span className="truncate text-xs text-faint">
-            {current.request.sessionID}
-          </span>
+        <div className="flex items-center justify-end border-t border-border px-4 py-3">
           <Button
             variant="ghost"
             size="sm"

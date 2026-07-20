@@ -21,6 +21,7 @@ type GlobalAttentionContextValue = {
   setOpen: (open: boolean) => void;
   openNext: () => void;
   remove: (requestId: string, sessionID?: string) => void;
+  resolveSessionTitle: (item: AttentionItem) => string | null;
 };
 
 const GlobalAttentionContext = createContext<GlobalAttentionContextValue | null>(null);
@@ -95,7 +96,8 @@ export function GlobalAttentionProvider({
   children: React.ReactNode;
   activeScope: AttentionScope | null;
 }) {
-  const { items, add, remove, reconcileDirectory } = useAttentionQueue(activeScope);
+  const { items, add, remove, reconcileDirectory, resolveSessionTitle, setTasks } =
+    useAttentionQueue(activeScope);
   const [open, setOpenState] = useState(false);
   const openRef = useRef(open);
   openRef.current = open;
@@ -119,6 +121,7 @@ export function GlobalAttentionProvider({
     try {
       const data = await getJson<{ tasks: TaskSummary[] }>("/api/tasks");
       tasks = data.tasks ?? [];
+      setTasks(tasks);
     } catch {
       return;
     }
@@ -214,7 +217,7 @@ export function GlobalAttentionProvider({
         );
       }),
     );
-  }, [reconcileDirectory]);
+  }, [reconcileDirectory, setTasks]);
 
   // Notify badge subscribers whenever queue length changes
   useEffect(() => {
@@ -357,6 +360,7 @@ export function GlobalAttentionProvider({
     setOpen,
     openNext,
     remove,
+    resolveSessionTitle,
   };
 
   return (

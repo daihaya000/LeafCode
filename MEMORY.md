@@ -1,5 +1,18 @@
 # MEMORY.md — OpenCode WebUI
 
+## 2026-07-20 質問ポップアップにセッション名表示
+
+### 変更
+- **AttentionQueueModal**: ヘッダーにセッション名（タスクタイトル）を表示。解決できない場合は `sessionID` にフォールバック。ホバーで ID を確認可能
+- **resolveAttentionSessionTitle**: directory+sessionId 優先、なければ sessionId のみでタスク一覧から解決
+- **GlobalAttentionProvider**: 同期時の `/api/tasks` 結果をキューへ `setTasks` してタイトル解決を即時反映
+
+### 検証
+- Vitest: useAttentionQueue / AttentionQueueModal / GlobalAttentionProvider PASS
+- `tsc --noEmit` OK
+
+---
+
 ## 2026-07-20 その他未デバッグ分野 ラウンド1
 
 ### ループ
