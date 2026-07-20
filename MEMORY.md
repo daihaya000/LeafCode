@@ -2719,10 +2719,4 @@ CodexBar の実スナップショットは `error: "API キーが未設定です
 
 ### 教訓
 外部エクスポートの「0」は null と同義のプレースホルダになり得る。エラー有無と windows/credits の有無をセットで判定する。
-
-## 2026-07-20 CodexBar Synthetic API未登録でエラー表示されない修正
-
-- やったこと: hasLastGoodUsage を追加し、CodexBar が API キー未設定時に出す error + usedPercent: 0 + 空 windows を last-good 扱いしないようにした。ウィジェットは「エラー」+ メッセージ表示、overall 平均からも除外。
-- 判断理由: 実スナップショット (%APPDATA%\CodexBar\usage-snapshot.json) の synthetic が usedPercent: 0（null ではない）だったため、旧条件 usedPercent === null だと 0% 表示になっていた。
-- 教訓: CodexBar のエラー時プレースホルダ 0 と、正当な 0% 使用率を区別する。回帰テストはライブ JSON 形（usedPercent: 0）で書く。
-- 検証: vitest codexbar 36 passed。
+- コミット: `9c9aaa7`
