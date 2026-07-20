@@ -40,7 +40,18 @@ type ProviderResponse = {
   all: {
     id: string;
     name: string;
-    models: Record<string, { name?: string; variants?: ProviderModelMeta["variants"] }>;
+    models: Record<
+      string,
+      {
+        name?: string;
+        attachment?: boolean;
+        modalities?: {
+          input?: ("text" | "audio" | "image" | "video" | "pdf")[];
+          output?: ("text" | "audio" | "image" | "video" | "pdf")[];
+        };
+        variants?: ProviderModelMeta["variants"];
+      }
+    >;
   }[];
   connected: string[];
   default: Record<string, string>;
@@ -85,6 +96,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelCapabilities, setModelCapabilities] = useState<
+    Record<string, { attachment?: boolean; image?: boolean }>
+  >({});
   const [agents, setAgents] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
@@ -175,22 +189,30 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           const connectedList = data.connected ?? [];
           const connected = new Set(connectedList);
           const options: ModelOption[] = [];
+          const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
           const map: Record<string, ProviderModelMeta> = {};
           for (const p of data.all ?? []) {
             if (connected.size > 0 && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
+              const value = `${p.id}::${mid}`;
               options.push({
-                value: `${p.id}::${mid}`,
+                value,
                 label: formatModelLabel(m.name, mid),
                 group: p.name || p.id,
               });
-              map[`${p.id}::${mid}`] = {
+              const inputs = m.modalities?.input ?? [];
+              caps[value] = {
+                attachment: m.attachment === true,
+                image: inputs.includes("image"),
+              };
+              map[value] = {
                 name: m.name,
                 variants: m.variants,
               };
             }
           }
           setModelOptions(sortModelOptions(options));
+          setModelCapabilities(caps);
           setProviderModelsMap(map);
 
           // Prefer user-configured default model, then OpenCode config.model
@@ -344,6 +366,25 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     ) {
       return;
     }
+    // Block sending images to a model that cannot accept them. The manual
+    // selector is the only model source for HomeView (no agent override here),
+    // so check image support against the selected model value.
+    const sendingImageSupported = model
+      ? modelCapabilities[model]?.image === true ||
+        modelCapabilities[model]?.attachment === true
+      : false;
+    const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
+    const sendingImageBlocked =
+      hasImage &&
+      model !== `` &&
+      modelCapabilities[model] !== undefined &&
+      !sendingImageSupported;
+    if (sendingImageBlocked) {
+      setError(
+        "選択中のモデルは画像入力に対応していません。画像を削除するか、画像対応モデルを選んでください。",
+      );
+      return;
+    }
     const requestBaseBranch =
       isolation === "git_worktree" && branchProjectId === projectId
         ? baseBranch
@@ -384,6 +425,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     branchProjectId,
     baseBranch,
     model,
+    modelCapabilities,
     agent,
     intelligence,
     submitting,

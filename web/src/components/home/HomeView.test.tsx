@@ -2,17 +2,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "./HomeView";
 
-const { getJson, sendJson, push } = vi.hoisted(() => ({
+const { getJson, sendJson, push, timedFetch } = vi.hoisted(() => ({
   getJson: vi.fn(),
   sendJson: vi.fn(),
   push: vi.fn(),
+  timedFetch: vi.fn().mockResolvedValue({ ok: false }),
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
-vi.mock("@/lib/client", () => ({ getJson, sendJson }));
+vi.mock("@/lib/client", () => ({ getJson, sendJson, timedFetch }));
 vi.mock("@/lib/events", () => ({ notifyTasksChanged: vi.fn() }));
 vi.mock("@/lib/access-mode", () => ({
   ACCESS_MODE_OPTIONS: [

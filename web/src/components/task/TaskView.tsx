@@ -839,6 +839,31 @@ export function TaskView({ taskId }: { taskId: string }) {
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || composerLocked) return;
+    // Block sending images to a model that cannot accept them. The effective
+    // model (agent's configured model when an agent is selected, otherwise the
+    // manual selector) is the one that actually serves the prompt, so check
+    // image support against it — not the manual selector that may be ignored.
+    const sendingModelKey = (() => {
+      const am = agent ? agentModels[agent] : undefined;
+      if (am) return `${am.providerID}::${am.modelID}`;
+      return model || ``;
+    })();
+    const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
+    const sendingImageSupported = sendingModelKey
+      ? modelCapabilities[sendingModelKey]?.image === true ||
+        modelCapabilities[sendingModelKey]?.attachment === true
+      : false;
+    const sendingImageBlocked =
+      hasImage &&
+      sendingModelKey !== `` &&
+      modelCapabilities[sendingModelKey] !== undefined &&
+      !sendingImageSupported;
+    if (sendingImageBlocked) {
+      setSendError(
+        "選択中のエージェント/モデルは画像入力に対応していません。画像を削除するか、画像対応モデルを選んでください。",
+      );
+      return;
+    }
     const files = attachments.map((a) => ({
       uri: a.uri,
       mime: a.mime,
@@ -878,6 +903,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     stream,
     model,
     agent,
+    agentModels,
+    modelCapabilities,
     intelligence,
     slashCommands,
   ]);
