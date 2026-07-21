@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-21 prompts/build.md の全角括弧統一・学習済みルール文言更新
+
+### 変更
+- **prompts/build.md**: ユーザー提示の最新版と2箇所差分を検出し反映
+  - 「エージェントTier/サブエージェント」内 `委任(探索...)` の半角括弧を全角 `（探索...）` に統一
+  - 「学習済みルール」最終行を「bashで next dev / next start / watch 等の常駐プロセスを...」から
+    「常駐プロセス禁止: `next dev` / `next start` / `npm run dev` / watch 系を bash フォアグラウンドで起動しない。
+    検証は tsc/eslint/vitest か既存 host の短いヘルスチェックに限定する」に更新（npm run dev を明記、文言簡潔化）
+
+### 検証
+- Node スクリプトで現行ファイルとユーザー提示内容を行単位比較し、diff件数 0 まで確認
+- `prompts/build.md` は `/prompts/build.md` として `.gitignore` 対象（意図的にローカル専用、git 管理外）。
+  コミット対象外のため本変更自体はコミットせず、本 MEMORY.md のみコミット
+
+### 判断・教訓
+- `prompts/build.md` と `LESSONS.md` は `.gitignore` に明示登録されたローカル専用ファイル（`MEMORY.md` のみ追跡対象）。
+  設定ファイル変更時は `git add` 前に `git ls-files` / `.gitignore` を確認し、無意味な `-f` 強制追加をしない
+- テキスト差分確認は文字コード起因の誤検知（PowerShell `Compare-Object` の日本語文字化け）を避け、
+  Node.js で UTF-8 として行単位比較する方が確実
+
+---
+
 ## 2026-07-20 タブレット/スマホでの自動スクロールと巻き戻しボタン改善
 
 ### 変更
