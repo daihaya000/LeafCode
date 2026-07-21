@@ -1,5 +1,46 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-21 画像対応モデルへの添付が常に非対応エラーになる不具合を修正
+
+### 症状
+- 画像入力対応（vision）のはずのモデルに画像を添付して送信すると
+  「選択中のエージェント/モデルは画像入力に対応していません」と表示され送信できない
+
+### 根本原因
+- `TaskView.tsx` / `HomeView.tsx` の `ProviderResponse` 型と capability 判定ロジックが、
+  `opencode.jsonc` の **設定オーバーライドスキーマ**（`provider.<id>.models.<id>.attachment` /
+  `modalities.input[]`、`opencode-schema.d.ts` の `ConfigV2` 系）を前提にしていた
+- しかし実際に `GET /api/opencode/provider` が返す `Model` 型（同スキーマファイルの
+  `components["schemas"]["Model"]` および実機 curl で確認）は
+  `capabilities: { attachment, input: { image, text, ... } }` という**別のネスト形**
+- そのため `m.attachment` / `m.modalities?.input` は全モデルで常に `undefined` になり、
+  `claude-sonnet-5` や `gpt-5.6-sol`（実際は `capabilities.input.image: true`）を含む
+  **全モデルで画像対応判定が常に false** になっていた（モデル・プロバイダ非依存の全面バグ）
+
+### 変更
+- **TaskView.tsx / HomeView.tsx**: `ProviderResponse` の型を `capabilities.attachment` /
+  `capabilities.input.image` を読む形に修正し、`caps[value]` 構築ロジックも追従
+
+### 検証
+- 稼働中ホスト `http://127.0.0.1:3000/api/opencode/provider` の実レスポンスを curl 取得し、
+  修正後ロジックをNodeで再現して `claude-sonnet-5`/`gpt-5.6-sol`/`cursor-acp::auto` は
+  `image:true`、実際に非対応な `glm-5.2`（opencode-go/ollama-cloud経由）は `image:false` と、
+  期待通りに判定が分かれることを確認
+- `tsc --noEmit` OK / `eslint`（対象2ファイル）OK / `next build` OK
+- Vitest: `HomeView.test.tsx` 6件 PASS。`TaskView.test.tsx` は既存のメモリ制限問題で実行不可
+  （2026-07-20 MEMORY エントリと同一の pre-existing 問題。本修正と無関係）
+
+### 判断・教訓
+- **サブエージェント無言終了が6連続**したため、ユーザーの指示でメインが直接調査・修正した。
+  同一提供元への機械的な再試行を繰り返さず、早めに直接対応へ切り替えるべきだった
+- フロントエンドが外部APIレスポンスの型を「生成されたスキーマ (`opencode-schema.d.ts`)」から
+  ではなく手書きで重複定義していたため、実際のランタイムAPI形状とのドリフトに気づけなかった。
+  同種の手書き型は `opencode-schema.d.ts` の該当 `components["schemas"]` と定期的に突き合わせる
+- capability 判定のような「常に false でも実害が地味に見える」バグは、実機の生JSONを
+  curl 等で直接確認しないと気づけない。UIの見た目（モデル選択肢の表示等）だけでは判定不可
+
+---
+
 ## 2026-07-21 prompts/build.md の全角括弧統一・学習済みルール文言更新
 
 ### 変更
