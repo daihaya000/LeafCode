@@ -703,10 +703,44 @@ test("follow-up composer omits variant when default is selected", async ({
   });
 
   await page.goto("/task/task-1");
-  const composer = page.getByPlaceholder("フォローアップを送信…");
+  const composer = page.getByPlaceholder("繝輔か繝ｭ繝ｼ繧｢繝・・繧帝∽ｿ｡窶ｦ");
   await expect(composer).toBeEditable();
   await composer.fill("follow up with default intelligence");
-  await page.getByRole("button", { name: "送信" }).click();
+  await page.getByRole("button", { name: "騾∽ｿ｡" }).click();
   await expect.poll(() => promptBody).not.toBeNull();
   expect(promptBody).not.toHaveProperty("variant");
 });
+
+// Regression: the revert ("巻き戻し") button lives in the header action bar,
+// which is a horizontally-scrollable, scrollbar-hidden region on small
+// screens. It must stay fully visible (not clipped out of view) on mobile,
+// tablet, and desktop widths.
+const REVERT_TITLE = "直前の入力を下の欄に戻して巻き戻す";
+
+async function mockTaskWithUserMessage(page: Page) {
+  await mockPlanTask(page, {
+    status: "idle",
+    messages: [approvalUserMessage("user-1")],
+  });
+}
+
+for (const vp of [
+  { name: "mobile", width: 375, height: 812 },
+  { name: "tablet", width: 768, height: 1024 },
+  { name: "desktop", width: 1440, height: 900 },
+] as const) {
+  test(`revert button stays visible in header on ${vp.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    await mockTaskWithUserMessage(page);
+
+    await page.goto("/task/task-1");
+
+    const revert = page.getByTitle(REVERT_TITLE);
+    await expect(revert).toBeVisible();
+    // toBeInViewport asserts the element is actually within the viewport
+    // rectangle, catching the "clipped by overflow-x, no scrollbar" case.
+    await expect(revert).toBeInViewport();
+  });
+}

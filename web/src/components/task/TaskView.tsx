@@ -1386,7 +1386,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
-        <div className="flex max-w-[55vw] shrink-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none sm:gap-1 [&::-webkit-scrollbar]:hidden">
+        <div className="flex max-w-[70vw] shrink-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none sm:gap-1 [&::-webkit-scrollbar]:hidden">
           {working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
@@ -1449,6 +1449,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="ファイルツリー"
             className={cx(
+              "hidden lg:inline-flex",
               showDiff && sidePanel === "files" && "bg-surface-2 text-text",
             )}
             onClick={() => {
@@ -1464,6 +1465,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="グラフ"
             className={cx(
+              "hidden lg:inline-flex",
               showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
             )}
             onClick={() => {
@@ -1495,6 +1497,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             size="icon"
             title="Diff パネル"
             className={cx(
+              "hidden lg:inline-flex",
               showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
             )}
             onClick={() => {
