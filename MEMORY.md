@@ -2941,3 +2941,32 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 ### 教訓
 - ソフト指示 + `permission.bash` deny の二段が再発防止に有効
 - bash glob 編集は `"*": allow` 行だけを対象にする（`curl *: allow` への部分一致に注意）
+
+---
+
+## 2026-07-21 巻き戻しボタンがスマホ/タブレットで表示されない修正
+
+### 背景
+タスクビューのヘッダー右側アクションバーの巻き戻し(revert)ボタンが、モバイル・タブレットで見えないとの指摘。
+
+### 原因
+ヘッダーのアクションコンテナが `max-w-[55vw]` + `overflow-x-auto` かつスクロールバー非表示
+(`[scrollbar-width:none]` / `[&::-webkit-scrollbar]:hidden`)。多数のアイコンボタンが 55vw に
+収まらず右側が見切れ、スクロールバーもないため巻き戻しボタンが発見できなかった。
+ファイルツリー/グラフ/Diff ボタンはヘッダーとモバイル下部タブに二重存在し小画面で領域を圧迫していた。
+
+### やったこと（web/、コミット 52894d6 / 218c469）
+1. ファイルツリー/グラフ/Diff ボタンを `hidden lg:inline-flex` に（小画面は下部タブがあり冗長）
+2. アクションバー max-w を 55vw→70vw に緩和
+3. 3 viewport(mobile 375 / tablet 768 / desktop 1440)で巻き戻しボタンの可視+in-viewport を検証する e2e 回帰テストを task.spec.ts に追加
+4. playwright の test-results/ playwright-report/ を web/.gitignore に追加
+5. tsc / eslint(TaskView.tsx) パス
+
+### 判断理由
+- 副次的パネル切替はモバイル下部タブで代替でき、ヘッダーから外すのが最小侵襲かつ主要操作(巻き戻し)の発見性を最優先できる
+- ユーザー選択: 実ブラウザ検証はユーザー側で実施
+
+### 教訓・注意
+- host(3000, `next start`) と dev(3001, `next dev`) が同一 `.next` を共有し、`npm run build` 実行で dev server が 500 / e2e webServer 起動がタイムアウトする競合が発生。エージェント側で本番 build を走らせると常駐 dev を巻き込んで壊す。実ブラウザ検証は既存 host に対して行うか、競合しないことを確認してから
+- vitest 単体実行でも本セッションで JS heap OOM が発生（空きメモリは潤沢）。原因未特定。className のみの変更でロジックテスト影響はなく tsc/eslint で担保
+- 横スクロール領域はスクロールバー非表示だと発見性ゼロ。重要操作を隠れ領域に入れない
