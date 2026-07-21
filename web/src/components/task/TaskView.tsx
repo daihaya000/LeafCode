@@ -114,10 +114,29 @@ type ProviderResponse = {
       string,
       {
         name?: string;
-        attachment?: boolean;
-        modalities?: {
-          input?: ("text" | "audio" | "image" | "video" | "pdf")[];
-          output?: ("text" | "audio" | "image" | "video" | "pdf")[];
+        // OpenCode's live GET /provider response nests capability flags
+        // under `capabilities` (see opencode-schema.d.ts `Model.capabilities`
+        // and `components["schemas"]["Model"]`), not top-level `attachment`/
+        // `modalities.input[]` (that shape is only the *config* override
+        // schema for opencode.jsonc `provider.<id>.models.<id>`). Reading
+        // the old shape here always yields `undefined`, so every model was
+        // reported as image-unsupported regardless of real capability.
+        capabilities?: {
+          attachment?: boolean;
+          input?: {
+            text?: boolean;
+            audio?: boolean;
+            image?: boolean;
+            video?: boolean;
+            pdf?: boolean;
+          };
+          output?: {
+            text?: boolean;
+            audio?: boolean;
+            image?: boolean;
+            video?: boolean;
+            pdf?: boolean;
+          };
         };
         variants?: ProviderModelMeta["variants"];
         limit?: ProviderModelMeta["limit"];
@@ -564,10 +583,9 @@ export function TaskView({ taskId }: { taskId: string }) {
                 label: formatModelLabel(m.name, mid),
                 group: p.name || p.id,
               });
-              const inputs = m.modalities?.input ?? [];
               caps[value] = {
-                attachment: m.attachment === true,
-                image: inputs.includes("image"),
+                attachment: m.capabilities?.attachment === true,
+                image: m.capabilities?.input?.image === true,
               };
               map[`${p.id}::${mid}`] = {
                 name: m.name,
