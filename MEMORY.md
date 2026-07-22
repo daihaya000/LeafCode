@@ -1,5 +1,31 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R14（発見のみ・未修正）
+
+### ループ
+- tick #10。未コミットの TaskView プラン配線差分を重点レビュー。Sidebar 削除 409（R13 要調査）を検証
+
+### 確度の高い新規バグ
+
+1. **P1 / WIP: `initialCollapsed={!isMd}` がデスクトップを恒久最小化しうる** — 未コミット `TaskView.tsx`（`PlanDocumentCard` に `initialCollapsed={!isMd}`）
+   - 症状: ハードリロード後、デスクトップでもプランが閉じたまま開かない（または初回だけ最小化固定）
+   - 根拠: `isMd` 初期 `false`（R3 #6）→ 初回マウントで `initialCollapsed=true`。`PlanDocumentCard` は `useState(initialCollapsed)` のみで props 更新を追従しない（R8 #2 の合成トラップが実装に入った形）。仕様の「768以上は初期展開」に反する
+   - テスト欠陥: 追加テストは `planCardProps.at(-1)?.initialCollapsed`（最終 props）のみ検証し、カード内部の `collapsed` / `aria-expanded` を見ていない → デスクトップでも props 最終値は false になり **緑なのに本番は閉じたまま** になりうる
+   - 再現: 未コミット差分適用後、1440px でプラン付きタスクをハードリロード
+
+2. **P2 / 削除 409 orphaned 時にアクティブタスク画面へ残留** — `Sidebar.tsx` `removeTask`（351–374）
+   - 症状: worktree 削除失敗等で 409/orphaned になると alert＋一覧から orphan 除外されるが、`router.push("/")` は成功時のみ。今見ているタスクが orphan 化しても画面に残る
+   - 根拠: catch で `notifyTasksChanged`/`refresh` のみ。R13 要調査を確認して昇格
+
+### 更新
+- R8 #1（TaskView 未配線）: 未コミットで配線試行中だが **R14 #1 のため未完了／危険**
+- 本ラウンドは発見のみ。未コミット差分はコミットしない
+
+### 据え置き
+- R1–R13 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R13（発見のみ・未修正）
 
 ### ループ
