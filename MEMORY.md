@@ -1,5 +1,34 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R16（発見のみ・未修正）
+
+### ループ
+- tick #11。コミット `1e044ba`（スマホでプランを初期最小化）を R14 予測と突合。orphans / HomeView branch / PartView preview を薄い確認
+
+### 確度の高い新規バグ
+
+1. **P1 / `1e044ba` が R14 の isMd 合成欠陥を master に投入** — `TaskView.tsx:1884` `initialCollapsed={!isMd}` + `PlanDocumentCard` `useState(initialCollapsed)`
+   - 症状: TaskView マウント直後（`isMd` 初期 false）にプランカードが載ると `collapsed=true` で固定。matchMedia 後に desktop でも開かない／チラつき後に閉じたまま、という経路がありうる
+   - 根拠: R14 #1 の未コミット差分がそのまま `1e044ba` でマージ。テストは `planCardProps` の最終 props のみ（vitest 2件 PASS）で `aria-expanded` 未検証 → 緑でも内部 state 欠陥を見逃す
+   - 更新: R8 #1「未配線」は配線済みに更新。ただし製品要件（desktop 初期展開）は未達リスクあり
+
+2. **P2 / orphan 掃除も copies 内クロス削除しうる** — `api/workspaces/orphans/route.ts:293-297`
+   - 症状: 設定の orphan 掃除が `removeTemporaryCopy(row.worktree_path)` を呼ぶ。R15 #2 の細工 path が orphan 行にあれば他コピーを消せる
+   - 根拠: R15 と同じ delete ヘルパー。掃除 UI が攻撃面を増やす
+
+3. **P2 / PartView: error ツールは折りたたみ時プレビュー無し** — `PartView.tsx:224-231`
+   - 症状: 失敗ツールを畳むと危険枠のみで、失敗理由プレビューが無い（展開しても R13 #2 で output 優先なら理由が隠れる）
+   - 根拠: `preview` は `status === "completed"` のみ。R13 要調査を昇格
+
+### 確認して新規なし
+- HomeView ブランチ取得は `cancelled` ガードあり
+- abort は pendingMutation 即解除＋preferRest（R9 stale idle 以外の新規なし）
+
+### 据え置き
+- R1–R15 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R15（発見のみ・未修正）
 
 ### ループ
