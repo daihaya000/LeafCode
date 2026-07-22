@@ -1,5 +1,24 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R32（発見のみ・未修正）
+
+### ループ
+- tick #33–34。setup.bat 成功判定／experimental console switch を確認。R1–R31 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / `setup.bat` がホスト起動結果を無視して success に進む** — `setup.bat:16-17` × `:start_host`（134–136）
+   - 症状: R31 の常駐ハングを `start` 等で直しても、`call :start_host` の後が無条件 `goto :success`。host が即失敗／既起動エラーでも「Setup completed」になる
+   - 根拠: 他ステップは `if errorlevel 1 goto :failure` だが start_host だけ未チェック。ヘルス確認も無し
+
+2. **P2 / `POST /experimental/console/switch` が write ブロック漏れ** — schema × `isBlockedOpencodeWrite`（R26/R27 同系）
+   - 症状: Console org 切替 POST がプロキシ経由で通る。アカウント境界の副作用がありうる
+
+### 据え置き
+- R1–R31 全件未修正（R31 setup ハングはセットアップ系の最優先）
+
+---
+
 ## 2026-07-23 バグ発見ループ R31（発見のみ・未修正）
 
 ### ループ
