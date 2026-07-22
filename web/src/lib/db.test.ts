@@ -1,10 +1,11 @@
-import os from "node:os";
 import path from "node:path";
+import os from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
-import { afterAll, test, expect } from "vitest";
+import { afterAll, test, expect, vi } from "vitest";
 
 const testDataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-webui-db-"));
 const previousAppData = process.env.APPDATA;
+const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(testDataDir);
 process.env.APPDATA = testDataDir;
 
 const {
@@ -19,6 +20,7 @@ afterAll(() => {
   getDb().close();
   if (previousAppData === undefined) delete process.env.APPDATA;
   else process.env.APPDATA = previousAppData;
+  homedirSpy.mockRestore();
   rmSync(testDataDir, { recursive: true, force: true });
 });
 
