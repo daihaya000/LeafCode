@@ -1,5 +1,29 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R18（発見のみ・未修正）
+
+### ループ
+- tick #12。match-child-session／QuestionCard／oauth ブロック／cost 表示を薄い確認。R1–R17 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / 並行サブエージェントで `children.length === 1` が誤マッチ** — `match-child-session.ts:113`
+   - 症状: 複数 task 子のうち片方が一覧から消える（完了・離脱）と、残った1件が sticky/metadata/title なしでも採用され、別ツール呼び出しの NestedAgentPanel に誤セッションが貼り付く
+   - 根拠: sibling-index フォールバックは削除済みだが、「唯一の子」フォールバックは残存。R7 要調査をコード確認で昇格
+
+### 確認して新規なし
+- QuestionCard: Enter 送信は `buildAnswers()` が `customs` を含むため custom 単問は妥当
+- cost Sidebar: `(task.cost ?? 0) > 0` ガードあり
+- provider OAuth POST はブロック外（ログイン用途の可能性・意図確認待ちのため未昇格）。MCP DELETE 漏れは R7 済み
+
+### 状況
+- オープンバグは R1–R17 に多数残存（修正は別エージェント想定）。本 tick の新規 P0/P1 はなし
+
+### 据え置き
+- R1–R17 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R17（発見のみ・未修正）
 
 ### ループ
