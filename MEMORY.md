@@ -1,5 +1,25 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R33（発見のみ・未修正）
+
+### ループ
+- tick #35。git/branches defaultTarget／quickaccess フォールバックを確認。R1–R32 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / worktree 基準ブランチ候補が upstream を無視して main/master 固定寄り** — `api/git/branches/route.ts:40-46` × `HomeView.tsx` baseBranch 初期化
+   - 症状: ローカルに古い `main` が残る develop 中心リポジトリで、worktree の base が `main` になり、意図しない分岐点から worktree が切られる
+   - 根拠: `defaultTarget` は `main`→`master`→「current 以外の先頭」のみ。`upstream`（`@{u}`）はレスポンスに含めるが defaultTarget に使わない
+   - 再現: HEAD=develop、upstream=origin/develop、ローカル main あり → API の defaultTarget が main
+
+### 確認して低優先
+- `resolveLnkTargets` は常に `[]`（PS 失敗時 Links が空になるだけ・Jumplist は残る）→ P3
+
+### 据え置き
+- R1–R32 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R32（発見のみ・未修正）
 
 ### ループ
