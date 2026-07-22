@@ -1,5 +1,62 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R54（発見のみ・未修正）
+
+### ループ
+- tick #22（PID 23500）。R1–R53 重複除外。死んだ browse/folder API
+
+### 確度の高い新規バグ
+
+1. **P2 / 死んだ `POST /api/browse/folder` が無 timeout で BFF を塞ぎうる** — `api/browse/folder/route.ts`（`maxDuration=300`、`runPowerShellSta` 80-110）
+   - 症状: UI は `browse/dirs` へ移行済みでフロント参照ゼロだが API は残存。LAN から POST するとホストデスクトップに FolderBrowser が出て、閉じるまで（最大 ~300s）ワーカー占有。spawn に timeout／kill なし。連打で DoS
+   - 根拠: `child.on("close")` 待ちのみ。MEMORY の「ネイティブ FolderBrowser 廃止」記述と矛盾してルートが生きている。R49#3 files/search・R47 runGit とは別面
+   - 再現: `POST /api/browse/folder` → ホストにダイアログ。閉じない限りリクエストが返らない
+
+### 据え置き
+- R1–R53 未修正。ループ継続
+
+---
+
+## 2026-07-23 バグ発見ループ R53（発見のみ・未修正）
+
+### ループ
+- tick #21（PID 23500）。R1–R52 重複除外。host restart-all／stopChildren
+
+### 確度の高い新規バグ
+
+1. **P2 / 「すべて再起動」が reuse WebUI を殺さない** — `host/src/index.js` `stopChildren`（1138-1163）× `restart-targets.js` `resolveKillPids`（7-15）× ポート reuse（`webProc=null`）
+   - 症状: 健全な既存 WebUI を reuse して起動したホストで「すべて再起動」しても、OpenCode は listen PID 経由で止まるが WebUI は `webProc` が null のため kill 対象に入らず生き残る。その後また reuse → 実質 WebUI 未再起動
+   - 根拠: `stopWebOnly` は `resolveKillPids({ownedPid, listeningPids})` だが、`stopChildren` の WebUI 側は `[webProc?.pid, …].filter(Boolean)` のみで listen フォールバック無し。R2#2 は二重 202 no-op、R50 は headless 誤殺で、reuse 時の WebUI kill 非対称は未記載
+   - 再現: WebUI だけ先行稼働 → host が reuse 起動 → トレイ／control で restart/all → WebUI PID が変わらない
+
+2. **P2 / `stopChildren` が `waitForPortFree` しない** — `index.js` `stopChildren`（1138-1163）vs `stopWebOnly`/`stopOpencodeOnly`（1100-1135）；`restartServices` は `sleep(1000)` のみ（1285-1295）
+   - 症状: 「すべて再起動」で kill 直後に再 spawn。Windows で listen 解放が遅れると EADDRINUSE／ghost／別ポートへずれ、Caddy 固定ポートと不整合しうる
+   - 根拠: `waitForPortFree` 呼び出しは個別 stop のみ。`stopChildren` 経路には無し
+   - 再現: restart/all 直後にポート占有エラーや Caddy と WebUI ポートの食い違いが出る環境
+
+### 据え置き
+- R1–R52 未修正。ループ継続
+
+---
+
+## 2026-07-23 バグ発見ループ R52（発見のみ・未修正）
+
+### ループ
+- tick #20（PID 23500）。R1–R51 重複除外。GET /provider マスク
+
+### 確度の高い新規バグ
+
+1. **P1 / `GET /provider` が `maskSecrets` されず API キーが平文** — `api/opencode/[...path]/route.ts:186-197` × schema `Provider.key?` / `options.apiKey`
+   - 症状: BFF は `pathname === "/config"` のときだけマスク。`/provider` はそのまま upstream JSON。さらに `allowWithoutDir` 対象のため **directory ヘッダ無し**でも呼べる。UI（Home/Task/Settings）が常用する経路で、LAN から `providers[].key` / `options.apiKey` が平文で読める
+   - 根拠: マスク条件が完全一致 `/config` のみ。R48=`/global/config`、R49=`/config/providers`（directory 付き）。R49 修正メモの「必要なら `/provider` も」は未登録の別エンドポイント。実機走査で keyed provider（例: ollama-cloud）を確認済みの系統
+   - 再現: `GET /api/opencode/provider` → JSON の `key` が `********` ではなく実値（マスクマーカー無し）
+   - 修正: R48/R49 と一括で `/provider`・`/config/*`・`/global/config*` の GET JSON に `maskSecrets`。漏えいキーはローテーション推奨
+
+### 据え置き
+- R1–R51 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R51（発見のみ・未修正）
 
 ### ループ
@@ -393,7 +450,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R51 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R54 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -403,6 +460,7 @@
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
 | R43#1 | `POST /api/projects`・`/api/roots` が任意パスを無検証で allowlist 拡張 |
+| R52#1 | `GET /provider` が maskSecrets されず key 平文（directory 不要・UI 常用） |
 | R49#1 | `GET /config/providers` が maskSecrets されず `providers[].key` が平文（実機確認） |
 | R48#1 | `GET /global/config` が maskSecrets されず秘密が平文で返りうる |
 | R50#1 | GUI 起動が headless ホストを劣化と誤認して taskkill する |
@@ -471,6 +529,8 @@
 | R49#3 | `files/search` の同期フルツリー走査で BFF イベントループ塞ぎ |
 | R50#2 | `DELETE …/permission/saved/{id}` の write ブロック漏れ |
 | R51#1–2 | 音声 `resultIndex` 無視で文言重複＋録音セッション跨ぎで transcript 残存 |
+| R53#1–2 | restart-all が reuse WebUI を殺さない＋`stopChildren` が `waitForPortFree` しない |
+| R54#1 | 死んだ `POST /api/browse/folder` が無 timeout で BFF を塞ぎうる |
 
 ### 低（後でよい）
 
