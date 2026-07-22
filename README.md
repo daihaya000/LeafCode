@@ -1,19 +1,25 @@
-# OpenCode WebUI
-
 OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manager Web UI。本体はフォークしない。
 
 ## 起動（Windows）
 
-### 自動セットアップ
+1. **初回のみ**、リポジトリルートの `setup.bat` をダブルクリックします。`winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、完了後にWebUIを起動します。
+2. **2回目以降**は `start-webui.bat` をダブルクリックします。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
+3. トレイ常駐後、`http://127.0.0.1:3000` を開きます。
 
-`setup.bat` で Node.js 20 LTS / OpenCode のインストールから起動までを自動実行できます。
+`setup.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `setup.bat` を再実行してください。
 
-### 手動起動
+セットアップの終了コード:
 
-1. Node.js 20 LTS 以上が PATH に必要
-2. PATH に `opencode`
-3. `start-webui.bat`（prod: `.next` 欠落やソースより古い場合は起動・トレイ/WebUI再起動時に自動 build）
-4. トレイ常駐後、`http://127.0.0.1:3000` が開く
+| コード | 意味 | 復旧方法 |
+|---:|---|---|
+| 1 | `winget` がない | 「アプリインストーラー」を導入する |
+| 2 | Node.js導入失敗 | [nodejs.org](https://nodejs.org/) から手動導入する |
+| 3 | Node.jsのPATHが未反映 | 再ログインまたはPC再起動後に再実行する |
+| 4 | OpenCode導入失敗またはPATH未反映 | [OpenCode Docs](https://opencode.ai/docs) を参照し、必要なら再ログイン後に再実行する |
+| 5 | webの依存関係導入失敗 | ネットワークと `web/package-lock.json` を確認する |
+| 6 | web build失敗 | 表示されたビルドエラーとNode.jsバージョンを確認する |
+| 7 | build後に`BUILD_ID`がない | ビルドログを確認して再実行する |
+| 8 | hostの依存関係導入失敗 | ネットワークと `host/package-lock.json` を確認する |
 
 トラブル時:
 
@@ -26,20 +32,6 @@ node src\index.js
 ```
 
 ログに `WebUI is ready` / `OpenCode is ready` が出れば OK。
-
-### setup.bat 終了コード
-
-| コード | 意味 |
-|--------|------|
-| 0 | 成功 |
-| 1 | winget が見つからない |
-| 2 | Node.js インストール失敗 |
-| 3 | Node.js がこのコマンドプロンプトで利用不可 |
-| 4 | OpenCode インストール失敗 |
-| 5 | web 依存関係インストール失敗 |
-| 6 | web ビルド失敗 |
-| 7 | BUILD_ID が見つからない |
-| 8 | host 依存関係インストール失敗 |
 
 ## 正本
 
