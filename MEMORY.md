@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R40（発見のみ・未修正）
+
+### ループ
+- tick #8（PID 23500）。R1–R39 重複除外。PTY／share／host restart 周辺
+
+### 確度の高い新規バグ
+
+1. **P1 / PTY 作成・更新・削除・connect-token が write ブロック漏れ** — `isBlockedOpencodeWrite` × schema `/pty`（POST）・`/pty/{ptyID}`（PUT/DELETE）・`/pty/{ptyID}/connect-token`（POST）
+   - 症状: WebUI は PTY UI 未実装（一覧のみ）なのに BFF 経由でシェル PTY を作成・操作・WS トークン取得できる。LAN 公開時はリモートシェル相当
+   - 根拠: denylist 未登録。`PtyPanel` は GET 相当のみ想定
+   - 再現: `POST /api/opencode/pty` → 403 にならず upstream
+
+2. **P2 / `POST|DELETE /session/{id}/share` が write ブロック漏れ** — schema `session.share` / `session.unshare`
+   - 症状: セッション共有リンクの作成／解除がプロキシ経由で可能。UI 未使用でも会話が外部共有されうる
+   - 再現: `POST /api/opencode/session/<id>/share` → 403 にならない
+
+### 据え置き
+- `session/shell` は製品機能のため今回は非掲載。`/api/host/restart` の LAN 到達は既知の認証方針枠
+- R1–R39 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R39（発見のみ・未修正）
 
 ### ループ
@@ -140,7 +162,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R39 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R40 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -149,6 +171,7 @@
 | ID | 内容 |
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
+| R40#1 | PTY create/update/delete/connect-token の write ブロック漏れ（リモートシェル相当） |
 | R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
 | R39#1 | `POST /vcs/apply` の write ブロック漏れ（任意パッチ適用） |
 | R36#1 | OpenCode 異常 exit 後に自動再起動なし（エンジン全滅・手動／ホスト再起動まで） |
@@ -201,6 +224,7 @@
 | R37#1 | `into=current` コンフリクト後に abort なし・DiffPane 未再読込 |
 | R38#2 | `POST /global/upgrade` の write ブロック漏れ |
 | R39#2–4 | `sync/steal`・`workspace/warp`・`project/git/init` の write ブロック漏れ |
+| R40#2 | `session/{id}/share` POST/DELETE の write ブロック漏れ |
 
 ### 低（後でよい）
 
