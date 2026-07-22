@@ -2970,3 +2970,26 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 - host(3000, `next start`) と dev(3001, `next dev`) が同一 `.next` を共有し、`npm run build` 実行で dev server が 500 / e2e webServer 起動がタイムアウトする競合が発生。エージェント側で本番 build を走らせると常駐 dev を巻き込んで壊す。実ブラウザ検証は既存 host に対して行うか、競合しないことを確認してから
 - vitest 単体実行でも本セッションで JS heap OOM が発生（空きメモリは潤沢）。原因未特定。className のみの変更でロジックテスト影響はなく tsc/eslint で担保
 - 横スクロール領域はスクロールバー非表示だと発見性ゼロ。重要操作を隠れ領域に入れない
+
+---
+
+## 2026-07-21 繝倥ャ繝繝ｼ繝・・繝ｫ繝舌・蜴ｳ驕ｸ繝ｻkebab繝｡繝九Η繝ｼ髮・ｴ・ｼ医さ繝溘ャ繝・9e7a4eb・・
+### 閭梧勹
+蜑榊屓(52894d6)縺ｯ max-w 70vw 邱ｩ蜥後〒縺励・縺・□縺後・2繝懊ち繝ｳ讓ｪ荳ｦ縺ｳ+讓ｪ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ(繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ繝舌・髱櫁｡ｨ遉ｺ=逋ｺ隕区ｧ繧ｼ繝ｭ)縺ｯ譬ｹ譛ｬ隗｣豎ｺ縺ｧ縺ｪ縺・・隕∵悍: 蜿ｳ荳翫・繝｡繝九Η繝ｼ鬆・岼繧貞宍驕ｸ縺励後％縺薙〒縺励°謫堺ｽ懊〒縺阪↑縺・ｂ縺ｮ縲阪ｒ蜆ｪ蜈医∵ｮ九ｊ縺ｯ繝峨Ο繝・・繝繧ｦ繝ｳ縺ｧ縺ｾ縺ｨ繧√ｋ縲・
+### 繧・▲縺溘％縺ｨ・・eb/src/components/task/・・1. explore 縺ｧ12繝懊ち繝ｳ縺ｮ荳諢乗ｧ繝槭ヨ繝ｪ繧ｯ繧ｹ隱ｿ譟ｻ 竊・designer 縺ｧZone A/B/C莉墓ｧ俶嶌菴懈・
+2. HeaderKebabMenu.tsx 譁ｰ隕・ 閾ｪ菴懊ラ繝ｭ繝・・繝繧ｦ繝ｳ(role=menu, ArrowUp/Down, Enter/Space, Escape, outside click, Tab縺ｯtrap縺帙★螟悶∈豬√☆, aria-disabled, aria-current)
+3. SessionActions.tsx: SessionActions繧ｳ繝ｳ繝昴・繝阪Φ繝亥炎髯､ 竊・useSessionActions繝輔ャ繧ｯ(busy3謫堺ｽ懷・譛・ + CompactButton + MessageRevertButton 縺ｫ蛻・牡
+4. TaskView.tsx: Zone A(蟶ｸ譎・蛛懈ｭ｢/繧ｳ繝斐・/蜀榊酔譛・Switcher/compact) / Zone B(蟷・〒蜍慕噪:繝輔ぃ繧､繝ｫ繝・Μ繝ｼ繝ｻ繧ｰ繝ｩ繝・lg莉･荳・ 繧ｿ繝ｼ繝溘リ繝ｫ=md莉･荳・ Diff=lg莉･荳・ / Zone C(kebab: undo/redo + 髯肴ｼ繝代ロ繝ｫ蛻・崛 + 蜑企勁) 縺ｫ蜀咲ｷｨ謌・5. isMd(768px) 繧・isLg(1024px)縺ｨ蜷後§matchMedia繝代ち繝ｼ繝ｳ縺ｧ霑ｽ蜉
+6. headerKebabGroups 繧・useMemo 縺ｧ螳夂ｾｩ
+
+### 逋ｺ隕九＠縺滄㍾螟ｧ繝舌げ・郁ｦ∽ｿｮ豁｣謇ｱ縺・ｼ・Zone B 縺ｮ4繝懊ち繝ｳ縺ｯCSS `hidden lg:inline-flex`/`hidden md:inline-flex` 縺ｧ髱櫁｡ｨ遉ｺ蛻ｶ蠕｡縺励※縺・◆縺後「i.tsx 縺ｮButton base class 縺ｫ `inline-flex` 縺悟ｸｸ譎ゆｻ倅ｸ弱＆繧後ｋ縺溘ａ display 繧ｫ繧ｹ繧ｱ繝ｼ繝峨〒 `hidden` 縺瑚ｲ縺代√ヶ繝ｬ繝ｼ繧ｯ繝昴う繝ｳ繝井ｻ･荳九〒繧ょｸｸ譎り｡ｨ遉ｺ縺輔ｌ縺ｦ縺・◆(繝｢繝舌う繝ｫ/繧ｿ繝悶Ξ繝・ヨ螳溽判髱｢縺ｧ遒ｺ隱・縲・S 譚｡莉ｶ繝ｬ繝ｳ繝繝ｪ繝ｳ繧ｰ({isLg && ...}/{isMd && ...})縺ｫ鄂ｮ縺肴鋤縺医※菫ｮ豁｣縲Ｌebab蜀・・岼(!isLg/!isMd)縺ｨ螳悟・莠定｡･縲・
+### 繧ｳ繝ｼ繝峨Ξ繝薙Η繝ｼ蠕後・霑ｽ蜉菫ｮ豁｣・・-code-reviewer 謖・遭・・1. HeaderKebabMenu 縺ｮ Tab 蜃ｦ逅・ preventDefault()+close(true) 縺ｯ繝輔か繝ｼ繧ｫ繧ｹ繝医Λ繝・・蛹悶＠縺ｦ縺・◆ 竊・close(false) 縺ｮ縺ｿ(preventDefault縺ｪ縺・縺ｧ螟悶∈閾ｪ辟ｶ遘ｻ蜍・2. undo/redo: sessionId譛ｪ蟄伜惠譎ゅ↓鬆・岼縺斐→髱櫁｡ｨ遉ｺ縺縺｣縺・竊・蟶ｸ譎り｡ｨ遉ｺ縺・disabled(!hasSession||...) 縺ｧ蛻ｶ蠕｡
+3. 繝｢繝舌う繝ｫ迢ｭ蟷・ｮ牙・遲・ 蜿ｳ繝・・繝ｫ繝舌・縺ｫ max-w-[60vw] overflow-x-auto(繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ繝舌・髱櫁｡ｨ遉ｺ) 繧呈ｮ狗ｽｮ(sm莉･荳翫・ max-w-none)
+
+### 蛻､譁ｭ逅・罰
+- 繝代せ繧ｳ繝斐・/蜀榊酔譛・Switcher/compact 縺ｯ莉悶↓謫堺ｽ懈焔谿ｵ縺ｪ縺・蟶ｸ譎り｡ｨ遉ｺ蜆ｪ蜈・- undo縺ｯMessageRevertButton縲∝炎髯､縺ｯSidebar縲√ヱ繝阪Ν蛻・崛(lg譛ｪ貅)縺ｯ繝｢繝舌う繝ｫ繧ｿ繝悶→驥崎､・kebab縺ｸ
+- compact縺ｯZone A縺ｮ縺ｿ(kebab蜀・→縺ｮ驥崎､・屓驕ｿ)
+- CSS hidden邉ｻ縺ｯButton base inline-flex縺ｫ雋縺代ｋ=JS譚｡莉ｶ繝ｬ繝ｳ繝繝ｪ繝ｳ繧ｰ縺檎｢ｺ螳・
+### 謨呵ｨ薙・豕ｨ諢・- **閾ｪ菴廝utton縺ｮbase縺ｫdisplay邉ｻ縺悟ｸｸ譎ゆｻ倅ｸ弱＆繧後ｋ蝣ｴ蜷医ゝailwind縺ｮ hidden md/lg:inline-flex 縺ｯ蜉ｹ縺九↑縺・*縲Ｅisplay繝励Ο繝代ユ繧｣縺ｮ繧ｫ繧ｹ繧ｱ繝ｼ繝蛾・ｺ上〒雋縺代ｋ縲ゅΞ繧ｹ繝昴Φ繧ｷ繝夜撼陦ｨ遉ｺ縺ｯJS譚｡莉ｶ繝ｬ繝ｳ繝繝ｪ繝ｳ繧ｰ縺九。utton蛛ｴ縺ｧdisplay蛻ｶ蠕｡繧定ｨｱ螳ｹ縺吶ｋclassName貂｡縺励〒陦後≧
+- playwright-cli 繧・bash 縺ｧ襍ｷ蜍輔☆繧九→繝上Φ繧ｰ/繧ｿ繧､繝繧｢繧ｦ繝医☆繧九％縺ｨ縺後≠繧・譛ｬ繧ｻ繝・す繝ｧ繝ｳ縺ｧ2蝗・縲ゅΘ繝ｼ繧ｶ繝ｼ謖・､ｺ縺ｫ繧医ｊplaywright菴ｿ逕ｨ遖∵ｭ｢縺ｫ蛻・ｊ譖ｿ縺医ょｮ溽判髱｢讀懆ｨｼ縺ｯ繝ｦ繝ｼ繧ｶ繝ｼ蛛ｴ縺ｫ蟋斐・繧九°蛻･謇区ｮｵ
+- vitest TaskView.test.tsx 縺ｯ螟画峩蜑榊ｾ悟撫繧上★JS heap OOM縺ｧ螳溯｡御ｸ榊庄(迺ｰ蠅・撫鬘・縲Ｕsc/eslint縺ｧ諡・ｿ・- z-30 縺ｯ SlashSuggestMenu(z-20)荳翫ヾidebar mobile(z-40)/CommandPalette(z-[60])/Modal(z-[70+])荳九〒螯･蠖
