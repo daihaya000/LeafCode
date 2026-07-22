@@ -1,5 +1,50 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R1（発見のみ・未修正）
+
+### ループ
+- `/loop 2m` 開始（sentinel: `AGENT_LOOP_TICK_bugfind`, PID 26536）
+- 目的: コミット履歴・差分レビューでバグを発見・記録。修正は別エージェント向け
+
+### 確認範囲
+- 直近コミット: `72344bb`〜`52894d6`（再起動UI / iPhone拡大 / kebab / セッション操作時刻 / 巻き戻し表示）
+- `SettingsView.tsx` restart、`TaskView.tsx` touchActivity / composer、`globals.css`、`web/e2e/task.spec.ts`、`SessionActions.tsx`、`activity/route.ts`
+
+### 確度の高いバグ
+
+1. **P1 / E2E文字化け** — `web/e2e/task.spec.ts:706-709`
+   - 症状: `follow-up composer omits variant when default is selected` がプレースホルダ／送信ボタン名が文字化け（`繝輔か…` / `騾∽ｿ｡`）のためロケータ不一致で失敗する
+   - 根拠: 同ファイルの他テスト（687–690行）は正しい日本語。導入コミット `52894d6`
+   - 再現: Playwright で当該テストを実行
+
+2. **P1 / 巻き戻しE2Eが実UIと乖離** — `web/e2e/task.spec.ts:714-746`
+   - 症状: `REVERT_TITLE = "直前の入力を下の欄に戻して巻き戻す"` を探すが、本番コードにこの `title` は存在しない（grep ヒットはテストのみ）
+   - 根拠: ヘッダー undo は `9e7a4eb` で kebab（「巻き戻す (undo)」）へ移動。メッセージ横ボタンは `title="このコメントを入力欄に戻して巻き戻す"`
+   - 再現: `revert button stays visible in header on mobile|tablet|desktop` が要素未検出で失敗する想定
+
+3. **P1 / iPhone自動拡大対策が主 composer で無効** — `globals.css:102-106` vs `TaskView.tsx:2088`
+   - 症状: `input,textarea,select { font-size:16px }` を入れたが、フォローアップ textarea は `text-[0.925rem]`（≈14.8px）がクラス優先で上書き → iOS でフォーカス時ズームが再発しうる
+   - 根拠: クラス選択子が要素選択子より強い。Home の新規タスク textarea は `text-base`（16px）で問題なし。`QuestionCard`/`CommandPalette`/`DiffPane`/`SettingsView` 等の `text-sm`/`text-[11px]` 入力も同様
+   - 再現: iPhone Safari でタスク画面のフォローアップ欄にフォーカス
+
+4. **P1 / activity 更新がプロンプト送信を最大30秒ブロック** — `TaskView.tsx` `touchActivity` + `send` / `approvePlan`
+   - 症状: コメントは「must not block the prompt」だが、`await touchActivity()` を `sendPrompt` 前に実行。`sendJson` 既定タイムアウト 30s（`DEFAULT_FETCH_TIMEOUT_MS`）まで送信が遅延しうる
+   - 根拠: エラーは swallow するが成功遅延・ハングは await される。導入 `1637299`
+   - 再現: `/api/tasks/:id/activity` を遅延／ハングさせ、送信レイテンシを計測
+
+### 要調査（確度低〜中）
+
+- 再起動 UI: WebUI 再起動中にページが死ぬと `restarting` 状態表示が残らない／poll 完了前に JS が落ちる可能性（`a1d587c` は表示追加のみ）
+- kebab 移動後、モバイルで「巻き戻し」がヘッダー直置きではなくなり、discoverability 低下（仕様意図なら非バグ）
+- `TaskView.test.tsx` のメモリ制限で実行不可（MEMORY 既存・pre-existing）
+
+### 修正方針メモ（実装は別エージェント）
+- E2E: 706–709 を正しい日本語に戻す。巻き戻し可視性テストを kebab / メッセージ横ボタンの現行セレクタに合わせて更新
+- iOS zoom: `!text-base` または `@media` で 16px 強制、もしくは composer を `text-base` に変更し utility 上書きを排除
+- touchActivity: fire-and-forget（void）にするか、短い timeoutMs（例 2s）＋送信と並列化
+
+---
+
 ## 2026-07-21 画像対応モデルへの添付が常に非対応エラーになる不具合を修正
 
 ### 症状
