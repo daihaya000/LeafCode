@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R34（発見のみ・未修正）／修正優先トリアージ
+
+### ループ
+- tick #36–37。新規の薄い面は収束気味。修正エージェント向けに R1–R33 の優先順を整理（コード変更なし）
+
+### 修正優先（推奨順）
+
+1. **P1 セキュリティ／書き込み面**: R27 experimental worktree/workspace、R26 move-session、R7 MCP DELETE、R32 console/switch — `isBlockedOpencodeWrite` 一括強化
+2. **P1 デスクトップ UX**: R16/R14 `initialCollapsed={!isMd}`（isMd 初期 false 合成）
+3. **P1 セットアップ**: R31 `setup.bat` が start-webui 常駐で完了しない（＋R32 成功判定）
+4. **P1 データ／権限**: R15 temporary_copy allowlist 復元、R19 purgeGone allowlist、R30 roots 削除 API
+5. **P1 Attention／送信**: R13 busy 固着、R7/R5 部分同期、R11 timedFetch、R17 abort resync
+6. **P2 UI／ナビ**: R20 FileTree 上へ、R18 children===1、R21 GraphPanel stale、R24 agent+intelligence、R29 favorite→last_opened、R33 branches defaultTarget
+
+### 本 tick の新規コードバグ
+- 確度の高い新規はなし（トリアージのみ）
+
+### 据え置き
+- R1–R33 全件未修正。ループは継続中
+
+---
+
 ## 2026-07-23 バグ発見ループ R33（発見のみ・未修正）
 
 ### ループ
