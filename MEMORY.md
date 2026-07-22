@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R21（発見のみ・未修正）
+
+### ループ
+- tick #15–16 相当。GraphPanel／PtyPanel／files/content／AgentsSettings／PlanDocumentCard を確認。R1–R20 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / GraphPanel が directory 切替後に古い `/api/git/log` 結果で上書きしうる** — `GraphPanel.tsx` `load`（160–201）× directory effect（213–220）
+   - 症状: タスク／ワークスペースを素早く切り替えると、先に完了した遅いレスポンスが新しい directory のグラフを旧リポジトリのコミットで汚す（または逆に空→一瞬旧データ）
+   - 根拠: `getJson` 後の `setPayload` にシーケンス／Abort／directory 一致チェックなし。`load` は `directory` クロージャ依存だが進行中の旧呼び出しはキャンセルされない。PtyPanel（`PtyPanel.tsx:12-37`）も同型
+   - 再現: 大きいリポジトリのグラフ表示中に別タスクへ連続遷移 → ログが別 repo のものになることがある
+
+### 確認して新規なし / 低優先
+- `/api/files/content` は allowlist + `.md` + realpath ガード済み
+- AgentsSettings: スキーマ上 `/agent` は裸配列（envelope 未使用想定）
+- PlanDocumentCard の `initialCollapsed` 一回限りは R14/R16 済み
+
+### 据え置き
+- R1–R20 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R20（発見のみ・未修正）
 
 ### ループ
