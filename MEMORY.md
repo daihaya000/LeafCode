@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R48（発見のみ・未修正）
+
+### ループ
+- tick #16（PID 23500）。R1–R47 重複除外。config マスク／proxy
+
+### 確度の高い新規バグ
+
+1. **P1 / `GET /global/config` が `maskSecrets` されない** — `api/opencode/[...path]/route.ts:186-197`
+   - 症状: インスタンス `/config` の GET だけ秘密マスクするのに、グローバル設定 GET はそのまま upstream JSON を返す。LAN から `GET /api/opencode/global/config` で API キー等（key/token/secret 系フィールド）が平文で読める可能性
+   - 根拠: 条件が `pathname === "/config"` の完全一致のみ。`/global/config` は PATCH ブロック済みだが GET マスク対象外。UI は主に `/config` を使うが BFF は両方プロキシする
+   - 再現: OpenCode に秘密を含む global config がある状態で `GET /api/opencode/global/config` → レスポンスにマスクされていない秘密フィールド
+
+### 据え置き
+- R1–R47 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R47（発見のみ・未修正）
 
 ### ループ
@@ -305,7 +322,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R47 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R48 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -315,6 +332,7 @@
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
 | R43#1 | `POST /api/projects`・`/api/roots` が任意パスを無検証で allowlist 拡張 |
+| R48#1 | `GET /global/config` が maskSecrets されず秘密が平文で返りうる |
 | R46#1 | タイトル再生成が `tools: {}` でツール無効化になっていない（実行しうる） |
 | R40#1 | PTY create/update/delete/connect-token の write ブロック漏れ（リモートシェル相当） |
 | R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
@@ -375,6 +393,7 @@
 | R44#1 | temporary_copy が外向き symlink を保持し隔離を破れる |
 | R45#1 | `invalidateDirStat` 未使用でコミット後も差分統計が最大15s古い |
 | R46#2 | temporary_copy の SKIP に `.opencode-webui` 欠落 |
+| R47#1 | `runGit`/`runGh` にタイムアウトなし（BFF 無期限ハング） |
 
 ### 低（後でよい）
 
