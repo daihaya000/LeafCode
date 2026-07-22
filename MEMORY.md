@@ -1,5 +1,32 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R9（発見のみ・未修正）
+
+### ループ
+- [R5未踏領域バグ調査](0a97490f-c9c1-42e6-bbc1-2457cafafbab) を統合（R1–R8 非重複分）
+
+### 確度の高い新規バグ
+
+1. **P2 / SSE 再接続中に stale idle ガードが無効** — `useSessionStream.ts` `resolveResyncStatus`（約87–98）
+   - 症状: busy 中に `reconnecting`/`down` だと、遅延 REST の `idle` で composer が解錠し二重送信しうる
+   - 根拠: `staleIdle` は `connection === "live"` のときだけ抑止。`preferRest` は error 再接続の `onopen` 後のみ。visibility / 800ms resync がその窓に入る
+
+2. **P2 / 手動為替の clamp が Settings UI に反映されない** — `SettingsView.tsx` `applyCostPrefs`/`commitRate` + `currency.ts` `writeCostDisplayPrefs`
+   - 症状: 0・9999 等を blur すると入力欄は未 clamp、localStorage／他画面は 1–1000 に丸め → プレビューと実表示がズレる
+   - 根拠: UI state は生値のまま、`write` 側のみ `clampUsdJpyRate`。Settings は `COST_DISPLAY_EVENT` 未購読
+
+3. **P2 / フォルダ追加ダイアログが入力中パスを上書き** — `AddProjectButton.tsx` `load`（約102）+ open 時 `load(null)`
+   - 症状: 開いた直後やナビ中に手動パスを打つと、非同期 `load` 完了で `setManualPath(data.path)` され入力が消える／別パスで追加される
+   - 根拠: 進行中リクエストのキャンセルや「ユーザー編集中は触らない」ガードがない
+
+### 通過（エージェント報告）
+- Home/Task の `capabilities.input.image` 形は 2026-07-21 修正の再発なし（R6 fail-open は別件）
+
+### 据え置き
+- R1–R8 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R8（発見のみ・未修正）
 
 ### ループ
