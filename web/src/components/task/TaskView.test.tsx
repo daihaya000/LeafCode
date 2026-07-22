@@ -130,6 +130,16 @@ async function flushTaskLoad() {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("TaskView", () => {
   beforeEach(() => {
     taskStatus = "working";
@@ -321,9 +331,12 @@ describe("TaskView", () => {
     streamMock.sendCommand.mockImplementation(async () => {
       events.push("send");
     });
-    sendJson.mockImplementation(async () => {
-      events.push("activity");
-    });
+    const activity = deferred<void>();
+    sendJson.mockImplementation(() =>
+      activity.promise.then(() => {
+        events.push("activity");
+      }),
+    );
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
     notifyTasksChanged.mockClear();
@@ -334,6 +347,13 @@ describe("TaskView", () => {
       target: { value: text },
     });
     fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(streamMock[method]).not.toHaveBeenCalled();
+
+    activity.resolve(undefined);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -374,7 +394,12 @@ describe("TaskView", () => {
     const streamMock = useSessionStream();
     const sendPrompt = streamMock.sendPrompt;
     const events: string[] = [];
-    sendJson.mockImplementation(async () => events.push("activity"));
+    const activity = deferred<void>();
+    sendJson.mockImplementation(() =>
+      activity.promise.then(() => {
+        events.push("activity");
+      }),
+    );
     sendPrompt.mockImplementation(async () => events.push("send"));
     useSessionStream.mockReturnValue({
       ...streamMock,
@@ -394,6 +419,12 @@ describe("TaskView", () => {
     notifyTasksChanged.mockClear();
 
     fireEvent.click(screen.getByRole("button", { name: "計画を承認" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sendPrompt).not.toHaveBeenCalled();
+
+    activity.resolve(undefined);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
