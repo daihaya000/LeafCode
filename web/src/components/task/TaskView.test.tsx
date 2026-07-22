@@ -59,8 +59,15 @@ vi.mock("./PermissionCard", () => ({ PermissionCard: () => null }));
 vi.mock("./PtyPanel", () => ({ PtyPanel: () => null }));
 vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
 vi.mock("./SessionActions", () => ({
-  SessionActions: () => null,
+  CompactButton: () => null,
   MessageRevertButton: () => null,
+  useSessionActions: () => ({
+    busy: null,
+    error: null,
+    compact: () => {},
+    revert: () => {},
+    unrevert: () => {},
+  }),
 }));
 vi.mock("./SessionSwitcher", () => ({ SessionSwitcher: () => null }));
 

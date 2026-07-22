@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { RotateCcw, RotateCw, Shrink } from "lucide-react";
+import { useCallback, useState } from "react";
+import { RotateCcw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ocJson } from "@/lib/client";
 import type { MessageWithParts } from "@/lib/types";
@@ -58,7 +58,9 @@ export async function revertUserMessageToComposer(
   return text;
 }
 
-export function SessionActions({
+export type SessionActionKey = "compact" | "revert" | "unrevert";
+
+export function useSessionActions({
   directory,
   sessionId,
   lastUserMessageId,
@@ -73,106 +75,89 @@ export function SessionActions({
   onRestoreText?: (text: string) => void;
   onDone?: () => void;
 }) {
-  const [busy, setBusy] = useState<"compact" | "revert" | "unrevert" | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<SessionActionKey | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async (
-    key: "compact" | "revert" | "unrevert",
-    fn: () => Promise<"ok" | "cancelled">,
-  ) => {
-    setBusy(key);
-    setError(null);
-    try {
-      const result = await fn();
-      if (result === "ok") onDone?.();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "失敗しました";
-      setError(msg);
-      window.alert(`巻き戻し失敗: ${msg}`);
-    } finally {
-      setBusy(null);
-    }
-  };
+  const run = useCallback(
+    async (key: SessionActionKey, fn: () => Promise<"ok" | "cancelled">) => {
+      setBusy(key);
+      setError(null);
+      try {
+        const result = await fn();
+        if (result === "ok") onDone?.();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "失敗しました";
+        setError(msg);
+        window.alert(`巻き戻し失敗: ${msg}`);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [onDone],
+  );
 
+  const compact = useCallback(() => {
+    void run("compact", async () => {
+      await ocJson(`/api/session/${sessionId}/compact`, directory, {
+        method: "POST",
+        body: {},
+      });
+      return "ok" as const;
+    });
+  }, [run, directory, sessionId]);
+
+  const revert = useCallback(() => {
+    void run("revert", async () => {
+      if (!lastUserMessageId) throw new Error("messageID がありません");
+      if (
+        !window.confirm(
+          "直前の入力を下の入力欄に戻し、その返答以降を巻き戻しますか？",
+        )
+      ) {
+        return "cancelled" as const;
+      }
+      const text = await revertUserMessageToComposer(
+        directory,
+        sessionId,
+        lastUserMessageId,
+        messages,
+      );
+      onRestoreText?.(text);
+      return "ok" as const;
+    });
+  }, [run, directory, sessionId, lastUserMessageId, messages, onRestoreText]);
+
+  const unrevert = useCallback(() => {
+    void run("unrevert", async () => {
+      await unrevertSession(directory, sessionId);
+      return "ok" as const;
+    });
+  }, [run, directory, sessionId]);
+
+  return { busy, error, compact, revert, unrevert };
+}
+
+/** Compact (context compression) icon button for the header Zone A. */
+export function CompactButton({
+  busy,
+  disabled,
+  onClick,
+}: {
+  busy?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="flex items-center gap-0.5">
-      <Button
-        variant="ghost"
-        size="icon"
-        title="コンテキスト圧縮 (compact)"
-        busy={busy === "compact"}
-        disabled={busy !== null}
-        onClick={() =>
-          void run("compact", async () => {
-            await ocJson(`/api/session/${sessionId}/compact`, directory, {
-              method: "POST",
-              body: {},
-            });
-            return "ok";
-          })
-        }
-      >
-        <Shrink className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        title={
-          lastUserMessageId
-            ? "直前の入力を下の欄に戻して巻き戻す"
-            : "巻き戻すターンがありません"
-        }
-        busy={busy === "revert"}
-        disabled={busy !== null || !lastUserMessageId}
-        onClick={() =>
-          void run("revert", async () => {
-            if (!lastUserMessageId) throw new Error("messageID がありません");
-            if (
-              !window.confirm(
-                "直前の入力を下の入力欄に戻し、その返答以降を巻き戻しますか？",
-              )
-            ) {
-              return "cancelled";
-            }
-            const text = await revertUserMessageToComposer(
-              directory,
-              sessionId,
-              lastUserMessageId,
-              messages,
-            );
-            onRestoreText?.(text);
-            return "ok";
-          })
-        }
-      >
-        <RotateCcw className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        title="巻き戻しを取り消す (unrevert)"
-        busy={busy === "unrevert"}
-        disabled={busy !== null}
-        onClick={() =>
-          void run("unrevert", async () => {
-            await unrevertSession(directory, sessionId);
-            return "ok";
-          })
-        }
-      >
-        <RotateCw className="h-4 w-4" />
-      </Button>
-      {error && (
-        <span
-          className="max-w-[8rem] truncate text-[10px] text-danger"
-          title={error}
-        >
-          {error}
-        </span>
-      )}
-    </div>
+    <Button
+      variant="ghost"
+      size="icon"
+      title="コンテキスト圧縮 (compact)"
+      busy={busy}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Shrink className="h-4 w-4" />
+    </Button>
   );
 }
 

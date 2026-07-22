@@ -25,6 +25,8 @@ import {
   Paperclip,
   PanelRight,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
   Square,
   Terminal,
   Trash2,
@@ -103,8 +105,17 @@ import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
 import { PtyPanel } from "./PtyPanel";
 import { QuestionCard } from "./QuestionCard";
-import { SessionActions, MessageRevertButton } from "./SessionActions";
+import {
+  CompactButton,
+  MessageRevertButton,
+  useSessionActions,
+} from "./SessionActions";
 import { SessionSwitcher } from "./SessionSwitcher";
+import {
+  HeaderKebabMenu,
+  type KebabGroup,
+  type KebabItem,
+} from "./HeaderKebabMenu";
 
 type ProviderResponse = {
   all: {
@@ -308,6 +319,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);
   const [isLg, setIsLg] = useState(false);
+  const [isMd, setIsMd] = useState(false);
   const sideDragRef = useRef<{ x: number; w: number } | null>(null);
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
@@ -376,15 +388,19 @@ export function TaskView({ taskId }: { taskId: string }) {
     setShowDiff(readShowDiff());
     setSidePanel(readSidePanel());
     const mq = window.matchMedia("(min-width: 1024px)");
+    const mqMd = window.matchMedia("(min-width: 768px)");
     const apply = () => {
       setIsLg(mq.matches);
+      setIsMd(mqMd.matches);
       setSideWidth((w) => clampSideWidth(w));
     };
     apply();
     mq.addEventListener("change", apply);
+    mqMd.addEventListener("change", apply);
     window.addEventListener("resize", apply);
     return () => {
       mq.removeEventListener("change", apply);
+      mqMd.removeEventListener("change", apply);
       window.removeEventListener("resize", apply);
     };
   }, []);
@@ -1202,6 +1218,155 @@ export function TaskView({ taskId }: { taskId: string }) {
     });
   }, []);
 
+  // Session-level actions (compact / revert / unrevert) shared between the
+  // Zone A compact button and the Zone C kebab menu. The hook keeps a single
+  // busy flag so the three operations disable each other while one is running,
+  // matching the previous SessionActions behavior.
+  const sessionActions = useSessionActions(
+    task?.sessionId
+      ? {
+          directory: task.directory,
+          sessionId: task.sessionId,
+          lastUserMessageId: lastRevertMessageId,
+          messages: stream.visibleMessages,
+          onRestoreText: restoreToComposer,
+          onDone: () => {
+            void stream.resync();
+            setDiffKey((k) => k + 1);
+          },
+        }
+      : {
+          directory: task?.directory ?? "",
+          sessionId: "",
+          lastUserMessageId: null,
+          messages: stream.visibleMessages,
+          onRestoreText: restoreToComposer,
+          onDone: () => {
+            void stream.resync();
+            setDiffKey((k) => k + 1);
+          },
+        },
+  );
+
+  // Zone C data: kebab groups. Session ops are always present (disabled when
+  // there is no session / nothing to revert). Panel toggles are only listed
+  // here when their Zone B button is hidden at the current breakpoint, so a
+  // control never appears in both places at once. Delete is always here
+  // (Sidebar has its own delete entry point; this is the header's only path).
+  const headerKebabGroups = useMemo<KebabGroup[]>(() => {
+    const hasSession = !!task?.sessionId;
+    const sessionItems: KebabItem[] = [
+      {
+        id: "revert",
+        label: "巻き戻す (undo)",
+        icon: <RotateCcw className="h-4 w-4" />,
+        onSelect: sessionActions.revert,
+        disabled: !hasSession || !lastRevertMessageId || sessionActions.busy !== null,
+        busy: sessionActions.busy === "revert",
+      },
+      {
+        id: "unrevert",
+        label: "巻き戻しを取消す (redo)",
+        icon: <RotateCw className="h-4 w-4" />,
+        onSelect: sessionActions.unrevert,
+        disabled: !hasSession || sessionActions.busy !== null,
+        busy: sessionActions.busy === "unrevert",
+      },
+    ];
+
+    const panelItems: KebabItem[] = [];
+    if (!isLg) {
+      panelItems.push({
+        id: "panel-files",
+        label: "ファイルツリー",
+        icon: <FolderTree className="h-4 w-4" />,
+        active: showDiff && sidePanel === "files",
+        onSelect: () => {
+          changeShowDiff(true);
+          changeTab("diff");
+          changeSidePanel("files");
+        },
+      });
+      panelItems.push({
+        id: "panel-graph",
+        label: "グラフ",
+        icon: <GitGraph className="h-4 w-4" />,
+        active: showDiff && sidePanel === "graph",
+        onSelect: () => {
+          changeShowDiff(true);
+          changeTab("diff");
+          changeSidePanel("graph");
+        },
+      });
+    }
+    if (!isMd) {
+      panelItems.push({
+        id: "panel-terminal",
+        label: "ターミナル",
+        icon: <Terminal className="h-4 w-4" />,
+        active: showDiff && sidePanel === "pty",
+        onSelect: () => {
+          changeShowDiff(true);
+          changeTab("diff");
+          changeSidePanel("pty");
+        },
+      });
+    }
+    if (!isLg) {
+      panelItems.push({
+        id: "panel-diff",
+        label: "Diff パネル",
+        icon: <PanelRight className="h-4 w-4" />,
+        active: showDiff && sidePanel === "diff",
+        onSelect: () => {
+          if (sidePanel === "diff" && showDiff && tab === "diff") {
+            changeShowDiff(false);
+            changeTab("chat");
+          } else {
+            changeSidePanel("diff");
+            changeShowDiff(true);
+            changeTab("diff");
+          }
+        },
+      });
+    }
+
+    const dangerItems: KebabItem[] = [
+      {
+        id: "delete",
+        label: "タスクを削除",
+        icon: <Trash2 className="h-4 w-4" />,
+        onSelect: () => void removeTask(),
+        danger: true,
+      },
+    ];
+
+    const groups: KebabGroup[] = [];
+    if (sessionItems.length) {
+      groups.push({ id: "session", label: "セッション操作", items: sessionItems });
+    }
+    if (panelItems.length) {
+      groups.push({ id: "panels", label: "パネル切替", items: panelItems });
+    }
+    groups.push({ id: "danger", label: "危険操作", items: dangerItems });
+    return groups;
+  }, [
+    task?.sessionId,
+    sessionActions.busy,
+    sessionActions.revert,
+    sessionActions.unrevert,
+    lastRevertMessageId,
+    isLg,
+    isMd,
+    showDiff,
+    sidePanel,
+    tab,
+    changeShowDiff,
+    changeTab,
+    changeSidePanel,
+    removeTask,
+  ]);
+
   const openFileInDiff = useCallback(
     (path: string) => {
       const root = task?.directory ?? "";
@@ -1386,7 +1551,18 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
-        <div className="flex max-w-[70vw] shrink-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none sm:gap-1 [&::-webkit-scrollbar]:hidden">
+        {/* Right toolbar (Zone A primary ops / Zone B panel toggles / Zone C
+            kebab). shrink-0 keeps the controls from being starved by the
+            title on the left, but on very narrow viewports Zone A alone
+            (copy + resync + switcher + compact) can exceed the available
+            width, so allow horizontal scroll on small screens as a safety
+            net (scrollbar hidden). It is a no-op at >=sm because the gap and
+            wider switcher fit comfortably there. */}
+        <div className="flex max-w-[60vw] shrink-0 items-center gap-0.5 overflow-x-auto sm:max-w-none sm:gap-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Zone A: always visible across all breakpoints.
+              Stop / copy / resync / session switcher / compact.
+              Copy is promoted from `hidden sm:inline-flex` to always-visible
+              because it is the only place to copy the working path. */}
           {working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
@@ -1396,7 +1572,6 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            className="hidden sm:inline-flex"
             title={copied ? "コピーしました" : "作業パスをコピー"}
             onClick={() => void copyPath()}
           >
@@ -1405,7 +1580,6 @@ export function TaskView({ taskId }: { taskId: string }) {
           <Button
             variant="ghost"
             size="icon"
-            className="inline-flex"
             title="再同期"
             onClick={() => {
               void stream.resync();
@@ -1422,97 +1596,101 @@ export function TaskView({ taskId }: { taskId: string }) {
                 currentSessionId={task.sessionId}
                 onSwitch={() => void refreshTask()}
               />
-              <SessionActions
-                directory={task.directory}
-                sessionId={task.sessionId}
-                lastUserMessageId={lastRevertMessageId}
-                messages={stream.visibleMessages}
-                onRestoreText={restoreToComposer}
-                onDone={() => {
-                  void stream.resync();
-                  setDiffKey((k) => k + 1);
-                }}
+              <CompactButton
+                busy={sessionActions.busy === "compact"}
+                disabled={sessionActions.busy !== null}
+                onClick={sessionActions.compact}
               />
             </>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden sm:inline-flex"
-            title="タスクを削除"
-            onClick={() => void removeTask()}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="ファイルツリー"
-            className={cx(
-              "hidden lg:inline-flex",
-              showDiff && sidePanel === "files" && "bg-surface-2 text-text",
-            )}
-            onClick={() => {
-              changeShowDiff(true);
-              changeTab("diff");
-              changeSidePanel("files");
-            }}
-          >
-            <FolderTree className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="グラフ"
-            className={cx(
-              "hidden lg:inline-flex",
-              showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
-            )}
-            onClick={() => {
-              changeShowDiff(true);
-              changeTab("diff");
-              changeSidePanel("graph");
-            }}
-          >
-            <GitGraph className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="ターミナル"
-            className={cx(
-              "hidden md:inline-flex",
-              showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
-            )}
-            onClick={() => {
-              changeShowDiff(true);
-              changeTab("diff");
-              changeSidePanel("pty");
-            }}
-          >
-            <Terminal className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="Diff パネル"
-            className={cx(
-              "hidden lg:inline-flex",
-              showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
-            )}
-            onClick={() => {
-              if (sidePanel === "diff" && showDiff && tab === "diff") {
-                changeShowDiff(false);
-                changeTab("chat");
-              } else {
-                changeSidePanel("diff");
+
+          {/* Zone B: panel toggles shown directly at their breakpoint and
+              demoted into the kebab menu (Zone C) below it. Thresholds:
+              file tree / graph / diff at lg (1024px), terminal at md (768px).
+              Rendered conditionally on isLg/isMd (not CSS `hidden lg:...`)
+              because those utility classes lost the display-property
+              cascade to the always-on `inline-flex` base class on Button,
+              leaving the buttons visible below their breakpoint. JS-driven
+              rendering also keeps this in sync with the kebab's group-2
+              conditional so a control never appears in both places. */}
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="ファイルツリー"
+              className={cx(
+                showDiff && sidePanel === "files" && "bg-surface-2 text-text",
+              )}
+              onClick={() => {
                 changeShowDiff(true);
                 changeTab("diff");
-              }
-            }}
-          >
-            <PanelRight className="h-4 w-4" />
-          </Button>
+                changeSidePanel("files");
+              }}
+            >
+              <FolderTree className="h-4 w-4" />
+            </Button>
+          )}
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="グラフ"
+              className={cx(
+                showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
+              )}
+              onClick={() => {
+                changeShowDiff(true);
+                changeTab("diff");
+                changeSidePanel("graph");
+              }}
+            >
+              <GitGraph className="h-4 w-4" />
+            </Button>
+          )}
+          {isMd && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="ターミナル"
+              className={cx(
+                showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
+              )}
+              onClick={() => {
+                changeShowDiff(true);
+                changeTab("diff");
+                changeSidePanel("pty");
+              }}
+            >
+              <Terminal className="h-4 w-4" />
+            </Button>
+          )}
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Diff パネル"
+              className={cx(
+                showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
+              )}
+              onClick={() => {
+                if (sidePanel === "diff" && showDiff && tab === "diff") {
+                  changeShowDiff(false);
+                  changeTab("chat");
+                } else {
+                  changeSidePanel("diff");
+                  changeShowDiff(true);
+                  changeTab("diff");
+                }
+              }}
+            >
+              <PanelRight className="h-4 w-4" />
+            </Button>
+          )}
+
+          {/* Zone C: kebab menu. Groups: session ops (undo/redo), demoted
+              panel toggles (only when their Zone B button is hidden), and
+              danger (delete). Compact is intentionally NOT here. */}
+          <HeaderKebabMenu groups={headerKebabGroups} />
         </div>
       </header>
 
