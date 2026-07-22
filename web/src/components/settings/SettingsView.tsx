@@ -78,6 +78,12 @@ type AccessInfo = {
 
 type SettingsTab = "general" | "project" | "connectivity" | "addons" | "agents";
 
+const RESTART_LABELS = {
+  webui: "WebUI（フロントエンド）",
+  opencode: "OpenCode（バックエンド）",
+  all: "すべて",
+} as const;
+
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [health, setHealth] = useState<HealthDto | null>(null);
@@ -110,7 +116,6 @@ export function SettingsView() {
   const autoRateRequestGeneration = useRef(0);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [defaultModel, setDefaultModel] = useState<string>("");
-
   useEffect(() => {
     setDefaultModel(readDefaultModel() ?? "");
   }, []);
@@ -260,12 +265,7 @@ export function SettingsView() {
   }, [refresh]);
 
   const restartService = async (target: "webui" | "opencode" | "all") => {
-    const labels = {
-      webui: "WebUI（フロントエンド）",
-      opencode: "OpenCode（バックエンド）",
-      all: "すべて",
-    } as const;
-    const ok = window.confirm(`${labels[target]}を再起動しますか？`);
+    const ok = window.confirm(`${RESTART_LABELS[target]}を再起動しますか？`);
     if (!ok) return;
     setRestarting(target);
     setError(null);
@@ -473,6 +473,11 @@ export function SettingsView() {
                     すべて再起動
                   </Button>
                 </div>
+                <p className="min-h-5 text-xs text-muted" role="status" aria-live="polite">
+                  {restarting
+                    ? `${RESTART_LABELS[restarting]}を再起動しています…`
+                    : null}
+                </p>
                 <p className="text-xs text-faint">
                   {hostOk
                     ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"

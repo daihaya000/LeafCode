@@ -9,14 +9,22 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
-const { getJson, sendJson } = vi.hoisted(() => ({
+const { getJson, sendJson, timedFetch } = vi.hoisted(() => ({
   getJson: vi.fn(),
   sendJson: vi.fn(),
+  timedFetch: vi.fn(
+    async (input: string, init?: RequestInit & { timeoutMs?: number }) => {
+      const { timeoutMs, ...rest } = init ?? {};
+      void timeoutMs;
+      return fetch(input, { cache: "no-store", ...rest });
+    },
+  ),
 }));
 
 vi.mock("@/lib/client", () => ({
   getJson,
   sendJson,
+  timedFetch,
 }));
 
 vi.mock("@/components/AddProjectButton", () => ({
@@ -57,10 +65,17 @@ function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
   });
 }
 
-function mockFetch() {
+function mockFetch(
+  handler?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Response | Promise<Response> | undefined,
+) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const handled = await handler?.(input, init);
+      if (handled) return handled;
       const url = String(input);
       if (url.includes("/api/opencode/mcp")) {
         return new Response(JSON.stringify([]), { status: 200 });
@@ -102,6 +117,7 @@ describe("SettingsView", () => {
     localStorage.clear();
     getJson.mockReset();
     sendJson.mockReset();
+    timedFetch.mockClear();
     mockGetJson();
     mockFetch();
   });
@@ -219,5 +235,37 @@ describe("SettingsView", () => {
 
     expect(screen.queryByText("本日 155.1円（2026-07-18）")).toBeNull();
     expect(screen.getByText("本日 157.5円（2026-07-19）")).toBeTruthy();
+  });
+
+  it("posts an OpenCode restart request and announces progress after confirmation", async () => {
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    const restartRequests: { input: RequestInfo | URL; init?: RequestInit }[] = [];
+    mockFetch((input, init) => {
+      if (String(input).includes("/api/host/restart")) {
+        restartRequests.push({ input, init });
+        return new Response(JSON.stringify({ ok: true }), { status: 202 });
+      }
+      return undefined;
+    });
+
+    render(<SettingsView />);
+
+    await screen.findByText("ホスト接続中");
+    fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
+
+    await waitFor(() => expect(restartRequests).toHaveLength(1));
+    const [restartRequest] = restartRequests;
+    expect(confirm).toHaveBeenCalledWith(
+      "OpenCode（バックエンド）を再起動しますか？",
+    );
+    expect(restartRequest.input).toBe("/api/host/restart");
+    expect(restartRequest.init?.method).toBe("POST");
+    expect(JSON.parse(String(restartRequest.init?.body))).toEqual({
+      target: "opencode",
+    });
+    expect(screen.getByRole("status").textContent).toContain(
+      "OpenCode（バックエンド）を再起動しています…",
+    );
   });
 });
