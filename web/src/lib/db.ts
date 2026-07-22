@@ -245,6 +245,21 @@ export function updateSessionTitle(
   return info.changes > 0;
 }
 
+export function touchSessionActivity(
+  workspaceId: string,
+  opencodeSessionId: string,
+  updatedAt = new Date().toISOString(),
+): boolean {
+  if (!isSafeOpenCodeSessionId(opencodeSessionId)) return false;
+  const info = getDb()
+    .prepare(
+      `UPDATE session_bindings SET updated_at = ?
+       WHERE workspace_id = ? AND opencode_session_id = ?`,
+    )
+    .run(updatedAt, workspaceId, opencodeSessionId);
+  return info.changes > 0;
+}
+
 /** All session bindings for a workspace (newest first). */
 export function listSessionBindings(workspaceId: string): SessionBindingRow[] {
   return getDb()
