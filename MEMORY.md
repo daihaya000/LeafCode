@@ -1,5 +1,48 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R51（発見のみ・未修正）
+
+### ループ
+- tick #19（PID 23500）。R1–R50 重複除外。音声入力（use-voice-input）
+
+### 確度の高い新規バグ
+
+1. **P2 / 音声認識が `resultIndex` を無視し、確定文言を重複蓄積する** — `use-voice-input.ts:137-152`
+   - 症状: `continuous: true` 時、ブラウザは `results` に過去の final を残したまま再送する。ハンドラが毎回 `0..length` を全部 append するため、「こんにちは」→「こんにちは こんにちは 世界」のように重複する
+   - 根拠: `SpeechRecognitionEvent.resultIndex` 未参照。ローカル型にも無い。R10#2 は「音声は仕様のみ」だったが実装後のこの累積バグは未登録
+   - 再現: Chrome 等でマイク入力を連続発話 → composer への挿入テキストが同一フレーズの重複になる
+
+2. **P2 / `start`/`stop` が transcript をクリアせず、録音セッションをまたいで文言が残る** — `use-voice-input.ts` `start`/`stop`（173-195；クリアは `disabled` 時のみ 202-216）
+   - 症状: `stop()` はテキストを返すだけで `transcriptRef` を空にしない。次の `start()` もリセットしない。2回目の録音が1回目の文言に連結される（#1 の同一セッション内 `results` 再走査とは別）
+   - 再現: 録音→停止→再録音 → 返却／表示テキストが前回分を前置する
+
+### 据え置き
+- R1–R50 未修正。ループ継続
+
+---
+
+## 2026-07-23 バグ発見ループ R50（発見のみ・未修正）
+
+### ループ
+- tick #18（PID 23500）。R1–R49 重複除外。host lock／permission saved
+
+### 確度の高い新規バグ
+
+1. **P1 / GUI 起動が headless ホストを「劣化」と誤認して `taskkill` する** — `host/src/index.js:955-987`
+   - 症状: `OPENCODE_WEBUI_HEADLESS=1` で正当に稼働中のホストに、トレイありの通常 `start-webui` を重ねると、トレイ子が無い＝劣化と判定され `taskkill /F`。制御プロセスが落ち、Caddy 有効時は `stopStrayCaddy` で orphan Caddy も殺す
+   - 根拠: `headless` は**新規プロセス側**の `OPENCODE_WEBUI_HEADLESS` のみ参照。ロック保持側が意図的 headless かは見ない。R35#5 は CreationDate 失敗時の cmdline 誤認、R13#3 は死んだ systray への更新継続で、headless 誤殺は未記載
+   - 再現: headless で host 起動 → 別コンソールから通常（非 HEADLESS）起動 → 既存 PID が強制終了される
+
+2. **P2 / `DELETE …/permission/saved/{id}` が write ブロック漏れ** — `opencode.ts` `isBlockedOpencodeWrite`（5-23）× schema `v2.permission.saved.remove` × proxy `route.ts:52-55`
+   - 症状: PUT/DELETE `/auth` と POST `/mcp` は遮断するが、保存済み権限の削除はプロキシ経由で通る。LAN 無認証時、許可ディレクトリ付きで always 許可を消せる
+   - 根拠: denylist 評価で `DELETE /permission/saved/abc` および `DELETE /api/permission/saved/abc` がともに `blocked=false`。R38–41 の穴一覧に `permission/saved` は無い（R7#7 は MCP OAuth DELETE）
+   - 再現: `DELETE /api/opencode/api/permission/saved/{id}`（またはエンジン側相当パス）→ 403 にならず upstream へ到達
+
+### 据え置き
+- R1–R49 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R49（発見のみ・未修正）
 
 ### ループ
@@ -350,7 +393,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R49 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R51 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -362,6 +405,7 @@
 | R43#1 | `POST /api/projects`・`/api/roots` が任意パスを無検証で allowlist 拡張 |
 | R49#1 | `GET /config/providers` が maskSecrets されず `providers[].key` が平文（実機確認） |
 | R48#1 | `GET /global/config` が maskSecrets されず秘密が平文で返りうる |
+| R50#1 | GUI 起動が headless ホストを劣化と誤認して taskkill する |
 | R46#1 | タイトル再生成が `tools: {}` でツール無効化になっていない（実行しうる） |
 | R40#1 | PTY create/update/delete/connect-token の write ブロック漏れ（リモートシェル相当） |
 | R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
@@ -425,6 +469,8 @@
 | R47#1 | `runGit`/`runGh` にタイムアウトなし（BFF 無期限ハング） |
 | R49#2 | `writeCostDisplayPrefs(Partial)` が非マージで auto→manual 等を破壊しうる |
 | R49#3 | `files/search` の同期フルツリー走査で BFF イベントループ塞ぎ |
+| R50#2 | `DELETE …/permission/saved/{id}` の write ブロック漏れ |
+| R51#1–2 | 音声 `resultIndex` 無視で文言重複＋録音セッション跨ぎで transcript 残存 |
 
 ### 低（後でよい）
 
