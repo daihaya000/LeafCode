@@ -1,5 +1,25 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R42（発見のみ・未修正）
+
+### ループ
+- tick #10（PID 23500）。R1–R41 重複除外。write ブロック以外（access／setup／allowlist）を確認
+
+### 確度の高い新規バグ
+
+1. **P2 / `GET /api/access` が常に `http://<NIC>:3000` を返す** — `api/access/route.ts:7-10,48-49,63` × Settings 接続タブ
+   - 症状: `OPENCODE_WEBUI_CADDY=1`（HTTPS `:8443`）運用でも設定の「スマホ / VPN アクセス」が素の WebUI `:3000` HTTP を案内。ファイアウォール未開放や TLS 前提のスマホで接続失敗／誤コピー
+   - 根拠: PORT は `OPENCODE_WEBUI_PORT||PORT||3000` のみ。Caddy 有無・公開ポート・スキームを見ない。hint 文言も「:3000」固定寄り
+   - 再現: Caddy 有効で設定 → 接続タブの URL が `http://192.168.x.x:3000`（正しくは `https://…:8443` 相当）
+
+### 確認メモ
+- `setup.bat` の `:start_host` は `start … start-webui.bat` で非ブロッキング化済み → **R31 ハングは緩和**。成功前のヘルス確認欠如（R32）は残存
+- allowlist `isUnder` の根一致は R35 と同根のため新規 ID なし
+- write ブロック面は R38–41 で収束気味。以降は UI／運用面が主戦場
+- R1–R41 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R41（発見のみ・未修正）
 
 ### ループ
@@ -191,7 +211,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R41 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R42 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -255,6 +275,7 @@
 | R39#2–4 | `sync/steal`・`workspace/warp`・`project/git/init` の write ブロック漏れ |
 | R40#2 | `session/{id}/share` POST/DELETE の write ブロック漏れ |
 | R41#1–4 | `PATCH /project/{id}`・`DELETE workspace/{id}`・`session/background`・`/tui/*` のブロック漏れ |
+| R42#1 | `/api/access` が Caddy HTTPS を無視して常に http://NIC:3000 |
 
 ### 低（後でよい）
 
