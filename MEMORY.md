@@ -1,5 +1,28 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R38（発見のみ・未修正）
+
+### ループ
+- tick #3–#4（PID 23500）。R1–R37 重複除外。dispose/upgrade／Pty／quickaccess／AddonHost 等を確認
+
+### 確度の高い新規バグ
+
+1. **P1 / `POST /global/dispose`・`POST /instance/dispose` が write ブロック漏れ** — `opencode.ts` `isBlockedOpencodeWrite`（4–24）× schema `/global/dispose`・`/instance/dispose` × proxy `route.ts:52-55`
+   - 症状: WebUI BFF 経由で全インスタンス／現在インスタンスを dispose できる。LAN 公開時は認証なしでエンジンを落とせ、R36（OpenCode 非復帰）と合わさると復旧不能まで行く
+   - 根拠: ブロックは PATCH config・auth・POST mcp のみ。host は OpenCode 直叩きで dispose するため BFF 遮断と衝突しない
+   - 再現: `POST /api/opencode/global/dispose` → 403 にならず upstream 到達
+
+2. **P2 / `POST /global/upgrade` が write ブロック漏れ** — 同上 × schema `/global/upgrade`
+   - 症状: ブラウザから OpenCode 本体の upgrade を起動できる（バージョン指定可）
+   - 根拠: dispose と同根の denylist 漏れ
+   - 再現: `POST /api/opencode/global/upgrade` → 403 にならず upstream 到達
+
+### 確認して新規なし／据え置き
+- Pty は意図的スタブ、quickaccess Links 空は R33 付記、AddonHost 単純、SSE silence 監視あり
+- R1–R37 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R37（発見のみ・未修正）
 
 ### ループ
@@ -87,7 +110,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R37 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R38 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -96,6 +119,7 @@
 | ID | 内容 |
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
+| R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
 | R36#1 | OpenCode 異常 exit 後に自動再起動なし（エンジン全滅・手動／ホスト再起動まで） |
 | R27 | experimental worktree/workspace 書き込みブロック漏れ（git 破壊） |
 | R26 / R32#2 / R7#7 | move-session・console/switch・MCP OAuth DELETE の write ブロック漏れ（セットで `isBlockedOpencodeWrite` 強化） |
@@ -144,6 +168,7 @@
 | R35#5 | host lock CreationDate 失敗時の緩い cmdline 誤認→taskkill |
 | R36#2 | Attention モーダル「フルアクセス」が残キューを自動承認しない |
 | R37#1 | `into=current` コンフリクト後に abort なし・DiffPane 未再読込 |
+| R38#2 | `POST /global/upgrade` の write ブロック漏れ |
 
 ### 低（後でよい）
 
