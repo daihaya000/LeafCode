@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R47（発見のみ・未修正）
+
+### ループ
+- tick #15（PID 23500）。R1–R46 重複除外。runGit／runGh／host-control
+
+### 確度の高い新規バグ
+
+1. **P2 / `runGit`（および `runGh`）にタイムアウトがなく、BFF が無期限ハングしうる** — `git.ts` `runGit`（28–59）× `api/git/pr/route.ts` `runGh`（9–33）× 全 git/diff/merge/commit/log/dirstat 経路
+   - 症状: index.lock・巨大リポ・ネットワーク fs・credential helper 残留などで git/gh が終わらないと、該当 API リクエストが永遠に待ち、Node ワーカーを占有。`GIT_TERMINAL_PROMPT=0` は対話のみ防止で、プロセス自体の上限は無い
+   - 根拠: spawn に `timeout`／`AbortSignal`／手動 `kill` なし。close 待ちのみ。過去メモは環境変数追加のみで「タイムアウト欠如」は未登録
+   - 再現: 対象 repo で `git` をブロック（例: 手動で index.lock を保持）した状態で Diff の status／commit や PR 作成を叩く → リクエストが返らない
+
+### 据え置き
+- R1–R46 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R46（発見のみ・未修正）
 
 ### ループ
@@ -288,7 +305,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R46 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R47 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
