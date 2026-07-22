@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R28（発見のみ・未修正）
+
+### ループ
+- tick #28。画像添付クライアント／`parseImageFiles` を確認。R1–R27 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / 画像添付にサイズ・枚数上限がない** — `TaskView.tsx` `addImageFiles`（1007–1021）／`HomeView.tsx`（454–471）／`tasks/route.ts` `parseImageFiles`（26–48）
+   - 症状: 巨大画像や多数枚を data URL 化して BFF→OpenCode に載せられる。ブラウザメモリ逼迫、リクエストボディ肥大、エンジン／プロキシのタイムアウトや OOM につながりうる。MIME／data URL 形の検証はあるが byte 上限なし
+   - 根拠: FileReader 全量読込、サーバは base64 長さの倍数チェックのみ
+   - 再現: 数十MBの PNG を複数添付して送信を試みる
+
+### 据え置き
+- R1–R27 全件未修正（特に R27 experimental write・R16 isMd 合成は優先度高）
+
+---
+
 ## 2026-07-23 バグ発見ループ R27（発見のみ・未修正）
 
 ### ループ
