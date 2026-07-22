@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R19（発見のみ・未修正）
+
+### ループ
+- tick #13。orphans scan／allowlist／PermissionCard／CommandPalette を確認。R1–R18 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / `purgeGoneOrphans` が temporary_copy の allowlist を解放しない** — `orphans/route.ts` `purgeGoneOrphans`（72–113）vs POST cleanup（309–312）vs `destroyWorkspace`（253–255）
+   - 症状: 設定画面の `GET /api/workspaces/orphans?scan=1`（`SettingsView.refresh`）や `POST {action:"scan"}` で、フォルダ消失済みの temporary_copy orphan を DB から消しても `allowed_roots` に死んだパスが残る。手動 cleanup POST では `removeAllowedRoot` 済みだが scan/purge 経路だけ漏れ
+   - 根拠: `purgeGoneOrphans` は `deleteWorkspace` + `persistProjectSessions` のみ。POST 一括掃除コメントは「destroyWorkspace と対称」と明記しているが scan 側未追従
+   - 再現: temporary_copy を orphan 化→パス削除→設定を開く（scan=1）→ DB 行は消えるが `GET /api/roots` に旧パスが残る
+
+### 確認して新規なし / 低優先
+- PermissionCard: patterns の `key={p}` 重複はレア；成功後 busy 固着は R13（親キュー）と同系
+- CommandPalette ファイル検索・Escape は妥当
+- GET scan 自体の副作用（設定オープンで mark/purge）は設計として意図的だが、上記 allowlist 漏れと組み合わさると静かに汚染が進む
+
+### 据え置き
+- R1–R18 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R18（発見のみ・未修正）
 
 ### ループ
