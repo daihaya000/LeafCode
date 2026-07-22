@@ -1,5 +1,26 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R24（発見のみ・未修正）
+
+### ループ
+- tick #21–22。model-variants／IntelligenceSelect／agent 併用／PartView を確認。R1–R23 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / エージェント選択時もインテリジェンスが手動モデル基準＋variant が併送される** — `TaskView.tsx` `intelligenceVariants`（1074–1079）× `send` opts（927–931）／`HomeView.tsx` 同型（495–499, 430）
+   - 症状: エージェント（独自 model）を選んでも IntelligenceSelect は手動モデルの `variants` を表示。送信時は `agent` + 手動 `model` + `variant` を同時に渡すため、実効モデルが対応しない effort（例: agent は variants 無し、UI は xhigh）が付く／無視・エラーの不定挙動
+   - 根拠: `intelligenceVariants` は `providerModelsMap[model]` のみ。画像ガードは `agentModels[agent]` 優先なのに variant 側は未連動。agent `onChange` で `setIntelligence("")` もしない
+   - 再現: variants 付きモデルを選び xhigh → build 等エージェントに切替 → セレクタが残ったまま送信 → payload に agent と variant が同居
+
+### 確認して新規なし
+- model-variants の disabled／未知キー無視は単体テスト済み
+- PartView error プレビュー欠落は R13/R16 済み
+
+### 据え置き
+- R1–R23 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R23（発見のみ・未修正）
 
 ### ループ
