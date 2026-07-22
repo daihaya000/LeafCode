@@ -228,7 +228,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R42 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R43 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -237,6 +237,7 @@
 | ID | 内容 |
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
+| R43#1 | `POST /api/projects`・`/api/roots` が任意パスを無検証で allowlist 拡張 |
 | R40#1 | PTY create/update/delete/connect-token の write ブロック漏れ（リモートシェル相当） |
 | R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
 | R39#1 | `POST /vcs/apply` の write ブロック漏れ（任意パッチ適用） |
