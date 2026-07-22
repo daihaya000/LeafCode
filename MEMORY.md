@@ -1,5 +1,41 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R5（発見のみ・未修正）
+
+### ループ
+- サブエージェント（デバッガー）: R1 重複禁止。HeaderKebab / activity+Sidebar / Plan最小化 docs / GlobalAttention / host restart / 直近テスト実装ズレを重点調査
+- R1–R4 既出は再掲せず。修正なし
+
+### 確度の高い新規バグ
+
+1. **P2 / AttentionQueueModal がキュー前進でフォーカス復帰先を壊す** — `AttentionQueueModal.tsx:46-58`
+   - 症状: グローバル注意キューが2件以上あるとき、1件目に応答して2件目へ進むと、閉じたあとのフォーカスがモーダル外（元のトリガー）に戻らず body 等へ落ちる
+   - 根拠: `useEffect` 依存が `[open, current?.request.id]`。`open` のまま `current` が変わると `if (open)` 分岐で `previousFocusRef.current = document.activeElement` を**モーダル内要素で上書き**する。閉じるときは死んだ（またはアンマウント済み）要素へ `focus()` する
+   - 再現: pending question/permission を2件以上用意 → モーダル表示 → 1件目を処理 → 「後で」または Esc で閉じる → フォーカス位置を確認
+
+2. **P2 / タスク離脱時に sync 失敗すると pending 注意が消えたまま** — `useAttentionQueue.ts` `setActiveScope` + `GlobalAttentionProvider.tsx` `syncPendingAttention`
+   - 症状: タスク画面（activeScope あり）でそのセッションの permission/question はグローバルキューから除外される。ホーム等へ戻った直後に `/api/tasks` 取得が失敗すると、除外された項目がキューに戻らずバッジ／モーダルが空のまま
+   - 根拠: `setActiveScope` は一致アイテムを state から削除するだけ（退避なし）。離脱時の復元は `syncPendingAttention` 一発頼みで、先頭の `getJson("/api/tasks")` が `catch { return }` すると REST 復元も reconcile も走らない。SSE 再送もないため `onopen`/沈黙再接続まで欠落
+   - 再現: 別セッションに pending がある状態で当該タスクを開く（キューから消える）→ ネットワーク遮断または `/api/tasks` を失敗させホームへ戻る → 注意バッジが戻らない
+
+### 要調査
+- HeaderKebab の Tab 閉じ: フォーカス中 menuitem をアンマウントしてから Tab 既定移動するため、意図（自然に外へ）と実装がずれ focus 喪失しうる（R2 の空 focusableIds 系と隣接）
+- `TaskView.test.tsx` が activity の **await 完了待ち**を明示 assert（`542db53`）しており、R1 #4（ブロック）の修正をテストが阻害しうる
+- QuestionCard `input.text-sm` は R1 #3 派生（グローバル16px 上書き）— 新規単独バグとしては未昇格
+
+### 確認範囲（今回）
+- `HeaderKebabMenu.tsx`（外側クリック / Escape / Arrow / Tab / disabled・busy）
+- `activity/route.ts` + `touchSessionActivity` + `task-service`/`Sidebar` 並び（仕様どおり send 経路。SessionSwitcher 遅延は R4）
+- Plan 最小化: docs のみ・コード未着手（R2 #3 と同一）
+- `GlobalAttentionProvider` / `useAttentionQueue` / `AttentionQueueModal` / `replyPath`
+- `SettingsView` restart + `host/src/control-server.js`（R2/R3 のポール・二重202と整合、新規昇格なし）
+- 検証: `tsc --noEmit` OK。vitest（activity route / db / SettingsView / GlobalAttentionProvider）22件 PASS
+
+### 据え置き
+- R1–R4 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R4（発見のみ・未修正）
 
 ### ループ
