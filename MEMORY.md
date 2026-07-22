@@ -1,5 +1,45 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R7（発見のみ・未修正）
+
+### ループ
+- tick #5。[R3続きバグ発見](daec5e7e-13c5-4989-96d4-799087ad9e5e) を統合。[R2バグ発見調査](3d6367ca-dc93-4f74-9287-e4b348ac5403) は R5 と同一のため再掲せず
+
+### 確度の高い新規バグ
+
+1. **P1 / GlobalAttention 部分同期で未応答が消える** — `GlobalAttentionProvider.tsx` v2 per-session fetch + `reconcileDirectory`
+   - 症状: 同一 directory で一部 session の v2 だけ成功すると sync フラグが立ち、失敗 session の SSE 由来 pending が reconcile で落ちる（エンジンは待ち続け UI から消える）
+   - 根拠: session 単位 `.catch(() => null)`。1件非 null で `v2*Fetched=true`。`useSessionStream` の `keepLocalV2: !v2ok` 相当が Global に無い。R5 #2（全 sync 失敗）とは別経路
+
+2. **P1 / 注意応答の 404 を回答済みとして削除** — `AttentionQueueModal.tsx:97-104`（`useSessionStream` reply も同型）
+   - 症状: 誤 version／一時 404 でもキューから除去。ユーザーは失敗に気づけずエージェント待ち継続
+   - 根拠: `ApiError 404` または message `/404/` で `remove()`
+
+3. **P1 / NestedAgentPanel が message 失敗を空タイムライン扱い** — `NestedAgentPanel.tsx:186-206`
+   - 症状: 子マッチ済みなのに「タイムラインはまだありません」。コメントは first-load error だが `setError` せず最後に `setError(null)`
+   - 根拠: message `catch` は空配列継続。`Array.isArray` のみ（`{data:[]}` envelope も空化）
+
+4. **P1 / SW が非 OK レスポンスをキャッシュ** — `web/public/sw.js` `cachePut`
+   - 症状: デプロイ中 404/500 や壊れたチャンクが Cache API に残り、cache-first／offline で壊れた殻を出し続ける
+   - 根拠: `res.ok` 判定なしで `cache.put`（navigate / static 双方）
+
+5. **P2 / DiffPane: merge 後 archive 失敗を黙殺** — `DiffPane.tsx` merge → `PATCH /api/workspaces`
+   - 症状: 「マージしました」のまま workspace が archived にならない
+   - 要確認: `.catch` 握りつぶしの有無（merge 成功 notice は維持）
+
+6. **P2 / `/api/diff/files` 例外が HTTP 200 + `git:false`** — `diff/files/route.ts:210-212`
+   - 症状: 一時障害が「非 git」や弱い error 表示に見える
+   - 根拠: 末端 catch で `emptyPayload` を status 200
+
+7. **P2 / MCP OAuth DELETE が write ブロック漏れ** — `opencode.ts` `isBlockedOpencodeWrite`
+   - 症状: `DELETE /mcp/{name}/auth` が proxy 経由で通る（POST `/mcp` は遮断、DELETE は `/auth` 系のみ）
+   - 根拠: schema 上 `mcp.auth.remove` は DELETE
+
+### 据え置き
+- R1–R6 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R6（発見のみ・未修正）
 
 ### ループ
