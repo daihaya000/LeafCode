@@ -65,3 +65,10 @@ PASS: 14 passed
 npm --prefix web run typecheck
 PASS: tsc --noEmit
 ```
+
+## Task 3レビュー対応（追加）
+
+- parameterized テストで activity resolve 後に実際の `streamMock[method]` が1回呼ばれたことを検証するようにした。
+- slash command は `sendCommand("review", "args", expect.any(Object))` と `sendPrompt` 未呼び出しを検証するようにした。
+- 通常 prompt は `sendPrompt("hello", expect.any(Object))` と `sendCommand` 未呼び出しを検証するようにした。
+- deferred await 境界および activity 失敗時の継続テストは維持した。

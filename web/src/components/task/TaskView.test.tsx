@@ -363,6 +363,21 @@ describe("TaskView", () => {
       sessionId: "sess1",
     });
     expect(events).toEqual(["activity", "send"]);
+    expect(streamMock[method]).toHaveBeenCalledTimes(1);
+    if (method === "sendCommand") {
+      expect(streamMock.sendCommand).toHaveBeenCalledWith(
+        "review",
+        "args",
+        expect.any(Object),
+      );
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+    } else {
+      expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+        "hello",
+        expect.any(Object),
+      );
+      expect(streamMock.sendCommand).not.toHaveBeenCalled();
+    }
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
   });
 
