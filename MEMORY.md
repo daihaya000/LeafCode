@@ -1,5 +1,32 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R13（発見のみ・未修正）
+
+### ループ
+- tick #9。[R10バグ発見調査](425f8a18-31fa-47f2-bdea-a3e787e2aef8) を統合
+
+### 確度の高い新規バグ
+
+1. **P1 / AttentionQueueModal 非404失敗でカード busy 固着** — `AttentionQueueModal.tsx` `respond`（91–110）↔ `PermissionCard`/`QuestionCard`
+   - 症状: ネットワーク等の失敗でモーダル下にエラーは出るが、カードは成功扱いのまま `busy` 解除されずボタン再押下不可（閉じ→開きで復帰）
+   - 根拠: `respond` が `setError` のみで **rethrow しない**。カードは成功時 `setBusy(null)` しない（unmount 前提）。TaskView 直付け経路は throw するため別
+
+2. **P1 / PartView が tool error 時に失敗メッセージを隠す** — `PartView.tsx:219` + `useSessionStream` tool merge（151–157）
+   - 症状: `status:"error"` でも旧 `output` が残ると error 文字列が UI に出ない（danger 枠に stdout 等が載る）
+   - 根拠: `rawOutput = state?.output ?? state?.error`。merge は `output: part ?? prev` で error 更新時も旧 output を保持
+
+3. **P2 / トレイ再生成上限後も死んだ systray へ更新し続ける** — `host/src/index.js` `scheduleTrayRestart` + `refreshStatusMenu`
+   - 症状: 上限到達後アイコン無しのまま、5秒ごとに死んだ helper へ `sendAction`（ログノイズ／無意味 IPC）
+   - 根拠: 上限時に `systray = null` しない。`systray` 真なら常に update
+
+### 要調査（エージェント）
+- Sidebar 削除 409 orphaned 時、失敗しても active タスクをホームへ飛ばさない → 孤立画面残留
+
+### 据え置き
+- R1–R12 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R12（発見のみ・未修正）
 
 ### ループ
