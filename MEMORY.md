@@ -1,5 +1,31 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R22（発見のみ・未修正）
+
+### ループ
+- tick #17–18。session bind／SessionSwitcher／SSE session フィルタ／git commit／CodexBar を確認。R1–R21 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / `bindSession` が unsafe id を黙って握りつぶす** — `db.ts:210-220` × `project-session-sync.ts` restore
+   - 症状: manifest 復元や内部呼び出しで不正な `opencodeSessionId` が来ると `console.warn` のみで return。呼び出し側（特に restore）は成功扱いになり、ワークスペースは戻るが session が紐づかない／古い binding のまま
+   - 根拠: API `workspaces/.../sessions` POST は事前に `assertSafeOpenCodeSessionId` するが、`bindSession` 自体と `project-session-sync` の restore 経路は失敗を伝播しない。R12 の細工 manifest と組み合わさると「復元成功・セッション無し」になる
+   - 再現: sessions.json に `opencodeSessionId: "../x"` 等を入れて restore → DB に binding が増えないがエラーも出ない
+
+### 確認して新規なし
+- useSessionStream SSE は sessionID で厳密フィルタ
+- git/commit の pathspec 限定・exclude は実装済み
+- SessionSwitcher 切替後の stream scopeKey reset は妥当
+- CodexBar empty credits は R12 済み
+
+### 状況
+- 未修正バックログが R1–R21 に厚い。本 tick 以降は新規 P0/P1 が減り、残余は P2 の穴埋めが中心
+
+### 据え置き
+- R1–R21 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R21（発見のみ・未修正）
 
 ### ループ
