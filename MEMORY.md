@@ -1,5 +1,39 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R2（発見のみ・未修正）
+
+### ループ
+- tick #1（sentinel `AGENT_LOOP_TICK_bugfind`, PID 26536 継続）
+- R1 重複禁止。HeaderKebab / SessionSwitcher / host restart / Plan仕様ギャップを重点調査
+
+### 確度の高い新規バグ
+
+1. **P1 / セッション切替の controlled select が瞬間的に戻る** — `SessionSwitcher.tsx:103-116` + `TaskView.tsx:1614`
+   - 症状: ドロップダウンで別セッションを選ぶと、選択が一瞬またはしばらく元のセッションにスナップバックし、その後やっと切り替わる
+   - 根拠: `value={currentSessionId}` なのに `onSwitch={() => void refreshTask()}` を await せず発火。`refreshTask` 完了前に再レンダーされると value が旧 ID のまま。`finally` の `setBusy(false)` も refresh 完了前に走る
+   - 再現: セッションが2つ以上あるタスクで切替を連打／低速ネットワークで観察
+
+2. **P2 / 再起動の二重リクエストが 202 のまま no-op** — `host/src/control-server.js` + `host/src/index.js` `restartWeb`/`restartOpencode`/`restartServices`
+   - 症状: 既に再起動中にもう一度 Restart するとクライアントは成功（202）扱いだがホストはログだけ出して何もしない。設定画面は「再起動しています…」後に実質変化なしで完了しうる
+   - 根拠: control-server は常に先に 202 を返し、handler 側は `restartingServices` ガードで早期 return（エラーをクライアントへ返せない）
+   - 再現: 再起動中に設定から再クリック、またはトレイと WebUI から同時実行
+
+3. **P2 / 仕様未実装ギャップ（プラン初期最小化）** — 仕様 `docs/.../2026-07-23-mobile-plan-default-collapse-design.md` vs `PlanDocumentCard.tsx`
+   - 症状: スマホでプラン本文が会話を占有する問題は仕様・計画コミット済み（`72344bb`/`cbbf331`）だが、カードは常に展開表示のまま（開閉 UI・`isMd` 連携なし）
+   - 根拠: `PlanDocumentCard` に collapse state / `aria-expanded` なし。実装計画はあるがコード未着手
+   - 備考: 未実装機能の追跡。R1 の iOS zoom とは別件
+
+### 要調査
+- `HeaderKebabMenu`: 全 menuitem が disabled のとき `focusableIds` 空でオープンしてもフォーカス移動なし（a11y）
+- `SessionSwitcher` の `text-xs` も iOS 自動拡大の上書き対象（R1 #3 の派生）
+- kebab「巻き戻しを取消す」はセッションさえあれば常時有効 → 未 revert 時の API エラー UX
+
+### 確認済み非バグ／通過
+- `SettingsView.test.tsx` 再起動アナウンス: vitest 7件 PASS
+- R1 の4件は未修正のまま据え置き
+
+---
+
 ## 2026-07-23 バグ発見ループ R1（発見のみ・未修正）
 
 ### ループ
