@@ -1571,14 +1571,11 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
-        {/* Right toolbar (Zone A primary ops / Zone B panel toggles / Zone C
-            kebab). shrink-0 keeps the controls from being starved by the
-            title on the left, but on very narrow viewports Zone A alone
-            (copy + resync + switcher + compact) can exceed the available
-            width, so allow horizontal scroll on small screens as a safety
-            net (scrollbar hidden). It is a no-op at >=sm because the gap and
-            wider switcher fit comfortably there. */}
-        <div className="flex max-w-[60vw] shrink-0 items-center gap-0.5 overflow-x-auto sm:max-w-none sm:gap-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Right toolbar: outer wrapper (overflow visible) keeps the kebab
+            popup from being clipped. Inner scroll container holds only
+            Zone A / Zone B so horizontal scroll is limited to those ops. */}
+        <div className="flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1">
+          <div className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* Zone A: always visible across all breakpoints.
               Stop / copy / resync / session switcher / compact.
               Copy is promoted from `hidden sm:inline-flex` to always-visible
@@ -1707,6 +1704,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             </Button>
           )}
 
+          </div>
           {/* Zone C: kebab menu. Groups: session ops (undo/redo), demoted
               panel toggles (only when their Zone B button is hidden), and
               danger (delete). Compact is intentionally NOT here. */}
