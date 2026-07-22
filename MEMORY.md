@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R29（発見のみ・未修正）
+
+### ループ
+- tick #29–30。projects PATCH／upsertProject／Sidebar 並びを確認。R1–R28 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / お気に入り・名前変更が `last_opened_at` を更新し並びを乱す** — `db.ts` `upsertProject`（132–142）× `listProjects`（`ORDER BY favorite DESC, last_opened_at DESC`）× `projects/route.ts` PATCH
+   - 症状: サイドバーで ★ トグルやリネームするだけで「最近開いた」扱いとなり、同お気に入り帯内のプロジェクト順がトップへ飛ぶ。実際にはプロジェクトを開いていない
+   - 根拠: UPDATE が常に `last_opened_at = now`。`touchProjectOpened` とは別経路なのに同じカラムを汚す。R10 favorite 無言失敗とは別件
+   - 再現: 下位のプロジェクトをお気に入り ON/OFF → 一覧が上へ移動する
+
+### 据え置き
+- R1–R28 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R28（発見のみ・未修正）
 
 ### ループ
