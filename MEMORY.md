@@ -1,5 +1,37 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R4（発見のみ・未修正）
+
+### ループ
+- tick #3。[初回バグ発見調査](fe13b5b4-99c9-4ab5-b1cf-9c5a674a3a08) は R1 と一致（再検証 PASS: Settings/activity/db vitest 13・tsc OK）。新規は周辺 INV の昇格と Attention/Diff/SW の薄い確認
+
+### 確度の高い新規バグ
+
+1. **P2 / 送信後も SessionSwitcher の並びが古いまま** — `SessionSwitcher.tsx:40-43,118`
+   - 症状: フォローアップ送信で `touchActivity`＋サイドバーは更新されるが、ヘッダーのセッション `<select>` 内の順序は `onFocus` まで再取得されない
+   - 根拠: `refresh` は mount/focus/create/失敗時のみ。仕様の「最新ユーザー操作順」がドロップダウンにも及ぶなら未達
+   - 再現: セッション2つ以上で非先頭セッションに送信し、フォーカスせずに select を開く（または開いたまま）
+
+2. **P2 / kebab 削除がセッション操作 busy 中も有効** — `TaskView.tsx:1354-1361` + `HeaderKebabMenu.tsx:167-170`
+   - 症状: 巻き戻し実行中に再度 kebab を開くと「タスクを削除」が押せる。`busy` は Spinner 表示のみでクリック抑止に使われない（呼び出し側が `disabled` を付けた項目だけ抑止）
+   - 根拠: sessionItems は `busy !== null` で disabled。danger の delete は常時有効。二重発火のコンポーネント契約が脆い
+   - 再現: 巻き戻し確認後すぐに kebab → 削除
+
+### 確認して新規 P0/P1 なし
+- GlobalAttention: v1 失敗時も v2 merge、失敗 directory は reconcile スキップ（意図的・MEMORY 既存対策と整合）
+- NestedAgentPanel: `/children` null と空配列の区別あり
+- DiffPane: 取得失敗は `setError`（silent「変更なし」化は見当たらず）
+- SW `web/public/sw.js`: `/api` bypass・navigate network-first。チャンクはハッシュ前提でオンラインデプロイは概ね安全 → 要調査に格下げ
+
+### 要調査
+- SW の `CACHE = opencode-webui-v1` 固定＋`/_next/` cache-first がオフライン／中間障害時に古い shell を出すか
+- HeaderKebab の `busy` を `disabled` に自動 OR すべきか（API 契約）
+
+### 据え置き
+- R1–R3 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R3（発見のみ・未修正）
 
 ### ループ
