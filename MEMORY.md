@@ -1,5 +1,30 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R12（発見のみ・未修正）
+
+### ループ
+- tick #8。Markdown／allowlist／task-status／manifest restore／host stale を重点。R1–R11 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / `temporary_copy` の manifest restore に path 脱出ガードなし** — `project-session-sync.ts:114-122`
+   - 症状: 細工した `sessions.json` で `isolation: temporary_copy` + 任意 `worktreePath`/`absolutePath` を import できる。destroy 時は `removeTemporaryCopy` が copies 外を拒否するため削除破壊は防げるが、DB に不正行・誤バインドが残る
+   - 根拠: escape skip は `git_worktree` のみ。R11 要調査をコード確認で昇格
+
+2. **P2 / `archived` → バッジ「マージ済」が実態とズレうる** — `task-status.ts:17` + `StatusBadge.tsx` + `PATCH /api/workspaces`
+   - 症状: API で `status: archived` にするだけで UI が「マージ済」。マージ未実施のアーカイブでも成功マージに見える
+   - 根拠: `deriveTaskStatus` が archived→`merged` 固定。DiffPane 以外からも PATCH 可能
+
+### 確認して新規なし（当該領域）
+- Markdown (`react-markdown` v10): `defaultUrlTransform` が `javascript:`/`data:`/`vbscript:` を空文字化。raw HTML 未使用 → XSS 新規なし
+- allowlist: resolved+realpath 双方を roots/worktreeBase 配下で検証
+- `isWebBuildStale` + `spawnWeb` の stale rebuild 経路は意図どおり（再起動時のみ評価は MEMORY 既存）
+
+### 据え置き
+- R1–R11 全件未修正。オープンバグ多数のためループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R11（発見のみ・未修正）
 
 ### ループ
