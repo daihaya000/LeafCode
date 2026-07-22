@@ -1,5 +1,39 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R8（発見のみ・未修正）
+
+### ループ
+- tick #6。新規コミット `4b22b76`（プラン開閉）を重点レビュー。Pty/CommandPalette/slash は薄い確認
+
+### 確度の高い新規バグ
+
+1. **P1 / プラン初期最小化が TaskView 未配線** — `PlanDocumentCard.tsx`（`initialCollapsed`）vs `TaskView.tsx:1878-1885`
+   - 症状: カード側の開閉 UI は入ったが、呼び出しが `initialCollapsed` を渡さない（常に default `false`＝展開）。スマホで本文が会話を占有する仕様（`72344bb`）は未達のまま
+   - 根拠: grep で `initialCollapsed` の本番使用はカード定義とテストのみ。R2 #3「未実装」は部分実装に更新
+   - 再現: 幅 &lt;768 でプラン付きタスクを開き、カードが初期展開のままか確認
+
+2. **P1 / `initialCollapsed={!isMd}` を素通しするとデスクトップが恒久最小化** — `TaskView.tsx` `isMd` 初期 `false`（R3 #6）× `useState(initialCollapsed)`
+   - 症状: 仕様どおり `!isMd` を渡すだけだと、初回 paint の `isMd=false` で collapsed=true が固定され、matchMedia 後もデスクトップが開かない（props 変更は state を更新しない）
+   - 根拠: `useState(initialCollapsed)` はマウント時のみ。R3 の isMd 初期値問題と合成すると実装トラップ
+   - 再現: 配線後に 1440px ハードリロード → プランが閉じたままか
+
+3. **P2 / CommandPalette の Esc が常時グローバル** — `CommandPalette.tsx:54-64`
+   - 症状: パレット閉時も `Escape` で `setOpen(false)` を呼ぶ（実害は薄いが、他 UI と同時リスナで余計な処理）
+   - 根拠: `if (e.key === "Escape") setOpen(false)` に `open` ガードなし。要調査寄りだが明確なコード臭
+
+### 解消・更新
+- R2 #3「プラン最小化コード未着手」→ **開閉 UI は `4b22b76` で追加。初期最小化の製品要件は未達（本 R8 #1）**
+
+### 確認して新規なし
+- PtyPanel: エラー表示あり、placeholder 明示
+- useSlashCommands: 失敗時空配列（autocomplete 欠落のみ）
+- GraphPanel: silent poll でも初回は error 表示
+
+### 据え置き
+- R1–R7 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R7（発見のみ・未修正）
 
 ### ループ
