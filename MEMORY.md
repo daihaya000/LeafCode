@@ -1,5 +1,34 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R41（発見のみ・未修正）
+
+### ループ
+- tick #9（PID 23500）。R1–R40 重複除外。残 denylist 穴（project PATCH／workspace DELETE／background／tui）
+
+### 確度の高い新規バグ
+
+1. **P2 / `PATCH /project/{projectID}` が write ブロック漏れ** — schema `project.update` × `isBlockedOpencodeWrite`
+   - 症状: OpenCode 側プロジェクト名・icon・commands を BFF 経由で変更可能
+   - 再現: `PATCH /api/opencode/project/<id>` → 403 にならない
+
+2. **P2 / `DELETE /experimental/workspace/{id}` が write ブロック漏れ** — schema `experimental.workspace.remove`（R27 は主に POST 作成・worktree。削除エンドポイントは未列挙）
+   - 症状: エンジン管理 workspace をプロキシ経由で削除できる
+   - 再現: `DELETE /api/opencode/experimental/workspace/<id>` → 403 にならない
+
+3. **P2 / `POST /experimental/session/{id}/background` が write ブロック漏れ** — schema `experimental.session.background`
+   - 症状: 同期サブエージェントを強制デタッチできる（進行中タスクの挙動を壊しうる）
+   - 再現: `POST /api/opencode/experimental/session/<id>/background` → 403 にならない
+
+4. **P2 / `/tui/*` 書き換え系 POST 一式がブロック漏れ** — `tui/append-prompt`・`submit-prompt`・`clear-prompt`・`execute-command`・`select-session` 等（R39 で実害薄と据え置き→同ホストに TUI 併走時は注入可能と再評価）
+   - 症状: WebUI からデスクトップ TUI 操作を誘導できる
+   - 再現: `POST /api/opencode/tui/append-prompt` 等 → 403 にならない
+
+### メモ
+- write ブロック穴は R26/27/32/38–41 で網羅が進んだ。修正は denylist 追加より **mutating method の allowlist** が安全
+- R1–R40 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R40（発見のみ・未修正）
 
 ### ループ
@@ -162,7 +191,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R40 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R41 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -225,6 +254,7 @@
 | R38#2 | `POST /global/upgrade` の write ブロック漏れ |
 | R39#2–4 | `sync/steal`・`workspace/warp`・`project/git/init` の write ブロック漏れ |
 | R40#2 | `session/{id}/share` POST/DELETE の write ブロック漏れ |
+| R41#1–4 | `PATCH /project/{id}`・`DELETE workspace/{id}`・`session/background`・`/tui/*` のブロック漏れ |
 
 ### 低（後でよい）
 
