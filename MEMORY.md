@@ -1,5 +1,33 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R15（発見のみ・未修正）
+
+### ループ
+- [R12バグ発見調査](9f5fb73f-97d8-46ba-adf3-118d325c96d0) を統合。R12 の temporary_copy 記述を強化
+
+### 確度の高い新規バグ
+
+1. **P1 / `temporary_copy` 復元で allowlist 再登録なし → 403** — `project-session-sync.ts` restore vs `workspace-service.ts:147`
+   - 症状: manifest 復元後、一時コピーパス（`<dataDir>/copies/…`）が `assertAllowedDirectory` で 403。OpenCode/git/files 系が使えない
+   - 根拠: provision だけ `addAllowedRoot`。暗黙許可は `worktrees` のみで `copies` 非対称
+
+2. **P1 / `temporary_copy` の copies 内クロス削除** — 同上 + `copy.ts` `removeTemporaryCopy`
+   - 症状: 細工 `sessions.json` で `worktreePath=<dataDir>/copies/<他UUID>` を import → タスク削除で他ワークスペースのコピーが `rmSync` される
+   - 根拠: escape ガードは `git_worktree` のみ。`removeTemporaryCopy` は copies **配下なら削除実行**。R12「copies 外は拒否」は配下クロス削除を見落としていた → **R12 #1 を格上げ・訂正**
+
+3. **P2 / difftint: `&#39;` を `#` コメントと誤認** — `web/src/lib/difftint.ts`
+   - 症状: 単引用符を含む TS/JS 行が `const x = &` + faint 化され文字列ハイライトが壊れる（XSS ではない）
+   - 根拠: escape 後にコメントパス `/#.*$/` が先。`&#39;…&#39;` の `#` にマッチ。文字列パスは後段
+
+4. **P2 / CodexBar: 空 `credits` でエラーが last-good 扱い** — `addons/codexbar/lib/codexbar.ts` `hasLastGoodUsage`
+   - 症状: `error` + `usedPercent:0` でも `credits: {}` があると「健全な 0%」表示に戻る
+   - 根拠: `if (p.credits !== null) return true`。任意 object を非 null 化
+
+### 据え置き
+- R1–R14 全件未修正（R14 の WIP プラン配線欠陥を含む）
+
+---
+
 ## 2026-07-23 バグ発見ループ R14（発見のみ・未修正）
 
 ### ループ
