@@ -1,5 +1,29 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R20（発見のみ・未修正）
+
+### ループ
+- tick #14。FileTreePanel／host control／access／remote／AgentsSettings／git/pr を確認。R1–R19 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / FileTreePanel「上へ」が workspace `root` を超えてナビできる** — `FileTreePanel.tsx:48-51`
+   - 症状: タスクのファイルタブで「上へ」を押すと `cwd` がプロジェクト外（親フォルダ・ホーム等）へ進み、R6 の allowlist なし `browse/dirs` 経由でホスト任意ディレクトリを UI から辿れる
+   - 根拠: `up` は `cwd.replace(/[\\/][^\\/]+$/, "")` のみで、props の `root` との包含チェックなし。API が返す `parent` も未使用
+   - 再現: タスク → ファイルタブ →「上へ」連打 → リポジトリ外の一覧が表示される
+
+### 確認して新規なし
+- host control-server は 127.0.0.1 bind（意図どおり）
+- `/api/remote` は 501 プレースホルダ
+- `/api/access` は NIC 列挙のみ
+- AgentsSettings は読取専用表示
+- workspaces PATCH status バリデーションは実装済み（過去メモの懸念は解消済み）
+
+### 据え置き
+- R1–R19 全件未修正（特に R6 browse/dirs と本件はセットで修正すべき）
+
+---
+
 ## 2026-07-23 バグ発見ループ R19（発見のみ・未修正）
 
 ### ループ
