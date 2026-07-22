@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R30（発見のみ・未修正）
+
+### ループ
+- tick #31。`/api/roots`／Settings 許可ルート UI を確認。R1–R29 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / 許可ルート（allowlist）に削除手段がない** — `api/roots/route.ts`（GET/POST のみ）× `SettingsView.tsx`（709–735、追加のみ）
+   - 症状: 設定でルートを追加できるが、誤追加・死んだパス・temporary_copy 残骸（R19）を UI／API から外せない。`destroyProject` で「同 root の他プロジェクトがゼロ」のときだけ `removeAllowedRoot` される狭い経路のみ
+   - 根拠: DELETE ハンドラなし。リストは表示のみ
+   - 再現: 設定で適当なパスを許可 → 一覧に残るが削除ボタンも DELETE API も無い
+
+### 据え置き
+- R1–R29 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R29（発見のみ・未修正）
 
 ### ループ
