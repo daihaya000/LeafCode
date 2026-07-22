@@ -1,12 +1,31 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { TaskSummary } from "@/lib/types";
 import { TaskView } from "./TaskView";
 
-const { getJson, notifyTasksChanged, useSessionStream } = vi.hoisted(() => ({
+const {
+  getJson,
+  notifyTasksChanged,
+  sendJson,
+  useSessionStream,
+  slashCommands,
+  setExtras,
+  setActiveScope,
+} = vi.hoisted(() => ({
   getJson: vi.fn(),
   notifyTasksChanged: vi.fn(),
+  sendJson: vi.fn(),
   useSessionStream: vi.fn(),
+  slashCommands: [] as { name: string }[],
+  setExtras: vi.fn(),
+  setActiveScope: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -20,8 +39,8 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/client", () => ({
   getJson,
   ocJson: vi.fn(),
-  sendJson: vi.fn(),
-  timedFetch: vi.fn(),
+  sendJson,
+  timedFetch: (input: RequestInfo | URL) => fetch(input),
 }));
 
 vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
@@ -39,12 +58,12 @@ vi.mock("@/lib/currency", () => ({
 vi.mock("@/lib/useSessionStream", () => ({ useSessionStream }));
 
 vi.mock("@/lib/useSlashCommands", () => ({
-  useSlashCommands: () => [],
+  useSlashCommands: () => slashCommands,
 }));
 
 vi.mock("@/components/shell/ShellContext", () => ({
-  useShellExtras: () => ({ setExtras: vi.fn() }),
-  useShellSetActiveScope: () => vi.fn(),
+  useShellExtras: () => ({ setExtras }),
+  useShellSetActiveScope: () => setActiveScope,
 }));
 
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
@@ -54,7 +73,10 @@ vi.mock("./DiffPane", () => ({ DiffPane: () => null }));
 vi.mock("./FileTreePanel", () => ({ FileTreePanel: () => null }));
 vi.mock("./GraphPanel", () => ({ GraphPanel: () => null }));
 vi.mock("./PartView", () => ({ PartView: () => null }));
-vi.mock("./PlanDocumentCard", () => ({ PlanDocumentCard: () => null }));
+vi.mock("./PlanDocumentCard", () => ({
+  PlanDocumentCard: ({ onApprove }: { onApprove?: () => void }) =>
+    onApprove ? <button onClick={() => void onApprove()}>計画を承認</button> : null,
+}));
 vi.mock("./PermissionCard", () => ({ PermissionCard: () => null }));
 vi.mock("./PtyPanel", () => ({ PtyPanel: () => null }));
 vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
@@ -112,6 +134,7 @@ describe("TaskView", () => {
   beforeEach(() => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
+    slashCommands.length = 0;
     setVisible(true);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -149,6 +172,7 @@ describe("TaskView", () => {
     getJson.mockImplementation(() =>
       Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) }),
     );
+    sendJson.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -280,6 +304,107 @@ describe("TaskView", () => {
     expect(getJson).toHaveBeenCalledTimes(2);
     expect(screen.getByText("累計 $0.1000")).toBeTruthy();
     expect(screen.queryByText("offline")).toBeNull();
+  });
+
+  it.each([
+    ["a normal prompt", "hello", "sendPrompt"],
+    ["a slash command", "/review args", "sendCommand"],
+  ])("touches activity before %s and notifies afterward", async (_label, text, method) => {
+    taskStatus = "idle";
+    if (method === "sendCommand") slashCommands.push({ name: "review" });
+    const events: string[] = [];
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    streamMock.sendPrompt.mockImplementation(async () => {
+      events.push("send");
+    });
+    streamMock.sendCommand.mockImplementation(async () => {
+      events.push("send");
+    });
+    sendJson.mockImplementation(async () => {
+      events.push("activity");
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    notifyTasksChanged.mockClear();
+    sendJson.mockClear();
+    events.length = 0;
+
+    fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
+      target: { value: text },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/tasks/ws1/activity", {
+      sessionId: "sess1",
+    });
+    expect(events).toEqual(["activity", "send"]);
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues sending when the activity request fails", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    const sendPrompt = streamMock.sendPrompt;
+    sendJson.mockRejectedValue(new Error("activity unavailable"));
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    notifyTasksChanged.mockClear();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(sendPrompt).toHaveBeenCalledWith("hello", expect.any(Object));
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("touches activity before approving a plan", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    const sendPrompt = streamMock.sendPrompt;
+    const events: string[] = [];
+    sendJson.mockImplementation(async () => events.push("activity"));
+    sendPrompt.mockImplementation(async () => events.push("send"));
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      status: { type: "idle" },
+      visibleMessages: [{
+        info: {
+          id: "plan-1",
+          role: "assistant",
+          agent: "plan",
+          time: { completed: 1 },
+        },
+        parts: [{ id: "plan-text", type: "text", text: "/repo/plan.md" }],
+      }],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    notifyTasksChanged.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "計画を承認" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(events).toEqual(["activity", "send"]);
+    expect(sendPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("この計画を承認します"),
+      { agent: "build" },
+    );
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
   });
 
   it("stops polling after idle even when the completion refresh fails", async () => {

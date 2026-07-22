@@ -540,7 +540,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     if (accessMode !== "full") {
       autoReplyIdsRef.current.clear();
-      setAutoReplyFailedIds(new Set());
+      setAutoReplyFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     for (const p of permissions) {
@@ -870,6 +870,18 @@ export function TaskView({ taskId }: { taskId: string }) {
     return null;
   }, [stream.visibleMessages]);
 
+  const touchActivity = useCallback(async () => {
+    const current = taskRef.current;
+    if (!current?.sessionId) return;
+    try {
+      await sendJson("POST", `/api/tasks/${current.id}/activity`, {
+        sessionId: current.sessionId,
+      });
+    } catch {
+      // Activity ordering is best-effort and must not block the prompt.
+    }
+  }, []);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || composerLocked) return;
@@ -910,6 +922,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
+      await touchActivity();
       const [providerID, modelID] = model ? model.split("::") : [];
       const opts = {
         ...(agent ? { agent } : {}),
@@ -929,6 +942,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       setAttachments(attachments);
     } finally {
       setSending(false);
+      notifyTasksChanged();
     }
   }, [
     input,
@@ -941,6 +955,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     modelCapabilities,
     intelligence,
     slashCommands,
+    touchActivity,
   ]);
 
   const syncCursor = useCallback(() => {
@@ -1048,8 +1063,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     setSendError(null);
     setAgent(`build`);
     stickRef.current = true;
-    await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: `build` });
-  }, [working, stream]);
+    try {
+      await touchActivity();
+      await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: `build` });
+    } finally {
+      notifyTasksChanged();
+    }
+  }, [working, stream, touchActivity]);
 
   const intelligenceVariants = useMemo(() => {
     if (!model) return [];
