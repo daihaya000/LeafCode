@@ -1,5 +1,31 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R36（発見のみ・未修正）
+
+### ループ
+- `/loop 2m 再開`。旧 PID 26536 死亡を確認後、新ループ PID **23500** / shell **550353** をアーム。即時1回＋2分間隔
+- R1–R35 重複除外。OpenCode 再起動／Attention フルアクセス／Pty・SSE 等を確認
+
+### 確度の高い新規バグ
+
+1. **P1 / OpenCode 異常 exit 後に自動再起動しない** — `host/src/index.js:496-514` vs WebUI `scheduleWebRestart`（779–824）
+   - 症状: OpenCode が落ちるとトレイは stopped、プロンプト等は全滅。ホスト再起動／手動「OpenCode を再起動」まで復帰しない（R35#2 Caddy と同型・対象はコアエンジン）
+   - 根拠: exit は null＋reap＋メニューのみ。`restartOpencode()` は手動経路のみ
+   - 再現: host 起動後 `taskkill /F /PID <opencode>`（host は残す）→ `:4096` が自動で戻らない
+
+2. **P2 / Attention モーダルの「フルアクセス」が残キューを自動承認しない** — `AttentionQueueModal.tsx:217` × `TaskView.tsx:539-569`
+   - 症状: グローバル注意モーダルで「フルアクセス」を選んでも、現在件の once 応答＋`localStorage` 更新だけ。同モーダル内の残り権限は手承認のまま
+   - 根拠: 自動承認 effect は TaskView の stream のみ。モーダル／他セッション分は未配線。文言の「すべて自動承認」と不一致（既知 P3「文言 vs グローバル」とは別の動作欠陥）
+   - 再現: Home 等で注意モーダルに権限が2件以上 → オプション「フルアクセス」→ 1件目は消えるが2件目以降が残る
+
+### 確認して新規なし
+- Pty／CommandPalette Esc（R8#3）／access-mode・default-model 文言／orphans／SSE（R9）／credits（R15#4）
+
+### 据え置き
+- R1–R35 全件未修正。ループは PID 23500 で継続中
+
+---
+
 ## 2026-07-23 バグ発見ループ R35（発見のみ・未修正）
 
 ### ループ
@@ -41,7 +67,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R35 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R36 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -50,6 +76,7 @@
 | ID | 内容 |
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
+| R36#1 | OpenCode 異常 exit 後に自動再起動なし（エンジン全滅・手動／ホスト再起動まで） |
 | R27 | experimental worktree/workspace 書き込みブロック漏れ（git 破壊） |
 | R26 / R32#2 / R7#7 | move-session・console/switch・MCP OAuth DELETE の write ブロック漏れ（セットで `isBlockedOpencodeWrite` 強化） |
 | R16 / R14 / R8#2 | `initialCollapsed={!isMd}` — isMd 初期 false でデスクトップ恒久最小化（master 投入済み） |
@@ -95,6 +122,7 @@
 | R35#3 | DiffPane 自己マージ先（current＝defaultTarget） |
 | R35#4 | slash 未取得／失敗時に command が通常 prompt へ落ちる |
 | R35#5 | host lock CreationDate 失敗時の緩い cmdline 誤認→taskkill |
+| R36#2 | Attention モーダル「フルアクセス」が残キューを自動承認しない |
 
 ### 低（後でよい）
 
