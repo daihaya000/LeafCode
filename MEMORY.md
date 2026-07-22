@@ -1,5 +1,53 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R3（発見のみ・未修正）
+
+### ループ
+- tick #2。サブエージェント所見を統合: [再起動UIバグ調査](a0b43e58-b897-4b99-9031-3179e5f7f289) / [モバイルUIバグ調査](ca2947bf-680e-48bd-be81-0b9cd070202f)
+- R1/R2 重複は再掲せず参照のみ
+
+### 確度の高い新規バグ
+
+1. **P1 / kebab ポップアップが後続DOMに隠れる** — `HeaderKebabMenu.tsx`（`z-30`）+ `TaskView.tsx` `<header>`（z-index なし）
+   - 症状: モバイルで「その他の操作」を開くと、直下のタブバー（`lg:hidden`・`bg-surface`）やチャット領域にメニューが欠け／クリック不能
+   - 根拠: `b200dc1` は overflow クリップのみ解消。ポータルも header stacking もない。document 順で後続が上に描画される
+   - 再現: 狭い幅で kebab を開き、タブ（会話/変更…）との重なりを確認
+
+2. **P1 / WebUI 再起動ポールが旧プロセス応答で早期成功** — `SettingsView.tsx:289-299`
+   - 症状: 「再起動しています…」がすぐ消えボタン再有効化。裏ではまだ kill/build/spawn 中
+   - 根拠: ホストは 202 後 `setImmediate` で kill。UI は1秒後から `/api/health`。旧プロセスが生きていれば `h.ok` で break
+
+3. **P1 / ポール60回失敗でも成功扱い** — `SettingsView.tsx:289-307`
+   - 症状: 約60秒後に進行表示が消えエラーなし。ビルド遅延や起動失敗でも完了に見える
+   - 根拠: ループ終了後に `throw` せず `refresh()` → `finally` で `setRestarting(null)`
+
+4. **P1 / OpenCode 再起動待機が固定1.5秒** — `SettingsView.tsx:300-302`
+   - 症状: 進行表示が約1.5秒で消えるが、ホスト側は最大約45秒。ポート変更時の WebUI 追従も UI が待たない
+   - 根拠: `target === "opencode"` は sleep のみ。ホスト失敗は control-server で握りつぶし（R2 #2 と同系統）
+
+5. **P1 / health 復帰判定が HTTP のみ（opencode.ok 無視）** — `SettingsView.tsx:294-295` / `api/health/route.ts:29-33`
+   - 症状: `all` 再起動で WebUI だけ起きればポール終了。OpenCode 未就绪でも進行クリア
+   - 根拠: health は OpenCode 落ちても常に HTTP 200（`webui.ok: true`）。UI はボディの `opencode.ok` を見ない
+
+6. **P2 / `isMd`/`isLg` 初期 false でデスクトップ一瞬 kebab 寄せ** — `TaskView.tsx` Zone B 条件
+   - 症状: ハードリロード直後、パネルボタンが kebab 側のみ → matchMedia 後に Zone B へチラつき
+   - 根拠: `useState(false)` + effect 更新。CSS `hidden lg:` 廃止の副作用
+
+7. **P2 / グローバル16px のデスクトップ副作用** — `globals.css:102-106`（`cb3d9db`）
+   - 症状: モバイル限定でないため、SessionSwitcher/`text-[11px]` select 等が大きくなりヘッダー密度が崩れる可能性
+   - 備考: R1 #3（utility 上書きで iOS 対策無効）と表裏。カスケード環境により「対策無効」か「デスクトップ肥大」のどちらか／両方が出る。`@media` 絞り込みが必要
+
+### 要調査・低優先
+- confirm 後〜`setRestarting` 反映前の二重クリック（R2 #2 の狭いレース）
+- `useSessionActions.error` を TaskView が表示せず alert のみ（`9e7a4eb`）
+- モバイルタブと kebab のパネル入口重複が意図か整理漏れか
+
+### 据え置き（既出）
+- R1: E2E文字化け / 巻き戻しE2E乖離 / composer iOS zoom / touchActivity 30s ブロック
+- R2: SessionSwitcher スナップバック / 再起動二重202 no-op / プラン最小化未実装
+
+---
+
 ## 2026-07-23 バグ発見ループ R2（発見のみ・未修正）
 
 ### ループ
