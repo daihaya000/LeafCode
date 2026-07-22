@@ -119,7 +119,7 @@
 
   ```ts
   test("updates activity for the matching task session", async () => {
-    getTaskMock.mockReturnValue({ id: "task-1" });
+    getWorkspaceMock.mockReturnValue({ id: "task-1" });
     touchSessionActivityMock.mockReturnValue(true);
     const response = await POST(
       new Request("http://localhost/api/tasks/task-1/activity", {
