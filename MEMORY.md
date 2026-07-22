@@ -1,5 +1,38 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R10（発見のみ・未修正）
+
+### ループ
+- tick #7。Sidebar／Permission・Question／仕様 docs（音声・setup bat）／TaskView extras を重点。R1–R9 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / サイドバーお気に入りトグル失敗が無言** — `Sidebar.tsx:377-389` `toggleFavorite`
+   - 症状: PATCH `/api/projects` が失敗しても UI・alert なし。星の見た目も楽観更新していないため「押せなかった」ようにしか見えず原因不明
+   - 根拠: `catch { /* ignore */ }`。削除系は alert するのに favorite だけ握りつぶし
+
+2. **P2 / 仕様のみ・実装なし（音声入力）** — `docs/.../2026-07-23-voice-input-design.md`（`76dcc54`）
+   - 症状: Home/Task composer のマイク音声入力が仕様化されたが `use-voice-input` / UI は未着手
+   - 根拠: 仕様は `web/src/lib/use-voice-input.ts` を要求。コードベースに該当ファイルなし（プラン R8 と同型のギャップ追跡）
+
+3. **P2 / 仕様のみ・実装なし（Windows セットアップ bat）** — `docs/.../2026-07-23-windows-setup-batch-design.md`（`084b20e`）
+   - 症状: セットアップバッチ改善の仕様のみ。製品コード未追従（ドキュメント債務）
+   - 備考: ランタイムバグではないが発見ループの未実装ギャップとして記録
+
+### 再確認（既出・未修正）
+- R8: `PlanDocumentCard` 開閉は入ったが TaskView が `initialCollapsed` 未配線のまま（`initialCollapsed` grep ヒットなし）
+- R7: inline `replyPermission`/`replyQuestion` も 404 を成功扱いで dispatch（AttentionQueueModal と同型）
+
+### 確認して新規なし
+- TaskView `setExtras` は unmount で `{}` クリア（CommandPalette の stale onFile は回避）
+- PermissionCard は失敗時 error 表示。成功時はキュー除去前提で busy 解除なし（通常は unmount）
+- FileTreePanel / PtyPanel はエラー表示あり
+
+### 据え置き
+- R1–R9 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R9（発見のみ・未修正）
 
 ### ループ
