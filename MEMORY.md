@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R23（発見のみ・未修正）
+
+### ループ
+- tick #19–20。access-mode／notify／favicon／copy.ts／provisionWorkspace／AddonHost を確認。R1–R22 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / `temporary_copy` 失敗時に部分コピー＋allowlist が残る** — `copy.ts` `createTemporaryCopy`（25–37）× `workspace-service.ts` provision（143–153）
+   - 症状: `fs.cpSync` 途中失敗や、コピー成功後の `createWorkspace`／後続エラーで、`%APPDATA%/…/copies/<id>` や `allowed_roots` エントリがロールバックされず残骸化。設定の orphan scan も temporary_copy の allowlist 解放漏れ（R19）と組み合わさると汚染が残る
+   - 根拠: `createTemporaryCopy` は `mkdir` 後に `cpSync`、失敗時クリーンアップなし。provision の catch も `removeTemporaryCopy` / `removeAllowedRoot` を呼ばない。`POST /api/tasks` の rollback は `workspace` 代入後のみ
+   - 再現: 巨大リポジトリでコピー中にディスク満杯／権限エラー → API 500 だが `copies/` に半端なディレクトリが残る
+
+### 確認して新規なし / 低優先
+- access-mode の「このセッション」文言 vs グローバル localStorage は仕様メモ上グローバル永続が意図。コピー不一致は P3 相当で未昇格
+- notify／favicon-badge の遷移判定は妥当
+- AddonHost の settings 非表示はテスト済み
+
+### 据え置き
+- R1–R22 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R22（発見のみ・未修正）
 
 ### ループ
