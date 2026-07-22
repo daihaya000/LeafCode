@@ -1,5 +1,26 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R44（発見のみ・未修正）
+
+### ループ
+- tick #12（PID 23500）。R1–R43 重複除外。temporary_copy の symlink／activity／files 周辺
+
+### 確度の高い新規バグ
+
+1. **P2 / `temporary_copy` が外向き symlink をそのまま複製し、隔離を破れる** — `copy.ts` `createTemporaryCopy`（28–35, `dereference: false`）× provision（workspace-service）
+   - 症状: コピー元に `secrets -> C:\Users\…\.ssh` のような symlink があると、copies 配下に同じリンクが残る。allowlist はコピー根の realpath しか見ないため、エンジン／エージェントのファイル操作がリンク先（ホスト側）へ到達しうる。「一時コピーで隔離」前提が崩れる
+   - 根拠: `fs.cpSync` が symlink を実体化せず保持。SKIP はディレクトリ名のみで symlink 先を検証しない。過去メモの「Windows symlink EPERM」はコピー失敗側で、成功時の外向きリンク残存は未記載
+   - 再現: リポジトリに外向き symlink を置き isolation=temporary_copy でタスク作成 → コピー内のリンク先を read/write
+
+### 確認して新規なし／既知
+- touchActivity の await ブロックは R1#4 のまま未修正
+- projects/restore の adopt は manifest 必須で R43 より狭い（ただし成功時は同様に allowlist 追加）
+
+### 据え置き
+- R1–R43 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R43（発見のみ・未修正）
 
 ### ループ
@@ -228,7 +249,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R43 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R44 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -294,6 +315,7 @@
 | R40#2 | `session/{id}/share` POST/DELETE の write ブロック漏れ |
 | R41#1–4 | `PATCH /project/{id}`・`DELETE workspace/{id}`・`session/background`・`/tui/*` のブロック漏れ |
 | R42#1 | `/api/access` が Caddy HTTPS を無視して常に http://NIC:3000 |
+| R44#1 | temporary_copy が外向き symlink を保持し隔離を破れる |
 
 ### 低（後でよい）
 
