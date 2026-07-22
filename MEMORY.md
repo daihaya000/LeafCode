@@ -1,5 +1,27 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R25（発見のみ・未修正）
+
+### ループ
+- tick #23–24。SessionActions／health／default-model／MessageMetaHeader を確認。R1–R24 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / compact 失敗時も「巻き戻し失敗」アラート** — `SessionActions.tsx` `run`（81–94）
+   - 症状: コンテキスト圧縮（compact）や unrevert が失敗しても `window.alert("巻き戻し失敗: …")` と出る。操作と無関係な文言で原因が分かりにくい
+   - 根拠: `compact` / `revert` / `unrevert` が共通 `run` の catch に入っており、メッセージが revert 固定
+   - 再現: エンジン停止中にヘッダの compact を押す → 「巻き戻し失敗」と表示される
+
+### 確認して新規なし
+- `/api/health` の opencode.ok 無視は R3 済み
+- MessageMetaHeader のゼロ cost 非表示は妥当
+- default-model のコメントと優先順位の文言ズレは P3 相当で未昇格
+
+### 据え置き
+- R1–R24 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R24（発見のみ・未修正）
 
 ### ループ
