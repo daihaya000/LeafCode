@@ -1,6 +1,47 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
-## 2026-07-23 発見バグの3段階優先度（R1–R34 統合）
+## 2026-07-23 バグ発見ループ R35（発見のみ・未修正）
+
+### ループ
+- `/loop 2m 引き続きバグハント実施`。既存 tick ループ（PID 26536 / shell 33084）を再利用。即時1回＋以降2分間隔継続
+- R1–R34・優先度表との重複を除外。host Caddy／git isInside／DiffPane／slash／lock を重点
+
+### 確度の高い新規バグ
+
+1. **P0 / `removeWorktree` の `isInside` がパス一致を許可し、repo 本体・worktrees 根を再帰削除しうる** — `web/src/lib/git.ts:110-113,164-168,201-204` × `project-session-sync.ts:84-87,114-122` × `workspace-service.ts:212-218`
+   - 症状: 細工 `sessions.json` の `git_worktree` + `worktreePath`（プロジェクト根、または `%APPDATA%/opencode-webui/worktrees`）を restore → タスク削除でリポジトリ全体／全 worktree が `fs.rmSync(recursive, force)` される
+   - 根拠: 「root **外**拒否」対策の穴。`copy.ts:44` は `!rel` で根一致を拒否するが、こちらは `rel===""` を inside 扱い。restore も同判定でスキップしない。過去の「任意パス削除」修正の残余
+   - 再現: manifest に `isolation:"git_worktree"`, `worktreePath:<projectRoot>` → restore → 当該 WS 削除
+
+2. **P2 / Caddy 異常終了後に自動再起動しない** — `host/src/index.js:595-601` vs WebUI `scheduleWebRestart`（797–820）／tray 再生成
+   - 症状: `OPENCODE_WEBUI_CADDY=1` で Caddy が落ちるとトレイは `Caddy: stopped`、HTTPS/LAN 入口が死んだまま。ホスト再起動まで復帰しない
+   - 根拠: exit で `caddyProc=null` とメニュー更新のみ。孤児化修正 `stopStrayCaddy` とは別件
+   - 再現: Caddy 有効で host 起動 → `taskkill /F /IM caddy.exe`（host は残す）→ `:8443` が自動復帰しない
+
+3. **P2 / DiffPane が「現在＝defaultTarget」でも自己マージ先を保持** — `DiffPane.tsx:243,529-561` × `api/git/branches/route.ts:42-46`
+   - 症状: HEAD が `main`（ローカルに `main` あり）だと `mergeTarget` が `main`。選択肢からは `current` 除外なのに value は自己参照。マージ／PR ボタンが有効（自己マージ／同一 base）
+   - 根拠: `defaultTarget` は current 除外なし。`disabled={!mergeTarget}` は自己参照でも true。R33 は HomeView worktree base 用で別面
+   - 再現: タスク diff のマージパネルで HEAD=`main` → セレクトは空相当だがボタン活性 → 「取り込む／反映」
+
+4. **P2 / slash 送信がコマンド一覧未取得・失敗時に通常プロンプトへ落ちる** — `TaskView.tsx:933-938` × `useSlashCommands.ts:11-34` × `slash-command.ts:86-100`
+   - 症状: `/init` 等を送っても `session.command` にならず普通の prompt 扱い。サジェストも出ない／消える
+   - 根拠: 送信分岐も同一 `slashCommands` 配列依存。Home 新規作成はサーバ側再取得（`tasks/route.ts`）で回避されるが TaskView 再送はクライアント依存
+   - 再現: Task を開いて `/command` 応答前に既知コマンド送信、または `/api/opencode/command` を失敗させてから `/init` 送信
+
+5. **P2 / host lock が CreationDate 失敗時に緩い cmdline で誤認→taskkill しうる** — `host/src/index.js:211-215,922-940,964-972`
+   - 症状: ロック PID が別の `node …/src/index.js`（トレイ無し）だと、新 host 起動が「劣化ホスト引き継ぎ」で無関係プロセスを `taskkill /F` する
+   - 根拠: 現代ロックは created 一致で安全だが、WMI 失敗時は `node` + `src/index.js` だけ。host 専用パス検証なし
+   - 再現: created 照会が失敗する状況で、ロック PID を別プロジェクトの `node …/src/index.js`（tray 無し）に見立てて二重起動
+
+### 確認して昇格しなかったもの
+- SoftNav（`key={projectId}` で主要ケース抑止）、middleware 欠如の広義 LAN 無認証（browse/write 漏れは既存 ID に包含）、visualViewport、AddonSettings 永続黙殺（P3）
+
+### 据え置き
+- R1–R34 全件未修正。ループは PID 26536 で継続中
+
+---
+
+## 2026-07-23 発見バグの3段階優先度（R1–R35 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -8,6 +49,7 @@
 
 | ID | 内容 |
 |----|------|
+| R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
 | R27 | experimental worktree/workspace 書き込みブロック漏れ（git 破壊） |
 | R26 / R32#2 / R7#7 | move-session・console/switch・MCP OAuth DELETE の write ブロック漏れ（セットで `isBlockedOpencodeWrite` 強化） |
 | R16 / R14 / R8#2 | `initialCollapsed={!isMd}` — isMd 初期 false でデスクトップ恒久最小化（master 投入済み） |
@@ -49,6 +91,10 @@
 | R13#3 | 死んだ systray へ更新継続 |
 | R2#2 | 再起動二重 202 no-op |
 | R3#6–7 | isMd 初期 false の一瞬寄せ・グローバル16px デスクトップ副作用 |
+| R35#2 | Caddy 異常 exit 後に自動再起動なし（HTTPS/LAN 入口が死んだまま） |
+| R35#3 | DiffPane 自己マージ先（current＝defaultTarget） |
+| R35#4 | slash 未取得／失敗時に command が通常 prompt へ落ちる |
+| R35#5 | host lock CreationDate 失敗時の緩い cmdline 誤認→taskkill |
 
 ### 低（後でよい）
 
