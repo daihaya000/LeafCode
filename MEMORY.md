@@ -1,5 +1,25 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R17（発見のみ・未修正）
+
+### ループ
+- [R14バグ発見調査](fc734985-5652-4d7a-95c0-6fbd6a4321aa) を統合
+
+### 確度の高い新規バグ
+
+1. **P2 / abort 直後の再送信が trailing resync で idle に潰されうる** — `useSessionStream.ts` `abort`（1285–1305）× `resolveResyncStatus` pending 分岐（77–82）× `sendPrompt`
+   - 症状: Stop → すぐ再送信すると、abort 完了後の `preferRest` resync が遅延 REST idle を適用し `pendingMutation` クリア＋optimistic busy を idle に戻す窓がある（二重送信／メッセージ初期化レース）
+   - 根拠: abort は即 idle 解錠。finally の resync に世代ガードなし。pending 中は REST idle でも `apply+clearPending`。R9（再接続中 stale idle）とはトリガ別
+
+2. **P2 / TaskView 削除失敗でも画面残留＋セッション先行削除** — `TaskView.tsx` `removeTask`（1136–1138）+ `destroyWorkspace`（206→230–234）
+   - 症状: 409 orphaned 時 TaskView は `setSendError` のみで `/` へ遷移しない。先に `deleteBoundOpenCodeSessions` 済みなのでエンジン session は消え、DB は orphaned、Sidebar 一覧から除外 → 「死んだ」タスク画面だけ残る
+   - 根拠: R14 #2（Sidebar）の TaskView 側・サーバ順序を補強。成功時のみ `router.push("/")`
+
+### 据え置き
+- R1–R16 全件未修正（R14 Sidebar 409・R16 プラン isMd 等）
+
+---
+
 ## 2026-07-23 バグ発見ループ R16（発見のみ・未修正）
 
 ### ループ
