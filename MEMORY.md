@@ -1,5 +1,33 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R11（発見のみ・未修正）
+
+### ループ
+- [R8未カバー領域調査](7a5c1609-29f5-40e8-ba3c-8f0b9ecf6c69) を統合（R1–R10 非重複分）
+
+### 確度の高い新規バグ
+
+1. **P1 / `timedFetch` がヘッダー到着で abort 解除→ボディ読みが無制限ハング** — `web/src/lib/client.ts` `timedFetch`
+   - 症状: 応答ヘッダーは返るがボディ停滞時、Settings の provider/MCP/FX、`useSlashCommands`、Home/Task caps 取得などがハングしうる
+   - 根拠: `fetch` 解決直後に `finally { clear() }` でタイマー解除。呼び出し側の `res.json()` は signal 非保護。`getJson`/`ocJson`/`ocServer` はボディまで signal 保護あり → ハング対策の穴
+
+2. **P2 / GraphPanel: コミット展開失敗でスピナー永久表示** — `GraphPanel.tsx` `toggleExpand`（285–299）
+   - 症状: `/api/git/show` 失敗後も `expanded` が残り、`filesByCommit[hash]` 未設定のため変更ファイル領域が Spinner のまま
+   - 根拠: catch は `setError` のみ。`expanded` を戻す／空配列を入れる処理なし
+
+3. **P2 / GraphPanel: silent ポール成功後もエラー帯が残る** — 同 `load`（169 / 178–193）
+   - 症状: 手動更新失敗の赤帯のあと、silent ポール成功で一覧は更新されてもエラー文言が消えない
+   - 根拠: `setError(null)` は `!silent` 時のみ。payload 更新は silent でも実行
+
+### 要調査（エージェント）
+- PtyPanel: directory 切替時の cancelled/abort なし → 旧応答の上書き
+- project-session-sync: `temporary_copy` の worktreePath 信頼ベース検証が git_worktree と非対称
+
+### 据え置き
+- R1–R10 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R10（発見のみ・未修正）
 
 ### ループ
