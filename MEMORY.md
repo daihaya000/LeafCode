@@ -334,6 +334,7 @@
 | R41#1–4 | `PATCH /project/{id}`・`DELETE workspace/{id}`・`session/background`・`/tui/*` のブロック漏れ |
 | R42#1 | `/api/access` が Caddy HTTPS を無視して常に http://NIC:3000 |
 | R44#1 | temporary_copy が外向き symlink を保持し隔離を破れる |
+| R45#1 | `invalidateDirStat` 未使用でコミット後も差分統計が最大15s古い |
 
 ### 低（後でよい）
 
