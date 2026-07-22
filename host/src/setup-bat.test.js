@@ -23,7 +23,9 @@ function createSandbox(options = {}) {
   mkdirSync(join(root, "web"));
   mkdirSync(join(root, "host"));
   writeFileSync(join(root, "setup.bat"), readFileSync(setupSource));
-  writeBat(join(root, "start-webui.bat"), 'type nul > "%~dp0started.txt"\nexit /b 0');
+  writeBat(join(root, "start-webui.bat"), options.asyncStart
+    ? 'type nul > "%~dp0started.txt"\nping -n 8 127.0.0.1 >nul\ntype nul > "%~dp0finished.txt"\ntype nul > "%~dp0exited.txt"\ncd /d "%TEMP%"\nexit /b 0'
+    : 'type nul > "%~dp0started.txt"\nexit /b 0');
   writeBat(join(bin, "where.cmd"), [
     'if exist "%~dp0%~1.cmd" echo %~dp0%~1.cmd',
     'if exist "%~dp0%~1.cmd" exit /b 0',
@@ -105,12 +107,21 @@ function createSandbox(options = {}) {
   return {
     root,
     log,
-    run() {
-      return spawnSync(process.env.ComSpec ?? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe"), ["/d", "/c", "call setup.bat"], {
+    run({ captureOutput = true } = {}) {
+      const startedAt = Date.now();
+      const result = spawnSync(process.env.ComSpec ?? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe"), ["/d", "/c", "call setup.bat"], {
         cwd: root, encoding: "utf8", env, timeout: 10_000, windowsHide: true,
+        stdio: captureOutput ? undefined : "ignore",
       });
+      return { ...result, elapsedMs: Date.now() - startedAt };
     },
-    cleanup() { rmSync(root, { recursive: true, force: true }); },
+    cleanup() {
+      try {
+        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      } catch (error) {
+        if (error.code !== "EPERM") throw error;
+      }
+    },
   };
 }
 
@@ -119,8 +130,8 @@ function assertCompleted(result, label) {
   assert.equal(result.signal, null, `${label}: child was terminated by ${result.signal}`);
 }
 
-async function waitFor(path) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+async function waitFor(path, attempts = 50) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (existsSync(path)) return;
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
   }
@@ -144,6 +155,21 @@ test("setup.bat uses successful winget installs, builds, and starts separately",
   } finally { sandbox.cleanup(); }
 });
 
+test("setup.bat starts the host asynchronously", { skip: !isWindows }, async () => {
+  const sandbox = createSandbox({ asyncStart: true });
+  try {
+    const result = sandbox.run({ captureOutput: false });
+    assertCompleted(result, "asynchronous host start");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.ok(result.elapsedMs < 2_000, `setup waited ${result.elapsedMs}ms for the host child`);
+    await waitFor(join(sandbox.root, "started.txt"));
+    assert.equal(existsSync(join(sandbox.root, "finished.txt")), false);
+    await waitFor(join(sandbox.root, "finished.txt"), 500);
+    await waitFor(join(sandbox.root, "exited.txt"), 500);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
+  } finally { sandbox.cleanup(); }
+});
+
 test("setup.bat falls back to npm only after the OpenCode winget install fails", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ opencodeExit: 1, wingetOpenCodeExit: 1 });
   try {
@@ -158,15 +184,15 @@ test("setup.bat falls back to npm only after the OpenCode winget install fails",
 
 test("setup.bat returns documented failures without starting a host", { skip: !isWindows }, () => {
   const cases = [
-    ["winget is absent", { withWinget: false }, 1, "winget was not found"],
-    ["Node installation fails", { nodeMajor: 18, wingetNodeExit: 1 }, 2, "Node.js installation failed"],
-    ["Node PATH is not refreshed", { withNode: false }, 3, "Node.js is not available"],
-    ["OpenCode winget installation has no PATH", { opencodeExit: 1, opencodeWingetMarker: false }, 4, "not available in this command prompt"],
-    ["OpenCode winget and npm both fail", { opencodeExit: 1, wingetOpenCodeExit: 1, npmGlobalExit: 1 }, 4, "OpenCode installation failed"],
-    ["web npm ci fails", { npmWebCiExit: 1 }, 5, "web dependency installation failed"],
-    ["web build fails", { npmWebBuildExit: 1 }, 6, "web build failed"],
-    ["web build has no BUILD_ID", { createBuildId: false }, 7, "BUILD_ID was not found"],
-    ["host npm ci fails", { npmHostCiExit: 1 }, 8, "host dependency installation failed"],
+    ["wingetがありません", { withWinget: false }, 1, "wingetが見つかりません"],
+    ["Node.jsの導入に失敗", { nodeMajor: 18, wingetNodeExit: 1 }, 2, "Node.jsの導入に失敗しました"],
+    ["Node.jsのPATHが未反映", { withNode: false }, 3, "Node.jsがこのコマンドプロンプトで利用できません"],
+    ["OpenCodeのPATHが未反映", { opencodeExit: 1, opencodeWingetMarker: false }, 4, "OpenCodeがこのコマンドプロンプトで利用できません"],
+    ["OpenCodeの導入に失敗", { opencodeExit: 1, wingetOpenCodeExit: 1, npmGlobalExit: 1 }, 4, "OpenCodeの導入に失敗しました"],
+    ["webのnpm ciに失敗", { npmWebCiExit: 1 }, 5, "webの依存関係の導入に失敗しました"],
+    ["webのビルドに失敗", { npmWebBuildExit: 1 }, 6, "webのビルドに失敗しました"],
+    ["webのBUILD_IDがない", { createBuildId: false }, 7, "ビルド後にBUILD_IDが見つかりません"],
+    ["hostのnpm ciに失敗", { npmHostCiExit: 1 }, 8, "hostの依存関係の導入に失敗しました"],
   ];
   for (const [name, options, expectedExit, expectedMessage] of cases) {
     const sandbox = createSandbox(options);
