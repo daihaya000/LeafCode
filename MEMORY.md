@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R31（発見のみ・未修正）
+
+### ループ
+- tick #32。新規コミット `dec70bc`（`setup.bat`）をレビュー。R1–R30 重複除外
+
+### 確度の高い新規バグ
+
+1. **P1 / `setup.bat` が `start-webui.bat` を `call` するため完了メッセージに到達しない** — `setup.bat:134-136` × `start-webui.bat:54`（`node src\index.js` 常駐）
+   - 症状: セットアップ成功後もコンソールがホスト終了までブロック。「Setup completed」や `pause_if_interactive` に進まない。ユーザーはハングしたように見える。テストは start-webui を即 exit するモックのため検知漏れ
+   - 根拠: `:start_host` が `call start-webui.bat`。本番 start-webui はトレイ host をフォアグラウンド実行
+   - 再現: 実環境で `setup.bat` を最後まで走らせる → npm 成功後に窓が戻りず、完了 echo が出ない
+
+### 据え置き
+- R1–R30 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R30（発見のみ・未修正）
 
 ### ループ
