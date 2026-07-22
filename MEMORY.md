@@ -1,5 +1,35 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R39（発見のみ・未修正）
+
+### ループ
+- tick #5–#7（PID 23500）。R1–R38 重複除外。OpenAPI 危険 POST（vcs/sync/tui/project）をスキーマ突合
+
+### 確度の高い新規バグ
+
+1. **P1 / `POST /vcs/apply` が write ブロック漏れ** — `opencode.ts` `isBlockedOpencodeWrite` × schema `/vcs/apply` × proxy
+   - 症状: 許可 directory 付きで任意パッチを作業ツリーへ適用できる。LAN 公開時は認証なしでディスク改変
+   - 根拠: denylist は config/auth/mcp のみ。WebUI 自身の git API とは別経路
+   - 再現: `POST /api/opencode/vcs/apply` + patch ボディ → 403 にならず upstream
+
+2. **P2 / `POST /sync/steal` が write ブロック漏れ** — schema `/sync/steal`
+   - 症状: セッションを現 workspace へ「奪取」できる（R26 move-session 同系・別パス）
+   - 再現: `POST /api/opencode/sync/steal` → 403 にならない
+
+3. **P2 / `POST /experimental/workspace/warp` が write ブロック漏れ** — schema `/experimental/workspace/warp`（R27 workspace 作成と同系・別エンドポイント）
+   - 症状: セッション sync 履歴を別 workspace へ移動／detach
+   - 再現: `POST /api/opencode/experimental/workspace/warp` → 403 にならない
+
+4. **P2 / `POST /project/git/init` が write ブロック漏れ** — schema `/project/git/init`
+   - 症状: プロジェクトで `git init` をエンジン経由で実行可能
+   - 再現: `POST /api/opencode/project/git/init` → 403 にならない
+
+### 確認メモ
+- `POST /mcp/.../connect` は `p.startsWith("/mcp/")` で既ブロック。tui/* は実害薄く据え置き
+- R1–R38 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R38（発見のみ・未修正）
 
 ### ループ
@@ -110,7 +140,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R38 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R39 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -120,6 +150,7 @@
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
 | R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
+| R39#1 | `POST /vcs/apply` の write ブロック漏れ（任意パッチ適用） |
 | R36#1 | OpenCode 異常 exit 後に自動再起動なし（エンジン全滅・手動／ホスト再起動まで） |
 | R27 | experimental worktree/workspace 書き込みブロック漏れ（git 破壊） |
 | R26 / R32#2 / R7#7 | move-session・console/switch・MCP OAuth DELETE の write ブロック漏れ（セットで `isBlockedOpencodeWrite` 強化） |
@@ -169,6 +200,7 @@
 | R36#2 | Attention モーダル「フルアクセス」が残キューを自動承認しない |
 | R37#1 | `into=current` コンフリクト後に abort なし・DiffPane 未再読込 |
 | R38#2 | `POST /global/upgrade` の write ブロック漏れ |
+| R39#2–4 | `sync/steal`・`workspace/warp`・`project/git/init` の write ブロック漏れ |
 
 ### 低（後でよい）
 
