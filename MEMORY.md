@@ -1,5 +1,26 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R46（発見のみ・未修正）
+
+### ループ
+- tick #14（PID 23500）。R1–R45 重複除外。refresh-title／copy SKIP／git skip
+
+### 確度の高い新規バグ
+
+1. **P1 / タイトル再生成が `tools: {}` のままツールを止めない** — `refresh-title/route.ts:68-78` × schema `tools?: { [key: string]: boolean }`
+   - 症状: 「会話からタイトル再生成」が一時セッションで prompt する際、`tools: {}` は「上書きなし」と解釈されやすく、デフォルトの bash/edit 等が有効のまま。タイトル生成中にツール実行・ディスク変更が起きうる
+   - 根拠: OpenAPI 上 `tools` はツール名→boolean のマップ。空オブジェクトは全無効ではなく未指定と同等。明示的に主要ツールを `false` にする／agent を無ツールに固定するコードが無い
+   - 再現: サイドバーでタイトル再生成 → OpenCode 側で temp session の tool 呼び出し有無をイベント／ログで確認
+
+2. **P2 / `temporary_copy` の SKIP に `.opencode-webui` が無い** — `copy.ts` SKIP（5–15）
+   - 症状: 隔離コピーに WebUI の sessions.json 等メタデータが入り、肥大化・旧パス情報の混入。R44 symlink とは別のコピーフィルタ欠落
+   - 再現: `.opencode-webui/sessions.json` があるリポジトリで temporary_copy 作成 → コピー先に同ディレクトリが存在
+
+### 据え置き
+- R1–R45 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R45（発見のみ・未修正）
 
 ### ループ
@@ -267,7 +288,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R45 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R46 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -277,6 +298,7 @@
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
 | R43#1 | `POST /api/projects`・`/api/roots` が任意パスを無検証で allowlist 拡張 |
+| R46#1 | タイトル再生成が `tools: {}` でツール無効化になっていない（実行しうる） |
 | R40#1 | PTY create/update/delete/connect-token の write ブロック漏れ（リモートシェル相当） |
 | R38#1 | `POST /global/dispose`・`/instance/dispose` の write ブロック漏れ（エンジン落とせる） |
 | R39#1 | `POST /vcs/apply` の write ブロック漏れ（任意パッチ適用） |
@@ -335,6 +357,7 @@
 | R42#1 | `/api/access` が Caddy HTTPS を無視して常に http://NIC:3000 |
 | R44#1 | temporary_copy が外向き symlink を保持し隔離を破れる |
 | R45#1 | `invalidateDirStat` 未使用でコミット後も差分統計が最大15s古い |
+| R46#2 | temporary_copy の SKIP に `.opencode-webui` 欠落 |
 
 ### 低（後でよい）
 
