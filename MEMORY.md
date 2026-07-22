@@ -1,5 +1,25 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R37（発見のみ・未修正）
+
+### ループ
+- tick #2（PID 23500 / shell 550353）。R1–R36 重複除外。merge into=current／devcontainer／addons 等を確認
+
+### 確度の高い新規バグ
+
+1. **P2 / `into=current` マージコンフリクト後に中止手段がなく Diff も古いまま** — `api/git/merge/route.ts:143-150` × `DiffPane.tsx:293-310,547-549`
+   - 症状: 「取り込む」でコンフリクトすると `MERGE_HEAD` 付きのまま残る。API に abort なし、UI にも中止なし。失敗時 `load()` されないため差分は空のまま・Merge 再押下可・Commit は無効のまま詰まりうる
+   - 根拠: `into=branch` だけ `--abort`＋復帰（既修正）。`into=current` は 409 返却のみ。`run()` は成功時だけ `load()`
+   - 再現: 衝突する2ブランチで Diff → Merge → 「取り込む」→ エラー後に更新せず操作を続ける
+
+### 確認して新規なし
+- devcontainer は host-fallback の意図的スタブ、health／opencode-id／addons は既知か確度不足
+
+### 据え置き
+- R1–R36 全件未修正。ループ継続中
+
+---
+
 ## 2026-07-23 バグ発見ループ R36（発見のみ・未修正）
 
 ### ループ
@@ -67,7 +87,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R36 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R37 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -123,6 +143,7 @@
 | R35#4 | slash 未取得／失敗時に command が通常 prompt へ落ちる |
 | R35#5 | host lock CreationDate 失敗時の緩い cmdline 誤認→taskkill |
 | R36#2 | Attention モーダル「フルアクセス」が残キューを自動承認しない |
+| R37#1 | `into=current` コンフリクト後に abort なし・DiffPane 未再読込 |
 
 ### 低（後でよい）
 
