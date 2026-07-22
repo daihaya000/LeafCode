@@ -1,5 +1,25 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R27（発見のみ・未修正）
+
+### ループ
+- tick #26–27。experimental OpenAPI 書き込み面を R26 の続きで点検。R1–R26 重複除外
+
+### 確度の高い新規バグ
+
+1. **P1 / experimental worktree／workspace 書き込みがブロック漏れ** — `opencode.ts` `isBlockedOpencodeWrite` × schema `/experimental/worktree`（POST/DELETE）・`/experimental/worktree/reset`（POST）・`/experimental/workspace`（POST）等
+   - 症状: WebUI プロキシ経由で OpenCode のサンドボックス worktree 作成・削除・reset、workspace 作成が可能。WebUI 自身は `git.ts` で worktree を管理しているのに、並行してエンジン側 API が unrestricted。R26 の move-session と同根で、影響面は git ツリー破壊のため一段重い
+   - 根拠: ブロックは config/auth/mcp のみ。`/experimental/**` の mutating メソッドは未列挙
+   - 再現: 許可 directory 付きで `POST /api/opencode/experimental/worktree` → 403 にならず upstream で worktree 作成しうる
+
+### 関連
+- R26 move-session、R7 MCP DELETE とセットで `isBlockedOpencodeWrite` を allowlist／denylist 再設計すべき
+
+### 据え置き
+- R1–R26 全件未修正
+
+---
+
 ## 2026-07-23 バグ発見ループ R26（発見のみ・未修正）
 
 ### ループ
