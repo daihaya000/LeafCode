@@ -1,5 +1,26 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R26（発見のみ・未修正）
+
+### ループ
+- tick #25。`isBlockedOpencodeWrite`／OpenAPI 危険 POST／SessionActions 周辺を確認。R1–R25 重複除外
+
+### 確度の高い新規バグ
+
+1. **P2 / `POST /experimental/control-plane/move-session` が write ブロック漏れ** — `opencode.ts` `isBlockedOpencodeWrite`（4–24）× schema `paths["/experimental/control-plane/move-session"]`
+   - 症状: WebUI BFF／`ocServer` 経由でセッションを別プロジェクト directory へ移動できる。config/auth/mcp 書き込みは遮断しているが、この実験的 control-plane POST は未登録。LAN 公開時は認証なしで呼びうる（R7 MCP DELETE と同系）
+   - 根拠: ブロック対象は PATCH config・PUT/DELETE auth・POST mcp のみ。UI は未使用だがプロキシは通す
+   - 再現: 許可済み directory 付きで `POST /api/opencode/experimental/control-plane/move-session` に移動ボディを送る → 403 にならず upstream へ到達
+
+### 確認して新規なし
+- PATCH `/config` はブロック済み
+- provider OAuth POST はログイン用途の可能性（R18 どおり未昇格）
+
+### 据え置き
+- R1–R25 全件未修正。オープンバグ多数のため修正エージェント投入が有効な段階
+
+---
+
 ## 2026-07-23 バグ発見ループ R25（発見のみ・未修正）
 
 ### ループ
