@@ -22,6 +22,7 @@ goto :success
 :success
 echo [Setup] セットアップが完了しました。
 echo [Setup] WebUI: http://127.0.0.1:3000
+echo [Setup] トレイアイコンが表示されない場合は start-webui.bat を手動で実行してください。
 endlocal & exit /b 0
 
 :failure
