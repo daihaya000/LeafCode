@@ -4,9 +4,16 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ## 起動（Windows）
 
-1. PATH に `opencode`
-2. `start-webui.bat`（prod: `.next` 欠落やソースより古い場合は起動・トレイ/WebUI再起動時に自動 build）
-3. トレイ常駐後、`http://127.0.0.1:3000` が開く
+### 自動セットアップ
+
+`setup.bat` で Node.js 20 LTS / OpenCode のインストールから起動までを自動実行できます。
+
+### 手動起動
+
+1. Node.js 20 LTS 以上が PATH に必要
+2. PATH に `opencode`
+3. `start-webui.bat`（prod: `.next` 欠落やソースより古い場合は起動・トレイ/WebUI再起動時に自動 build）
+4. トレイ常駐後、`http://127.0.0.1:3000` が開く
 
 トラブル時:
 
@@ -20,11 +27,26 @@ node src\index.js
 
 ログに `WebUI is ready` / `OpenCode is ready` が出れば OK。
 
+### setup.bat 終了コード
+
+| コード | 意味 |
+|--------|------|
+| 0 | 成功 |
+| 1 | winget が見つからない |
+| 2 | Node.js インストール失敗 |
+| 3 | Node.js がこのコマンドプロンプトで利用不可 |
+| 4 | OpenCode インストール失敗 |
+| 5 | web 依存関係インストール失敗 |
+| 6 | web ビルド失敗 |
+| 7 | BUILD_ID が見つからない |
+| 8 | host 依存関係インストール失敗 |
+
 ## 正本
 
 | 文書 | 役割 |
 |------|------|
 | [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
+| [OpenCode Docs](https://opencode.ai/docs) | OpenCode 公式ドキュメント |
 
 企画・アーキテクチャや開発途中の計画・作業メモは非公開のローカル文書として管理しており、本リポジトリには含まれません。
 
