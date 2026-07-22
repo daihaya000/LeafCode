@@ -2993,3 +2993,21 @@ TaskView の seededModelRef useEffect は [stream.loaded, stream.messages, model
 ### 謨呵ｨ薙・豕ｨ諢・- **閾ｪ菴廝utton縺ｮbase縺ｫdisplay邉ｻ縺悟ｸｸ譎ゆｻ倅ｸ弱＆繧後ｋ蝣ｴ蜷医ゝailwind縺ｮ hidden md/lg:inline-flex 縺ｯ蜉ｹ縺九↑縺・*縲Ｅisplay繝励Ο繝代ユ繧｣縺ｮ繧ｫ繧ｹ繧ｱ繝ｼ繝蛾・ｺ上〒雋縺代ｋ縲ゅΞ繧ｹ繝昴Φ繧ｷ繝夜撼陦ｨ遉ｺ縺ｯJS譚｡莉ｶ繝ｬ繝ｳ繝繝ｪ繝ｳ繧ｰ縺九。utton蛛ｴ縺ｧdisplay蛻ｶ蠕｡繧定ｨｱ螳ｹ縺吶ｋclassName貂｡縺励〒陦後≧
 - playwright-cli 繧・bash 縺ｧ襍ｷ蜍輔☆繧九→繝上Φ繧ｰ/繧ｿ繧､繝繧｢繧ｦ繝医☆繧九％縺ｨ縺後≠繧・譛ｬ繧ｻ繝・す繝ｧ繝ｳ縺ｧ2蝗・縲ゅΘ繝ｼ繧ｶ繝ｼ謖・､ｺ縺ｫ繧医ｊplaywright菴ｿ逕ｨ遖∵ｭ｢縺ｫ蛻・ｊ譖ｿ縺医ょｮ溽判髱｢讀懆ｨｼ縺ｯ繝ｦ繝ｼ繧ｶ繝ｼ蛛ｴ縺ｫ蟋斐・繧九°蛻･謇区ｮｵ
 - vitest TaskView.test.tsx 縺ｯ螟画峩蜑榊ｾ悟撫繧上★JS heap OOM縺ｧ螳溯｡御ｸ榊庄(迺ｰ蠅・撫鬘・縲Ｕsc/eslint縺ｧ諡・ｿ・- z-30 縺ｯ SlashSuggestMenu(z-20)荳翫ヾidebar mobile(z-40)/CommandPalette(z-[60])/Modal(z-[70+])荳九〒螯･蠖
+
+
+## 2026-07-22 セッション一覧を最新ユーザー操作順に変更
+
+### やったこと
+- 既存セッションへの通常プロンプト、slash command、プラン承認送信の開始時に `session_bindings.updated_at` を更新するDB関数とAPIを追加。
+- TaskViewから活動時刻APIをawaitしてから送信し、送信後にSidebar再取得通知を発火。
+- DB/API/UIテストを追加し、OS依存のDBテスト隔離とactivity await境界をレビューで修正。
+
+### 判断理由
+- OpenCodeの全セッション履歴を一覧取得するより、送信時刻をサーバーに永続化して既存のupdatedAtソートを再利用する方が、再読み込み・別タブでも一貫し、通信量も抑えられる。
+- 活動時刻更新はbest effortとし、更新失敗でユーザーの本来の送信を妨げない。
+
+### 教訓
+- Windowsでは `npm --prefix web exec vitest ...` のパス指定が正しく解釈されないことがある。プロジェクトの `npm run test -- <args>` を使う。
+- Vitestはworker数次第でOOMになるため、最終検証では `--maxWorkers=1 --minWorkers=1` を使う。
+- テストのイベント順だけではawaitを保証できない。deferred Promiseで未解決中の送信を明示的にassertする。
+- Sidebarの既存テストには `timedFetch` mock不足による14件の失敗が残っているが、本機能関連4ファイル30件は成功。
