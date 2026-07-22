@@ -18,6 +18,7 @@ const {
   slashCommands,
   setExtras,
   setActiveScope,
+  planCardProps,
 } = vi.hoisted(() => ({
   getJson: vi.fn(),
   notifyTasksChanged: vi.fn(),
@@ -26,6 +27,7 @@ const {
   slashCommands: [] as { name: string }[],
   setExtras: vi.fn(),
   setActiveScope: vi.fn(),
+  planCardProps: [] as { initialCollapsed?: boolean }[],
 }));
 
 vi.mock("next/link", () => ({
@@ -74,8 +76,18 @@ vi.mock("./FileTreePanel", () => ({ FileTreePanel: () => null }));
 vi.mock("./GraphPanel", () => ({ GraphPanel: () => null }));
 vi.mock("./PartView", () => ({ PartView: () => null }));
 vi.mock("./PlanDocumentCard", () => ({
-  PlanDocumentCard: ({ onApprove }: { onApprove?: () => void }) =>
-    onApprove ? <button onClick={() => void onApprove()}>計画を承認</button> : null,
+  PlanDocumentCard: ({
+    onApprove,
+    initialCollapsed,
+  }: {
+    onApprove?: () => void;
+    initialCollapsed?: boolean;
+  }) => {
+    planCardProps.push({ initialCollapsed });
+    return onApprove ? (
+      <button onClick={() => void onApprove()}>計画を承認</button>
+    ) : null;
+  },
 }));
 vi.mock("./PermissionCard", () => ({ PermissionCard: () => null }));
 vi.mock("./PtyPanel", () => ({ PtyPanel: () => null }));
@@ -144,6 +156,7 @@ describe("TaskView", () => {
   beforeEach(() => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
+    planCardProps.length = 0;
     slashCommands.length = 0;
     setVisible(true);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -451,6 +464,38 @@ describe("TaskView", () => {
       { agent: "build" },
     );
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { matches: false, expected: true, label: "mobile" },
+    { matches: true, expected: false, label: "desktop" },
+  ])("sets the plan initial state from the $label breakpoint", async ({ matches, expected }) => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      visibleMessages: [{
+        info: {
+          id: "plan-1",
+          role: "assistant",
+          agent: "plan",
+          time: { completed: 1 },
+        },
+        parts: [{ id: "plan-text", type: "text", text: "/repo/plan.md" }],
+      }],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(planCardProps.at(-1)?.initialCollapsed).toBe(expected);
   });
 
   it("stops polling after idle even when the completion refresh fails", async () => {

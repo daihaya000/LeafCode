@@ -1881,6 +1881,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         actionable={m.info.id === actionablePlanMessageId}
                         working={working}
                         approved={approvedPlanIds.has(m.info.id)}
+                        initialCollapsed={!isMd}
                         onApprove={approvePlan}
                       />
                     )}
