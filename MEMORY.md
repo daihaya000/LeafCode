@@ -1,5 +1,73 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 発見バグの3段階優先度（R1–R34 統合）
+
+判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
+
+### 高（すぐ直す）
+
+| ID | 内容 |
+|----|------|
+| R27 | experimental worktree/workspace 書き込みブロック漏れ（git 破壊） |
+| R26 / R32#2 / R7#7 | move-session・console/switch・MCP OAuth DELETE の write ブロック漏れ（セットで `isBlockedOpencodeWrite` 強化） |
+| R16 / R14 / R8#2 | `initialCollapsed={!isMd}` — isMd 初期 false でデスクトップ恒久最小化（master 投入済み） |
+| R31 / R32#1 | `setup.bat` が start-webui 常駐で完了しない＋成功判定欠如 |
+| R15#1–2 / R12#1 / R23 | temporary_copy 復元 403・copies クロス削除・失敗時残骸／path ガード |
+| R19 / R30 | purgeGone allowlist 未解放＋roots 削除手段なし |
+| R13#1 / R7#1–2 / R5#2 | Attention busy 固着・部分同期で pending 消失・404 を回答済み扱い |
+| R11#1 | `timedFetch` ボディ無制限ハング |
+| R6#1 | 画像 capability fail-open |
+| R7#4 | SW が非 OK をキャッシュ |
+| R3#2–5 | 再起動ポール早期成功／60回失敗でも成功／OpenCode 1.5s／health が opencode.ok 無視 |
+| R1#3–4 | composer が iOS 16px 対策を無効化・touchActivity が送信を最大30s ブロック |
+| R2#1 | SessionSwitcher controlled snap-back |
+| R7#3 / R13#2 | NestedAgent 空 TL・PartView error 隠蔽 |
+
+### 中（次に直す）
+
+| ID | 内容 |
+|----|------|
+| R20 / R6#2 | FileTree「上へ」root 超え＋browse/dirs 任意列挙 |
+| R18 | `children.length===1` 誤マッチ |
+| R21 / R11#2–3 | GraphPanel directory stale／スピナー・エラー残留 |
+| R17 | abort 直後再送信が idle に潰される・削除409で画面残留 |
+| R24 | エージェント選択時 intelligence が手動モデル基準 |
+| R9#1 | SSE 再接続中 stale idle ガード無効 |
+| R3#1 / R4#2 | kebab z-index／busy 中も削除可 |
+| R1#1–2 | E2E 文字化け・巻き戻し E2E 乖離 |
+| R28 | 画像サイズ・枚数上限なし |
+| R29 / R10#1 | favorite が last_opened を汚す／トグル失敗無言 |
+| R33 | worktree defaultTarget が upstream 無視 |
+| R22 | bindSession unsafe id 黙殺 |
+| R16#2 / R14#2 | orphan 掃除クロス削除・削除409画面残留 |
+| R12#2 | archived→「マージ済」ズレ |
+| R7#5–6 | DiffPane archive 黙殺・diff/files 200+git:false |
+| R9#2–3 | 為替 clamp UI ズレ・AddProject パス上書き |
+| R5#1 / R4#1 | Attention フォーカス破壊・SessionSwitcher 並び遅延 |
+| R25 | compact 失敗でも「巻き戻し失敗」 |
+| R15#4 | CodexBar 空 credits を last-good 扱い |
+| R13#3 | 死んだ systray へ更新継続 |
+| R2#2 | 再起動二重 202 no-op |
+| R3#6–7 | isMd 初期 false の一瞬寄せ・グローバル16px デスクトップ副作用 |
+
+### 低（後でよい）
+
+| ID | 内容 |
+|----|------|
+| R15#3 | difftint `&#39;` 誤認 |
+| R16#3 | PartView error 折りたたみプレビュー無し |
+| R8#3 | CommandPalette Esc 常時グローバル |
+| R10#2–3 | 音声／セットアップ「仕様のみ」（後者は R31 で実装済み・残は R31/32） |
+| R8#1（旧） | プラン未配線 — R16 投入で上書き済み |
+| R33 付記 | resolveLnkTargets 常に `[]` |
+| — | access-mode「このセッション」文言 vs グローバル、default-model コメントズレ 等 P3 |
+
+### 使い方
+- 修正エージェントは **高** から。同一ファイルの write ブロック（高1行目）とプラン isMd（高2行目）は並列可。
+- 中は高の PR と衝突しやすい UI（TaskView／Attention／Session）を避けてから。
+
+---
+
 ## 2026-07-23 バグ発見ループ R34（発見のみ・未修正）／修正優先トリアージ
 
 ### ループ
