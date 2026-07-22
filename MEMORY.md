@@ -1,5 +1,26 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R6（発見のみ・未修正）
+
+### ループ
+- tick #4。領域: 画像 capability 再発／browse／Home・Task 送信ガード。R5（Attention）と重複しない所見
+
+### 確度の高い新規バグ
+
+1. **P1 / 画像ガードが capability 未取得・キー欠落で fail-open** — `TaskView.tsx:897-906,992-997,2198-2201` / `HomeView.tsx:390-405,710-717`
+   - 症状: TaskView は「対応していない可能性」警告を出しても送信ボタンは無効化せず、`modelCapabilities[key] === undefined` のとき `sendingImageBlocked` が false → 非対応モデル／エージェント実効モデルへ画像付き送信が通る
+   - 根拠: ブロック条件に `modelCapabilities[...] !== undefined` が必須。エージェント上書きキーが provider 一覧に無い場合も恒久バイパス。UI 警告（`!imageSupported`）と送信阻止（「既知かつ非対応」のみ）が不一致
+   - 再現: provider 取得前に画像添付して送信、または agent の model が caps マップ外のとき
+
+2. **P2 / browse/dirs が任意パスを列挙可能（認証なし）** — `web/src/app/api/browse/dirs/route.ts:78-125`
+   - 症状: `path` クエリでホスト上の任意ディレクトリを一覧（allowed_roots 非参照）
+   - 根拠: `path.resolve(raw)` のみ。LAN 無認証 browse の既知枠を再確認・未修正
+
+### 据え置き
+- R1–R5 全件未修正（R5 は Attention フォーカス／sync 欠落）
+
+---
+
 ## 2026-07-23 バグ発見ループ R5（発見のみ・未修正）
 
 ### ループ
