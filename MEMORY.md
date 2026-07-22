@@ -1,5 +1,22 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R43（発見のみ・未修正）
+
+### ループ
+- tick #11（PID 23500）。R1–R42 重複除外。allowlist 拡張経路（projects／roots）を確認
+
+### 確度の高い新規バグ
+
+1. **P1 / `POST /api/projects`・`POST /api/roots` が任意パスを無検証で allowlist に追加** — `projects/route.ts:23-44` × `db.ts` `upsertProject`→`addAllowedRoot`（152）× `roots/route.ts:13-24`
+   - 症状: 存在しないパスや `C:\` 等を指定しても許可ルートに入る。LAN 無認証時は攻撃者が allowlist を広げ、以降の OpenCode プロキシ／git API の作用域をホスト全体へ拡大できる（R38–41 の write 漏れと組み合わせると被害が跳ねる）
+   - 根拠: `fs.existsSync`／`isDirectory` なし。projects は `upsertProject` が常に `addAllowedRoot`。roots は resolve＋realpath のみ。R30 は「削除手段なし」のみで追加側の無検証は未記載
+   - 再現: `POST /api/projects` `{"rootPath":"C:\\\\"}` または `POST /api/roots` `{"path":"C:\\\\Windows"}` → `GET /api/roots` に登場
+
+### 据え置き
+- R1–R42 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R42（発見のみ・未修正）
 
 ### ループ
