@@ -27,7 +27,7 @@ call :pause_if_interactive
 endlocal & exit /b %SETUP_EXIT%
 
 :check_winget
-where winget >nul 2>&1
+call where winget >nul 2>&1
 if not errorlevel 1 exit /b 0
 call :fail 1 "winget was not found."
 exit /b 1
@@ -38,9 +38,9 @@ for /f %%V in ('node -p "process.versions.node.split('.')[0]" 2^>nul') do set "N
 call :node_major_is_supported
 if not errorlevel 1 exit /b 0
 echo [Setup] Installing Node.js LTS...
-winget install --id OpenJS.NodeJS.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+call winget install --id OpenJS.NodeJS.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :node_install_failed
-where node >nul 2>&1
+call where node >nul 2>&1
 if errorlevel 1 goto :node_path_not_refreshed
 set "NODE_MAJOR=0"
 for /f %%V in ('node -p "process.versions.node.split('.')[0]" 2^>nul') do set "NODE_MAJOR=%%V"
@@ -61,12 +61,12 @@ call :fail 3 "Node.js is not available in this command prompt."
 exit /b 3
 
 :check_opencode
-opencode --version >nul 2>&1
+call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
 echo [Setup] Installing OpenCode with winget...
-winget install --id SST.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+call winget install --id SST.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :install_opencode_with_npm
-opencode --version >nul 2>&1
+call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
 call :fail 4 "OpenCode is not available in this command prompt."
 exit /b 4
@@ -75,7 +75,7 @@ exit /b 4
 echo [Setup] winget installation failed. Installing with npm...
 call npm install -g opencode-ai
 if errorlevel 1 goto :opencode_install_failed
-opencode --version >nul 2>&1
+call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
 call :fail 4 "OpenCode is not available in this command prompt."
 exit /b 4
