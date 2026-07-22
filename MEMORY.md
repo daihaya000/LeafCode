@@ -1,5 +1,33 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 バグ発見ループ R49（発見のみ・未修正）
+
+### ループ
+- tick #17（PID 23500）。R1–R48 重複除外。config/providers マスク／currency Partial／files/search
+
+### 確度の高い新規バグ
+
+1. **P1 / `GET /config/providers` が `maskSecrets` されず API キーが平文** — `api/opencode/[...path]/route.ts:186-197` × schema `Provider.key?`
+   - 症状: BFF は `pathname === "/config"` のときだけマスクする。`/config/providers` はそのまま upstream JSON を返す。稼働ホストで `GET /api/opencode/config/providers`（`x-opencode-directory` 付き）を叩くと、各 provider の `key` がマスク無しの平文（例: ollama-cloud の API キー）で返った
+   - 根拠: `maskSecrets` はキー名 `/key|token|secret|…/i` をマスクできるが、適用条件が完全一致 `/config` のみ。R48 の `/global/config` と同根因の別エンドポイント。LAN 公開時は同一セグメントから秘密が読める
+   - 再現: 許可ディレクトリをヘッダに付けて `GET /api/opencode/config/providers` → JSON の `providers[].key` が `********` ではなく実値
+   - 修正方針メモ: GET かつ JSON なら `/config`・`/config/*`・`/global/config`・`/global/config/*`（必要なら `/provider` も）にマスクを広げる。漏えい確認済みキーはローテーション推奨
+
+2. **P2 / `writeCostDisplayPrefs` が `Partial` をマージせず、欠落フィールドをデフォルトで上書き** — `currency.ts` `writeCostDisplayPrefs`（77–87）× `sanitizeCostDisplayPrefs`（45–64）
+   - 症状: 署名は `Partial<CostDisplayPrefs>` なのに既存 prefs とマージしない。`rateMode` 欠落時は `=== "auto"` 以外すべて `"manual"` になるため、auto 利用者の設定が部分書き込み一発で manual に落ち、`showUsdSuffix` も false に戻る
+   - 根拠: Settings はフルオブジェクトを渡すが、テスト `writeCostDisplayPrefs({ currency, usdJpyRate })` が rateMode→manual になる挙動を固定化。将来の部分更新呼び出しで設定破壊が起きやすい API 欠陥
+   - 再現: localStorage に `rateMode:"auto"` を入れた状態で `writeCostDisplayPrefs({ showUsdSuffix: true })` → rateMode が manual、他フィールドもデフォルト化
+
+3. **P2 / `GET /api/files/search` が同期フルツリー走査でイベントループを塞ぎうる** — `api/files/search/route.ts` `walk`（20–46, 66–68）
+   - 症状: `readdirSync` の再帰をリクエストスレッドで実行。`q` が稀少マッチ／空以外でも全エントリを訪れるため、巨大リポでは `limit` 到達前に長時間ブロック。タイムアウトも無し（R47 runGit と同系統の BFF ハング面）
+   - 根拠: 非同期化・深さ上限・経過時間打ち切りなし。フロントからの参照は現状薄いが BFF は公開 API
+   - 再現: 巨大 tree の allowlist ディレクトリで `GET /api/files/search?directory=…&q=zzzz-rare` → レスポンス遅延／他 API のストール
+
+### 据え置き
+- R1–R48 未修正。ループ継続
+
+---
+
 ## 2026-07-23 バグ発見ループ R48（発見のみ・未修正）
 
 ### ループ
@@ -322,7 +350,7 @@
 
 ---
 
-## 2026-07-23 発見バグの3段階優先度（R1–R48 統合）
+## 2026-07-23 発見バグの3段階優先度（R1–R49 統合）
 
 判定基準: **高**＝セキュリティ／データ破壊／コア導線が壊れる・初回セットアップ不能。**中**＝実害あるが回避可・頻度限定。**低**＝文言／仕様ギャップ／レア edge／既に別件に包含。
 
@@ -332,6 +360,7 @@
 |----|------|
 | R35#1 | `removeWorktree`/`restore` の `isInside` が根一致を許可 → repo／worktrees 根の再帰削除（P0） |
 | R43#1 | `POST /api/projects`・`/api/roots` が任意パスを無検証で allowlist 拡張 |
+| R49#1 | `GET /config/providers` が maskSecrets されず `providers[].key` が平文（実機確認） |
 | R48#1 | `GET /global/config` が maskSecrets されず秘密が平文で返りうる |
 | R46#1 | タイトル再生成が `tools: {}` でツール無効化になっていない（実行しうる） |
 | R40#1 | PTY create/update/delete/connect-token の write ブロック漏れ（リモートシェル相当） |
@@ -394,6 +423,8 @@
 | R45#1 | `invalidateDirStat` 未使用でコミット後も差分統計が最大15s古い |
 | R46#2 | temporary_copy の SKIP に `.opencode-webui` 欠落 |
 | R47#1 | `runGit`/`runGh` にタイムアウトなし（BFF 無期限ハング） |
+| R49#2 | `writeCostDisplayPrefs(Partial)` が非マージで auto→manual 等を破壊しうる |
+| R49#3 | `files/search` の同期フルツリー走査で BFF イベントループ塞ぎ |
 
 ### 低（後でよい）
 
