@@ -56,12 +56,14 @@ async function readBodyWithTimeout<T>(
   signal: AbortSignal | undefined,
 ): Promise<T> {
   if (!signal) {
-    return (await reader().catch(() => ({}))) as T;
+    return reader();
   }
-  const bodyPromise = reader().catch(() => {
-    if (signal.aborted) throw new ApiError(`${path} timed out`, 408);
-    return {} as T;
-  }) as Promise<T>;
+  const bodyPromise = reader().catch((err: unknown) => {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(`${path} timed out`, 408);
+    }
+    throw err;
+  });
   const abortPromise = new Promise<never>((_, reject) => {
     if (signal.aborted) {
       reject(new ApiError(`${path} timed out`, 408));

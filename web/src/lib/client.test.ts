@@ -166,4 +166,36 @@ describe("timedFetch body readers", () => {
       expect((error as ApiError).status).toBe(408);
     },
   );
+
+  it("surfaces non-abort body reader errors", async () => {
+    const bodyError = new Error("body read failed");
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: () => Promise.reject(bodyError),
+    })));
+
+    const response = await timedFetch("/api/tasks", { timeoutMs: 1000 });
+    await expect(response.json()).rejects.toBe(bodyError);
+  });
+
+  it("converts a body stream read timeout to ApiError 408", async () => {
+    vi.useFakeTimers();
+    let releaseRead!: (result: ReadableStreamReadResult<Uint8Array>) => void;
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise<void>((resolve) => {
+          releaseRead = () => resolve();
+        });
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, body })));
+
+    const res = await timedFetch("/api/tasks", { timeoutMs: 1000 });
+    const pending = res.body!.getReader().read().catch((err) => err);
+    await vi.advanceTimersByTimeAsync(1000);
+    const error = await pending;
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(408);
+    releaseRead({ done: true, value: undefined });
+  });
 });

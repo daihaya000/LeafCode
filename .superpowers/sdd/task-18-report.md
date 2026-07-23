@@ -14,3 +14,14 @@
 
 - brief の仕様は `res.json()` 読了までのタイムアウト保証だったが、公開 API の安全性を優先し、`timedFetch` では `json` / `text` / `arrayBuffer` / `blob` / `formData` と直接の `body` stream を同じタイムアウトで wrap。
 - `getJson` / `sendJson` / `ocJson` のボディ読了ハング、`timedFetch().json()` monkey patch、`ApiError.status === 408` を検証するテストを追加。
+
+## Task18 再レビュー修正
+
+- `readBodyWithTimeout` は空オブジェクトへのフォールバックを廃止し、`AbortError` のみ `ApiError(408)` に変換、それ以外のボディ読了エラーはそのまま再送出。
+- `res.body!.getReader().read()` がタイムアウトした場合に `ApiError.status === 408` となるテスト、および非 Abort エラーを握りつぶさない回帰テストを追加。
+
+## Verification
+
+- `npx vitest run src/lib/client.test.ts` — 15 passed
+- `npx tsc --noEmit` — passed
+- `npx eslint src/lib/client.ts src/lib/client.test.ts` — passed
