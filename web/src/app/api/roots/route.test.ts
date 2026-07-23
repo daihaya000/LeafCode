@@ -7,14 +7,15 @@ import { tmpdir } from "node:os";
 vi.mock("@/lib/db", () => ({
   addAllowedRoot: vi.fn(),
   listAllowedRoots: vi.fn(() => []),
+  removeAllowedRoot: vi.fn(),
   setSetting: vi.fn(),
 }));
 vi.mock("@/lib/allowlist", () => ({
   realPathOrResolved: (p: string) => p,
 }));
 
-import { addAllowedRoot, setSetting } from "@/lib/db";
-import { POST } from "./route";
+import { addAllowedRoot, listAllowedRoots, removeAllowedRoot, setSetting } from "@/lib/db";
+import { DELETE, POST } from "./route";
 
 function req(body: unknown): Request {
   return new Request("http://localhost/api/roots", {
@@ -128,5 +129,24 @@ describe("POST /api/roots path validation", () => {
     const res = await POST(req({ path: path.join(link, "System32") }) as never);
     expect(res.status).toBe(400);
     expectNoRootWrites();
+  });
+});
+
+describe("DELETE /api/roots", () => {
+  it("removes an existing root", async () => {
+    vi.mocked(listAllowedRoots).mockReturnValue(["C:\\repo"]);
+    const res = await DELETE(
+      new Request("http://localhost/api/roots?path=C%3A%5Crepo", { method: "DELETE" }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect(removeAllowedRoot).toHaveBeenCalledWith("C:\\repo");
+  });
+
+  it("returns 404 for a non-existent root", async () => {
+    vi.mocked(listAllowedRoots).mockReturnValue(["C:\\other"]);
+    const res = await DELETE(
+      new Request("http://localhost/api/roots?path=C%3A%5Cmissing", { method: "DELETE" }) as never,
+    );
+    expect(res.status).toBe(404);
   });
 });

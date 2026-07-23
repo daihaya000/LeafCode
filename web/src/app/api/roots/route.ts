@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addAllowedRoot, listAllowedRoots, setSetting } from "@/lib/db";
+import path from "node:path";
+import { addAllowedRoot, listAllowedRoots, removeAllowedRoot, setSetting } from "@/lib/db";
 import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  return NextResponse.json({ roots: listAllowedRoots() });
+}
+
+export async function DELETE(req: NextRequest) {
+  const targetPath = new URL(req.url).searchParams.get("path");
+  if (!targetPath) {
+    return NextResponse.json({ error: "path is required" }, { status: 400 });
+  }
+  const resolved = path.resolve(targetPath);
+  const roots = listAllowedRoots();
+  const exists = roots.some((root) => root.toLowerCase() === resolved.toLowerCase());
+  if (!exists) {
+    return NextResponse.json({ error: "root not found" }, { status: 404 });
+  }
+  removeAllowedRoot(resolved);
   return NextResponse.json({ roots: listAllowedRoots() });
 }
 
