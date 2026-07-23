@@ -220,10 +220,9 @@ export function bindSession(
   updatedAt?: string,
 ): void {
   if (!isSafeOpenCodeSessionId(opencodeSessionId)) {
-    console.warn(
-      `[db] refused bindSession: unsafe opencode_session_id ${JSON.stringify(opencodeSessionId)}`,
+    throw new Error(
+      `unsafe opencode_session_id: ${JSON.stringify(opencodeSessionId)}`,
     );
-    return;
   }
   getDb()
     .prepare(

@@ -50,6 +50,21 @@ test("touchSessionActivity updates only the matching binding", () => {
   expect(touchSessionActivity("ws-2", "ses-1", "t2")).toBe(false);
 });
 
+test("bindSession throws on unsafe opencode_session_id (R22)", () => {
+  const project = upsertProject({ name: "Unsafe", rootPath: path.join(testDataDir, "unsafe") });
+  createWorkspace({
+    id: "ws-unsafe",
+    projectId: project.id,
+    displayName: "Workspace",
+    absolutePath: testDataDir,
+    isolation: "current_folder",
+  });
+  // Unsafe id with path traversal attempt
+  expect(() => bindSession("ws-unsafe", "../evil", "Session")).toThrow(
+    /unsafe opencode_session_id/,
+  );
+});
+
 test("upsertProject does not update last_opened_at when toggling favorite", () => {
   const rootPath = path.join(testDataDir, "fav-test");
   // Create initial project
