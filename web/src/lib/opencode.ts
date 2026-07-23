@@ -26,6 +26,12 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (m === "DELETE" && p.startsWith("/pty/")) return true;
   if (m === "POST" && /^\/pty\/[^/]+\/connect-token$/.test(p)) return true;
 
+  // /api/pty variants (v2 API proxied through /api/opencode/[...path])
+  if (m === "POST" && p === "/api/pty") return true;
+  if (m === "PUT" && p.startsWith("/api/pty/")) return true;
+  if (m === "DELETE" && p.startsWith("/api/pty/")) return true;
+  if (m === "POST" && /^\/api\/pty\/[^/]+\/connect-token$/.test(p)) return true;
+
   // Engine dispose — unauthenticated shutdown
   if (m === "POST" && (p === "/global/dispose" || p === "/instance/dispose")) return true;
 

@@ -92,6 +92,13 @@ describe("isBlockedOpencodeWrite", () => {
     expect(isBlockedOpencodeWrite("POST", "/pty/abc123/connect-token")).toBe(true);
   });
 
+  it("blocks /api/pty create/update/delete/connect-token", () => {
+    expect(isBlockedOpencodeWrite("POST", "/api/pty")).toBe(true);
+    expect(isBlockedOpencodeWrite("PUT", "/api/pty/abc123")).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/api/pty/abc123")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/api/pty/abc123/connect-token")).toBe(true);
+  });
+
   it("blocks global/instance dispose", () => {
     expect(isBlockedOpencodeWrite("POST", "/global/dispose")).toBe(true);
     expect(isBlockedOpencodeWrite("POST", "/instance/dispose")).toBe(true);
@@ -122,6 +129,8 @@ describe("isBlockedOpencodeWrite", () => {
 
   it("still allows read-only endpoints", () => {
     expect(isBlockedOpencodeWrite("GET", "/pty")).toBe(false);
+    expect(isBlockedOpencodeWrite("GET", "/api/pty")).toBe(false);
+    expect(isBlockedOpencodeWrite("GET", "/api/pty/abc123")).toBe(false);
     expect(isBlockedOpencodeWrite("GET", "/experimental/worktree")).toBe(false);
     expect(isBlockedOpencodeWrite("GET", "/experimental/workspace")).toBe(false);
     expect(isBlockedOpencodeWrite("GET", "/global/config")).toBe(false);
