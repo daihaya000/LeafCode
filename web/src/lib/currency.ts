@@ -75,7 +75,10 @@ export function readCostDisplayPrefs(): CostDisplayPrefs {
 }
 
 export function writeCostDisplayPrefs(prefs: Partial<CostDisplayPrefs>): void {
-  const next = sanitizeCostDisplayPrefs(prefs);
+  // Merge with existing prefs to avoid destroying fields not included in the
+  // partial update (e.g. rateMode="manual" being reset to "auto").
+  const current = readCostDisplayPrefs();
+  const next = sanitizeCostDisplayPrefs({ ...current, ...prefs });
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     window.dispatchEvent(

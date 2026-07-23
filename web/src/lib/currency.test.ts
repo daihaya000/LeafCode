@@ -7,6 +7,7 @@ import {
   clampUsdJpyRate,
   formatCost,
   formatCostValue,
+  readCostDisplayPrefs,
   sanitizeCostDisplayPrefs,
   useCostDisplayPrefs,
   writeCostDisplayPrefs,
@@ -91,6 +92,32 @@ describe("sanitizeCostDisplayPrefs", () => {
     expect(
       sanitizeCostDisplayPrefs({ showUsdSuffix: true }).showUsdSuffix,
     ).toBe(true);
+  });
+});
+
+describe("writeCostDisplayPrefs", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("merges partial update with existing prefs instead of overwriting", () => {
+    // Set initial prefs with rateMode="manual"
+    writeCostDisplayPrefs({
+      currency: "USD",
+      rateMode: "manual",
+      usdJpyRate: 150,
+      showUsdSuffix: true,
+    });
+
+    // Partial update: only change currency
+    writeCostDisplayPrefs({ currency: "JPY" });
+
+    // rateMode should remain "manual", not reset to "auto"
+    const result = readCostDisplayPrefs();
+    expect(result.currency).toBe("JPY");
+    expect(result.rateMode).toBe("manual");
+    expect(result.usdJpyRate).toBe(150);
+    expect(result.showUsdSuffix).toBe(true);
   });
 });
 
@@ -184,9 +211,11 @@ describe("useCostDisplayPrefs", () => {
     act(() => {
       writeCostDisplayPrefs({ currency: "JPY", usdJpyRate: 130 });
     });
+    // rateMode remains "auto" (default) because writeCostDisplayPrefs merges
+    // with existing prefs; localStorage was empty so DEFAULT_COST_PREFS is base.
     expect(result.current).toEqual({
       currency: "JPY",
-      rateMode: "manual",
+      rateMode: "auto",
       usdJpyRate: 130,
       showUsdSuffix: false,
     });
