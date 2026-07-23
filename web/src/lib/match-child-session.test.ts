@@ -117,11 +117,23 @@ describe("matchChildSession", () => {
     ).toBe(null);
   });
 
-  it("returns the sole child when no metadata/title match", () => {
+  it("does not auto-map sole child without metadata/title match (R18)", () => {
+    // When only one child exists but no explicit match, return null to avoid
+    // incorrectly mapping it as the parent's own session.
     expect(
       matchChildSession([{ id: "only" }], {
         callID: "t1",
         siblingTaskCallIds: ["t1"],
+      }),
+    ).toBe(null);
+  });
+
+  it("still matches sole child via explicit metadata", () => {
+    expect(
+      matchChildSession([{ id: "only" }], {
+        callID: "t1",
+        siblingTaskCallIds: ["t1"],
+        metadata: { sessionID: "only" },
       }),
     ).toBe("only");
   });

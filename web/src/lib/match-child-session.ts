@@ -110,6 +110,7 @@ export function matchChildSession(
 
   // Do not map sibling task-call order onto children sorted by id — those
   // sequences are unrelated and previously sticky-matched the wrong child.
-  if (children.length === 1) return children[0]!.id;
+  // Also do not auto-map a single child: when only one child exists, it may
+  // be incorrectly matched as the parent's own session (R18).
   return null;
 }
