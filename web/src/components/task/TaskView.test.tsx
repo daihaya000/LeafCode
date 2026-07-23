@@ -610,3 +610,154 @@ describe("TaskView", () => {
     expect(screen.getAllByText("cost $0.2500")).toHaveLength(1);
   });
 });
+
+describe("TaskView voice input", () => {
+  let mockRecognition: {
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+    abort: ReturnType<typeof vi.fn>;
+    addEventListener: ReturnType<typeof vi.fn>;
+    removeEventListener: ReturnType<typeof vi.fn>;
+    _dispatch: (type: string, ...args: unknown[]) => void;
+  };
+
+  beforeEach(() => {
+    taskStatus = "idle";
+    taskResponseCosts = [0.1];
+    planCardProps.length = 0;
+    slashCommands.length = 0;
+    setVisible(true);
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    useSessionStream.mockReturnValue({
+      messages: [],
+      visibleMessages: [],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+      todos: [],
+      revert: null,
+      connection: "live",
+      sessionError: null,
+      loaded: true,
+      abort: vi.fn(),
+      refreshTodos: vi.fn(),
+      rejectQuestion: vi.fn(),
+      replyPermission: vi.fn(),
+      replyQuestion: vi.fn(),
+      resync: vi.fn(),
+      sendPrompt: vi.fn(),
+      sendCommand: vi.fn(),
+    });
+    getJson.mockResolvedValue({ task: task(0.1) });
+    sendJson.mockResolvedValue(undefined);
+
+    const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+    mockRecognition = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      abort: vi.fn(),
+      addEventListener: vi.fn(
+        (type: string, handler: (...args: unknown[]) => void) => {
+          if (!listeners.has(type)) listeners.set(type, new Set());
+          listeners.get(type)!.add(handler);
+        },
+      ),
+      removeEventListener: vi.fn(
+        (type: string, handler: (...args: unknown[]) => void) => {
+          listeners.get(type)?.delete(handler);
+        },
+      ),
+      _dispatch(type: string, ...args: unknown[]) {
+        for (const handler of listeners.get(type) ?? []) {
+          handler(...args);
+        }
+      },
+    };
+    function MockCtor() {
+      return mockRecognition;
+    }
+    vi.stubGlobal("webkitSpeechRecognition", MockCtor);
+    vi.stubGlobal("SpeechRecognition", undefined);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("renders the mic button when SpeechRecognition is supported", async () => {
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    expect(await screen.findByRole("button", { name: "音声入力" })).toBeTruthy();
+  });
+
+  it("appends transcript to the input on stop", async () => {
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    const micBtn = await screen.findByRole("button", { name: "音声入力" });
+
+    // Start listening
+    fireEvent.click(micBtn);
+    act(() => mockRecognition._dispatch("start"));
+
+    // Simulate final result
+    act(() =>
+      mockRecognition._dispatch("result", {
+        results: [{ 0: { transcript: "follow up text" }, isFinal: true }],
+      }),
+    );
+
+    // Stop listening
+    fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const textarea = screen.getByRole("combobox", {
+      name: "フォローアップを送信",
+    }) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("follow up text");
+  });
+
+  it("disables the mic button while composer is locked", async () => {
+    taskStatus = "working";
+    useSessionStream.mockReturnValue({
+      messages: [],
+      visibleMessages: [],
+      status: { type: "busy" },
+      permissions: [],
+      questions: [],
+      todos: [],
+      revert: null,
+      connection: "live",
+      sessionError: null,
+      loaded: true,
+      abort: vi.fn(),
+      refreshTodos: vi.fn(),
+      rejectQuestion: vi.fn(),
+      replyPermission: vi.fn(),
+      replyQuestion: vi.fn(),
+      resync: vi.fn(),
+      sendPrompt: vi.fn(),
+      sendCommand: vi.fn(),
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const micBtn = await screen.findByRole("button", { name: "音声入力" });
+    expect((micBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+});

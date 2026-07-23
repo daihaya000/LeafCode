@@ -22,6 +22,8 @@ import {
   GitGraph,
   ListTodo,
   Loader2,
+  Mic,
+  MicOff,
   Paperclip,
   PanelRight,
   RefreshCw,
@@ -94,6 +96,8 @@ import {
 } from "@/lib/slash-command";
 import { useSessionStream } from "@/lib/useSessionStream";
 import { useSlashCommands } from "@/lib/useSlashCommands";
+import { useVoiceInput } from "@/lib/use-voice-input";
+import { VoiceInputButton } from "@/components/VoiceInputButton";
 import type { TaskSummary, Todo } from "@/lib/types";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
@@ -716,6 +720,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const working = hasActiveTask;
   const [sending, setSending] = useState(false);
   const composerLocked = working || sending;
+  const voice = useVoiceInput({ disabled: composerLocked });
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -1237,6 +1242,26 @@ export function TaskView({ taskId }: { taskId: string }) {
       el.setSelectionRange(len, len);
     });
   }, []);
+
+  const onVoiceTranscript = useCallback(
+    (text: string) => {
+      if (!text) return;
+      setInput((prev) => {
+        const suffix = prev && !prev.endsWith(" ") ? " " : "";
+        return prev + suffix + text;
+      });
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      });
+    },
+    [],
+  );
 
   // Session-level actions (compact / revert / unrevert) shared between the
   // Zone A compact button and the Zone C kebab menu. The hook keeps a single
@@ -2111,6 +2136,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     >
                       <Paperclip className="h-3.5 w-3.5" />
                     </button>
+                    <VoiceInputButton voice={voice} onTranscript={onVoiceTranscript} disabled={composerLocked} />
                     {modelOptions.length > 0 && (
                       <GhostSelect
                         value={model}
