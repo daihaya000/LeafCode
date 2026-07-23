@@ -19,7 +19,7 @@ TaskView 右上ヘッダーツールバーには、Zone A（常時表示操作�
 ### 対象
 
 - `web/src/components/task/TaskView.tsx` のヘッダーツールバー（Zone A / Zone B / Zone C）
-- `web/src/components/task/HeaderKebabMenu.tsx` — 変更なし（型・コンポーネントはそのまま）
+- `web/src/components/task/HeaderKebabMenu.tsx` — 型拡張（`renderContent` 追加）・レンダリング分岐・フォーカス管理を追加
 - `web/src/components/task/SessionSwitcher.tsx` — 変更なし（コンポーネントはそのまま利用）
 - `web/src/components/task/TaskView.test.tsx` — テストケースの更新
 
@@ -83,16 +83,16 @@ TaskView 右上ヘッダーツールバーには、Zone A（常時表示操作�
 
 | id | label | icon | 動作 | 備考 |
 |----|-------|------|------|------|
-| `copy-path` | 作業パスをコピー | `Copy` | `copyPath()` を呼ぶ | 成功後 1.5 秒間 `copied` 状態。ケバブ内ではチェックアイコン表示不可のため、トースト等は行わず `copied` 状態は次回開封時にリセット |
+| `copy-path` | 作業パスをコピー | `Copy`（通常時） / `Check`（copied 時） | `copyPath()` を呼ぶ | 成功後 1.5 秒間 `copied` 状態。ケバブ項目の `icon` を `copied` に応じて `Copy` / `Check` に切り替える。メニュー再開封時に `copied` が残っていればチェックアイコンが表示される（既存動作を保持） |
 | `resync` | 再同期 | `RefreshCw` | `stream.resync()` + `setDiffKey(k+1)` | busy 時 disabled（`working` 状態のとき） |
 
-**補足**: ケバブメニューは選択後に自動クローズするため、`copied` 状態の視覚フィードバックは次回開封時まで持続しない。これは許容する。コピー成功のフィードバックは OS のクリップボード通知に委ねる。
+**補足**: `copied` 状態は `TaskView` 側の state として保持され、`copyPath()` 内で 1.5 秒後に自動リセットされる。ケバブ項目の `icon` はこの state を参照して動的に切り替える。メニューが閉じている間も state は生存し、1.5 秒以内に再開封すればチェックアイコンが表示される。
 
 #### グループ `"session-switcher"`（セッション切替）— 新設
 
 `SessionSwitcher` コンポーネント全体をケバブ内にインライン表示する。既存の `SessionSwitcher` コンポーネントをそのまま流用し、ラッパーとして配置する。
 
-- session が存在しない場合、このグループは非表示（`items.length === 0` により `HeaderKebabMenu` が自動的に空グループをスキップする）
+- session が存在しない場合、このグループ自体を `headerKebabGroups` 配列に追加しない（`task.sessionId` の有無で条件分岐）
 - セッションが 1 件のみの場合: 「セッションを追加」ボタンのみ表示（既存の `SessionSwitcher` の振る舞いと同じ）
 - セッションが 2 件以上の場合: `<select>` ドロップダウン + 「+」追加ボタンを表示
 
@@ -215,7 +215,7 @@ export type KebabGroup = {
          {
            id: "copy-path",
            label: "作業パスをコピー",
-           icon: <Copy className="h-4 w-4" />,
+           icon: copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />,
            onSelect: () => void copyPath(),
          },
          {
@@ -231,13 +231,14 @@ export type KebabGroup = {
        ],
      }
      ```
-   - `"session-switcher"` グループを新設（カスタムレンダリング）:
+   - `"session-switcher"` グループを新設（カスタムレンダリング、session 存在時のみ配列に追加）:
      ```typescript
-     {
+     // headerKebabGroups の useMemo 内で条件分岐
+     ...(task?.sessionId ? [{
        id: "session-switcher",
        label: "セッション切替",
-       items: [], // renderContent を使用するため空
-       renderContent: () => task?.sessionId ? (
+       items: [],
+       renderContent: () => (
          <div className="px-3 py-1.5">
            <SessionSwitcher
              workspaceId={task.id}
@@ -246,8 +247,8 @@ export type KebabGroup = {
              onSwitch={() => void refreshTask()}
            />
          </div>
-       ) : null,
-     }
+       ),
+     }] : []),
      ```
    - `"panels"` グループの `panel-terminal` 条件を `!isMd` から常時表示に変更
 
@@ -255,6 +256,7 @@ export type KebabGroup = {
    - `copyPath` を依存配列に追加
    - `working` を依存配列に追加
    - `refreshTask` を依存配列に追加
+   - `copied` を依存配列に追加（`copy-path` の `icon` 動的切替のため）
 
 ### HeaderKebabMenu.tsx の変更
 
@@ -271,18 +273,19 @@ export type KebabGroup = {
 
 1. ヘッダー直表示から「作業パスをコピー」「再同期」「SessionSwitcher」「ターミナル」の各ボタンが削除されている
 2. ケバブメニュー「⋯」を開くと、上記 4 操作がメニュー内に存在する
-3. ケバブ内の「作業パスをコピー」を選択すると、`copyText(task.directory)` が呼ばれる
-4. ケバブ内の「再同期」を選択すると、`stream.resync()` + `setDiffKey(k+1)` が実行される
-5. ケバブ内のセッション切替グループで、既存の SessionSwitcher と同一の UI（select + 追加ボタン）が表示され、セッションの切替と追加が動作する
-6. ケバブ内の「ターミナル」を選択すると、PTY パネルが開く
-7. ターミナルがすべてのブレークポイントでケバブ内のみに存在し、Zone B に重複表示されない
-8. 停止ボタン（working 時）と CompactButton（session 存在時）はヘッダー直表示に残る
-9. ファイルツリー・グラフ・Diff パネルは lg 以上で Zone B に直接表示され、lg 未満でケバブ内に表示される（既存動作維持）
-10. 既存のキーボード操作（ArrowUp/Down, Enter/Space, Escape, Tab）がケバブメニュー内で正常に動作する
-11. カスタムレンダリング領域（セッション切替）では ArrowUp/Down がスキップされ、Tab で進入/脱出できる
-12. `cd web && npx tsc --noEmit` がパスする
-13. `cd web && npx eslint src/components/task/` がパスする
-14. `cd web && npx vitest run src/components/task/TaskView.test.tsx` がパスする
+3. ケバブ内の「作業パスをコピー」を選択すると、`copyText(task.directory)` が呼ばれ、`copied` state が 1.5 秒間 `true` になる
+4. ケバブ内の「作業パスをコピー」のアイコンが、`copied` 状態に応じて `Copy`（通常時）と `Check`（コピー成功後 1.5 秒間）に切り替わる
+5. ケバブ内の「再同期」を選択すると、`stream.resync()` + `setDiffKey(k+1)` が実行される
+6. ケバブ内のセッション切替グループで、既存の SessionSwitcher と同一の UI（select + 追加ボタン）が表示され、セッションの切替と追加が動作する
+7. ケバブ内の「ターミナル」を選択すると、PTY パネルが開く
+8. ターミナルがすべてのブレークポイントでケバブ内のみに存在し、Zone B に重複表示されない
+9. 停止ボタン（working 時）と CompactButton（session 存在時）はヘッダー直表示に残る
+10. ファイルツリー・グラフ・Diff パネルは lg 以上で Zone B に直接表示され、lg 未満でケバブ内に表示される（既存動作維持）
+11. 既存のキーボード操作（ArrowUp/Down, Enter/Space, Escape, Tab）がケバブメニュー内で正常に動作する
+12. カスタムレンダリング領域（セッション切替）では ArrowUp/Down がスキップされ、Tab で進入/脱出できる
+13. `cd web && npx tsc --noEmit` がパスする
+14. `cd web && npx eslint src/components/task/` がパスする
+15. `cd web && npx vitest run src/components/task/TaskView.test.tsx` がパスする
 
 ## 非機能要件
 
