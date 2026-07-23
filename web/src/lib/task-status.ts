@@ -14,7 +14,9 @@ export function deriveTaskStatus(input: {
   const { workspaceStatus, hasBinding, sessionStatus, engineOk, filesChanged } =
     input;
   if (workspaceStatus === "orphaned") return "orphaned";
-  if (workspaceStatus === "archived") return "merged";
+  // archived does not imply merged — a workspace may be archived without
+  // being merged into another branch. Use a distinct status (R12#2).
+  if (workspaceStatus === "archived") return "archived";
   if (sessionStatus && sessionStatus.type !== "idle") return "working";
   if (hasBinding && !engineOk) return "unknown";
   if (filesChanged > 0) return "ready";

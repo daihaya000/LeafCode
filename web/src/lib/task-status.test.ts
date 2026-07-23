@@ -21,9 +21,9 @@ describe("deriveTaskStatus", () => {
     ).toBe("orphaned");
   });
 
-  it("maps archived workspace to merged", () => {
+  it("maps archived workspace to archived (not merged) (R12#2)", () => {
     expect(deriveTaskStatus({ ...base, workspaceStatus: "archived" })).toBe(
-      "merged",
+      "archived",
     );
   });
 

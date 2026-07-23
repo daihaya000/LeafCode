@@ -121,6 +121,7 @@ export type TaskStatus =
   | "error"
   | "orphaned"
   | "merged"
+  | "archived"
   | "unknown";
 
 export type TaskSummary = {
