@@ -41,7 +41,28 @@ describe("AppShell", () => {
   beforeEach(() => {
     vi.stubGlobal("EventSource", class {
       onmessage: ((ev: MessageEvent) => void) | null = null;
-      close = vi.fn();
+      onopen: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      readyState = 1;
+      close = vi.fn(() => {
+        this.readyState = 2;
+      });
+      private listeners = new Map<string, Array<() => void>>();
+
+      addEventListener(type: string, listener: () => void) {
+        const list = this.listeners.get(type) ?? [];
+        list.push(listener);
+        this.listeners.set(type, list);
+      }
+
+      removeEventListener(type: string, listener: () => void) {
+        const list = this.listeners.get(type);
+        if (!list) return;
+        this.listeners.set(
+          type,
+          list.filter((l) => l !== listener),
+        );
+      }
     });
   });
   afterEach(() => vi.unstubAllGlobals());

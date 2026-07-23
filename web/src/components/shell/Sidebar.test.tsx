@@ -350,9 +350,11 @@ describe("Sidebar", () => {
 
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    const spinner = await screen.findByLabelText("エージェントが処理中");
-    expect(spinner.getAttribute("class")).toContain("animate-spin");
-    expect(spinner.getAttribute("class")).toContain("text-working");
+    // Permission requests also trigger waitingForAttention, so the spinner is
+    // replaced with a warning dot labeled "権限の承認待ち"
+    const warningDot = await screen.findByLabelText("権限の承認待ち");
+    expect(warningDot.getAttribute("class")).toContain("bg-warning");
+    expect(screen.queryByLabelText("エージェントが処理中")).toBeNull();
     expect(screen.queryByLabelText("質問への回答待ち")).toBeNull();
   });
 
