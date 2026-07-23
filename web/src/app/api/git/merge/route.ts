@@ -143,6 +143,10 @@ export async function POST(req: NextRequest) {
   args.push(branch);
   const merge = await runGit(check.path, args);
   if (merge.code !== 0) {
+    // Abort the in-progress (conflicted) merge to restore the working tree to
+    // a clean state. Without this, MERGE_HEAD remains and the user is stuck
+    // in a conflicted state with no easy recovery (R37#1).
+    await runGit(check.path, ["merge", "--abort"]).catch(() => undefined);
     return NextResponse.json(
       {
         error: merge.stderr.trim() || merge.stdout.trim() || "merge failed",
