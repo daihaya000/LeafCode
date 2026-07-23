@@ -17,14 +17,24 @@ const SKIP_DIRS = new Set([
   ".turbo",
 ]);
 
+// Hard ceilings so a synchronous scan of a huge repo cannot block the BFF
+// event loop indefinitely. Once `MAX_ENTRIES` directory entries have been
+// inspected the scan stops even if `limit` matches were not yet found.
+const MAX_ENTRIES = 20_000;
+const MAX_DEPTH = 12;
+
 function walk(
   root: string,
   dir: string,
   query: string,
   limit: number,
   out: string[],
+  budget: { visited: number },
+  depth: number,
 ): void {
   if (out.length >= limit) return;
+  if (budget.visited >= MAX_ENTRIES) return;
+  if (depth > MAX_DEPTH) return;
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -33,10 +43,12 @@ function walk(
   }
   for (const ent of entries) {
     if (out.length >= limit) return;
+    if (budget.visited >= MAX_ENTRIES) return;
+    budget.visited++;
     const name = ent.name;
     if (ent.isDirectory()) {
       if (SKIP_DIRS.has(name) || name.startsWith(".")) continue;
-      walk(root, path.join(dir, name), query, limit, out);
+      walk(root, path.join(dir, name), query, limit, out, budget, depth + 1);
       continue;
     }
     if (!ent.isFile()) continue;
@@ -64,6 +76,6 @@ export async function GET(req: NextRequest) {
   }
 
   const files: string[] = [];
-  walk(check.path, check.path, q, limit, files);
+  walk(check.path, check.path, q, limit, files, { visited: 0 }, 0);
   return NextResponse.json({ files, query: q, directory: check.path });
 }
