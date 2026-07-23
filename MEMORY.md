@@ -4548,3 +4548,11 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 - 発見ログが増えたら、原記録を改変せず、共通の判定基準を明記した横断一覧を別文書に作ると修正順の合意と追跡が容易になる。
 
 ---
+
+## 2026-07-23 音声入力(Web Speech API)
+
+- やったこと: Home画面とTask画面の両composerに、Web Speech APIを用いた音声認識入力を追加した。共通フックuseVoiceInputがSpeechRecognition/webkitSpeechRecognitionをラップし、共通ボタンVoiceInputButtonがツールバーに配置される。認識テキストは停止時にcomposerの入力値末尾に追記される。
+- 判断理由: 外部API依存を一切持たず、ブラウザネイティブのWeb Speech APIのみで完結する設計とした。continuous:true + interimResults:falseで確定結果のみを扱い、ユーザーが明示停止するまで認識を継続する。disabled制御はHomeViewのsubmittingとTaskViewのcomposerLockedをそのまま伝播する。
+- 教訓: SpeechRecognitionの型定義がブラウザごとに異なるため、detectSpeechRecognition()でwindowのプロパティをunknown経由で安全に取得する必要があった。no-speech/abortedはユーザー操作の中断や無音タイムアウトでありエラー表示しない設計がUX上適切。continuous:trueでもブラウザが自動停止することがあるため、endイベントで必ずlisteningをリセットする。stop()の戻り値をtranscriptRefで累積管理する実装は、start()時にリセットしないとセッション間でテキストが重複するバグを生む(レビューで発覚し修正)。VoiceInputButton/composer側でtranscriptが空文字列のとき入力値を変更しないガードが必要(空文字列でも常にonTranscriptは呼ぶ設計のため、呼び出し側で無害化する)。
+- 検証: use-voice-input.test.ts(14テスト)、VoiceInputButton.test.tsx(9テスト)、HomeView.test.tsx(既存+4テスト)、TaskView.test.tsx(既存+4テスト)、npm run typecheckの全PASSを確認した。
+
