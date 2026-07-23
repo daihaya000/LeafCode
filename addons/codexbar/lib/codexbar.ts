@@ -259,12 +259,22 @@ export type UsageTone = "ok" | "warn" | "danger";
  * True when the provider has displayable last-good usage.
  * CodexBar often exports `usedPercent: 0` with `error` and empty windows when
  * an API key is missing — that placeholder 0 is NOT last-good usage.
+ * R15#4: Empty credits object (all fields null) is also NOT last-good usage.
  */
 export function hasLastGoodUsage(
   p: Pick<CodexBarProvider, "usedPercent" | "error" | "windows" | "credits">,
 ): boolean {
   if ((p.windows?.length ?? 0) > 0) return true;
-  if (p.credits !== null) return true;
+  // R15#4: Check if credits has at least one non-null field
+  if (
+    p.credits !== null &&
+    (p.credits.title !== null ||
+      p.credits.used !== null ||
+      p.credits.limit !== null ||
+      p.credits.balance !== null)
+  ) {
+    return true;
+  }
   if (p.usedPercent === null) return false;
   if (p.error && p.usedPercent === 0) return false;
   return true;
