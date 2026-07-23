@@ -56,6 +56,17 @@ describe("VoiceInputButton", () => {
     expect(onTranscript).toHaveBeenCalledWith("hello");
   });
 
+  it("calls onTranscript with empty string when voice.stop() returns empty string", () => {
+    const voice = mockVoice({ listening: true });
+    const onTranscript = vi.fn();
+    render(
+      <VoiceInputButton voice={voice} onTranscript={onTranscript} />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    expect(voice.stop).toHaveBeenCalledTimes(1);
+    expect(onTranscript).toHaveBeenCalledWith("");
+  });
+
   it("does nothing when disabled and not listening", () => {
     const voice = mockVoice();
     render(

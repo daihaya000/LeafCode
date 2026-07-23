@@ -20,7 +20,7 @@ export function VoiceInputButton({
     if (disabled) return;
     if (voice.listening) {
       const text = voice.stop();
-      if (text) onTranscript(text);
+      onTranscript(text);
     } else {
       voice.start();
     }
