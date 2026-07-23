@@ -88,7 +88,14 @@ export function useSessionActions({
       } catch (err) {
         const msg = err instanceof Error ? err.message : "失敗しました";
         setError(msg);
-        window.alert(`巻き戻し失敗: ${msg}`);
+        // Use action-specific error messages instead of always showing "巻き戻し失敗" (R25).
+        const actionLabel =
+          key === "compact"
+            ? "コンテキスト圧縮"
+            : key === "unrevert"
+              ? "巻き戻し取消"
+              : "巻き戻し";
+        window.alert(`${actionLabel}に失敗: ${msg}`);
       } finally {
         setBusy(null);
       }
