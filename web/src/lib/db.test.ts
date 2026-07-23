@@ -49,3 +49,26 @@ test("touchSessionActivity updates only the matching binding", () => {
   ).toBe("2026-07-22T11:00:00.000Z");
   expect(touchSessionActivity("ws-2", "ses-1", "t2")).toBe(false);
 });
+
+test("upsertProject does not update last_opened_at when toggling favorite", () => {
+  const rootPath = path.join(testDataDir, "fav-test");
+  // Create initial project
+  const initial = upsertProject({ name: "FavTest", rootPath });
+  const initialLastOpened = initial.last_opened_at;
+
+  // Wait a bit to ensure timestamp would differ if updated
+  const waitMs = 10;
+  const start = Date.now();
+  while (Date.now() - start < waitMs) {
+    // busy wait
+  }
+
+  // Toggle favorite (explicit favorite=true should NOT update last_opened_at)
+  const updated = upsertProject({ name: "FavTest", rootPath, favorite: true });
+  expect(updated.favorite).toBe(1);
+  expect(updated.last_opened_at).toBe(initialLastOpened);
+
+  // Open without favorite toggle (favorite=undefined SHOULD update last_opened_at)
+  const opened = upsertProject({ name: "FavTest", rootPath });
+  expect(opened.last_opened_at).not.toBe(initialLastOpened);
+});

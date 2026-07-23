@@ -130,16 +130,22 @@ export function upsertProject(input: {
     .prepare("SELECT * FROM projects WHERE root_path = ?")
     .get(input.rootPath) as ProjectRow | undefined;
   if (existing) {
-    getDb()
-      .prepare(
-        `UPDATE projects SET name = ?, favorite = ?, last_opened_at = ? WHERE id = ?`,
-      )
-      .run(
-        input.name,
-        input.favorite === undefined ? existing.favorite : input.favorite ? 1 : 0,
-        now,
-        existing.id,
-      );
+    // Only update last_opened_at when this is a genuine "open" (no explicit
+    // favorite toggle). Toggling favorite alone must not disturb the sort order.
+    const shouldUpdateLastOpened = input.favorite === undefined;
+    const newFavorite =
+      input.favorite === undefined ? existing.favorite : input.favorite ? 1 : 0;
+    if (shouldUpdateLastOpened) {
+      getDb()
+        .prepare(
+          `UPDATE projects SET name = ?, favorite = ?, last_opened_at = ? WHERE id = ?`,
+        )
+        .run(input.name, newFavorite, now, existing.id);
+    } else {
+      getDb()
+        .prepare(`UPDATE projects SET name = ?, favorite = ? WHERE id = ?`)
+        .run(input.name, newFavorite, existing.id);
+    }
     return getDb().prepare("SELECT * FROM projects WHERE id = ?").get(existing.id) as ProjectRow;
   }
   const id = crypto.randomUUID();
