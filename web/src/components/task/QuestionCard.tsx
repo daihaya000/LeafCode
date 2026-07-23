@@ -70,6 +70,7 @@ export function QuestionCard({
       await onReply(request, buildAnswers());
     } catch (err) {
       setError(err instanceof Error ? err.message : "回答に失敗しました");
+    } finally {
       setBusy(null);
     }
   };
@@ -81,6 +82,7 @@ export function QuestionCard({
       await onReject(request);
     } catch (err) {
       setError(err instanceof Error ? err.message : "拒否に失敗しました");
+    } finally {
       setBusy(null);
     }
   };
@@ -100,6 +102,7 @@ export function QuestionCard({
       await onReply(request, answers);
     } catch (err) {
       setError(err instanceof Error ? err.message : "回答に失敗しました");
+    } finally {
       setBusy(null);
     }
   };

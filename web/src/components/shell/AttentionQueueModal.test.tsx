@@ -19,7 +19,7 @@ const { attentionState, mockOcJson, mockApiError } = vi.hoisted(() => {
       setOpen: vi.fn(),
       openNext: vi.fn(),
       remove: vi.fn(),
-      resolveSessionTitle: vi.fn((_item: AttentionItem) => null as string | null),
+      resolveSessionTitle: vi.fn(() => null as string | null),
     },
     mockOcJson,
     mockApiError,
@@ -57,6 +57,31 @@ function questionItem(sessionID = "ses_abc"): AttentionItem {
       receivedAt: 1,
     },
   };
+}
+
+function permissionItem(sessionID = "ses_abc"): AttentionItem {
+  return {
+    kind: "permission",
+    directory: "/repo",
+    request: {
+      id: "p1",
+      version: "v1",
+      sessionID,
+      permission: "bash",
+      patterns: [],
+      receivedAt: 1,
+    },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 describe("AttentionQueueModal", () => {
@@ -103,49 +128,69 @@ describe("AttentionQueueModal", () => {
       attentionState.remove.mockReset();
     });
 
-    it("releases busy and removes item on successful reply", async () => {
-      mockOcJson.mockResolvedValueOnce({});
+    it("QuestionCard re-enables its reply button after a successful reply", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
       const item = questionItem();
       attentionState.items = [item];
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
 
-      // Click the first option button (quick reply)
-      const optionBtn = screen.getByText("はい");
-      await act(async () => {
+      const optionBtn = screen.getByRole("button", { name: "はい" }) as HTMLButtonElement;
+      expect(optionBtn.disabled).toBe(false);
+      act(() => {
         optionBtn.click();
       });
+      expect(optionBtn.disabled).toBe(true);
 
-      // After success: remove called, busy released (modal closes since queue empty)
+      await act(async () => {
+        request.resolve({});
+        await request.promise;
+      });
+
       expect(attentionState.remove).toHaveBeenCalledWith(
         item.request.id,
         item.request.sessionID,
       );
+      expect(optionBtn.disabled).toBe(false);
     });
 
-    it("releases busy and removes item on 404 reply", async () => {
-      mockOcJson.mockRejectedValueOnce(new mockApiError(404, "not found"));
+    it("QuestionCard re-enables its reply button after a 404 reply", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
       const item = questionItem();
       attentionState.items = [item];
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
 
-      const optionBtn = screen.getByText("はい");
-      await act(async () => {
+      const optionBtn = screen.getByRole("button", { name: "はい" }) as HTMLButtonElement;
+      expect(optionBtn.disabled).toBe(false);
+      act(() => {
         optionBtn.click();
       });
+      expect(optionBtn.disabled).toBe(true);
 
-      // 404 still removes the item and releases busy
+      await act(async () => {
+        request.reject(new mockApiError(404, "not found"));
+        try {
+          await request.promise;
+        } catch {
+          // AttentionQueueModal treats 404 as already answered.
+        }
+      });
+
       expect(attentionState.remove).toHaveBeenCalledWith(
         item.request.id,
         item.request.sessionID,
       );
+      expect(optionBtn.disabled).toBe(false);
     });
 
-    it("releases busy and shows error on non-404 failure", async () => {
-      mockOcJson.mockRejectedValueOnce(new Error("network error"));
+    it("QuestionCard re-enables its reply button after a non-404 reply failure", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
       const item = questionItem();
       attentionState.items = [item];
       attentionState.open = true;
@@ -153,16 +198,138 @@ describe("AttentionQueueModal", () => {
       render(<AttentionQueueModal />);
 
       const optionBtn = screen.getByRole("button", { name: "はい" });
-      await act(async () => {
+      expect((optionBtn as HTMLButtonElement).disabled).toBe(false);
+      act(() => {
         optionBtn.click();
       });
+      expect((optionBtn as HTMLButtonElement).disabled).toBe(true);
 
-      // Error shown, remove NOT called
+      await act(async () => {
+        request.reject(new Error("network error"));
+        try {
+          await request.promise;
+        } catch {
+          // AttentionQueueModal reports non-404 failures in the modal.
+        }
+      });
+
       expect(screen.getByRole("alert")).toBeTruthy();
       expect(attentionState.remove).not.toHaveBeenCalled();
-      // Modal's own busy released: the "後で" button is re-enabled
-      const laterBtn = screen.getByRole("button", { name: "後で" }) as HTMLButtonElement;
-      expect(laterBtn.disabled).toBe(false);
+      expect((optionBtn as HTMLButtonElement).disabled).toBe(false);
+
+      const retry = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(retry.promise);
+      act(() => {
+        optionBtn.click();
+      });
+      expect(mockOcJson).toHaveBeenCalledTimes(2);
+      expect((optionBtn as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => {
+        retry.resolve({});
+        await retry.promise;
+      });
+    });
+
+    it("PermissionCard re-enables its reply button after a successful reply", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
+      const item = permissionItem();
+      attentionState.items = [item];
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+
+      const allowBtn = screen.getByRole("button", { name: "許可" }) as HTMLButtonElement;
+      expect(allowBtn.disabled).toBe(false);
+      act(() => {
+        allowBtn.click();
+      });
+      expect(allowBtn.disabled).toBe(true);
+
+      await act(async () => {
+        request.resolve({});
+        await request.promise;
+      });
+
+      expect(attentionState.remove).toHaveBeenCalledWith(
+        item.request.id,
+        item.request.sessionID,
+      );
+      expect(allowBtn.disabled).toBe(false);
+    });
+
+    it("PermissionCard re-enables its reply button after a 404 reply", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
+      const item = permissionItem();
+      attentionState.items = [item];
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+
+      const allowBtn = screen.getByRole("button", { name: "許可" }) as HTMLButtonElement;
+      expect(allowBtn.disabled).toBe(false);
+      act(() => {
+        allowBtn.click();
+      });
+      expect(allowBtn.disabled).toBe(true);
+
+      await act(async () => {
+        request.reject(new mockApiError(404, "not found"));
+        try {
+          await request.promise;
+        } catch {
+          // AttentionQueueModal treats 404 as already answered.
+        }
+      });
+
+      expect(attentionState.remove).toHaveBeenCalledWith(
+        item.request.id,
+        item.request.sessionID,
+      );
+      expect(allowBtn.disabled).toBe(false);
+    });
+
+    it("PermissionCard re-enables its reply button after a non-404 reply failure", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
+      const item = permissionItem();
+      attentionState.items = [item];
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+
+      const allowBtn = screen.getByRole("button", { name: "許可" }) as HTMLButtonElement;
+      expect(allowBtn.disabled).toBe(false);
+      act(() => {
+        allowBtn.click();
+      });
+      expect(allowBtn.disabled).toBe(true);
+
+      await act(async () => {
+        request.reject(new Error("network error"));
+        try {
+          await request.promise;
+        } catch {
+          // AttentionQueueModal reports non-404 failures in the modal.
+        }
+      });
+
+      expect(screen.getByRole("alert")).toBeTruthy();
+      expect(attentionState.remove).not.toHaveBeenCalled();
+      expect(allowBtn.disabled).toBe(false);
+
+      const retry = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(retry.promise);
+      act(() => {
+        allowBtn.click();
+      });
+      expect(mockOcJson).toHaveBeenCalledTimes(2);
+      expect(allowBtn.disabled).toBe(true);
+      await act(async () => {
+        retry.resolve({});
+        await retry.promise;
+      });
     });
   });
 });

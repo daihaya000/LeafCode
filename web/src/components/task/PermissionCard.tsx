@@ -28,6 +28,7 @@ export function PermissionCard({
       await onReply(request, response);
     } catch (err) {
       setError(err instanceof Error ? err.message : "応答に失敗しました");
+    } finally {
       setBusy(null);
     }
   };
@@ -48,6 +49,7 @@ export function PermissionCard({
         onEnableFullAccess?.();
       } catch (err) {
         setError(err instanceof Error ? err.message : "応答に失敗しました");
+      } finally {
         setBusy(null);
       }
     }
