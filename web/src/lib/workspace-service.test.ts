@@ -7,11 +7,14 @@ const {
   deleteWorkspace,
   setWorkspaceStatus,
   removeAllowedRoot,
+  addAllowedRoot,
   removeWorktree,
   runGit,
+  createTemporaryCopy,
   removeTemporaryCopy,
   persistProjectSessions,
   ocServer,
+  assertAllowedDirectory,
 } = vi.hoisted(() => ({
   getWorkspace: vi.fn(),
   getDb: vi.fn(),
@@ -19,11 +22,14 @@ const {
   deleteWorkspace: vi.fn(),
   setWorkspaceStatus: vi.fn(),
   removeAllowedRoot: vi.fn(),
+  addAllowedRoot: vi.fn(),
   removeWorktree: vi.fn(),
   runGit: vi.fn(),
+  createTemporaryCopy: vi.fn(),
   removeTemporaryCopy: vi.fn(),
   persistProjectSessions: vi.fn(),
   ocServer: vi.fn(),
+  assertAllowedDirectory: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
@@ -33,7 +39,7 @@ vi.mock("./db", () => ({
   deleteWorkspace,
   setWorkspaceStatus,
   removeAllowedRoot,
-  addAllowedRoot: vi.fn(),
+  addAllowedRoot,
   createWorkspace: vi.fn(),
   deleteProject: vi.fn(),
   listProjects: vi.fn(),
@@ -47,7 +53,7 @@ vi.mock("./git", () => ({
 }));
 
 vi.mock("./copy", () => ({
-  createTemporaryCopy: vi.fn(),
+  createTemporaryCopy,
   removeTemporaryCopy,
 }));
 
@@ -67,7 +73,7 @@ vi.mock("./oc-server", () => ({
 }));
 
 vi.mock("./allowlist", () => ({
-  assertAllowedDirectory: vi.fn(),
+  assertAllowedDirectory,
 }));
 
 vi.mock("./devcontainer", () => ({
@@ -83,7 +89,7 @@ vi.mock("./workspace-branch", () => ({
   makeWorktreeBranchName: () => "webui__main__task-x",
 }));
 
-import { destroyWorkspace, ServiceError } from "./workspace-service";
+import { destroyWorkspace, provisionWorkspace, ServiceError } from "./workspace-service";
 
 const WT = "C:\\Users\\testuser\\AppData\\Roaming\\opencode-webui\\worktrees\\p1\\task-1";
 
@@ -121,6 +127,26 @@ beforeEach(() => {
   removeWorktree.mockResolvedValue(undefined);
   runGit.mockResolvedValue({ stdout: "", stderr: "" });
   ocServer.mockResolvedValue({});
+  assertAllowedDirectory.mockReturnValue({ ok: true });
+});
+
+describe("provisionWorkspace temporary_copy rollback", () => {
+  it("removes the exact copy allowlist entry when allowlisting fails", async () => {
+    const copyPath = "C:\\data\\copies\\ws1";
+    createTemporaryCopy.mockReturnValue(copyPath);
+    addAllowedRoot.mockImplementation(() => {
+      throw new Error("allowlist write failed");
+    });
+
+    await expect(
+      provisionWorkspace({ projectId: "p1", isolation: "temporary_copy" }),
+    ).rejects.toMatchObject({
+      message: "allowlist write failed",
+      status: 500,
+    });
+
+    expect(removeAllowedRoot).toHaveBeenCalledWith(copyPath);
+  });
 });
 
 describe("destroyWorkspace OpenCode session cleanup", () => {

@@ -146,6 +146,13 @@ export async function provisionWorkspace(input: {
       worktreePath = absolutePath;
       addAllowedRoot(absolutePath);
     } catch (err) {
+      // createTemporaryCopy rolls back its partial directory. If allowlisting
+      // failed after the copy was created, remove precisely that copy's entry.
+      try {
+        if (worktreePath) removeAllowedRoot(worktreePath);
+      } catch {
+        /* best effort rollback */
+      }
       throw new ServiceError(
         err instanceof Error ? err.message : "temporary copy failed",
         500,
