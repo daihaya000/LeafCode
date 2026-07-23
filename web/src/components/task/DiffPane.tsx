@@ -347,13 +347,23 @@ export function DiffPane({
       // Only archive after into=branch when the worktree was restored to the
       // feature branch. A successful merge that left HEAD on main must not
       // look like a completed handoff.
+      let archiveWarning = "";
       if (into === "branch" && workspaceId && res.restored) {
-        await sendJson("PATCH", "/api/workspaces", {
-          id: workspaceId,
-          status: "archived",
-        }).catch(() => undefined);
+        try {
+          await sendJson("PATCH", "/api/workspaces", {
+            id: workspaceId,
+            status: "archived",
+          });
+        } catch (err) {
+          // The merge succeeded; surface the archive failure instead of
+          // swallowing it so the card doesn't silently stay active.
+          archiveWarning = `（ただしアーカイブに失敗: ${
+            err instanceof Error ? err.message : "unknown error"
+          }）`;
+        }
       }
-      return res.summary || `マージしました: ${res.merged} → ${res.into}`;
+      const base = res.summary || `マージしました: ${res.merged} → ${res.into}`;
+      return archiveWarning ? `${base}${archiveWarning}` : base;
     });
 
   const createPr = () =>
