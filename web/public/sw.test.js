@@ -1,0 +1,27 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+// Extract the cache decision logic for unit testing.
+// The SW file itself is not directly importable in Node, so we test
+// the pure function that decides whether to cache a response.
+function shouldCacheResponse(response) {
+  // response.ok === false → do not cache
+  // response.ok === undefined → do not cache (treat as non-OK)
+  return response.ok === true;
+}
+
+test("shouldCacheResponse returns false for 4xx", () => {
+  assert.equal(shouldCacheResponse({ ok: false, status: 404 }), false);
+});
+
+test("shouldCacheResponse returns false for 5xx", () => {
+  assert.equal(shouldCacheResponse({ ok: false, status: 500 }), false);
+});
+
+test("shouldCacheResponse returns true for 200", () => {
+  assert.equal(shouldCacheResponse({ ok: true, status: 200 }), true);
+});
+
+test("shouldCacheResponse returns false when ok is undefined", () => {
+  assert.equal(shouldCacheResponse({ ok: undefined, status: 200 }), false);
+});

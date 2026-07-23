@@ -26,6 +26,9 @@ self.addEventListener("activate", (event) => {
 });
 
 function cachePut(request, response) {
+  // Do not cache non-OK responses (4xx, 5xx, or undefined ok).
+  // response.ok === true means status 200-299.
+  if (response.ok !== true) return;
   const copy = response.clone();
   caches
     .open(CACHE)
