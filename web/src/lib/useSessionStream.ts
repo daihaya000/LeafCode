@@ -1298,10 +1298,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       });
     } finally {
+      // Reset preferRestStatus immediately after abort completes so that
+      // subsequent sends are not affected by the stale idle guard (R17).
+      preferRestStatusRef.current = false;
       try {
         if (sessionRef.current === sid) await resync();
-      } finally {
-        preferRestStatusRef.current = false;
+      } catch {
+        /* non-fatal */
       }
     }
   }, [directory, resync]);
