@@ -1286,7 +1286,10 @@ async function refreshStatusMenu() {
     ? 'WebUI: building…'
     : formatStatus('WebUI', webProc, webUp);
 
-  if (systray) {
+  // Only push updates to a tray helper whose process is still alive. Once the
+  // helper exits, `systray` may linger until the restart lands; sending to it
+  // would write to a dead pipe on every poll.
+  if (trayAlive()) {
     systray.sendAction({ type: 'update-item', item: statusOpencodeItem });
     systray.sendAction({ type: 'update-item', item: statusWebuiItem });
   }
@@ -1295,10 +1298,15 @@ async function refreshStatusMenu() {
     statusCaddyItem.title = procRunning(caddyProc)
       ? 'Caddy: running'
       : 'Caddy: stopped';
-    if (systray) {
+    if (trayAlive()) {
       systray.sendAction({ type: 'update-item', item: statusCaddyItem });
     }
   }
+}
+
+/** True only when the tray helper exists and its child process is still up. */
+function trayAlive() {
+  return systray != null && procRunning(systray.process);
 }
 
 async function restartWeb() {
@@ -1566,6 +1574,9 @@ function wireTrayLifecycle() {
       clearTimeout(trayStableTimer);
       trayStableTimer = null;
     }
+    // Drop the reference so refreshStatusMenu stops pushing to the dead helper
+    // until scheduleTrayRestart installs a fresh one.
+    systray = null;
     if (quitting) return;
     error(
       `Tray helper exited unexpectedly (code=${code}, signal=${signal ?? 'none'}); restoring icon`,
