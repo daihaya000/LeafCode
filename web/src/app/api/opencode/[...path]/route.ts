@@ -235,8 +235,7 @@ async function proxy(
       if (
         req.method === "POST" &&
         (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
-          /^\/session\/[^/]+\/command$/.test(pathname)) &&
-        req.headers.get("content-type")?.includes("application/json")
+          /^\/session\/[^/]+\/command$/.test(pathname))
       ) {
         try {
           const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;

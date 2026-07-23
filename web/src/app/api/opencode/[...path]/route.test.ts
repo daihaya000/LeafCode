@@ -24,13 +24,15 @@ function post(body: string, contentType = "application/json") {
 function sessionPost(
   operation: "prompt_async" | "command",
   body: Record<string, unknown>,
+  contentType = "application/json",
 ) {
+  const headers = contentType ? { "content-type": contentType } : undefined;
   return POST(
     new NextRequest(
       `http://localhost/api/opencode/session/session-1/${operation}?directory=C%3A%5C%5Crepo`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify(body),
       },
     ),
@@ -111,6 +113,24 @@ describe("POST session image capability validation", () => {
       fetchMock.mockRestore();
     },
   );
+
+  it("rejects JSON image parts with text/plain before upstream fetch", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const response = await sessionPost(
+      "prompt_async",
+      {
+        model: { providerID: "openai", modelID: "uncached-image-model" },
+        parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
+      },
+      "text/plain",
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
 
   it("forwards image parts after the provider cache confirms capability", async () => {
     const fetchMock = vi
