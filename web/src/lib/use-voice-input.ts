@@ -127,6 +127,8 @@ export function useVoiceInput(
       listeningRef.current = true;
       setListening(true);
       setError(null);
+      transcriptRef.current = "";
+      setTranscript("");
     });
 
     recognition.addEventListener("end", () => {

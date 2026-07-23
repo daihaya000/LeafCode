@@ -176,6 +176,38 @@ describe("useVoiceInput", () => {
     expect(mockRecognition.abort).toHaveBeenCalled();
   });
 
+  it("resets transcript on each start() so stop() returns only current session text", () => {
+    const { result } = renderHook(() => useVoiceInput());
+
+    // Session 1
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        results: [{ 0: { transcript: "first session" }, isFinal: true }],
+      }),
+    );
+    let text1 = "";
+    act(() => {
+      text1 = result.current.stop();
+    });
+    expect(text1).toBe("first session");
+
+    // Session 2 — must not include session 1 text
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        results: [{ 0: { transcript: "second session" }, isFinal: true }],
+      }),
+    );
+    let text2 = "";
+    act(() => {
+      text2 = result.current.stop();
+    });
+    expect(text2).toBe("second session");
+  });
+
   it("clears error on clearError()", () => {
     const { result } = renderHook(() => useVoiceInput());
     act(() => result.current.start());
