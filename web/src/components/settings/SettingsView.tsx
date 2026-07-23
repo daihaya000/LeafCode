@@ -430,6 +430,8 @@ export function SettingsView() {
           [...failed.map((f) => f.error), ...strayErrors].join("; "),
         );
       }
+      // R14#2: Refresh orphan list after successful cleanup to remove deleted items from UI
+      await refresh();
     });
 
   const copyUrl = async (url: string) => {

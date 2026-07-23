@@ -249,9 +249,19 @@ export async function POST(req: NextRequest) {
     body.ids && body.ids.length > 0
       ? body.ids
           .map((id) =>
-            getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id),
+            getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as {
+              id: string;
+              project_id: string;
+              isolation: string;
+              worktree_path: string | null;
+              absolute_path: string;
+              status: string;
+            } | undefined,
           )
-          .filter(Boolean)
+          .filter((row): row is NonNullable<typeof row> => {
+            // R16#2: Only delete if the workspace is actually orphaned to prevent cross-delete
+            return row != null && row.status === "orphaned";
+          })
       : listWorkspacesByStatus("orphaned");
 
   const results: { id: string; ok: boolean; error?: string }[] = [];
