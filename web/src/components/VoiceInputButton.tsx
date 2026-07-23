@@ -16,11 +16,12 @@ export function VoiceInputButton({
   disabled = false,
 }: VoiceInputButtonProps) {
   const [stopping, setStopping] = useState(false);
+  const busy = voice.busy || stopping;
 
   if (!voice.supported) return null;
 
   const handleClick = () => {
-    if (disabled || stopping) return;
+    if (disabled || busy) return;
     if (voice.listening) {
       // stop() returns a Promise that resolves once the engine fires its
       // final `result` + `end` events, so the last utterance finalized by
@@ -46,8 +47,8 @@ export function VoiceInputButton({
         type="button"
         aria-label={voice.listening ? "音声入力を停止" : "音声入力"}
         aria-pressed={voice.listening}
-        aria-busy={stopping}
-        disabled={disabled || stopping}
+        aria-busy={busy}
+        disabled={disabled || busy}
         onClick={handleClick}
         className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
       >

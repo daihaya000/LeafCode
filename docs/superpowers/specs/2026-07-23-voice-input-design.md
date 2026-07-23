@@ -52,7 +52,7 @@ interface UseVoiceInputReturn {
 }
 ```
 
-`stop()` は `SpeechRecognition` の `end` イベントまで待機して Promise を解決するため、停止要求後に届く最後の確定 `result` も返却値に含める。認識が `disabled` 化によって中断された場合またはフックがアンマウントされた場合は、未解決の `stop()` も `""` で解決する。停止完了前に複数回呼び出されても同一の Promise を返す single-flight とし、ネイティブの `recognition.stop()` は1回だけ呼ぶ。
+`stop()` は `SpeechRecognition` の `end` イベントまで待機して Promise を解決するため、停止要求後に届く最後の確定 `result` も返却値に含める。認識が `disabled` 化によって中断された場合またはフックがアンマウントされた場合は、未解決の `stop()` も `""` で解決する。停止完了前に複数回呼び出されても同一の Promise を返す single-flight とし、ネイティブの `recognition.stop()` は1回だけ呼ぶ。`error` イベントまたは `recognition.stop()` の例外発生時は、待機中の `stop()` を即座に解決する。`end` イベントを発火しないブラウザ実装では旧セッションが閉じないため、次回の `start()` は保留される既知の制限がある。
 
 ### 内部状態
 

@@ -13,6 +13,7 @@ function mockVoice(overrides: Partial<UseVoiceInputReturn> = {}): UseVoiceInputR
     error: null,
     clearError: vi.fn(),
     ...overrides,
+    busy: overrides.busy ?? false,
   };
 }
 
@@ -108,6 +109,17 @@ describe("VoiceInputButton", () => {
     const btn = screen.getByRole("button");
     expect(btn.hasAttribute("disabled")).toBe(true);
     fireEvent.click(btn);
+    expect(voice.start).not.toHaveBeenCalled();
+  });
+
+  it("is disabled and exposes aria-busy while the voice session is busy", () => {
+    const voice = mockVoice({ busy: true });
+    render(<VoiceInputButton voice={voice} onTranscript={vi.fn()} />);
+
+    const button = screen.getByRole("button");
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(button);
     expect(voice.start).not.toHaveBeenCalled();
   });
 

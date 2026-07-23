@@ -64,6 +64,7 @@ export interface UseVoiceInputOptions {
 export interface UseVoiceInputReturn {
   supported: boolean;
   listening: boolean;
+  busy: boolean;
   start: () => void;
   stop: () => Promise<string>;
   transcript: string;
@@ -129,6 +130,7 @@ export function useVoiceInput(
   const pendingStopResolveRef = useRef<((text: string) => void) | null>(null);
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -161,6 +163,7 @@ export function useVoiceInput(
       stateRef.current = "listening";
       listeningRef.current = true;
       setListening(true);
+      setBusy(false);
       setError(null);
     });
 
@@ -170,6 +173,7 @@ export function useVoiceInput(
       stateRef.current = "idle";
       listeningRef.current = false;
       setListening(false);
+      setBusy(false);
       settlePendingStop(interrupted ? "" : transcriptRef.current);
     });
 
@@ -224,6 +228,7 @@ export function useVoiceInput(
       stateRef.current = "interrupted";
       listeningRef.current = false;
       setListening(false);
+      setBusy(true);
       settlePendingStop(transcriptRef.current);
       if (SILENT_ERRORS.has(code)) {
         setError(null);
@@ -242,6 +247,7 @@ export function useVoiceInput(
     const recognition = getRecognition();
     if (!recognition) return;
     stateRef.current = "starting";
+    setBusy(true);
     transcriptRef.current = "";
     processedResultIndexRef.current = 0;
     setTranscript("");
@@ -251,6 +257,7 @@ export function useVoiceInput(
       stateRef.current = "idle";
       listeningRef.current = false;
       setListening(false);
+      setBusy(false);
     }
   }, [disabled, getRecognition]);
 
@@ -261,10 +268,14 @@ export function useVoiceInput(
     }
     // Not listening (never started, or already ended): resolve immediately
     // with whatever transcript is currently finalized.
-    if (!recognition || stateRef.current !== "listening") {
+    if (
+      !recognition ||
+      (stateRef.current !== "starting" && stateRef.current !== "listening")
+    ) {
       return Promise.resolve(transcriptRef.current);
     }
     stateRef.current = "stopping";
+    setBusy(true);
     const pendingStop = new Promise<string>((resolve) => {
       pendingStopResolveRef.current = resolve;
     });
@@ -277,11 +288,13 @@ export function useVoiceInput(
       stateRef.current = "interrupted";
       listeningRef.current = false;
       setListening(false);
+      setBusy(true);
       settlePendingStop(transcriptRef.current);
       try {
         recognition.abort();
       } catch {
         stateRef.current = "idle";
+        setBusy(false);
       }
     }
     return pendingStop;
@@ -300,6 +313,7 @@ export function useVoiceInput(
       stateRef.current = "interrupted";
       listeningRef.current = false;
       setListening(false);
+      setBusy(true);
       transcriptRef.current = "";
       setTranscript("");
       settlePendingStop("");
@@ -311,6 +325,7 @@ export function useVoiceInput(
             recognition.abort();
           } catch {
             stateRef.current = "idle";
+            setBusy(false);
           }
         }
       }
@@ -321,11 +336,15 @@ export function useVoiceInput(
   useEffect(() => {
     return () => {
       const recognition = recognitionRef.current;
-      stateRef.current = "interrupted";
-      listeningRef.current = false;
-      transcriptRef.current = "";
-      settlePendingStop("");
-      if (recognition) {
+      const activeSession =
+        stateRef.current === "starting" ||
+        stateRef.current === "listening" ||
+        stateRef.current === "stopping";
+      if (recognition && activeSession) {
+        stateRef.current = "interrupted";
+        listeningRef.current = false;
+        transcriptRef.current = "";
+        settlePendingStop("");
         try {
           recognition.abort();
         } catch {
@@ -339,6 +358,7 @@ export function useVoiceInput(
   return {
     supported,
     listening,
+    busy,
     start,
     stop,
     transcript,

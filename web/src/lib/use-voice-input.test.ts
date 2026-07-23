@@ -1,4 +1,5 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useVoiceInput } from "./use-voice-input";
 
@@ -69,6 +70,16 @@ describe("useVoiceInput", () => {
   it("starts recognition on start()", () => {
     const { result } = renderHook(() => useVoiceInput());
     act(() => result.current.start());
+    expect(mockRecognition.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts after React Strict Mode replays the mount cleanup", () => {
+    const { result } = renderHook(() => useVoiceInput(), {
+      wrapper: StrictMode,
+    });
+
+    act(() => result.current.start());
+
     expect(mockRecognition.start).toHaveBeenCalledTimes(1);
   });
 
@@ -299,6 +310,27 @@ describe("useVoiceInput", () => {
     expect(mockRecognition.stop).not.toHaveBeenCalled();
   });
 
+  it("stops a starting recognition and ignores its late start event", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    expect(result.current.busy).toBe(true);
+
+    let pendingStop!: Promise<string>;
+    act(() => {
+      pendingStop = result.current.stop();
+    });
+    expect(mockRecognition.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.busy).toBe(true);
+
+    act(() => mockRecognition._dispatch("start"));
+    expect(result.current.listening).toBe(false);
+    expect(result.current.busy).toBe(true);
+
+    act(() => mockRecognition._dispatch("end"));
+    await expect(pendingStop).resolves.toBe("");
+    expect(result.current.busy).toBe(false);
+  });
+
   it("makes repeated stop() calls single-flight until end", async () => {
     const { result } = renderHook(() => useVoiceInput());
     act(() => result.current.start());
@@ -400,6 +432,7 @@ describe("useVoiceInput", () => {
     );
     rerender({ disabled: true });
     expect(result.current.transcript).toBe("");
+    expect(result.current.busy).toBe(true);
     // Late result arrives after the interrupt — must be ignored.
     act(() =>
       mockRecognition._dispatch("result", {
@@ -411,6 +444,8 @@ describe("useVoiceInput", () => {
       }),
     );
     expect(result.current.transcript).toBe("");
+    act(() => mockRecognition._dispatch("end"));
+    expect(result.current.busy).toBe(false);
   });
 
   it("waits for an interrupted session end before starting another session", () => {
