@@ -77,6 +77,11 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
   }
 }
 
+// The picker waits for a human to click, but must not pin a worker forever if
+// the dialog is orphaned (e.g. no interactive desktop). Slightly under the
+// route's maxDuration so we return a clean error before the platform kills us.
+const PICKER_TIMEOUT_MS = 290_000;
+
 function runPowerShellSta(script: string): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -89,14 +94,34 @@ function runPowerShellSta(script: string): Promise<string | null> {
     );
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+      reject(new Error("folder picker timed out"));
+    }, PICKER_TIMEOUT_MS);
+    if (typeof timer.unref === "function") timer.unref();
     child.stdout.on("data", (c) => {
       stdout += String(c);
     });
     child.stderr.on("data", (c) => {
       stderr += String(c);
     });
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (code !== 0 && !stdout.trim()) {
         reject(new Error(stderr.trim() || `powershell exited ${code}`));
         return;
