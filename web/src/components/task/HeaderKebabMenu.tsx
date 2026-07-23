@@ -26,8 +26,6 @@ export type KebabGroup = {
   id: string;
   label?: string;
   items: KebabItem[];
-  /** 指定時は items ではなく、この内容をグループ内に描画する。 */
-  renderContent?: () => ReactNode;
 };
 
 /**
@@ -67,7 +65,7 @@ export function HeaderKebabMenu({
   const pointerDownOpenRef = useRef<boolean | null>(null);
 
   // Flatten visible (non-disabled-skipped) item ids in render order.
-  const flatItems = groups.flatMap((g) => (g.renderContent ? [] : g.items));
+  const flatItems = groups.flatMap((group) => group.items);
   const focusableIds = flatItems
     .filter((it) => !it.disabled)
     .map((it) => it.id);
@@ -128,9 +126,7 @@ export function HeaderKebabMenu({
     [focusableIds.join("|")],
   );
 
-  const visibleGroups = groups.filter(
-    (g) => g.items.length > 0 || g.renderContent !== undefined,
-  );
+  const visibleGroups = groups.filter((group) => group.items.length > 0);
   if (visibleGroups.length === 0) return null;
 
   return (
@@ -184,10 +180,7 @@ export function HeaderKebabMenu({
               aria-label={group.label}
               className={cx(gi > 0 && "mt-1 border-t border-border pt-1")}
             >
-              {group.renderContent ? (
-                group.renderContent()
-              ) : (
-                group.items.map((item) => {
+              {group.items.map((item) => {
                 const isDisabled = !!item.disabled;
                 return (
                   <div
@@ -248,8 +241,7 @@ export function HeaderKebabMenu({
                     )}
                   </div>
                 );
-                })
-              )}
+              })}
             </div>
           ))}
         </div>
