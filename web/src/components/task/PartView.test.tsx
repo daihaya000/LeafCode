@@ -60,3 +60,41 @@ describe("PartView file attachments", () => {
     expect(screen.getByText("pending.png")).toBeTruthy();
   });
 });
+
+describe("PartView error display", () => {
+  it("always shows error content when status is error", () => {
+    const part: Part = {
+      id: "p1",
+      messageID: "m1",
+      type: "tool",
+      tool: "bash",
+      state: {
+        status: "error",
+        error: "Command failed with exit code 1",
+        input: {},
+        output: "",
+      },
+    };
+    render(<PartView part={part} role="assistant" />);
+
+    expect(screen.getByText(/Command failed with exit code 1/)).toBeTruthy();
+  });
+
+  it("shows schema error content when status is error and output is present", () => {
+    const part: Part = {
+      id: "p2",
+      messageID: "m2",
+      type: "tool",
+      tool: "question",
+      state: {
+        status: "error",
+        error: "schema validation failed: missing 'questions' field",
+        input: {},
+        output: "",
+      },
+    };
+    render(<PartView part={part} role="assistant" />);
+
+    expect(screen.getByText(/schema validation failed/, { selector: "pre" })).toBeTruthy();
+  });
+});

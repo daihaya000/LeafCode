@@ -180,6 +180,7 @@ const ToolPartView = memo(function ToolPartView({
 }) {
   const state = part.state;
   const status = state?.status ?? "pending";
+  const isError = status === "error";
   const tool = part.tool ?? "tool";
   const isTaskTool = isTaskToolName(tool);
   const nestedActive =
@@ -190,7 +191,7 @@ const ToolPartView = memo(function ToolPartView({
     isTaskTool &&
     (status === "completed" || status === "error") &&
     Boolean(directory && rootSessionId);
-  const [open, setOpen] = useState(nestedActive);
+  const [open, setOpen] = useState(nestedActive || isError);
   const wasNestedActiveRef = useRef(false);
   useEffect(() => {
     if (nestedActive) {
@@ -205,7 +206,8 @@ const ToolPartView = memo(function ToolPartView({
       setOpen(true);
       wasNestedActiveRef.current = false;
     }
-  }, [nestedActive, terminalTask]);
+    if (isError) setOpen(true);
+  }, [nestedActive, terminalTask, isError]);
   const showNested = (nestedActive || terminalTask) && open;
   const Icon = toolIcon(tool);
   const guessedProviderId = isTaskTool
@@ -216,7 +218,7 @@ const ToolPartView = memo(function ToolPartView({
     () => inputFields(tool, state?.input),
     [tool, state?.input],
   );
-  const rawOutput = state?.output ?? state?.error ?? "";
+  const rawOutput = state?.error || state?.output || "";
   const niceOutput = useMemo(
     () => (rawOutput ? humanizeToolOutput(rawOutput) : ""),
     [rawOutput],
@@ -234,7 +236,8 @@ const ToolPartView = memo(function ToolPartView({
     Boolean(niceOutput) ||
     Boolean(rawOutput) ||
     nestedActive ||
-    terminalTask;
+    terminalTask ||
+    isError;
 
   const matchHint = useMemo(
     () => ({
