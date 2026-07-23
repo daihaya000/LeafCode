@@ -78,7 +78,12 @@ type ProviderResponse = {
   default: Record<string, string>;
 };
 
-type AgentResponse = { name: string; mode?: string; hidden?: boolean }[];
+type AgentResponse = {
+  name: string;
+  mode?: string;
+  hidden?: boolean;
+  model?: { providerID: string; modelID: string };
+}[];
 
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
 
@@ -121,6 +126,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     Record<string, { attachment?: boolean; image?: boolean }>
   >({});
   const [agents, setAgents] = useState<string[]>([]);
+  const [agentModels, setAgentModels] = useState<
+    Record<string, { providerID: string; modelID: string }>
+  >({});
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
   const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
@@ -277,6 +285,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             .filter((a) => a.mode !== "subagent" && !a.hidden)
             .map((a) => a.name);
           setAgents(names);
+          const models: Record<string, { providerID: string; modelID: string }> = {};
+          for (const item of agentsData) {
+            if (item.name && item.model?.providerID && item.model.modelID) {
+              models[item.name] = item.model;
+            }
+          }
+          setAgentModels(models);
           const cfgAgent =
             typeof config?.agent === "string" ? config.agent : undefined;
           const initial = names.includes(cfgAgent ?? "")
@@ -407,22 +422,23 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     ) {
       return;
     }
-    // Block sending images to a model that cannot accept them. The manual
-    // selector is the only model source for HomeView (no agent override here),
-    // so check image support against the selected model value.
-    const sendingImageSupported = model
-      ? modelCapabilities[model]?.image === true ||
-        modelCapabilities[model]?.attachment === true
+    // Match OpenCode's agent precedence: its configured model overrides the
+    // manual selector. Missing agent model metadata fails closed for images.
+    const agentModel = agent ? agentModels[agent] : undefined;
+    const sendingModelKey = agent
+      ? agentModel
+        ? `${agentModel.providerID}::${agentModel.modelID}`
+        : ""
+      : model;
+    const sendingImageSupported = sendingModelKey
+      ? modelCapabilities[sendingModelKey]?.image === true ||
+        modelCapabilities[sendingModelKey]?.attachment === true
       : false;
     const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
-    const sendingImageBlocked =
-      hasImage &&
-      model !== `` &&
-      modelCapabilities[model] !== undefined &&
-      !sendingImageSupported;
+    const sendingImageBlocked = hasImage && !sendingImageSupported;
     if (sendingImageBlocked) {
       setError(
-        "選択中のモデルは画像入力に対応していません。画像を削除するか、画像対応モデルを選んでください。",
+        "選択中のモデルは画像入力に対応していないか、画像対応を確認できません。画像を削除するか、画像対応モデルを選んでください。",
       );
       return;
     }
@@ -468,6 +484,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     model,
     modelCapabilities,
     agent,
+    agentModels,
     intelligence,
     submitting,
     engineOk,

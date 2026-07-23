@@ -903,14 +903,10 @@ export function TaskView({ taskId }: { taskId: string }) {
       ? modelCapabilities[sendingModelKey]?.image === true ||
         modelCapabilities[sendingModelKey]?.attachment === true
       : false;
-    const sendingImageBlocked =
-      hasImage &&
-      sendingModelKey !== `` &&
-      modelCapabilities[sendingModelKey] !== undefined &&
-      !sendingImageSupported;
+    const sendingImageBlocked = hasImage && !sendingImageSupported;
     if (sendingImageBlocked) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していません。画像を削除するか、画像対応モデルを選んでください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、画像対応を確認できません。画像を削除するか、画像対応モデルを選んでください。",
       );
       return;
     }

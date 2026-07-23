@@ -240,19 +240,74 @@ describe("POST /api/tasks image attachments", () => {
     name: "reference.png",
   };
 
-  it("accepts an image-only task and forwards its file part to OpenCode", async () => {
+  async function mockOpenCodeProvider(providerResult: unknown, agentResult: unknown = []) {
     const { ocServer } = await import("@/lib/oc-server");
+    (ocServer as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_dir: string | null, path: string) => {
+        if (path === "/provider") {
+          if (providerResult instanceof Error) throw providerResult;
+          return providerResult;
+        }
+        if (path === "/agent") return agentResult;
+        if (path === "/session") return { id: "session-1" };
+        if (path === "/command") return [];
+        return {};
+      },
+    );
     (ocServer as ReturnType<typeof vi.fn>).mockClear();
+    return ocServer as ReturnType<typeof vi.fn>;
+  }
+
+  function providerWithModel(
+    modelID: string,
+    capabilities?: { attachment?: boolean; input?: { image?: boolean } },
+  ) {
+    return {
+      all: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            [modelID]: {
+              name: modelID,
+              ...(capabilities ? { capabilities } : {}),
+            },
+          },
+        },
+      ],
+      connected: ["openai"],
+      default: { openai: modelID },
+    };
+  }
+
+  function expectNoOpenCodeTaskStart(calls: unknown[][]) {
+    expect(
+      calls.filter((call) => {
+        const path = String(call[1]);
+        return (
+          path === "/session" ||
+          path.includes("/prompt_async") ||
+          path.includes("/command")
+        );
+      }),
+    ).toEqual([]);
+  }
+
+  it("accepts an image-only task and forwards its file part to OpenCode", async () => {
+    const ocServer = await mockOpenCodeProvider(
+      providerWithModel("vision", { input: { image: true } }),
+    );
 
     const res = await post({
       projectId: "project-1",
       prompt: "",
       isolation: "current_folder",
+      model: { providerID: "openai", modelID: "vision" },
       files: [image],
     });
 
     expect(res.status).toBe(200);
-    const calls = (ocServer as ReturnType<typeof vi.fn>).mock.calls;
+    const calls = ocServer.mock.calls;
     const sessionCall = calls.find((c) => c[1] === "/session");
     expect(sessionCall?.[2]?.body).toEqual({ title: "画像タスク" });
     const promptCall = calls.find((c) =>
@@ -268,8 +323,128 @@ describe("POST /api/tasks image attachments", () => {
           filename: image.name,
         },
       ],
+      model: { providerID: "openai", modelID: "vision" },
     });
   });
+
+  it("allows image submission when attachment capability is explicitly true", async () => {
+    const ocServer = await mockOpenCodeProvider(
+      providerWithModel("attachment-model", { attachment: true }),
+    );
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "attachment-model" },
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    expect(
+      ocServer.mock.calls.find((c) => String(c[1]).includes("/prompt_async")),
+    ).toBeDefined();
+  });
+
+  it("rejects image submission when the selected agent model lacks image capability", async () => {
+    const ocServer = await mockOpenCodeProvider(
+      {
+        all: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            models: {
+              vision: { capabilities: { input: { image: true } } },
+              "text-agent": { capabilities: { input: { image: false } } },
+            },
+          },
+        ],
+        connected: ["openai"],
+      },
+      [
+        {
+          name: "text-agent",
+          model: { providerID: "openai", modelID: "text-agent" },
+        },
+      ],
+    );
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "vision" },
+      agent: "text-agent",
+      files: [image],
+    });
+
+    expect(res.status).toBe(400);
+    expectNoOpenCodeTaskStart(ocServer.mock.calls);
+  });
+
+  it("rejects image submission when the selected agent model is undefined", async () => {
+    const ocServer = await mockOpenCodeProvider(
+      providerWithModel("vision", { input: { image: true } }),
+      [{ name: "unconfigured-agent" }],
+    );
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "vision" },
+      agent: "unconfigured-agent",
+      files: [image],
+    });
+
+    expect(res.status).toBe(400);
+    expectNoOpenCodeTaskStart(ocServer.mock.calls);
+  });
+
+  it.each([
+    [
+      "image false and attachment false",
+      providerWithModel("text-only", {
+        input: { image: false },
+        attachment: false,
+      }),
+      { providerID: "openai", modelID: "text-only" },
+    ],
+    [
+      "capability undefined",
+      providerWithModel("unreported"),
+      { providerID: "openai", modelID: "unreported" },
+    ],
+    [
+      "provider retrieval failure",
+      new Error("provider unavailable"),
+      { providerID: "openai", modelID: "vision" },
+    ],
+    [
+      "unknown model",
+      providerWithModel("known-vision", { input: { image: true } }),
+      { providerID: "openai", modelID: "unknown-vision" },
+    ],
+  ])(
+    "rejects image submission unless model capability is explicitly true: %s",
+    async (_case, providerResult, model) => {
+      const ocServer = await mockOpenCodeProvider(providerResult);
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: "describe this",
+        isolation: "current_folder",
+        model,
+        files: [image],
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: expect.stringMatching(/image|画像|capability|対応/),
+      });
+      expectNoOpenCodeTaskStart(ocServer.mock.calls);
+    },
+  );
 
   it("rejects image files whose declared MIME type does not match the data URL", async () => {
     const res = await post({

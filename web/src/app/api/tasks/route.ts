@@ -19,6 +19,26 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type ImageFile = { uri: string; mime: string; name?: string };
+type ModelReference = { providerID?: string; modelID?: string };
+type ProviderResponse = {
+  all?: {
+    id?: string;
+    models?: Record<
+      string,
+      {
+        capabilities?: {
+          attachment?: boolean;
+          input?: { image?: boolean };
+        };
+      }
+    >;
+  }[];
+  connected?: string[];
+};
+type AgentResponse = {
+  name?: string;
+  model?: ModelReference;
+}[];
 
 const IMAGE_MIME_RE = /^image\/[a-z0-9.+-]+$/i;
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([a-z0-9+/]+={0,2})$/i;
@@ -46,6 +66,44 @@ function parseImageFiles(value: unknown): ImageFile[] | null {
     files.push({ uri, mime, ...(name ? { name } : {}) });
   }
   return files;
+}
+
+async function supportsImageInput(
+  model: ModelReference | undefined,
+  agent: string | undefined,
+): Promise<boolean> {
+  try {
+    let effectiveModel = model;
+    const agentName = agent?.trim();
+    if (agentName) {
+      const agents = await ocServer<AgentResponse>(null, "/agent");
+      const configuredAgent = agents.find(({ name }) => name === agentName);
+      if (
+        !configuredAgent?.model?.providerID ||
+        !configuredAgent.model.modelID
+      ) {
+        return false;
+      }
+      effectiveModel = configuredAgent.model;
+    }
+    if (!effectiveModel?.providerID || !effectiveModel.modelID) return false;
+
+    const providers = await ocServer<ProviderResponse>(null, "/provider");
+    if (
+      providers.connected?.length &&
+      !providers.connected.includes(effectiveModel.providerID)
+    ) {
+      return false;
+    }
+    const capabilities = providers.all
+      ?.find((provider) => provider.id === effectiveModel.providerID)
+      ?.models?.[effectiveModel.modelID]?.capabilities;
+    return (
+      capabilities?.input?.image === true || capabilities?.attachment === true
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function GET() {
@@ -96,6 +154,19 @@ export async function POST(req: NextRequest) {
   } else {
     return NextResponse.json(
       { error: "invalid variant" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    files.length > 0 &&
+    !(await supportsImageInput(body?.model, body?.agent))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "選択中のモデルは画像入力に対応していないか、画像対応を確認できません。",
+      },
       { status: 400 },
     );
   }

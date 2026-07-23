@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import type { TaskSummary } from "@/lib/types";
@@ -415,6 +416,66 @@ describe("TaskView", () => {
 
     expect(sendPrompt).toHaveBeenCalledWith("hello", expect.any(Object));
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks image submission to an unknown model in TaskView (capability undefined)", async () => {
+    taskStatus = "idle";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/opencode/provider")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              all: [
+                {
+                  id: "openai",
+                  name: "OpenAI",
+                  models: {
+                    "known-text": {
+                      name: "Known Text",
+                      capabilities: { input: { image: false }, attachment: false },
+                    },
+                  },
+                },
+              ],
+              connected: ["openai"],
+              default: { openai: "known-text" },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      visibleMessages: [],
+    });
+
+    const view = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const modelSelect = await screen.findByLabelText("モデル");
+    fireEvent.change(modelSelect, {
+      target: { value: "openai::unknown-vision" },
+    });
+
+    const image = new File(["img"], "unknown-task.png", { type: "image/png" });
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input as HTMLInputElement, { target: { files: [image] } });
+    expect(await screen.findByRole("img", { name: "unknown-task.png" })).toBeTruthy();
+
+    const submit = screen.getByRole("button", { name: "送信" });
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(sendJson).not.toHaveBeenCalled();
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+    });
   });
 
   it("touches activity before approving a plan", async () => {

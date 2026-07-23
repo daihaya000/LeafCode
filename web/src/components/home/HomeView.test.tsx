@@ -51,6 +51,8 @@ describe("HomeView image attachments", () => {
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
     sendJson.mockResolvedValue({ taskId: "task-1" });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
   });
 
@@ -61,6 +63,30 @@ describe("HomeView image attachments", () => {
   });
 
   it("submits an image selected without a text prompt", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: {
+                    name: "Vision",
+                    capabilities: { input: { image: true } },
+                  },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
     render(<HomeView />);
 
     const image = new File(["image"], "reference.png", {
@@ -70,6 +96,7 @@ describe("HomeView image attachments", () => {
     fireEvent.change(input, { target: { files: [image] } });
 
     expect(await screen.findByRole("img", { name: "reference.png" })).toBeTruthy();
+    await screen.findByLabelText("モデル");
     const submit = screen.getByRole("button", {
       name: "タスク開始",
     }) as HTMLButtonElement;
@@ -89,6 +116,79 @@ describe("HomeView image attachments", () => {
         }),
       ),
     );
+  });
+
+  it("blocks image submission to an unknown model (capability undefined)", async () => {
+    render(<HomeView />);
+
+    const image = new File(["image"], "unknown.png", { type: "image/png" });
+    const input = await screen.findByLabelText("画像ファイルを選択");
+    fireEvent.change(input, { target: { files: [image] } });
+    expect(await screen.findByRole("img", { name: "unknown.png" })).toBeTruthy();
+
+    const submit = screen.getByRole("button", { name: "タスク開始" });
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(sendJson).not.toHaveBeenCalled();
+    });
+  });
+
+  it("blocks image submission when the selected agent model lacks image capability", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: { capabilities: { input: { image: true } } },
+                  "text-agent": { capabilities: { input: { image: false } } },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      if (path === "/api/opencode/agent") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [
+            {
+              name: "text-agent",
+              model: { providerID: "openai", modelID: "text-agent" },
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    render(<HomeView />);
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("エージェント") as HTMLSelectElement).value).toBe(
+        "text-agent",
+      );
+      expect((screen.getByLabelText("モデル") as HTMLSelectElement).value).toBe(
+        "openai::vision",
+      );
+    });
+    const input = await screen.findByLabelText("画像ファイルを選択");
+    fireEvent.change(input, {
+      target: { files: [new File(["image"], "agent-text.png", { type: "image/png" })] },
+    });
+    const submit = screen.getByRole("button", { name: "タスク開始" });
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(sendJson).not.toHaveBeenCalled();
+    });
   });
 
   it("previews multiple images and removes one independently", async () => {
@@ -146,6 +246,30 @@ describe("HomeView image attachments", () => {
   });
 
   it("disables attachment controls while submitting and preserves attachments after failure", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: {
+                    name: "Vision",
+                    capabilities: { input: { image: true } },
+                  },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
     let rejectRequest: (reason: Error) => void = () => undefined;
     sendJson.mockImplementationOnce(
       () =>
