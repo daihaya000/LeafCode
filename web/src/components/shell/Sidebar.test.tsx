@@ -2,8 +2,10 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
-const { getJson, attentionState } = vi.hoisted(() => ({
+const { getJson, sendJson, timedFetch, attentionState } = vi.hoisted(() => ({
   getJson: vi.fn(),
+  sendJson: vi.fn(),
+  timedFetch: vi.fn().mockResolvedValue({ ok: false }),
   attentionState: {
     items: [] as Array<{
       kind: "question" | "permission";
@@ -31,7 +33,8 @@ vi.mock("next-themes", () => ({
 
 vi.mock("@/lib/client", () => ({
   getJson,
-  sendJson: vi.fn(),
+  sendJson,
+  timedFetch,
 }));
 
 vi.mock("@/components/AddProjectButton", () => ({
@@ -763,5 +766,55 @@ describe("Sidebar", () => {
     await screen.findByText("Task title");
     expect(screen.queryByTestId("sidebar-provider-icon")).toBeNull();
     expect(screen.queryByTestId("provider-icon-fallback")).toBeNull();
+  });
+});
+
+describe("Sidebar archive task", () => {
+  it("archives a task without confirmation dialog", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Task title",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "idle",
+            sessionId: "sess1",
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await screen.findByText("Task title");
+    screen.getByLabelText("タスクをアーカイブ").click();
+
+    await vi.waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith("PATCH", "/api/tasks/ws1/archive");
+    });
   });
 });

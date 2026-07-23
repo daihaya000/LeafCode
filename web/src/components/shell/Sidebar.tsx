@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Archive,
   ChevronRight,
   Cpu,
   FolderGit2,
@@ -348,27 +349,18 @@ export function Sidebar({
     });
   };
 
-  const removeTask = async (task: TaskSummary, e: React.MouseEvent) => {
+  const archiveTask = async (task: TaskSummary, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const label =
-      task.isolation === "current_folder"
-        ? `「${task.title}」を一覧から削除しますか？（フォルダはそのまま残ります）`
-        : `「${task.title}」を削除しますか？ worktree/コピーも削除されます。`;
-    if (!window.confirm(label)) return;
     try {
-      await sendJson("DELETE", `/api/tasks/${task.id}`);
+      await sendJson("PATCH", `/api/tasks/${task.id}/archive`);
       if (activeTaskId === task.id) router.push("/");
       notifyTasksChanged();
       await refresh();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "タスクの削除に失敗しました";
-      window.alert(
-        msg.includes("orphaned") || msg.includes("worktree")
-          ? `${msg}\n\n設定 → 「orphan を掃除」で残件を削除できます。`
-          : msg,
-      );
+        err instanceof Error ? err.message : "タスクのアーカイブに失敗しました";
+      window.alert(msg);
       notifyTasksChanged();
       await refresh();
     }
@@ -723,12 +715,12 @@ export function Sidebar({
                                   )}
                                   <button
                                     type="button"
-                                    aria-label="タスクを削除"
-                                    title="タスクを削除"
-                                    onClick={(e) => void removeTask(task, e)}
+                                    aria-label="タスクをアーカイブ"
+                                    title="タスクをアーカイブ"
+                                    onClick={(e) => void archiveTask(task, e)}
                                     className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
                                   >
-                                    <Trash2 className="h-3 w-3" />
+                                    <Archive className="h-3 w-3" />
                                   </button>
                                 </div>
                               </div>
