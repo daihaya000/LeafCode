@@ -1,14 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** System and overly broad directories that must never be allowlisted. */
-const FORBIDDEN_PREFIXES = [
-  "C:\\Windows",
-  "C:\\Program Files",
-  "C:\\Program Files (x86)",
-  "C:\\ProgramData",
-];
-
 function isPathOrDescendant(candidate: string, parent: string): boolean {
   const normalizedCandidate = candidate.toLowerCase();
   const normalizedParent = parent.toLowerCase();
@@ -16,6 +8,66 @@ function isPathOrDescendant(candidate: string, parent: string): boolean {
     normalizedCandidate === normalizedParent ||
     normalizedCandidate.startsWith(normalizedParent + path.sep)
   );
+}
+
+function isWindowsDriveRoot(candidate: string): boolean {
+  return /^[A-Za-z]:\\?$/.test(candidate);
+}
+
+function isNetworkOrDevicePath(candidate: string): boolean {
+  return /^\\\\(?:[?.]\\|[^\\]+\\[^\\]+)/.test(candidate);
+}
+
+type ProtectedPath = {
+  path: string;
+  includesDescendants: boolean;
+};
+
+function canonicalizeExistingPath(configuredPath: string | undefined): string | null {
+  if (!configuredPath) return null;
+  try {
+    return fs.realpathSync.native(path.resolve(configuredPath));
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve protected OS locations and the roots of every local user profile. */
+function getProtectedPaths(): ProtectedPath[] {
+  const configuredPaths = [
+    process.env.SystemRoot,
+    process.env.ProgramFiles,
+    process.env["ProgramFiles(x86)"],
+    process.env.ProgramW6432,
+    process.env.ProgramData,
+  ];
+  const protectedPaths: ProtectedPath[] = configuredPaths.flatMap(
+    (configuredPath) => {
+      const canonicalPath = canonicalizeExistingPath(configuredPath);
+      return canonicalPath
+        ? [{ path: canonicalPath, includesDescendants: true }]
+        : [];
+    },
+  );
+  const profileParent = canonicalizeExistingPath(
+    process.env.USERPROFILE && path.dirname(process.env.USERPROFILE),
+  );
+
+  if (!profileParent) return protectedPaths;
+  protectedPaths.push({ path: profileParent, includesDescendants: false });
+  try {
+    for (const entry of fs.readdirSync(profileParent, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const profilePath = canonicalizeExistingPath(path.join(profileParent, entry.name));
+      if (profilePath) {
+        protectedPaths.push({ path: profilePath, includesDescendants: false });
+      }
+    }
+  } catch {
+    // Keep the parent root protected if profile enumeration is unavailable.
+  }
+
+  return protectedPaths;
 }
 
 /** Validate and return the canonical path for an existing allowlist directory. */
@@ -32,6 +84,10 @@ export function resolveValidatedAllowlistPath(
     return { error: "パスが存在しません" };
   }
 
+  if (isNetworkOrDevicePath(canonicalPath)) {
+    return { error: "UNCまたはデバイスパスは許可リストに追加できません" };
+  }
+
   try {
     if (!fs.statSync(canonicalPath).isDirectory()) {
       return { error: "ディレクトリではありません" };
@@ -40,22 +96,19 @@ export function resolveValidatedAllowlistPath(
     return { error: "パスの検証に失敗しました" };
   }
 
-  if (/^[A-Za-z]:\\?$/.test(canonicalPath)) {
+  if (isWindowsDriveRoot(canonicalPath)) {
     return { error: "ドライブルートは許可リストに追加できません" };
   }
 
-  for (const prefix of FORBIDDEN_PREFIXES) {
-    if (isPathOrDescendant(canonicalPath, prefix)) {
-      return { error: `${prefix} はシステム領域のため許可リストに追加できません` };
+  for (const protectedPath of getProtectedPaths()) {
+    const isProtected = protectedPath.includesDescendants
+      ? isPathOrDescendant(canonicalPath, protectedPath.path)
+      : canonicalPath.toLowerCase() === protectedPath.path.toLowerCase();
+    if (isProtected) {
+      return {
+        error: `${protectedPath.path} はシステム領域のため許可リストに追加できません`,
+      };
     }
-  }
-
-  const userProfile = process.env.USERPROFILE;
-  if (
-    userProfile &&
-    canonicalPath.toLowerCase() === path.resolve(userProfile).toLowerCase()
-  ) {
-    return { error: "ユーザープロファイル直下は許可リストに追加できません" };
   }
 
   return { canonicalPath };

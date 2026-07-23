@@ -91,11 +91,24 @@ describe("POST /api/projects path validation", () => {
     );
   });
 
-  it("rejects a directory symlink whose target is protected", async () => {
+  it("stores the canonical target of a symlink to an allowed directory", async () => {
+    const target = path.join(tempRoot, "allowed-target");
+    const link = path.join(tempRoot, "allowed-link");
+    fs.mkdirSync(target);
+    fs.symlinkSync(target, link, "junction");
+
+    const res = await POST(req({ rootPath: link }) as never);
+    expect(res.status).toBe(200);
+    expect(upsertProject).toHaveBeenCalledWith(
+      expect.objectContaining({ rootPath: fs.realpathSync.native(target) }),
+    );
+  });
+
+  it("rejects a protected directory reached through an intermediate junction", async () => {
     const link = path.join(tempRoot, "windows-link");
     fs.symlinkSync(process.env.SystemRoot ?? "C:\\Windows", link, "junction");
 
-    const res = await POST(req({ rootPath: link }) as never);
+    const res = await POST(req({ rootPath: path.join(link, "System32") }) as never);
     expect(res.status).toBe(400);
     expect(upsertProject).not.toHaveBeenCalled();
   });
