@@ -41,8 +41,8 @@ interface UseVoiceInputReturn {
   listening: boolean;
   /** 認識を開始する。disabled のときは何もしない */
   start: () => void;
-  /** 認識を停止する。停止時に確定されたテキストを返す */
-  stop: () => string;
+  /** 認識を停止する。end イベント後に確定されたテキストを返す */
+  stop: () => Promise<string>;
   /** 最後に確定した認識テキスト（追記用） */
   transcript: string;
   /** エラーメッセージ（null = エラーなし） */
@@ -51,6 +51,8 @@ interface UseVoiceInputReturn {
   clearError: () => void;
 }
 ```
+
+`stop()` は `SpeechRecognition` の `end` イベントまで待機して Promise を解決するため、停止要求後に届く最後の確定 `result` も返却値に含める。認識が `disabled` 化によって中断された場合またはフックがアンマウントされた場合は、未解決の `stop()` も `""` で解決する。停止完了前に複数回呼び出されても同一の Promise を返す single-flight とし、ネイティブの `recognition.stop()` は1回だけ呼ぶ。
 
 ### 内部状態
 

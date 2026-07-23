@@ -88,6 +88,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 const SILENT_ERRORS = new Set(["no-speech", "aborted"]);
 
+type RecognitionState =
+  | "idle"
+  | "starting"
+  | "listening"
+  | "stopping"
+  | "interrupted";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -113,14 +120,13 @@ export function useVoiceInput(
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const transcriptRef = useRef("");
   const listeningRef = useRef(false);
-  // Generation counter: bumped on every session boundary (start, stop/end,
-  // disabled-interrupt). `result`/`error` handlers only process events whose
-  // originating session generation still matches the current generation, so
-  // late-arriving events from an already-interrupted session are dropped.
-  const generationRef = useRef(0);
-  const activeSessionGenRef = useRef(-1);
-  // Resolvers waiting for the `end` event after `stop()` is called.
-  const stopResolversRef = useRef<Array<(text: string) => void>>([]);
+  // One SpeechRecognition instance cannot identify an event's originating
+  // session. Keep an interrupted session closed until its `end` arrives, so
+  // its delayed events cannot be mistaken for a newly started session.
+  const stateRef = useRef<RecognitionState>("idle");
+  const processedResultIndexRef = useRef(0);
+  const pendingStopPromiseRef = useRef<Promise<string> | null>(null);
+  const pendingStopResolveRef = useRef<((text: string) => void) | null>(null);
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -131,6 +137,13 @@ export function useVoiceInput(
   // captured once and never changes for the lifetime of the hook.
   useEffect(() => {
     setSupported(!!detectSpeechRecognition());
+  }, []);
+
+  const settlePendingStop = useCallback((text: string) => {
+    const resolve = pendingStopResolveRef.current;
+    pendingStopResolveRef.current = null;
+    pendingStopPromiseRef.current = null;
+    resolve?.(text);
   }, []);
 
   // Lazily create the SpeechRecognition instance once.
@@ -144,37 +157,40 @@ export function useVoiceInput(
     recognition.maxAlternatives = 1;
 
     recognition.addEventListener("start", () => {
+      if (stateRef.current !== "starting") return;
+      stateRef.current = "listening";
       listeningRef.current = true;
       setListening(true);
       setError(null);
-      transcriptRef.current = "";
-      setTranscript("");
     });
 
     recognition.addEventListener("end", () => {
+      if (stateRef.current === "idle") return;
+      const interrupted = stateRef.current === "interrupted";
+      stateRef.current = "idle";
       listeningRef.current = false;
       setListening(false);
-      // Advance generation so any late `result`/`error` events from this
-      // session are ignored.
-      generationRef.current += 1;
-      activeSessionGenRef.current = -1;
-      // Resolve any pending stop() promises with the finalized transcript.
-      const text = transcriptRef.current;
-      const resolvers = stopResolversRef.current;
-      stopResolversRef.current = [];
-      for (const resolve of resolvers) resolve(text);
+      settlePendingStop(interrupted ? "" : transcriptRef.current);
     });
 
     recognition.addEventListener("result", (event) => {
-      // Drop events from an already-closed/interrupted session.
-      if (activeSessionGenRef.current !== generationRef.current) return;
+      if (
+        stateRef.current !== "listening" &&
+        stateRef.current !== "stopping"
+      ) {
+        return;
+      }
       const e = event as SpeechRecognitionEvent;
       const results = e.results;
       if (!results) return;
       // `results` is cumulative for the whole session; `resultIndex` is the
       // first index that changed in this event. Start there to avoid
       // re-appending already-finalized results.
-      const start = typeof e.resultIndex === "number" ? e.resultIndex : 0;
+      const eventResultIndex =
+        typeof e.resultIndex === "number" && e.resultIndex >= 0
+          ? e.resultIndex
+          : processedResultIndexRef.current;
+      const start = Math.max(eventResultIndex, processedResultIndexRef.current);
       for (let i = start; i < results.length; i++) {
         const result = results[i];
         if (result.isFinal) {
@@ -187,95 +203,128 @@ export function useVoiceInput(
           }
         }
       }
+      processedResultIndexRef.current = Math.max(
+        processedResultIndexRef.current,
+        results.length,
+      );
     });
 
     recognition.addEventListener("error", (event) => {
-      // Drop errors from an already-closed/interrupted session.
-      if (activeSessionGenRef.current !== generationRef.current) return;
+      if (
+        stateRef.current !== "starting" &&
+        stateRef.current !== "listening" &&
+        stateRef.current !== "stopping"
+      ) {
+        return;
+      }
       const e = event as SpeechRecognitionErrorEvent;
       const code = e.error;
+      // Web Speech API follows error with end. Block a replacement session
+      // until that end event has closed this one.
+      stateRef.current = "interrupted";
+      listeningRef.current = false;
+      setListening(false);
+      settlePendingStop(transcriptRef.current);
       if (SILENT_ERRORS.has(code)) {
-        // Reset silently
-        listeningRef.current = false;
-        setListening(false);
+        setError(null);
         return;
       }
       setError(ERROR_MESSAGES[code] ?? "音声認識でエラーが発生しました。");
-      listeningRef.current = false;
-      setListening(false);
     });
 
     recognitionRef.current = recognition;
     return recognition;
-  }, []);
+  }, [settlePendingStop]);
 
   const start = useCallback(() => {
     if (disabled) return;
+    if (stateRef.current !== "idle") return;
     const recognition = getRecognition();
     if (!recognition) return;
-    // New session generation.
-    generationRef.current += 1;
-    activeSessionGenRef.current = generationRef.current;
+    stateRef.current = "starting";
+    transcriptRef.current = "";
+    processedResultIndexRef.current = 0;
+    setTranscript("");
     try {
       recognition.start();
     } catch {
-      // Already started — ignore.
+      stateRef.current = "idle";
+      listeningRef.current = false;
+      setListening(false);
     }
   }, [disabled, getRecognition]);
 
   const stop = useCallback((): Promise<string> => {
     const recognition = recognitionRef.current;
+    if (stateRef.current === "stopping" && pendingStopPromiseRef.current) {
+      return pendingStopPromiseRef.current;
+    }
     // Not listening (never started, or already ended): resolve immediately
     // with whatever transcript is currently finalized.
-    if (!recognition || !listeningRef.current) {
+    if (!recognition || stateRef.current !== "listening") {
       return Promise.resolve(transcriptRef.current);
     }
-    return new Promise<string>((resolve) => {
-      stopResolversRef.current.push(resolve);
-      try {
-        recognition.stop();
-      } catch {
-        // stop() threw — resolve immediately with current transcript.
-        const idx = stopResolversRef.current.indexOf(resolve);
-        if (idx >= 0) stopResolversRef.current.splice(idx, 1);
-        resolve(transcriptRef.current);
-      }
+    stateRef.current = "stopping";
+    const pendingStop = new Promise<string>((resolve) => {
+      pendingStopResolveRef.current = resolve;
     });
-  }, []);
+    pendingStopPromiseRef.current = pendingStop;
+    try {
+      recognition.stop();
+    } catch {
+      // A failed stop cannot safely be followed by a new start until the
+      // current native session is ended or aborted.
+      stateRef.current = "interrupted";
+      listeningRef.current = false;
+      setListening(false);
+      settlePendingStop(transcriptRef.current);
+      try {
+        recognition.abort();
+      } catch {
+        stateRef.current = "idle";
+      }
+    }
+    return pendingStop;
+  }, [settlePendingStop]);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Auto-stop when disabled becomes true while listening.
+  // Auto-stop an active (including not-yet-started) session when disabled.
   useEffect(() => {
-    if (disabled && listeningRef.current) {
+    if (disabled && stateRef.current !== "idle") {
       const recognition = recognitionRef.current;
-      // Advance generation so late result/error events from this session are
-      // dropped before they can revive the transcript.
-      generationRef.current += 1;
-      activeSessionGenRef.current = -1;
-      if (recognition) {
-        try {
-          recognition.stop();
-        } catch {
-          // ignore
-        }
-      }
+      const shouldStopRecognition =
+        stateRef.current === "starting" || stateRef.current === "listening";
+      stateRef.current = "interrupted";
       listeningRef.current = false;
       setListening(false);
       transcriptRef.current = "";
       setTranscript("");
-      // Drop any pending stop() resolvers — the session was interrupted, not
-      // finalized normally.
-      stopResolversRef.current = [];
+      settlePendingStop("");
+      if (recognition && shouldStopRecognition) {
+        try {
+          recognition.stop();
+        } catch {
+          try {
+            recognition.abort();
+          } catch {
+            stateRef.current = "idle";
+          }
+        }
+      }
     }
-  }, [disabled]);
+  }, [disabled, settlePendingStop]);
 
   // Cleanup on unmount.
   useEffect(() => {
     return () => {
       const recognition = recognitionRef.current;
+      stateRef.current = "interrupted";
+      listeningRef.current = false;
+      transcriptRef.current = "";
+      settlePendingStop("");
       if (recognition) {
         try {
           recognition.abort();
@@ -285,7 +334,7 @@ export function useVoiceInput(
         recognitionRef.current = null;
       }
     };
-  }, []);
+  }, [settlePendingStop]);
 
   return {
     supported,

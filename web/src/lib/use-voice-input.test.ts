@@ -299,6 +299,90 @@ describe("useVoiceInput", () => {
     expect(mockRecognition.stop).not.toHaveBeenCalled();
   });
 
+  it("makes repeated stop() calls single-flight until end", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+
+    const first = result.current.stop();
+    const second = result.current.stop();
+
+    expect(first).toBe(second);
+    expect(mockRecognition.stop).toHaveBeenCalledTimes(1);
+
+    act(() => mockRecognition._dispatch("end"));
+    await expect(first).resolves.toBe("");
+  });
+
+  it("resolves a pending stop() with an empty string when disabled interrupts it", async () => {
+    const { result, rerender } = renderHook(
+      (props: { disabled: boolean }) => useVoiceInput(props),
+      { initialProps: { disabled: false } },
+    );
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+
+    const pendingStop = result.current.stop();
+    rerender({ disabled: true });
+
+    await expect(pendingStop).resolves.toBe("");
+  });
+
+  it("resolves a pending stop() with an empty string when unmounted", async () => {
+    const { result, unmount } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+
+    const pendingStop = result.current.stop();
+    unmount();
+
+    await expect(pendingStop).resolves.toBe("");
+  });
+
+  it("settles a pending stop() when recognition reports an error", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+
+    const pendingStop = result.current.stop();
+    act(() => mockRecognition._dispatch("error", { error: "no-speech" }));
+
+    await expect(pendingStop).resolves.toBe("");
+  });
+
+  it("settles stop() when recognition.stop() throws", async () => {
+    mockRecognition.stop.mockImplementationOnce(() => {
+      throw new Error("stop failed");
+    });
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+
+    await expect(result.current.stop()).resolves.toBe("");
+    expect(mockRecognition.abort).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the processed result index when resultIndex is missing", () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        results: [{ 0: { transcript: "first" }, isFinal: true }],
+      }),
+    );
+    act(() =>
+      mockRecognition._dispatch("result", {
+        results: [
+          { 0: { transcript: "first" }, isFinal: true },
+          { 0: { transcript: "second" }, isFinal: true },
+        ],
+      }),
+    );
+
+    expect(result.current.transcript).toBe("first second");
+  });
+
   // Important 3 regression: a late result event arriving after the session
   // was interrupted by disabled must not revive the transcript.
   it("drops late result events after disabled-interrupt so transcript stays empty (Important 3)", () => {
@@ -327,6 +411,44 @@ describe("useVoiceInput", () => {
       }),
     );
     expect(result.current.transcript).toBe("");
+  });
+
+  it("waits for an interrupted session end before starting another session", () => {
+    const { result, rerender } = renderHook(
+      (props: { disabled: boolean }) => useVoiceInput(props),
+      { initialProps: { disabled: false } },
+    );
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    rerender({ disabled: true });
+    rerender({ disabled: false });
+
+    // A new start request before A's end is ignored. A's delayed events
+    // therefore cannot be mistaken for a new B session.
+    act(() => result.current.start());
+    expect(mockRecognition.start).toHaveBeenCalledTimes(1);
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "stale A result" }, isFinal: true }],
+      }),
+    );
+    act(() => mockRecognition._dispatch("end"));
+    expect(result.current.transcript).toBe("");
+    expect(result.current.listening).toBe(false);
+
+    // Only after A's end may B start and update state.
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "B result" }, isFinal: true }],
+      }),
+    );
+    expect(mockRecognition.start).toHaveBeenCalledTimes(2);
+    expect(result.current.transcript).toBe("B result");
+    expect(result.current.listening).toBe(true);
   });
 
   it("clears error on clearError()", () => {

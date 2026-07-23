@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VoiceInputButton } from "./VoiceInputButton";
 import type { UseVoiceInputReturn } from "@/lib/use-voice-input";
@@ -68,6 +68,32 @@ describe("VoiceInputButton", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(voice.stop).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onTranscript).toHaveBeenCalledWith(""));
+  });
+
+  it("submits a resolved stop transcript only once while stopping", async () => {
+    let resolveStop!: (text: string) => void;
+    const voice = mockVoice({
+      listening: true,
+      stop: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveStop = resolve;
+          }),
+      ),
+    });
+    const onTranscript = vi.fn();
+    render(
+      <VoiceInputButton voice={voice} onTranscript={onTranscript} />,
+    );
+
+    const button = screen.getByRole("button");
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(voice.stop).toHaveBeenCalledTimes(1);
+    act(() => resolveStop("hello"));
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledTimes(1));
+    expect(onTranscript).toHaveBeenCalledWith("hello");
   });
 
   it("does nothing when disabled and not listening", () => {
