@@ -92,7 +92,7 @@
 
 ## Phase ①: BFF security / data guard
 
-### Task 1.0: R46 tools map スキーマ調査
+### Task 1: R46 tools map スキーマ調査
 
 **Files:**
 - Read: `web/src/lib/opencode-schema.d.ts:319-345`（`/experimental/tool`・`/experimental/tool/ids`）
@@ -117,7 +117,7 @@
 
 調査結果をコミットメッセージに含めず、Task 1.5 の実装で使用する。本タスクはコード変更なし・コミットなし。
 
-### Task 1.1: `isBlockedOpencodeWrite` denylist 拡張
+### Task 2: `isBlockedOpencodeWrite` denylist 拡張
 
 **Files:**
 - Modify: `web/src/lib/opencode.ts:5-24`（`isBlockedOpencodeWrite`）
@@ -235,7 +235,7 @@ git add web/src/lib/opencode.ts web/src/lib/opencode-id.test.ts
 git commit -m "feat: isBlockedOpencodeWrite に PTY/dispose/vcs/experimental/mcp-auth の denylist を追加"
 ```
 
-### Task 1.2: `maskSecrets` 適用エンドポイント拡張
+### Task 3: `maskSecrets` 適用エンドポイント拡張
 
 **Files:**
 - Modify: `web/src/app/api/opencode/[...path]/route.ts:155-165`（`maskSecrets` 適用箇所）
@@ -378,7 +378,7 @@ git add web/src/app/api/opencode/[...path]/route.ts web/src/app/api/opencode/[..
 git commit -m "feat: GET /provider・/config/providers・/global/config に maskSecrets を適用"
 ```
 
-### Task 1.3: 画像 capability fail-closed（UI: HomeView・TaskView）
+### Task 4: 画像 capability fail-closed（UI: HomeView・TaskView）
 
 **Files:**
 - Modify: `web/src/components/home/HomeView.tsx:410-425`（`submit` 内 `sendingImageBlocked`）
@@ -507,7 +507,7 @@ git add web/src/components/home/HomeView.tsx web/src/components/home/HomeView.te
 git commit -m "fix: 画像 capability fail-closed — 未知モデル・未定義・非対応をブロック"
 ```
 
-### Task 1.4: R31/R32#1 回帰テスト補強（setup.bat）
+### Task 5: R31/R32#1 回帰テスト補強（setup.bat）
 
 **Files:**
 - Modify: `host/src/setup-bat.test.js`
@@ -560,7 +560,7 @@ git add host/src/setup-bat.test.js
 git commit -m "test: setup.bat の非ブロッキング起動・成功判定の回帰テストを補強"
 ```
 
-### Task 1.5: R46#1 タイトル再生成 tools 非空マップ
+### Task 6: R46#1 タイトル再生成 tools 非空マップ
 
 **Files:**
 - Modify: `web/src/app/api/workspaces/[id]/sessions/[sessionId]/refresh-title/route.ts:62-70`（`promptBody` 構築）
@@ -698,7 +698,7 @@ git add web/src/app/api/workspaces/[id]/sessions/[sessionId]/refresh-title/route
 git commit -m "fix: タイトル再生成の tools を非空マップ（全値 false）に変更してツール実行を確実に無効化"
 ```
 
-### Task 1.6: R7#3 回帰テスト補強（NestedAgent 空 TL）
+### Task 7: R7#3 回帰テスト補強（NestedAgent 空 TL）
 
 **Files:**
 - Modify: `web/src/components/task/NestedAgentPanel.test.tsx`
@@ -758,7 +758,7 @@ git add web/src/components/task/NestedAgentPanel.test.tsx
 git commit -m "test: NestedAgentPanel の空タイムライン非表示の回帰テストを補強"
 ```
 
-### Task 1.7: R13#1/R7#1-2/R5#2 回帰テスト補強（Attention）
+### Task 8: R13#1/R7#1-2/R5#2 回帰テスト補強（Attention）
 
 **Files:**
 - Modify: `web/src/lib/useAttentionQueue.test.ts`
@@ -834,7 +834,7 @@ git commit -m "test: Attention busy 固着解除・404 回答済み扱いの回�
 
 ## Phase ②: allowlist / temp copy
 
-### Task 2.1: `isInside` 根一致拒否（git.ts・project-session-sync.ts）
+### Task 9: `isInside` 根一致拒否（git.ts・project-session-sync.ts）
 
 **Files:**
 - Modify: `web/src/lib/git.ts:110-113`（`isInside`）
@@ -909,7 +909,7 @@ git add web/src/lib/git.ts web/src/lib/project-session-sync.ts web/src/lib/proje
 git commit -m "fix: isInside が根一致を拒否するように変更（repo/worktree 根の再帰削除を防止）"
 ```
 
-### Task 2.2: `POST /api/projects`・`POST /api/roots` パス検証
+### Task 10: `POST /api/projects`・`POST /api/roots` パス検証
 
 **Files:**
 - Modify: `web/src/app/api/projects/route.ts:28-50`（`POST` ハンドラ）
@@ -1160,7 +1160,7 @@ git add web/src/lib/path-validation.ts web/src/app/api/projects/route.ts web/src
 git commit -m "feat: POST /api/projects・/api/roots にパス検証（実在ディレクトリ・システム領域拒否）を追加"
 ```
 
-### Task 2.3: `DELETE /api/roots` ハンドラ追加
+### Task 11: `DELETE /api/roots` ハンドラ追加
 
 **Files:**
 - Modify: `web/src/app/api/roots/route.ts`（`DELETE` ハンドラ追加）
@@ -1241,7 +1241,7 @@ git add web/src/app/api/roots/route.ts web/src/app/api/roots/route.test.ts
 git commit -m "feat: DELETE /api/roots ハンドラを追加（allowlist から root を削除）"
 ```
 
-### Task 2.4: SettingsView roots 削除ボタン
+### Task 12: SettingsView roots 削除ボタン
 
 **Files:**
 - Modify: `web/src/components/settings/SettingsView.tsx:725-735`（roots リスト）
@@ -1332,7 +1332,7 @@ git add web/src/components/settings/SettingsView.tsx web/src/components/settings
 git commit -m "feat: SettingsView に roots 削除ボタンを追加"
 ```
 
-### Task 2.5: temporary_copy 外向き symlink 除去・失敗時ロールバック
+### Task 13: temporary_copy 外向き symlink 除去・失敗時ロールバック
 
 **Files:**
 - Modify: `web/src/lib/copy.ts`（`createTemporaryCopy`）
@@ -1532,7 +1532,7 @@ git add web/src/lib/copy.ts web/src/lib/copy.test.ts web/src/lib/workspace-servi
 git commit -m "fix: temporary_copy の外向き symlink 除去・失敗時ロールバックを追加"
 ```
 
-### Task 2.6: `purgeGoneOrphans` で temporary_copy allowlist 解放
+### Task 14: `purgeGoneOrphans` で temporary_copy allowlist 解放
 
 **Files:**
 - Modify: `web/src/app/api/workspaces/orphans/route.ts:75-100`（`purgeGoneOrphans`）
@@ -1638,7 +1638,7 @@ git commit -m "fix: purgeGoneOrphans が temporary_copy の allowlist を解放�
 
 ## Phase ③: host reliability
 
-### Task 3.1: headless 検出の強化
+### Task 15: headless 検出の強化
 
 **Files:**
 - Modify: `host/src/index.js:955`・`1567`（headless 検出箇所）
@@ -1730,7 +1730,7 @@ git add host/src/index.js host/src/index.test.js
 git commit -m "feat: headless 検出を --headless フラグと OPENCODE_HEADLESS 環境変数の両方に対応"
 ```
 
-### Task 3.2: OpenCode 異常 exit 自動再起動
+### Task 16: OpenCode 異常 exit 自動再起動
 
 **Files:**
 - Modify: `host/src/index.js:496-510`（`child.on('exit')` ハンドラ）
@@ -1854,7 +1854,7 @@ git add host/src/index.js host/src/index.test.js
 git commit -m "feat: OpenCode 異常 exit 後の自動再起動（3回/5分上限）を追加"
 ```
 
-### Task 3.3: health ポーリング ターゲット別成功条件・60回失敗
+### Task 17: health ポーリング ターゲット別成功条件・60回失敗
 
 **Files:**
 - Modify: `web/src/components/settings/SettingsView.tsx:267-310`（`restartService`）
@@ -1977,7 +1977,7 @@ git commit -m "fix: health ポーリングをターゲット別成功条件・60
 
 ## Phase ④: 通信 / SW
 
-### Task 4.1: `getJson`・`sendJson`・`ocJson` ボディ読了タイムアウト
+### Task 18: `getJson`・`sendJson`・`ocJson` ボディ読了タイムアウト
 
 **Files:**
 - Modify: `web/src/lib/client.ts`（`getJson`・`sendJson`・`ocJson`）
@@ -2087,7 +2087,7 @@ git add web/src/lib/client.ts web/src/lib/client.test.ts
 git commit -m "fix: getJson・sendJson・ocJson がレスポンスボディ読了までタイムアウトを保証"
 ```
 
-### Task 4.2: Service Worker 非 OK レスポンスキャッシュ拒否
+### Task 19: Service Worker 非 OK レスポンスキャッシュ拒否
 
 **Files:**
 - Modify: `web/public/sw.js`（`fetch` イベントハンドラ）
@@ -2169,7 +2169,7 @@ git commit -m "fix: Service Worker が非 OK レスポンス（4xx・5xx）を�
 
 ## Phase ⑤: UI core
 
-### Task 5.1: iOS 16px フォントサイズ対策・touchActivity ブロック短縮
+### Task 20: iOS 16px フォントサイズ対策・touchActivity ブロック短縮
 
 **Files:**
 - Modify: `web/src/components/home/HomeView.tsx:553-560`（textarea）
@@ -2266,7 +2266,7 @@ git add web/src/components/home/HomeView.tsx web/src/components/task/TaskView.ts
 git commit -m "fix: iOS 16px フォントサイズ対策・touchActivity ブロックを最大5秒に短縮"
 ```
 
-### Task 5.2: `initialCollapsed` 計算修正
+### Task 21: `initialCollapsed` 計算修正
 
 **Files:**
 - Modify: `web/src/components/task/TaskView.tsx:324`（`isMd` 初期値）・`1909`（`initialCollapsed`）
@@ -2308,7 +2308,7 @@ git add web/src/components/task/TaskView.tsx
 git commit -m "fix: isMd 初期値を matchMedia から取得してデスクトップ恒久最小化を解消"
 ```
 
-### Task 5.3: SessionSwitcher controlled snap-back 解消
+### Task 22: SessionSwitcher controlled snap-back 解消
 
 **Files:**
 - Modify: `web/src/components/task/SessionSwitcher.tsx`
@@ -2446,7 +2446,7 @@ git add web/src/components/task/SessionSwitcher.tsx web/src/components/task/Sess
 git commit -m "fix: SessionSwitcher の controlled snap-back をローカル選択 state で解消"
 ```
 
-### Task 5.4: PartView error 表示
+### Task 23: PartView error 表示
 
 **Files:**
 - Modify: `web/src/components/task/PartView.tsx:166-360`（`ToolPartView`）
