@@ -1,597 +1,302 @@
-# TaskViewヘッダー操作のケバブメニュー集約 Implementation Plan
-
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `TaskView` ヘッダーからコピー・再同期・セッション切替・ターミナルの直表示をなくし、全幅で利用できる `HeaderKebabMenu` に集約する。
+# ARIA 準拠: TaskView ヘッダー操作を標準 kebab menu とセッション切替 dialog に分離する
 
-**Architecture:** `HeaderKebabMenu` の `KebabGroup` に任意の `renderContent` を加え、標準の `KebabItem` と異なるセッション切替UIをグループ内へ安全に描画できるようにする。標準項目だけを矢印キーのロービングフォーカス対象とし、カスタム領域は Tab の通常順序で通過させる。`TaskView` は既存の `copyPath`、`stream.resync`、`SessionSwitcher`、パネル状態更新コールバックをそのまま新しいグループ定義へ渡す。
+**Goal:** TaskView ヘッダーからコピー・再同期・セッション切替・ターミナルの直表示をなくし、4 操作を kebab に集約する。`role="menu"` 内は標準 `menuitem` のみとし、セッション追加/切替は menuitem が開くアクセシブルな dialog で行う。
+
+**Architecture:** `HeaderKebabMenu` を `KebabGroup.items` だけを描画する元の標準 menuitem 専用構造へ戻す。`TaskView` は既存のコピー・再同期・パネル切替を `KebabItem` として定義し、セッション用 item の選択で新規 `SessionSwitcherDialog` を開く。dialog が既存の `SessionSwitcher` を内包し、フォーカストラップ、Escape、backdrop、成功後の refresh/close/focus return を担当する。`SessionSwitcher` のセッション取得・追加・切替ロジックには手を加えない。
 
 **Tech Stack:** Next.js 15、React 19、TypeScript 5、Vitest 3、React Testing Library、Tailwind CSS v4、lucide-react。
 
-## Global Constraints
+## 現状確認と変更範囲
 
-- 変更対象は `web/src/components/task/HeaderKebabMenu.tsx`、`web/src/components/task/TaskView.tsx`、各対応テストだけとする。`web/src/components/task/SessionSwitcher.tsx:9-108` は読み取り専用で、既存の取得・作成・切替ロジックを変更しない。
-- `KebabGroup` は `items: KebabItem[]` を維持し、`renderContent?: () => ReactNode` を追加する。`renderContent` があるグループでは `items` を描画・矢印フォーカス対象のどちらにも使わない。
-- `HeaderKebabMenu` の `aria-haspopup`、`aria-expanded`、`role="menu"`、標準項目の `role="menuitem"` / `aria-disabled` / `aria-current`、Escape・outside click・Enter・Space を維持する。`z-30` は変更しない。
-- カスタムのセッション切替領域は `SessionSwitcher` が既に提供する `aria-label="セッション切替"`、`aria-label="セッションを追加"` または `aria-label="新セッション"` をそのまま使う。ArrowUp / ArrowDown はその領域を飛ばし、Tab はメニューを閉じずに領域へ入り、最後の標準項目から外へ移ったときだけ閉じる。
-- `task.sessionId` がないときは `session-switcher` グループを作らない。1件時の追加ボタン、複数時の select と追加ボタンは `SessionSwitcher` の既存分岐に委ねる。
-- コピー成功時の `copied` state と 1,500ms のリセットは `TaskView` に維持する。メニューを閉じても state を破棄せず、再開時は `Check` アイコンを表示する。
-- コピー、再同期、`SessionSwitcher`、ターミナルをヘッダー直表示から削除する。停止（working時）と `CompactButton`（session時）は直表示のままにする。ファイルツリー、グラフ、Diffは `isLg` 時のみ直表示、ターミナルは全幅でケバブ内だけにする。
-- 新規依存、CSS変数・トークン、z-index、`isMd` state の他用途（プランカード初期折りたたみ）は変更しない。常駐サーバーを起動しない。
-- 作業開始時と各コミット直前に `git status --short` を確認する。他者の未コミット差分、および `host/src/setup-bat.test.js` の差分が存在する場合は触れず、`git add` に含めない。
+現在は先行実装により `HeaderKebabMenu` が `renderContent?: () => ReactNode` を持ち、`TaskView` が menu 内へ `SessionSwitcher`（select/button）を直接描画している。この構造は `role="menu"` の子を標準 menuitem に限定する改訂仕様に反するため、次のファイルだけを変更する。
+
+| 区分 | ファイル | 変更内容 |
+|---|---|---|
+| Modify | `web/src/components/task/HeaderKebabMenu.tsx` | `renderContent` の型・分岐・custom content 用フォーカス処理を削除し、標準 `KebabItem` のみを描画する |
+| Modify | `web/src/components/task/HeaderKebabMenu.test.tsx` | custom group を前提とするテストを標準 menuitem 専用の回帰テストへ置換する |
+| Create | `web/src/components/task/SessionSwitcherDialog.tsx` | dialog の ARIA、初期フォーカス、Tab trap、Escape/backdrop close を実装する |
+| Create | `web/src/components/task/SessionSwitcherDialog.test.tsx` | dialog 単体のキーボード・backdrop・成功コールバックを TDD で固定する |
+| Modify | `web/src/components/task/TaskView.tsx` | 4 操作の配置、dialog state、成功時 refresh/close/focus return を接続する |
+| Modify | `web/src/components/task/TaskView.test.tsx` | 4 操作移動と dialog 連携の回帰テストを更新・追加する |
+| Read-only | `web/src/components/task/SessionSwitcher.tsx` | 既存の `workspaceId`、`directory`、`currentSessionId`、`onSwitch: () => void` 契約および内部ロジックを変更しない |
+
+`HeaderKebabMenu` の trigger の現行デフォルト名は「その他の操作」だが、改訂仕様の focus return は `button[aria-label="メニューを開く"]` を対象にする。`TaskView` 側で `triggerLabel="メニューを開く"` を明示して selector と実 DOM を一致させる。`HeaderKebabMenu` の ref forward や public API 追加はしない。
+
+## 守る制約
+
+- menu 内に `select`、ネイティブ `button`、`dialog`、custom content を描画しない。各操作は既存 `KebabItem` が描画する `role="menuitem"` のみとする。
+- `HeaderKebabMenu` の既存 `aria-haspopup`、`aria-expanded`、`aria-controls`、`role="menu"`、`aria-disabled`、`aria-current`、ArrowUp/ArrowDown、Enter/Space、Escape、outside click、trigger 再クリックの回帰対策、`z-30` を保つ。
+- `SessionSwitcher` は変更しない。追加/切替の成功時に呼ぶ既存の `onSwitch()` を、dialog 外の `TaskView` 処理へ接続するだけにする。
+- `task.sessionId` がない場合は、`session-switcher` グループ自体を追加せず dialog も開けない。
+- コピー成功の `copied` state と 1,500ms の reset、再同期の `stream.resync()` と `setDiffKey((key) => key + 1)` を維持する。
+- Zone A は停止（working 時）と `CompactButton`（session 時）のみ。Zone B は `isLg` 時のファイルツリー・グラフ・Diff のみ。ターミナルは全幅で kebab 内だけにする。`isMd` はプランカード初期折りたたみ等の既存用途があるため削除しない。
+- 新しい依存、CSS token、z-index 体系、`createPortal` は追加しない。dialog は `TaskView` の DOM ツリー内に置く。
+- 作業開始前・各編集直前・コミット直前に `git status --short` を確認する。既存の `.superpowers/sdd/task-8-report.md`、`web/src/components/shell/Sidebar.tsx`、`web/src/components/shell/Sidebar.test.tsx`、`web/src/lib/path-validation.ts` と、以後に見つかった自分以外の未コミット差分には触れず、stage しない。
 
 ---
 
-### Task 1: カスタムグループ描画とキーボード通過を `HeaderKebabMenu` に追加する
+### Task 1: `HeaderKebabMenu` を標準 menuitem 専用へ戻す
 
 **Files:**
-- Modify: `web/src/components/task/HeaderKebabMenu.tsx:1-197`（型、フォーカス対象の平坦化、可視グループ判定、ポップアップのフォーカス離脱、グループ描画）
-- Create: `web/src/components/task/HeaderKebabMenu.test.tsx`
+- Modify: `web/src/components/task/HeaderKebabMenu.tsx`
+- Modify: `web/src/components/task/HeaderKebabMenu.test.tsx`
 
-**Interfaces:**
-- Consumes: `KebabItem` の `{ id: string; label: string; icon?: ReactNode; onSelect: () => void; disabled?: boolean; busy?: boolean; active?: boolean; danger?: boolean }`。
-- Produces: `KebabGroup` の `{ id: string; label?: string; items: KebabItem[]; renderContent?: () => ReactNode }`。`renderContent` は指定時に標準 `items` を完全に置き換え、カスタムDOMを返す。
-- Produces: `HeaderKebabMenu` は custom group を `items: []` でも表示し、ArrowUp / ArrowDown の対象から外し、Tab による custom control 間の自然な移動を維持する。
+**Interface after this task:**
 
-- [ ] **Step 1: カスタムグループとキーボード順序の失敗テストを書く**
+```ts
+export type KebabItem = {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  onSelect: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  active?: boolean;
+  danger?: boolean;
+};
 
-`web/src/components/task/HeaderKebabMenu.test.tsx` を作成し、既存の `TaskView.test.tsx` と同じ Vitest + React Testing Library の書式で次を記述する。`items` にダミー項目を渡しても、`renderContent` が優先されてその項目が描画・矢印対象にならないことを検証する。
-
-```tsx
-import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { HeaderKebabMenu } from "./HeaderKebabMenu";
-
-describe("HeaderKebabMenu", () => {
-  it("renders custom group content, skips it with arrows, and preserves Tab traversal", async () => {
-    const onSelect = vi.fn();
-    render(
-      <>
-        <HeaderKebabMenu
-          groups={[
-            {
-              id: "first",
-              label: "先頭",
-              items: [{ id: "first-item", label: "先頭の操作", onSelect }],
-            },
-            {
-              id: "session-switcher",
-              label: "セッション切替",
-              items: [{ id: "ignored", label: "描画されない操作", onSelect }],
-              renderContent: () => (
-                <div>
-                  <select aria-label="セッション切替"><option>Session 1</option></select>
-                  <button type="button" aria-label="新セッション">追加</button>
-                </div>
-              ),
-            },
-            {
-              id: "last",
-              label: "末尾",
-              items: [{ id: "last-item", label: "末尾の操作", onSelect }],
-            },
-          ]}
-        />
-        <button type="button">メニュー外</button>
-      </>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-    const first = await screen.findByRole("menuitem", { name: "先頭の操作" });
-    const last = screen.getByRole("menuitem", { name: "末尾の操作" });
-    const select = screen.getByRole("combobox", { name: "セッション切替" });
-
-    await waitFor(() => expect(document.activeElement).toBe(first));
-    expect(screen.queryByRole("menuitem", { name: "描画されない操作" })).toBeNull();
-    fireEvent.keyDown(first, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(last);
-
-    fireEvent.keyDown(last, { key: "ArrowUp" });
-    expect(document.activeElement).toBe(first);
-    const tab = createEvent.keyDown(first, { key: "Tab" });
-    fireEvent(first, tab);
-    expect(tab.defaultPrevented).toBe(false);
-    expect(screen.getByRole("menu")).toBeTruthy();
-
-    // JSDOM は Tab のブラウザ既定フォーカス移動を実行しないため、移動先だけを再現する。
-    (select as HTMLSelectElement).focus();
-    expect(document.activeElement).toBe(select);
-    const add = screen.getByRole("button", { name: "新セッション" });
-    const customTab = createEvent.keyDown(select, { key: "Tab" });
-    fireEvent(select, customTab);
-    expect(customTab.defaultPrevented).toBe(false);
-    (add as HTMLButtonElement).focus();
-    expect(document.activeElement).toBe(add);
-  });
-});
-```
-
-- [ ] **Step 2: 失敗を確認する**
-
-Run: `cd web && npx vitest run src/components/task/HeaderKebabMenu.test.tsx`
-
-Expected: FAIL — `KebabGroup` に `renderContent` がなく、`items: []` のカスタムグループが現在の `visibleGroups` フィルタで除外されるため、`セッション切替` の combobox を取得できない。
-
-- [ ] **Step 3: 型・描画・フォーカス離脱を最小実装する**
-
-`web/src/components/task/HeaderKebabMenu.tsx` の `KebabGroup` を次に置き換える。`ReactNode` は既に同ファイルで type import 済みである。
-
-```tsx
 export type KebabGroup = {
   id: string;
   label?: string;
   items: KebabItem[];
-  /** 指定時は items ではなく、この内容をグループ内に描画する。 */
-  renderContent?: () => ReactNode;
 };
 ```
 
-標準項目だけを平坦化し、custom group を可視とする。これにより、将来 `renderContent` と誤って非空 `items` を併用しても、存在しない標準DOMへフォーカスしない。
+- [ ] **Step 1: custom content を許容しない失敗テストへ置き換える**
 
-```tsx
-const flatItems = groups.flatMap((group) =>
-  group.renderContent ? [] : group.items,
-);
-const focusableIds = flatItems
-  .filter((item) => !item.disabled)
-  .map((item) => item.id);
+`HeaderKebabMenu.test.tsx` の先頭にある `renderContent` を渡すテストを削除する。import を `HeaderKebabMenu, type KebabGroup` に更新し、代わりに複数 group の通常 items だけを渡して次を確認するテストを書く。
 
-const visibleGroups = groups.filter(
-  (group) => group.items.length > 0 || group.renderContent !== undefined,
-);
+1. trigger を押すと `role="menu"` 内に全操作が `role="menuitem"` として描画され、group label が維持される。
+2. popup 内に `combobox`、`button`、`dialog` が存在しない（trigger は menu の外なので `within(menu)` で検査する）。
+3. opening 後の最初の有効な item への focus、ArrowDown/ArrowUp の wrap、disabled item の skip、Enter と Space による `onSelect` 呼び出しを確認する。
+4. 現在ある trigger 再クリック時の reopen 防止、plain click、outside pointerdown のテストは残す。
+
+さらに test file の型検査対象となる位置へ、次の compile-time regression を置く。現行 API では `@ts-expect-error` が未使用となるため型チェックが失敗し、`renderContent` 削除後だけ成立する。
+
+```ts
+const standardGroup: KebabGroup = {
+  id: "standard",
+  items: [],
+  // @ts-expect-error HeaderKebabMenu accepts standard KebabItem groups only.
+  renderContent: () => null,
+};
+void standardGroup;
 ```
 
-`role="menu"` のポップアップdivへ次を追加し、フォーカスが popup 外へ出た場合だけ閉じる。popup 内の標準項目、select、button 間の移動では `relatedTarget` が popup 内なので開いたままになる。
+テストは既存の `screen`、`fireEvent`、`waitFor`、`within` と Vitest の globals を使う。不要になった `createEvent`、custom select/button を削除する。
 
-```tsx
-onBlurCapture={(event) => {
-  const next = event.relatedTarget as Node | null;
-  if (!next || !popupRef.current?.contains(next)) close(false);
-}}
-```
+- [ ] **Step 2: 失敗を確認する**
 
-標準項目の `onKeyDown` にある `Tab` 分岐を次に置換する。`preventDefault` も `close(false)` もせず、ブラウザに次の focusable element（custom group の select/button または次の標準項目）を選ばせる。
+Run: `cd web && npx tsc --noEmit`
 
-```tsx
-if (e.key === "Tab") {
-  return;
-}
-```
+Expected: FAIL。現在の `KebabGroup` は `renderContent` を許容するため、上記 `@ts-expect-error` が未使用という TypeScript error になる。
 
-最後にグループ内容の map を次の完全な分岐に置換する。
+- [ ] **Step 3: `renderContent` に関する実装を削除する**
 
-```tsx
-{group.renderContent ? (
-  group.renderContent()
-) : (
-  group.items.map((item) => {
-    const isDisabled = !!item.disabled;
-    return (
-      <div
-        key={item.id}
-        ref={(element) => {
-          itemRefs.current.set(item.id, element);
-        }}
-        role="menuitem"
-        aria-disabled={isDisabled ? "true" : undefined}
-        aria-current={item.active ? "true" : undefined}
-        tabIndex={isDisabled ? -1 : 0}
-        title={item.label}
-        onClick={() => {
-          if (isDisabled) return;
-          item.onSelect();
-          close(true);
-        }}
-        onKeyDown={(event) => {
-          if (isDisabled) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            item.onSelect();
-            close(true);
-            return;
-          }
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            move(1, item.id);
-            return;
-          }
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            move(-1, item.id);
-            return;
-          }
-          if (event.key === "Tab") return;
-        }}
-        className={cx(
-          "flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs outline-none transition-colors",
-          "focus:bg-surface-2 focus:text-text",
-          item.danger
-            ? "text-danger hover:bg-danger-bg"
-            : "text-muted hover:bg-surface-2 hover:text-text",
-          isDisabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
-        )}
-      >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-          {item.busy ? <Spinner className="h-3.5 w-3.5" /> : item.icon}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{item.label}</span>
-        {item.active && (
-          <span
-            aria-hidden="true"
-            className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
-          />
-        )}
-      </div>
-    );
-  })
-)}
-```
+`HeaderKebabMenu.tsx` を以下のように限定する。
+
+1. `KebabGroup` から `renderContent?: () => ReactNode` とそのコメントを削除する。`KebabItem.icon` が `ReactNode` を使うため、`type ReactNode` import は残す。
+2. `flatItems` を `const flatItems = groups.flatMap((group) => group.items);` に戻し、全 group の非 disabled item で `focusableIds` を作る。
+3. `visibleGroups` を `groups.filter((group) => group.items.length > 0)` に戻す。
+4. popup 内の group 描画を `group.items.map(...)` のみとする。`group.renderContent ? ... : ...` の分岐を完全に削除する。
+5. `onBlurCapture`、標準 menuitem の `Tab`（自然な focus 移動後に blur で閉じる）を含む既存の keyboard/blur 挙動は、custom content のためだけに追加した条件を除き保持する。
+
+この時点で `HeaderKebabMenu` は `KebabItem` 以外の interactive content を受け取れず、実 DOM の `role="menu"` 内には標準 menuitem だけが残る。
 
 - [ ] **Step 4: 対象テストを成功させる**
 
 Run: `cd web && npx vitest run src/components/task/HeaderKebabMenu.test.tsx`
 
-Expected: PASS — custom content が `role="group"` 内に存在し、矢印キーは先頭・末尾の標準項目間だけを移動し、Tab の default が抑止されない。
+Expected: PASS。標準 items の roving focus と既存 close 挙動に回帰がなく、menu 内に custom interactive content がない。
 
-- [ ] **Step 5: この意味単位だけをコミットする**
+---
+
+### Task 2: `SessionSwitcherDialog` を TDD で追加する
+
+**Files:**
+- Create: `web/src/components/task/SessionSwitcherDialog.tsx`
+- Create: `web/src/components/task/SessionSwitcherDialog.test.tsx`
+
+**Component contract:**
+
+```ts
+type SessionSwitcherDialogProps = {
+  workspaceId: string;
+  directory: string;
+  currentSessionId: string;
+  onSwitch: () => Promise<void>;
+  onClose: () => void;
+};
+```
+
+`SessionSwitcher` 自身の `onSwitch: () => void` とは異なるため、dialog は `onSwitch={() => void onSwitch()}` を渡す。`SessionSwitcher` が成功時だけその callback を呼ぶ既存契約により、dialog はセッション操作の内部状態を複製しない。
+
+- [ ] **Step 1: dialog の失敗テストを書く**
+
+`SessionSwitcherDialog.test.tsx` で `./SessionSwitcher` を mock し、focusable な `<select aria-label="セッション切替" />` と `<button aria-label="新セッション" onClick={onSwitch}>` を同期的に描画する。以下を個別テストにする。
+
+1. `role="dialog"`、`aria-modal="true"`、`aria-label="セッションを切り替え・追加"`、説明用の `aria-describedby` があり、dialog 内に mock switcher がある。
+2. mount 後は先頭の focusable element（mock select）へ focus する。最終 button で Tab は select へ、先頭 select で Shift+Tab は button へ循環し、各 event が `defaultPrevented` になる。
+3. Escape は `onClose` を一度だけ呼ぶ。
+4. `role="presentation"` の backdrop click は `onClose` を呼ぶが、dialog 本体 click は backdrop close を発生させない。
+5. mock の「新セッション」クリックは `onSwitch` を呼び、dialog コンポーネント単体では独自の refresh、close、focus 操作をしない。
+
+- [ ] **Step 2: 失敗を確認する**
+
+Run: `cd web && npx vitest run src/components/task/SessionSwitcherDialog.test.tsx`
+
+Expected: FAIL。コンポーネントが未作成のため import を解決できない。
+
+- [ ] **Step 3: dialog を最小実装する**
+
+`SessionSwitcherDialog.tsx` を作る。実装は次の責務だけを持つ。
+
+1. `useRef<HTMLDivElement>(null)` を dialog container に付ける。focusable selector は `button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])` とし、disabled 要素を除外する helper をローカルに作る。
+2. mount 時の `useEffect` で最初の focusable element に `focus()` する。候補がないときは `tabIndex={-1}` を付けた dialog container に focus する。
+3. dialog の `onKeyDown` で Escape は `preventDefault()` 後に `onClose()`、Tab/Shift+Tab は先頭・末尾で `preventDefault()` と focus wrap を行う。中間要素はブラウザの自然な Tab 移動に任せる。
+4. `fixed inset-0 z-40 flex items-center justify-center p-4` の container 内に、dialog と sibling の backdrop を置く。backdrop は `role="presentation"`、`fixed inset-0 bg-black/50`、`onClick={onClose}` とする。dialog は backdrop の sibling にして、内部 click で close しない構造にする。
+5. dialog に `role="dialog"`、`aria-modal="true"`、`aria-label="セッションを切り替え・追加"`、`aria-describedby="session-switcher-desc"` を付け、説明文を `<p id="session-switcher-desc" className="sr-only">` として置く。
+6. dialog 内で既存 `SessionSwitcher` を props を変更せずに render する。`onSwitch` には `() => void onSwitch()` を渡す。
+
+モバイルでは `max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto` を dialog panel に設定し、既存 token class だけを用いる。bottom-sheet の新規デザインは導入しない。
+
+- [ ] **Step 4: dialog テストを成功させる**
+
+Run: `cd web && npx vitest run src/components/task/SessionSwitcherDialog.test.tsx`
+
+Expected: PASS。dialog が自律的に accessibility と close/trap を担い、セッション操作ロジックは mock/実 `SessionSwitcher` に残る。
+
+---
+
+### Task 3: `TaskView` の 4 操作移動と dialog 接続を TDD で完成する
+
+**Files:**
+- Modify: `web/src/components/task/TaskView.tsx`
+- Modify: `web/src/components/task/TaskView.test.tsx`
+
+- [ ] **Step 1: `TaskView` の失敗テストを ARIA 構造へ更新する**
+
+既存の `moves copy, resync, session switching, and terminal into the kebab menu` テストを更新する。現在の `within(sessionGroup).getByRole("combobox")` と `getByRole("button", { name: "新セッション" })` は menu 内に `SessionSwitcher` を描画する旧仕様なので削除し、以下を確認する。
+
+1. Zone A/Zone B に `title="作業パスをコピー"`、`title="再同期"`、`title="ターミナル"`、`data-testid="session-switcher"` がない。停止と `CompactButton` は残り、lg mock ではファイルツリー・グラフ・Diff は残る。
+2. `aria-label="メニューを開く"` の trigger を開くと、menu に「作業パスをコピー」「再同期」「セッションを切り替え・追加」「ターミナル」が全て `menuitem` としてある。`within(menu).queryByRole("combobox")`、`queryByRole("button")`、`queryByRole("dialog")` はすべて null。
+3. 「セッションを切り替え・追加」を click すると menu は閉じ、`role="dialog"` が開き、dialog 内に mock `SessionSwitcher` の combobox/button がある。初期 focus は select を `waitFor` で確認する。
+4. dialog の最終 button で Tab、先頭 select で Shift+Tab を発火し、循環と `defaultPrevented` を検証する。Escape と backdrop click を別々に検証し、dialog が閉じて `aria-label="メニューを開く"` trigger に focus が戻ることを `waitFor` で確認する。
+5. dialog 内の「新セッション」を click した成功ケースで `getJson` を事前 clear し、`refreshTask()` による `/api/tasks/ws1` 呼び出し、dialog close、trigger への focus return を `waitFor` で確認する。
+
+既存 mock の `SessionSwitcher` は `onSwitch` をボタンから呼ぶ現在の形を維持できる。必要なら `SessionSwitcherDialog` を import する実装に追従して mock location は変えず、`TaskView` が callback を正しく接続する統合テストに限定する。
+
+- [ ] **Step 2: 残る 3 操作とレスポンシブの失敗テストを具体化する**
+
+既存のコピー/ターミナル/低幅テストを以下の粒度に分ける。
+
+1. **コピー:** idle stream で kebab の「作業パスをコピー」を選択し、`copyText("/repo")` を検証する。再開した kebab item の `svg.lucide-check` を確認し、fake timer を 1,500ms 進めて同 item の `svg.lucide-copy` を確認する。
+2. **再同期:** idle stream で「再同期」を選択し、`streamMock.resync` が一度呼ばれ、mock `DiffPane` が収集する `diffPaneRefreshKeys` に `1` が含まれることを検証する。working stream では item が `aria-disabled="true"` で click しても resync されないケースも追加する。
+3. **ターミナル:** lg と lg 未満の両方で header に `title="ターミナル"` がなく、kebab に `menuitem` があることを確認する。その item の選択で `data-testid="pty-panel"` が表示されることを検証する。
+4. **既存 Zone B:** lg 未満ではファイルツリー・グラフ・Diff が header に無く kebab にある、lg では header に残る、という既存回帰を保持する。
+
+- [ ] **Step 3: `TaskView` テストの失敗を確認する**
+
+Run: `cd web && npx vitest run src/components/task/TaskView.test.tsx`
+
+Expected: FAIL。現行 `renderContent` 実装では menu 内に combobox/button があり、session item、dialog、focus return、disabled resync の期待を満たさない。
+
+- [ ] **Step 4: `TaskView` の menu groups を標準 item と dialog state に置換する**
+
+1. lucide import に `Layers`、component import に `SessionSwitcherDialog` を追加し、`TaskView` から `SessionSwitcher` の直接 import を削除する。
+2. state 群に `const [sessionDialogOpen, setSessionDialogOpen] = useState(false);` を追加する。
+3. `closeSessionDialog` を `useCallback` で定義する。`setSessionDialogOpen(false)` の直後、`window.setTimeout(..., 0)` で `document.querySelector<HTMLButtonElement>('button[aria-label="メニューを開く"]')?.focus()` を実行する。DOM unmount 後に focus するため timeout を使い、HeaderKebabMenu の ref/API は変更しない。
+4. `handleSessionSwitch` を `useCallback(async () => { await refreshTask(); closeSessionDialog(); }, [refreshTask, closeSessionDialog])` として定義する。これが既存 `SessionSwitcher` の成功 callback から呼ばれる唯一の親処理である。
+5. `headerKebabGroups` の現行 `{ id: "session-switcher", items: [], renderContent: ... }` を削除する。`task?.sessionId` がある場合だけ、次の標準 group を追加する。
+
+```tsx
+{
+  id: "session-switcher",
+  label: "セッション切替",
+  items: [{
+    id: "open-session-switcher",
+    label: "セッションを切り替え・追加",
+    icon: <Layers className="h-4 w-4" />,
+    onSelect: () => setSessionDialogOpen(true),
+  }],
+}
+```
+
+6. 現在ある `task` group の copy/resync と `panel-terminal` の常時追加は維持する。`panel-files`、`panel-graph`、`panel-diff` の `!isLg` 条件も維持する。
+7. dependencies に `setSessionDialogOpen` は不要だが、新しい callback を参照する場合は `headerKebabGroups` の `useMemo` に正確に追加する。既存の `copied`、`copyPath`、`working`、`stream` は保持する。
+8. Header の `<HeaderKebabMenu>` に `triggerLabel="メニューを開く"` を渡す。
+9. header の外、TaskView の return 内（portal は使わない）で、`sessionDialogOpen && task.sessionId` のときだけ `SessionSwitcherDialog` を render する。`workspaceId={task.id}`、`directory={task.directory}`、`currentSessionId={task.sessionId}`、`onSwitch={handleSessionSwitch}`、`onClose={closeSessionDialog}` を渡す。
+
+- [ ] **Step 5: TaskView の対象テストを成功させる**
+
+Run: `cd web && npx vitest run src/components/task/TaskView.test.tsx`
+
+Expected: PASS。4 操作は重複せず、menu 内は `menuitem` だけで、dialog の open/trap/Escape/backdrop/成功 focus return と既存のコピー・再同期・PTY 動作が確認できる。
+
+---
+
+### Task 4: 型・lint・回帰を検証し、差分をレビューする
+
+**Files:** Task 1–3 の6ファイルのみ（`SessionSwitcher.tsx` を含めない）。
+
+- [ ] **Step 1: focused test suite を実行する**
 
 Run:
 
 ```bash
-git status --short
-git diff -- web/src/components/task/HeaderKebabMenu.tsx web/src/components/task/HeaderKebabMenu.test.tsx
-git add web/src/components/task/HeaderKebabMenu.tsx web/src/components/task/HeaderKebabMenu.test.tsx
-git commit -m "feat: ヘッダーkebabにカスタムグループを追加"
-git log --oneline -1
+cd web && npx vitest run src/components/task/HeaderKebabMenu.test.tsx src/components/task/SessionSwitcherDialog.test.tsx src/components/task/TaskView.test.tsx
 ```
 
-Expected: `HeaderKebabMenu.tsx` と `HeaderKebabMenu.test.tsx` だけのコミットが作成される。表示されたハッシュと日本語コミットメッセージを確認し、他者差分と `host/src/setup-bat.test.js` は staged されていない。
+Expected: PASS。
 
-### Task 2: 集約後のヘッダー操作を `TaskView` の失敗テストで固定する
-
-**Files:**
-- Modify: `web/src/components/task/TaskView.test.tsx:1-107`（hoisted mock と `SessionSwitcher` / `CompactButton` / `PtyPanel` のテスト用描画）
-- Modify: `web/src/components/task/TaskView.test.tsx:667-727`（最初の `describe("TaskView")` の終了直前に回帰テストを追加）
-
-**Interfaces:**
-- Consumes: `TaskSummary` の `id: "ws1"`、`directory: "/repo"`、`sessionId: "sess1"`、`status`、および `useSessionStream()` の `resync(): void`。
-- Consumes: `copyText(text: string): Promise<boolean>`（`@/lib/clipboard`）と `SessionSwitcher` の `workspaceId`、`directory`、`currentSessionId`、`onSwitch` props。
-- Produces: 直表示を排除しつつ、ケバブの task/session-switcher/panels グループからコピー、再同期、セッション切替、ターミナルを操作できる `TaskView` の回帰テスト。
-
-- [ ] **Step 1: テスト用モックを拡張する**
-
-`vi.hoisted` の返却値に `copyText` と `diffPaneRefreshKeys` を加え、その直後に clipboard mock を追加する。
-
-```tsx
-const {
-  getJson,
-  notifyTasksChanged,
-  sendJson,
-  useSessionStream,
-  slashCommands,
-  setExtras,
-  setActiveScope,
-  planCardProps,
-  copyText,
-  diffPaneRefreshKeys,
-} = vi.hoisted(() => ({
-  getJson: vi.fn(),
-  notifyTasksChanged: vi.fn(),
-  sendJson: vi.fn(),
-  useSessionStream: vi.fn(),
-  slashCommands: [] as { name: string }[],
-  setExtras: vi.fn(),
-  setActiveScope: vi.fn(),
-  planCardProps: [] as { initialCollapsed?: boolean }[],
-  copyText: vi.fn(),
-  diffPaneRefreshKeys: [] as number[],
-}));
-
-vi.mock("@/lib/clipboard", () => ({ copyText }));
-```
-
-既存の component mocks を次に置換する。これは実 `SessionSwitcher` の内部通信を再テストせず、`TaskView` がその既存アクセシブルUIを custom group に渡し、`onSwitch` を `refreshTask` へ接続することだけを検証する。
-
-```tsx
-vi.mock("./DiffPane", () => ({
-  DiffPane: ({ refreshKey }: { refreshKey: number }) => {
-    diffPaneRefreshKeys.push(refreshKey);
-    return null;
-  },
-}));
-vi.mock("./PtyPanel", () => ({ PtyPanel: () => <div data-testid="pty-panel" /> }));
-vi.mock("./SessionActions", () => ({
-  CompactButton: () => <button type="button" aria-label="コンパクト">コンパクト</button>,
-  MessageRevertButton: () => null,
-  useSessionActions: () => ({
-    busy: null,
-    error: null,
-    compact: vi.fn(),
-    revert: vi.fn(),
-    unrevert: vi.fn(),
-  }),
-}));
-vi.mock("./SessionSwitcher", () => ({
-  SessionSwitcher: ({ onSwitch }: { onSwitch: () => void }) => (
-    <div data-testid="session-switcher">
-      <select aria-label="セッション切替"><option value="sess1">Session 1</option></select>
-      <button type="button" aria-label="新セッション" onClick={onSwitch}>追加</button>
-    </div>
-  ),
-}));
-```
-
-各 `beforeEach` で `copyText.mockResolvedValue(true)` と `diffPaneRefreshKeys.length = 0` を設定する。
-
-- [ ] **Step 2: 直表示削除、全幅ターミナル、既存コールバックを検証する失敗テストを書く**
-
-`TaskView` の最初の describe の末尾へ次を追加する。テスト中は idle stream にして再同期項目を有効化する。
-
-```tsx
-it("moves copy, resync, session switching, and terminal into the kebab menu", async () => {
-  taskStatus = "idle";
-  const streamMock = useSessionStream();
-  useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
-  render(<TaskView taskId="ws1" />);
-  await flushTaskLoad();
-
-  expect(screen.queryByTitle("作業パスをコピー")).toBeNull();
-  expect(screen.queryByTitle("再同期")).toBeNull();
-  expect(screen.queryByTitle("ターミナル")).toBeNull();
-  expect(screen.queryByTestId("session-switcher")).toBeNull();
-  expect(screen.getByRole("button", { name: "コンパクト" })).toBeTruthy();
-  expect(screen.getByTitle("ファイルツリー")).toBeTruthy();
-  expect(screen.getByTitle("グラフ")).toBeTruthy();
-  expect(screen.getByTitle("Diff パネル")).toBeTruthy();
-
-  fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-  const menu = screen.getByRole("menu", { name: "タスクその他操作" });
-  expect(within(menu).getByRole("menuitem", { name: "作業パスをコピー" })).toBeTruthy();
-  expect(within(menu).getByRole("menuitem", { name: "再同期" })).toBeTruthy();
-  expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
-  const sessionGroup = within(menu).getByRole("group", { name: "セッション切替" });
-  expect(within(sessionGroup).getByRole("combobox", { name: "セッション切替" })).toBeTruthy();
-  expect(within(sessionGroup).getByRole("button", { name: "新セッション" })).toBeTruthy();
-
-  getJson.mockClear();
-  fireEvent.click(within(sessionGroup).getByRole("button", { name: "新セッション" }));
-  await waitFor(() => {
-    expect(getJson).toHaveBeenCalledWith("/api/tasks/ws1");
-  });
-
-  fireEvent.click(within(menu).getByRole("menuitem", { name: "再同期" }));
-  expect(streamMock.resync).toHaveBeenCalledTimes(1);
-  expect(diffPaneRefreshKeys).toContain(1);
-
-  fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "ターミナル" }));
-  expect(screen.getByTestId("pty-panel")).toBeTruthy();
-});
-
-it("shows the copied check icon from the kebab for 1.5 seconds", async () => {
-  taskStatus = "idle";
-  vi.useFakeTimers();
-  const streamMock = useSessionStream();
-  useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
-  render(<TaskView taskId="ws1" />);
-  await flushTaskLoad();
-
-  fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "作業パスをコピー" }));
-  await act(async () => { await Promise.resolve(); });
-  expect(copyText).toHaveBeenCalledWith("/repo");
-
-  fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-  const copiedItem = screen.getByRole("menuitem", { name: "作業パスをコピー" });
-  expect(copiedItem.querySelector('svg[data-lucide="check"]')).toBeTruthy();
-  await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
-  expect(copiedItem.querySelector('svg[data-lucide="copy"]')).toBeTruthy();
-});
-
-it("keeps stop and CompactButton in the header while moving the session switcher", async () => {
-  render(<TaskView taskId="ws1" />);
-  await flushTaskLoad();
-
-  expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "コンパクト" })).toBeTruthy();
-  expect(screen.queryByTestId("session-switcher")).toBeNull();
-});
-
-it("keeps files, graph, and diff in the kebab below lg while terminal stays there", async () => {
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })),
-  });
-  taskStatus = "idle";
-  const streamMock = useSessionStream();
-  useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
-  render(<TaskView taskId="ws1" />);
-  await flushTaskLoad();
-
-  expect(screen.queryByTitle("ファイルツリー")).toBeNull();
-  expect(screen.queryByTitle("グラフ")).toBeNull();
-  expect(screen.queryByTitle("Diff パネル")).toBeNull();
-  expect(screen.queryByTitle("ターミナル")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
-  const menu = screen.getByRole("menu", { name: "タスクその他操作" });
-  expect(within(menu).getByRole("menuitem", { name: "ファイルツリー" })).toBeTruthy();
-  expect(within(menu).getByRole("menuitem", { name: "グラフ" })).toBeTruthy();
-  expect(within(menu).getByRole("menuitem", { name: "Diff パネル" })).toBeTruthy();
-  expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
-});
-```
-
-- [ ] **Step 3: 失敗を確認する**
-
-Run: `cd web && npx vitest run src/components/task/TaskView.test.tsx -t "moves copy|shows the copied"`
-
-Expected: FAIL — 現在はコピー・再同期・SessionSwitcher・ターミナルが直表示で、kebab 内に `タスク操作`、`セッション切替`、常時ターミナルがない。
-
-### Task 3: `TaskView` のグループ定義とツールバーを集約後の構成に置き換える
-
-**Files:**
-- Modify: `web/src/components/task/TaskView.tsx:1117-1124`（既存 `copyPath` は変更しない）
-- Modify: `web/src/components/task/TaskView.tsx:1297-1405`（task/session-switcher グループ、常時 terminal、依存配列）
-- Modify: `web/src/components/task/TaskView.tsx:1600-1733`（Zone A/Bの4直表示操作を削除し、コメントを更新）
-- Test: `web/src/components/task/TaskView.test.tsx:1-107,667-727`（Task 2で追加）
-
-**Interfaces:**
-- Consumes: `copyPath(): Promise<void>`、`copied: boolean`、`working: boolean`、`stream.resync(): void`、`setDiffKey((key: number) => number): void`、`refreshTask(): Promise<void>`。
-- Consumes: `SessionSwitcher({ workspaceId: string; directory: string; currentSessionId: string | null; onSwitch: () => void })`。
-- Produces: `headerKebabGroups: KebabGroup[]` に `task`、条件付き `session-switcher`、常時 `panel-terminal` を含め、直表示は停止・Compact・lg時の files/graph/diff・ケバブだけにする。
-
-- [ ] **Step 1: `task` と条件付き `session-switcher` グループを追加する**
-
-`headerKebabGroups` の `sessionItems` の直後に次を追加する。再同期の `disabled: working` は working 中に二重同期しない既存UI上の制約を保つ。
-
-```tsx
-const taskItems: KebabItem[] = [
-  {
-    id: "copy-path",
-    label: "作業パスをコピー",
-    icon: copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />,
-    onSelect: () => void copyPath(),
-  },
-  {
-    id: "resync",
-    label: "再同期",
-    icon: <RefreshCw className="h-4 w-4" />,
-    onSelect: () => {
-      void stream.resync();
-      setDiffKey((key) => key + 1);
-    },
-    disabled: working,
-  },
-];
-```
-
-`groups` を組み立てる箇所で session 操作の直後、パネルの直前に次を挿入する。`items: []` は Task 1 の `renderContent` 契約により有効な custom group である。
-
-```tsx
-groups.push({ id: "task", label: "タスク操作", items: taskItems });
-if (task?.sessionId) {
-  groups.push({
-    id: "session-switcher",
-    label: "セッション切替",
-    items: [],
-    renderContent: () => (
-      <div className="px-3 py-1.5">
-        <SessionSwitcher
-          workspaceId={task.id}
-          directory={task.directory}
-          currentSessionId={task.sessionId}
-          onSwitch={() => void refreshTask()}
-        />
-      </div>
-    ),
-  });
-}
-```
-
-- [ ] **Step 2: ターミナルを全幅ケバブ項目へ固定する**
-
-`panelItems` 内の `panel-terminal` の `!isMd` 条件をなくし、次の無条件 push に置換する。ファイルツリー・グラフ・Diffの `!isLg` 分岐は変更しない。
-
-```tsx
-panelItems.push({
-  id: "panel-terminal",
-  label: "ターミナル",
-  icon: <Terminal className="h-4 w-4" />,
-  active: showDiff && sidePanel === "pty",
-  onSelect: () => {
-    changeShowDiff(true);
-    changeTab("diff");
-    changeSidePanel("pty");
-  },
-});
-```
-
-`useMemo` の依存配列に、既存依存を残したうえで次を加える。`isMd` はこの memo から削除するが、TaskViewのプランカード用途が残るため state/effect 自体は削除しない。
-
-```tsx
-task?.id,
-task?.directory,
-copied,
-copyPath,
-working,
-stream.resync,
-refreshTask,
-```
-
-- [ ] **Step 3: Zone A/Bの4つの直表示を削除する**
-
-Zone Aから次の2つの Button JSX と、`task.sessionId` ブロック内の `SessionSwitcher` JSX だけを削除する。`CompactButton` は同じ `task.sessionId` ブロックに残す。
-
-```tsx
-<Button variant="ghost" size="icon" title={copied ? "コピーしました" : "作業パスをコピー"} onClick={() => void copyPath()}>
-  {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-</Button>
-<Button variant="ghost" size="icon" title="再同期" onClick={() => { void stream.resync(); setDiffKey((key) => key + 1); }}>
-  <RefreshCw className="h-4 w-4" />
-</Button>
-<SessionSwitcher
-  workspaceId={task.id}
-  directory={task.directory}
-  currentSessionId={task.sessionId}
-  onSwitch={() => void refreshTask()}
-/>
-```
-
-Zone Bから次の `isMd` 条件ブロックを削除する。`Terminal` icon import は Step 2 の kebab項目が使用するため残す。
-
-```tsx
-{isMd && (
-  <Button variant="ghost" size="icon" title="ターミナル" className={cx(showDiff && sidePanel === "pty" && "bg-surface-2 text-text")} onClick={() => {
-    changeShowDiff(true);
-    changeTab("diff");
-    changeSidePanel("pty");
-  }}>
-    <Terminal className="h-4 w-4" />
-  </Button>
-)}
-```
-
-Zone A/B/C のコメントを「Zone A: 停止・Compact」「Zone B: files/graph/diff は lg」「Zone C: session、task、session-switcher、panels（terminal常時）、danger」と実際の構成に更新する。古い `terminal at md (768px)` と「パネル項目は重複しない」の記述は削除する。
-
-- [ ] **Step 4: TaskView 回帰テストを成功させる**
-
-Run: `cd web && npx vitest run src/components/task/TaskView.test.tsx`
-
-Expected: PASS — 新しい4ケースを含む `TaskView.test.tsx` の全テストが通過し、コピーは `/repo` をコピー、再同期は一度呼ばれ refresh key が 1 となり、custom session UI とケバブ専用ターミナルが確認できる。
-
-- [ ] **Step 5: 型・lint・関連コンポーネントテストを実行する**
+- [ ] **Step 2: 静的検証を実行する**
 
 Run:
 
 ```bash
 cd web && npx tsc --noEmit
-cd web && npx eslint src/components/task/
-cd web && npx vitest run src/components/task/HeaderKebabMenu.test.tsx src/components/task/TaskView.test.tsx
+cd web && npx eslint src/components/task/HeaderKebabMenu.tsx src/components/task/SessionSwitcherDialog.tsx src/components/task/TaskView.tsx src/components/task/HeaderKebabMenu.test.tsx src/components/task/SessionSwitcherDialog.test.tsx src/components/task/TaskView.test.tsx
 ```
 
-Expected: すべて exit code 0。特に `renderContent` の `ReactNode`、`KebabGroup` の必須 `items`、`SessionSwitcher` の props、`useMemo` 依存配列に型・lintエラーがない。
+Expected: いずれも exit code 0。常駐サーバーは起動しない。
 
-- [ ] **Step 6: この意味単位だけをコミットする**
+- [ ] **Step 3: 実装差分を自己レビューする**
 
 Run:
 
 ```bash
+git diff --check
+git diff -- web/src/components/task/HeaderKebabMenu.tsx web/src/components/task/HeaderKebabMenu.test.tsx web/src/components/task/SessionSwitcherDialog.tsx web/src/components/task/SessionSwitcherDialog.test.tsx web/src/components/task/TaskView.tsx web/src/components/task/TaskView.test.tsx
 git status --short
-git diff -- web/src/components/task/TaskView.tsx web/src/components/task/TaskView.test.tsx
-git add web/src/components/task/TaskView.tsx web/src/components/task/TaskView.test.tsx
-git commit -m "feat: ヘッダー操作をkebabメニューへ集約"
-git log --oneline -1
 ```
 
-Expected: `TaskView.tsx` と `TaskView.test.tsx` だけのコミットが作成される。`host/src/setup-bat.test.js` と他者の変更は含めず、先頭コミットを確認する。
+Review checklist:
 
-## Self-review
+- `renderContent` の参照が `HeaderKebabMenu.tsx`、`TaskView.tsx`、テストから完全に消えている。
+- `role="menu"` の子に `select`/button/dialog がなく、セッション item は通常の menuitem である。
+- `SessionSwitcher.tsx` に差分がない。
+- dialog は first focus、両方向 Tab trap、Escape、backdrop、成功時の `refreshTask → close → trigger focus` を全て満たす。
+- copy/resync/terminal の action callback と `copied` 1.5秒表示が変更されていない。
+- side effects や自分以外の未関係差分が stage 対象に混入していない。
 
-- **Spec coverage:** Task 1 は `renderContent` 型、空 `items` の custom group 表示、標準項目だけの矢印ナビゲーション、Tab による session select/button への進入・脱出、既存ARIAと `z-30` を扱う。Task 2/3 はコピー・再同期・SessionSwitcher・ターミナルの4直表示削除、task/session-switcher/panelsへの配置、コピーの1.5秒 `Check`、`resync` と diff key、PTY表示、停止/Compactの維持、lg時files/graph/diffの既存条件を扱う。全幅ターミナルは `!isMd` を無条件 push へ置換して保証する。
-- **Placeholder scan:** 実装対象、型、テスト名、テストコード、失敗・成功コマンド、期待結果、コミット対象をすべて明記した。未決定事項、未完マーカー、後続実装への曖昧な委任はない。
-- **Type consistency:** `KebabGroup.renderContent` は `() => ReactNode`、TaskViewの custom group は必須の `items: []` を渡す。`SessionSwitcher` には実型どおり string の `workspaceId` / `directory`、`string | null` の `currentSessionId`、`() => void` の `onSwitch` を渡す。`KebabItem.onSelect` は既存どおり `() => void` なので非同期コピーと再同期は `void` で起動する。
-- **Scope review:** `SessionSwitcher.tsx` は変更せず既存挙動を利用する。新規依存・トークン・常駐プロセス・無関係なファイルは追加しない。各コミット前の status 確認と限定した `git add` により他者差分および `host/src/setup-bat.test.js` を含めない。
+- [ ] **Step 4: 手動ブラウザ確認を記録する**
+
+エージェントは常駐サーバーを起動しない。既存 host で確認できる場合にのみ、以下を手動確認する。
+
+1. 768px 未満、768–1023px、1024px 以上で直表示・kebab 配置が仕様表どおり。
+2. dialog を開いた直後の focus、Tab/Shift+Tab、Escape、backdrop、成功後の trigger return。
+3. コピー icon、再同期、ターミナルのパネル切替。
+
+実施できなければ「手動確認は host 利用者へ委譲」と明記し、実施したと偽らない。
+
+## 実装完了時の受け入れ条件
+
+1. `HeaderKebabMenu` は `renderContent` を持たず、標準 `KebabItem` だけを `role="menuitem"` として描画する。
+2. コピー、再同期、セッション追加/切替、ターミナルは header 直表示に存在せず、全幅で kebab から利用できる。
+3. `SessionSwitcher` の内部コードを変えず、menuitem が開く `SessionSwitcherDialog` 内でのみ利用する。
+4. dialog は `role="dialog"`、`aria-modal="true"`、説明、初期 focus、Tab/Shift+Tab trap、Escape、backdrop close を備える。
+5. セッション追加/切替成功時は `refreshTask()` 完了後に dialog を閉じ、`aria-label="メニューを開く"` の kebab trigger へ focus を戻す。
+6. copy の 1.5秒 Check 表示、resync の diff refresh、terminal の PTY 表示、Zone A/Zone B の既存動作を維持する。
+7. focused Vitest、`tsc --noEmit`、対象 ESLint、`git diff --check` が成功する。
