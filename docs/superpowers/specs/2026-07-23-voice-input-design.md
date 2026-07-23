@@ -43,6 +43,8 @@ interface UseVoiceInputReturn {
   start: () => void;
   /** 認識を停止する。end イベント後に確定されたテキストを返す */
   stop: () => Promise<string>;
+  /** 内部状態が starting / stopping / interrupted のいずれかで、開始・停止操作が確定するまでの遷移中か。true の間は UI 側でボタンを非活性化する */
+  busy: boolean;
   /** 最後に確定した認識テキスト（追記用） */
   transcript: string;
   /** エラーメッセージ（null = エラーなし） */
@@ -60,6 +62,7 @@ interface UseVoiceInputReturn {
 |------|----|------|
 | `supported` | `boolean` | 初回判定結果。変更不可 |
 | `listening` | `boolean` | `SpeechRecognition` が `start()` 後 `end` / `error` 発火前か |
+| `busy` | `boolean` | 内部状態機械（`idle` / `starting` / `listening` / `stopping` / `interrupted`）が `starting` / `stopping` / `interrupted` のいずれかのとき `true`。`listening` とは独立した公開フラグで、`start()`/`stop()` 呼び出し直後の遷移中や、`disabled` 中断後に旧セッションの `end` を待っている間もこの値で表す。`VoiceInputButton` は `disabled || busy` の間ボタンを非活性化し `aria-busy="true"` を設定する |
 | `transcript` | `string` | 最後に確定した認識結果（`result.isFinal === true` の `transcript` を連結） |
 | `error` | `string \| null` | エラーメッセージ。`no-speech` / `aborted` は null にリセット |
 
