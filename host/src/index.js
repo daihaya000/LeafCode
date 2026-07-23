@@ -114,6 +114,44 @@ export function shouldRestartOpencode(now = Date.now()) {
   return true;
 }
 
+/** Decide how an OpenCode exit should be handled without performing side effects. */
+export function getOpencodeExitDecision({
+  quitting: isQuitting,
+  exitedPid,
+  currentPid,
+  isPlannedExit,
+  restartBudgetAvailable,
+}) {
+  const wasCurrent = exitedPid === currentPid;
+  if (isQuitting || !exitedPid || isPlannedExit || !wasCurrent) {
+    return {
+      shouldReapPortHolders: false,
+      shouldAutoRestart: false,
+      logMessages: [],
+    };
+  }
+  if (!restartBudgetAvailable) {
+    return {
+      shouldReapPortHolders: true,
+      shouldAutoRestart: false,
+      logMessages: [
+        {
+          level: 'error',
+          message:
+            'OpenCode restart budget exhausted (3/5min) — manual host restart required',
+        },
+      ],
+    };
+  }
+  return {
+    shouldReapPortHolders: true,
+    shouldAutoRestart: true,
+    logMessages: [
+      { level: 'log', message: 'OpenCode crashed — attempting auto-restart…' },
+    ],
+  };
+}
+
 /** @type {import('child_process').ChildProcess | null} */
 let webProc = null;
 /** @type {import('child_process').ChildProcess | null} */
@@ -135,6 +173,7 @@ let webRestartTimer = null;
 /** @type {NodeJS.Timeout | null} */
 let webStableTimer = null;
 const expectedWebExitPids = new Set();
+const expectedOpencodeExitPids = new Set();
 
 /** @type {string | null} */
 let cachedNpmCli = null;
@@ -525,13 +564,30 @@ function spawnOpencode(opencodePath) {
   });
   child.on('exit', (code, signal) => {
     const exitedPid = child.pid;
+    const expected = exitedPid ? expectedOpencodeExitPids.delete(exitedPid) : false;
+    const wasCurrent = opencodeProc === child;
     if (!quitting) {
       log(`OpenCode exited (code=${code}, signal=${signal ?? 'none'})`);
     }
-    if (opencodeProc === child) opencodeProc = null;
-    // Crash / abrupt exit can leave children holding an inherited listen handle.
-    // Reap them quickly so :OPENCODE_PORT does not become a permanent ghost.
-    if (!quitting && exitedPid) {
+    if (wasCurrent) opencodeProc = null;
+
+    const exitDecision = getOpencodeExitDecision({
+      quitting,
+      exitedPid,
+      currentPid: wasCurrent ? exitedPid : null,
+      isPlannedExit: expected,
+      restartBudgetAvailable:
+        !quitting && Boolean(exitedPid) && !expected && wasCurrent
+          ? shouldRestartOpencode()
+          : false,
+    });
+    for (const { level, message } of exitDecision.logMessages) {
+      if (level === 'error') error(message);
+      else log(message);
+    }
+    // Only an unexpected exit of the current process can leave an inherited
+    // listener behind. Planned or stale exits must not trigger recovery work.
+    if (exitDecision.shouldReapPortHolders) {
       try {
         reapOpencodePortHolders(exitedPid);
       } catch (err) {
@@ -539,23 +595,25 @@ function spawnOpencode(opencodePath) {
           `OpenCode orphan reap failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-      if (shouldRestartOpencode()) {
-        log('OpenCode crashed — attempting auto-restart…');
+      if (exitDecision.shouldAutoRestart) {
         setTimeout(async () => {
           try {
             const opencodePath = findOpencode();
             spawnOpencode(opencodePath);
-            await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
+            const ready = await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
               proc: () => opencodeProc,
             });
+            if (!ready) {
+              throw new Error(
+                `OpenCode failed to become ready on :${OPENCODE_PORT} (${OPENCODE_URL}/global/health)`,
+              );
+            }
           } catch (restartErr) {
             error(
               `OpenCode auto-restart failed: ${restartErr instanceof Error ? restartErr.message : String(restartErr)}`,
             );
           }
         }, 1000);
-      } else {
-        error('OpenCode restart budget exhausted (3/5min) — manual host restart required');
       }
     }
     refreshStatusMenu();
@@ -1178,6 +1236,7 @@ async function stopOpencodeOnly() {
     ownedPid: opencodeProc?.pid,
     listeningPids: getListeningPids(OPENCODE_PORT),
   });
+  for (const pid of pids) expectedOpencodeExitPids.add(pid);
   opencodeProc = null;
   await stopOpencodeProcessTree(pids);
   await waitForPortFree(OPENCODE_PORT);
@@ -1199,6 +1258,7 @@ async function stopChildren() {
     ownedPid: opencodeProc?.pid,
     listeningPids: getListeningPids(OPENCODE_PORT),
   });
+  for (const pid of opencodePids) expectedOpencodeExitPids.add(pid);
   opencodeProc = null;
   await stopOpencodeProcessTree(opencodePids);
 

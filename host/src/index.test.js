@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import * as host from './index.js';
 import {
   isHeadless,
   resetOpencodeRestartBudget,
@@ -92,4 +93,70 @@ test('shouldRestartOpencode resets after 5 minutes', () => {
   assert.equal(shouldRestartOpencode(2), true);
   assert.equal(shouldRestartOpencode(3), false);
   assert.equal(shouldRestartOpencode(5 * 60 * 1000), true);
+});
+
+function getOpencodeExitDecision(options) {
+  assert.equal(
+    typeof host.getOpencodeExitDecision,
+    'function',
+    'getOpencodeExitDecision should be exported from production code for pure exit-decision testing',
+  );
+  return host.getOpencodeExitDecision(options);
+}
+
+test('getOpencodeExitDecision does not auto-restart after a planned OpenCode stop', () => {
+  assert.deepEqual(
+    getOpencodeExitDecision({
+      quitting: false,
+      exitedPid: 1234,
+      currentPid: 1234,
+      isPlannedExit: true,
+      restartBudgetAvailable: true,
+    }),
+    {
+      shouldReapPortHolders: false,
+      shouldAutoRestart: false,
+      logMessages: [],
+    },
+  );
+});
+
+test('getOpencodeExitDecision does not auto-restart when an old OpenCode process exits', () => {
+  assert.deepEqual(
+    getOpencodeExitDecision({
+      quitting: false,
+      exitedPid: 1234,
+      currentPid: 5678,
+      isPlannedExit: false,
+      restartBudgetAvailable: true,
+    }),
+    {
+      shouldReapPortHolders: false,
+      shouldAutoRestart: false,
+      logMessages: [],
+    },
+  );
+});
+
+test('getOpencodeExitDecision logs only manual host restart required when restart budget is exhausted', () => {
+  assert.deepEqual(
+    getOpencodeExitDecision({
+      quitting: false,
+      exitedPid: 1234,
+      currentPid: 1234,
+      isPlannedExit: false,
+      restartBudgetAvailable: false,
+    }),
+    {
+      shouldReapPortHolders: true,
+      shouldAutoRestart: false,
+      logMessages: [
+        {
+          level: 'error',
+          message:
+            'OpenCode restart budget exhausted (3/5min) — manual host restart required',
+        },
+      ],
+    },
+  );
 });
