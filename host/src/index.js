@@ -370,6 +370,18 @@ function looksLikeHostCommandLine(commandLine) {
   );
 }
 
+/**
+ * Stricter identity check used when CreationDate is unavailable. Requires the
+ * command line to reference the host directory or product name, not just any
+ * node process running src/index.js (which could match unrelated apps).
+ */
+export function stronglyLooksLikeHostCommandLine(commandLine) {
+  return (
+    looksLikeHostCommandLine(commandLine) &&
+    (/host[\\/]/i.test(commandLine) || /opencode-webui/i.test(commandLine))
+  );
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1142,13 +1154,17 @@ async function handleExistingInstance() {
     if (created === lock.created) {
       hostIdentityVerified = true;
     } else {
+      // CreationDate unavailable — fall back to a stricter cmdline check to
+      // avoid misidentifying an unrelated node process and taskkilling it.
       const cmdline = getProcessCommandLine(lockPid);
-      if (cmdline && !looksLikeHostCommandLine(cmdline)) {
+      if (cmdline && !stronglyLooksLikeHostCommandLine(cmdline)) {
         removeStaleLock(`PID reused by another process (${cmdline})`);
         return false;
       }
-      if (cmdline) hostIdentityVerified = true;
-      if (!cmdline) {
+      if (cmdline && stronglyLooksLikeHostCommandLine(cmdline)) {
+        hostIdentityVerified = true;
+      }
+      if (!cmdline || !stronglyLooksLikeHostCommandLine(cmdline)) {
         log(`Could not verify identity of live lock PID ${lockPid}; preserving it`);
       }
     }

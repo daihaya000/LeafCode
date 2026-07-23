@@ -114,6 +114,37 @@ test('shouldRestartCaddy resets after 5 minutes', () => {
   assert.equal(shouldRestartCaddy(5 * 60 * 1000), true);
 });
 
+test('stronglyLooksLikeHostCommandLine rejects unrelated node processes', () => {
+  // Basic host cmdline matches looksLikeHostCommandLine
+  assert.equal(
+    host.stronglyLooksLikeHostCommandLine(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:/src/index.js"',
+    ),
+    false, // no host/ or opencode-webui in path
+  );
+  // Host directory reference makes it strongly match
+  assert.equal(
+    host.stronglyLooksLikeHostCommandLine(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:/host/src/index.js"',
+    ),
+    true,
+  );
+  // Product name reference also matches
+  assert.equal(
+    host.stronglyLooksLikeHostCommandLine(
+      'node.exe "C:/projects/opencode-webui/src/index.js"',
+    ),
+    true,
+  );
+  // Non-host node process does not match
+  assert.equal(
+    host.stronglyLooksLikeHostCommandLine(
+      'node.exe "C:/other-app/src/index.js"',
+    ),
+    false,
+  );
+});
+
 function getOpencodeExitDecision(options) {
   assert.equal(
     typeof host.getOpencodeExitDecision,
