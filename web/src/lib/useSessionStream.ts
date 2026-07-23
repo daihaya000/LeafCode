@@ -1107,9 +1107,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         failStreak = 0;
         dispatch({ kind: "connection", connection: "live" });
         if (isReconnect) {
-          // Only trust REST idle after a real error disconnect. Silence
-          // reconnects can happen mid-turn while the session is still busy.
-          preferRestStatusRef.current = reason === "error";
+          // After any reconnection (not just error), trust REST status for one
+          // resync. The session may have gone idle while disconnected, and the
+          // staleIdle guard would otherwise prevent the update (R9#1).
+          preferRestStatusRef.current = true;
           void resync().finally(() => {
             preferRestStatusRef.current = false;
           });
