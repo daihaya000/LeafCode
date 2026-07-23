@@ -4592,3 +4592,21 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 
 ### 教訓
 - 開発・本番を同じ作業ツリーで並行実行する場合、Next.js の `distDir` を必ず分離し、npm スクリプトで既定値を強制する。検証では `node --check`、package.json の parse、`npm run dev -- --help` により実行経路と引数透過を確認する。
+
+
+---
+
+## 2026-07-23 ビルド復旧: .next キャッシュ破損の切り分け
+
+### 発見
+- ホストの本番ビルドが prerender 中に `TypeError: Cannot read properties of undefined (reading 'call')`（webpack-runtime）で `/` の生成に失敗していた。
+- `.next` を削除してクリーンビルドすると webpack は "Compiled successfully" で通過し、真の原因（別セッションの kebab→SessionSwitcherDialog リファクタ未完成による `KebabGroup.renderContent` 型エラー）が露出した。真因解決後（他エージェントが `0d0fb31` でコミット）にビルドは 7/7 prerender まで完全にグリーン化した。
+- `web/` には `.next-broken-*` 等の破損バックアップが多数あり、並列 Next ビルド + OneDrive 同期でキャッシュ破損が起きやすい環境である。
+
+### 判断理由
+- webpack-runtime の `reading 'call'` は多くがチャンク不整合（キャッシュ破損）で、コンパイル成功後の prerender 段階で出るため tsc/lint では検出できない。まず `.next` を消してクリーン再ビルドし、真のエラーを露出させて切り分けた。
+- 露出した型エラーは別エージェントが実時間で編集中の未コミット差分に起因したため、AGENTS.md の並列規則に従い当該ファイルは触らず、所有者の完了を待った。自分のコード変更は行っていない（`.next` 削除は gitignore 対象で無害）。
+
+### 教訓
+- prerender の `reading 'call'` は真因を隠すことがある。最初に `.next` を消してクリーンビルドし、真のエラーを露出させてから原因を判断する。
+- 並列セッションが同一ファイルを実時間編集していると git status は数秒で変わる。編集前に毎回再確認し、他者の未コミット差分は待つ/触らない/混在させない。
