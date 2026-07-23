@@ -209,4 +209,37 @@ describe("NestedAgentPanel", () => {
     expect(img?.getAttribute("alt")).toBe("");
     expect(img?.getAttribute("src")).toContain("/addons/codexbar/claude.png");
   });
+
+  it("does not render an empty timeline placeholder when messages exist", async () => {
+    render(
+      <NestedAgentPanel
+        directory="/repo"
+        parentSessionId={PARENT_ID}
+        active
+        matchHint={hint}
+      />,
+    );
+    // When messages exist, the "タイムラインはまだありません" placeholder must not appear
+    expect(await screen.findByText("子エージェント")).toBeTruthy();
+    expect(screen.queryByText("タイムラインはまだありません")).toBeNull();
+  });
+
+  it("shows the empty timeline placeholder only when no messages and not busy", async () => {
+    ocJson.mockImplementation(async (path: string) => {
+      if (path === "/session/status") return { [CHILD_ID]: { type: "idle" } };
+      if (path === `/session/${PARENT_ID}/children`)
+        return [{ id: CHILD_ID, title: "子エージェント", parentID: PARENT_ID }];
+      if (path === `/session/${CHILD_ID}/message`) return [];
+      return null;
+    });
+    render(
+      <NestedAgentPanel
+        directory="/repo"
+        parentSessionId={PARENT_ID}
+        active
+        matchHint={hint}
+      />,
+    );
+    expect(await screen.findByText("タイムラインはまだありません")).toBeTruthy();
+  });
 });
