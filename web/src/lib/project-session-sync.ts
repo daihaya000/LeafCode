@@ -88,6 +88,10 @@ function isInside(parent: string, child: string): boolean {
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
+function isSamePath(left: string, right: string): boolean {
+  return path.relative(path.resolve(left), path.resolve(right)) === "";
+}
+
 /**
  * Import any workspaces/sessions present in a project's manifest but missing
  * from the DB. Idempotent: existing rows are left untouched.
@@ -113,11 +117,21 @@ export function restoreProjectFromManifest(
       // manifest that points its worktreePath elsewhere is untrusted (e.g. a
       // cloned repo carrying a crafted sessions.json) and must not be imported,
       // since destroying it would drive a recursive delete outside the repo.
+      const worktreeBase = path.resolve(dataDir(), "worktrees");
+      if (
+        ws.isolation === "git_worktree" &&
+        ws.worktreePath &&
+        (isSamePath(ws.worktreePath, rootPath) ||
+          isSamePath(ws.worktreePath, worktreeBase))
+      ) {
+        log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath is a protected root`);
+        continue;
+      }
       if (
         ws.isolation === "git_worktree" &&
         ws.worktreePath &&
         !isInside(rootPath, ws.worktreePath) &&
-        !isInside(path.resolve(dataDir(), "worktrees"), ws.worktreePath)
+        !isInside(worktreeBase, ws.worktreePath)
       ) {
         log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath escapes root`);
         continue;

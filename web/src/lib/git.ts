@@ -114,6 +114,10 @@ function isInside(parent: string, child: string): boolean {
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
+function isSamePath(left: string, right: string): boolean {
+  return path.relative(path.resolve(left), path.resolve(right)) === "";
+}
+
 function rmDirBestEffort(target: string): void {
   if (!fs.existsSync(target)) return;
   try {
@@ -163,6 +167,11 @@ export async function removeWorktree(input: {
   // tampered manifest / DB row can't drive the filesystem-delete fallback into
   // an arbitrary directory.
   const worktreeBase = path.resolve(dataDir(), "worktrees");
+  // Check protected roots before the allow-list OR. A repo root nested under
+  // worktreeBase would otherwise pass `isInside(worktreeBase, absWorktree)`.
+  if (isSamePath(absWorktree, repoRoot) || isSamePath(absWorktree, worktreeBase)) {
+    throw new Error(`refusing to remove protected root: ${absWorktree}`);
+  }
   if (!isInside(repoRoot, absWorktree) && !isInside(worktreeBase, absWorktree)) {
     throw new Error(
       `refusing to remove worktree outside repo root and data dir: ${absWorktree}`,

@@ -96,6 +96,23 @@ describe("restoreProjectFromManifest worktree path guard", () => {
     expect(h.imported).toHaveLength(0);
   });
 
+  it("skips a project root nested under worktreeBase before the allow-list OR", () => {
+    const worktreeBase = path.join(h.dataDir, "worktrees");
+    const rootPath = path.join(worktreeBase, "repo");
+    h.manifest = worktreeEntry(rootPath);
+    const res = restoreProjectFromManifest(rootPath, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+
+  it("skips a worktree path equal to worktreeBase", () => {
+    const worktreeBase = path.join(h.dataDir, "worktrees");
+    h.manifest = worktreeEntry(worktreeBase);
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+
   it("skips a worktree whose path escapes both trusted bases", () => {
     h.manifest = worktreeEntry(path.join(os.tmpdir(), "elsewhere", "wt1"));
     const res = restoreProjectFromManifest(ROOT, "p1");

@@ -21,3 +21,18 @@ Task 9: `isInside` の根一致を拒否し、R35#1 のデータ破壊経路を�
 ## Commit
 
 - `fix: isInside が根一致を拒否するように変更（repo/worktree 根の再帰削除を防止）`
+
+---
+
+## Critical review fix: 保護rootの完全一致をOR判定より先に拒否
+
+### Changes
+
+- `git.ts`: `repoRoot` または `worktreeBase` と完全一致する `worktreePath` を、配下許可のOR判定前に拒否。
+- `project-session-sync.ts`: `rootPath` または `worktreeBase` と完全一致する manifest の `worktreePath` を同様に拒否。
+- `git.test.ts` / `project-session-sync.test.ts`: repo root が `worktreeBase` 配下にある場合を含むレビュー再現ケースを回帰テスト化。
+
+### Verification
+
+- `cd web && npx vitest run src/lib/git.test.ts src/lib/project-session-sync.test.ts` — PASS（2 files / 12 tests）
+- `cd web && npm run typecheck` — PASS
