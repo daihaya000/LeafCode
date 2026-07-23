@@ -136,6 +136,46 @@ describe("POST refresh-title", () => {
     expect(persistProjectSessions).toHaveBeenCalledWith("prj1");
   });
 
+  it.each([
+    ["request failure", new Error("tool ids unavailable")],
+    ["empty array", []],
+    ["non-array response", { bash: true }],
+  ])(
+    "fails closed when tool IDs have %s and does not send the title message",
+    async (_caseName, toolIds) => {
+      ocServer.mockImplementation(
+        async (_dir: string, path: string, init?: { method?: string }) => {
+          if (path === "/session/sess1/message" && init?.method === undefined)
+            return [
+              {
+                info: { id: "m1", role: "user", providerID: "p", modelID: "m" },
+                parts: [{ id: "x", messageID: "m1", type: "text", text: "hi" }],
+              },
+            ];
+          if (path === "/session" && init?.method === "POST")
+            return { id: "temp1" };
+          if (path === "/experimental/tool/ids") {
+            if (toolIds instanceof Error) throw toolIds;
+            return toolIds;
+          }
+          if (path === "/session/temp1" && init?.method === "DELETE") return true;
+          throw new Error("unexpected " + path);
+        },
+      );
+
+      const res = await POST(req(), ctx());
+
+      expect(res.status).toBe(502);
+      expect(ocServer).not.toHaveBeenCalledWith(
+        "/repo",
+        "/session/temp1/message",
+        expect.anything(),
+      );
+      expect(updateSessionTitle).not.toHaveBeenCalled();
+      expect(persistProjectSessions).not.toHaveBeenCalled();
+    },
+  );
+
   it("fails and does not patch original when temp cleanup fails", async () => {
     ocServer.mockImplementation(
       async (_dir: string, path: string, init?: { method?: string }) => {
