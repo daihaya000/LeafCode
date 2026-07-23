@@ -322,7 +322,12 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);
   const [isLg, setIsLg] = useState(false);
-  const [isMd, setIsMd] = useState(false);
+  // Initialize from the actual matchMedia to avoid desktop permanent collapse
+  // (isMd starts false on SSR/first paint, causing initialCollapsed=true on desktop).
+  const [isMd, setIsMd] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
   const sideDragRef = useRef<{ x: number; w: number } | null>(null);
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
