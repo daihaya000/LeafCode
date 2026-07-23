@@ -104,6 +104,16 @@ async function purgeGoneOrphans(): Promise<number> {
       }
     }
 
+    // Release allowlist for temporary_copy orphans (the copy path was
+    // allowlisted on provision; drop it now that the folder is gone).
+    if (row.isolation === "temporary_copy" && row.worktree_path) {
+      try {
+        removeAllowedRoot(row.worktree_path);
+      } catch {
+        /* best effort */
+      }
+    }
+
     deleteWorkspace(row.id);
     // Rewrite the repo manifest from DB truth so the purged workspace doesn't
     // get re-imported (and resurrected) next time the project is opened.

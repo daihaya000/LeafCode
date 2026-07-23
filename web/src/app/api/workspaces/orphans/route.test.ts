@@ -6,6 +6,8 @@ const h = vi.hoisted(() => ({
   orphanedRows: [] as unknown[],
   gitWorktrees: {} as Record<string, { path: string; bare: boolean }[]>,
   removeWorktree: vi.fn(async (_arg: unknown) => undefined),
+  removeAllowedRoot: vi.fn(),
+  deleteWorkspace: vi.fn(),
   dataDir: "C:\\data",
 }));
 
@@ -17,14 +19,14 @@ vi.mock("@/lib/db", () => ({
         if (sql.includes("FROM workspaces")) return h.workspaces;
         return [];
       },
-      get: () => undefined,
+      get: () => ({ root_path: "C:\\repo" }),
       run: () => undefined,
     }),
   }),
   listWorkspacesByStatus: () => h.orphanedRows,
-  removeAllowedRoot: () => undefined,
+  removeAllowedRoot: h.removeAllowedRoot,
   setWorkspaceStatus: () => undefined,
-  deleteWorkspace: vi.fn(),
+  deleteWorkspace: h.deleteWorkspace,
 }));
 
 vi.mock("@/lib/git", () => ({
@@ -81,6 +83,25 @@ describe("GET /api/workspaces/orphans", () => {
     const res = await GET(getReq());
     const data = (await res.json()) as { stray: { path: string }[] };
     expect(data.stray.some((s) => s.path === KNOWN_PATH)).toBe(false);
+  });
+
+  it("releases allowlist for a gone temporary_copy orphan", async () => {
+    const copyPath = "C:\\data\\copies\\ws1";
+    h.orphanedRows = [
+      {
+        id: "ws1",
+        project_id: "proj1",
+        absolute_path: copyPath,
+        worktree_path: copyPath,
+        isolation: "temporary_copy",
+        status: "orphaned",
+      },
+    ];
+
+    await GET(getReq("http://x/api/workspaces/orphans?scan=1"));
+
+    expect(h.deleteWorkspace).toHaveBeenCalledWith("ws1");
+    expect(h.removeAllowedRoot).toHaveBeenCalledWith(copyPath);
   });
 });
 
