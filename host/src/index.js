@@ -180,6 +180,26 @@ export function shouldRestartOpencode(now = Date.now()) {
   return true;
 }
 
+/** Caddy auto-restart budget: max 3 restarts per 5 minutes (same as OpenCode). */
+const MAX_CADDY_RESTARTS = 3;
+const CADDY_RESTART_WINDOW_MS = 5 * 60 * 1000;
+let caddyRestartTimestamps = [];
+
+export function resetCaddyRestartBudget() {
+  caddyRestartTimestamps = [];
+}
+
+export function shouldRestartCaddy(now = Date.now()) {
+  caddyRestartTimestamps = caddyRestartTimestamps.filter(
+    (timestamp) => now - timestamp < CADDY_RESTART_WINDOW_MS,
+  );
+  if (caddyRestartTimestamps.length >= MAX_CADDY_RESTARTS) {
+    return false;
+  }
+  caddyRestartTimestamps.push(now);
+  return true;
+}
+
 /** Decide how an OpenCode exit should be handled without performing side effects. */
 export function getOpencodeExitDecision({
   quitting: isQuitting,
@@ -765,10 +785,27 @@ function spawnCaddy() {
     process.stderr.write(`[caddy] ${chunk}`);
   });
   caddyProc.on('exit', (code, signal) => {
+    const abnormal = !quitting && code !== 0 && code !== null;
     if (!quitting) {
       log(`Caddy exited (code=${code}, signal=${signal ?? 'none'})`);
     }
     caddyProc = null;
+
+    if (abnormal && shouldRestartCaddy()) {
+      log('Caddy crashed — attempting auto-restart…');
+      setTimeout(() => {
+        try {
+          spawnCaddy();
+        } catch (err) {
+          error(
+            `Caddy auto-restart failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }, 1500);
+    } else if (abnormal) {
+      error('Caddy restart budget exhausted (3/5min) — manual host restart required');
+    }
+
     refreshStatusMenu();
   });
 }

@@ -5,7 +5,9 @@ import * as host from './index.js';
 import {
   isHeadless,
   resetOpencodeRestartBudget,
+  resetCaddyRestartBudget,
   shouldRestartOpencode,
+  shouldRestartCaddy,
 } from './index.js';
 
 test('isHeadless returns true for OPENCODE_HEADLESS=1', () => {
@@ -93,6 +95,23 @@ test('shouldRestartOpencode resets after 5 minutes', () => {
   assert.equal(shouldRestartOpencode(2), true);
   assert.equal(shouldRestartOpencode(3), false);
   assert.equal(shouldRestartOpencode(5 * 60 * 1000), true);
+});
+
+test('shouldRestartCaddy returns false when restart budget exhausted', () => {
+  resetCaddyRestartBudget();
+  assert.equal(shouldRestartCaddy(0), true);
+  assert.equal(shouldRestartCaddy(1), true);
+  assert.equal(shouldRestartCaddy(2), true);
+  assert.equal(shouldRestartCaddy(3), false);
+});
+
+test('shouldRestartCaddy resets after 5 minutes', () => {
+  resetCaddyRestartBudget();
+  assert.equal(shouldRestartCaddy(0), true);
+  assert.equal(shouldRestartCaddy(1), true);
+  assert.equal(shouldRestartCaddy(2), true);
+  assert.equal(shouldRestartCaddy(3), false);
+  assert.equal(shouldRestartCaddy(5 * 60 * 1000), true);
 });
 
 function getOpencodeExitDecision(options) {
