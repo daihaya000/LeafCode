@@ -13,15 +13,17 @@ TaskView 右上ヘッダーツールバーには、Zone A（常時表示操作�
 - ヘッダーツールバーの直表示操作を削減し、横スクロールの発生頻度を下げる
 - 「ターミナル」の表示条件を二重定義から単一（常にケバブ内）に統一する
 - 既存のアクセシビリティ（キーボード操作、ARIA）、レスポンシブ動作、全操作の機能を維持する
+- ケバブ `role="menu"` 内は標準 `menuitem` のみとし、select/button/dialog を描画しない ARIA 準拠を徹底する
 
 ## 対象と非対象
 
 ### 対象
 
 - `web/src/components/task/TaskView.tsx` のヘッダーツールバー（Zone A / Zone B / Zone C）
-- `web/src/components/task/HeaderKebabMenu.tsx` — 型拡張（`renderContent` 追加）・レンダリング分岐・フォーカス管理を追加
+- `web/src/components/task/HeaderKebabMenu.tsx` — 型・レンダリングロジックの変更は**行わない**（`renderContent` は追加しない）
 - `web/src/components/task/SessionSwitcher.tsx` — 変更なし（コンポーネントはそのまま利用）
 - `web/src/components/task/TaskView.test.tsx` — テストケースの更新
+- セッション切替用アクセシブルダイアログ（新設: `SessionSwitcherDialog` または `TaskView` 内で `SessionSwitcher` をラップ）
 
 ### 非対象
 
@@ -39,7 +41,7 @@ TaskView 右上ヘッダーツールバーには、Zone A（常時表示操作�
 |---|------|-----------|---------------------|------|
 | 1 | 作業パスをコピー | Zone A 常時表示 | `"task"`（新設） | `copyPath()` を呼ぶ。コピー成功時 1.5 秒間チェックアイコン表示（既存動作） |
 | 2 | 再同期 | Zone A 常時表示 | `"task"`（新設） | `stream.resync()` + `setDiffKey(k+1)` を呼ぶ |
-| 3 | セッション追加/切替 | Zone A（session 存在時） | `"session"`（既存グループ名を拡張） | SessionSwitcher 全体をケバブ内に配置。セッション一覧の select + 追加ボタンをメニュー内に表示 |
+| 3 | セッション追加/切替 | Zone A（session 存在時） | `"session"`（既存グループ名を拡張） | 標準 `menuitem`「セッションを切り替え・追加」がアクセシブルダイアログを開く |
 | 4 | ターミナル | Zone B（md 以上） + Zone C（md 未満） | `"panels"`（既存、常時表示） | 二重定義を解消し、常にケバブ内のみに表示 |
 
 ## ケバブメニュー構成（変更後）
@@ -57,7 +59,7 @@ TaskView 右上ヘッダーツールバーには、Zone A（常時表示操作�
 │  再同期                         │
 ├─────────────────────────────────┤
 │ セッション切替       ← 新設     │
-│  [セッション選択▼]  [+追加]     │
+│  セッションを切り替え・追加     │  ← 標準 menuitem、押下で dialog を開く
 ├─────────────────────────────────┤
 │ パネル切替                      │
 │  ファイルツリー                  │
@@ -90,39 +92,11 @@ TaskView 右上ヘッダーツールバーには、Zone A（常時表示操作�
 
 #### グループ `"session-switcher"`（セッション切替）— 新設
 
-`SessionSwitcher` コンポーネント全体をケバブ内にインライン表示する。既存の `SessionSwitcher` コンポーネントをそのまま流用し、ラッパーとして配置する。
+| id | label | icon | 動作 | 備考 |
+|----|-------|------|------|------|
+| `open-session-switcher` | セッションを切り替え・追加 | `Layers` | アクセシブルダイアログを開く | 標準 `menuitem`。押下で `role="dialog"` + `aria-modal="true"` のダイアログを開く。session が存在しない場合、この項目自体を `headerKebabGroups` 配列に追加しない |
 
-- session が存在しない場合、このグループ自体を `headerKebabGroups` 配列に追加しない（`task.sessionId` の有無で条件分岐）
-- セッションが 1 件のみの場合: 「セッションを追加」ボタンのみ表示（既存の `SessionSwitcher` の振る舞いと同じ）
-- セッションが 2 件以上の場合: `<select>` ドロップダウン + 「+」追加ボタンを表示
-
-**実装方法**: `SessionSwitcher` をケバブ内にレンダリングするため、`KebabItem` の `icon` / `label` を使うのではなく、`KebabGroup` の `items` に特殊な `render` プロパティを追加するか、`HeaderKebabMenu` の children / render-prop 機構を拡張する。
-
-→ **設計判断**: `HeaderKebabMenu` に `renderGroupContent` または `renderItem` のカスタムレンダリング対応を追加する。具体的には `KebabGroup` に `renderContent?: () => ReactNode` を追加し、これが指定されたグループは標準の `items` ループではなく `renderContent()` の結果を表示する。
-
-```typescript
-export type KebabGroup = {
-  id: string;
-  label?: string;
-  items: KebabItem[];
-  /** 指定された場合、items を無視してこの関数の結果をグループ内容として表示する */
-  renderContent?: () => ReactNode;
-};
-```
-
-`HeaderKebabMenu` のレンダリングロジック:
-
-```tsx
-{visibleGroups.map((group, gi) => (
-  <div key={group.id} ...>
-    {group.renderContent ? (
-      group.renderContent()
-    ) : (
-      group.items.map((item) => ( /* 既存の menuitem レンダリング */ ))
-    )}
-  </div>
-))}
-```
+**ARIA 準拠の根拠**: `role="menu"` 内に配置できるのは `role="menuitem"`（または `menuitemcheckbox` / `menuitemradio`）のみである（WAI-ARIA 仕様）。select/button/dialog を menu 内に直接描画すると支援技術が正しく解釈できない。本設計では「セッションを切り替え・追加」は標準 `menuitem` として menu 内に配置し、その選択によって menu 外のアクセシブルダイアログを開く。
 
 #### グループ `"panels"`（パネル切替）— 既存、条件変更
 
@@ -169,16 +143,135 @@ export type KebabGroup = {
 |--------|-----------|---------|
 | コピー（`Copy`） | Zone A | ケバブ `"task"` グループへ移動 |
 | 再同期（`RefreshCw`） | Zone A | ケバブ `"task"` グループへ移動 |
-| SessionSwitcher（`Layers` + select + `Plus`） | Zone A | ケバブ `"session-switcher"` グループへ移動 |
+| SessionSwitcher（`Layers` + select + `Plus`） | Zone A | ケバブ `"session-switcher"` グループの menuitem 経由で dialog を開く |
 | ターミナル（`Terminal`） | Zone B（md 以上） | ケバブ `"panels"` グループへ常時移動。Zone B の該当 Button を削除 |
 
 ## アクセシビリティ
 
+### ケバブメニュー（`role="menu"`）
+
 - `HeaderKebabMenu` の既存 ARIA（`aria-haspopup`, `aria-expanded`, `role="menu"`, `aria-disabled`, `aria-current`）を維持する
-- 新設グループ `"task"` の各項目は既存の `KebabItem` 型に従い、キーボード操作（ArrowUp/Down, Enter/Space, Escape, Tab）がそのまま動作する
-- `"session-switcher"` グループのカスタムレンダリング内では、`SessionSwitcher` が既に持つ `aria-label`（`"セッション切替"`, `"セッションを追加"`, `"新セッション"`）を維持する
-- カスタムレンダリング領域内のフォーカス管理: `HeaderKebabMenu` のキーボードナビゲーション（ArrowUp/Down）はカスタムレンダリング領域をスキップする。ユーザーは Tab でカスタム領域に進入し、内部の select/button を操作後、再度 Tab で次のグループへ移動する
-- カスタムレンダリング領域内の select と button には既存の `aria-label` が付与されている
+- 新設グループ `"task"` の各項目は既存の `KebabItem` 型に従い、`role="menuitem"` としてレンダリングされる
+- 新設グループ `"session-switcher"` の「セッションを切り替え・追加」も標準 `KebabItem` として `role="menuitem"` でレンダリングされる
+- キーボード操作（ArrowUp/Down, Enter/Space, Escape, Tab）がそのまま動作する
+- **`role="menu"` 内に select/button/dialog を描画しない**。すべての子孫は `menuitem` のみ
+
+### セッション切替ダイアログ（`role="dialog"`）
+
+「セッションを切り替え・追加」menuitem を押下すると、`TaskView` が管理するアクセシブルダイアログを開く。
+
+#### 責務
+
+| コンポーネント | 責務 |
+|--------------|------|
+| `TaskView` | ダイアログの開閉 state 管理、`HeaderKebabMenu` への `onOpenSessionSwitcher` コールバック提供、ダイアログ内 `SessionSwitcher` のレンダリング、成功時の refresh + close + フォーカス復帰 |
+| `SessionSwitcher` | 既存コンポーネントをそのまま流用。セッション一覧表示、切替、追加の内部ロジック。変更なし |
+| `HeaderKebabMenu` | 変更なし。`KebabItem.onSelect` 経由で親のコールバックを呼ぶのみ |
+
+#### ダイアログの ARIA 属性
+
+```tsx
+<div
+  role="dialog"
+  aria-modal="true"
+  aria-label="セッションを切り替え・追加"
+  aria-describedby="session-switcher-desc"
+>
+  <p id="session-switcher-desc" className="sr-only">
+    作業中のセッションを切り替えるか、新しいセッションを追加します
+  </p>
+  {/* SessionSwitcher コンポーネント */}
+</div>
+```
+
+#### フォーカス管理
+
+| 操作 | 動作 |
+|------|------|
+| ダイアログオープン | フォーカスをダイアログ内の最初のフォーカス可能要素（セッション一覧の先頭または「セッションを追加」ボタン）に移動する |
+| Tab | ダイアログ内のフォーカス可能要素を順方向に循環する。**最終要素で Tab を押してもダイアログ外に出ない**（フォーカストラップ） |
+| Shift+Tab | 逆方向に循環。**先頭要素で Shift+Tab を押してもダイアログ外に出ない** |
+| Escape | ダイアログを閉じ、フォーカスをケバブトリガー（`[⋯]` ボタン）に復帰する |
+| 背景クリック（オーバーレイクリック） | ダイアログ外のオーバーレイ（`role="presentation"` の backdrop）をクリックするとダイアログを閉じ、フォーカスをケバブトリガーに復帰する |
+| 成功時（セッション切替/追加完了） | ダイアログを閉じ、`refreshTask()` を呼び、フォーカスをケバブトリガーに復帰する |
+
+#### フォーカストラップ実装方針
+
+`useEffect` でダイアログマウント時にフォーカス可能要素を収集し、Tab/Shift+Tab のハンドラで循環させる。`onKeyDown` で Escape を捕捉する。以下の擬似コードを参考に実装する：
+
+```typescript
+// ダイアログコンテナの ref
+const dialogRef = useRef<HTMLDivElement>(null);
+
+// マウント時: 最初のフォーカス可能要素にフォーカス
+useEffect(() => {
+  const el = dialogRef.current;
+  if (!el) return;
+  const focusable = el.querySelectorAll<HTMLElement>(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (focusable.length > 0) focusable[0].focus();
+}, []);
+
+// Tab 循環
+const handleKeyDown = (e: React.KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    onClose();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const focusable = getFocusableElements(dialogRef.current!);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+};
+```
+
+#### オーバーレイクリック
+
+```tsx
+{/* オーバーレイ backdrop */}
+<div
+  className="fixed inset-0 bg-black/50 z-40"
+  onClick={() => onClose()}
+  role="presentation"
+/>
+```
+
+#### 成功時 refresh + close + フォーカス復帰
+
+`SessionSwitcher` の `onSwitch` コールバック内で以下を実行する：
+
+```typescript
+const handleSessionSwitch = async () => {
+  await refreshTask();       // タスク一覧を再取得
+  setSessionDialogOpen(false); // ダイアログを閉じる
+  // フォーカス復帰: setTimeout で DOM 更新後にケバブトリガー ref にフォーカス
+  setTimeout(() => kebabTriggerRef.current?.focus(), 0);
+};
+```
+
+#### モバイル対応
+
+- ダイアログはビューポート中央に配置（`fixed inset-0 flex items-center justify-center`）
+- モバイル幅（`<640px`）ではダイアログを画面下部からスライドアップ（`bottom-sheet` スタイル）してもよいが、ARIA 属性（`role="dialog" aria-modal="true"`）は維持する
+- タッチ操作: オーバーレイタップで閉じる。ダイアログ内のスクロールは `overflow-y-auto` で対応
+
+#### 状態別仕様
+
+| 状態 | 表示 | 操作 |
+|------|------|------|
+| **loading** | スピナーまたはスケルトン（`aria-busy="true"`） | 操作不可。Escape で閉じられる |
+| **error** | エラーメッセージ + 再試行ボタン（`role="alert"`） | 再試行で再取得。Escape / 閉じるボタンで閉じられる |
+| **empty**（セッション0件） | 「セッションがありません。新しく作成してください。」+ 追加ボタン | 追加ボタンで新規セッション作成 |
+| **busy**（切替/追加処理中） | ボタンに `aria-busy="true"` + スピナー、ボタン disabled | 操作不可。Escape で閉じられる（処理は中断しない） |
+| **正常** | セッション一覧（select またはリスト）+ 追加ボタン | 切替/追加が可能 |
 
 ## レスポンシブ
 
@@ -231,28 +324,43 @@ export type KebabGroup = {
        ],
      }
      ```
-   - `"session-switcher"` グループを新設（カスタムレンダリング、session 存在時のみ配列に追加）:
+   - `"session-switcher"` グループを新設（session 存在時のみ配列に追加）:
      ```typescript
-     // headerKebabGroups の useMemo 内で条件分岐
      ...(task?.sessionId ? [{
        id: "session-switcher",
        label: "セッション切替",
-       items: [],
-       renderContent: () => (
-         <div className="px-3 py-1.5">
-           <SessionSwitcher
-             workspaceId={task.id}
-             directory={task.directory}
-             currentSessionId={task.sessionId}
-             onSwitch={() => void refreshTask()}
-           />
-         </div>
-       ),
+       items: [
+         {
+           id: "open-session-switcher",
+           label: "セッションを切り替え・追加",
+           icon: <Layers className="h-4 w-4" />,
+           onSelect: () => setSessionDialogOpen(true),
+         },
+       ],
      }] : []),
      ```
    - `"panels"` グループの `panel-terminal` 条件を `!isMd` から常時表示に変更
 
-4. **`useMemo` の依存配列更新**:
+4. **セッション切替ダイアログの state とレンダリング**:
+   - `const [sessionDialogOpen, setSessionDialogOpen] = useState(false);` を追加
+   - ダイアログコンポーネントを `TaskView` の return 内、`HeaderKebabMenu` の外に配置:
+     ```tsx
+     {sessionDialogOpen && (
+       <SessionSwitcherDialog
+         workspaceId={task.id}
+         directory={task.directory}
+         currentSessionId={task.sessionId}
+         onSwitch={handleSessionSwitch}
+         onClose={() => {
+           setSessionDialogOpen(false);
+           kebabTriggerRef.current?.focus();
+         }}
+       />
+     )}
+     ```
+   - `kebabTriggerRef` を `HeaderKebabMenu` の trigger button に `ref` として渡す（`HeaderKebabMenu` が `ref` をフォワードするよう修正するか、`useImperativeHandle` で trigger 要素を公開する）
+
+5. **`useMemo` の依存配列更新**:
    - `copyPath` を依存配列に追加
    - `working` を依存配列に追加
    - `refreshTask` を依存配列に追加
@@ -260,14 +368,37 @@ export type KebabGroup = {
 
 ### HeaderKebabMenu.tsx の変更
 
-1. `KebabGroup` 型に `renderContent?: () => ReactNode` を追加
-2. レンダリングロジックに `group.renderContent` の分岐を追加
-3. カスタムレンダリング領域内のフォーカス管理: キーボードナビゲーション（ArrowUp/Down）でカスタム領域をスキップする処理を追加
+- **`renderContent` は追加しない**。`KebabGroup` 型に変更は一切加えない
+- 既存の `KebabItem` 型のみで「セッションを切り替え・追加」を表現する
+- 必要に応じて、trigger button に `ref` をフォワードする対応のみ行う（`forwardRef` + `useImperativeHandle` で `focus()` を公開）
+
+### SessionSwitcherDialog.tsx（新設）
+
+`TaskView` と同じディレクトリに新規コンポーネントとして作成する。
+
+```typescript
+// SessionSwitcherDialog.tsx
+interface Props {
+  workspaceId: string;
+  directory: string;
+  currentSessionId: string;
+  onSwitch: () => Promise<void>;
+  onClose: () => void;
+}
+```
+
+- `role="dialog"`, `aria-modal="true"`, `aria-label="セッションを切り替え・追加"` を設定
+- フォーカストラップ（Tab 循環）
+- Escape / オーバーレイクリックで閉じる
+- loading / error / empty / busy 状態の表示
+- 成功時: `onSwitch()` → `onClose()`（呼び出し元で refresh + close + フォーカス復帰を実行）
+- `SessionSwitcher` を内部でレンダリング
 
 ### TaskView.test.tsx の変更
 
 1. 削除された直表示ボタンに関するテストを更新（コピー、再同期、SessionSwitcher、ターミナルのセレクタが変わる）
-2. ケバブメニュー内の新規項目に関するテストを追加（必要に応じて）
+2. ケバブメニュー内の新規項目に関するテストを追加
+3. セッション切替ダイアログの開閉・フォーカス管理・状態別テストを追加
 
 ## 受け入れ条件
 
@@ -276,16 +407,20 @@ export type KebabGroup = {
 3. ケバブ内の「作業パスをコピー」を選択すると、`copyText(task.directory)` が呼ばれ、`copied` state が 1.5 秒間 `true` になる
 4. ケバブ内の「作業パスをコピー」のアイコンが、`copied` 状態に応じて `Copy`（通常時）と `Check`（コピー成功後 1.5 秒間）に切り替わる
 5. ケバブ内の「再同期」を選択すると、`stream.resync()` + `setDiffKey(k+1)` が実行される
-6. ケバブ内のセッション切替グループで、既存の SessionSwitcher と同一の UI（select + 追加ボタン）が表示され、セッションの切替と追加が動作する
-7. ケバブ内の「ターミナル」を選択すると、PTY パネルが開く
-8. ターミナルがすべてのブレークポイントでケバブ内のみに存在し、Zone B に重複表示されない
-9. 停止ボタン（working 時）と CompactButton（session 存在時）はヘッダー直表示に残る
-10. ファイルツリー・グラフ・Diff パネルは lg 以上で Zone B に直接表示され、lg 未満でケバブ内に表示される（既存動作維持）
-11. 既存のキーボード操作（ArrowUp/Down, Enter/Space, Escape, Tab）がケバブメニュー内で正常に動作する
-12. カスタムレンダリング領域（セッション切替）では ArrowUp/Down がスキップされ、Tab で進入/脱出できる
-13. `cd web && npx tsc --noEmit` がパスする
-14. `cd web && npx eslint src/components/task/` がパスする
-15. `cd web && npx vitest run src/components/task/TaskView.test.tsx` がパスする
+6. ケバブ内の「セッションを切り替え・追加」を選択すると、アクセシブルダイアログが開く
+7. セッション切替ダイアログ内でセッションの切替と追加が動作する
+8. セッション切替ダイアログのフォーカストラップが正しく動作する（Tab 循環、Escape で閉じる）
+9. セッション切替ダイアログのオーバーレイクリックで閉じる
+10. セッション切替/追加成功時にダイアログが閉じ、フォーカスがケバブトリガーに復帰する
+11. ケバブ内の「ターミナル」を選択すると、PTY パネルが開く
+12. ターミナルがすべてのブレークポイントでケバブ内のみに存在し、Zone B に重複表示されない
+13. 停止ボタン（working 時）と CompactButton（session 存在時）はヘッダー直表示に残る
+14. ファイルツリー・グラフ・Diff パネルは lg 以上で Zone B に直接表示され、lg 未満でケバブ内に表示される（既存動作維持）
+15. 既存のキーボード操作（ArrowUp/Down, Enter/Space, Escape, Tab）がケバブメニュー内で正常に動作する
+16. `role="menu"` 内に select/button/dialog が存在しない（ARIA 準拠）
+17. `cd web && npx tsc --noEmit` がパスする
+18. `cd web && npx eslint src/components/task/` がパスする
+19. `cd web && npx vitest run src/components/task/TaskView.test.tsx` がパスする
 
 ## 非機能要件
 
@@ -293,6 +428,7 @@ export type KebabGroup = {
 - 既存の CSS 変数・トークン体系を変更しない
 - `HeaderKebabMenu` の `z-30` を維持する
 - パフォーマンス: `headerKebabGroups` の `useMemo` 依存配列が増えるが、再計算コストは無視できるレベル
+- セッション切替ダイアログは `createPortal` を使用せず、`TaskView` の DOM ツリー内に配置する（z-index でオーバーレイを表現）
 
 ## 検証
 
@@ -310,5 +446,6 @@ cd web && npx vitest run src/components/task/TaskView.test.tsx
 # - ヘッダー直表示から上記 4 操作が消えていること
 # - ケバブメニュー内に全操作が存在すること
 # - 各操作が正しく機能すること
+# - セッション切替ダイアログのフォーカストラップが動作すること
 # - スマホ幅・タブレット幅・PC幅で表示が崩れないこと
 ```
