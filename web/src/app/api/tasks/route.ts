@@ -43,9 +43,14 @@ type AgentResponse = {
 const IMAGE_MIME_RE = /^image\/[a-z0-9.+-]+$/i;
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([a-z0-9+/]+={0,2})$/i;
 
+// Resource limits to prevent memory exhaustion and oversized requests (R28).
+const MAX_IMAGE_COUNT = 10;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 function parseImageFiles(value: unknown): ImageFile[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
+  if (value.length > MAX_IMAGE_COUNT) return null;
 
   const files: ImageFile[] = [];
   for (const entry of value) {
@@ -63,6 +68,10 @@ function parseImageFiles(value: unknown): ImageFile[] | null {
     ) {
       return null;
     }
+    // Check base64 size (approximate: base64 expands by ~33%, so decoded size ≈ 3/4 of encoded length)
+    const estimatedSize = (match[2].length * 3) / 4;
+    if (estimatedSize > MAX_IMAGE_SIZE_BYTES) return null;
+
     files.push({ uri, mime, ...(name ? { name } : {}) });
   }
   return files;
