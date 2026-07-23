@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { cx, timeAgo } from "@/components/ui";
-import { getJson } from "@/lib/client";
+import { getJson, sendJson } from "@/lib/client";
 import {
   clampPercent,
   formatMonthlyTotal,
@@ -41,6 +41,18 @@ const COLLAPSED_KEY = "webui:addon:codexbar:collapsed";
 const LEGACY_COLLAPSED_KEY = "webui:plugin:codexbar:collapsed";
 const PROVIDERS_KEY = "webui:addon:codexbar:providers";
 const LEGACY_PROVIDERS_KEY = "webui:plugin:codexbar:providers";
+
+type ConfigProvider = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  configurable: boolean;
+};
+
+type ProviderSettings = {
+  providers: ConfigProvider[];
+  version: string;
+};
 
 const barClass: Record<UsageTone, string> = {
   ok: "bg-success",
@@ -352,6 +364,49 @@ function ProviderRow({
   );
 }
 
+function ProviderSettingsRow({
+  provider,
+  saving,
+  isLastEnabled,
+  onToggle,
+}: {
+  provider: ConfigProvider;
+  saving: boolean;
+  isLastEnabled: boolean;
+  onToggle: () => void;
+}) {
+  const disabled = saving || !provider.configurable || (provider.enabled && isLastEnabled);
+  return (
+    <li className="flex items-center gap-2 border-b border-border py-2 last:border-b-0">
+      <ProviderIcon id={provider.id} tone="ok" />
+      <span className="min-w-0 flex-1 truncate text-xs font-medium text-text">{provider.name}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={provider.enabled}
+        aria-label={`${provider.name} を CodexBar で更新`}
+        disabled={disabled}
+        onClick={onToggle}
+        className={cx(
+          "inline-flex h-5 min-w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+          provider.enabled ? "bg-success" : "bg-surface-3",
+        )}
+      >
+        <span
+          className={cx(
+            "h-4 w-4 rounded-full bg-surface shadow-sm transition-transform",
+            provider.enabled && "translate-x-6",
+          )}
+        />
+        <span className="sr-only">CodexBarで更新</span>
+      </button>
+      <span className="w-12 shrink-0 text-right text-[10px] text-faint">
+        {saving ? "保存中…" : provider.enabled ? "オン" : "オフ"}
+      </span>
+    </li>
+  );
+}
+
 export function CodexBarWidget() {
   const [usage, setUsage] = useState<CodexBarUsage | null>(null);
   const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
@@ -361,6 +416,11 @@ export function CodexBarWidget() {
     {},
   );
   const [refreshing, setRefreshing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
 
@@ -431,6 +491,56 @@ export function CodexBarWidget() {
     });
   }, []);
 
+  const loadProviderSettings = useCallback(async () => {
+    setSettingsLoading(true);
+    try {
+      const data = await getJson<ProviderSettings>("/api/addons/codexbar/providers");
+      if (!mounted.current) return;
+      setProviderSettings(data);
+      setSettingsError(null);
+    } catch (err) {
+      if (!mounted.current) return;
+      setSettingsError(err instanceof Error ? err.message : "設定の読み込みに失敗しました");
+    } finally {
+      if (mounted.current) setSettingsLoading(false);
+    }
+  }, []);
+
+  const toggleProviderEnabled = useCallback(async (provider: ConfigProvider) => {
+    if (!providerSettings) return;
+    const enabledCount = providerSettings.providers.filter((item) => item.enabled).length;
+    if (provider.enabled && enabledCount <= 1) {
+      setSettingsError("少なくとも 1 つのプロバイダーを有効にしてください");
+      return;
+    }
+
+    setSavingProviderId(provider.id);
+    try {
+      const updated = await sendJson<ProviderSettings>(
+        "PUT",
+        "/api/addons/codexbar/providers",
+        { providerId: provider.id, enabled: !provider.enabled, version: providerSettings.version },
+      );
+      if (!mounted.current) return;
+      setProviderSettings(updated);
+      setSettingsError(null);
+      void refresh();
+    } catch (err) {
+      if (!mounted.current) return;
+      setSettingsError(err instanceof Error ? err.message : "設定の保存に失敗しました");
+    } finally {
+      if (mounted.current) setSavingProviderId(null);
+    }
+  }, [providerSettings, refresh]);
+
+  const toggleProviderSettings = () => {
+    setSettingsOpen((open) => {
+      const next = !open;
+      if (next && !providerSettings && !settingsLoading) void loadProviderSettings();
+      return next;
+    });
+  };
+
   const worst = usage ? worstProvider(usage) : null;
   // Tone reflects the busiest provider so urgency isn't hidden, but the shown
   // value is the overall (mean) usage across providers, not just the max.
@@ -478,6 +588,16 @@ export function CodexBarWidget() {
         </button>
         <button
           type="button"
+          onClick={toggleProviderSettings}
+          aria-expanded={settingsOpen}
+          aria-controls="codexbar-provider-settings"
+          title="更新するプロバイダー"
+          className="rounded-md px-1.5 py-1 text-[10px] font-medium text-faint hover:bg-surface-2 hover:text-text"
+        >
+          更新するプロバイダー
+        </button>
+        <button
+          type="button"
           onClick={toggleCollapsed}
           title={collapsed ? "開く" : "折りたたむ"}
           className="rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text"
@@ -497,6 +617,45 @@ export function CodexBarWidget() {
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      {settingsOpen && (
+        <section
+          id="codexbar-provider-settings"
+          aria-label="更新するプロバイダー"
+          className="shrink-0 border-b border-border px-3 py-2"
+        >
+          <p className="mb-1 text-[10px] text-faint">CodexBarで更新</p>
+          {settingsLoading && <p className="text-[11px] text-faint">読み込み中…</p>}
+          {settingsError && (
+            <div className="flex items-center gap-2 text-[11px] text-danger">
+              <span className="min-w-0 flex-1">{settingsError}</span>
+              <button
+                type="button"
+                onClick={() => void loadProviderSettings()}
+                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium hover:bg-danger-bg"
+              >
+                再試行
+              </button>
+            </div>
+          )}
+          {providerSettings && (
+            <ul>
+              {providerSettings.providers.map((provider) => (
+                <ProviderSettingsRow
+                  key={provider.id}
+                  provider={provider}
+                  saving={savingProviderId === provider.id}
+                  isLastEnabled={
+                    provider.enabled
+                    && providerSettings.providers.filter((item) => item.enabled).length === 1
+                  }
+                  onToggle={() => void toggleProviderEnabled(provider)}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
         {usage?.available && overall !== null && (

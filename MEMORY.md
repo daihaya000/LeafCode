@@ -1,5 +1,12 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23: CodexBar更新プロバイダー切替
+
+- 実施: CodexBar addon に「更新するプロバイダー」パネルを追加し、providerごとの `CodexBarで更新` switch、保存中・失敗・再試行状態を実装した。usage詳細の折りたたみとは別機能である。
+- API: `GET/PUT /api/addons/codexbar/providers` は許可済みprovider IDと有効状態だけを返す。固定AppData設定パスを原子的に更新し、version競合・未知ID・最後の有効provider無効化を拒否する。秘密情報・設定全体は返さない。
+- 判断: 複数WebUIプロセスのread-modify-write競合を避けるため、設定隣接の排他lockを取得後にversionを再確認する。CodexBar側は設定変更を監視して次回更新を待たずに反映する。
+- 教訓: snapshotは現在有効なproviderしか持たないため、設定一覧の権威ソースにできない。固定allowlistをAPI側で持ち、表示の折りたたみと取得対象の切替を混同しない。
+
 ## 2026-07-23 右上ヘッダー操作をケバブメニューへ統合・セッション切替を外部dialog化
 
 ### やったこと
