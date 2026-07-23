@@ -178,14 +178,14 @@ Expected:
 - `git diff --stat`: 2 files changed（バイナリファイルのため行数表示なし）
 - コードファイル（`.tsx`, `.ts`, `.test.ts` 等）の差分が混ざっていないこと
 
-- [ ] **Step 10: コミットする**
+- [ ] **Step 10: ソースアセットをコミットする**
 
 ```bash
-git add addons/codexbar/public/ollama.png web/public/addons/codexbar/ollama.png
+git add addons/codexbar/public/ollama.png
 git commit -m "chore: ollama ブランドアイコンを 180×180 正方形・背景色 #DFE5E8 に正規化"
 ```
 
-Expected: 2 ファイル staged、1 コミット成功。
+Expected: 1 ファイル staged、1 コミット成功。`web/public/addons/` は `.gitignore` 対象の生成済みコピーであり、`sync:addons` がソースから同期するためコミットしない。
 
 ---
 
