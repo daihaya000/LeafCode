@@ -10,6 +10,7 @@ import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
 import {
+  clampUsdJpyRate,
   DEFAULT_USD_JPY_RATE,
   formatCost,
   readCostDisplayPrefs,
@@ -205,7 +206,11 @@ export function SettingsView() {
 
   const commitRate = () => {
     const n = Number(rateDraft);
-    const usdJpyRate = Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE;
+    // Clamp before saving to match the clamp applied when reading back (R9#2).
+    // Without this, out-of-range values are saved as-is but displayed clamped,
+    // causing a mismatch between the input and the actual rate used.
+    const usdJpyRate = clampUsdJpyRate(Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE);
+    setRateDraft(String(usdJpyRate));
     applyCostPrefs({ ...costPrefs, rateMode: "manual", usdJpyRate });
   };
 

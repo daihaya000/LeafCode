@@ -99,7 +99,9 @@ export function AddProjectButton({
       setParent(data.parent);
       setEntries(data.entries ?? []);
       setQuickAccess(data.quickAccess ?? []);
-      if (data.path) setManualPath(data.path);
+      // Only sync manualPath on initial load (when empty) to avoid overwriting
+      // user-typed paths during navigation (R9#3).
+      if (data.path && !manualPath) setManualPath(data.path);
     } catch (err) {
       setError(err instanceof Error ? err.message : "一覧取得に失敗しました");
       setEntries([]);
@@ -107,7 +109,7 @@ export function AddProjectButton({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [manualPath]);
 
   useEffect(() => {
     if (!open) return;
