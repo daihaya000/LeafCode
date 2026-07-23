@@ -4579,3 +4579,16 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 - ソースと配信コピーが同じパス構造でも、Git追跡対象かを先に確認する。生成物は同期を検証してもコミットへ混在させない。
 - 全体テストでは既存のSSEモック不足と `timedFetch` モック不足により3ファイル17件が失敗した。一方、対象のProviderIconテスト、typecheck、lintは通過しており、アセット変更との因果は確認されなかった。
 
+
+---
+
+## 2026-07-23 起動不良: 開発成果物の分離
+
+### やったこと
+- `web/package.json` の `dev` を `web/scripts/dev.mjs` 経由に変更し、開発サーバーへ既定で `NEXT_DIST_DIR=.next-dev` を渡すようにした。
+
+### 判断理由
+- `next dev` とトレイホストの `next start` が同じ `web/.next` を共有すると、開発コンパイルが本番サーバーの成果物を上書きして応答不能になるため。`next.config.ts` と `.gitignore` には既に分離用の受け皿があった。
+
+### 教訓
+- 開発・本番を同じ作業ツリーで並行実行する場合、Next.js の `distDir` を必ず分離し、npm スクリプトで既定値を強制する。検証では `node --check`、package.json の parse、`npm run dev -- --help` により実行経路と引数透過を確認する。
