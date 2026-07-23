@@ -56,6 +56,16 @@ let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
 /** Localhost control plane for WebUI / tray restart actions. */
 const CONTROL_PORT = Number(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT) || 18765;
 let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
+
+/** True when the host should run without a tray icon. */
+export function isHeadless() {
+  return (
+    process.env.OPENCODE_HEADLESS === '1' ||
+    process.env.OPENCODE_WEBUI_HEADLESS === '1' ||
+    process.argv.includes('--headless')
+  );
+}
+
 /** Bind address for Next.js. Default 0.0.0.0 so VPN/LAN phone can reach it.
  *  OpenCode engine stays on 127.0.0.1. Override with OPENCODE_WEBUI_HOST=127.0.0.1 for local-only. */
 const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '0.0.0.0';
@@ -952,7 +962,7 @@ async function handleExistingInstance() {
 
   // A real host is holding the lock. If it has a tray icon, defer to it.
   // Give a freshly started host a grace period to spawn its tray helper.
-  const headless = process.env.OPENCODE_WEBUI_HEADLESS === '1';
+  const headless = isHeadless();
   if (!headless && hostIdentityVerified) {
     let tray = hasTrayChild(lockPid);
     if (tray === false) {
@@ -1564,7 +1574,7 @@ async function main() {
     process.exit(1);
   }
 
-  const headless = process.env.OPENCODE_WEBUI_HEADLESS === '1';
+  const headless = isHeadless();
 
   if (headless) {
     log('Headless mode (no tray). Ctrl+C to quit.');
@@ -1607,8 +1617,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  removeLock();
-  error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    removeLock();
+    error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}
