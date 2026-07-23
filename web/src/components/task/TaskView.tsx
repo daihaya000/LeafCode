@@ -1418,6 +1418,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         label: "タスクを削除",
         icon: <Trash2 className="h-4 w-4" />,
         onSelect: () => void removeTask(),
+        disabled: working || sessionActions.busy !== null,
         danger: true,
       },
     ];
