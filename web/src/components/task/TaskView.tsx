@@ -22,8 +22,6 @@ import {
   GitGraph,
   ListTodo,
   Loader2,
-  Mic,
-  MicOff,
   Paperclip,
   PanelRight,
   RefreshCw,

@@ -760,4 +760,34 @@ describe("TaskView voice input", () => {
     const micBtn = await screen.findByRole("button", { name: "音声入力" });
     expect((micBtn as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("does not change existing input when transcript is empty", async () => {
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    // Set an existing input value first
+    const textarea = screen.getByRole("combobox", {
+      name: "フォローアップを送信",
+    }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "existing text" } });
+    expect(textarea.value).toBe("existing text");
+
+    const micBtn = await screen.findByRole("button", { name: "音声入力" });
+    fireEvent.click(micBtn);
+    act(() => mockRecognition._dispatch("start"));
+
+    // Simulate an empty transcript (regression: guard `if (!text) return;`)
+    act(() =>
+      mockRecognition._dispatch("result", {
+        results: [{ 0: { transcript: "" }, isFinal: true }],
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(textarea.value).toBe("existing text");
+  });
 });
