@@ -292,6 +292,43 @@ describe("SettingsView", () => {
     );
   });
 
+  it("treats opencode target success as opencode.ok === true", async () => {
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    const healthResponses: Response[] = [
+      new Response(
+        JSON.stringify({ webui: { ok: true }, opencode: { ok: false } }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({ webui: { ok: true }, opencode: { ok: true } }),
+        { status: 200 },
+      ),
+    ];
+    let healthPolls = 0;
+    mockFetch((input) => {
+      if (String(input).includes("/api/host/restart")) {
+        return new Response(JSON.stringify({ ok: true }), { status: 202 });
+      }
+      if (String(input).includes("/api/health")) {
+        healthPolls += 1;
+        return healthResponses.shift() ?? new Response("{}", { status: 200 });
+      }
+      return undefined;
+    });
+
+    render(<SettingsView />);
+    await screen.findByText("ホスト接続中");
+    fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("status")?.textContent).not.toContain(
+        "再起動しています",
+      );
+    }, { timeout: 3000 });
+    expect(healthPolls).toBe(2);
+  });
+
   it("confirms the root path and removes the row after a successful delete", async () => {
     const roots = ["C:\\repo1"];
     const confirm = vi.fn(() => true);

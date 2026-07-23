@@ -289,17 +289,53 @@ export function SettingsView() {
       }
       if (target === "webui" || target === "all") {
         // WebUI process will die; poll until it comes back.
+        let success = false;
         for (let i = 0; i < 60; i += 1) {
           await new Promise((r) => setTimeout(r, 1000));
           try {
             const h = await timedFetch("/api/health", { timeoutMs: 1500 });
-            if (h.ok) break;
+            if (!h.ok) continue;
+            const body = (await h.json().catch(() => ({}))) as HealthDto;
+            if (target === "webui") {
+              // webui target: HTTP 200 + webui.ok === true
+              if (body.webui?.ok === true) {
+                success = true;
+                break;
+              }
+            } else {
+              // all target: webui.ok === true + opencode.ok === true
+              if (body.webui?.ok === true && body.opencode?.ok === true) {
+                success = true;
+                break;
+              }
+            }
           } catch {
             // still down
           }
         }
+        if (!success) {
+          throw new Error("再起動後のヘルスチェックが60回連続で失敗しました");
+        }
       } else {
-        await new Promise((r) => setTimeout(r, 1500));
+        // opencode target: poll until opencode.ok === true
+        let success = false;
+        for (let i = 0; i < 60; i += 1) {
+          await new Promise((r) => setTimeout(r, 1000));
+          try {
+            const h = await timedFetch("/api/health", { timeoutMs: 1500 });
+            if (!h.ok) continue;
+            const body = (await h.json().catch(() => ({}))) as HealthDto;
+            if (body.opencode?.ok === true) {
+              success = true;
+              break;
+            }
+          } catch {
+            // still down
+          }
+        }
+        if (!success) {
+          throw new Error("OpenCode の再起動が60回連続で確認できませんでした");
+        }
       }
       await refresh();
     } catch (err) {
