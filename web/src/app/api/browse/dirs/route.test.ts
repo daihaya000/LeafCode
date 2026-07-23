@@ -8,7 +8,12 @@ vi.mock("@/lib/quickaccess", () => ({
   listQuickAccess: vi.fn(() => new Promise(() => {})),
 }));
 
+vi.mock("@/lib/allowlist", () => ({
+  assertAllowedDirectory: vi.fn((dir: string) => ({ ok: true, path: dir })),
+}));
+
 import { GET } from "./route";
+import { assertAllowedDirectory } from "@/lib/allowlist";
 
 type EntryBody = {
   entries: { name: string; path: string; kind?: string }[];
@@ -69,5 +74,22 @@ describe("GET /api/browse/dirs", () => {
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
+  });
+
+  it("rejects files=1 requests outside allowlisted roots (R20)", async () => {
+    vi.mocked(assertAllowedDirectory).mockReturnValueOnce({
+      ok: false,
+      error: "directory not allowlisted",
+      status: 403,
+    });
+
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/browse/dirs?path=${encodeURIComponent("/etc")}&files=1`,
+      ),
+    );
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("directory not allowlisted");
   });
 });

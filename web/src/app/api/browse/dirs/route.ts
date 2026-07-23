@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { listQuickAccess } from "@/lib/quickaccess";
+import { assertAllowedDirectory } from "@/lib/allowlist";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,9 @@ function samePath(a: string, b: string): boolean {
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get("path");
   const home = os.homedir();
+  // Opt-in: the in-task file tree needs files too; the project picker omits
+  // this so it keeps listing directories only.
+  const includeFiles = req.nextUrl.searchParams.get("files") === "1";
 
   let resolved: string;
   if (!raw || !raw.trim()) {
@@ -88,6 +92,17 @@ export async function GET(req: NextRequest) {
     } catch {
       return NextResponse.json({ error: "invalid path" }, { status: 400 });
     }
+  }
+
+  // When listing files for the in-task FileTree (files=1), restrict to
+  // allowlisted project roots to prevent arbitrary directory traversal (R20).
+  // The project picker (files=0) is intentionally unrestricted for home browsing.
+  if (includeFiles) {
+    const check = assertAllowedDirectory(resolved);
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: check.status });
+    }
+    resolved = check.path;
   }
 
   if (!fs.existsSync(resolved)) {
@@ -110,9 +125,6 @@ export async function GET(req: NextRequest) {
   const parent =
     samePath(resolved, home) || parentDir === resolved ? null : parentDir;
   const atHome = samePath(resolved, home);
-  // Opt-in: the in-task file tree needs files too; the project picker omits
-  // this so it keeps listing directories only.
-  const includeFiles = req.nextUrl.searchParams.get("files") === "1";
 
   try {
     const entries = listDirs(resolved, includeFiles);
