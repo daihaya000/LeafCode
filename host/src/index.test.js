@@ -160,3 +160,46 @@ test('getOpencodeExitDecision logs only manual host restart required when restar
     },
   );
 });
+
+test('parseCaddyPublicUrl prefers a routable HTTPS site address', () => {
+  const caddyfile = `{
+	admin localhost:2019
+	skip_install_trust
+}
+
+https://localhost:8443, https://127.0.0.1:8443, https://192.168.0.102:8443 {
+	tls internal
+	reverse_proxy 127.0.0.1:3000 {
+		flush_interval -1
+	}
+}
+`;
+  assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://192.168.0.102:8443');
+});
+
+test('parseCaddyPublicUrl falls back to localhost when only loopback is present', () => {
+  const caddyfile = `https://localhost:8443 {
+	tls internal
+	reverse_proxy 127.0.0.1:3000
+}
+`;
+  assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://localhost:8443');
+});
+
+test('parseCaddyPublicUrl ignores commented site addresses and http-only blocks', () => {
+  const caddyfile = `# https://commented.example.com {
+:8080 {
+	reverse_proxy 127.0.0.1:3000
+}
+`;
+  assert.equal(host.parseCaddyPublicUrl(caddyfile), null);
+});
+
+test('parseCaddyPublicUrl treats a bare domain as auto-HTTPS', () => {
+  // A bare domain (webui.example.com {) implies Caddy auto-HTTPS.
+  const caddyfile = `webui.example.com {
+	reverse_proxy 127.0.0.1:3000
+}
+`;
+  assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://webui.example.com');
+});

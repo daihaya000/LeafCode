@@ -89,6 +89,72 @@ const CADDYFILE =
   process.env.OPENCODE_WEBUI_CADDYFILE || join(REPO_ROOT, 'deploy', 'Caddyfile');
 const CADDYFILE_EXAMPLE = join(REPO_ROOT, 'deploy', 'Caddyfile.example');
 
+/**
+ * Extract the public HTTPS origin from Caddyfile text (pure, testable).
+ *
+ * Scans top-level site-address blocks (a line ending in `{` outside any nested
+ * directive block) and returns the first `https://host[:port]` token. A
+ * LAN/VPN address is preferred over localhost so phones get a reachable URL.
+ * Returns null when no HTTPS site address is found.
+ */
+export function parseCaddyPublicUrl(text) {
+  if (typeof text !== 'string') return null;
+  const candidates = [];
+  let depth = 0;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    // Only site-address lines at top level (depth 0) that open a block.
+    if (depth === 0 && line.endsWith('{')) {
+      const head = line.slice(0, -1).trim();
+      // Skip the global options block `{ ... }` (empty head).
+      if (head) {
+        for (const token of head.split(',')) {
+          const addr = token.trim();
+          if (!addr) continue;
+          const https = /^https:\/\/([^\s{]+)/i.exec(addr);
+          if (https) {
+            candidates.push(`https://${https[1]}`);
+            continue;
+          }
+          // Skip explicit http:// and port-only listeners (e.g. `:8080`).
+          if (/^http:\/\//i.test(addr) || addr.startsWith(':')) continue;
+          // A bare hostname (optionally :443) means Caddy auto-HTTPS.
+          const bare = /^([a-z0-9.-]+)(?::(\d+))?$/i.exec(addr);
+          if (bare && (!bare[2] || bare[2] === '443')) {
+            candidates.push(`https://${bare[1]}${bare[2] ? `:${bare[2]}` : ''}`);
+          }
+        }
+      }
+    }
+    // Track brace depth so nested directive blocks aren't treated as sites.
+    for (const ch of line) {
+      if (ch === '{') depth++;
+      else if (ch === '}') depth = Math.max(0, depth - 1);
+    }
+  }
+  if (candidates.length === 0) return null;
+  // Prefer a routable LAN/VPN address over loopback for phone access.
+  const routable = candidates.find(
+    (u) => !/\/\/(localhost|127\.0\.0\.1)(:|$)/i.test(u),
+  );
+  return routable || candidates[0];
+}
+
+/**
+ * Best-effort read of the public HTTPS origin from the active Caddyfile so the
+ * WebUI's /api/access can advertise it instead of the internal http://IP:3000.
+ * Returns null when Caddy is disabled or the file cannot be read/parsed.
+ */
+function detectCaddyPublicUrl() {
+  if (!CADDY_ENABLED) return null;
+  try {
+    return parseCaddyPublicUrl(readFileSync(CADDYFILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 const iconData = JSON.parse(readFileSync(join(__dirname, 'icon.json'), 'utf8'));
 const TRAY_ICON = iconData.base64;
 
@@ -867,6 +933,11 @@ async function spawnWeb() {
       OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
       OPENCODE_WEBUI_HOST_CONTROL_URL: CONTROL_URL,
       PORT: String(WEBUI_PORT),
+      // When Caddy fronts the WebUI with HTTPS, advertise its public origin so
+      // /api/access shows the reachable URL instead of http://IP:3000.
+      ...(detectCaddyPublicUrl()
+        ? { OPENCODE_WEBUI_PUBLIC_URL: detectCaddyPublicUrl() }
+        : {}),
     },
   });
   webProc = child;

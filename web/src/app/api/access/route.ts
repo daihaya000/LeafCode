@@ -29,12 +29,50 @@ function classify(name: string): NetAddr["kind"] {
   return "other";
 }
 
+/**
+ * When Caddy fronts the WebUI with HTTPS, the host passes the public origin
+ * (e.g. https://webui.example.com) via OPENCODE_WEBUI_PUBLIC_URL. In that case
+ * the raw http://IP:3000 URLs are wrong — traffic must go through Caddy.
+ */
+function publicUrl(): string | null {
+  const raw = process.env.OPENCODE_WEBUI_PUBLIC_URL?.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
 /** Addresses the phone can use (VPN / LAN). OpenCode stays on localhost. */
 export async function GET() {
   const host =
     process.env.OPENCODE_WEBUI_HOST ||
     process.env.HOSTNAME_BIND ||
     "0.0.0.0";
+
+  const publicOrigin = publicUrl();
+  if (publicOrigin) {
+    // Caddy HTTPS mode: advertise the public origin, not the internal port.
+    return NextResponse.json({
+      bind: host,
+      port: PORT,
+      publicUrl: publicOrigin,
+      localUrl: `http://127.0.0.1:${PORT}`,
+      addresses: [
+        {
+          name: "Caddy (HTTPS)",
+          address: publicOrigin,
+          url: publicOrigin,
+          kind: "other" as const,
+        },
+      ],
+      hint: "Caddy 経由の HTTPS で公開中です。スマホからは下の URL を開いてください。",
+    });
+  }
+
   const addresses: NetAddr[] = [];
 
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
