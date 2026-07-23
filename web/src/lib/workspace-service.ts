@@ -147,11 +147,20 @@ export async function provisionWorkspace(input: {
       addAllowedRoot(absolutePath);
     } catch (err) {
       // createTemporaryCopy rolls back its partial directory. If allowlisting
-      // failed after the copy was created, remove precisely that copy's entry.
-      try {
-        if (worktreePath) removeAllowedRoot(worktreePath);
-      } catch {
-        /* best effort rollback */
+      // failed after the copy was created, remove precisely that copy and its
+      // allowlist entry. Keep these independent so a failed DB cleanup cannot
+      // leave the on-disk copy orphaned.
+      if (worktreePath) {
+        try {
+          removeAllowedRoot(worktreePath);
+        } catch {
+          /* best effort rollback */
+        }
+        try {
+          removeTemporaryCopy(worktreePath, workspaceId);
+        } catch {
+          /* best effort rollback */
+        }
       }
       throw new ServiceError(
         err instanceof Error ? err.message : "temporary copy failed",
@@ -263,7 +272,7 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   if (row.isolation === "temporary_copy" && row.worktree_path) {
     const wt = path.resolve(row.worktree_path);
     try {
-      removeTemporaryCopy(row.worktree_path);
+      removeTemporaryCopy(row.worktree_path, row.id);
     } catch {
       if (fs.existsSync(wt)) {
         setWorkspaceStatus(id, "orphaned");

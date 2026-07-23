@@ -294,7 +294,7 @@ export async function POST(req: NextRequest) {
       try {
         if (fs.existsSync(row.worktree_path)) {
           const { removeTemporaryCopy } = await import("@/lib/copy");
-          removeTemporaryCopy(row.worktree_path);
+          removeTemporaryCopy(row.worktree_path, row.id);
         }
       } catch (err) {
         if (fs.existsSync(row.worktree_path)) {

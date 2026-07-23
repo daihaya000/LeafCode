@@ -131,7 +131,7 @@ beforeEach(() => {
 });
 
 describe("provisionWorkspace temporary_copy rollback", () => {
-  it("removes the exact copy allowlist entry when allowlisting fails", async () => {
+  it("removes the exact copy and allowlist entry when allowlisting fails", async () => {
     const copyPath = "C:\\data\\copies\\ws1";
     createTemporaryCopy.mockReturnValue(copyPath);
     addAllowedRoot.mockImplementation(() => {
@@ -146,6 +146,7 @@ describe("provisionWorkspace temporary_copy rollback", () => {
     });
 
     expect(removeAllowedRoot).toHaveBeenCalledWith(copyPath);
+    expect(removeTemporaryCopy).toHaveBeenCalledWith(copyPath, expect.any(String));
   });
 });
 

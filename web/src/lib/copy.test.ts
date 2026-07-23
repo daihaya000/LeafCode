@@ -63,11 +63,13 @@ describe("temporary copy isolation", () => {
   it("removes outward symlinks from the copied tree while keeping regular files", () => {
     const symlinkPath = createOutwardDirectorySymlink(sourceRoot);
     if (!symlinkPath) return;
+    const lstatSync = vi.spyOn(fs, "lstatSync");
 
     const dest = createTemporaryCopy(sourceRoot, "test-copy-1");
 
     expect(fs.existsSync(path.join(dest, "regular.txt"))).toBe(true);
     expect(fs.existsSync(path.join(dest, "escape-link"))).toBe(false);
+    expect(lstatSync).toHaveBeenCalledWith(path.join(dest, "escape-link"));
   });
 
   it("rolls back only the exact destination when fs.cpSync fails", () => {
@@ -98,9 +100,28 @@ describe("temporary copy isolation", () => {
     fs.mkdirSync(siblingDest, { recursive: true });
     fs.writeFileSync(path.join(siblingDest, "keep.txt"), "do not delete sibling");
 
-    removeTemporaryCopy(dest);
+    removeTemporaryCopy(dest, "test-copy-3");
 
     expect(fs.existsSync(dest)).toBe(false);
     expect(fs.existsSync(path.join(siblingDest, "keep.txt"))).toBe(true);
+  });
+
+  it("removeTemporaryCopy rejects traversal into a sibling copy without deleting it", () => {
+    const copiesRoot = temporaryCopyRoot();
+    const copyA = path.join(copiesRoot, "copy-a");
+    const copyB = path.join(copiesRoot, "copy-b");
+    fs.mkdirSync(copyA, { recursive: true });
+    fs.mkdirSync(copyB, { recursive: true });
+    fs.writeFileSync(path.join(copyB, "keep.txt"), "do not delete copy-b");
+
+    let thrown: unknown;
+    try {
+      removeTemporaryCopy(path.join(copyA, "..", "copy-b"), "copy-a");
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(fs.existsSync(path.join(copyB, "keep.txt"))).toBe(true);
+    expect(thrown).toBeInstanceOf(Error);
   });
 });

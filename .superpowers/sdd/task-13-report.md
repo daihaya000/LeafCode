@@ -17,3 +17,16 @@
 ## Notes
 
 - Windows で symlink 作成可能な環境で、外向き symlink 除去テストを実行して PASS。
+
+## Importantレビュー修正
+
+- allowlist 登録失敗時は、allowlist エントリと作成済み temporary copy を独立してベストエフォート削除する。片方の cleanup が失敗してももう片方を実行する。
+- temporary copy 削除は、正規化済みパスの basename が workspace/copy ID と完全一致する直接の子だけを許可する。manifest の `copy-a/../copy-b` のようなパスで別コピーを削除できない。
+- symlink cleanup は `lstatSync` で no-follow 判定し、削除直前に再検査して `unlinkSync` を使う。atomic publish ではないため、copies root は当該プロセス/ユーザーだけが書き込める場所に限定する。
+
+### TDD / Verification
+
+- RED: `npm test -- src/lib/workspace-service.test.ts src/lib/copy.test.ts` — allowlist 失敗時の copy cleanup 未実施、および `copy-a/../copy-b` が sibling copy を削除することを確認。
+- GREEN: `npm test -- src/lib/workspace-service.test.ts src/lib/copy.test.ts` — PASS（2 files / 13 tests）。
+- `npm test -- src/app/api/workspaces/orphans/route.test.ts` — PASS（1 file / 5 tests）。
+- `npm run typecheck` — PASS。

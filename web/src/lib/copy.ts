@@ -28,7 +28,11 @@ export function createTemporaryCopy(sourceRoot: string, id: string): string {
 
   // A copy id must identify exactly one direct child of the copies root. This
   // prevents a malformed id from causing rollback to affect another copy.
-  if (path.dirname(dest) !== root) {
+  if (
+    path.dirname(dest) !== root ||
+    path.basename(id) !== id ||
+    path.basename(dest) !== id
+  ) {
     throw new Error("temporary copy destination must be a direct child of copies root");
   }
 
@@ -48,7 +52,7 @@ export function createTemporaryCopy(sourceRoot: string, id: string): string {
   } catch (err) {
     if (created) {
       try {
-        removeTemporaryCopy(dest);
+        removeTemporaryCopy(dest, id);
       } catch {
         /* best effort rollback */
       }
@@ -57,7 +61,16 @@ export function createTemporaryCopy(sourceRoot: string, id: string): string {
   }
 }
 
-/** Remove symlinks that resolve outside `copyRoot` without traversing links. */
+/**
+ * Remove symlinks that resolve outside `copyRoot` without traversing links.
+ *
+ * `lstatSync` avoids following a link while classifying it. The entry is
+ * checked again immediately before `unlinkSync`, which refuses directories,
+ * so a link-to-directory swap cannot turn cleanup into recursive deletion.
+ * This is not an atomic publish protocol: a writer with access to the copy
+ * tree can still race these operations. The copies root must therefore remain
+ * private to this process/user.
+ */
 function removeOutwardSymlinks(current: string, copyRoot: string): void {
   for (const entry of fs.readdirSync(current)) {
     const entryPath = path.join(current, entry);
@@ -66,7 +79,12 @@ function removeOutwardSymlinks(current: string, copyRoot: string): void {
     if (stat.isSymbolicLink()) {
       const resolvedTarget = path.resolve(current, fs.readlinkSync(entryPath));
       if (!isDescendantOrSame(copyRoot, resolvedTarget)) {
-        fs.rmSync(entryPath, { force: true });
+        // Re-check without following immediately before unlinking. `unlink`
+        // deliberately cannot recursively remove a directory if it was
+        // swapped in after the initial lstat/readlink pair.
+        if (fs.lstatSync(entryPath).isSymbolicLink()) {
+          fs.unlinkSync(entryPath);
+        }
       }
       // Do not follow an inward symlink: the target is already visited through
       // its real directory entry, and following it can introduce a cycle.
@@ -84,13 +102,24 @@ function isDescendantOrSame(root: string, candidate: string): boolean {
   return rel === "" || (!path.isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${path.sep}`));
 }
 
-export function removeTemporaryCopy(copyPath: string): void {
+/**
+ * Delete only the copy named by `expectedCopyId` directly below the copies
+ * root. The path comes from persisted workspace metadata and is not trusted
+ * to select a different copy after normalization.
+ */
+export function removeTemporaryCopy(copyPath: string, expectedCopyId: string): void {
   const root = path.resolve(temporaryCopyRoot());
   const resolved = path.resolve(copyPath);
+  const copyId = path.basename(resolved);
   // Require an exact parent match, rather than a prefix/descendant check, so a
   // cleanup request cannot delete the copies root or traverse into another
-  // copy's nested path.
-  if (path.dirname(resolved) !== root) {
+  // copy's nested path. Compare the post-normalization basename to the
+  // workspace's expected ID so `copy-a/../copy-b` cannot target copy-b.
+  if (
+    path.dirname(resolved) !== root ||
+    path.basename(expectedCopyId) !== expectedCopyId ||
+    copyId !== expectedCopyId
+  ) {
     throw new Error("refusing to delete path outside copies root");
   }
   fs.rmSync(resolved, { recursive: true, force: true });
