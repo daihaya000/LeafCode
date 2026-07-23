@@ -571,6 +571,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               ref={textareaRef}
               value={prompt}
               rows={2}
+              style={{ fontSize: "16px", textSizeAdjust: "100%", WebkitTextSizeAdjust: "100%" }}
               aria-label="タスクの説明"
               role="combobox"
               aria-busy={submitting || undefined}

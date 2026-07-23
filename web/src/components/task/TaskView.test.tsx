@@ -439,6 +439,27 @@ describe("TaskView", () => {
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("does not block sending for more than 5 seconds when activity hangs", async () => {
+    taskStatus = "idle";
+    vi.useFakeTimers();
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    sendJson.mockReturnValue(new Promise<void>(() => {}));
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(streamMock.sendPrompt).toHaveBeenCalledWith("hello", expect.any(Object));
+  });
+
   it("blocks image submission to an unknown model in TaskView (capability undefined)", async () => {
     taskStatus = "idle";
     vi.stubGlobal(

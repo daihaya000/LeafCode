@@ -894,9 +894,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     const current = taskRef.current;
     if (!current?.sessionId) return;
     try {
-      await sendJson("POST", `/api/tasks/${current.id}/activity`, {
-        sessionId: current.sessionId,
-      });
+      // Activity ordering is best-effort; never block sending for more than 5s.
+      await Promise.race([
+        sendJson("POST", `/api/tasks/${current.id}/activity`, {
+          sessionId: current.sessionId,
+        }),
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      ]);
     } catch {
       // Activity ordering is best-effort and must not block the prompt.
     }
@@ -2048,6 +2052,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   ref={textareaRef}
                   value={input}
                   rows={1}
+                  style={{ fontSize: "16px", textSizeAdjust: "100%", WebkitTextSizeAdjust: "100%" }}
                   aria-label="フォローアップを送信"
                   role="combobox"
                   aria-busy={composerLocked || undefined}
