@@ -383,8 +383,10 @@ git commit -m "feat: GET /provider・/config/providers・/global/config に mask
 **Files:**
 - Modify: `web/src/components/home/HomeView.tsx:410-425`（`submit` 内 `sendingImageBlocked`）
 - Modify: `web/src/components/task/TaskView.tsx:897-916`（`send` 内 `sendingImageBlocked`）
+- Modify: `web/src/app/api/tasks/route.ts`（画像付き送信のモデル capability 検証）
 - Test: `web/src/components/home/HomeView.test.tsx`
 - Test: `web/src/components/task/TaskView.test.tsx`
+- Test: `web/src/app/api/tasks/route.test.ts`
 
 **Interfaces:**
 - Consumes: `modelCapabilities: Record<string, { attachment?: boolean; image?: boolean }>`
@@ -500,10 +502,28 @@ Expected: FAIL
 Run: `cd web && npx vitest run src/components/task/TaskView.test.tsx -t "blocks image submission to an unknown model in TaskView"`
 Expected: PASS
 
-- [ ] **Step 9: コミットする**
+- [ ] **Step 9: 失敗テストを書く（BFF）**
+
+`web/src/app/api/tasks/route.test.ts` に、画像付きリクエストで選択モデルの capability が `true` 以外（`false`、`undefined`、取得失敗、未知モデル）の場合に HTTP 400 を返し、OpenCode upstream への送信を行わないケースを追加する。
+
+- [ ] **Step 10: テストを実行して失敗を確認する**
+
+Run: `cd web && npx vitest run src/app/api/tasks/route.test.ts -t "rejects image submission unless model capability is explicitly true"`
+Expected: FAIL — 現行BFFはファイル形式だけを検証し、画像 capability を検証せずに upstream へ転送する。
+
+- [ ] **Step 11: 最小実装を書く（BFF）**
+
+`web/src/app/api/tasks/route.ts` で、画像添付を含むリクエストはサーバー側でモデル capability を解決し、`image === true` または `attachment === true` の場合だけ downstream へ転送する。それ以外は HTTP 400 と日本語の安全なエラー本文を返し、upstream呼出を行わない。
+
+- [ ] **Step 12: テストを実行して成功を確認する**
+
+Run: `cd web && npx vitest run src/app/api/tasks/route.test.ts -t "rejects image submission unless model capability is explicitly true"`
+Expected: PASS
+
+- [ ] **Step 13: コミットする**
 
 ```bash
-git add web/src/components/home/HomeView.tsx web/src/components/home/HomeView.test.tsx web/src/components/task/TaskView.tsx web/src/components/task/TaskView.test.tsx
+git add web/src/components/home/HomeView.tsx web/src/components/home/HomeView.test.tsx web/src/components/task/TaskView.tsx web/src/components/task/TaskView.test.tsx web/src/app/api/tasks/route.ts web/src/app/api/tasks/route.test.ts
 git commit -m "fix: 画像 capability fail-closed — 未知モデル・未定義・非対応をブロック"
 ```
 
