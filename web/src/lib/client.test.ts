@@ -35,7 +35,7 @@ describe("ocJson timeout", () => {
       "fetch",
       vi.fn(async () => ({
         ok: true,
-        json: async () => ({ a: 1 }),
+        text: async () => JSON.stringify({ a: 1 }),
       })),
     );
 
@@ -51,13 +51,68 @@ describe("ocJson timeout", () => {
       vi.fn(async () => ({
         ok: false,
         status: 503,
-        json: async () => ({ error: "down" }),
+        text: async () => JSON.stringify({ error: "down" }),
       })),
     );
 
     const error = await ocJson("/session/status", "/repo").catch((err) => err);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(503);
+  });
+
+  it("resolves with undefined instead of throwing on a 204 No Content response", async () => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    const jsonSpy = vi.fn(() => Promise.reject(new SyntaxError("Unexpected end of JSON input")));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 204,
+        json: jsonSpy,
+      })),
+    );
+
+    await expect(ocJson("/session/status", "/repo")).resolves.toBeUndefined();
+    // 204 must short-circuit before calling the (SyntaxError-throwing) json() reader.
+    expect(jsonSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["getJson", () => getJson("/api/tasks")],
+    ["sendJson", () => sendJson("DELETE", "/api/tasks", undefined)],
+    ["ocJson", () => ocJson("/session/status", "/repo")],
+  ])("%s resolves with undefined instead of throwing on a 205 Reset Content response", async (_name, call) => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 205, text: async () => "" })),
+    );
+
+    await expect(call()).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["getJson", () => getJson("/api/tasks")],
+    ["sendJson", () => sendJson("DELETE", "/api/tasks", undefined)],
+    ["ocJson", () => ocJson("/session/status", "/repo")],
+  ])("%s resolves with undefined instead of throwing on a 200 response with an empty body", async (_name, call) => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, text: async () => "" })),
+    );
+
+    await expect(call()).resolves.toBeUndefined();
+  });
+
+  it("still throws on malformed (non-empty) JSON bodies", async () => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, text: async () => "{not json" })),
+    );
+
+    await expect(ocJson("/session/status", "/repo")).rejects.toThrow(SyntaxError);
   });
 
   it.each([
@@ -69,7 +124,7 @@ describe("ocJson timeout", () => {
     vi.stubGlobal("location", { origin: "http://localhost:3000" });
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
-      json: () => new Promise<unknown>(() => {}),
+      text: () => new Promise<unknown>(() => {}),
     })));
 
     const pending = call().catch((err) => err);
@@ -79,7 +134,6 @@ describe("ocJson timeout", () => {
     expect((error as ApiError).status).toBe(408);
   });
 });
-
 
 describe("getJson timeout", () => {
   afterEach(() => {
@@ -123,7 +177,7 @@ describe("getJson body read timeout", () => {
       vi.fn(() =>
         Promise.resolve({
           ok: true,
-          json: () =>
+          text: () =>
             new Promise<unknown>((resolve) => {
               releaseBody = resolve;
               // Never resolves — simulates a hung body read

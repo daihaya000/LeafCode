@@ -78,12 +78,28 @@ async function readBodyWithTimeout<T>(
   return Promise.race([bodyPromise, abortPromise]) as Promise<T>;
 }
 
+/**
+ * Parse a response body as JSON, treating 204/205 or an empty/whitespace-only
+ * body as a safe "no content" success (`undefined`) instead of letting
+ * `Response.json()` throw a SyntaxError on empty input.
+ */
+async function parseJsonBody<T>(res: Response): Promise<T> {
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (text.trim().length === 0) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
+}
+
 async function readJsonWithTimeout<T>(
   res: Response,
   path: string,
   signal: AbortSignal | undefined,
 ): Promise<T> {
-  return readBodyWithTimeout(() => res.json(), path, signal);
+  return readBodyWithTimeout(() => parseJsonBody<T>(res), path, signal);
 }
 
 function keepTimeoutForBody(
@@ -179,7 +195,8 @@ export async function getJson<T>(
     const body = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(
-        (body as { error?: string }).error ?? `${path} failed: ${res.status}`,
+        (body as { error?: string } | undefined)?.error ??
+          `${path} failed: ${res.status}`,
         res.status,
       );
     }
@@ -210,7 +227,8 @@ export async function sendJson<T>(
     const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(
-        (data as { error?: string }).error ?? `${path} failed: ${res.status}`,
+        (data as { error?: string } | undefined)?.error ??
+          `${path} failed: ${res.status}`,
         res.status,
       );
     }
