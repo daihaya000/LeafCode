@@ -9,7 +9,7 @@
     "prestart": "npm run sync:addons",
     "pretest": "npm run sync:addons",
     "pretypecheck": "npm run sync:addons",
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
