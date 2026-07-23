@@ -31,3 +31,12 @@
 - `npm run typecheck`: PASS
 - `npm run lint -- src/components/settings/SettingsView.tsx src/components/settings/SettingsView.test.tsx`: PASS
 - `dev-server.log` 確認済み。既存ログ末尾に compile 成功と EPIPE 記録あり（今回のテスト失敗ではない）。
+
+## Task12再レビュー対応（Minor 3）
+
+### 実装
+
+- root 削除中の状態を共通 `busy` から分離し、対象 root のみ `aria-busy` と「削除中…」を表示するようにした。
+- 削除ボタンに `min-h-6 min-w-6` を追加し、24px 以上のタッチターゲットを確保した。
+- root path に `text-text`、エラー alert に `text-diff-del-text` を適用し、semantic token 経由でコントラストを改善した。
+- 対象 root だけが busy になる RTL テストを追加した。

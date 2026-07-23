@@ -316,6 +316,33 @@ describe("SettingsView", () => {
     });
   });
 
+  it("marks only the root being deleted as busy", async () => {
+    const roots = ["C:\\repo1", "C:\\repo2"];
+    let resolveDelete: (() => void) | undefined;
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    mockSettingsGetJson(roots);
+    sendJson.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveDelete = () => resolve({ roots });
+      }),
+    );
+
+    render(<SettingsView />);
+    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    const firstDelete = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
+    const secondDelete = screen.getByRole("button", { name: /C:\\repo2を削除/ });
+    fireEvent.click(firstDelete);
+
+    await waitFor(() => {
+      expect(firstDelete.getAttribute("aria-busy")).toBe("true");
+      expect(firstDelete.textContent).toContain("削除中…");
+      expect(secondDelete.getAttribute("aria-busy")).toBe("false");
+      expect(secondDelete.textContent).not.toContain("削除中…");
+    });
+
+    resolveDelete?.();
+  });
+
   it("keeps the root and announces a delete error", async () => {
     const roots = ["C:\\repo1"];
     vi.stubGlobal("confirm", vi.fn(() => true));

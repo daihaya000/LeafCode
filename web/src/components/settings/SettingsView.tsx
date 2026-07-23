@@ -98,6 +98,7 @@ export function SettingsView() {
   const [stray, setStray] = useState<StrayDto[]>([]);
   const [newRoot, setNewRoot] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deletingRoot, setDeletingRoot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [mcpStatus, setMcpStatus] = useState<string>("未取得");
@@ -348,9 +349,11 @@ export function SettingsView() {
       setNewRoot("");
     });
 
-  const removeRoot = (r: string) =>
-    guard(async () => {
-      if (!window.confirm(`許可ルート「${r}」を削除しますか？`)) return;
+  const removeRoot = async (r: string) => {
+    if (!window.confirm(`許可ルート「${r}」を削除しますか？`)) return;
+    setDeletingRoot(r);
+    setError(null);
+    try {
       try {
         await sendJson("DELETE", "/api/roots", undefined, { path: r });
       } catch (err) {
@@ -364,7 +367,14 @@ export function SettingsView() {
         }
         throw err;
       }
-    });
+      await refresh();
+      notifyTasksChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "操作に失敗しました");
+    } finally {
+      setDeletingRoot(null);
+    }
+  };
 
   const cleanupOrphans = () =>
     guard(async () => {
@@ -439,7 +449,7 @@ export function SettingsView() {
       <main className="mx-auto max-w-3xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]">
         {error && (
           <p
-            className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+            className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-diff-del-text"
             role="alert"
             aria-live="assertive"
           >
@@ -751,16 +761,16 @@ export function SettingsView() {
                     key={r}
                     className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 font-mono text-xs text-muted"
                   >
-                    <span className="truncate">{r}</span>
+                    <span className="truncate text-text">{r}</span>
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={deletingRoot !== null}
                       aria-label={`${r}を削除`}
-                      aria-busy={busy}
+                      aria-busy={deletingRoot === r}
                       onClick={() => void removeRoot(r)}
-                      className="shrink-0 rounded-lg p-1 text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
+                      className="min-h-6 min-w-6 shrink-0 rounded-lg p-1 text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
                     >
-                      {busy ? "削除中…" : <Trash2 className="h-3.5 w-3.5" />}
+                      {deletingRoot === r ? "削除中…" : <Trash2 className="h-3.5 w-3.5" />}
                     </button>
                   </li>
                 ))}
