@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Paperclip, X } from "lucide-react";
+import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Mic, MicOff, Paperclip, X } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
+import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { Button, GhostSelect, cx } from "@/components/ui";
+import { useVoiceInput } from "@/lib/use-voice-input";
 import {
   readAccessMode,
   writeAccessMode,
@@ -136,6 +138,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [cursor, setCursor] = useState(0);
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
+  const voice = useVoiceInput({ disabled: submitting });
   const slashCommands = useSlashCommands();
   const slashQuery = useMemo(
     () => parseSlashQuery(prompt, cursor),
@@ -347,6 +350,24 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, []);
+
+  const onVoiceTranscript = useCallback(
+    (text: string) => {
+      setPrompt((prev) => {
+        const suffix = prev && !prev.endsWith(" ") ? " " : "";
+        return prev + suffix + text;
+      });
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+        autoResize();
+      });
+    },
+    [autoResize],
+  );
 
   const syncCursor = useCallback(() => {
     const el = textareaRef.current;
@@ -650,6 +671,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   >
                     <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
+                  <VoiceInputButton
+                    voice={voice}
+                    onTranscript={onVoiceTranscript}
+                    disabled={submitting}
+                  />
                   <GhostSelect
                     value={projectId}
                     disabled={projects.length === 0 || submitting}

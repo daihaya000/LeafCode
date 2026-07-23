@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "./HomeView";
 
@@ -227,5 +227,114 @@ describe("HomeView image attachments", () => {
     expect(accessWrap?.className).not.toContain("order-first");
     expect(accessWrap?.className).not.toContain("xl:order-none");
     expect(accessWrap?.className).not.toMatch(/max-w-\[/);
+  });
+
+  describe("HomeView voice input", () => {
+    let mockRecognition: {
+      start: ReturnType<typeof vi.fn>;
+      stop: ReturnType<typeof vi.fn>;
+      abort: ReturnType<typeof vi.fn>;
+      addEventListener: ReturnType<typeof vi.fn>;
+      removeEventListener: ReturnType<typeof vi.fn>;
+      _dispatch: (type: string, ...args: unknown[]) => void;
+    };
+
+    beforeEach(() => {
+      const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+      mockRecognition = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        abort: vi.fn(),
+        addEventListener: vi.fn(
+          (type: string, handler: (...args: unknown[]) => void) => {
+            if (!listeners.has(type)) listeners.set(type, new Set());
+            listeners.get(type)!.add(handler);
+          },
+        ),
+        removeEventListener: vi.fn(
+          (type: string, handler: (...args: unknown[]) => void) => {
+            listeners.get(type)?.delete(handler);
+          },
+        ),
+        _dispatch(type: string, ...args: unknown[]) {
+          for (const handler of listeners.get(type) ?? []) {
+            handler(...args);
+          }
+        },
+      };
+      // Wrap the mock in a constructor so `new Ctor()` works (see
+      // use-voice-input.test.ts for the same pattern).
+      function MockCtor() {
+        return mockRecognition;
+      }
+      vi.stubGlobal("webkitSpeechRecognition", MockCtor);
+      vi.stubGlobal("SpeechRecognition", undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("renders the mic button when SpeechRecognition is supported", async () => {
+      render(<HomeView />);
+      expect(await screen.findByRole("button", { name: "音声入力" })).toBeTruthy();
+    });
+
+    it("appends transcript to the prompt on stop", async () => {
+      render(<HomeView />);
+      const micBtn = await screen.findByRole("button", { name: "音声入力" });
+
+      // Start listening
+      fireEvent.click(micBtn);
+      act(() => mockRecognition._dispatch("start"));
+
+      // Simulate final result (shape matches use-voice-input.test.ts: each
+      // result is array-like with a numeric-index alternative plus isFinal).
+      act(() =>
+        mockRecognition._dispatch("result", {
+          results: [{ 0: { transcript: "hello world" }, isFinal: true }],
+        }),
+      );
+
+      // Stop listening (button label changes)
+      fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+
+      const textarea = screen.getByRole("combobox", {
+        name: "タスクの説明",
+      }) as HTMLTextAreaElement;
+      expect(textarea.value).toBe("hello world");
+    });
+
+    it("disables the mic button while submitting", async () => {
+      let rejectRequest: (reason: Error) => void = () => undefined;
+      sendJson.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectRequest = reject;
+          }),
+      );
+      render(<HomeView />);
+
+      const prompt = screen.getByPlaceholderText(
+        "タスクを説明してください…（Ctrl+Enter で開始）",
+      );
+      fireEvent.change(prompt, { target: { value: "test" } });
+      const submit = screen.getByRole("button", {
+        name: "タスク開始",
+      }) as HTMLButtonElement;
+      // Wait for the async project load so submit is actually enabled
+      // (matches the pattern used by the other HomeView submit tests).
+      await waitFor(() => expect(submit.disabled).toBe(false));
+      fireEvent.click(submit);
+
+      await waitFor(() => {
+        expect(
+          (screen.getByRole("button", { name: "音声入力" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(true);
+      });
+
+      rejectRequest(new Error("network failed"));
+    });
   });
 });
