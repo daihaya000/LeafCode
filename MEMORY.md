@@ -5,7 +5,7 @@
 ### やったこと
 ワークフローを簡略化（仕様書・多段レビュー省略、調査→修正→検証→即コミット）し、中優先度バグを修正中。まず高優先度対応で既に解決済みの項目（R44#1 symlink隔離、R2#2 二重202、R39#3 warp write-block）を切り分けた上で、未修正を修正単位に統合。
 
-修正済み37件（コミット）:
+修正済み38件（コミット）:
 - write-block漏れ一括（R38#2 upgrade / R39#2 sync/steal・R39#4 project/git/init / R40#2 session share / R41 project PATCH・session background・tui/* / R50#2 permission/saved）— `b2966ea`
 - runGitにタイムアウト追加でBFF無期限ハング防止（R47#1、runGhは不在）— `0fe9880`
 - browse/folderのpowershellにタイムアウト（R54#1）— `2dd51ee`
@@ -42,6 +42,7 @@
 - kebabメニューのbusy中削除を無効化（R3#1/R4#2）— `bf541d9`
 - Attentionキューアイテム変更時のフォーカス破壊防止（R5#1）— `a730d1d`
 - GraphPanelのdirectory変更時にerror stateをクリア（R21/R11#2-3）— `2ad4bcc`
+- 低優先度バグ修正（R8#3, R15#3, R16#3, R33付記, access-mode文言）— `76a9fb5`
 
 ### 判断・教訓
 - R7#6（diff/files 200+git:false）はDiffPaneが既にpayload.error優先表示のため実害緩和済みと判断、コード変更せず。
@@ -50,8 +51,8 @@
 - 他エージェント並行作業（client.ts等）の未コミット差分には一切触れず、自分の変更ファイルのみを意味単位でコミット。
 - R17(abort後再送信), R24(intelligence基準), R37#1(into=current後abort) はUIコンポーネント（useSessionStream, DiffPane）のロジックで他エージェント並行作業領域と重なる可能性が高いため、BFF/ロジック層の独立した修正を優先して着手。
 
-### 残タスク（中優先度、未着手）
-なし（全件完了）
+### 残タスク（低優先度、未着手）
+なし（全件完了。R10#2-3とR8#1（旧）は「仕様のみ」「既に別件に包含」のため修正不要）
 
 ## 2026-07-23 高優先度バグ修正（R1-R54）完了
 
