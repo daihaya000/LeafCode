@@ -112,6 +112,29 @@ function mockFetch(
   );
 }
 
+function mockSettingsGetJson(roots: string[]) {
+  getJson.mockImplementation((path: string) => {
+    if (path === "/api/health") {
+      return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
+    }
+    if (path === "/api/projects") return Promise.resolve({ projects: [] });
+    if (path === "/api/roots") return Promise.resolve({ roots: [...roots] });
+    if (path === "/api/workspaces/orphans") {
+      return Promise.resolve({ orphans: [], stray: [] });
+    }
+    if (path === "/api/access") {
+      return Promise.resolve({
+        bind: "0.0.0.0",
+        port: 3000,
+        localUrl: "http://localhost:3000",
+        hint: "",
+        addresses: [],
+      });
+    }
+    return Promise.reject(new Error(`Unexpected: ${path}`));
+  });
+}
+
 describe("SettingsView", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -269,16 +292,15 @@ describe("SettingsView", () => {
     );
   });
 
-  it("renders a delete button for each root and removes it on click", async () => {
-    getJson.mockImplementation((path: string) => {
-      if (path === "/api/health") return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
-      if (path === "/api/projects") return Promise.resolve({ projects: [] });
-      if (path === "/api/roots") return Promise.resolve({ roots: ["C:\\repo1"] });
-      if (path === "/api/workspaces/orphans") return Promise.resolve({ orphans: [], stray: [] });
-      if (path === "/api/access") return Promise.resolve({ bind: "0.0.0.0", port: 3000, localUrl: "http://localhost:3000", hint: "", addresses: [] });
-      return Promise.reject(new Error(`Unexpected: ${path}`));
+  it("confirms the root path and removes the row after a successful delete", async () => {
+    const roots = ["C:\\repo1"];
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    mockSettingsGetJson(roots);
+    sendJson.mockImplementation(async () => {
+      roots.splice(0, 1);
+      return { roots: [] };
     });
-    sendJson.mockResolvedValue({ roots: [] });
 
     render(<SettingsView />);
     await screen.findByText("エンジン");
@@ -288,7 +310,56 @@ describe("SettingsView", () => {
     fireEvent.click(deleteBtn);
 
     await waitFor(() => {
+      expect(confirm).toHaveBeenCalledWith("許可ルート「C:\\repo1」を削除しますか？");
       expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/roots", undefined, { path: "C:\\repo1" });
+      expect(screen.queryByText("C:\\repo1")).toBeNull();
     });
+  });
+
+  it("keeps the root and announces a delete error", async () => {
+    const roots = ["C:\\repo1"];
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    mockSettingsGetJson(roots);
+    sendJson.mockRejectedValue(new Error("削除に失敗しました"));
+
+    render(<SettingsView />);
+    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("削除に失敗しました");
+    expect(screen.getByText("C:\\repo1")).toBeTruthy();
+  });
+
+  it("refreshes the list and announces when the root was already deleted", async () => {
+    const roots = ["C:\\repo1"];
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    mockSettingsGetJson(roots);
+    sendJson.mockImplementation(async () => {
+      roots.splice(0, 1);
+      throw Object.assign(new Error("/api/roots failed: 404"), { status: 404 });
+    });
+
+    render(<SettingsView />);
+    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("既に削除済みです");
+    await waitFor(() => expect(screen.queryByText("C:\\repo1")).toBeNull());
+    expect(getJson.mock.calls.filter(([path]) => path === "/api/roots")).toHaveLength(2);
+  });
+
+  it("does not send DELETE when root deletion is cancelled", async () => {
+    const roots = ["C:\\repo1"];
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirm);
+    mockSettingsGetJson(roots);
+
+    render(<SettingsView />);
+    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
+
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(sendJson).not.toHaveBeenCalled();
+    expect(screen.getByText("C:\\repo1")).toBeTruthy();
   });
 });

@@ -350,7 +350,20 @@ export function SettingsView() {
 
   const removeRoot = (r: string) =>
     guard(async () => {
-      await sendJson("DELETE", "/api/roots", undefined, { path: r });
+      if (!window.confirm(`許可ルート「${r}」を削除しますか？`)) return;
+      try {
+        await sendJson("DELETE", "/api/roots", undefined, { path: r });
+      } catch (err) {
+        const status =
+          err && typeof err === "object" && "status" in err
+            ? (err as { status?: unknown }).status
+            : undefined;
+        if (status === 404) {
+          await refresh();
+          throw new Error(`許可ルート「${r}」は既に削除済みです。`);
+        }
+        throw err;
+      }
     });
 
   const cleanupOrphans = () =>
@@ -425,7 +438,11 @@ export function SettingsView() {
 
       <main className="mx-auto max-w-3xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]">
         {error && (
-          <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger">
+          <p
+            className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+            role="alert"
+            aria-live="assertive"
+          >
             {error}
           </p>
         )}
@@ -737,11 +754,13 @@ export function SettingsView() {
                     <span className="truncate">{r}</span>
                     <button
                       type="button"
+                      disabled={busy}
                       aria-label={`${r}を削除`}
+                      aria-busy={busy}
                       onClick={() => void removeRoot(r)}
-                      className="shrink-0 rounded p-1 text-faint hover:text-danger"
+                      className="shrink-0 rounded-lg p-1 text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      {busy ? "削除中…" : <Trash2 className="h-3.5 w-3.5" />}
                     </button>
                   </li>
                 ))}
