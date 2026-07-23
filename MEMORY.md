@@ -4773,3 +4773,26 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 
 ### 教訓
 - JSONを期待する共通fetchヘルパーでも、HTTPのbodyなし成功（204/205）と空本文を先に扱い、`Response.json()` を無条件に呼ばない。
+
+## 2026-07-23 タスク削除→アーカイブに変更
+
+### やったこと
+タスクの「削除」を非破壊の「アーカイブ」に変更。通常一覧から非表示にし、サイドバー常設のアーカイブ一覧で閲覧・復元・完全削除できるようにした。
+
+- workspace-service: `archiveWorkspace()`/`restoreWorkspace()` を追加（`1063756`）
+- task-service: `listArchivedTasks()` を追加、`listTasks()` に archived フィルタ追加（`34d61db`）
+- API: `PATCH /api/tasks/[id]/archive`（`17acf3d`）、`PATCH /api/tasks/[id]/restore`（`029e707`）、`GET /api/tasks/archived`（`33031a6`）
+- Sidebar: 削除ボタンをアーカイブに変更（`0200b24`）、アーカイブ一覧セクション追加（`30c7751`、並行セッション）
+- 仕様書: `docs/superpowers/specs/2026-07-23-task-archiving-design.md`（`925210c`）
+- 実装計画: `docs/superpowers/plans/2026-07-23-task-archiving.md`（`81449ff`）
+
+### 判断理由
+- 既存の `archived` status と `deriveTaskStatus()` のマッピングを活用し、DB層は変更不要
+- アーカイブは非破壊（worktree・セッション・DB行を保持）なので確認ダイアログ不要
+- 完全削除のみ既存 `destroyWorkspace()` を確認ダイアログ付きで呼ぶ
+- サブエージェント駆動でTask1〜7を順次実装・レビュー
+
+### 教訓
+- 並行セッションがTask7を完了している場合がある。実装前に `git log` で対象ファイルの最新変更を確認する
+- `docs/superpowers/` は .gitignore 対象だが `git add -f` で強制追加可能
+- 既存の `archived` status を活用する変更はDB層変更不要で影響範囲が小さい
