@@ -3,3 +3,6 @@
 - Test: `npx vitest run src/components/task/TaskView.test.tsx -t "sets the plan initial state"` PASS（修正前・修正後）
 - Typecheck: `npx tsc --noEmit` PASS
 - Concern: なし（他エージェントの未コミット差分は変更・ステージングしていない）
+
+- Test update: `TaskView.test.tsx` now renders the real `PlanDocumentCard` and verifies desktop `aria-expanded="true"` plus visible document content.
+- Verification: `npx vitest run src/components/task/TaskView.test.tsx` PASS (30 tests); `npx tsc --noEmit` PASS.

@@ -20,7 +20,6 @@ const {
   slashCommands,
   setExtras,
   setActiveScope,
-  planCardProps,
   copyText,
   diffPaneRefreshKeys,
 } = vi.hoisted(() => ({
@@ -31,7 +30,6 @@ const {
   slashCommands: [] as { name: string }[],
   setExtras: vi.fn(),
   setActiveScope: vi.fn(),
-  planCardProps: [] as { initialCollapsed?: boolean }[],
   copyText: vi.fn(),
   diffPaneRefreshKeys: [] as number[],
 }));
@@ -88,20 +86,6 @@ vi.mock("./DiffPane", () => ({
 vi.mock("./FileTreePanel", () => ({ FileTreePanel: () => null }));
 vi.mock("./GraphPanel", () => ({ GraphPanel: () => null }));
 vi.mock("./PartView", () => ({ PartView: () => null }));
-vi.mock("./PlanDocumentCard", () => ({
-  PlanDocumentCard: ({
-    onApprove,
-    initialCollapsed,
-  }: {
-    onApprove?: () => void;
-    initialCollapsed?: boolean;
-  }) => {
-    planCardProps.push({ initialCollapsed });
-    return onApprove ? (
-      <button onClick={() => void onApprove()}>計画を承認</button>
-    ) : null;
-  },
-}));
 vi.mock("./PermissionCard", () => ({ PermissionCard: () => null }));
 vi.mock("./PtyPanel", () => ({ PtyPanel: () => <div data-testid="pty-panel" /> }));
 vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
@@ -176,7 +160,6 @@ describe("TaskView", () => {
   beforeEach(() => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
-    planCardProps.length = 0;
     diffPaneRefreshKeys.length = 0;
     copyText.mockResolvedValue(true);
     slashCommands.length = 0;
@@ -214,8 +197,10 @@ describe("TaskView", () => {
       sendPrompt: vi.fn(),
       sendCommand: vi.fn(),
     });
-    getJson.mockImplementation(() =>
-      Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) }),
+    getJson.mockImplementation((path: string) =>
+      path === "/api/files/content"
+        ? Promise.resolve({ name: "plan.md", content: "計画本文" })
+        : Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) }),
     );
     sendJson.mockResolvedValue(undefined);
   });
@@ -602,7 +587,8 @@ describe("TaskView", () => {
     await flushTaskLoad();
     notifyTasksChanged.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "計画を承認" }));
+    const planCard = await screen.findByRole("region", { name: "計画書: plan.md" });
+    fireEvent.click(within(planCard).getByRole("button", { name: "承認して実装" }));
     await act(async () => {
       await Promise.resolve();
     });
@@ -622,14 +608,11 @@ describe("TaskView", () => {
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    { matches: false, expected: true, label: "mobile" },
-    { matches: true, expected: false, label: "desktop" },
-  ])("sets the plan initial state from the $label breakpoint", async ({ matches, expected }) => {
+  it("shows the plan card expanded with its document on desktop", async () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: vi.fn(() => ({
-        matches,
+        matches: true,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       })),
@@ -651,7 +634,11 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    expect(planCardProps.at(-1)?.initialCollapsed).toBe(expected);
+    const card = await screen.findByRole("region", { name: "計画書: plan.md" });
+    expect(
+      within(card).getByRole("button", { name: "plan.md" }).getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(within(card).getByText("計画本文")).toBeTruthy();
   });
 
   it("stops polling after idle even when the completion refresh fails", async () => {
@@ -946,7 +933,6 @@ describe("TaskView voice input", () => {
   beforeEach(() => {
     taskStatus = "idle";
     taskResponseCosts = [0.1];
-    planCardProps.length = 0;
     slashCommands.length = 0;
     setVisible(true);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
