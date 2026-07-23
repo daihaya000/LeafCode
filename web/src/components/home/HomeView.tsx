@@ -353,10 +353,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   const onVoiceTranscript = useCallback(
     (text: string) => {
-      setPrompt((prev) => {
-        const suffix = prev && !prev.endsWith(" ") ? " " : "";
-        return prev + suffix + text;
-      });
+      if (text) {
+        setPrompt((prev) => {
+          const suffix = prev && !prev.endsWith(" ") ? " " : "";
+          return prev + suffix + text;
+        });
+      }
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (!el) return;

@@ -305,6 +305,32 @@ describe("HomeView image attachments", () => {
       expect(textarea.value).toBe("hello world");
     });
 
+    it("does not append a trailing space when the transcript is empty", async () => {
+      render(<HomeView />);
+      const prompt = screen.getByPlaceholderText(
+        "タスクを説明してください…（Ctrl+Enter で開始）",
+      ) as HTMLTextAreaElement;
+      fireEvent.change(prompt, { target: { value: "hello" } });
+
+      const micBtn = await screen.findByRole("button", { name: "音声入力" });
+
+      // Start listening
+      fireEvent.click(micBtn);
+      act(() => mockRecognition._dispatch("start"));
+
+      // Simulate a final result with an empty transcript.
+      act(() =>
+        mockRecognition._dispatch("result", {
+          results: [{ 0: { transcript: "" }, isFinal: true }],
+        }),
+      );
+
+      // Stop listening (button label changes)
+      fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+
+      expect(prompt.value).toBe("hello");
+    });
+
     it("disables the mic button while submitting", async () => {
       let rejectRequest: (reason: Error) => void = () => undefined;
       sendJson.mockImplementationOnce(
