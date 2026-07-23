@@ -20,6 +20,8 @@ const {
   setExtras,
   setActiveScope,
   planCardProps,
+  copyText,
+  diffPaneRefreshKeys,
 } = vi.hoisted(() => ({
   getJson: vi.fn(),
   notifyTasksChanged: vi.fn(),
@@ -29,6 +31,8 @@ const {
   setExtras: vi.fn(),
   setActiveScope: vi.fn(),
   planCardProps: [] as { initialCollapsed?: boolean }[],
+  copyText: vi.fn(),
+  diffPaneRefreshKeys: [] as number[],
 }));
 
 vi.mock("next/link", () => ({
@@ -45,6 +49,8 @@ vi.mock("@/lib/client", () => ({
   sendJson,
   timedFetch: (input: RequestInfo | URL) => fetch(input),
 }));
+
+vi.mock("@/lib/clipboard", () => ({ copyText }));
 
 vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
 
@@ -72,7 +78,12 @@ vi.mock("@/components/shell/ShellContext", () => ({
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
 vi.mock("@/components/IntelligenceSelect", () => ({ IntelligenceSelect: () => null }));
 vi.mock("@/components/StatusBadge", () => ({ StatusBadge: () => null }));
-vi.mock("./DiffPane", () => ({ DiffPane: () => null }));
+vi.mock("./DiffPane", () => ({
+  DiffPane: ({ refreshKey }: { refreshKey: number }) => {
+    diffPaneRefreshKeys.push(refreshKey);
+    return null;
+  },
+}));
 vi.mock("./FileTreePanel", () => ({ FileTreePanel: () => null }));
 vi.mock("./GraphPanel", () => ({ GraphPanel: () => null }));
 vi.mock("./PartView", () => ({ PartView: () => null }));
@@ -91,10 +102,10 @@ vi.mock("./PlanDocumentCard", () => ({
   },
 }));
 vi.mock("./PermissionCard", () => ({ PermissionCard: () => null }));
-vi.mock("./PtyPanel", () => ({ PtyPanel: () => null }));
+vi.mock("./PtyPanel", () => ({ PtyPanel: () => <div data-testid="pty-panel" /> }));
 vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
 vi.mock("./SessionActions", () => ({
-  CompactButton: () => null,
+  CompactButton: () => <button type="button" aria-label="コンパクト">コンパクト</button>,
   MessageRevertButton: () => null,
   useSessionActions: () => ({
     busy: null,
@@ -104,7 +115,14 @@ vi.mock("./SessionActions", () => ({
     unrevert: () => {},
   }),
 }));
-vi.mock("./SessionSwitcher", () => ({ SessionSwitcher: () => null }));
+vi.mock("./SessionSwitcher", () => ({
+  SessionSwitcher: ({ onSwitch }: { onSwitch: () => void }) => (
+    <div data-testid="session-switcher">
+      <select aria-label="セッション切替"><option value="sess1">Session 1</option></select>
+      <button type="button" aria-label="新セッション" onClick={onSwitch}>追加</button>
+    </div>
+  ),
+}));
 
 let taskStatus: TaskSummary["status"];
 let taskResponseCosts: number[];
@@ -158,6 +176,8 @@ describe("TaskView", () => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
     planCardProps.length = 0;
+    diffPaneRefreshKeys.length = 0;
+    copyText.mockResolvedValue(true);
     slashCommands.length = 0;
     setVisible(true);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -722,6 +742,100 @@ describe("TaskView", () => {
     expect(within(header).getByText("cost $0.2500")).toBeTruthy();
     expect(screen.queryByText("build")).toBeNull();
     expect(screen.getAllByText("cost $0.2500")).toHaveLength(1);
+  });
+
+  it("moves copy, resync, session switching, and terminal into the kebab menu", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByTitle("作業パスをコピー")).toBeNull();
+    expect(screen.queryByTitle("再同期")).toBeNull();
+    expect(screen.queryByTitle("ターミナル")).toBeNull();
+    expect(screen.queryByTestId("session-switcher")).toBeNull();
+    expect(screen.getByRole("button", { name: "コンパクト" })).toBeTruthy();
+    expect(screen.getByTitle("ファイルツリー")).toBeTruthy();
+    expect(screen.getByTitle("グラフ")).toBeTruthy();
+    expect(screen.getByTitle("Diff パネル")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    const menu = screen.getByRole("menu", { name: "タスクその他操作" });
+    expect(within(menu).getByRole("menuitem", { name: "作業パスをコピー" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "再同期" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
+    const sessionGroup = within(menu).getByRole("group", { name: "セッション切替" });
+    expect(within(sessionGroup).getByRole("combobox", { name: "セッション切替" })).toBeTruthy();
+    expect(within(sessionGroup).getByRole("button", { name: "新セッション" })).toBeTruthy();
+
+    getJson.mockClear();
+    fireEvent.click(within(sessionGroup).getByRole("button", { name: "新セッション" }));
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/tasks/ws1"));
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "再同期" }));
+    expect(streamMock.resync).toHaveBeenCalledTimes(1);
+    expect(diffPaneRefreshKeys).toContain(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "ターミナル" }));
+    expect(screen.getByTestId("pty-panel")).toBeTruthy();
+  });
+
+  it("shows the copied check icon from the kebab for 1.5 seconds", async () => {
+    taskStatus = "idle";
+    vi.useFakeTimers();
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "作業パスをコピー" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(copyText).toHaveBeenCalledWith("/repo");
+
+    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    const copiedItem = screen.getByRole("menuitem", { name: "作業パスをコピー" });
+    expect(copiedItem.querySelector("svg.lucide-check")).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(screen.getByRole("menuitem", { name: "作業パスをコピー" }).querySelector("svg.lucide-copy")).toBeTruthy();
+  });
+
+  it("keeps stop and CompactButton in the header while moving the session switcher", async () => {
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getAllByRole("button", { name: "停止" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "コンパクト" })).toBeTruthy();
+    expect(screen.queryByTestId("session-switcher")).toBeNull();
+  });
+
+  it("keeps files, graph, and diff in the kebab below lg while terminal stays there", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByTitle("ファイルツリー")).toBeNull();
+    expect(screen.queryByTitle("グラフ")).toBeNull();
+    expect(screen.queryByTitle("Diff パネル")).toBeNull();
+    expect(screen.queryByTitle("ターミナル")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    const menu = screen.getByRole("menu", { name: "タスクその他操作" });
+    expect(within(menu).getByRole("menuitem", { name: "ファイルツリー" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "グラフ" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Diff パネル" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
   });
 });
 

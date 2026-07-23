@@ -1289,11 +1289,9 @@ export function TaskView({ taskId }: { taskId: string }) {
         },
   );
 
-  // Zone C data: kebab groups. Session ops are always present (disabled when
-  // there is no session / nothing to revert). Panel toggles are only listed
-  // here when their Zone B button is hidden at the current breakpoint, so a
-  // control never appears in both places at once. Delete is always here
-  // (Sidebar has its own delete entry point; this is the header's only path).
+  // Zone C data: kebab groups. Stop and compact stay in Zone A; files/graph/
+  // diff stay in Zone B at lg, while task, session, panels, and danger actions
+  // are available from the kebab.
   const headerKebabGroups = useMemo<KebabGroup[]>(() => {
     const hasSession = !!task?.sessionId;
     const sessionItems: KebabItem[] = [
@@ -1312,6 +1310,25 @@ export function TaskView({ taskId }: { taskId: string }) {
         onSelect: sessionActions.unrevert,
         disabled: !hasSession || sessionActions.busy !== null,
         busy: sessionActions.busy === "unrevert",
+      },
+    ];
+
+    const taskItems: KebabItem[] = [
+      {
+        id: "copy-path",
+        label: "作業パスをコピー",
+        icon: copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />,
+        onSelect: () => void copyPath(),
+      },
+      {
+        id: "resync",
+        label: "再同期",
+        icon: <RefreshCw className="h-4 w-4" />,
+        onSelect: () => {
+          void stream.resync();
+          setDiffKey((key) => key + 1);
+        },
+        disabled: working,
       },
     ];
 
@@ -1340,19 +1357,17 @@ export function TaskView({ taskId }: { taskId: string }) {
         },
       });
     }
-    if (!isMd) {
-      panelItems.push({
-        id: "panel-terminal",
-        label: "ターミナル",
-        icon: <Terminal className="h-4 w-4" />,
-        active: showDiff && sidePanel === "pty",
-        onSelect: () => {
-          changeShowDiff(true);
-          changeTab("diff");
-          changeSidePanel("pty");
-        },
-      });
-    }
+    panelItems.push({
+      id: "panel-terminal",
+      label: "ターミナル",
+      icon: <Terminal className="h-4 w-4" />,
+      active: showDiff && sidePanel === "pty",
+      onSelect: () => {
+        changeShowDiff(true);
+        changeTab("diff");
+        changeSidePanel("pty");
+      },
+    });
     if (!isLg) {
       panelItems.push({
         id: "panel-diff",
@@ -1386,6 +1401,24 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (sessionItems.length) {
       groups.push({ id: "session", label: "セッション操作", items: sessionItems });
     }
+    groups.push({ id: "task", label: "タスク操作", items: taskItems });
+    if (task?.sessionId) {
+      groups.push({
+        id: "session-switcher",
+        label: "セッション切替",
+        items: [],
+        renderContent: () => (
+          <div className="px-3 py-1.5">
+            <SessionSwitcher
+              workspaceId={task.id}
+              directory={task.directory}
+              currentSessionId={task.sessionId}
+              onSwitch={() => void refreshTask()}
+            />
+          </div>
+        ),
+      });
+    }
     if (panelItems.length) {
       groups.push({ id: "panels", label: "パネル切替", items: panelItems });
     }
@@ -1393,12 +1426,18 @@ export function TaskView({ taskId }: { taskId: string }) {
     return groups;
   }, [
     task?.sessionId,
+    task?.id,
+    task?.directory,
+    copied,
+    copyPath,
+    working,
+    stream,
+    refreshTask,
     sessionActions.busy,
     sessionActions.revert,
     sessionActions.unrevert,
     lastRevertMessageId,
     isLg,
-    isMd,
     showDiff,
     sidePanel,
     tab,
@@ -1597,43 +1636,15 @@ export function TaskView({ taskId }: { taskId: string }) {
             Zone A / Zone B so horizontal scroll is limited to those ops. */}
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1">
           <div className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* Zone A: always visible across all breakpoints.
-              Stop / copy / resync / session switcher / compact.
-              Copy is promoted from `hidden sm:inline-flex` to always-visible
-              because it is the only place to copy the working path. */}
+          {/* Zone A: always visible across all breakpoints: stop and compact. */}
           {working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
               <span className="hidden sm:inline">停止</span>
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            title={copied ? "コピーしました" : "作業パスをコピー"}
-            onClick={() => void copyPath()}
-          >
-            {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="再同期"
-            onClick={() => {
-              void stream.resync();
-              setDiffKey((k) => k + 1);
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
           {task.sessionId && (
             <>
-              <SessionSwitcher
-                workspaceId={task.id}
-                directory={task.directory}
-                currentSessionId={task.sessionId}
-                onSwitch={() => void refreshTask()}
-              />
               <CompactButton
                 busy={sessionActions.busy === "compact"}
                 disabled={sessionActions.busy !== null}
@@ -1644,7 +1655,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
           {/* Zone B: panel toggles shown directly at their breakpoint and
               demoted into the kebab menu (Zone C) below it. Thresholds:
-              file tree / graph / diff at lg (1024px), terminal at md (768px).
+              file tree / graph / diff at lg (1024px); terminal stays in Zone C.
               Rendered conditionally on isLg/isMd (not CSS `hidden lg:...`)
               because those utility classes lost the display-property
               cascade to the always-on `inline-flex` base class on Button,
@@ -1685,23 +1696,6 @@ export function TaskView({ taskId }: { taskId: string }) {
               <GitGraph className="h-4 w-4" />
             </Button>
           )}
-          {isMd && (
-            <Button
-              variant="ghost"
-              size="icon"
-              title="ターミナル"
-              className={cx(
-                showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
-              )}
-              onClick={() => {
-                changeShowDiff(true);
-                changeTab("diff");
-                changeSidePanel("pty");
-              }}
-            >
-              <Terminal className="h-4 w-4" />
-            </Button>
-          )}
           {isLg && (
             <Button
               variant="ghost"
@@ -1726,9 +1720,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
 
           </div>
-          {/* Zone C: kebab menu. Groups: session ops (undo/redo), demoted
-              panel toggles (only when their Zone B button is hidden), and
-              danger (delete). Compact is intentionally NOT here. */}
+          {/* Zone C: session, task, session-switcher, panels, and danger. */}
           <HeaderKebabMenu groups={headerKebabGroups} />
         </div>
       </header>
