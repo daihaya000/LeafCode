@@ -1,6 +1,8 @@
-import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HeaderKebabMenu } from "./HeaderKebabMenu";
+
+afterEach(() => cleanup());
 
 describe("HeaderKebabMenu", () => {
   it("renders custom group content, skips it with arrows, and preserves Tab traversal", async () => {
@@ -68,7 +70,12 @@ describe("HeaderKebabMenu", () => {
     expect(document.activeElement).toBe(add);
   });
 
-  it("closes when the trigger is clicked while a popup item is focused", async () => {
+  it("closes (and does not reopen) when the trigger is clicked while a popup item is focused", async () => {
+    // Reproduces the real-browser event order: mousedown on the trigger
+    // moves focus away from the focused popup item (firing blur with
+    // relatedTarget = the trigger) *before* the click event fires. A naive
+    // `onClick={() => setOpen(!open)}` would read the just-closed `open`
+    // state and reopen the menu; this must not happen.
     render(
       <HeaderKebabMenu
         groups={[
@@ -86,10 +93,57 @@ describe("HeaderKebabMenu", () => {
     const item = await screen.findByRole("menuitem", { name: "操作" });
     await waitFor(() => expect(document.activeElement).toBe(item));
 
+    // pointerdown -> mousedown moves focus to the trigger, blurring the item
+    // with relatedTarget pointing at the trigger -> mouseup -> click.
     fireEvent.pointerDown(trigger);
-    item.blur();
+    fireEvent.blur(item, { relatedTarget: trigger });
+    trigger.focus();
+    expect(screen.queryByRole("menu")).toBeTruthy(); // blur-close is suppressed mid-gesture
     fireEvent.click(trigger);
 
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("still opens on a plain click of the trigger", () => {
+    render(
+      <HeaderKebabMenu
+        groups={[
+          {
+            id: "actions",
+            items: [{ id: "action", label: "操作", onSelect: vi.fn() }],
+          },
+        ]}
+        triggerLabel="テストメニュー"
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "テストメニュー" });
+    fireEvent.pointerDown(trigger);
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu")).toBeTruthy();
+  });
+
+  it("closes on outside click and does not reopen via a stray pointerdown-only gesture", async () => {
+    render(
+      <>
+        <HeaderKebabMenu
+          groups={[
+            {
+              id: "actions",
+              items: [{ id: "action", label: "操作", onSelect: vi.fn() }],
+            },
+          ]}
+          triggerLabel="テストメニュー"
+        />
+        <button type="button">外側</button>
+      </>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "テストメニュー" });
+    fireEvent.click(trigger);
+    await screen.findByRole("menuitem", { name: "操作" });
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "外側" }));
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });

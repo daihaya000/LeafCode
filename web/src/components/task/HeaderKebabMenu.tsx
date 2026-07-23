@@ -57,6 +57,14 @@ export function HeaderKebabMenu({
   const popupRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const menuId = useId();
+  // Captures `open` at trigger pointerdown time. In real browsers, mousedown on
+  // the trigger moves focus away from a focused popup item *before* the click
+  // event fires, which would otherwise let the popup's onBlurCapture close the
+  // menu first and then have the trigger's onClick read the already-updated
+  // (closed) `open` state and toggle it back open. While this ref is non-null,
+  // the popup's blur-close is suppressed and the trigger's click resolves the
+  // open/close decision from the state captured before the gesture started.
+  const pointerDownOpenRef = useRef<boolean | null>(null);
 
   // Flatten visible (non-disabled-skipped) item ids in render order.
   const flatItems = groups.flatMap((g) => (g.renderContent ? [] : g.items));
@@ -136,7 +144,20 @@ export function HeaderKebabMenu({
         aria-controls={menuId}
         aria-label={triggerLabel}
         title={triggerLabel}
-        onClick={() => setOpen(!open)}
+        onPointerDown={() => {
+          pointerDownOpenRef.current = open;
+          // Safety net: if no click follows this pointerdown (e.g. the
+          // pointer is dragged off and released elsewhere), don't leave the
+          // popup's blur-close suppressed forever.
+          window.setTimeout(() => {
+            pointerDownOpenRef.current = null;
+          }, 0);
+        }}
+        onClick={() => {
+          const openBeforeGesture = pointerDownOpenRef.current;
+          pointerDownOpenRef.current = null;
+          setOpen(!(openBeforeGesture ?? open));
+        }}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
@@ -147,6 +168,10 @@ export function HeaderKebabMenu({
           role="menu"
           aria-label={ariaLabel}
           onBlurCapture={(event) => {
+            // A trigger pointerdown→click gesture is in flight: let the
+            // trigger's onClick own the open/close decision instead of
+            // closing here (see pointerDownOpenRef above).
+            if (pointerDownOpenRef.current !== null) return;
             const next = event.relatedTarget as Node | null;
             if (!next || !popupRef.current?.contains(next)) close(false);
           }}
