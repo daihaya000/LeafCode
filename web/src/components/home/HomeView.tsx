@@ -532,12 +532,23 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
 
+  // Calculate intelligence variants based on the effective model (agent's model
+  // if agent is selected, otherwise manual model). This ensures the variants
+  // match the actual model being used, not the manual selection (R24).
+  const effectiveModelKey = useMemo(() => {
+    if (agent) {
+      const agentModel = agentModels[agent];
+      return agentModel ? `${agentModel.providerID}::${agentModel.modelID}` : null;
+    }
+    return model;
+  }, [agent, agentModels, model]);
+
   const intelligenceVariants = useMemo(() => {
-    if (!model) return [];
-    const modelMeta = providerModelsMap[model];
+    if (!effectiveModelKey) return [];
+    const modelMeta = providerModelsMap[effectiveModelKey];
     if (!modelMeta) return [];
     return getIntelligenceVariants(modelMeta);
-  }, [model, providerModelsMap]);
+  }, [effectiveModelKey, providerModelsMap]);
 
   return (
     <div className="h-full overflow-y-auto overflow-x-clip">
