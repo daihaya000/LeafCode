@@ -103,6 +103,28 @@ describe("GET /api/workspaces/orphans", () => {
     expect(h.deleteWorkspace).toHaveBeenCalledWith("ws1");
     expect(h.removeAllowedRoot).toHaveBeenCalledWith(copyPath);
   });
+
+  it("does not delete a temporary_copy orphan when allowlist release fails", async () => {
+    const copyPath = "C:\\data\\copies\\ws1";
+    h.orphanedRows = [
+      {
+        id: "ws1",
+        project_id: "proj1",
+        absolute_path: copyPath,
+        worktree_path: copyPath,
+        isolation: "temporary_copy",
+        status: "orphaned",
+      },
+    ];
+    h.removeAllowedRoot.mockImplementationOnce(() => {
+      throw new Error("allowlist locked");
+    });
+
+    await expect(
+      GET(getReq("http://x/api/workspaces/orphans?scan=1")),
+    ).rejects.toThrow("allowlist locked");
+    expect(h.deleteWorkspace).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/workspaces/orphans cleanup", () => {
