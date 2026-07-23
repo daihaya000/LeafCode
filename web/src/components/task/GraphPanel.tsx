@@ -215,6 +215,7 @@ export function GraphPanel({
     setExpanded(null);
     setFilesByCommit({});
     setFileDiff(null);
+    setError(null); // R21/R11#2-3: Clear error when directory changes
     commitCountRef.current = 0;
     void load();
   }, [directory, load]);
