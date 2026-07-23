@@ -25,6 +25,12 @@ export function SessionSwitcher({
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // Keep the user's selection while the parent catches up with onSwitch.
+  const [localSelection, setLocalSelection] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalSelection(currentSessionId);
+  }, [currentSessionId]);
 
   const refresh = useCallback(async () => {
     try {
@@ -99,10 +105,11 @@ export function SessionSwitcher({
     <div className="flex items-center gap-1">
       <select
         aria-label="セッション切替"
-        value={currentSessionId ?? ""}
+        value={localSelection ?? currentSessionId ?? ""}
         onChange={async (e) => {
           const id = e.target.value;
           if (!id || id === currentSessionId) return;
+          setLocalSelection(id);
           setBusy(true);
           try {
             await updateSessionOrder(id);
@@ -111,6 +118,7 @@ export function SessionSwitcher({
             // Bind failed (engine down, etc.): resync the dropdown to real state
             // instead of leaving an unhandled rejection and a lying selection.
             await refresh();
+            setLocalSelection(currentSessionId);
           } finally {
             setBusy(false);
           }
