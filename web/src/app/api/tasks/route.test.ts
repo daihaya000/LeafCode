@@ -401,6 +401,26 @@ describe("POST /api/tasks image attachments", () => {
     expectNoOpenCodeTaskStart(ocServer.mock.calls);
   });
 
+  it("does not provision a workspace when image capability is not explicit", async () => {
+    const ocServer = await mockOpenCodeProvider(
+      providerWithModel("text-only", { input: { image: false } }),
+    );
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+    (provisionWorkspace as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "text-only" },
+      files: [image],
+    });
+
+    expect(res.status).toBe(400);
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+    expectNoOpenCodeTaskStart(ocServer.mock.calls);
+  });
+
   it.each([
     [
       "image false and attachment false",

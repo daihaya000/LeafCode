@@ -478,6 +478,59 @@ describe("TaskView", () => {
     });
   });
 
+  it("sends an image follow-up to a model with explicit image capability", async () => {
+    taskStatus = "idle";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes("/api/opencode/provider")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              all: [{
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: {
+                    name: "Vision",
+                    capabilities: { input: { image: true }, attachment: false },
+                  },
+                },
+              }],
+              connected: ["openai"],
+              default: { openai: "vision" },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    const view = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const image = new File(["img"], "vision-task.png", { type: "image/png" });
+    const input = view.container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+    fireEvent.change(input as HTMLInputElement, { target: { files: [image] } });
+    expect(await screen.findByRole("img", { name: "vision-task.png" })).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
+      target: { value: "describe this" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await waitFor(() => {
+      expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+        "describe this",
+        expect.objectContaining({
+          model: { providerID: "openai", modelID: "vision" },
+          files: [expect.objectContaining({ mime: "image/png", name: "vision-task.png" })],
+        }),
+      );
+    });
+  });
+
   it("touches activity before approving a plan", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();

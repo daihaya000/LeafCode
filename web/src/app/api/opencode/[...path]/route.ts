@@ -35,6 +35,118 @@ const HOP_BY_HOP = new Set([
   "accept-encoding",
 ]);
 
+type ProviderModel = {
+  capabilities?: {
+    attachment?: boolean;
+    input?: { image?: boolean };
+  };
+};
+type ProviderResponse = {
+  all?: { id?: string; models?: Record<string, ProviderModel> }[];
+  connected?: string[];
+};
+type AgentResponse = {
+  name?: string;
+  model?: { providerID?: string; modelID?: string };
+}[];
+
+// The composer requests these read endpoints before it sends a follow-up.
+// Keep only their capability/model metadata so this write proxy can enforce the
+// same fail-closed decision without forwarding an unsupported prompt first.
+let cachedProviders: ProviderResponse | undefined;
+let cachedAgents: AgentResponse | undefined;
+
+function containsImagePart(body: unknown): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const { parts } = body as { parts?: unknown };
+  return (
+    Array.isArray(parts) &&
+    parts.some(
+      (part) =>
+        part &&
+        typeof part === "object" &&
+        !Array.isArray(part) &&
+        (part as { type?: unknown }).type === "file" &&
+        typeof (part as { mime?: unknown }).mime === "string" &&
+        /^image\//i.test((part as { mime: string }).mime),
+    )
+  );
+}
+
+function modelFromRequest(body: Record<string, unknown>):
+  | { providerID: string; modelID: string }
+  | undefined {
+  const model = body.model;
+  if (typeof model === "string") {
+    const slash = model.indexOf("/");
+    if (slash > 0 && slash < model.length - 1) {
+      return {
+        providerID: model.slice(0, slash),
+        modelID: model.slice(slash + 1),
+      };
+    }
+    return undefined;
+  }
+  if (!model || typeof model !== "object" || Array.isArray(model)) {
+    return undefined;
+  }
+  const { providerID, modelID } = model as {
+    providerID?: unknown;
+    modelID?: unknown;
+  };
+  return typeof providerID === "string" && typeof modelID === "string"
+    ? { providerID, modelID }
+    : undefined;
+}
+
+function supportsImageInput(body: unknown): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const request = body as Record<string, unknown>;
+  let model = modelFromRequest(request);
+  const agent = request.agent;
+  if (typeof agent === "string" && agent.trim()) {
+    const configuredAgent = cachedAgents?.find(({ name }) => name === agent.trim());
+    const agentModel = configuredAgent?.model;
+    if (!agentModel?.providerID || !agentModel.modelID) {
+      return false;
+    }
+    model = {
+      providerID: agentModel.providerID,
+      modelID: agentModel.modelID,
+    };
+  }
+  if (!model?.providerID || !model.modelID) return false;
+  if (
+    cachedProviders?.connected?.length &&
+    !cachedProviders.connected.includes(model.providerID)
+  ) {
+    return false;
+  }
+  const capabilities = cachedProviders?.all
+    ?.find((provider) => provider.id === model.providerID)
+    ?.models?.[model.modelID]?.capabilities;
+  return capabilities?.input?.image === true || capabilities?.attachment === true;
+}
+
+async function cacheCapabilityMetadata(
+  pathname: string,
+  upstream: Response,
+): Promise<void> {
+  if (!upstream.ok || !upstream.headers.get("content-type")?.includes("application/json")) {
+    return;
+  }
+  try {
+    const payload = await upstream.clone().json();
+    if (pathname === "/provider") cachedProviders = payload as ProviderResponse;
+    if (pathname === "/agent" && Array.isArray(payload)) {
+      cachedAgents = payload as AgentResponse;
+    }
+  } catch {
+    // A malformed metadata response leaves the cache unavailable, which is
+    // fail-closed for subsequent image submissions.
+  }
+}
+
 async function proxy(
   req: NextRequest,
   context: { params: Promise<{ path: string[] }> },
@@ -122,7 +234,8 @@ async function proxy(
       requestBody = await req.arrayBuffer();
       if (
         req.method === "POST" &&
-        /^\/session\/[^/]+\/prompt_async$/.test(pathname) &&
+        (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
+          /^\/session\/[^/]+\/command$/.test(pathname)) &&
         req.headers.get("content-type")?.includes("application/json")
       ) {
         try {
@@ -132,12 +245,24 @@ async function proxy(
               ? (body as { variant?: unknown }).variant
               : undefined;
           if (
+            /^\/session\/[^/]+\/prompt_async$/.test(pathname) &&
             variant !== undefined &&
             variant !== null &&
             variant !== "" &&
             !(typeof variant === "string" && isIntelligenceVariant(variant))
           ) {
             return NextResponse.json({ error: "invalid variant" }, { status: 400 });
+          }
+          if (
+            (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
+              /^\/session\/[^/]+\/command$/.test(pathname)) &&
+            containsImagePart(body) &&
+            !supportsImageInput(body)
+          ) {
+            return NextResponse.json(
+              { error: "image input is not supported by the selected model" },
+              { status: 400 },
+            );
           }
         } catch {
           // Preserve the existing behavior for non-JSON or malformed bodies.
@@ -167,6 +292,9 @@ async function proxy(
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
+  if (req.method === "GET" && (pathname === "/provider" || pathname === "/agent")) {
+    await cacheCapabilityMetadata(pathname, upstream);
+  }
   const isSse =
     contentType.includes("text/event-stream") ||
     pathname === "/event" ||
