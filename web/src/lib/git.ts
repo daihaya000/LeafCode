@@ -24,10 +24,14 @@ export function assertSafeBranchName(name: string): void {
   }
 }
 
+/** Hard ceiling so a hung git process cannot pin a BFF worker forever. */
+export const GIT_TIMEOUT_MS = 30_000;
+
 /** Run git with argv array only (no shell). */
 export function runGit(
   cwd: string,
   args: string[],
+  timeoutMs = GIT_TIMEOUT_MS,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     // `core.quotepath=false` keeps non-ASCII paths (e.g. Japanese filenames)
@@ -46,14 +50,36 @@ export function runGit(
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    // If git ever blocks despite the prompt-disabling env vars, kill it and
+    // reject so the awaiting HTTP handler fails fast instead of hanging.
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+      reject(new Error(`git timed out after ${timeoutMs}ms: git ${args.join(" ")}`));
+    }, timeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
     child.stdout.on("data", (c) => {
       stdout += String(c);
     });
     child.stderr.on("data", (c) => {
       stderr += String(c);
     });
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       resolve({ code: code ?? 1, stdout, stderr });
     });
   });

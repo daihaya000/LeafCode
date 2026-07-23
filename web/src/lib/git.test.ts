@@ -7,7 +7,7 @@ vi.mock("./paths", () => ({
   dataDir: () => h.dataDir,
 }));
 
-import { assertSafeBranchName, removeWorktree } from "./git";
+import { assertSafeBranchName, removeWorktree, runGit } from "./git";
 
 describe("assertSafeBranchName", () => {
   it("accepts ordinary local and remote branch names", () => {
@@ -48,5 +48,19 @@ describe("removeWorktree path guard", () => {
         worktreePath: worktreeBase,
       }),
     ).rejects.toThrow("protected root");
+  });
+});
+
+describe("runGit timeout", () => {
+  it("kills and rejects when git exceeds the timeout", async () => {
+    // 1ms ceiling is shorter than any real git process start-up, so the timer
+    // fires before `close`, proving a hung git cannot pin the worker forever.
+    await expect(runGit(process.cwd(), ["status"], 1)).rejects.toThrow(/timed out/);
+  });
+
+  it("resolves normally within the timeout", async () => {
+    const res = await runGit(process.cwd(), ["--version"], 30_000);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toMatch(/git version/);
   });
 });
