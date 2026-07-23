@@ -11,6 +11,7 @@ const STATUS_META: Record<
   error: { label: "エラー", tone: "danger" },
   orphaned: { label: "要復旧", tone: "warning" },
   merged: { label: "マージ済", tone: "success" },
+  archived: { label: "アーカイブ済", tone: "neutral" },
   unknown: { label: "不明", tone: "neutral" },
 };
 

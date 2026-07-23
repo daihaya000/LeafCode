@@ -49,10 +49,13 @@ export async function GET(req: NextRequest) {
     list.find((b) => b !== current) ||
     null;
 
+  // Prevent self-merge: if defaultTarget equals current, return null (R35#3).
+  const defaultTarget = preferred && preferred !== current ? preferred : null;
+
   return NextResponse.json({
     current,
     branches: list,
-    defaultTarget: preferred,
+    defaultTarget,
     upstream: upstreamBranch,
   });
 }
