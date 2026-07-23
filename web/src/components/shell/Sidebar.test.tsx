@@ -767,9 +767,7 @@ describe("Sidebar", () => {
     expect(screen.queryByTestId("sidebar-provider-icon")).toBeNull();
     expect(screen.queryByTestId("provider-icon-fallback")).toBeNull();
   });
-});
 
-describe("Sidebar archive task", () => {
   it("archives a task without confirmation dialog", async () => {
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
@@ -816,5 +814,172 @@ describe("Sidebar archive task", () => {
     await vi.waitFor(() => {
       expect(sendJson).toHaveBeenCalledWith("PATCH", "/api/tasks/ws1/archive");
     });
+  });
+});
+
+describe("Sidebar archived section", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("shows archived section with archived tasks", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({ tasks: [], engineOk: true });
+      }
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws-archived",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Archived task",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "merged",
+            sessionId: null,
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T01:00:00Z",
+          }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    // アーカイブセクションは初期状態で折りたたまれているため、展開する
+    const archiveHeading = await screen.findByRole("button", {
+      name: "アーカイブを展開",
+    });
+    archiveHeading.click();
+
+    await screen.findByText("Archived task");
+    expect(screen.getByLabelText("タスクを復元")).toBeTruthy();
+    expect(screen.getByLabelText("タスクを完全に削除")).toBeTruthy();
+  });
+
+  it("restores an archived task", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({ projects: [] });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({ tasks: [], engineOk: true });
+      }
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws-archived",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Archived task",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "merged",
+            sessionId: null,
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T01:00:00Z",
+          }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    // アーカイブセクションを展開
+    const archiveHeading = await screen.findByRole("button", {
+      name: "アーカイブを展開",
+    });
+    archiveHeading.click();
+
+    await screen.findByText("Archived task");
+    screen.getByLabelText("タスクを復元").click();
+
+    await vi.waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith(
+        "PATCH",
+        "/api/tasks/ws-archived/restore",
+      );
+    });
+  });
+
+  it("destroys an archived task after confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({ projects: [] });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({ tasks: [], engineOk: true });
+      }
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws-archived",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Archived task",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "merged",
+            sessionId: null,
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T01:00:00Z",
+          }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    // アーカイブセクションを展開
+    const archiveHeading = await screen.findByRole("button", {
+      name: "アーカイブを展開",
+    });
+    archiveHeading.click();
+
+    await screen.findByText("Archived task");
+    screen.getByLabelText("タスクを完全に削除").click();
+
+    await vi.waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(sendJson).toHaveBeenCalledWith(
+        "DELETE",
+        "/api/tasks/ws-archived",
+      );
+    });
+    confirmSpy.mockRestore();
   });
 });

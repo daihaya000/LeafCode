@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Archive,
+  ArchiveRestore,
   ChevronRight,
   Cpu,
   FolderGit2,
@@ -33,6 +34,7 @@ import type { ProjectDto, TaskSummary } from "@/lib/types";
 
 const EXPANDED_KEY = "webui.sidebar.expanded";
 const WIDTH_KEY = "webui.sidebar.width";
+const ARCHIVED_EXPANDED_KEY = "webui.sidebar.archived_expanded";
 const DEFAULT_WIDTH = 240;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
@@ -141,6 +143,8 @@ export function Sidebar({
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsLoadError, setProjectsLoadError] = useState(false);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [archivedTasks, setArchivedTasks] = useState<TaskSummary[]>([]);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [engineOk, setEngineOk] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
@@ -237,10 +241,12 @@ export function Sidebar({
   }, [mobileOpen, onClose]);
 
   const refresh = useCallback(async () => {
-    const [projectsResult, tasksResult] = await Promise.allSettled([
-      getJson<{ projects: ProjectDto[] }>("/api/projects"),
-      getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
-    ]);
+    const [projectsResult, tasksResult, archivedResult] =
+      await Promise.allSettled([
+        getJson<{ projects: ProjectDto[] }>("/api/projects"),
+        getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
+        getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived"),
+      ]);
     if (projectsResult.status === "fulfilled") {
       setProjects(projectsResult.value.projects ?? []);
       setProjectsLoaded(true);
@@ -252,11 +258,21 @@ export function Sidebar({
       setTasks(tasksResult.value.tasks ?? []);
       setEngineOk(tasksResult.value.engineOk);
     }
+    if (archivedResult.status === "fulfilled") {
+      setArchivedTasks(archivedResult.value.tasks ?? []);
+    }
   }, []);
 
   useEffect(() => {
     setExpanded(loadExpanded());
     setWidth(loadWidth());
+    setArchivedExpanded(() => {
+      try {
+        return localStorage.getItem(ARCHIVED_EXPANDED_KEY) === "true";
+      } catch {
+        return false;
+      }
+    });
     setHydrated(true);
     void refresh();
     const onVisible = () => {
@@ -361,6 +377,63 @@ export function Sidebar({
       const msg =
         err instanceof Error ? err.message : "タスクのアーカイブに失敗しました";
       window.alert(msg);
+      notifyTasksChanged();
+      await refresh();
+    }
+  };
+
+  const toggleArchived = () => {
+    setArchivedExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(ARCHIVED_EXPANDED_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  const restoreArchivedTask = async (
+    task: TaskSummary,
+    e: React.MouseEvent,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await sendJson("PATCH", `/api/tasks/${task.id}/restore`);
+      notifyTasksChanged();
+      await refresh();
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : "タスクの復元に失敗しました",
+      );
+    }
+  };
+
+  const destroyArchivedTask = async (
+    task: TaskSummary,
+    e: React.MouseEvent,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const label =
+      task.isolation === "current_folder"
+        ? `「${task.title}」を完全に削除しますか？（フォルダはそのまま残ります）`
+        : `「${task.title}」を完全に削除しますか？ worktree/コピーも削除されます。`;
+    if (!window.confirm(label)) return;
+    try {
+      await sendJson("DELETE", `/api/tasks/${task.id}`);
+      notifyTasksChanged();
+      await refresh();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "タスクの削除に失敗しました";
+      window.alert(
+        msg.includes("orphaned") || msg.includes("worktree")
+          ? `${msg}\n\n設定 → 「orphan を掃除」で残件を削除できます。`
+          : msg,
+      );
       notifyTasksChanged();
       await refresh();
     }
@@ -718,7 +791,7 @@ export function Sidebar({
                                     aria-label="タスクをアーカイブ"
                                     title="タスクをアーカイブ"
                                     onClick={(e) => void archiveTask(task, e)}
-                                    className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
                                   >
                                     <Archive className="h-3 w-3" />
                                   </button>
@@ -735,6 +808,91 @@ export function Sidebar({
             })}
           </ul>
         )}
+
+        <div className="mt-2">
+          <button
+            type="button"
+            aria-expanded={archivedExpanded}
+            aria-label={`アーカイブ${archivedExpanded ? "を折りたたむ" : "を展開"}`}
+            onClick={toggleArchived}
+            className="flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">アーカイブ</span>
+            <span className="tabular-nums text-[10px] text-muted">
+              {archivedTasks.length}
+            </span>
+            <ChevronRight
+              className={cx(
+                "h-3 w-3 shrink-0 transition-transform",
+                archivedExpanded && "rotate-90",
+              )}
+              aria-hidden="true"
+            />
+          </button>
+          {archivedExpanded && (
+            <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
+              {archivedTasks.length === 0 ? (
+                <li className="px-2 py-1.5 text-[11px] text-muted">
+                  アーカイブされたタスクはありません
+                </li>
+              ) : (
+                archivedTasks.map((task) => (
+                  <li key={task.id}>
+                    <div className="flex items-start gap-0.5 rounded-lg text-muted hover:bg-surface-2 hover:text-text">
+                      <button
+                        type="button"
+                        onClick={() => nav(`/task/${task.id}`)}
+                        className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                            <span
+                              aria-label={`状態: ${task.status}`}
+                              className="h-1.5 w-1.5 rounded-full bg-success"
+                            />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                            {task.title}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-muted">
+                            {timeAgo(task.updatedAt)}
+                          </span>
+                        </div>
+                        <div className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted">
+                          <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                          <span className="min-w-0 truncate font-mono">
+                            {sidebarBranchLabel(task)}
+                          </span>
+                        </div>
+                      </button>
+                      <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
+                        <button
+                          type="button"
+                          aria-label="タスクを復元"
+                          title="タスクを復元"
+                          onClick={(e) => void restoreArchivedTask(task, e)}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                        >
+                          <ArchiveRestore className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="タスクを完全に削除"
+                          title="タスクを完全に削除"
+                          onClick={(e) => void destroyArchivedTask(task, e)}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
+        </div>
 
         {orphanCount > 0 && (
           <Link
