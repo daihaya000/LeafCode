@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getJson, ocJson } from "./client";
+import { ApiError, getJson, ocJson, sendJson, timedFetch } from "./client";
 
 describe("ocJson timeout", () => {
   afterEach(() => {
@@ -55,7 +55,28 @@ describe("ocJson timeout", () => {
       })),
     );
 
-    await expect(ocJson("/session/status", "/repo")).rejects.toBeInstanceOf(ApiError);
+    const error = await ocJson("/session/status", "/repo").catch((err) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(503);
+  });
+
+  it.each([
+    ["getJson", () => getJson("/api/tasks", undefined, { timeoutMs: 1000 })],
+    ["sendJson", () => sendJson("POST", "/api/tasks", {}, undefined, { timeoutMs: 1000 })],
+    ["ocJson", () => ocJson("/session/status", "/repo", { timeoutMs: 1000 })],
+  ])("%s converts a body read timeout to ApiError 408", async (_name, call) => {
+    vi.useFakeTimers();
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: () => new Promise<unknown>(() => {}),
+    })));
+
+    const pending = call().catch((err) => err);
+    await vi.advanceTimersByTimeAsync(1000);
+    const error = await pending;
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(408);
   });
 });
 
@@ -111,10 +132,38 @@ describe("getJson body read timeout", () => {
       ),
     );
 
-    const pending = getJson("/api/tasks", undefined, { timeoutMs: 1000 });
-    const expectation = expect(pending).rejects.toThrow(/timed out|timeout|abort/i);
+    const pending = getJson("/api/tasks", undefined, { timeoutMs: 1000 }).catch(
+      (err) => err,
+    );
     await vi.advanceTimersByTimeAsync(1000);
-    await expectation;
+    const error = await pending;
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(408);
     releaseBody({});
   });
+});
+
+describe("timedFetch body readers", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it.each(["json", "text", "arrayBuffer", "blob", "formData"] as const)(
+    "wraps %s and rejects with ApiError 408 when it hangs",
+    async (reader) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("fetch", vi.fn(async () => ({
+        ok: true,
+        [reader]: () => new Promise<unknown>(() => {}),
+      })));
+
+      const response = await timedFetch("/api/tasks", { timeoutMs: 1000 });
+      const pending = response[reader]().catch((err) => err);
+      await vi.advanceTimersByTimeAsync(1000);
+      const error = await pending;
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(408);
+    },
+  );
 });

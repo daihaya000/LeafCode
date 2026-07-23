@@ -49,16 +49,19 @@ function asTimeoutError(path: string, err: unknown, timedOut: boolean): never {
   throw err;
 }
 
-/** Read JSON with the same timeout signal as the fetch. */
-async function readJsonWithTimeout<T>(
-  res: Response,
+/** Read a response body with the same timeout signal as the fetch. */
+async function readBodyWithTimeout<T>(
+  reader: () => Promise<T>,
   path: string,
   signal: AbortSignal | undefined,
 ): Promise<T> {
   if (!signal) {
-    return (await res.json().catch(() => ({}))) as T;
+    return (await reader().catch(() => ({}))) as T;
   }
-  const bodyPromise = res.json().catch(() => ({}));
+  const bodyPromise = reader().catch(() => {
+    if (signal.aborted) throw new ApiError(`${path} timed out`, 408);
+    return {} as T;
+  }) as Promise<T>;
   const abortPromise = new Promise<never>((_, reject) => {
     if (signal.aborted) {
       reject(new ApiError(`${path} timed out`, 408));
@@ -73,20 +76,72 @@ async function readJsonWithTimeout<T>(
   return Promise.race([bodyPromise, abortPromise]) as Promise<T>;
 }
 
+async function readJsonWithTimeout<T>(
+  res: Response,
+  path: string,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  return readBodyWithTimeout(() => res.json(), path, signal);
+}
+
 function keepTimeoutForBody(
   res: Response,
   path: string,
   signal: AbortSignal | undefined,
   clear: () => void,
 ): Response {
-  const response = res as Response & {
-    json: () => Promise<unknown>;
-  };
-  const json = response.json.bind(response);
-  response.json = () =>
-    readJsonWithTimeout({ ...response, json } as Response, path, signal).finally(
-      clear,
-    );
+  const response = res as Response & Record<string, unknown>;
+  const readers = ["arrayBuffer", "blob", "formData", "json", "text"] as const;
+  for (const name of readers) {
+    const reader = response[name];
+    if (typeof reader !== "function") continue;
+    (response as Record<string, unknown>)[name] = () =>
+      readBodyWithTimeout(
+        () => (reader as () => Promise<unknown>).call(response),
+        path,
+        signal,
+      ).finally(clear);
+  }
+
+  // A caller may consume the stream directly instead of using a convenience reader.
+  const body = response.body as ReadableStream<Uint8Array> | null | undefined;
+  if (body && typeof ReadableStream !== "undefined") {
+    try {
+      Object.defineProperty(response, "body", {
+        configurable: true,
+        get: () => {
+          const source = body.getReader();
+          return new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              try {
+                const result = await readBodyWithTimeout(
+                  () => source.read(),
+                  path,
+                  signal,
+                );
+                if (result.done) {
+                  clear();
+                  controller.close();
+                } else {
+                  controller.enqueue(result.value);
+                }
+              } catch (err) {
+                clear();
+                controller.error(err);
+                await source.cancel(err);
+              }
+            },
+            async cancel(reason) {
+              clear();
+              await source.cancel(reason);
+            },
+          });
+        },
+      });
+    } catch {
+      // Some Response implementations expose a non-configurable body property.
+    }
+  }
   return response;
 }
 
