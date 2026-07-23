@@ -83,7 +83,7 @@ vi.mock("./workspace-branch", () => ({
   makeWorktreeBranchName: () => "webui__main__task-x",
 }));
 
-import { destroyWorkspace } from "./workspace-service";
+import { destroyWorkspace, ServiceError } from "./workspace-service";
 
 const WT = "C:\\Users\\testuser\\AppData\\Roaming\\opencode-webui\\worktrees\\p1\\task-1";
 
@@ -200,5 +200,55 @@ describe("destroyWorkspace OpenCode session cleanup", () => {
       order.indexOf("removeTemporaryCopy"),
     );
     expect(removeAllowedRoot).toHaveBeenCalledWith(copyPath);
+  });
+});
+
+describe("archiveWorkspace", () => {
+  it("sets workspace status to archived and persists sessions", async () => {
+    getWorkspace.mockReturnValue(gitWorktreeRow());
+    setWorkspaceStatus.mockClear();
+    persistProjectSessions.mockClear();
+
+    const { archiveWorkspace } = await import("./workspace-service");
+    await archiveWorkspace("ws1");
+
+    expect(setWorkspaceStatus).toHaveBeenCalledWith("ws1", "archived");
+    expect(persistProjectSessions).toHaveBeenCalledWith("p1");
+  });
+
+  it("throws 404 when workspace does not exist", async () => {
+    getWorkspace.mockReturnValue(undefined);
+
+    const { archiveWorkspace } = await import("./workspace-service");
+    await expect(archiveWorkspace("missing")).rejects.toThrow(ServiceError);
+    await expect(archiveWorkspace("missing")).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(setWorkspaceStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("restoreWorkspace", () => {
+  it("sets workspace status to active and persists sessions", async () => {
+    getWorkspace.mockReturnValue(gitWorktreeRow({ status: "archived" }));
+    setWorkspaceStatus.mockClear();
+    persistProjectSessions.mockClear();
+
+    const { restoreWorkspace } = await import("./workspace-service");
+    await restoreWorkspace("ws1");
+
+    expect(setWorkspaceStatus).toHaveBeenCalledWith("ws1", "active");
+    expect(persistProjectSessions).toHaveBeenCalledWith("p1");
+  });
+
+  it("throws 404 when workspace does not exist", async () => {
+    getWorkspace.mockReturnValue(undefined);
+
+    const { restoreWorkspace } = await import("./workspace-service");
+    await expect(restoreWorkspace("missing")).rejects.toThrow(ServiceError);
+    await expect(restoreWorkspace("missing")).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(setWorkspaceStatus).not.toHaveBeenCalled();
   });
 });

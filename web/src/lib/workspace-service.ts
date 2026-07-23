@@ -198,6 +198,22 @@ async function deleteBoundOpenCodeSessions(row: WorkspaceRow): Promise<void> {
   );
 }
 
+/** Set workspace status to "archived". Worktree/sessions are preserved. */
+export async function archiveWorkspace(id: string): Promise<void> {
+  const row = getWorkspace(id);
+  if (!row) throw new ServiceError("workspace not found", 404);
+  setWorkspaceStatus(id, "archived");
+  persistProjectSessions(row.project_id);
+}
+
+/** Restore an archived workspace back to "active". */
+export async function restoreWorkspace(id: string): Promise<void> {
+  const row = getWorkspace(id);
+  if (!row) throw new ServiceError("workspace not found", 404);
+  setWorkspaceStatus(id, "active");
+  persistProjectSessions(row.project_id);
+}
+
 /** Remove worktree/copy and metadata. Marks orphaned + throws 409 on disk failure. */
 export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   const row = getWorkspace(id);
