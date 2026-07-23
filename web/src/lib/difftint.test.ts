@@ -23,4 +23,11 @@ describe("tintCodeLine", () => {
     expect(out).toContain("text-success"); // "hi"
     expect(out).toContain("text-faint"); // // note
   });
+
+  // R15#3: Single quotes should be highlighted as strings
+  it("highlights single-quoted strings", () => {
+    const out = tintCodeLine("const x = 'hello'", "a.ts");
+    expect(out).toContain("text-success");
+    expect(out).toContain("&#39;hello&#39;");
+  });
 });

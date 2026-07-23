@@ -58,11 +58,12 @@ export function CommandPalette({
         if (attentionOpen) return;
         setOpen((v) => !v);
       }
-      if (e.key === "Escape") setOpen(false);
+      // R8#3: Only respond to Escape when the palette is open
+      if (e.key === "Escape" && open) setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [attentionOpen]);
+  }, [attentionOpen, open]);
 
   useEffect(() => {
     if (attentionOpen && open) setOpen(false);

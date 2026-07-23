@@ -45,8 +45,44 @@ function pathsFromJumplist(filePath: string): string[] {
 
 function resolveLnkTargets(linksDir: string): QuickAccessEntry[] {
   if (!fs.existsSync(linksDir)) return [];
-  // WScript.Shell via PowerShell is the reliable way to resolve .lnk on Windows
-  return [];
+  // R33付記: WScript.Shell via PowerShell is the reliable way to resolve .lnk on Windows
+  // This is a synchronous fallback when listLinksFolder() fails
+  try {
+    const files = fs.readdirSync(linksDir).filter(f => f.endsWith('.lnk'));
+    if (files.length === 0) return [];
+    
+    const script = `
+$sh = New-Object -ComObject WScript.Shell
+$out = @()
+Get-ChildItem -LiteralPath '${linksDir.replace(/'/g, "''")}' -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
+  try {
+    $sc = $sh.CreateShortcut($_.FullName)
+    $t = $sc.TargetPath
+    if ($t -and (Test-Path -LiteralPath $t -PathType Container)) {
+      $out += [pscustomobject]@{ name = $_.BaseName; path = $t }
+    }
+  } catch {}
+}
+if (-not $out -or @($out).Count -eq 0) { Write-Output '[]' }
+elseif (@($out).Count -eq 1) { Write-Output ('[' + ($out | ConvertTo-Json -Compress) + ']') }
+else { $out | ConvertTo-Json -Compress }
+`;
+    
+    const { execSync } = require('child_process');
+    const result = execSync(`powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -Command "${script.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf8',
+      timeout: POWERSHELL_TIMEOUT_MS,
+    });
+    
+    const data = JSON.parse(result.trim());
+    if (!Array.isArray(data)) return [];
+    
+    return data
+      .map((x: { name?: string; path?: string }) => x.name && x.path ? { name: x.name, path: path.resolve(x.path) } : null)
+      .filter((x: QuickAccessEntry | null): x is QuickAccessEntry => x !== null);
+  } catch {
+    return [];
+  }
 }
 
 function runPsJson(script: string): Promise<unknown> {

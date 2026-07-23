@@ -226,11 +226,13 @@ const ToolPartView = memo(function ToolPartView({
   const preview =
     status === "completed" && niceOutput
       ? niceOutput.replace(/\s+/g, " ").slice(0, 100)
-      : nestedActive
-        ? "サブエージェント実行中…"
-        : terminalTask
-          ? "サブエージェントの経過を表示"
-          : "";
+      : status === "error" && rawOutput
+        ? `エラー: ${rawOutput.replace(/\s+/g, " ").slice(0, 80)}`
+        : nestedActive
+          ? "サブエージェント実行中…"
+          : terminalTask
+            ? "サブエージェントの経過を表示"
+            : "";
   const hasDetail =
     fields.length > 0 ||
     Boolean(niceOutput) ||

@@ -15,7 +15,7 @@ export const ACCESS_MODE_OPTIONS: {
   {
     value: "full",
     label: "フルアクセス",
-    title: "このセッションの権限要求をすべて自動承認します（危険）",
+    title: "すべての権限要求を自動承認します（危険）",
   },
 ];
 

@@ -20,8 +20,9 @@ export function tintCodeLine(text: string, filePath: string): string {
   // `class` attribute of our own markup can never be re-matched as a keyword
   // (KEYWORDS includes `class`), which used to corrupt the emitted HTML.
   s = s.replace(KEYWORDS, '<span class="text-accent">$&</span>');
-  // comments
-  s = s.replace(/(\/\/.*$|#.*$)/g, '<span class="text-faint">$1</span>');
+  // R15#3: comments — avoid matching `#` in HTML entities like `&#39;`
+  // Use negative lookbehind to exclude `#` preceded by `&`
+  s = s.replace(/(\/\/.*$|(?<!&)#.*$)/g, '<span class="text-faint">$1</span>');
   // strings
   s = s.replace(
     /(&quot;.*?&quot;|&#39;.*?&#39;|`.*?`)/g,
