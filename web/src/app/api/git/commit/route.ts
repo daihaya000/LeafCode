@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { invalidateDirStat } from "@/lib/dirstat";
 import { runGit } from "@/lib/git";
 
 export const runtime = "nodejs";
@@ -91,6 +92,10 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+
+  // The working tree changed; drop the cached dir stat so task cards refresh
+  // immediately instead of showing up-to-15s-stale diff counts.
+  invalidateDirStat(check.path);
 
   const log = await runGit(check.path, ["log", "-1", "--oneline"]);
   return NextResponse.json({

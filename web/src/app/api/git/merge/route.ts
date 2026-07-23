@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { invalidateDirStat } from "@/lib/dirstat";
 import { assertSafeBranchName, runGit } from "@/lib/git";
 
 export const runtime = "nodejs";
@@ -126,6 +127,7 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+    invalidateDirStat(check.path);
     return NextResponse.json({
       ok: true,
       merged: currentBranch,
@@ -150,6 +152,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  invalidateDirStat(check.path);
   return NextResponse.json({
     ok: true,
     merged: branch,
