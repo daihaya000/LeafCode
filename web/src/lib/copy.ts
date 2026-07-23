@@ -10,6 +10,7 @@ const SKIP = new Set([
   "build",
   ".webui-worktrees",
   ".webui-copies",
+  ".opencode-webui",
   "coverage",
   ".turbo",
 ]);
