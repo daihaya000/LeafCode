@@ -1,12 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
 import {
   attentionQueueReducer,
   resolveAttentionSessionTitle,
   shouldQueueAttention,
+  useAttentionQueue,
   type AttentionQueueState,
 } from "./useAttentionQueue";
 import type { AttentionItem } from "./attention";
 import type { TaskSummary } from "./types";
+
+vi.mock("./client", () => ({
+  getJson: vi.fn().mockResolvedValue({ tasks: [] }),
+}));
 
 function permissionItem(directory: string, sessionID: string, id: string): AttentionItem {
   return {
@@ -158,6 +164,55 @@ describe("attentionQueueReducer", () => {
       activeScope: { directory: "/a", sessionId: "s1" },
     });
     expect(state.items).toEqual([]);
+  });
+});
+
+describe("attention busy stickiness and 404 replied handling", () => {
+  it("does not re-add an item that was recently replied (404 treated as replied)", () => {
+    const { result } = renderHook(() => useAttentionQueue(null));
+    const item = questionItem("/a", "s1", "q-replied");
+
+    act(() => result.current.add(item));
+    expect(result.current.items).toHaveLength(1);
+
+    // Simulate a reply that returned 404: the queue removal still records the id.
+    act(() => {
+      result.current.remove(item.request.id, item.request.sessionID);
+      result.current.add(item);
+    });
+
+    expect(result.current.items).toHaveLength(0);
+  });
+
+  it("keeps a permission in queue when sync fails (busy does not stick)", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    const item = permissionItem("/a", "s1", "p1");
+    state = attentionQueueReducer(state, { kind: "add", item });
+    // Partial sync (questions only, permissions undefined) must not drop the permission.
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: [],
+      syncStartedAt: 10,
+    });
+    expect(state.items.map((i) => i.request.id)).toEqual(["p1"]);
+  });
+
+  it("does not treat a 404-removed question as still pending after sync", () => {
+    const { result } = renderHook(() => useAttentionQueue(null));
+    const item = questionItem("/a", "s1", "q-404");
+
+    act(() => result.current.add(item));
+    act(() => result.current.remove(item.request.id, item.request.sessionID));
+    act(() => {
+      result.current.reconcileDirectory(
+        "/a",
+        [questionItem("/a", "s1", item.request.id, 50)],
+        10,
+      );
+    });
+
+    expect(result.current.items.map((i) => i.request.id)).not.toContain("q-404");
   });
 });
 
