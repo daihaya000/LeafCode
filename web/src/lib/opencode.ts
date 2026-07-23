@@ -20,6 +20,34 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (m === "DELETE" && (p === "/auth" || p.startsWith("/auth/"))) return true;
   if (m === "PUT" && p.startsWith("/auth/")) return true;
 
+  // PTY create/update/delete/connect-token — remote shell equivalent
+  if (m === "POST" && p === "/pty") return true;
+  if (m === "PUT" && p.startsWith("/pty/")) return true;
+  if (m === "DELETE" && p.startsWith("/pty/")) return true;
+  if (m === "POST" && /^\/pty\/[^/]+\/connect-token$/.test(p)) return true;
+
+  // Engine dispose — unauthenticated shutdown
+  if (m === "POST" && (p === "/global/dispose" || p === "/instance/dispose")) return true;
+
+  // VCS patch apply — arbitrary patch to working tree
+  if (m === "POST" && p === "/vcs/apply") return true;
+
+  // Experimental worktree/workspace writes — git tree destruction
+  if (m === "POST" && p === "/experimental/worktree") return true;
+  if (m === "DELETE" && p === "/experimental/worktree") return true;
+  if (m === "POST" && p === "/experimental/worktree/reset") return true;
+  if (m === "POST" && p === "/experimental/workspace") return true;
+  if (m === "DELETE" && p.startsWith("/experimental/workspace/")) return true;
+  if (m === "POST" && p === "/experimental/workspace/sync-list") return true;
+  if (m === "POST" && p === "/experimental/workspace/warp") return true;
+
+  // Experimental control-plane / console
+  if (m === "POST" && p === "/experimental/control-plane/move-session") return true;
+  if (m === "POST" && p === "/experimental/console/switch") return true;
+
+  // MCP OAuth DELETE — credential removal
+  if (m === "DELETE" && /^\/mcp\/[^/]+\/auth$/.test(p)) return true;
+
   return false;
 }
 

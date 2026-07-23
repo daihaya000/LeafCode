@@ -84,4 +84,47 @@ describe("isBlockedOpencodeWrite", () => {
   it("blocks auth DELETE on resolved pathnames", () => {
     expect(isBlockedOpencodeWrite("DELETE", "/auth/openai")).toBe(true);
   });
+
+  it("blocks PTY create/update/delete/connect-token", () => {
+    expect(isBlockedOpencodeWrite("POST", "/pty")).toBe(true);
+    expect(isBlockedOpencodeWrite("PUT", "/pty/abc123")).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/pty/abc123")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/pty/abc123/connect-token")).toBe(true);
+  });
+
+  it("blocks global/instance dispose", () => {
+    expect(isBlockedOpencodeWrite("POST", "/global/dispose")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/instance/dispose")).toBe(true);
+  });
+
+  it("blocks vcs apply", () => {
+    expect(isBlockedOpencodeWrite("POST", "/vcs/apply")).toBe(true);
+  });
+
+  it("blocks experimental worktree/workspace mutating methods", () => {
+    expect(isBlockedOpencodeWrite("POST", "/experimental/worktree")).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/experimental/worktree")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/experimental/worktree/reset")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/experimental/workspace")).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/experimental/workspace/ws1")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/experimental/workspace/sync-list")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/experimental/workspace/warp")).toBe(true);
+  });
+
+  it("blocks experimental control-plane move-session and console switch", () => {
+    expect(isBlockedOpencodeWrite("POST", "/experimental/control-plane/move-session")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/experimental/console/switch")).toBe(true);
+  });
+
+  it("blocks DELETE mcp auth", () => {
+    expect(isBlockedOpencodeWrite("DELETE", "/mcp/github/auth")).toBe(true);
+  });
+
+  it("still allows read-only endpoints", () => {
+    expect(isBlockedOpencodeWrite("GET", "/pty")).toBe(false);
+    expect(isBlockedOpencodeWrite("GET", "/experimental/worktree")).toBe(false);
+    expect(isBlockedOpencodeWrite("GET", "/experimental/workspace")).toBe(false);
+    expect(isBlockedOpencodeWrite("GET", "/global/config")).toBe(false);
+    expect(isBlockedOpencodeWrite("GET", "/provider")).toBe(false);
+  });
 });
