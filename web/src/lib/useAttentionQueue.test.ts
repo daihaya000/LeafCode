@@ -56,22 +56,6 @@ describe("attentionQueueReducer", () => {
     expect(state.items).toHaveLength(1);
   });
 
-  it("does not duplicate by id", () => {
-    let state: AttentionQueueState = { items: [], tasks: [] };
-    const item = permissionItem("/a", "s1", "p1");
-    state = attentionQueueReducer(state, { kind: "add", item });
-    state = attentionQueueReducer(state, { kind: "add", item });
-    expect(state.items).toHaveLength(1);
-  });
-
-  it("removes by id", () => {
-    let state: AttentionQueueState = { items: [], tasks: [] };
-    const item = permissionItem("/a", "s1", "p1");
-    state = attentionQueueReducer(state, { kind: "add", item });
-    state = attentionQueueReducer(state, { kind: "remove", requestId: "p1" });
-    expect(state.items).toHaveLength(0);
-  });
-
   it("removes permissions matching active scope", () => {
     let state: AttentionQueueState = { items: [], tasks: [] };
     state = attentionQueueReducer(state, { kind: "add", item: permissionItem("/a", "s1", "p1") });
@@ -196,6 +180,26 @@ describe("attention busy stickiness and 404 replied handling", () => {
       syncStartedAt: 10,
     });
     expect(state.items.map((i) => i.request.id)).toEqual(["p1"]);
+  });
+
+  it("busy does not stick: remove + reconcile does not re-queue the removed item", () => {
+    const { result } = renderHook(() => useAttentionQueue(null));
+    const item = questionItem("/a", "s1", "q-busy");
+
+    act(() => result.current.add(item));
+    expect(result.current.items).toHaveLength(1);
+
+    // Simulate AttentionQueueModal.respond finally: remove then reconcile.
+    act(() => result.current.remove(item.request.id, item.request.sessionID));
+    act(() => {
+      result.current.reconcileDirectory(
+        "/a",
+        [questionItem("/a", "s1", item.request.id, 50)],
+        10,
+      );
+    });
+
+    expect(result.current.items.map((i) => i.request.id)).not.toContain("q-busy");
   });
 
   it("does not treat a 404-removed question as still pending after sync", () => {

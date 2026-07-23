@@ -276,4 +276,19 @@ describe("session stream session.next text deltas", () => {
     });
     expect(state.permissions.map((p) => p.id)).toEqual(["p-sse"]);
   });
+
+  it("transitions busy→idle without sticking (regression)", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "status",
+      status: { type: "busy" },
+    });
+    expect(state.status?.type).toBe("busy");
+
+    state = sessionStreamReducer(state, {
+      kind: "status",
+      status: { type: "idle" },
+    });
+    expect(state.status?.type).toBe("idle");
+  });
 });
