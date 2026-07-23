@@ -5,7 +5,7 @@
 ### やったこと
 ワークフローを簡略化（仕様書・多段レビュー省略、調査→修正→検証→即コミット）し、中優先度バグを修正中。まず高優先度対応で既に解決済みの項目（R44#1 symlink隔離、R2#2 二重202、R39#3 warp write-block）を切り分けた上で、未修正を修正単位に統合。
 
-修正済み30件（コミット）:
+修正済み37件（コミット）:
 - write-block漏れ一括（R38#2 upgrade / R39#2 sync/steal・R39#4 project/git/init / R40#2 session share / R41 project PATCH・session background・tui/* / R50#2 permission/saved）— `b2966ea`
 - runGitにタイムアウト追加でBFF無期限ハング防止（R47#1、runGhは不在）— `0fe9880`
 - browse/folderのpowershellにタイムアウト（R54#1）— `2dd51ee`
@@ -36,6 +36,12 @@
 - into=currentモードのコンフリクト時にmerge --abortで復帰（R37#1）— `5f5d6d1`
 - intelligence variantsをagent modelから計算（R24）— `19705ca`
 - compact失敗時にもアクション固有のエラーメッセージを表示（R25）— `2c88359`
+- orphan掃除クロス削除防止とUIリフレッシュ（R16#2/R14#2）— `e389708`
+- 空creditsオブジェクトをlast-good扱いしない（R15#4）— `0ee7663`
+- Attentionモーダルのフルアクセス時残りキュー自動承認（R36#2）— `1525cc1`
+- kebabメニューのbusy中削除を無効化（R3#1/R4#2）— `bf541d9`
+- Attentionキューアイテム変更時のフォーカス破壊防止（R5#1）— `a730d1d`
+- GraphPanelのdirectory変更時にerror stateをクリア（R21/R11#2-3）— `2ad4bcc`
 
 ### 判断・教訓
 - R7#6（diff/files 200+git:false）はDiffPaneが既にpayload.error優先表示のため実害緩和済みと判断、コード変更せず。
@@ -45,7 +51,7 @@
 - R17(abort後再送信), R24(intelligence基準), R37#1(into=current後abort) はUIコンポーネント（useSessionStream, DiffPane）のロジックで他エージェント並行作業領域と重なる可能性が高いため、BFF/ロジック層の独立した修正を優先して着手。
 
 ### 残タスク（中優先度、未着手）
-UI不具合系: R15#4(空credits last-good), R36#2(フルアクセス自動承認), R3#6-7(isMd初期false), R3#1/R4#2(kebab z-index), R5#1/R4#1(Attentionフォーカス), R21/R11#2-3(GraphPanel stale), R16#2/R14#2(orphan掃除)
+なし（全件完了）
 
 ## 2026-07-23 高優先度バグ修正（R1-R54）完了
 
