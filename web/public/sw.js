@@ -1,7 +1,7 @@
 // OpenCode WebUI service worker: offline app shell + static asset caching.
 // Never touches /api/* (BFF proxy + SSE streams) so live data stays live.
 
-const CACHE = "opencode-webui-v1";
+const CACHE = "opencode-webui-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
