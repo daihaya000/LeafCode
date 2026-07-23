@@ -20,6 +20,7 @@ import {
   FolderTree,
   GitBranch,
   GitGraph,
+  Layers,
   ListTodo,
   Loader2,
   Paperclip,
@@ -112,7 +113,7 @@ import {
   MessageRevertButton,
   useSessionActions,
 } from "./SessionActions";
-import { SessionSwitcher } from "./SessionSwitcher";
+import { SessionSwitcherDialog } from "./SessionSwitcherDialog";
 import {
   HeaderKebabMenu,
   type KebabGroup,
@@ -328,6 +329,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const modelLabels = useMemo<Readonly<Record<string, string>>>(
     () =>
@@ -704,6 +706,20 @@ export function TaskView({ taskId }: { taskId: string }) {
       setLoadError(err instanceof Error ? err.message : "タスクを読み込めません");
     }
   }, [taskId]);
+
+  const closeSessionDialog = useCallback(() => {
+    setSessionDialogOpen(false);
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label="メニューを開く"]')
+        ?.focus();
+    }, 0);
+  }, []);
+
+  const handleSessionSwitch = useCallback(async () => {
+    await refreshTask();
+    closeSessionDialog();
+  }, [refreshTask, closeSessionDialog]);
 
   useEffect(() => {
     void refreshTask();
@@ -1406,17 +1422,14 @@ export function TaskView({ taskId }: { taskId: string }) {
       groups.push({
         id: "session-switcher",
         label: "セッション切替",
-        items: [],
-        renderContent: () => (
-          <div className="px-3 py-1.5">
-            <SessionSwitcher
-              workspaceId={task.id}
-              directory={task.directory}
-              currentSessionId={task.sessionId}
-              onSwitch={() => void refreshTask()}
-            />
-          </div>
-        ),
+        items: [
+          {
+            id: "open-session-switcher",
+            label: "セッションを切り替え・追加",
+            icon: <Layers className="h-4 w-4" />,
+            onSelect: () => setSessionDialogOpen(true),
+          },
+        ],
       });
     }
     if (panelItems.length) {
@@ -1426,13 +1439,10 @@ export function TaskView({ taskId }: { taskId: string }) {
     return groups;
   }, [
     task?.sessionId,
-    task?.id,
-    task?.directory,
     copied,
     copyPath,
     working,
     stream,
-    refreshTask,
     sessionActions.busy,
     sessionActions.revert,
     sessionActions.unrevert,
@@ -1721,7 +1731,10 @@ export function TaskView({ taskId }: { taskId: string }) {
 
           </div>
           {/* Zone C: session, task, session-switcher, panels, and danger. */}
-          <HeaderKebabMenu groups={headerKebabGroups} />
+          <HeaderKebabMenu
+            groups={headerKebabGroups}
+            triggerLabel="メニューを開く"
+          />
         </div>
       </header>
 
@@ -2299,6 +2312,15 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
         </div>
       </div>
+      {sessionDialogOpen && task.sessionId && (
+        <SessionSwitcherDialog
+          workspaceId={task.id}
+          directory={task.directory}
+          currentSessionId={task.sessionId}
+          onSwitch={handleSessionSwitch}
+          onClose={closeSessionDialog}
+        />
+      )}
     </div>
   );
 }

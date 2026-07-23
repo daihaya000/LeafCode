@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render,
   screen,
@@ -760,26 +761,96 @@ describe("TaskView", () => {
     expect(screen.getByTitle("グラフ")).toBeTruthy();
     expect(screen.getByTitle("Diff パネル")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    const trigger = screen.getByRole("button", { name: "メニューを開く" });
+    fireEvent.click(trigger);
     const menu = screen.getByRole("menu", { name: "タスクその他操作" });
     expect(within(menu).getByRole("menuitem", { name: "作業パスをコピー" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "再同期" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "セッションを切り替え・追加" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
-    const sessionGroup = within(menu).getByRole("group", { name: "セッション切替" });
-    expect(within(sessionGroup).getByRole("combobox", { name: "セッション切替" })).toBeTruthy();
-    expect(within(sessionGroup).getByRole("button", { name: "新セッション" })).toBeTruthy();
+    expect(within(menu).queryByRole("combobox")).toBeNull();
+    expect(within(menu).queryByRole("button")).toBeNull();
+    expect(within(menu).queryByRole("dialog")).toBeNull();
 
     getJson.mockClear();
-    fireEvent.click(within(sessionGroup).getByRole("button", { name: "新セッション" }));
-    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/tasks/ws1"));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "セッションを切り替え・追加" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    const dialog = screen.getByRole("dialog", { name: "セッションを切り替え・追加" });
+    const select = within(dialog).getByRole("combobox", { name: "セッション切替" });
+    const create = within(dialog).getByRole("button", { name: "新セッション" });
+    await waitFor(() => expect(document.activeElement).toBe(select));
+    create.focus();
+    const tab = createEvent.keyDown(create, { key: "Tab" });
+    fireEvent(create, tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(select);
+    const shiftTab = createEvent.keyDown(select, { key: "Tab", shiftKey: true });
+    fireEvent(select, shiftTab);
+    expect(shiftTab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(create);
 
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "再同期" }));
+    fireEvent.click(create);
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/tasks/ws1"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    fireEvent.click(trigger);
+    const resync = screen.getByRole("menuitem", { name: "再同期" });
+    fireEvent.click(resync);
     expect(streamMock.resync).toHaveBeenCalledTimes(1);
     expect(diffPaneRefreshKeys).toContain(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    fireEvent.click(trigger);
     fireEvent.click(screen.getByRole("menuitem", { name: "ターミナル" }));
     expect(screen.getByTestId("pty-panel")).toBeTruthy();
+  });
+
+  it("closes the session dialog with Escape or a backdrop click and restores trigger focus", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    const trigger = screen.getByRole("button", { name: "メニューを開く" });
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "セッションを切り替え・追加" }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "セッションを切り替え・追加" }));
+    fireEvent.click(screen.getByRole("presentation"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("does not offer session switching without a task session", async () => {
+    taskStatus = "idle";
+    getJson.mockResolvedValue({ task: { ...task(0.1), sessionId: null } });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
+    expect(
+      screen.queryByRole("menuitem", { name: "セッションを切り替え・追加" }),
+    ).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("disables resync while the stream is working", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "busy" } });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
+    const resync = screen.getByRole("menuitem", { name: "再同期" });
+    expect(resync.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(resync);
+    expect(streamMock.resync).not.toHaveBeenCalled();
   });
 
   it("shows the copied check icon from the kebab for 1.5 seconds", async () => {
@@ -790,12 +861,12 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "作業パスをコピー" }));
     await act(async () => { await Promise.resolve(); });
     expect(copyText).toHaveBeenCalledWith("/repo");
 
-    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
     const copiedItem = screen.getByRole("menuitem", { name: "作業パスをコピー" });
     expect(copiedItem.querySelector("svg.lucide-check")).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
@@ -830,12 +901,14 @@ describe("TaskView", () => {
     expect(screen.queryByTitle("グラフ")).toBeNull();
     expect(screen.queryByTitle("Diff パネル")).toBeNull();
     expect(screen.queryByTitle("ターミナル")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "その他の操作" }));
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
     const menu = screen.getByRole("menu", { name: "タスクその他操作" });
     expect(within(menu).getByRole("menuitem", { name: "ファイルツリー" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "グラフ" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "Diff パネル" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "ターミナル" }));
+    expect(screen.getByTestId("pty-panel")).toBeTruthy();
   });
 });
 
