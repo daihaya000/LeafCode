@@ -19,8 +19,10 @@ export function VoiceInputButton({
   const handleClick = () => {
     if (disabled) return;
     if (voice.listening) {
-      const text = voice.stop();
-      onTranscript(text);
+      // stop() returns a Promise that resolves once the engine fires its
+      // final `result` + `end` events, so the last utterance finalized by
+      // the stop is not lost. Forward the resolved transcript to the parent.
+      void voice.stop().then((text) => onTranscript(text));
     } else {
       voice.start();
     }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VoiceInputButton } from "./VoiceInputButton";
 import type { UseVoiceInputReturn } from "@/lib/use-voice-input";
@@ -8,7 +8,7 @@ function mockVoice(overrides: Partial<UseVoiceInputReturn> = {}): UseVoiceInputR
     supported: true,
     listening: false,
     start: vi.fn(),
-    stop: vi.fn(() => ""),
+    stop: vi.fn(() => Promise.resolve("")),
     transcript: "",
     error: null,
     clearError: vi.fn(),
@@ -45,18 +45,21 @@ describe("VoiceInputButton", () => {
     expect(voice.start).toHaveBeenCalledTimes(1);
   });
 
-  it("calls voice.stop() and onTranscript on click when listening", () => {
-    const voice = mockVoice({ listening: true, stop: vi.fn(() => "hello") });
+  it("calls voice.stop() and onTranscript on click when listening", async () => {
+    const voice = mockVoice({
+      listening: true,
+      stop: vi.fn(() => Promise.resolve("hello")),
+    });
     const onTranscript = vi.fn();
     render(
       <VoiceInputButton voice={voice} onTranscript={onTranscript} />,
     );
     fireEvent.click(screen.getByRole("button"));
     expect(voice.stop).toHaveBeenCalledTimes(1);
-    expect(onTranscript).toHaveBeenCalledWith("hello");
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith("hello"));
   });
 
-  it("calls onTranscript with empty string when voice.stop() returns empty string", () => {
+  it("calls onTranscript with empty string when voice.stop() resolves with empty string", async () => {
     const voice = mockVoice({ listening: true });
     const onTranscript = vi.fn();
     render(
@@ -64,7 +67,7 @@ describe("VoiceInputButton", () => {
     );
     fireEvent.click(screen.getByRole("button"));
     expect(voice.stop).toHaveBeenCalledTimes(1);
-    expect(onTranscript).toHaveBeenCalledWith("");
+    await waitFor(() => expect(onTranscript).toHaveBeenCalledWith(""));
   });
 
   it("does nothing when disabled and not listening", () => {

@@ -53,12 +53,14 @@ describe("useVoiceInput", () => {
     vi.unstubAllGlobals();
   });
 
-  it("detects supported browser", () => {
+  it("detects supported browser after mount", () => {
     const { result } = renderHook(() => useVoiceInput());
+    // Feature detection runs in useEffect after mount; by the time
+    // renderHook returns, the effect has flushed and supported is true.
     expect(result.current.supported).toBe(true);
   });
 
-  it("detects unsupported browser", () => {
+  it("detects unsupported browser after mount", () => {
     vi.stubGlobal("webkitSpeechRecognition", undefined);
     const { result } = renderHook(() => useVoiceInput());
     expect(result.current.supported).toBe(false);
@@ -85,19 +87,23 @@ describe("useVoiceInput", () => {
     expect(result.current.listening).toBe(false);
   });
 
-  it("stops recognition and returns transcript on stop()", () => {
+  it("stops recognition and resolves transcript on stop()", async () => {
     const { result } = renderHook(() => useVoiceInput());
     act(() => result.current.start());
     act(() => mockRecognition._dispatch("start"));
     // Simulate a final result
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "hello world" }, isFinal: true }],
       }),
     );
     let text = "";
-    act(() => {
-      text = result.current.stop();
+    await act(async () => {
+      const p = result.current.stop();
+      // stop() waits for the `end` event — fire it so the promise resolves.
+      mockRecognition._dispatch("end");
+      text = await p;
     });
     expect(mockRecognition.stop).toHaveBeenCalledTimes(1);
     expect(text).toBe("hello world");
@@ -119,6 +125,7 @@ describe("useVoiceInput", () => {
     act(() => mockRecognition._dispatch("start"));
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "discard me" }, isFinal: true }],
       }),
     );
@@ -131,17 +138,51 @@ describe("useVoiceInput", () => {
     const { result } = renderHook(() => useVoiceInput());
     act(() => result.current.start());
     act(() => mockRecognition._dispatch("start"));
+    // Realistic cumulative results: each event carries the full list with
+    // resultIndex pointing at the newly-finalized entry.
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "first" }, isFinal: true }],
       }),
     );
     act(() =>
       mockRecognition._dispatch("result", {
-        results: [{ 0: { transcript: "second" }, isFinal: true }],
+        resultIndex: 1,
+        results: [
+          { 0: { transcript: "first" }, isFinal: true },
+          { 0: { transcript: "second" }, isFinal: true },
+        ],
       }),
     );
     expect(result.current.transcript).toBe("first second");
+  });
+
+  // Critical 1 regression: resultIndex must be honored so already-finalized
+  // results are not re-appended on subsequent result events.
+  it("does not duplicate finalized results across cumulative result events (Critical 1)", () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    // 1st event: results=[A], resultIndex=0
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "A" }, isFinal: true }],
+      }),
+    );
+    // 2nd event: results=[A,B], resultIndex=1 (cumulative)
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 1,
+        results: [
+          { 0: { transcript: "A" }, isFinal: true },
+          { 0: { transcript: "B" }, isFinal: true },
+        ],
+      }),
+    );
+    expect(result.current.transcript).toBe("A B");
+    expect(result.current.transcript).not.toBe("A A B");
   });
 
   it("sets error message on error event", () => {
@@ -176,7 +217,7 @@ describe("useVoiceInput", () => {
     expect(mockRecognition.abort).toHaveBeenCalled();
   });
 
-  it("resets transcript on each start() so stop() returns only current session text", () => {
+  it("resets transcript on each start() so stop() returns only current session text", async () => {
     const { result } = renderHook(() => useVoiceInput());
 
     // Session 1
@@ -184,12 +225,15 @@ describe("useVoiceInput", () => {
     act(() => mockRecognition._dispatch("start"));
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "first session" }, isFinal: true }],
       }),
     );
     let text1 = "";
-    act(() => {
-      text1 = result.current.stop();
+    await act(async () => {
+      const p = result.current.stop();
+      mockRecognition._dispatch("end");
+      text1 = await p;
     });
     expect(text1).toBe("first session");
 
@@ -198,14 +242,91 @@ describe("useVoiceInput", () => {
     act(() => mockRecognition._dispatch("start"));
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "second session" }, isFinal: true }],
       }),
     );
     let text2 = "";
-    act(() => {
-      text2 = result.current.stop();
+    await act(async () => {
+      const p = result.current.stop();
+      mockRecognition._dispatch("end");
+      text2 = await p;
     });
     expect(text2).toBe("second session");
+  });
+
+  // Critical 2 regression: stop() must wait for the final `result` that
+  // arrives after recognition.stop() is called, then resolve with it.
+  it("stop() resolves with the last result that arrives after stop() is called (Critical 2)", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    // First finalized chunk before stop.
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "first" }, isFinal: true }],
+      }),
+    );
+
+    // Call stop() — recognition.stop() is synchronous but the final result
+    // + end event arrive asynchronously afterwards.
+    let resolved: string | undefined;
+    await act(async () => {
+      const p = result.current.stop();
+      // After stop() was called, the engine finalizes the last utterance and
+      // fires a final result event, then end.
+      mockRecognition._dispatch("result", {
+        resultIndex: 1,
+        results: [
+          { 0: { transcript: "first" }, isFinal: true },
+          { 0: { transcript: "last utterance" }, isFinal: true },
+        ],
+      });
+      mockRecognition._dispatch("end");
+      resolved = await p;
+    });
+    expect(resolved).toBe("first last utterance");
+  });
+
+  it("stop() resolves immediately when not listening", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    let text = "";
+    await act(async () => {
+      text = await result.current.stop();
+    });
+    expect(text).toBe("");
+    expect(mockRecognition.stop).not.toHaveBeenCalled();
+  });
+
+  // Important 3 regression: a late result event arriving after the session
+  // was interrupted by disabled must not revive the transcript.
+  it("drops late result events after disabled-interrupt so transcript stays empty (Important 3)", () => {
+    const { result, rerender } = renderHook(
+      (props: { disabled: boolean }) => useVoiceInput(props),
+      { initialProps: { disabled: false } },
+    );
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "discard me" }, isFinal: true }],
+      }),
+    );
+    rerender({ disabled: true });
+    expect(result.current.transcript).toBe("");
+    // Late result arrives after the interrupt — must be ignored.
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 1,
+        results: [
+          { 0: { transcript: "discard me" }, isFinal: true },
+          { 0: { transcript: "late arrival" }, isFinal: true },
+        ],
+      }),
+    );
+    expect(result.current.transcript).toBe("");
   });
 
   it("clears error on clearError()", () => {
