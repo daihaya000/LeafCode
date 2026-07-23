@@ -355,7 +355,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     (text: string) => {
       if (text) {
         setPrompt((prev) => {
-          const suffix = prev && !prev.endsWith(" ") ? " " : "";
+          const suffix = prev && !/\s$/.test(prev) ? " " : "";
           return prev + suffix + text;
         });
       }

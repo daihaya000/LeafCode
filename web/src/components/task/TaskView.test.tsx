@@ -716,13 +716,15 @@ describe("TaskView voice input", () => {
     // Simulate final result
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "follow up text" }, isFinal: true }],
       }),
     );
 
-    // Stop listening
+    // Stop listening. stop() resolves on `end`.
     fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
     await act(async () => {
+      mockRecognition._dispatch("end");
       await Promise.resolve();
     });
 
@@ -779,15 +781,30 @@ describe("TaskView voice input", () => {
     // Simulate an empty transcript (regression: guard `if (!text) return;`)
     act(() =>
       mockRecognition._dispatch("result", {
+        resultIndex: 0,
         results: [{ 0: { transcript: "" }, isFinal: true }],
       }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
     await act(async () => {
+      mockRecognition._dispatch("end");
       await Promise.resolve();
     });
 
     expect(textarea.value).toBe("existing text");
+  });
+
+  it("disables the mic button when no session is created yet (Important 5)", async () => {
+    // Task has no sessionId yet — composer controls are disabled, so the mic
+    // button must be disabled too even though the task itself is idle.
+    getJson.mockImplementation(() =>
+      Promise.resolve({ task: { ...task(0.1), sessionId: null } }),
+    );
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const micBtn = await screen.findByRole("button", { name: "音声入力" });
+    expect((micBtn as HTMLButtonElement).disabled).toBe(true);
   });
 });

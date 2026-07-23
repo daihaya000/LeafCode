@@ -718,7 +718,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const working = hasActiveTask;
   const [sending, setSending] = useState(false);
   const composerLocked = working || sending;
-  const voice = useVoiceInput({ disabled: composerLocked });
+  const voiceDisabled = composerLocked || !task?.sessionId;
+  const voice = useVoiceInput({ disabled: voiceDisabled });
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
@@ -1243,11 +1244,12 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const onVoiceTranscript = useCallback(
     (text: string) => {
-      if (!text) return;
-      setInput((prev) => {
-        const suffix = prev && !prev.endsWith(" ") ? " " : "";
-        return prev + suffix + text;
-      });
+      if (text) {
+        setInput((prev) => {
+          const suffix = prev && !/\s$/.test(prev) ? " " : "";
+          return prev + suffix + text;
+        });
+      }
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (!el) return;
@@ -2134,7 +2136,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                     >
                       <Paperclip className="h-3.5 w-3.5" />
                     </button>
-                    <VoiceInputButton voice={voice} onTranscript={onVoiceTranscript} disabled={composerLocked} />
+                    <VoiceInputButton voice={voice} onTranscript={onVoiceTranscript} disabled={voiceDisabled} />
                     {modelOptions.length > 0 && (
                       <GhostSelect
                         value={model}

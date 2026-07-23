@@ -292,12 +292,17 @@ describe("HomeView image attachments", () => {
       // result is array-like with a numeric-index alternative plus isFinal).
       act(() =>
         mockRecognition._dispatch("result", {
+          resultIndex: 0,
           results: [{ 0: { transcript: "hello world" }, isFinal: true }],
         }),
       );
 
-      // Stop listening (button label changes)
+      // Stop listening (button label changes). stop() resolves on `end`.
       fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+      await act(async () => {
+        mockRecognition._dispatch("end");
+        await Promise.resolve();
+      });
 
       const textarea = screen.getByRole("combobox", {
         name: "タスクの説明",
@@ -321,12 +326,17 @@ describe("HomeView image attachments", () => {
       // Simulate a final result with an empty transcript.
       act(() =>
         mockRecognition._dispatch("result", {
+          resultIndex: 0,
           results: [{ 0: { transcript: "" }, isFinal: true }],
         }),
       );
 
-      // Stop listening (button label changes)
+      // Stop listening (button label changes). stop() resolves on `end`.
       fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+      await act(async () => {
+        mockRecognition._dispatch("end");
+        await Promise.resolve();
+      });
 
       expect(prompt.value).toBe("hello");
     });
