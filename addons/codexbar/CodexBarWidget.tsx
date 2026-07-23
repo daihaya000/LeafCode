@@ -388,14 +388,14 @@ function ProviderSettingsRow({
         disabled={disabled}
         onClick={onToggle}
         className={cx(
-          "inline-flex h-5 min-w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+          "inline-flex h-6 min-w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
           provider.enabled ? "bg-success" : "bg-surface-3",
         )}
       >
         <span
           className={cx(
-            "h-4 w-4 rounded-full bg-surface shadow-sm transition-transform",
-            provider.enabled && "translate-x-6",
+            "h-5 w-5 rounded-full bg-surface shadow-sm transition-transform",
+            provider.enabled && "translate-x-5",
           )}
         />
         <span className="sr-only">CodexBarで更新</span>
@@ -420,6 +420,7 @@ export function CodexBarWidget() {
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
@@ -498,6 +499,7 @@ export function CodexBarWidget() {
       if (!mounted.current) return;
       setProviderSettings(data);
       setSettingsError(null);
+      setSettingsStatus("プロバイダー設定を読み込みました");
     } catch (err) {
       if (!mounted.current) return;
       setSettingsError(err instanceof Error ? err.message : "設定の読み込みに失敗しました");
@@ -524,6 +526,7 @@ export function CodexBarWidget() {
       if (!mounted.current) return;
       setProviderSettings(updated);
       setSettingsError(null);
+      setSettingsStatus("プロバイダー設定を保存しました");
       void refresh();
     } catch (err) {
       if (!mounted.current) return;
@@ -573,16 +576,18 @@ export function CodexBarWidget() {
 
   return (
     <div className="flex max-h-[80vh] w-full min-w-0 flex-col rounded-xl border border-border bg-surface shadow-xl">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
         <Activity className={cx("h-4 w-4", textClass[summaryTone])} />
-        <span className="flex-1 truncate text-xs font-semibold text-text">
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text">
           CodexBar 利用状況
         </span>
         <button
           type="button"
           onClick={() => void refresh()}
-          title="更新"
-          className="rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text"
+          aria-label={refreshing ? "更新中" : "更新"}
+          aria-busy={refreshing}
+          title={refreshing ? "更新中" : "更新"}
+          className="h-6 w-6 rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text"
         >
           <RefreshCw className={cx("h-3.5 w-3.5", refreshing && "animate-spin")} />
         </button>
@@ -592,7 +597,7 @@ export function CodexBarWidget() {
           aria-expanded={settingsOpen}
           aria-controls="codexbar-provider-settings"
           title="更新するプロバイダー"
-          className="rounded-md px-1.5 py-1 text-[10px] font-medium text-faint hover:bg-surface-2 hover:text-text"
+          className="order-last min-w-0 basis-full rounded-md px-1.5 py-1 text-left text-[10px] font-medium text-muted hover:bg-surface-2 hover:text-text"
         >
           更新するプロバイダー
         </button>
@@ -600,7 +605,8 @@ export function CodexBarWidget() {
           type="button"
           onClick={toggleCollapsed}
           title={collapsed ? "開く" : "折りたたむ"}
-          className="rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text"
+          aria-label={collapsed ? "開く" : "折りたたむ"}
+          className="h-6 w-6 rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text"
         >
           {collapsed ? (
             <ChevronUp className="h-3.5 w-3.5" />
@@ -611,8 +617,9 @@ export function CodexBarWidget() {
         <button
           type="button"
           onClick={() => writeAddonEnabled(CODEXBAR_ADDON_ID, false)}
+          aria-label="このウィジェットを閉じる"
           title="このウィジェットを閉じる（設定から再表示できます）"
-          className="rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger"
+          className="h-6 w-6 rounded-md p-1 text-faint hover:bg-danger-bg hover:text-danger"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -622,17 +629,25 @@ export function CodexBarWidget() {
         <section
           id="codexbar-provider-settings"
           aria-label="更新するプロバイダー"
+          aria-busy={settingsLoading || savingProviderId !== null}
           className="shrink-0 border-b border-border px-3 py-2"
         >
-          <p className="mb-1 text-[10px] text-faint">CodexBarで更新</p>
-          {settingsLoading && <p className="text-[11px] text-faint">読み込み中…</p>}
+          <p className="mb-1 min-w-0 text-[10px] text-muted">CodexBarで更新</p>
+          <div role="status" aria-live="polite" className="sr-only">
+            {settingsLoading
+              ? "読み込み中…"
+              : savingProviderId !== null
+                ? "保存中…"
+                : settingsStatus}
+          </div>
+          {settingsLoading && <p className="text-[11px] text-muted">読み込み中…</p>}
           {settingsError && (
-            <div className="flex items-center gap-2 text-[11px] text-danger">
+            <div role="alert" className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-danger">
               <span className="min-w-0 flex-1">{settingsError}</span>
               <button
                 type="button"
                 onClick={() => void loadProviderSettings()}
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium hover:bg-danger-bg"
+                className="h-6 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium hover:bg-danger-bg"
               >
                 再試行
               </button>
@@ -677,7 +692,9 @@ export function CodexBarWidget() {
           </div>
         )}
         {loadError && (
-          <p className="text-[11px] text-danger">読み込みエラー: {loadError}</p>
+          <p role="alert" className="text-[11px] text-danger">
+            読み込みエラー: {loadError}
+          </p>
         )}
         {!loadError && !usage && (
           <p className="text-[11px] text-faint">読み込み中…</p>
