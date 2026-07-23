@@ -5,7 +5,7 @@ vi.mock("@/lib/allowlist", () => ({
   assertAllowedDirectory: vi.fn(() => ({ ok: true, path: "C:\\repo" })),
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 function post(body: string, contentType = "application/json") {
   return POST(
@@ -65,6 +65,57 @@ describe("POST /api/opencode/session/:id/prompt_async variant validation", () =>
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0] ?? [];
     expect(await new Response(init?.body).text()).toBe(body);
+    fetchMock.mockRestore();
+  });
+});
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+describe("GET provider/config responses", () => {
+  it.each([
+    [
+      "/provider",
+      ["provider"],
+      { all: [{ id: "openai", key: "sk-secret123" }] },
+      ["all", 0, "key"],
+      "sk-s…********",
+    ],
+    [
+      "/config/providers",
+      ["config", "providers"],
+      { providers: [{ id: "openai", key: "sk-leaked" }] },
+      ["providers", 0, "key"],
+      "sk-l…********",
+    ],
+    [
+      "/global/config",
+      ["global", "config"],
+      { providers: [{ id: "openai", options: { apiKey: "sk-global" } }] },
+      ["providers", 0, "options", "apiKey"],
+      "sk-g…********",
+    ],
+  ])("masks secrets on GET %s", async (_pathname, path, responseBody, bodyPath, expected) => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(responseBody));
+    const response = await GET(
+      new Request(`http://localhost/api/opencode${_pathname}`) as never,
+      { params: Promise.resolve({ path }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    let value: unknown = body;
+    for (const key of bodyPath) value = (value as Record<string, unknown>)[key];
+    expect(value).toBe(expected);
+    expect(JSON.stringify(body)).not.toContain("sk-secret123");
+    expect(JSON.stringify(body)).not.toContain("sk-leaked");
+    expect(JSON.stringify(body)).not.toContain("sk-global");
     fetchMock.mockRestore();
   });
 });

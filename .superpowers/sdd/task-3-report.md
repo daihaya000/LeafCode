@@ -1,74 +1,49 @@
-# Task 3 実装レポート
+## Task 3 実施報告
 
-## 変更
+### 結果
 
-- `TaskView` に共通の `touchActivity` callback を追加した。
-  - 現在の task に `sessionId` がある場合、`POST /api/tasks/{taskId}/activity` を送信する。
-  - 活動時刻 API の失敗は握りつぶし、プロンプト送信を継続する。
-- 通常プロンプト、slash command、plan approval の送信前に `touchActivity()` を実行するようにした。
-- 通常送信と plan approval の `finally` で `notifyTasksChanged()` を実行するようにした。
-- TaskView テストに、通常送信・slash command・plan approval の順序、activity 失敗時の送信継続を追加した。
-- テストモックを実際の `sendJson` に接続し、slash command と plan approval を操作できるようにした。
-- テスト実行時の無限再レンダーを修正した。`accessMode !== "full"` の effect が毎回新しい `Set` を state に設定していたため、空集合時は同じ state を返すようにした。
-- 前担当のデバッグ用 render trace と、指定された `__scratch.test.tsx` / `vitest-*.txt` 一時ファイルを削除した。
+- R52: `GET /provider` の JSON 応答を `maskSecrets` に通過させた。
+- R49: `GET /config/providers` の JSON 応答を `maskSecrets` に通過させた。
+- R48: `GET /global/config` の JSON 応答を `maskSecrets` に通過させた。
+- `/config/providers` は既存の directory 要件により 400 にならないよう、GET の directory 不要許可対象にも追加した。
+- SSE、非 JSON 応答、上記以外の経路は既存のプロキシ処理を維持した。
 
-## 原因
+### 変更ファイル
 
-初回の対象テストは worker の JavaScript heap out of memory で終了した。render trace の調査で TaskView が大量再レンダーしていることを確認し、`autoReplyFailedIds` を空の `Set` へ毎回置換していた effect が原因と特定した。
+- `web/src/app/api/opencode/[...path]/route.ts`
+  - マスキング対象を `/config`、`/provider`、`/config/providers`、`/global/config` に拡張。
+  - `/config/providers` の GET を directory 不要許可対象に追加。
+- `web/src/app/api/opencode/[...path]/route.test.ts`
+  - 3 経路の secret マスキング回帰テストを追加。
 
-また、activity の追加テストが API 呼び出しを検出できなかった原因は、`@/lib/client` の `sendJson` モックが hoisted mock ではなく別の `vi.fn()` になっていたことだった。
+### TDD 記録
 
-## RED / GREEN
+1. RED: 実装前に回帰テストを追加し、以下を確認した。
+   - `/provider`: 平文の `key` が返った。
+   - `/config/providers`: directory 不足で 400 になった。
+   - `/global/config`: `maskSecrets` 未適用で secret が平文だった。
+2. GREEN: 対象パスの Set と directory 不要許可を最小追加し、3 ケースを含む route テスト 6 件が成功した。
 
-- RED: 初回実行は worker OOM。無限再レンダーのため activity テストまで到達しなかった。
-- RED: 再レンダー停止後、activity テストは `sendJson` が呼ばれず失敗した。
-- GREEN: `sendJson` モック接続後、activity 対象 4 テストが成功した。
-- GREEN: 最終の TaskView 全 14 テストが成功した。
+### 検証
 
-## 実行コマンドと結果
+- `npx vitest run "src/app/api/opencode/[...path]/route.test.ts" --pool=threads --maxWorkers=1 --minWorkers=1`
+  - PASS: 6 tests
+- `npx vitest run "src/app/api/opencode/[...path]/route.test.ts" "src/lib/opencode.test.ts" "src/lib/opencode-id.test.ts" --pool=threads --maxWorkers=1 --minWorkers=1`
+  - PASS: 2 files / 25 tests（存在する関連テストを実行）
+- `npm run typecheck`
+  - PASS: `tsc --noEmit`
+- `npx eslint "src/app/api/opencode/[...path]/route.ts" "src/app/api/opencode/[...path]/route.test.ts"`
+  - PASS: exit code 0
+- `git diff --check`
+  - PASS: whitespace エラーなし
 
-すべて `web` を作業ディレクトリとして実行し、Windows のパス解釈を避けるため対象パスを引用した。
+### log / 差分確認
 
-```text
-npm exec -- vitest run "src/components/task/TaskView.test.tsx" -t activity --pool=threads --maxWorkers=1 --minWorkers=1 --reporter=verbose
-PASS: 4 passed, 10 skipped
+- RED/GREEN の Vitest 出力を確認した。
+- `git status` / `git diff` で変更対象が route.ts、route.test.ts のみであることを確認した（レポート自身はコミット対象）。
+- 検証途中に生成された不要な `$null` ファイルは削除した。
+- テスト用のダミー secret は回帰テスト内だけに存在し、実装コードには追加していない。
 
-npm exec -- vitest run "src/components/task/TaskView.test.tsx" --pool=threads --maxWorkers=1 --minWorkers=1
-PASS: 14 passed
+### コミット
 
-npm --prefix web run typecheck
-PASS: tsc --noEmit
-
-npm exec -- vitest run "src/lib/db.test.ts" "src/app/api/tasks/[id]/activity/route.test.ts" --pool=threads --maxWorkers=1 --minWorkers=1
-PASS: 6 passed in 2 test files
-```
-
-`--maxWorkers=1 --minWorkers=1` は、前担当の再現結果と同様に通常の worker 実行で OOM になったため、環境負荷を抑えて安定実行するために指定した。
-
-## 懸念
-
-- Vitest のデフォルト worker 数ではこの環境で TaskView テストが OOM になる。コード修正後は単一 worker で安定して成功したが、CI では worker 数または Node heap 上限の確認が必要。
-- activity API は仕様どおり best-effort のため、失敗時は UI にエラー表示しない。
-
-## Task 3レビュー対応
-
-- `sendJson` を deferred promise に変更し、通常プロンプトと slash command で activity API の完了前に送信されないことを検証するようにした。
-- plan approval でも同じ await 境界を検証するようにした。
-- activity 失敗時に通常プロンプトの送信を継続するテストは維持した。
-
-## レビュー対応後の検証
-
-```text
-npm exec -- vitest run "src/components/task/TaskView.test.tsx" --pool=threads --maxWorkers=1 --minWorkers=1
-PASS: 14 passed
-
-npm --prefix web run typecheck
-PASS: tsc --noEmit
-```
-
-## Task 3レビュー対応（追加）
-
-- parameterized テストで activity resolve 後に実際の `streamMock[method]` が1回呼ばれたことを検証するようにした。
-- slash command は `sendCommand("review", "args", expect.any(Object))` と `sendPrompt` 未呼び出しを検証するようにした。
-- 通常 prompt は `sendPrompt("hello", expect.any(Object))` と `sendCommand` 未呼び出しを検証するようにした。
-- deferred await 境界および activity 失敗時の継続テストは維持した。
+- 予定メッセージ: `feat: GET /provider・/config/providers・/global/config に maskSecrets を適用`

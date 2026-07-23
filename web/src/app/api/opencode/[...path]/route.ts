@@ -81,6 +81,7 @@ async function proxy(
     const allowWithoutDir =
       req.method === "GET" &&
       (pathname === "/config" ||
+        pathname === "/config/providers" ||
         pathname.startsWith("/provider") ||
         pathname.startsWith("/mcp") ||
         pathname === "/path" ||
@@ -183,10 +184,16 @@ async function proxy(
     outHeaders.set("X-Accel-Buffering", "no");
   }
 
-  // Mask secrets on config GET JSON responses
+  // Mask secrets on config/provider GET JSON responses
+  const MASKED_GET_PATHS = new Set([
+    "/config",
+    "/provider",
+    "/config/providers",
+    "/global/config",
+  ]);
   if (
     req.method === "GET" &&
-    pathname === "/config" &&
+    MASKED_GET_PATHS.has(pathname) &&
     contentType.includes("application/json")
   ) {
     const json = await upstream.json();
