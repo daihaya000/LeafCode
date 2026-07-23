@@ -37,9 +37,13 @@ export async function GET(req: NextRequest) {
     .map((b) => b.trim())
     .filter(Boolean);
 
-  // Prefer main, then master, else first non-current
   const current = head.stdout.trim();
+  const upstreamBranch = upstream.code === 0 ? upstream.stdout.trim() : null;
+
+  // Prefer upstream (tracking branch) if set, then main, master, else first non-current.
+  // This ensures worktree branches from the user's expected base, not an arbitrary default.
   const preferred =
+    (upstreamBranch && list.includes(upstreamBranch) ? upstreamBranch : null) ||
     list.find((b) => b === "main") ||
     list.find((b) => b === "master") ||
     list.find((b) => b !== current) ||
@@ -49,6 +53,6 @@ export async function GET(req: NextRequest) {
     current,
     branches: list,
     defaultTarget: preferred,
-    upstream: upstream.code === 0 ? upstream.stdout.trim() : null,
+    upstream: upstreamBranch,
   });
 }
