@@ -1,5 +1,52 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-23 高優先度バグ修正（R1-R54）完了
+
+### やったこと
+docs/bugs/2026-07-23-bug-inventory.md の高優先度バグ全件を修正。サブエージェント駆動開発で23タスクを順次実装・レビュー。
+
+**Phase 1: BFF security/data guard**
+- OpenCode書込み遮断の強化（PTY v1/v2含む全mutating経路）
+- /provider・/config/providers・/global/config の秘密マスク拡張
+- 画像送信のUI/BFF二重fail-closed（capability=true以外は拒否）
+- タイトル再生成の全ツール無効化（tools map全false、取得失敗時は502）
+- 既修正3グループの回帰テスト補強（setup.bat、NestedAgent空TL、Attention busy固着）
+
+**Phase 2: allowlist/temp copy**
+- isInside根一致拒否（git.ts・project-session-sync.ts、保護root重複も拒否）
+- POST /api/projects・/api/roots のパス検証（canonical実体パス、UNC/device path拒否、システム領域拒否）
+- DELETE /api/roots ハンドラ追加（case-insensitive照合）
+- SettingsView roots削除ボタン（確認導線、a11y、コントラスト）
+- temporary_copy symlink隔離・失敗時ロールバック・cross-copy削除防止
+- purgeGoneOrphans allowlist解放
+
+**Phase 3: host reliability**
+- headless検出強化（--headlessフラグ・OPENCODE_HEADLESS・OPENCODE_WEBUI_HEADLESS）
+- OpenCode異常exit自動再起動（3回/5分上限、計画停止は除外）
+- healthポーリング ターゲット別成功条件・60回失敗でエラー
+
+**Phase 4: 通信/SW**
+- timedFetchボディ読了タイムアウト（全body reader対応、AbortErrorのみ408）
+- Service Worker非OKレスポンスキャッシュ拒否（v2にbump）
+
+**Phase 5: UI core**
+- iOS 16pxフォントサイズ対策・touchActivity 5秒ブロック
+- initialCollapsed計算修正（matchMedia lazy初期化）
+- SessionSwitcher snap-back解消（localSelection）
+- PartView error表示（status=errorで常に表示）
+
+### 判断理由
+- 高優先度は秘密漏洩・データ破壊・コア導線停止の3カテゴリ。セキュリティを最優先で修正
+- 各タスクはTDDで実装し、セキュリティ監査・UIレビューを挟んで承認後に次へ進む
+- レビュー指摘はCritical/Importantを必ず修正、Minorは実装に影響なければ許容
+
+### 教訓
+- セキュリティ修正は単発で終わらず、レビューでTOCTOU・正規化前traversal・UNC別名などの追加攻撃面が発見される
+- UI修正もa11y（role=alert、aria-live、フォーカス管理）とコントラスト（WCAG AA 4.5:1）を同時に確認する
+- サブエージェント駆動開発で23タスクを並列処理できたが、他エージェントの未コミット差分との衝突に注意が必要
+
+---
+
 ## 2026-07-23: CodexBar更新プロバイダー切替
 
 - 実施: CodexBar addon に「更新するプロバイダー」パネルを追加し、providerごとの `CodexBarで更新` switch、保存中・失敗・再試行状態を実装した。usage詳細の折りたたみとは別機能である。
