@@ -89,6 +89,13 @@ describe("restoreProjectFromManifest worktree path guard", () => {
     expect(h.imported).toHaveLength(1);
   });
 
+  it("skips a worktree whose path equals the project root (root coincidence)", () => {
+    h.manifest = worktreeEntry(ROOT);
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+
   it("skips a worktree whose path escapes both trusted bases", () => {
     h.manifest = worktreeEntry(path.join(os.tmpdir(), "elsewhere", "wt1"));
     const res = restoreProjectFromManifest(ROOT, "p1");

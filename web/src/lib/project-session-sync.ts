@@ -80,10 +80,12 @@ const isolations = new Set([
 ]);
 const statuses = new Set(["active", "merging", "archived", "orphaned"]);
 
-/** True when `child` is the same as, or nested inside, `parent`. */
+/** True when `child` is strictly nested inside `parent` (root coincidence rejected). */
 function isInside(parent: string, child: string): boolean {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  // Reject root coincidence so a crafted manifest cannot drive recursive
+  // delete of the repo root or a worktree base itself.
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 /**

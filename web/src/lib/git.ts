@@ -106,10 +106,12 @@ function clearReadonlyRecursive(target: string): void {
   }
 }
 
-/** True when `child` is the same as, or nested inside, `parent`. */
+/** True when `child` is strictly nested inside `parent` (root coincidence rejected). */
 function isInside(parent: string, child: string): boolean {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  // Reject root coincidence so removeWorktree cannot delete the repo root or
+  // the worktree base itself when a crafted sessions.json points at the root.
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 function rmDirBestEffort(target: string): void {
