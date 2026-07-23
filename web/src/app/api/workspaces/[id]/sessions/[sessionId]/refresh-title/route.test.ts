@@ -27,6 +27,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/project-session-sync", () => ({ persistProjectSessions }));
 
 import { POST } from "./route";
+import { OcError } from "@/lib/oc-server";
 
 const WS = { id: "ws1", project_id: "prj1", absolute_path: "/repo" };
 const BINDING = {
@@ -166,15 +167,46 @@ describe("POST refresh-title", () => {
       const res = await POST(req(), ctx());
 
       expect(res.status).toBe(502);
-      expect(ocServer).not.toHaveBeenCalledWith(
-        "/repo",
-        "/session/temp1/message",
-        expect.anything(),
-      );
+      expect(
+        ocServer.mock.calls.some(
+          ([, path, init]) =>
+            path === "/session/temp1/message" && init?.method === "POST",
+        ),
+      ).toBe(false);
       expect(updateSessionTitle).not.toHaveBeenCalled();
       expect(persistProjectSessions).not.toHaveBeenCalled();
     },
   );
+
+  it("normalizes tool ID OcError 404 to 502 without sending the title message", async () => {
+    ocServer.mockImplementation(
+      async (_dir: string, path: string, init?: { method?: string }) => {
+        if (path === "/session/sess1/message" && init?.method === undefined)
+          return [
+            {
+              info: { id: "m1", role: "user", providerID: "p", modelID: "m" },
+              parts: [{ id: "x", messageID: "m1", type: "text", text: "hi" }],
+            },
+          ];
+        if (path === "/session" && init?.method === "POST")
+          return { id: "temp1" };
+        if (path === "/experimental/tool/ids")
+          throw new OcError("tool ids not found", 404);
+        if (path === "/session/temp1" && init?.method === "DELETE") return true;
+        throw new Error("unexpected " + path);
+      },
+    );
+
+    const res = await POST(req(), ctx());
+
+    expect(res.status).toBe(502);
+    expect(
+      ocServer.mock.calls.some(
+        ([, path, init]) =>
+          path === "/session/temp1/message" && init?.method === "POST",
+      ),
+    ).toBe(false);
+  });
 
   it("fails and does not patch original when temp cleanup fails", async () => {
     ocServer.mockImplementation(

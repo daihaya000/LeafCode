@@ -66,7 +66,12 @@ export async function POST(_req: NextRequest, context: Ctx) {
     tempId = temp.id;
 
     // Explicitly disable every tool; without a complete ID list this is not fail-closed.
-    const ids = await ocServer<unknown>(dir, "/experimental/tool/ids");
+    let ids: unknown;
+    try {
+      ids = await ocServer<unknown>(dir, "/experimental/tool/ids");
+    } catch {
+      throw new Error("failed to read a non-empty tool ID list");
+    }
     if (!Array.isArray(ids) || ids.length === 0) {
       throw new Error("failed to read a non-empty tool ID list");
     }
