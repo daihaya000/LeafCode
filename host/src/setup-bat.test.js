@@ -16,7 +16,7 @@ function writeBat(path, contents) {
 }
 
 function createSandbox(options = {}) {
-  const root = mkdtempSync(join(tmpdir(), "OpenCode WebUI setup-"));
+  const root = mkdtempSync(join(tmpdir(), "OpenCodeWebUI-setup-"));
   const bin = join(root, "mock-bin");
   const log = join(root, "commands.log");
   mkdirSync(bin);
@@ -24,7 +24,7 @@ function createSandbox(options = {}) {
   mkdirSync(join(root, "host"));
   writeFileSync(join(root, "setup.bat"), readFileSync(setupSource));
   writeBat(join(root, "start-webui.bat"), options.asyncStart
-    ? 'type nul > "%~dp0started.txt"\nping -n 8 127.0.0.1 >nul\ntype nul > "%~dp0finished.txt"\ntype nul > "%~dp0exited.txt"\ncd /d "%TEMP%"\nexit /b 0'
+    ? 'type nul > "%~dp0started.txt"\nping -n 15 127.0.0.1 >nul\ntype nul > "%~dp0finished.txt"\ntype nul > "%~dp0exited.txt"\ncd /d "%TEMP%"\nexit /b 0'
     : 'type nul > "%~dp0started.txt"\nexit /b 0');
   writeBat(join(bin, "where.cmd"), [
     'if exist "%~dp0%~1.cmd" echo %~dp0%~1.cmd',
@@ -107,12 +107,24 @@ function createSandbox(options = {}) {
   return {
     root,
     log,
-    run({ captureOutput = true } = {}) {
+    run({ captureOutput = true, timeout = 30_000 } = {}) {
       const startedAt = Date.now();
-      const result = spawnSync(process.env.ComSpec ?? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe"), ["/d", "/c", "call setup.bat"], {
-        cwd: root, encoding: "utf8", env, timeout: 10_000, windowsHide: true,
-        stdio: captureOutput ? undefined : "ignore",
+      const outFile = join(root, "stdout.txt");
+      const errFile = join(root, "stderr.txt");
+      const wrapper = join(root, "_run.bat");
+      if (captureOutput) {
+        writeFileSync(wrapper, `@echo off\r\ncall setup.bat >"${outFile}" 2>"${errFile}"\r\n`, "utf8");
+      } else {
+        writeFileSync(wrapper, "@echo off\r\ncall setup.bat\r\n", "utf8");
+      }
+      const result = spawnSync(process.env.ComSpec ?? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe"), ["/d", "/c", "call _run.bat"], {
+        cwd: root, encoding: "utf8", env, timeout, windowsHide: true,
+        stdio: "ignore",
       });
+      if (captureOutput) {
+        result.stdout = existsSync(outFile) ? readFileSync(outFile, "utf8") : "";
+        result.stderr = existsSync(errFile) ? readFileSync(errFile, "utf8") : "";
+      }
       return { ...result, elapsedMs: Date.now() - startedAt };
     },
     cleanup() {
@@ -179,6 +191,32 @@ test("setup.bat falls back to npm only after the OpenCode winget install fails",
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), false);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), true);
     assert.match(readFileSync(sandbox.log, "utf8"), /npm .* install -g opencode-ai/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat uses non-blocking start and reaches the success message", { skip: !isWindows }, async () => {
+  const sandbox = createSandbox({ asyncStart: true });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "non-blocking start");
+    assert.equal(result.status, 0);
+    // success message must be reached (exit /b 0)
+    assert.match(`${result.stdout}\n${result.stderr}`, /セットアップが完了しました/);
+    // start-webui.bat must be invoked via `start` (non-blocking)
+    await waitFor(join(sandbox.root, "started.txt"));
+    // setup.bat must NOT wait for the host to finish
+    assert.equal(existsSync(join(sandbox.root, "finished.txt")), false);
+  } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat reaches exit /b 0 with BUILD_ID present", { skip: !isWindows }, () => {
+  const sandbox = createSandbox();
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "build id success");
+    assert.equal(result.status, 0);
+    assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
+    assert.match(`${result.stdout}\n${result.stderr}`, /セットアップが完了しました/);
   } finally { sandbox.cleanup(); }
 });
 
