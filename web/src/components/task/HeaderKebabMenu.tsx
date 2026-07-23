@@ -36,7 +36,7 @@ export type KebabGroup = {
  * - trigger: ghost icon button with MoreHorizontal
  * - popup: absolute, bottom-right of trigger, shadow-lg, bg-surface border-border
  * - keyboard: ArrowUp/Down to move (skip disabled), Enter/Space to run,
- *   Escape to close, Tab closes (no focus trap)
+ *   Escape to close, and natural Tab traversal (leaving the popup closes it)
  * - outside click closes
  *
  * No new design tokens; only existing globals.css variables + Tailwind std classes.
@@ -136,7 +136,7 @@ export function HeaderKebabMenu({
         aria-controls={menuId}
         aria-label={triggerLabel}
         title={triggerLabel}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>

@@ -67,4 +67,29 @@ describe("HeaderKebabMenu", () => {
     (add as HTMLButtonElement).focus();
     expect(document.activeElement).toBe(add);
   });
+
+  it("closes when the trigger is clicked while a popup item is focused", async () => {
+    render(
+      <HeaderKebabMenu
+        groups={[
+          {
+            id: "actions",
+            items: [{ id: "action", label: "操作", onSelect: vi.fn() }],
+          },
+        ]}
+        triggerLabel="テストメニュー"
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "テストメニュー" });
+    fireEvent.click(trigger);
+    const item = await screen.findByRole("menuitem", { name: "操作" });
+    await waitFor(() => expect(document.activeElement).toBe(item));
+
+    fireEvent.pointerDown(trigger);
+    item.blur();
+    fireEvent.click(trigger);
+
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 });
