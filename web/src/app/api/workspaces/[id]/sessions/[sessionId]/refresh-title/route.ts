@@ -65,9 +65,21 @@ export async function POST(_req: NextRequest, context: Ctx) {
     });
     tempId = temp.id;
 
+    // Explicitly disable every tool; an empty tools object is not fail-closed.
+    let toolIds: string[] = [];
+    try {
+      const ids = await ocServer<string[]>(dir, "/experimental/tool/ids");
+      toolIds = Array.isArray(ids) ? ids : [];
+    } catch {
+      toolIds = ["bash", "edit", "read", "write", "glob", "grep", "task", "webfetch"];
+    }
+    const toolsMap: Record<string, boolean> = {};
+    for (const toolId of toolIds) toolsMap[toolId] = false;
+    if (Object.keys(toolsMap).length === 0) toolsMap.bash = false;
+
     const promptBody: Record<string, unknown> = {
       system: TITLE_INSTRUCTION,
-      tools: {},
+      tools: toolsMap,
       parts: [{ type: "text", text: transcript }],
     };
     if (model) promptBody.model = model;

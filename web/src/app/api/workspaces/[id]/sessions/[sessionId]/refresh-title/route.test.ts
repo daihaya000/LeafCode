@@ -100,6 +100,8 @@ describe("POST refresh-title", () => {
           ];
         if (path === "/session" && init?.method === "POST")
           return { id: "temp1" };
+        if (path === "/experimental/tool/ids")
+          return ["bash", "edit", "read", "write", "grep"];
         if (path === "/session/temp1/message" && init?.method === "POST") {
           titlePrompt = init.body;
           return {
@@ -119,6 +121,13 @@ describe("POST refresh-title", () => {
     expect(res.status).toBe(200);
     expect(json.title).toBe("会話の要約");
     expect(titlePrompt?.system).toContain("日本語タイトル");
+    expect(titlePrompt?.tools).toEqual({
+      bash: false,
+      edit: false,
+      read: false,
+      write: false,
+      grep: false,
+    });
     const delIdx = calls.indexOf("DELETE /session/temp1");
     const patchIdx = calls.indexOf("PATCH /session/sess1");
     expect(delIdx).toBeGreaterThan(-1);
