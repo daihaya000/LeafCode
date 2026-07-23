@@ -4705,3 +4705,17 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 
 ### 教訓
 - addonのプロバイダ追加は、ラベル・アイコンマップ・OpenCode ID変換・公開PNG・ユニットテストを同じ変更単位で更新する。
+
+---
+
+## 2026-07-23 空レスポンスJSONエラーの修正
+
+### やったこと
+- 共有クライアントのJSON読み取りで、204/205および空・空白本文を `undefined` として処理した。
+- `getJson`、`sendJson`、`ocJson` の回帰テストを追加し、非空の不正JSONが引き続き例外になることも確認した。
+
+### 判断理由
+- OpenCodeのcompact・permission/question応答には204 No Contentが仕様としてあり、無条件の `Response.json()` がブラウザの `Unexpected end of JSON input` を発生させていたため。
+
+### 教訓
+- JSONを期待する共通fetchヘルパーでも、HTTPのbodyなし成功（204/205）と空本文を先に扱い、`Response.json()` を無条件に呼ばない。
