@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import fs from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
 
 vi.mock("@/lib/db", () => ({
   addAllowedRoot: vi.fn(),
@@ -9,6 +13,7 @@ vi.mock("@/lib/allowlist", () => ({
   realPathOrResolved: (p: string) => p,
 }));
 
+import { addAllowedRoot, setSetting } from "@/lib/db";
 import { POST } from "./route";
 
 function req(body: unknown): Request {
@@ -20,6 +25,15 @@ function req(body: unknown): Request {
 }
 
 describe("POST /api/roots path validation", () => {
+  let tempRoot: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tempRoot = fs.mkdtempSync(path.join(tmpdir(), "roots-route-"));
+  });
+
+  afterEach(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
   it("rejects a non-existent path with 400", async () => {
     const res = await POST(req({ path: "C:\\definitely-nonexistent-xyz" }) as never);
     expect(res.status).toBe(400);
@@ -56,5 +70,22 @@ describe("POST /api/roots path validation", () => {
   it("rejects the user profile root with 400", async () => {
     const res = await POST(req({ path: process.env.USERPROFILE }) as never);
     expect(res.status).toBe(400);
+  });
+
+  it("accepts a valid temporary directory and stores its canonical path", async () => {
+    const res = await POST(req({ path: tempRoot }) as never);
+    expect(res.status).toBe(200);
+    expect(addAllowedRoot).toHaveBeenCalledWith(fs.realpathSync.native(tempRoot));
+    expect(setSetting).toHaveBeenCalledWith("lastDirectory", fs.realpathSync.native(tempRoot));
+  });
+
+  it("rejects a directory symlink whose target is protected", async () => {
+    const link = path.join(tempRoot, "windows-link");
+    fs.symlinkSync(process.env.SystemRoot ?? "C:\\Windows", link, "junction");
+
+    const res = await POST(req({ path: link }) as never);
+    expect(res.status).toBe(400);
+    expect(addAllowedRoot).not.toHaveBeenCalled();
+    expect(setSetting).not.toHaveBeenCalled();
   });
 });

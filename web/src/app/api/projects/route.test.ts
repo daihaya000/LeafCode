@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import fs from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
 
 vi.mock("@/lib/db", () => ({
   listProjects: vi.fn(() => []),
@@ -17,6 +21,7 @@ vi.mock("@/lib/workspace-service", () => ({
   destroyProject: vi.fn(),
 }));
 
+import { upsertProject } from "@/lib/db";
 import { POST } from "./route";
 
 function req(body: unknown): Request {
@@ -28,6 +33,23 @@ function req(body: unknown): Request {
 }
 
 describe("POST /api/projects path validation", () => {
+  let tempRoot: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(upsertProject).mockReturnValue({
+      id: "project-1",
+      name: "tmp",
+      root_path: "",
+      favorite: 0,
+      last_opened_at: null,
+      created_at: "2026-01-01",
+    } as never);
+    tempRoot = fs.mkdtempSync(path.join(tmpdir(), "projects-route-"));
+  });
+
+  afterEach(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
   it("rejects a non-existent path with 400", async () => {
     const res = await POST(req({ rootPath: "C:\\nonexistent-xyz-123" }) as never);
     expect(res.status).toBe(400);
@@ -36,5 +58,45 @@ describe("POST /api/projects path validation", () => {
   it("rejects C:\\Windows with 400", async () => {
     const res = await POST(req({ rootPath: "C:\\Windows" }) as never);
     expect(res.status).toBe(400);
+    expect(upsertProject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "C:\\",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)",
+    "C:\\ProgramData",
+  ])("rejects protected path %s with 400", async (rootPath) => {
+    const res = await POST(req({ rootPath }) as never);
+    expect(res.status).toBe(400);
+    expect(upsertProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects a file and the user profile root without writing to the DB", async () => {
+    const fileResponse = await POST(req({ rootPath: __filename }) as never);
+    const profileResponse = await POST(
+      req({ rootPath: process.env.USERPROFILE }) as never,
+    );
+
+    expect(fileResponse.status).toBe(400);
+    expect(profileResponse.status).toBe(400);
+    expect(upsertProject).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid temporary directory and stores its canonical path", async () => {
+    const res = await POST(req({ rootPath: tempRoot }) as never);
+    expect(res.status).toBe(200);
+    expect(upsertProject).toHaveBeenCalledWith(
+      expect.objectContaining({ rootPath: fs.realpathSync.native(tempRoot) }),
+    );
+  });
+
+  it("rejects a directory symlink whose target is protected", async () => {
+    const link = path.join(tempRoot, "windows-link");
+    fs.symlinkSync(process.env.SystemRoot ?? "C:\\Windows", link, "junction");
+
+    const res = await POST(req({ rootPath: link }) as never);
+    expect(res.status).toBe(400);
+    expect(upsertProject).not.toHaveBeenCalled();
   });
 });

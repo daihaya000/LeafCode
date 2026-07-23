@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 import { listProjects, upsertProject } from "@/lib/db";
-import { realPathOrResolved } from "@/lib/allowlist";
-import { validateAllowlistPath } from "@/lib/path-validation";
+import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 import { restoreProjectFromManifest } from "@/lib/project-session-sync";
 import { destroyProject, ServiceError } from "@/lib/workspace-service";
 
@@ -31,12 +30,12 @@ export async function POST(req: NextRequest) {
   if (!body?.rootPath || typeof body.rootPath !== "string") {
     return NextResponse.json({ error: "rootPath is required" }, { status: 400 });
   }
-  const validationError = validateAllowlistPath(body.rootPath);
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 400 });
+  const validation = resolveValidatedAllowlistPath(body.rootPath);
+  if ("error" in validation) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
-  const rootPath = realPathOrResolved(path.resolve(body.rootPath));
+  const rootPath = validation.canonicalPath;
   const name =
     (body.name && body.name.trim()) ||
     path.basename(rootPath) ||

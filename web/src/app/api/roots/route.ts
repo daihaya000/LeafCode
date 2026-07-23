@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "node:path";
 import { addAllowedRoot, listAllowedRoots, setSetting } from "@/lib/db";
-import { realPathOrResolved } from "@/lib/allowlist";
-import { validateAllowlistPath } from "@/lib/path-validation";
+import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,16 +14,13 @@ export async function POST(req: NextRequest) {
   if (!body?.path || typeof body.path !== "string") {
     return NextResponse.json({ error: "path is required" }, { status: 400 });
   }
-  const validationError = validateAllowlistPath(body.path);
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 400 });
+  const validation = resolveValidatedAllowlistPath(body.path);
+  if ("error" in validation) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
   }
-  const resolved = path.resolve(body.path);
   try {
-    // Prefer real path so symlink roots are stored as their real location
-    const real = realPathOrResolved(resolved);
-    addAllowedRoot(real);
-    setSetting("lastDirectory", real);
+    addAllowedRoot(validation.canonicalPath);
+    setSetting("lastDirectory", validation.canonicalPath);
     return NextResponse.json({ roots: listAllowedRoots() });
   } catch (err) {
     return NextResponse.json(

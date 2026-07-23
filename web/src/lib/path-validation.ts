@@ -18,35 +18,51 @@ function isPathOrDescendant(candidate: string, parent: string): boolean {
   );
 }
 
-/** Validate that a path is an existing directory outside protected areas. */
-export function validateAllowlistPath(rawPath: string): string | null {
-  if (!rawPath || typeof rawPath !== "string") return "path is required";
+/** Validate and return the canonical path for an existing allowlist directory. */
+export function resolveValidatedAllowlistPath(
+  rawPath: string,
+): { canonicalPath: string } | { error: string } {
+  if (!rawPath || typeof rawPath !== "string") return { error: "path is required" };
 
   const resolved = path.resolve(rawPath);
+  let canonicalPath: string;
+  try {
+    canonicalPath = fs.realpathSync.native(resolved);
+  } catch {
+    return { error: "パスが存在しません" };
+  }
 
-  if (/^[A-Za-z]:\\?$/.test(resolved)) {
-    return "ドライブルートは許可リストに追加できません";
+  try {
+    if (!fs.statSync(canonicalPath).isDirectory()) {
+      return { error: "ディレクトリではありません" };
+    }
+  } catch {
+    return { error: "パスの検証に失敗しました" };
+  }
+
+  if (/^[A-Za-z]:\\?$/.test(canonicalPath)) {
+    return { error: "ドライブルートは許可リストに追加できません" };
   }
 
   for (const prefix of FORBIDDEN_PREFIXES) {
-    if (isPathOrDescendant(resolved, prefix)) {
-      return `${prefix} はシステム領域のため許可リストに追加できません`;
+    if (isPathOrDescendant(canonicalPath, prefix)) {
+      return { error: `${prefix} はシステム領域のため許可リストに追加できません` };
     }
   }
 
   const userProfile = process.env.USERPROFILE;
-  if (userProfile && isPathOrDescendant(resolved, path.resolve(userProfile))) {
-    if (resolved.toLowerCase() === path.resolve(userProfile).toLowerCase()) {
-      return "ユーザープロファイル直下は許可リストに追加できません";
-    }
+  if (
+    userProfile &&
+    canonicalPath.toLowerCase() === path.resolve(userProfile).toLowerCase()
+  ) {
+    return { error: "ユーザープロファイル直下は許可リストに追加できません" };
   }
 
-  try {
-    if (!fs.existsSync(resolved)) return "パスが存在しません";
-    if (!fs.lstatSync(resolved).isDirectory()) return "ディレクトリではありません";
-  } catch {
-    return "パスの検証に失敗しました";
-  }
+  return { canonicalPath };
+}
 
-  return null;
+/** Backward-compatible validation helper for callers that only need an error. */
+export function validateAllowlistPath(rawPath: string): string | null {
+  const result = resolveValidatedAllowlistPath(rawPath);
+  return "error" in result ? result.error : null;
 }
