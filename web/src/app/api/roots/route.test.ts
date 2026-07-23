@@ -133,13 +133,23 @@ describe("POST /api/roots path validation", () => {
 });
 
 describe("DELETE /api/roots", () => {
-  it("removes an existing root", async () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("removes an existing root with case-insensitive matching", async () => {
     vi.mocked(listAllowedRoots).mockReturnValue(["C:\\repo"]);
     const res = await DELETE(
-      new Request("http://localhost/api/roots?path=C%3A%5Crepo", { method: "DELETE" }) as never,
+      new Request("http://localhost/api/roots?path=c%3A%5Crepo", { method: "DELETE" }) as never,
     );
     expect(res.status).toBe(200);
     expect(removeAllowedRoot).toHaveBeenCalledWith("C:\\repo");
+  });
+
+  it("returns 400 when path is not specified", async () => {
+    const res = await DELETE(
+      new Request("http://localhost/api/roots", { method: "DELETE" }) as never,
+    );
+    expect(res.status).toBe(400);
+    expect(removeAllowedRoot).not.toHaveBeenCalled();
   });
 
   it("returns 404 for a non-existent root", async () => {
@@ -148,5 +158,22 @@ describe("DELETE /api/roots", () => {
       new Request("http://localhost/api/roots?path=C%3A%5Cmissing", { method: "DELETE" }) as never,
     );
     expect(res.status).toBe(404);
+    expect(removeAllowedRoot).not.toHaveBeenCalled();
+  });
+
+  it("returns the roots list after the matched root is removed", async () => {
+    const roots = ["C:\\repo", "C:\\other"];
+    vi.mocked(listAllowedRoots).mockImplementation(() => roots);
+    vi.mocked(removeAllowedRoot).mockImplementation((root) => {
+      const index = roots.indexOf(root);
+      if (index !== -1) roots.splice(index, 1);
+    });
+
+    const res = await DELETE(
+      new Request("http://localhost/api/roots?path=c%3A%5Crepo", { method: "DELETE" }) as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ roots: ["C:\\other"] });
   });
 });

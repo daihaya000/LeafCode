@@ -17,11 +17,11 @@ export async function DELETE(req: NextRequest) {
   }
   const resolved = path.resolve(targetPath);
   const roots = listAllowedRoots();
-  const exists = roots.some((root) => root.toLowerCase() === resolved.toLowerCase());
-  if (!exists) {
+  const matchedRoot = roots.find((root) => root.toLowerCase() === resolved.toLowerCase());
+  if (!matchedRoot) {
     return NextResponse.json({ error: "root not found" }, { status: 404 });
   }
-  removeAllowedRoot(resolved);
+  removeAllowedRoot(matchedRoot);
   return NextResponse.json({ roots: listAllowedRoots() });
 }
 
