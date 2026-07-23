@@ -54,6 +54,31 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   // MCP OAuth DELETE — credential removal
   if (m === "DELETE" && /^\/mcp\/[^/]+\/auth$/.test(p)) return true;
 
+  // Global upgrade — destructive self-update
+  if (m === "POST" && p === "/global/upgrade") return true;
+
+  // Sync steal — takes over another peer's sync lease
+  if (m === "POST" && p === "/sync/steal") return true;
+
+  // Project git init — mutates working tree
+  if (m === "POST" && p === "/project/git/init") return true;
+
+  // Project update — renames/reconfigures a project
+  if (m === "PATCH" && /^\/project\/[^/]+$/.test(p)) return true;
+
+  // Session share create/revoke — exposes a public link
+  if (m === "POST" && /^\/session\/[^/]+\/share$/.test(p)) return true;
+  if (m === "DELETE" && /^\/session\/[^/]+\/share$/.test(p)) return true;
+
+  // Experimental session background — mutates run state
+  if (m === "POST" && /^\/experimental\/session\/[^/]+\/background$/.test(p)) return true;
+
+  // TUI remote control — drives the desktop TUI
+  if ((m === "POST" || m === "PUT") && (p === "/tui" || p.startsWith("/tui/"))) return true;
+
+  // Saved permission removal — deletes stored approvals
+  if (m === "DELETE" && /^\/(api\/)?permission\/saved\/[^/]+$/.test(p)) return true;
+
   return false;
 }
 

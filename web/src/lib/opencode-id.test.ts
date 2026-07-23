@@ -127,6 +127,40 @@ describe("isBlockedOpencodeWrite", () => {
     expect(isBlockedOpencodeWrite("DELETE", "/mcp/github/auth")).toBe(true);
   });
 
+  it("blocks global upgrade and sync steal", () => {
+    expect(isBlockedOpencodeWrite("POST", "/global/upgrade")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/sync/steal")).toBe(true);
+  });
+
+  it("blocks project git init and project update", () => {
+    expect(isBlockedOpencodeWrite("POST", "/project/git/init")).toBe(true);
+    expect(isBlockedOpencodeWrite("PATCH", "/project/proj123")).toBe(true);
+    expect(isBlockedOpencodeWrite("GET", "/project/proj123")).toBe(false);
+  });
+
+  it("blocks session share create/revoke", () => {
+    expect(isBlockedOpencodeWrite("POST", "/session/ses_abc/share")).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/session/ses_abc/share")).toBe(true);
+    expect(isBlockedOpencodeWrite("GET", "/session/ses_abc/share")).toBe(false);
+  });
+
+  it("blocks experimental session background", () => {
+    expect(isBlockedOpencodeWrite("POST", "/experimental/session/ses_abc/background")).toBe(true);
+  });
+
+  it("blocks TUI remote control", () => {
+    expect(isBlockedOpencodeWrite("POST", "/tui/append-prompt")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/tui/execute-command")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/tui/control/response")).toBe(true);
+    expect(isBlockedOpencodeWrite("GET", "/tui/open-help")).toBe(false);
+  });
+
+  it("blocks saved permission removal", () => {
+    expect(isBlockedOpencodeWrite("DELETE", "/permission/saved/perm1")).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/api/permission/saved/perm1")).toBe(true);
+    expect(isBlockedOpencodeWrite("GET", "/api/permission/saved")).toBe(false);
+  });
+
   it("still allows read-only endpoints", () => {
     expect(isBlockedOpencodeWrite("GET", "/pty")).toBe(false);
     expect(isBlockedOpencodeWrite("GET", "/api/pty")).toBe(false);
