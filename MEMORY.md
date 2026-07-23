@@ -4556,3 +4556,11 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 - 教訓: SpeechRecognitionの型定義がブラウザごとに異なるため、detectSpeechRecognition()でwindowのプロパティをunknown経由で安全に取得する必要があった。no-speech/abortedはユーザー操作の中断や無音タイムアウトでありエラー表示しない設計がUX上適切。continuous:trueでもブラウザが自動停止することがあるため、endイベントで必ずlisteningをリセットする。stop()の戻り値をtranscriptRefで累積管理する実装は、start()時にリセットしないとセッション間でテキストが重複するバグを生む(レビューで発覚し修正)。VoiceInputButton/composer側でtranscriptが空文字列のとき入力値を変更しないガードが必要(空文字列でも常にonTranscriptは呼ぶ設計のため、呼び出し側で無害化する)。
 - 検証: use-voice-input.test.ts(14テスト)、VoiceInputButton.test.tsx(9テスト)、HomeView.test.tsx(既存+4テスト)、TaskView.test.tsx(既存+4テスト)、npm run typecheckの全PASSを確認した。
 
+
+## 2026-07-23 音声入力: critical-architect最終レビューで4ラウンドの非同期バグ修正
+
+- やったこと: subagent-driven-developmentのTask1-5完了後、最終whole-feature reviewをa-critical-architectへ委任したところ、SpeechRecognitionイベントモデルの誤解に起因する実害バグを多数検出し、4ラウンドの修正-再レビューを経て承認に至った。
+- 判断理由: 各ラウンドの指摘(resultIndex無視による確定結果重複、stop()の同期戻り値による最終発話の取りこぼし、世代ガードがイベント発生元を識別しない中断/再開競合、SSR/クライアントでのsupported初期値不一致、TaskViewのsessionId未確認でのマイク有効化、stop()連打のsingle-flight化不備、Strict Modeでのeffect再実行によるinterrupted固着、starting状態でのstop()が実際に停止しない、interrupted状態がUIから不可視)はいずれも再現性のある具体的コード指摘であり、費用対効果の観点から全て修正した。endイベントを発火しないブラウザ実装での再開始保留のみ、タイムアウトによる強制復旧がraceを再導入するリスクを上回らないため、仕様書に既知の制限として明記し許容した。
+- 教訓: Web Speech APIのようなブラウザネイティブ非同期APIをラップするhookは、個別タスクレビュー(仕様準拠・コード品質)だけでは並行処理の欠陥を検出できない。stop()のような操作を非同期化する際は、全終端経路(正常完了・中断・アンマウント・エラー・例外)でPromiseを必ずsettleすることと、イベントが「どのセッションから発生したか」を状態機械や世代IDで厳密に追跡することを、実装前から設計の必須要件として明記すべきだった。critical-architectへの最終レビュー委任は、通常のコードレビューでは見逃される並行処理バグを発見する上で有効だったが、却下のたびに影響範囲を確認し「今回の指摘で本当に打ち切ってよいか」の費用対効果判断をコントローラー(メイン)が行う必要がある。
+- 検証: 最終状態でuse-voice-input.test.ts等4ファイル69テスト全PASS、npm run typecheckエラー0件、a-critical-architectによる最終承認を確認した。
+
