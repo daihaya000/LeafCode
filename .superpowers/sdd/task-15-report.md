@@ -12,3 +12,13 @@
 - `cd host && node --test src/*.test.js` — PASS (33 tests)
 - `cd host && node --check src/index.js` — PASS
 - `git diff --check` — PASS
+
+## Minor修正
+
+- `host/src/index.test.js` の各テストで `OPENCODE_HEADLESS` と `OPENCODE_WEBUI_HEADLESS` を退避し、テスト中に必要な値以外を削除して finally で復元するよう修正。
+- `OPENCODE_WEBUI_HEADLESS=1` の互換検出テストを追加。
+
+## Minor修正の検証
+
+- `cd host && node --test src/index.test.js` — PASS (4 tests)
+- `git diff --check` — PASS
