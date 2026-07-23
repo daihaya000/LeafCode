@@ -126,6 +126,25 @@ export function AttentionQueueModal() {
     [respond],
   );
 
+  // R36#2: When switching to full-access mode, auto-approve all remaining permission requests in the queue
+  const enableFullAccess = useCallback(async () => {
+    writeAccessMode("full");
+    // Auto-approve all pending permission requests in the queue
+    const permissionItems = items.filter((item) => item.kind === "permission");
+    for (const item of permissionItems) {
+      try {
+        await ocJson(replyPath(item), item.directory, {
+          method: "POST",
+          body: item.request.version === "v2" ? { reply: "once" } : { response: "once" },
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+        });
+        remove(item.request.id, item.request.sessionID);
+      } catch {
+        // Ignore errors — individual failures will remain in queue for manual handling
+      }
+    }
+  }, [items, remove]);
+
   const replyQuestion = useCallback(
     async (item: AttentionItem, answers: string[][]) => {
       if (item.kind !== "question") return;
@@ -214,7 +233,7 @@ export function AttentionQueueModal() {
             <PermissionCard
               key={current.request.id}
               request={current.request}
-              onEnableFullAccess={() => writeAccessMode("full")}
+              onEnableFullAccess={enableFullAccess}
               onReply={async (req, response) =>
                 await replyPermission(
                   { kind: "permission", directory: current.directory, request: req },
