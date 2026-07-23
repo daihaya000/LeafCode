@@ -1386,13 +1386,26 @@ async function stopChildren() {
   opencodeProc = null;
   await stopOpencodeProcessTree(opencodePids);
 
-  const otherPids = [webProc?.pid, webBuildProc?.pid, caddyProc?.pid].filter(Boolean);
+  // WebUI: include listen-PID fallback so reused (webProc=null) WebUI is killed.
+  const webPids = resolveKillPids({
+    ownedPid: webProc?.pid,
+    listeningPids: getListeningPids(WEBUI_PORT),
+  });
+  const otherPids = [webBuildProc?.pid, caddyProc?.pid].filter(Boolean);
+  for (const pid of webPids) {
+    expectedWebExitPids.add(pid);
+    killProcessTree(pid);
+  }
   for (const pid of otherPids) {
     killProcessTree(pid);
   }
   webProc = null;
   webBuildProc = null;
   caddyProc = null;
+
+  // Wait for ports to be released before returning, so restart can rebind.
+  await waitForPortFree(WEBUI_PORT);
+  await waitForPortFree(OPENCODE_PORT);
 }
 
 function formatStatus(name, proc, httpUp) {
@@ -1531,7 +1544,7 @@ async function restartServices() {
   log('Restarting services…');
   try {
     await stopChildren();
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // stopChildren now awaits waitForPortFree for both ports; no extra sleep needed.
     await startChildren();
   } catch (err) {
     await stopChildren();
