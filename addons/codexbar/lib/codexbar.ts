@@ -168,6 +168,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   "opencode-go": "OpenCode",
   ollama: "Ollama",
   synthetic: "Synthetic",
+  "qwen-cloud": "Qwen Cloud",
+  qwen: "Qwen Cloud",
 };
 
 export function providerLabel(id: string): string {
@@ -186,6 +188,8 @@ const PROVIDER_ICONS: Record<string, string> = {
   "opencode-go": "opencode.png",
   opencode: "opencode.png",
   synthetic: "synthetic.png",
+  "qwen-cloud": "qwen.png",
+  qwen: "qwen.png",
 };
 
 /** Public path of a provider's icon, or null when there is no bundled icon. */
@@ -213,6 +217,8 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   "opencode-go": "opencode-go",
   opencode: "opencode",
   synthetic: "synthetic",
+  "qwen-cloud": "qwen-cloud",
+  qwen: "qwen",
 };
 
 /** Public path of a brand icon for an OpenCode provider id, or null. */

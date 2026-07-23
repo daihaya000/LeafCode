@@ -358,6 +358,11 @@ describe("providerLabel", () => {
     expect(providerLabel("mystery")).toBe("Mystery");
     expect(providerLabel("")).toBe("Unknown");
   });
+
+  it("maps Qwen Cloud brand keys to the Qwen Cloud label", () => {
+    expect(providerLabel("qwen-cloud")).toBe("Qwen Cloud");
+    expect(providerLabel("qwen")).toBe("Qwen Cloud");
+  });
 });
 
 describe("providerIconSrc", () => {
@@ -368,6 +373,11 @@ describe("providerIconSrc", () => {
     expect(providerIconSrc("synthetic")).toBe("/addons/codexbar/synthetic.png");
     expect(providerIconSrc("mystery")).toBeNull();
     expect(providerIconSrc("")).toBeNull();
+  });
+
+  it("maps Qwen Cloud brand keys to the bundled qwen.png icon", () => {
+    expect(providerIconSrc("qwen-cloud")).toBe("/addons/codexbar/qwen.png");
+    expect(providerIconSrc("qwen")).toBe("/addons/codexbar/qwen.png");
   });
 });
 
@@ -381,6 +391,8 @@ describe("providerIconSrcForOpencodeId", () => {
     expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/addons/codexbar/ollama.png");
     expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/addons/codexbar/opencode.png");
     expect(providerIconSrcForOpencodeId("synthetic")).toBe("/addons/codexbar/synthetic.png");
+    expect(providerIconSrcForOpencodeId("qwen-cloud")).toBe("/addons/codexbar/qwen.png");
+    expect(providerIconSrcForOpencodeId("qwen")).toBe("/addons/codexbar/qwen.png");
     expect(providerIconSrcForOpencodeId("mystery")).toBeNull();
     expect(providerIconSrcForOpencodeId("")).toBeNull();
   });
