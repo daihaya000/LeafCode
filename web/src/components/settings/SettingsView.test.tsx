@@ -268,4 +268,27 @@ describe("SettingsView", () => {
       "OpenCode（バックエンド）を再起動しています…",
     );
   });
+
+  it("renders a delete button for each root and removes it on click", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/health") return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/roots") return Promise.resolve({ roots: ["C:\\repo1"] });
+      if (path === "/api/workspaces/orphans") return Promise.resolve({ orphans: [], stray: [] });
+      if (path === "/api/access") return Promise.resolve({ bind: "0.0.0.0", port: 3000, localUrl: "http://localhost:3000", hint: "", addresses: [] });
+      return Promise.reject(new Error(`Unexpected: ${path}`));
+    });
+    sendJson.mockResolvedValue({ roots: [] });
+
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("button", { name: /プロジェクト/ }));
+    const deleteBtn = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/roots", undefined, { path: "C:\\repo1" });
+    });
+  });
 });

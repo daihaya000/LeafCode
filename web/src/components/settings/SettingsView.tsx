@@ -348,6 +348,11 @@ export function SettingsView() {
       setNewRoot("");
     });
 
+  const removeRoot = (r: string) =>
+    guard(async () => {
+      await sendJson("DELETE", "/api/roots", undefined, { path: r });
+    });
+
   const cleanupOrphans = () =>
     guard(async () => {
       const data = await sendJson<{
@@ -727,9 +732,17 @@ export function SettingsView() {
                 {roots.map((r) => (
                   <li
                     key={r}
-                    className="truncate rounded-lg bg-surface-2 px-3 py-2 font-mono text-xs text-muted"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 font-mono text-xs text-muted"
                   >
-                    {r}
+                    <span className="truncate">{r}</span>
+                    <button
+                      type="button"
+                      aria-label={`${r}を削除`}
+                      onClick={() => void removeRoot(r)}
+                      className="shrink-0 rounded p-1 text-faint hover:text-danger"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </li>
                 ))}
               </ul>
