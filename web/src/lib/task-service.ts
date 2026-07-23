@@ -164,7 +164,9 @@ export async function listTasks(): Promise<{
   engineOk: boolean;
 }> {
   restoreFromManifestsOnce();
-  const workspaces = listWorkspacesJoined();
+  const workspaces = listWorkspacesJoined().filter(
+    (w) => w.status !== "archived",
+  );
   const bindings = latestBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
 
@@ -189,6 +191,37 @@ export async function listTasks(): Promise<{
 
   tasks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   return { tasks, engineOk };
+}
+
+export async function listArchivedTasks(): Promise<TaskSummary[]> {
+  const workspaces = listWorkspacesJoined().filter(
+    (ws) => ws.status === "archived",
+  );
+  if (workspaces.length === 0) return [];
+  const bindings = latestBindings();
+  const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
+
+  const [{ engineOk, statuses }, stats, metas] = await Promise.all([
+    sessionStatusFor(dirs),
+    Promise.all(dirs.map((d) => dirStat(d))),
+    sessionMetaFor(dirs),
+  ]);
+  const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
+
+  const tasks = workspaces.map((ws) => {
+    const binding = bindings.get(ws.id);
+    return toTask(
+      ws,
+      binding,
+      statByDir.get(ws.absolute_path) ?? EMPTY_STAT,
+      binding ? statuses[binding.opencode_session_id] : undefined,
+      engineOk,
+      binding ? metas[binding.opencode_session_id] : undefined,
+    );
+  });
+
+  tasks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  return tasks;
 }
 
 export async function getTask(id: string): Promise<TaskSummary | null> {

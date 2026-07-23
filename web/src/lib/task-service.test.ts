@@ -172,3 +172,40 @@ describe("getTask agent/provider aggregation", () => {
     expect(task?.modelID).toBe("gpt-5");
   });
 });
+
+describe("listTasks archived filter", () => {
+  it("excludes workspaces with status archived", async () => {
+    h.workspaces = [
+      { ...WS, id: "ws1", status: "active" },
+      { ...WS, id: "ws2", status: "archived" },
+    ];
+    h.bindings = new Map();
+    const { tasks } = await listTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe("ws1");
+  });
+});
+
+describe("listArchivedTasks", () => {
+  it("returns only archived workspaces as TaskSummary[]", async () => {
+    h.workspaces = [
+      { ...WS, id: "ws1", status: "active" },
+      { ...WS, id: "ws2", status: "archived" },
+    ];
+    h.bindings = new Map();
+    const { listArchivedTasks } = await import("./task-service");
+    const tasks = await listArchivedTasks();
+    expect(Array.isArray(tasks)).toBe(true);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe("ws2");
+  });
+
+  it("returns empty array when no archived workspaces exist", async () => {
+    h.workspaces = [{ ...WS, id: "ws1", status: "active" }];
+    h.bindings = new Map();
+    const { listArchivedTasks } = await import("./task-service");
+    const tasks = await listArchivedTasks();
+    expect(Array.isArray(tasks)).toBe(true);
+    expect(tasks).toHaveLength(0);
+  });
+});
