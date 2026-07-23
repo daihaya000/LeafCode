@@ -94,6 +94,26 @@ const TRAY_ICON = iconData.base64;
 
 /** @type {import('child_process').ChildProcess | null} */
 let opencodeProc = null;
+/** OpenCode auto-restart budget: max 3 restarts per 5 minutes. */
+const MAX_OPENCODE_RESTARTS = 3;
+const OPENCODE_RESTART_WINDOW_MS = 5 * 60 * 1000;
+let opencodeRestartTimestamps = [];
+
+export function resetOpencodeRestartBudget() {
+  opencodeRestartTimestamps = [];
+}
+
+export function shouldRestartOpencode(now = Date.now()) {
+  opencodeRestartTimestamps = opencodeRestartTimestamps.filter(
+    (timestamp) => now - timestamp < OPENCODE_RESTART_WINDOW_MS,
+  );
+  if (opencodeRestartTimestamps.length >= MAX_OPENCODE_RESTARTS) {
+    return false;
+  }
+  opencodeRestartTimestamps.push(now);
+  return true;
+}
+
 /** @type {import('child_process').ChildProcess | null} */
 let webProc = null;
 /** @type {import('child_process').ChildProcess | null} */
@@ -518,6 +538,24 @@ function spawnOpencode(opencodePath) {
         error(
           `OpenCode orphan reap failed: ${err instanceof Error ? err.message : String(err)}`,
         );
+      }
+      if (shouldRestartOpencode()) {
+        log('OpenCode crashed — attempting auto-restart…');
+        setTimeout(async () => {
+          try {
+            const opencodePath = findOpencode();
+            spawnOpencode(opencodePath);
+            await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 45, {
+              proc: () => opencodeProc,
+            });
+          } catch (restartErr) {
+            error(
+              `OpenCode auto-restart failed: ${restartErr instanceof Error ? restartErr.message : String(restartErr)}`,
+            );
+          }
+        }, 1000);
+      } else {
+        error('OpenCode restart budget exhausted (3/5min) — manual host restart required');
       }
     }
     refreshStatusMenu();

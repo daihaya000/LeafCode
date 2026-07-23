@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isHeadless } from './index.js';
+import {
+  isHeadless,
+  resetOpencodeRestartBudget,
+  shouldRestartOpencode,
+} from './index.js';
 
 test('isHeadless returns true for OPENCODE_HEADLESS=1', () => {
   const previousHeadless = process.env.OPENCODE_HEADLESS;
@@ -71,4 +75,21 @@ test('isHeadless returns true for OPENCODE_WEBUI_HEADLESS=1', () => {
       delete process.env.OPENCODE_WEBUI_HEADLESS;
     else process.env.OPENCODE_WEBUI_HEADLESS = previousWebuiHeadless;
   }
+});
+
+test('shouldRestartOpencode returns false when restart budget exhausted', () => {
+  resetOpencodeRestartBudget();
+  assert.equal(shouldRestartOpencode(0), true);
+  assert.equal(shouldRestartOpencode(1), true);
+  assert.equal(shouldRestartOpencode(2), true);
+  assert.equal(shouldRestartOpencode(3), false);
+});
+
+test('shouldRestartOpencode resets after 5 minutes', () => {
+  resetOpencodeRestartBudget();
+  assert.equal(shouldRestartOpencode(0), true);
+  assert.equal(shouldRestartOpencode(1), true);
+  assert.equal(shouldRestartOpencode(2), true);
+  assert.equal(shouldRestartOpencode(3), false);
+  assert.equal(shouldRestartOpencode(5 * 60 * 1000), true);
 });
