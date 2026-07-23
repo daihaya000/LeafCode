@@ -49,6 +49,47 @@ function asTimeoutError(path: string, err: unknown, timedOut: boolean): never {
   throw err;
 }
 
+/** Read JSON with the same timeout signal as the fetch. */
+async function readJsonWithTimeout<T>(
+  res: Response,
+  path: string,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) {
+    return (await res.json().catch(() => ({}))) as T;
+  }
+  const bodyPromise = res.json().catch(() => ({}));
+  const abortPromise = new Promise<never>((_, reject) => {
+    if (signal.aborted) {
+      reject(new ApiError(`${path} timed out`, 408));
+      return;
+    }
+    signal.addEventListener(
+      "abort",
+      () => reject(new ApiError(`${path} timed out`, 408)),
+      { once: true },
+    );
+  });
+  return Promise.race([bodyPromise, abortPromise]) as Promise<T>;
+}
+
+function keepTimeoutForBody(
+  res: Response,
+  path: string,
+  signal: AbortSignal | undefined,
+  clear: () => void,
+): Response {
+  const response = res as Response & {
+    json: () => Promise<unknown>;
+  };
+  const json = response.json.bind(response);
+  response.json = () =>
+    readJsonWithTimeout({ ...response, json } as Response, path, signal).finally(
+      clear,
+    );
+  return response;
+}
+
 /** fetch with default timeout; use for ad-hoc BFF calls outside getJson/ocJson. */
 export async function timedFetch(
   input: string,
@@ -58,15 +99,15 @@ export async function timedFetch(
   void _ignored;
   const { signal, clear } = withTimeoutSignal(timeoutMs);
   try {
-    return await fetch(input, {
+    const res = await fetch(input, {
       cache: "no-store",
       ...rest,
       signal,
     });
+    return keepTimeoutForBody(res, input, signal, clear);
   } catch (err) {
-    asTimeoutError(input, err, signal?.aborted === true);
-  } finally {
     clear();
+    asTimeoutError(input, err, signal?.aborted === true);
   }
 }
 
@@ -78,7 +119,7 @@ export async function getJson<T>(
   const { signal, clear } = withTimeoutSignal(init?.timeoutMs);
   try {
     const res = await fetch(apiUrl(path, params), { cache: "no-store", signal });
-    const body = await res.json().catch(() => ({}));
+    const body = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(
         (body as { error?: string }).error ?? `${path} failed: ${res.status}`,
@@ -109,7 +150,7 @@ export async function sendJson<T>(
       cache: "no-store",
       signal,
     });
-    const data = await res.json().catch(() => ({}));
+    const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       throw new ApiError(
         (data as { error?: string }).error ?? `${path} failed: ${res.status}`,
@@ -149,7 +190,7 @@ export async function ocJson<T>(
       cache: "no-store",
       signal,
     });
-    const data = await res.json().catch(() => null);
+    const data = await readJsonWithTimeout(res, path, signal);
     if (!res.ok) {
       const msg =
         (data as { error?: string } | null)?.error ??

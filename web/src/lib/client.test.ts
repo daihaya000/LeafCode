@@ -86,3 +86,35 @@ describe("getJson timeout", () => {
     await expectation;
   });
 });
+
+describe("getJson body read timeout", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("aborts when the body read hangs past the timeout", async () => {
+    vi.useFakeTimers();
+    let releaseBody!: (value: unknown) => void;
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            new Promise<unknown>((resolve) => {
+              releaseBody = resolve;
+              // Never resolves — simulates a hung body read
+            }),
+        }),
+      ),
+    );
+
+    const pending = getJson("/api/tasks", undefined, { timeoutMs: 1000 });
+    const expectation = expect(pending).rejects.toThrow(/timed out|timeout|abort/i);
+    await vi.advanceTimersByTimeAsync(1000);
+    await expectation;
+    releaseBody({});
+  });
+});
