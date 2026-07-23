@@ -26,6 +26,8 @@ export type KebabGroup = {
   id: string;
   label?: string;
   items: KebabItem[];
+  /** 指定時は items ではなく、この内容をグループ内に描画する。 */
+  renderContent?: () => ReactNode;
 };
 
 /**
@@ -57,7 +59,7 @@ export function HeaderKebabMenu({
   const menuId = useId();
 
   // Flatten visible (non-disabled-skipped) item ids in render order.
-  const flatItems = groups.flatMap((g) => g.items);
+  const flatItems = groups.flatMap((g) => (g.renderContent ? [] : g.items));
   const focusableIds = flatItems
     .filter((it) => !it.disabled)
     .map((it) => it.id);
@@ -118,7 +120,9 @@ export function HeaderKebabMenu({
     [focusableIds.join("|")],
   );
 
-  const visibleGroups = groups.filter((g) => g.items.length > 0);
+  const visibleGroups = groups.filter(
+    (g) => g.items.length > 0 || g.renderContent !== undefined,
+  );
   if (visibleGroups.length === 0) return null;
 
   return (
@@ -142,6 +146,10 @@ export function HeaderKebabMenu({
           id={menuId}
           role="menu"
           aria-label={ariaLabel}
+          onBlurCapture={(event) => {
+            const next = event.relatedTarget as Node | null;
+            if (!next || !popupRef.current?.contains(next)) close(false);
+          }}
           className="absolute right-0 top-full z-30 mt-1 min-w-[12rem] overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-lg"
         >
           {visibleGroups.map((group, gi) => (
@@ -151,7 +159,10 @@ export function HeaderKebabMenu({
               aria-label={group.label}
               className={cx(gi > 0 && "mt-1 border-t border-border pt-1")}
             >
-              {group.items.map((item) => {
+              {group.renderContent ? (
+                group.renderContent()
+              ) : (
+                group.items.map((item) => {
                 const isDisabled = !!item.disabled;
                 return (
                   <div
@@ -188,9 +199,6 @@ export function HeaderKebabMenu({
                         return;
                       }
                       if (e.key === "Tab") {
-                        // Let Tab move focus out naturally (no focus trap);
-                        // just close the menu behind it.
-                        close(false);
                         return;
                       }
                     }}
@@ -215,7 +223,8 @@ export function HeaderKebabMenu({
                     )}
                   </div>
                 );
-              })}
+                })
+              )}
             </div>
           ))}
         </div>
