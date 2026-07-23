@@ -117,14 +117,45 @@ describe("useVoiceInput", () => {
       text = await p;
     });
     expect(mockRecognition.stop).toHaveBeenCalledTimes(1);
+    // stop() returns the captured transcript, but clears it for the next session.
     expect(text).toBe("hello world");
-    expect(result.current.transcript).toBe("hello world");
+    expect(result.current.transcript).toBe("");
   });
 
   it("does nothing when disabled on start()", () => {
     const { result } = renderHook(() => useVoiceInput({ disabled: true }));
     act(() => result.current.start());
     expect(mockRecognition.start).not.toHaveBeenCalled();
+  });
+
+  it("clears transcript after stop() so next session starts fresh (R51#2)", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    // First session
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "first session" }, isFinal: true }],
+      }),
+    );
+    await act(async () => {
+      const p = result.current.stop();
+      mockRecognition._dispatch("end");
+      await p;
+    });
+    expect(result.current.transcript).toBe("");
+
+    // Second session should not contain previous transcript
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "second session" }, isFinal: true }],
+      }),
+    );
+    expect(result.current.transcript).toBe("second session");
   });
 
   it("auto-stops and discards transcript when disabled becomes true while listening", () => {

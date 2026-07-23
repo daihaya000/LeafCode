@@ -145,6 +145,11 @@ export function useVoiceInput(
     const resolve = pendingStopResolveRef.current;
     pendingStopResolveRef.current = null;
     pendingStopPromiseRef.current = null;
+    // Clear transcript after capturing it for the return value, so the next
+    // recording session starts fresh (R51#2).
+    transcriptRef.current = "";
+    setTranscript("");
+    processedResultIndexRef.current = 0;
     resolve?.(text);
   }, []);
 
