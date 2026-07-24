@@ -887,8 +887,8 @@ describe("Sidebar archived section", () => {
       if (path === "/api/projects") {
         return Promise.resolve({
           projects: [
-            { id: "prj2", name: "Second", rootPath: "/second", favorite: false, lastOpenedAt: null },
-            { id: "prj1", name: "First", rootPath: "/first", favorite: false, lastOpenedAt: null },
+            { id: "prj2", name: "Same name", rootPath: "/second", favorite: false, lastOpenedAt: null },
+            { id: "prj1", name: "Same name", rootPath: "/first", favorite: false, lastOpenedAt: null },
           ],
         });
       }
@@ -896,7 +896,7 @@ describe("Sidebar archived section", () => {
       if (path === "/api/tasks/archived") {
         return Promise.resolve({
           tasks: [
-            { id: "z-task", projectId: "prj1", title: "Z task", updatedAt: "2026-07-18T02:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+            { id: "z-task", projectId: "prj1", title: "Z task", updatedAt: "2026-07-18T01:00:00Z", status: "merged", isolation: "current_folder", branch: null },
             { id: "a-task", projectId: "prj1", title: "A task", updatedAt: "2026-07-18T02:00:00Z", status: "merged", isolation: "current_folder", branch: null },
             { id: "second-task", projectId: "prj2", title: "Second task", updatedAt: "2026-07-18T03:00:00Z", status: "merged", isolation: "current_folder", branch: null },
             { id: "unknown-task", projectId: "missing", title: "Unknown task", updatedAt: "2026-07-18T04:00:00Z", status: "merged", isolation: "current_folder", branch: null },
@@ -912,10 +912,11 @@ describe("Sidebar archived section", () => {
     const groups = await screen.findAllByTestId("archived-project-group");
     expect(groups).toHaveLength(3);
     expect(groups.map((group) => group.firstElementChild?.firstElementChild?.textContent)).toEqual([
-      "Second",
-      "First",
+      "Same name",
+      "Same name",
       "プロジェクトなし",
     ]);
+    expect(within(groups[0]!).getByText("Second task")).toBeTruthy();
     const firstTaskButtons = within(groups[1]!)
       .getAllByRole("button")
       .filter((button) => button.textContent?.includes("task"));

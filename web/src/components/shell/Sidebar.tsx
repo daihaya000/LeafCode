@@ -371,11 +371,11 @@ export function Sidebar({
       const group = byProject.get(project.id);
       if (!group) return [];
       byProject.delete(project.id);
-      return [{ name: project.name, tasks: sortTasks(group) }];
+      return [{ key: `project:${project.id}`, name: project.name, tasks: sortTasks(group) }];
     });
     const unassigned = [...byProject.values()].flat();
     if (unassigned.length > 0) {
-      groups.push({ name: "プロジェクトなし", tasks: sortTasks(unassigned) });
+      groups.push({ key: "unassigned", name: "プロジェクトなし", tasks: sortTasks(unassigned) });
     }
     return groups;
   }, [archivedTasks, projects]);
@@ -865,7 +865,7 @@ export function Sidebar({
                 </li>
               ) : (
                 archivedGroups.map((group) => (
-                  <li key={group.name} data-testid="archived-project-group">
+                  <li key={group.key} data-testid="archived-project-group">
                     <div className="flex items-center justify-between px-2 py-1 text-[11px] font-medium text-muted">
                       <span className="truncate">{group.name}</span>
                       <span className="tabular-nums text-[10px] text-muted">
