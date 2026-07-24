@@ -126,22 +126,6 @@ export function getPluginArray(content: string): unknown[] | null {
   return root.plugin;
 }
 
-/** Remove `plugin[index]`, keeping comments/formatting (minimal edit). */
-export function removePluginEntryInContent(
-  content: string,
-  index: number,
-): { content: string; removed: unknown } {
-  const arr = getPluginArray(content);
-  if (!arr || index < 0 || index >= arr.length) {
-    throw new ExtensionsError("not-found", "指定のプラグインが見つかりません");
-  }
-  const removed = arr[index];
-  const edits = modify(content, ["plugin", index], undefined, {
-    formattingOptions: detectFormatting(content),
-  });
-  return { content: applyEdits(content, edits), removed };
-}
-
 function findPluginArrayNode(tree: Node | undefined): Node | undefined {
   if (!tree || tree.type !== "object") return undefined;
   const prop = tree.children?.find(
@@ -156,6 +140,46 @@ function linePrefixOf(content: string, offset: number): string {
   while (start > 0 && content[start - 1] !== "\n") start -= 1;
   const m = /^[\t ]*/.exec(content.slice(start, offset));
   return m ? m[0] : "";
+}
+
+/**
+ * Remove `plugin[index]` with a direct minimal edit computed from the AST.
+ * jsonc-parser's `modify` re-serializes the neighboring element on removal,
+ * which would expand inline tuples; this never touches neighbor text, so
+ * their formatting survives. Comments attached to the removed entry itself
+ * (between it and a neighbor) may be dropped — everything else is kept.
+ */
+export function removePluginEntryInContent(
+  content: string,
+  index: number,
+): { content: string; removed: unknown } {
+  const arr = getPluginArray(content);
+  if (!arr || index < 0 || index >= arr.length) {
+    throw new ExtensionsError("not-found", "指定のプラグインが見つかりません");
+  }
+  const removed = arr[index];
+  const arrNode = findPluginArrayNode(parseTree(content));
+  const children = arrNode?.children ?? [];
+  const el = arrNode?.type === "array" ? children[index] : undefined;
+  if (!arrNode || arrNode.type !== "array" || !el) {
+    throw new ExtensionsError("config", "plugin 設定が不正です");
+  }
+
+  let edit: { offset: number; length: number; content: string };
+  if (children.length === 1) {
+    // Empty the array body: `[ ... ]` → `[]`.
+    edit = { offset: arrNode.offset + 1, length: arrNode.length - 2, content: "" };
+  } else if (index < children.length - 1) {
+    // Drop the element plus its trailing comma/whitespace up to the next.
+    const next = children[index + 1];
+    edit = { offset: el.offset, length: next.offset - el.offset, content: "" };
+  } else {
+    // Last element: drop the leading comma region after the previous element.
+    const prev = children[index - 1];
+    const start = prev.offset + prev.length;
+    edit = { offset: start, length: el.offset + el.length - start, content: "" };
+  }
+  return { content: applyEdits(content, [edit]), removed };
 }
 
 /**
