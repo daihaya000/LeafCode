@@ -2071,7 +2071,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   const messageTime =
                     m.info.time?.completed ?? m.info.time?.created ?? null;
                   return (
-                  <div key={m.info.id} className="group/msg flex flex-col gap-2">
+                  <div key={m.info.id} className="flex flex-col gap-2">
                     <div
                       className={cx(
                         "flex items-center gap-1.5 text-[10px] text-faint",
@@ -2126,7 +2126,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       />
                     )}
                     {m.info.role === "user" && task.sessionId && (
-                      <div className="flex justify-end opacity-100 transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100">
+                      <div className="flex justify-end">
                         <MessageRevertButton
                           directory={task.directory}
                           sessionId={task.sessionId}
