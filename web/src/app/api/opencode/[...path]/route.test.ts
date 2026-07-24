@@ -243,6 +243,94 @@ describe("POST session image capability validation", () => {
     fetchMock.mockRestore();
   });
 
+  it("falls back to the request model when the selected agent has no configured model", async () => {
+    // The agent exists but carries no per-agent model, so image capability
+    // must be decided by the model explicitly selected in the request rather
+    // than fail-closing. The request model is image-capable, so it forwards.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/provider") {
+        return Promise.resolve(
+          jsonResponse({
+            all: [{
+              id: "fallback-provider",
+              models: {
+                vision: { capabilities: { input: { image: true } } },
+              },
+            }],
+            connected: ["fallback-provider"],
+          }),
+        );
+      }
+      if (pathname === "/agent") {
+        return Promise.resolve(jsonResponse([{ name: "modelless-agent" }]));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
+      params: Promise.resolve({ path: ["provider"] }),
+    });
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo") as never, {
+      params: Promise.resolve({ path: ["agent"] }),
+    });
+    fetchMock.mockClear();
+
+    const response = await sessionPost("prompt_async", {
+      agent: "modelless-agent",
+      model: { providerID: "fallback-provider", modelID: "vision" },
+      parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [forwardedUrl] = fetchMock.mock.calls[0] ?? [];
+    expect(new URL(String(forwardedUrl)).pathname).toBe("/session/session-1/prompt_async");
+    fetchMock.mockRestore();
+  });
+
+  it("rejects an agent without a model when the request model lacks image capability", async () => {
+    // With no per-agent model the request model decides capability. This
+    // request model is not image-capable, so the write is still rejected.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/provider") {
+        return Promise.resolve(
+          jsonResponse({
+            all: [{
+              id: "textonly-provider",
+              models: {
+                text: { capabilities: { input: { image: false } } },
+              },
+            }],
+            connected: ["textonly-provider"],
+          }),
+        );
+      }
+      if (pathname === "/agent") {
+        return Promise.resolve(jsonResponse([{ name: "modelless-agent" }]));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
+      params: Promise.resolve({ path: ["provider"] }),
+    });
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo") as never, {
+      params: Promise.resolve({ path: ["agent"] }),
+    });
+    fetchMock.mockClear();
+
+    const response = await sessionPost("prompt_async", {
+      agent: "modelless-agent",
+      model: { providerID: "textonly-provider", modelID: "text" },
+      parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it("live-queries a directory-scoped /provider fallback after only a directory-less provider fetch was cached (regression)", async () => {
     // A directory-less GET /provider (allowed for the composer's initial
     // model-list fetch) never seeds the per-directory cache — see

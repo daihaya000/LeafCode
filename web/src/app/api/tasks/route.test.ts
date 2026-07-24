@@ -453,7 +453,10 @@ describe("POST /api/tasks image attachments", () => {
     expectNoOpenCodeTaskStart(ocServer.mock.calls);
   });
 
-  it("rejects image submission when the selected agent model is undefined", async () => {
+  it("falls back to the request model when the selected agent has no configured model", async () => {
+    // The agent carries no per-agent model, so image capability must be
+    // decided by the model explicitly selected in the request instead of
+    // fail-closing. The request model is image-capable, so the task starts.
     const ocServer = await mockOpenCodeProvider(
       providerWithModel("vision", { input: { image: true } }),
       [{ name: "unconfigured-agent" }],
@@ -464,6 +467,29 @@ describe("POST /api/tasks image attachments", () => {
       prompt: "describe this",
       isolation: "current_folder",
       model: { providerID: "openai", modelID: "vision" },
+      agent: "unconfigured-agent",
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    expect(
+      ocServer.mock.calls.find((c) => String(c[1]).includes("/prompt_async")),
+    ).toBeDefined();
+  });
+
+  it("rejects image submission when an agent without a model falls back to a non-image request model", async () => {
+    // The agent has no per-agent model, so the request model is used. That
+    // model lacks image capability, so the submission is still rejected.
+    const ocServer = await mockOpenCodeProvider(
+      providerWithModel("text-only", { input: { image: false } }),
+      [{ name: "unconfigured-agent" }],
+    );
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "text-only" },
       agent: "unconfigured-agent",
       files: [image],
     });

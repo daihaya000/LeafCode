@@ -95,13 +95,13 @@ async function supportsImageInput(
     if (agentName) {
       const agents = await ocServer<AgentResponse>(null, "/agent");
       const configuredAgent = agents.find(({ name }) => name === agentName);
-      if (
-        !configuredAgent?.model?.providerID ||
-        !configuredAgent.model.modelID
-      ) {
-        return false;
+      // Prefer the agent's own model when it is configured; otherwise fall back
+      // to the model explicitly selected in the request. This lets an
+      // image-capable model chosen at request time apply to agents that have no
+      // per-agent model, instead of fail-closing on the missing agent model.
+      if (configuredAgent?.model?.providerID && configuredAgent.model.modelID) {
+        effectiveModel = configuredAgent.model;
       }
-      effectiveModel = configuredAgent.model;
     }
     if (!effectiveModel?.providerID || !effectiveModel.modelID) return false;
 
