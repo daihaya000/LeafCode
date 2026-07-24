@@ -59,7 +59,7 @@ vi.mock("@/lib/task-service", () => ({
 }));
 
 vi.mock("@/lib/opencode-task-permission", () => ({
-  setAgentTaskPermission: vi.fn().mockResolvedValue(undefined),
+  setSessionTaskPermission: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { POST } from "./route";
@@ -74,11 +74,13 @@ function post(body: Record<string, unknown>) {
 }
 
 describe("POST /api/tasks variant validation", () => {
-  it("applies the selected agent task permission before the first prompt", async () => {
+  it("applies the session task ruleset before the first prompt", async () => {
     const { ocServer } = await import("@/lib/oc-server");
-    const { setAgentTaskPermission } = await import("@/lib/opencode-task-permission");
+    const { setSessionTaskPermission } = await import(
+      "@/lib/opencode-task-permission"
+    );
     (ocServer as ReturnType<typeof vi.fn>).mockClear();
-    (setAgentTaskPermission as ReturnType<typeof vi.fn>).mockClear();
+    (setSessionTaskPermission as ReturnType<typeof vi.fn>).mockClear();
 
     const res = await post({
       projectId: "project-1",
@@ -89,15 +91,25 @@ describe("POST /api/tasks variant validation", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(setAgentTaskPermission).toHaveBeenCalledWith("C:\\repo", "build", "deny");
+    // Enforcement targets the freshly created session, not the agent config
+    // (a config PATCH is ignored by the running engine).
+    expect(setSessionTaskPermission).toHaveBeenCalledWith(
+      "C:\\repo",
+      "session-1",
+      "deny",
+    );
     const promptIndex = (ocServer as ReturnType<typeof vi.fn>).mock.calls.findIndex(
       (call) => String(call[1]).includes("/prompt_async"),
     );
     expect(promptIndex).toBeGreaterThanOrEqual(0);
     // The permission helper must finish before this call, otherwise OpenCode
     // could execute task immediately under a pre-existing allow rule.
-    expect((setAgentTaskPermission as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
-      .toBeLessThan((ocServer as ReturnType<typeof vi.fn>).mock.invocationCallOrder[promptIndex]);
+    expect(
+      (setSessionTaskPermission as ReturnType<typeof vi.fn>).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      (ocServer as ReturnType<typeof vi.fn>).mock.invocationCallOrder[promptIndex],
+    );
   });
 
   it("returns 400 when subagentPermission is specified but agent is undefined", async () => {

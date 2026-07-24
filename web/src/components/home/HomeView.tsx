@@ -145,8 +145,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [subagentPermission, setSubagentPermission] =
     useState<SubagentPermission>("allow");
-  const [subagentPermissionSaving, setSubagentPermissionSaving] =
-    useState(false);
   const [baseBranch, setBaseBranch] = useState("");
   const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
@@ -508,35 +506,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     router,
   ]);
 
-  const changeSubagentPermission = useCallback(
-    async (mode: SubagentPermission) => {
-      if (mode === subagentPermission || subagentPermissionSaving) return;
-      if (!selectedProject?.rootPath || !agent) {
-        setError("サブエージェント権限を適用するエージェントまたはプロジェクトがありません。");
-        return;
-      }
-      setSubagentPermissionSaving(true);
-      setError(null);
-      try {
-        await sendJson("POST", "/api/subagent-permission", {
-          directory: selectedProject.rootPath,
-          agent,
-          permission: mode,
-        });
-        setSubagentPermission(mode);
-        writeSubagentPermission(mode);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? `サブエージェント権限を適用できませんでした: ${err.message}`
-            : "サブエージェント権限を適用できませんでした。",
-        );
-      } finally {
-        setSubagentPermissionSaving(false);
-      }
-    },
-    [agent, selectedProject, subagentPermission, subagentPermissionSaving],
-  );
+  // No live session exists on Home, and a session-scoped ruleset is the only
+  // enforcement OpenCode actually honours at runtime. So store the preference
+  // here and let POST /api/tasks apply it to the new session at creation time.
+  const changeSubagentPermission = useCallback((mode: SubagentPermission) => {
+    setSubagentPermission(mode);
+    writeSubagentPermission(mode);
+  }, []);
 
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
     const next: Attachment[] = [];
@@ -891,8 +867,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 />
                 <SubagentPermissionSelect
                   value={subagentPermission}
-                  disabled={submitting || subagentPermissionSaving}
-                  onChange={(m) => void changeSubagentPermission(m)}
+                  disabled={submitting}
+                  onChange={(m) => changeSubagentPermission(m)}
                   className="min-w-0 shrink"
                 />
               </div>

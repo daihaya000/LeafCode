@@ -547,7 +547,7 @@ describe("HomeView subagent permission", () => {
     localStorage.clear();
   });
 
-  it("applies 不許可 to the selected execution agent before persisting it", async () => {
+  it("persists 不許可 locally without a config write (applied at task creation)", async () => {
     timedFetch.mockImplementation((input: string) => {
       if (input.endsWith("/agent")) {
         return Promise.resolve({
@@ -570,34 +570,12 @@ describe("HomeView subagent permission", () => {
       expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),
     );
     expect(select.value).toBe("deny");
-    expect(sendJson).toHaveBeenCalledWith("POST", "/api/subagent-permission", {
-      directory: "/repo",
-      agent: "build",
-      permission: "deny",
-    });
-  });
-
-  it("keeps the previous local preference and shows an error when apply fails", async () => {
-    timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/agent")) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => [{ name: "build" }],
-        });
-      }
-      return Promise.resolve({ ok: false });
-    });
-    sendJson.mockRejectedValueOnce(new Error("engine unavailable"));
-    render(<HomeView />);
-    await screen.findByLabelText("エージェント");
-    const select = (await screen.findByLabelText("サブエージェント")) as HTMLSelectElement;
-
-    fireEvent.change(select, { target: { value: "deny" } });
-
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("engine unavailable"),
+    // Home has no live session; enforcement happens in POST /api/tasks, so the
+    // toggle must not perform a standalone permission write.
+    expect(sendJson).not.toHaveBeenCalledWith(
+      "POST",
+      "/api/subagent-permission",
+      expect.anything(),
     );
-    expect(select.value).toBe("allow");
-    expect(localStorage.getItem("webui:subagent-permission")).toBeNull();
   });
 });

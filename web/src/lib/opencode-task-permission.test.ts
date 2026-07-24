@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { ocServer } = vi.hoisted(() => ({ ocServer: vi.fn() }));
 
@@ -11,31 +11,48 @@ vi.mock("@/lib/oc-server", () => ({
   ocServer,
 }));
 
-import { setAgentTaskPermission } from "./opencode-task-permission";
+import { setSessionTaskPermission } from "./opencode-task-permission";
 
-describe("setAgentTaskPermission", () => {
-  it("uses the minimal OpenCode config PATCH payload for one registered executor", async () => {
-    ocServer.mockResolvedValue([{ name: "build", mode: "primary" }]);
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), { status: 200 }),
-    );
+describe("setSessionTaskPermission", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ocServer.mockResolvedValue(undefined);
+  });
 
-    await setAgentTaskPermission("C:\\repo", "build", "deny");
+  it("PATCHes the session ruleset to deny the task tool", async () => {
+    await setSessionTaskPermission("C:\\worktree", "ses_1", "deny");
 
-    expect(ocServer).toHaveBeenCalledWith("C:\\repo", "/agent");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(url)).toBe("http://127.0.0.1:4096/config");
-    expect(init).toMatchObject({
+    expect(ocServer).toHaveBeenCalledTimes(1);
+    expect(ocServer).toHaveBeenCalledWith("C:\\worktree", "/session/ses_1", {
       method: "PATCH",
-      headers: expect.objectContaining({
-        "content-type": "application/json",
-        "x-opencode-directory": "C:\\repo",
-      }),
+      body: {
+        permission: [{ permission: "task", pattern: "*", action: "deny" }],
+      },
     });
-    expect(JSON.parse(String(init?.body))).toEqual({
-      agent: { build: { permission: { task: "deny" } } },
+  });
+
+  it("PATCHes an allow rule so a later toggle wins by last-match", async () => {
+    await setSessionTaskPermission("C:\\worktree", "ses_2", "allow");
+
+    expect(ocServer).toHaveBeenCalledWith("C:\\worktree", "/session/ses_2", {
+      method: "PATCH",
+      body: {
+        permission: [{ permission: "task", pattern: "*", action: "allow" }],
+      },
     });
-    fetchMock.mockRestore();
+  });
+
+  it("URL-encodes the session id", async () => {
+    await setSessionTaskPermission("C:\\worktree", "ses/weird id", "deny");
+
+    const [, path] = ocServer.mock.calls[0] ?? [];
+    expect(path).toBe("/session/ses%2Fweird%20id");
+  });
+
+  it("rejects an empty session id without calling OpenCode", async () => {
+    await expect(
+      setSessionTaskPermission("C:\\worktree", "   ", "deny"),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(ocServer).not.toHaveBeenCalled();
   });
 });

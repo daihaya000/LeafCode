@@ -3,7 +3,7 @@ import { bindSession, touchProjectOpened } from "@/lib/db";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
 import {
-  setAgentTaskPermission,
+  setSessionTaskPermission,
   type TaskPermission,
 } from "@/lib/opencode-task-permission";
 import { persistProjectSessions } from "@/lib/project-session-sync";
@@ -240,19 +240,15 @@ export async function POST(req: NextRequest) {
     // session via destroyWorkspace (bindings are the only id source there).
     bindSession(workspace.id, session.id, title);
 
-    // This is deliberately before the first command/prompt: an OpenCode
-    // `permission.task: allow` otherwise creates a child session without ever
-    // emitting a pending permission event for TaskView to reject. Home sends
-    // the selected execution agent, so only that agent's task rule changes.
+    // This is deliberately before the first command/prompt: with the task
+    // tool allowed, OpenCode creates a child session without ever emitting a
+    // pending permission event for TaskView to reject. Apply the deny/allow as
+    // a session-scoped ruleset (a config PATCH is ignored by the running
+    // engine, which only loads config at startup).
     if (body?.subagentPermission !== undefined) {
-      const executionAgent =
-        typeof body.agent === "string" ? body.agent.trim() : undefined;
-      if (!executionAgent) {
-        throw new OcError("execution agent is required for task permission", 400);
-      }
-      await setAgentTaskPermission(
+      await setSessionTaskPermission(
         workspace.absolute_path,
-        executionAgent,
+        session.id,
         body.subagentPermission,
       );
     }
