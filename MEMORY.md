@@ -4860,7 +4860,7 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 ## 2026-07-24 Web build lint failure 修正
 
 ### やったこと
-- `web/src/lib/quickaccess.ts` の `require('child_process')` を `import { execFile } from 'node:child_process'` 形式の ESM import に置換した。
+- `web/src/lib/quickaccess.ts` の `require('child_process')` を `import { execSync } from 'node:child_process'` 形式の ESM import に置換した。
 - Next build を止めていた ESLint `@typescript-eslint/no-require-imports` を解消した。
 - 検証: `npm run lint -- --quiet`、`npm run typecheck`、分離 `NEXT_DIST_DIR=.next-build-verify npm run build` が成功（既存警告8件は fail しない）。
 
