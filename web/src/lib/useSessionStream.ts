@@ -68,10 +68,11 @@ export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
  * `LONG_RUNNING_UPSTREAM_TIMEOUT_MS` in `app/api/opencode/[...path]/route.ts`).
  * The default 60s client timeout aborts the request well before the BFF can
  * legitimately finish (e.g. `/loop 2m`), so `sendCommand` alone uses this
- * longer timeout, kept just under the BFF's 290s so the BFF—not the
- * client—produces the terminal response.
+ * longer timeout, kept just above the BFF's 290s (and within the route's
+ * 300s `maxDuration`) so the BFF—not the client—produces the terminal
+ * (Japanese 408) response when the upstream truly times out.
  */
-export const SESSION_COMMAND_TIMEOUT_MS = 289_000;
+export const SESSION_COMMAND_TIMEOUT_MS = 295_000;
 
 const CANCELLED_TOOL_FAILURE_MESSAGES = new Set([
   "aborted",

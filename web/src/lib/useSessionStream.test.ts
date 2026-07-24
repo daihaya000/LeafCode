@@ -9,11 +9,15 @@ import {
 } from "./useSessionStream";
 
 describe("SESSION_COMMAND_TIMEOUT_MS", () => {
-  it("stays under the BFF's 290s long-running upstream timeout", () => {
-    // Kept just below LONG_RUNNING_UPSTREAM_TIMEOUT_MS in
+  it("stays above the BFF's 290s long-running upstream timeout", () => {
+    // Kept just above LONG_RUNNING_UPSTREAM_TIMEOUT_MS in
     // app/api/opencode/[...path]/route.ts so the BFF—not the client—produces
     // the terminal response for a legitimately long `session.command`.
-    expect(SESSION_COMMAND_TIMEOUT_MS).toBeLessThan(290_000);
+    expect(SESSION_COMMAND_TIMEOUT_MS).toBeGreaterThan(290_000);
+  });
+
+  it("stays within the route's 300s maxDuration", () => {
+    expect(SESSION_COMMAND_TIMEOUT_MS).toBeLessThanOrEqual(300_000);
   });
 
   it("is longer than the default prompt/abort mutation timeout", () => {
