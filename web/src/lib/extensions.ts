@@ -1,0 +1,59 @@
+/**
+ * DTOs shared by the `/api/extensions/*` server APIs and the settings UI.
+ * Pure types only — no node imports — so client components can use them.
+ * Secret values (env values, header values, tokens) never appear here;
+ * the server redacts before building these objects.
+ */
+
+export type SkillDto = {
+  /** Stable id issued by the listing: directory name (toggleable) or relative path (view-only). */
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  /** False for nested/project/bundled skills that cannot be moved safely. */
+  toggleable: boolean;
+};
+
+export type McpRuntimeStatus =
+  | "connected"
+  | "disabled"
+  | "failed"
+  | "needs_auth"
+  | "needs_client_registration";
+
+export type McpDto = {
+  id: string;
+  name: string;
+  type: "local" | "remote" | "unknown";
+  /** Safe connection summary: command line, or URL with credentials masked. */
+  detail: string;
+  /** Secondary safe info, e.g. "env: KEY1, KEY2" or "headers: Authorization". */
+  meta?: string;
+  /** Configured state in opencode.jsonc (`enabled !== false`). */
+  enabled: boolean;
+  /** Live state merged from the engine's /mcp response, when available. */
+  runtime?: McpRuntimeStatus;
+  /** Config and runtime disagree — a restart is needed to reconcile. */
+  pendingRestart: boolean;
+  /** Whether the engine /mcp response was reachable at listing time. */
+  engineAvailable: boolean;
+};
+
+export type PluginDto = {
+  /** "config:<hash>.<index>" for configured entries, "local:<file>" for auto-loaded files. */
+  id: string;
+  name: string;
+  kind: "config" | "local";
+  /** npm spec / path for string entries; omitted for tuples (options may hold secrets). */
+  detail?: string;
+  /** Tuple form `[name, options]` — options are never sent to the client. */
+  hasOptions?: boolean;
+  enabled: boolean;
+  /** Disabled configured plugins are tracked in WebUI-local state, not opencode.jsonc. */
+  managedByWebui?: boolean;
+};
+
+export type SkillListResponse = { skills: SkillDto[] };
+export type McpListResponse = { servers: McpDto[] };
+export type PluginListResponse = { plugins: PluginDto[] };
