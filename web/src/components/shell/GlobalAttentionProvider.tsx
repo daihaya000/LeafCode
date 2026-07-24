@@ -284,7 +284,7 @@ export function GlobalAttentionProvider({
       window.removeEventListener("focusout", onFocusOut);
       if (timer) clearTimeout(timer);
     };
-  }, [items.length]);
+  }, [items]);
 
   // Global EventSource subscription
   useEffect(() => {

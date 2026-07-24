@@ -1119,7 +1119,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     const connect = (
       isReconnect: boolean,
-      reason: "initial" | "error" | "silence" = "initial",
+      _reason: "initial" | "error" | "silence" = "initial",
     ) => {
       if (cancelled) return;
       if (timer) {

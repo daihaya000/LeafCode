@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Mic, MicOff, Paperclip, X } from "lucide-react";
+import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Paperclip, X } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";

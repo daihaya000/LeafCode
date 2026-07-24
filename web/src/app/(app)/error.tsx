@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { useEffect } from "react";
 import Link from "next/link";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";

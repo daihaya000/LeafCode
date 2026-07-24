@@ -56,7 +56,6 @@ export function AttentionQueueModal() {
       previousFocusRef.current = null;
     }
     // R5#1: Only run on open/close, not on current?.request.id change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Escape / focus trap
