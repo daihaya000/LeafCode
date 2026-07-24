@@ -4860,17 +4860,6 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 ## 2026-07-24 Web build lint failure 修正
 
 ### やったこと
-- `web/src/lib/quickaccess.ts` の `require('child_process')` を `node:child_process` の ESM import に置換した。
-- `npm run lint -- --quiet`、`npm run typecheck`、分離ビルド `NEXT_DIST_DIR=.next-build-verify npm run build` が成功することを確認した（既存警告8件は fail しない）。
-
-### 判断理由
-- Next build が ESLint の `@typescript-eslint/no-require-imports` で止まっていた。CommonJS の `require` が原因なので、Node 組み込みの ESM import（`node:child_process`）へ揃えて lint エラーを解消した。
-
-### 教訓
-- Next build 経路でも ESLint が fail 条件になる。Node 組み込みは `require` ではなく `node:` プレフィックス付き ESM import を使う。検証ビルドは既存 `.next` を壊さないよう `NEXT_DIST_DIR` で分離する。
-## 2026-07-24 Web build lint failure 修正
-
-### やったこと
 - `web/src/lib/quickaccess.ts` の `require('child_process')` を `import { execFile } from 'node:child_process'` 形式の ESM import に置換した。
 - Next build を止めていた ESLint `@typescript-eslint/no-require-imports` を解消した。
 - 検証: `npm run lint -- --quiet`、`npm run typecheck`、分離 `NEXT_DIST_DIR=.next-build-verify npm run build` が成功（既存警告8件は fail しない）。
