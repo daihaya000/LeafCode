@@ -305,9 +305,8 @@ describe("AttentionQueueModal", () => {
       localStorage.removeItem("webui:subagent-permission");
     });
 
-    it("フルアクセス切替時、表示中の task 権限もサブエージェント不許可なら reject する", async () => {
+    it("サブエージェント不許可の task 権限はモーダルに出さずレース承認を防ぐ", async () => {
       localStorage.setItem("webui:subagent-permission", "deny");
-      mockOcJson.mockResolvedValue({});
       const taskPerm: AttentionItem = {
         kind: "permission",
         directory: "/repo",
@@ -323,21 +322,10 @@ describe("AttentionQueueModal", () => {
       attentionState.items = [taskPerm];
       attentionState.open = true;
 
-      render(<AttentionQueueModal />);
+      const { container } = render(<AttentionQueueModal />);
 
-      const select = screen.getByTitle("常に許可 / フルアクセス") as HTMLSelectElement;
-      await act(async () => {
-        select.value = "full";
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-
-      expect(mockOcJson).toHaveBeenCalledWith(
-        expect.stringContaining("/permissions/p_task_current"),
-        "/repo",
-        expect.objectContaining({
-          body: { response: "reject" },
-        }),
-      );
+      expect(screen.queryByTitle("常に許可 / フルアクセス")).toBeNull();
+      expect(container.querySelector('[class*="warning"]')).toBeNull();
       localStorage.removeItem("webui:subagent-permission");
     });
 

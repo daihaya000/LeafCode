@@ -1,5 +1,18 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第9回）— sessionId stale / modal レース
+
+### やったこと
+再監査で見つかった残り2件を修正。
+
+1. **`changeSubagentPermission` の stale `sessionId`** — deps に `task?.sessionId` を追加。
+2. **AttentionQueueModal の deny+task レース** — auto-reject 対象をモーダルから除外。PermissionCard「許可」にも deny ガード。
+
+### 状態
+高優先の actionable バグは概ね枯渇。ループは 2 分間隔で継続監視中。
+
+---
+
 ## 2026-07-24 バグハントループ（第8回）— BFF画像上限・resync・タイムアウト
 
 ### やったこと

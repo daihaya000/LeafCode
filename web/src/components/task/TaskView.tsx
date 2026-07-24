@@ -563,7 +563,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         setSubagentPermissionSaving(false);
       }
     },
-    [subagentPermission, subagentPermissionSaving, task?.id],
+    [subagentPermission, subagentPermissionSaving, task?.id, task?.sessionId],
   );
 
   // Persist right-panel display state so it survives task/session switches.

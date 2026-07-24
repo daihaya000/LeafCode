@@ -92,7 +92,14 @@ export function PermissionCard({
           size="md"
           busy={busy === "once"}
           disabled={busy !== null}
-          onClick={() => void reply("once")}
+          onClick={() => {
+            const action = permissionAutoAction({
+              permission: request.permission,
+              subagent: readSubagentPermission(),
+              fullAccess: false,
+            });
+            void reply(action === "reject" ? "reject" : "once");
+          }}
         >
           許可
         </Button>
