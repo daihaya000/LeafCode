@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { isIntelligenceVariant } from "@/lib/model-variants";
+import { ocServer } from "@/lib/oc-server";
 import {
   OPENCODE_BASE_URL,
   isBlockedOpencodeWrite,
@@ -100,15 +101,50 @@ function modelFromRequest(body: Record<string, unknown>):
     : undefined;
 }
 
-function supportsImageInput(directory: string | null, body: unknown): boolean {
+// Resolves `/agent`, preferring the per-directory cache seeded by an earlier
+// directory-scoped GET (see cacheCapabilityMetadata). If unseeded — e.g. the
+// composer only ever fetched it without a `directory`, which is never cached
+// — fall back to a live, directory-scoped query so capability enforcement
+// does not incorrectly fail-closed for a directory whose cache never filled.
+async function resolveAgents(directory: string | null): Promise<AgentResponse | undefined> {
+  const cached = directory ? cachedAgentsByDir.get(directory) : undefined;
+  if (cached) return cached;
+  try {
+    const agents = await ocServer<AgentResponse>(directory, "/agent");
+    if (directory) cachedAgentsByDir.set(directory, agents);
+    return agents;
+  } catch {
+    return undefined;
+  }
+}
+
+// Same directory-scoped cache-then-live-fallback strategy as resolveAgents,
+// mirroring the supportsImageInput() implementation in /api/tasks so both
+// write paths make the same fail-closed decision from the same source of
+// truth (OpenCode's live /provider capabilities for this directory).
+async function resolveProviders(directory: string | null): Promise<ProviderResponse | undefined> {
+  const cached = directory ? cachedProvidersByDir.get(directory) : undefined;
+  if (cached) return cached;
+  try {
+    const providers = await ocServer<ProviderResponse>(directory, "/provider");
+    if (directory) cachedProvidersByDir.set(directory, providers);
+    return providers;
+  } catch {
+    return undefined;
+  }
+}
+
+async function supportsImageInput(
+  directory: string | null,
+  body: unknown,
+): Promise<boolean> {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const request = body as Record<string, unknown>;
   let model = modelFromRequest(request);
   const agent = request.agent;
-  const cachedAgents = directory ? cachedAgentsByDir.get(directory) : undefined;
-  const cachedProviders = directory ? cachedProvidersByDir.get(directory) : undefined;
   if (typeof agent === "string" && agent.trim()) {
-    const configuredAgent = cachedAgents?.find(({ name }) => name === agent.trim());
+    const agents = await resolveAgents(directory);
+    const configuredAgent = agents?.find(({ name }) => name === agent.trim());
     const agentModel = configuredAgent?.model;
     if (!agentModel?.providerID || !agentModel.modelID) {
       return false;
@@ -119,13 +155,17 @@ function supportsImageInput(directory: string | null, body: unknown): boolean {
     };
   }
   if (!model?.providerID || !model.modelID) return false;
+  const providers = await resolveProviders(directory);
+  // Unreachable/unavailable provider metadata is fail-closed: without a
+  // confirmed capability we cannot allow the image through.
+  if (!providers) return false;
   if (
-    cachedProviders?.connected?.length &&
-    !cachedProviders.connected.includes(model.providerID)
+    providers.connected?.length &&
+    !providers.connected.includes(model.providerID)
   ) {
     return false;
   }
-  const capabilities = cachedProviders?.all
+  const capabilities = providers.all
     ?.find((provider) => provider.id === model.providerID)
     ?.models?.[model.modelID]?.capabilities;
   return capabilities?.input?.image === true || capabilities?.attachment === true;
@@ -261,7 +301,7 @@ async function proxy(
             (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
               /^\/session\/[^/]+\/command$/.test(pathname)) &&
             containsImagePart(body) &&
-            !supportsImageInput(directory, body)
+            !(await supportsImageInput(directory, body))
           ) {
             return NextResponse.json(
               { error: "image input is not supported by the selected model" },

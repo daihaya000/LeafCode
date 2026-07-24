@@ -25,11 +25,14 @@ function sessionPost(
   operation: "prompt_async" | "command",
   body: Record<string, unknown>,
   contentType = "application/json",
+  // Matches the literal "C%3A%5C%5Crepo" (two backslashes) used by the other
+  // GET /provider,/agent helpers below so the per-directory cache key lines up.
+  directory = "C:\\\\repo",
 ) {
   const headers = contentType ? { "content-type": contentType } : undefined;
   return POST(
     new NextRequest(
-      `http://localhost/api/opencode/session/session-1/${operation}?directory=C%3A%5C%5Crepo`,
+      `http://localhost/api/opencode/session/session-1/${operation}?directory=${encodeURIComponent(directory)}`,
       {
         method: "POST",
         headers,
@@ -101,21 +104,46 @@ describe("POST session image capability validation", () => {
       parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
     }],
   ] as const)(
-    "rejects image parts without an explicit capability before upstream fetch: %s",
+    "live-queries an unseeded directory's /provider and still rejects an unsupported model before upstream fetch: %s",
     async (operation, body) => {
-      const fetchMock = vi.spyOn(globalThis, "fetch");
+      // A directory unique to this test case, so an earlier test's cache
+      // entry for a different directory cannot mask a missing live query.
+      const directory = `C:\\repo\\unseeded-${operation}`;
+      // No cache entry exists for this directory yet, so supportsImageInput
+      // must fall back to a live, directory-scoped /provider query. That
+      // live response has no matching model, so the request is still
+      // rejected without ever reaching the write endpoint.
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          jsonResponse({
+            all: [{ id: "openai", models: {} }],
+            connected: ["openai"],
+          }),
+        );
 
-      const response = await sessionPost(operation, body);
+      const response = await sessionPost(operation, body, "application/json", directory);
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
-      expect(fetchMock).not.toHaveBeenCalled();
+      // Only the live capability query happened — never the forwarded write.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [providerUrl] = fetchMock.mock.calls[0] ?? [];
+      expect(new URL(String(providerUrl)).pathname).toBe("/provider");
       fetchMock.mockRestore();
     },
   );
 
   it("rejects JSON image parts with text/plain before upstream fetch", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const directory = "C:\\repo\\unseeded-text-plain";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse({
+          all: [{ id: "openai", models: {} }],
+          connected: ["openai"],
+        }),
+      );
 
     const response = await sessionPost(
       "prompt_async",
@@ -124,11 +152,15 @@ describe("POST session image capability validation", () => {
         parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
       },
       "text/plain",
+      directory,
     );
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Only the live capability query happened — never the forwarded write.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [providerUrl] = fetchMock.mock.calls[0] ?? [];
+    expect(new URL(String(providerUrl)).pathname).toBe("/provider");
     fetchMock.mockRestore();
   });
 
@@ -208,6 +240,68 @@ describe("POST session image capability validation", () => {
 
     expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("live-queries a directory-scoped /provider fallback after only a directory-less provider fetch was cached (regression)", async () => {
+    // A directory-less GET /provider (allowed for the composer's initial
+    // model-list fetch) never seeds the per-directory cache — see
+    // cacheCapabilityMetadata's `if (!directory) return`. Previously this
+    // left supportsImageInput() permanently fail-closed for that directory
+    // even for an image-capable model, because there was no live fallback.
+    const directory = "C:\\repo\\fresh-project";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/provider") {
+        return Promise.resolve(
+          jsonResponse({
+            all: [{
+              id: "fresh-provider",
+              models: {
+                vision: { capabilities: { input: { image: true } } },
+              },
+            }],
+            connected: ["fresh-provider"],
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    // Step 1: directory-less provider fetch (as the composer performs on
+    // load before any project directory is known). This must not seed the
+    // per-directory cache for `directory` below.
+    await GET(new Request("http://localhost/api/opencode/provider") as never, {
+      params: Promise.resolve({ path: ["provider"] }),
+    });
+    fetchMock.mockClear();
+
+    // Step 2: an image prompt for a *different, still-unseeded* directory.
+    const response = await POST(
+      new NextRequest(
+        `http://localhost/api/opencode/session/session-1/prompt_async?directory=${encodeURIComponent(directory)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: { providerID: "fresh-provider", modelID: "vision" },
+            parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
+          }),
+        },
+      ),
+      { params: Promise.resolve({ path: ["session", "session-1", "prompt_async"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    // One live, directory-scoped capability query + one forwarded prompt call.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [providerUrl, providerInit] = fetchMock.mock.calls[0] ?? [];
+    expect(new URL(String(providerUrl)).pathname).toBe("/provider");
+    expect(
+      (providerInit as { headers?: Record<string, string> } | undefined)?.headers?.[
+        "x-opencode-directory"
+      ],
+    ).toBe(directory);
     fetchMock.mockRestore();
   });
 });
