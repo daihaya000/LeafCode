@@ -10,7 +10,7 @@ export type SessionStatus = {
 };
 
 export type ToolState = {
-  status: "pending" | "running" | "completed" | "error";
+  status: "pending" | "running" | "completed" | "cancelled" | "error";
   input?: Record<string, unknown>;
   output?: string;
   title?: string;

@@ -1,9 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyToolFailureStatus,
   createInitialStreamState,
   resolveResyncStatus,
   sessionStreamReducer,
 } from "./useSessionStream";
+
+describe("classifyToolFailureStatus", () => {
+  it.each([
+    "aborted",
+    "tool execution aborted",
+    "cancelled",
+    "canceled",
+    "tool execution cancelled",
+    "tool execution canceled",
+    "  CANCELLED  ",
+  ])("classifies %j as cancelled", (message) => {
+    expect(classifyToolFailureStatus(message)).toBe("cancelled");
+  });
+
+  it.each([undefined, "", "aborted by user", "Tool execution cancelled: timeout"])(
+    "keeps non-exact message %j as an error",
+    (message) => {
+      expect(classifyToolFailureStatus(message)).toBe("error");
+    },
+  );
+});
 
 describe("resolveResyncStatus", () => {
   it("applies REST and clears pendingMutation after a send without SSE", () => {

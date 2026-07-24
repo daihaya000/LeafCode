@@ -62,6 +62,25 @@ export type StreamAction =
 /** Default timeout for prompt/command/abort so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
+const CANCELLED_TOOL_FAILURE_MESSAGES = new Set([
+  "aborted",
+  "tool execution aborted",
+  "cancelled",
+  "canceled",
+  "tool execution cancelled",
+  "tool execution canceled",
+]);
+
+/** Classify the known abort/cancel tool failure messages as a neutral terminal state. */
+export function classifyToolFailureStatus(
+  message: string | undefined,
+): "cancelled" | "error" {
+  if (!message) return "error";
+  return CANCELLED_TOOL_FAILURE_MESSAGES.has(message.trim().toLowerCase())
+    ? "cancelled"
+    : "error";
+}
+
 /**
  * Decide whether a REST `/session/status` snapshot should replace local status.
  * After sendPrompt/sendCommand we hold `pendingMutation` until SSE busy/idle; if
@@ -1067,7 +1086,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
                 tool: "tool",
                 callID,
                 state: {
-                  status: "error",
+                  status: classifyToolFailureStatus(err?.message),
                   error: err?.message ?? "tool failed",
                   time: { end: Number(props.timestamp) || undefined },
                 },

@@ -13,6 +13,7 @@ import {
   Globe,
   ListTodo,
   Loader2,
+  Minus,
   Paperclip,
   Search,
   Terminal,
@@ -181,6 +182,7 @@ const ToolPartView = memo(function ToolPartView({
   const state = part.state;
   const status = state?.status ?? "pending";
   const isError = status === "error";
+  const isCancelled = status === "cancelled";
   const tool = part.tool ?? "tool";
   const isTaskTool = isTaskToolName(tool);
   const nestedActive =
@@ -189,9 +191,9 @@ const ToolPartView = memo(function ToolPartView({
     Boolean(directory && rootSessionId);
   const terminalTask =
     isTaskTool &&
-    (status === "completed" || status === "error") &&
+    (status === "completed" || status === "cancelled" || status === "error") &&
     Boolean(directory && rootSessionId);
-  const [open, setOpen] = useState(nestedActive || isError);
+  const [open, setOpen] = useState(nestedActive || isCancelled || isError);
   const wasNestedActiveRef = useRef(false);
   useEffect(() => {
     if (nestedActive) {
@@ -206,8 +208,8 @@ const ToolPartView = memo(function ToolPartView({
       setOpen(true);
       wasNestedActiveRef.current = false;
     }
-    if (isError) setOpen(true);
-  }, [nestedActive, terminalTask, isError]);
+    if (isCancelled || isError) setOpen(true);
+  }, [nestedActive, terminalTask, isCancelled, isError]);
   const showNested = (nestedActive || terminalTask) && open;
   const Icon = toolIcon(tool);
   const guessedProviderId = isTaskTool
@@ -218,7 +220,7 @@ const ToolPartView = memo(function ToolPartView({
     () => inputFields(tool, state?.input),
     [tool, state?.input],
   );
-  const rawOutput = state?.error || state?.output || "";
+  const rawOutput = isCancelled ? "" : state?.error || state?.output || "";
   const niceOutput = useMemo(
     () => (rawOutput ? humanizeToolOutput(rawOutput) : ""),
     [rawOutput],
@@ -228,6 +230,8 @@ const ToolPartView = memo(function ToolPartView({
       ? niceOutput.replace(/\s+/g, " ").slice(0, 100)
       : status === "error" && rawOutput
         ? `エラー: ${rawOutput.replace(/\s+/g, " ").slice(0, 80)}`
+        : isCancelled
+          ? "中断されました"
         : nestedActive
           ? "サブエージェント実行中…"
           : terminalTask
@@ -239,6 +243,7 @@ const ToolPartView = memo(function ToolPartView({
     Boolean(rawOutput) ||
     nestedActive ||
     terminalTask ||
+    isCancelled ||
     isError;
 
   const matchHint = useMemo(
@@ -282,6 +287,9 @@ const ToolPartView = memo(function ToolPartView({
             </span>
             <span className="min-w-0 truncate text-xs text-text">{summary}</span>
           </div>
+          {isCancelled && (
+            <p className="mt-0.5 text-[11px] text-muted">中断されました</p>
+          )}
           {preview && !open && (
             <p className="mt-0.5 truncate text-[11px] text-faint">{preview}</p>
           )}
@@ -290,6 +298,8 @@ const ToolPartView = memo(function ToolPartView({
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />
         ) : status === "error" ? (
           <CircleAlert className="h-3.5 w-3.5 shrink-0 text-danger" />
+        ) : isCancelled ? (
+          <Minus className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true" />
         ) : (
           <Check className="h-3.5 w-3.5 shrink-0 text-success/70" />
         )}
@@ -326,6 +336,7 @@ const ToolPartView = memo(function ToolPartView({
               ))}
             </dl>
           )}
+          {isCancelled && <p className="text-sm text-muted">中断されました</p>}
           {niceOutput && (
             <div
               className={cx(

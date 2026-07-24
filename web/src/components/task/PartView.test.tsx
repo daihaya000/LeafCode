@@ -1,6 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Part } from "@/lib/types";
+
+vi.mock("./NestedAgentPanel", () => ({
+  NestedAgentPanel: ({ active }: { active: boolean }) => (
+    <div data-testid="nested-agent-panel">{active ? "active" : "inactive"}</div>
+  ),
+}));
+
 import { PartView } from "./PartView";
 
 afterEach(() => cleanup());
@@ -96,5 +103,50 @@ describe("PartView error display", () => {
     render(<PartView part={part} role="assistant" />);
 
     expect(screen.getByText(/schema validation failed/, { selector: "pre" })).toBeTruthy();
+  });
+});
+
+describe("PartView cancelled tool display", () => {
+  it("shows a neutral cancellation state without the original failure text", () => {
+    const part: Part = {
+      id: "p3",
+      messageID: "m3",
+      type: "tool",
+      tool: "bash",
+      state: {
+        status: "cancelled",
+        error: "Tool execution cancelled",
+        input: { command: "sleep 10" },
+      },
+    };
+    render(<PartView part={part} role="assistant" />);
+
+    expect(screen.getAllByText("中断されました").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Tool execution cancelled")).toBeNull();
+    expect(screen.getByRole("button").parentElement?.className).not.toContain(
+      "border-danger/40",
+    );
+    expect(screen.getByRole("button").querySelector(".text-danger")).toBeNull();
+  });
+
+  it("keeps a cancelled sub-agent as a terminal nested panel", () => {
+    const part: Part = {
+      id: "p4",
+      messageID: "m4",
+      type: "tool",
+      tool: "task",
+      callID: "call-4",
+      state: { status: "cancelled", input: { description: "調査" } },
+    };
+    render(
+      <PartView
+        part={part}
+        role="assistant"
+        directory="C:/repo"
+        rootSessionId="session-4"
+      />,
+    );
+
+    expect(screen.getByTestId("nested-agent-panel").textContent).toBe("active");
   });
 });
