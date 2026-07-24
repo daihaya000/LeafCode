@@ -1,0 +1,11 @@
+{
+  "agent": {
+    "build": {
+      "options": {},
+      "permission": {
+        "task": "deny"
+      }
+    }
+  },
+  "$schema": "https://opencode.ai/config.json"
+}

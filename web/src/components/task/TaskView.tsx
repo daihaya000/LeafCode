@@ -1418,6 +1418,28 @@ export function TaskView({ taskId }: { taskId: string }) {
         busy: sessionActions.busy === "compact",
       });
     }
+    // Mobile: expose stop in kebab since the header button is hidden below md.
+    if (!isMd && working) {
+      sessionItems.unshift({
+        id: "abort",
+        label: "停止",
+        icon: <Square className="h-4 w-4 fill-current" />,
+        onSelect: () => void stream.abort(),
+        disabled: sessionActions.busy !== null,
+        danger: true,
+      });
+    }
+    // Mobile: expose stop in kebab since the header button is hidden below md.
+    if (!isMd && working) {
+      sessionItems.unshift({
+        id: "abort",
+        label: "停止",
+        icon: <Square className="h-4 w-4 fill-current" />,
+        onSelect: () => void stream.abort(),
+        disabled: sessionActions.busy !== null,
+        danger: true,
+      });
+    }
 
     const taskItems: KebabItem[] = [
       {
