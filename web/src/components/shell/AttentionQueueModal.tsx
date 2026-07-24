@@ -14,6 +14,10 @@ import { Button, cx } from "@/components/ui";
 import { ApiError, ocJson } from "@/lib/client";
 import { replyPath, rejectPath, type AttentionItem } from "@/lib/attention";
 import { writeAccessMode } from "@/lib/access-mode";
+import {
+  permissionAutoAction,
+  readSubagentPermission,
+} from "@/lib/subagent-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
@@ -127,16 +131,28 @@ export function AttentionQueueModal() {
     [respond],
   );
 
-  // R36#2: When switching to full-access mode, auto-approve all remaining permission requests in the queue
+  // R36#2: full-access へ切替時、キュー内の権限を自動処理。
+  // TaskView と同様、サブエージェント不許可 + task 権限は reject を優先する。
   const enableFullAccess = useCallback(async () => {
     writeAccessMode("full");
-    // Auto-approve all pending permission requests in the queue
+    const subagent = readSubagentPermission();
     const permissionItems = items.filter((item) => item.kind === "permission");
     for (const item of permissionItems) {
+      if (item.kind !== "permission") continue;
+      const action = permissionAutoAction({
+        permission: item.request.permission,
+        subagent,
+        fullAccess: true,
+      });
+      if (action === "manual") continue;
+      const reply = action === "reject" ? "reject" : "once";
       try {
         await ocJson(replyPath(item), item.directory, {
           method: "POST",
-          body: item.request.version === "v2" ? { reply: "once" } : { response: "once" },
+          body:
+            item.request.version === "v2"
+              ? { reply }
+              : { response: reply },
           timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         });
         remove(item.request.id, item.request.sessionID);

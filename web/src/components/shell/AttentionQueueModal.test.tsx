@@ -258,6 +258,53 @@ describe("AttentionQueueModal", () => {
       expect(allowBtn.disabled).toBe(false);
     });
 
+    it("フルアクセス切替時、サブエージェント不許可なら残りの task 権限を reject する", async () => {
+      localStorage.setItem("webui:subagent-permission", "deny");
+      mockOcJson.mockResolvedValue({});
+      const bashPerm = permissionItem();
+      const taskPerm: AttentionItem = {
+        kind: "permission",
+        directory: "/repo",
+        request: {
+          id: "p_task",
+          version: "v1",
+          sessionID: "ses_abc",
+          permission: "task",
+          patterns: [],
+          receivedAt: 2,
+        },
+      };
+      // current = bash (older); task はフルアクセス一括処理の対象
+      attentionState.items = [bashPerm, taskPerm];
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+
+      const select = screen.getByTitle("常に許可 / フルアクセス") as HTMLSelectElement;
+      await act(async () => {
+        select.value = "full";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      // PermissionCard が現在の bash を once で承認したあと、
+      // enableFullAccess が残りの task を reject する。
+      expect(mockOcJson).toHaveBeenCalledWith(
+        expect.stringContaining("/permissions/p1"),
+        "/repo",
+        expect.objectContaining({
+          body: { response: "once" },
+        }),
+      );
+      expect(mockOcJson).toHaveBeenCalledWith(
+        expect.stringContaining("/permissions/p_task"),
+        "/repo",
+        expect.objectContaining({
+          body: { response: "reject" },
+        }),
+      );
+      localStorage.removeItem("webui:subagent-permission");
+    });
+
     it("PermissionCard re-enables its reply button after a 404 reply", async () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);

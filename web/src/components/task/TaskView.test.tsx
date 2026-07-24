@@ -481,16 +481,15 @@ describe("TaskView", () => {
     streamMock.sendCommand.mockImplementation(async () => {
       events.push("send");
     });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    notifyTasksChanged.mockClear();
     const activity = deferred<void>();
     sendJson.mockImplementation(() =>
       activity.promise.then(() => {
         events.push("activity");
       }),
     );
-    render(<TaskView taskId="ws1" />);
-    await flushTaskLoad();
-    notifyTasksChanged.mockClear();
-    sendJson.mockClear();
     events.length = 0;
 
     fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
@@ -614,6 +613,7 @@ describe("TaskView", () => {
 
     const view = render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
+    sendJson.mockClear();
 
     const modelSelect = await screen.findByLabelText("モデル");
     fireEvent.change(modelSelect, {
@@ -693,12 +693,6 @@ describe("TaskView", () => {
     const streamMock = useSessionStream();
     const sendPrompt = streamMock.sendPrompt;
     const events: string[] = [];
-    const activity = deferred<void>();
-    sendJson.mockImplementation(() =>
-      activity.promise.then(() => {
-        events.push("activity");
-      }),
-    );
     sendPrompt.mockImplementation(async () => events.push("send"));
     useSessionStream.mockReturnValue({
       ...streamMock,
@@ -716,6 +710,13 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
     notifyTasksChanged.mockClear();
+    const activity = deferred<void>();
+    sendJson.mockImplementation(() =>
+      activity.promise.then(() => {
+        events.push("activity");
+      }),
+    );
+    events.length = 0;
 
     const planCard = await screen.findByRole("region", { name: "計画書: plan.md" });
     fireEvent.click(within(planCard).getByRole("button", { name: "承認して実装" }));
@@ -1081,7 +1082,7 @@ describe("TaskView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
     const menu = screen.getByRole("menu", { name: "タスクその他操作" });
-    expect(within(menu).getAllByRole("menuitem", { name: "停止" }).length).toBeGreaterThan(0);
+    expect(within(menu).getAllByRole("menuitem", { name: "停止" }).length).toBe(1);
   });
 
   it("keeps files, graph, and diff in the kebab below lg while terminal stays there", async () => {

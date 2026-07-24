@@ -183,6 +183,16 @@ type AgentResponse = {
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
 
 const IMAGE_MIME_RE = /^image\//i;
+// Match POST /api/tasks R28 limits so follow-up attachments cannot bypass them.
+const MAX_IMAGE_COUNT = 10;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function estimateDataUrlBytes(uri: string): number {
+  const comma = uri.indexOf(",");
+  if (comma < 0) return Number.POSITIVE_INFINITY;
+  const b64 = uri.slice(comma + 1);
+  return Math.floor((b64.length * 3) / 4);
+}
 
 function ModelSelectIcon({ model }: { model: string }) {
   const providerID = model ? model.split("::")[0] : "";
@@ -480,6 +490,30 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () =>
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
   }, []);
+
+  // Apply localStorage のサブエージェント権限を、タスクを開いた／セッションを
+  // 切り替えた／新規セッションを bind したタイミングで OpenCode 側へ同期する。
+  // トグル時だけ POST すると、既存セッションや SessionSwitcher 経由の新規作成で
+  // UI は「不許可」なのにエンジン側は許可のまま、という穴が残る。
+  useEffect(() => {
+    if (!task?.id || !task.sessionId) return;
+    const permission = readSubagentPermission();
+    let cancelled = false;
+    void sendJson("POST", "/api/subagent-permission", {
+      taskId: task.id,
+      permission,
+    }).catch((err) => {
+      if (cancelled) return;
+      setSendError(
+        err instanceof Error
+          ? `サブエージェント権限を同期できませんでした: ${err.message}`
+          : "サブエージェント権限を同期できませんでした。",
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id, task?.sessionId]);
 
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.
@@ -1006,6 +1040,18 @@ export function TaskView({ taskId }: { taskId: string }) {
       );
       return;
     }
+    if (attachments.length > MAX_IMAGE_COUNT) {
+      setSendError(`画像は最大 ${MAX_IMAGE_COUNT} 枚まで添付できます。`);
+      return;
+    }
+    if (
+      attachments.some((a) => estimateDataUrlBytes(a.uri) > MAX_IMAGE_SIZE_BYTES)
+    ) {
+      setSendError(
+        `各画像は ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB 以下にしてください。`,
+      );
+      return;
+    }
     const files = attachments.map((a) => ({
       uri: a.uri,
       mime: a.mime,
@@ -1102,18 +1148,41 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files).filter((f) => IMAGE_MIME_RE.test(f.type));
-    const next: Attachment[] = [];
+    if (list.length === 0) return;
+
+    const candidates: Attachment[] = [];
+    let rejected = 0;
     for (const f of list) {
+      if (f.size > MAX_IMAGE_SIZE_BYTES) {
+        rejected += 1;
+        continue;
+      }
       try {
         const uri = await readFileAsDataUrl(f);
-        next.push({ uri, mime: f.type, name: f.name, preview: uri });
+        if (estimateDataUrlBytes(uri) > MAX_IMAGE_SIZE_BYTES) {
+          rejected += 1;
+          continue;
+        }
+        candidates.push({ uri, mime: f.type, name: f.name, preview: uri });
       } catch {
-        /* skip unreadable file */
+        rejected += 1;
       }
     }
-    if (next.length > 0) {
-      setAttachments((cur) => [...cur, ...next]);
-      stickRef.current = true;
+
+    let appended = 0;
+    setAttachments((cur) => {
+      const room = Math.max(0, MAX_IMAGE_COUNT - cur.length);
+      const take = candidates.slice(0, room);
+      appended = take.length;
+      return take.length > 0 ? [...cur, ...take] : cur;
+    });
+    if (appended > 0) stickRef.current = true;
+
+    const skipped = rejected + (candidates.length - appended);
+    if (skipped > 0) {
+      setSendError(
+        `一部の画像をスキップしました（上限 ${MAX_IMAGE_COUNT} 枚 / ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB）。`,
+      );
     }
   }, []);
 
@@ -1168,11 +1237,11 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [working, stream, touchActivity]);
 
   const intelligenceVariants = useMemo(() => {
-    if (!model) return [];
-    const modelMeta = providerModelsMap[model];
+    if (!effectiveModelKey) return [];
+    const modelMeta = providerModelsMap[effectiveModelKey];
     if (!modelMeta) return [];
     return getIntelligenceVariants(modelMeta);
-  }, [model, providerModelsMap]);
+  }, [effectiveModelKey, providerModelsMap]);
   // Prefer last assistant message's model once stream is loaded.
   // Seeding runs at most once per session scope: once a model is resolved
   // (either from a prior assistant message or from a user's manual choice),
@@ -1417,17 +1486,6 @@ export function TaskView({ taskId }: { taskId: string }) {
         onSelect: sessionActions.compact,
         disabled: sessionActions.busy !== null,
         busy: sessionActions.busy === "compact",
-      });
-    }
-    // Mobile: expose stop in kebab since the header button is hidden below md.
-    if (!isMd && working) {
-      sessionItems.unshift({
-        id: "abort",
-        label: "停止",
-        icon: <Square className="h-4 w-4 fill-current" />,
-        onSelect: () => void stream.abort(),
-        disabled: sessionActions.busy !== null,
-        danger: true,
       });
     }
     // Mobile: expose stop in kebab since the header button is hidden below md.

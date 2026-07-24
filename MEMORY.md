@@ -1,5 +1,35 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第5回）— 権限同期・画像上限・UI重複
+
+### やったこと
+`/loop 2m` によるバグ発見→修正サイクルの初回で、優先度の高い欠陥をまとめて修正した。
+
+**修正内容:**
+1. **モバイルケバブの停止ボタン重複** — `TaskView` で同一 `abort` 項目が2回 `unshift` されていたコピペ漏れを削除。テストを「ちょうど1件」に厳格化。
+2. **サブエージェント権限のセッション未同期** — タスクオープン／セッション切替時に `localStorage` の設定を `POST /api/subagent-permission` でエンジンへ適用。新規タスク作成時以外でも「不許可」が効くようにした。
+3. **AttentionQueueModal のフルアクセスが不許可を無視** — `permissionAutoAction` を適用し、`task` 権限は reject 優先。
+4. **TaskView の intelligence 選択肢が agent 実モデルと不一致** — `effectiveModelKey` ベースに変更（HomeView と揃える）。
+5. **フォローアップ画像の枚数・サイズ上限 bypass** — `addImageFiles` / `send` に R28 と同じ 10枚・10MB 制限を適用。
+
+**変更ファイル:**
+- `web/src/components/task/TaskView.tsx`
+- `web/src/components/task/TaskView.test.tsx`
+- `web/src/components/shell/AttentionQueueModal.tsx`
+- `web/src/components/shell/AttentionQueueModal.test.tsx`
+
+### 残課題（次ティック候補）
+- PermissionCard で「フルアクセス」選択時、現在カードの `task` 権限が先に `once` 承認される経路
+- `refreshTodos` の directory scope ガード
+- GET `/provider/<id>` の secret マスク漏れ
+- HomeView が agent 未ロード時も `subagentPermission` を送って 400 になる件
+
+### 教訓
+- 「トグル時だけエンジンへ書く」設定は、既存セッション／別経路のセッション作成で必ず穴が開く。オープン時同期が必要。
+- クライアント制限と API 制限は同じ定数・同じ経路に揃えないと follow-up で bypass される。
+
+---
+
 ## 2026-07-24 モバイルのケバブメニューに停止ボタンを追加
 
 ### やったこと
