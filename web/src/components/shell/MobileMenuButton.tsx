@@ -18,7 +18,7 @@ export function MobileMenuButton({ className }: { className?: string }) {
       aria-controls="mobile-nav"
       onClick={openMobileNav}
       className={cx(
-        "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text md:hidden",
+        "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:hidden",
         className,
       )}
     >

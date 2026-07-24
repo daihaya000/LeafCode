@@ -44,6 +44,7 @@ import {
   useShellSetActiveScope,
 } from "@/components/shell/ShellContext";
 import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
+import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { MobileMenuButton } from "@/components/shell/MobileMenuButton";
 import { AttentionBadge } from "@/components/shell/AttentionBadge";
 import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
@@ -1620,19 +1621,25 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   if (loadError) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
-        <p className="text-sm text-danger">{loadError}</p>
-        <Link href="/" className="text-sm text-accent underline">
-          ホームへ戻る
-        </Link>
+      <div className="flex h-full flex-col">
+        <MobileMenuHeader />
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4">
+          <p className="text-sm text-danger">{loadError}</p>
+          <Link href="/" className="text-sm text-accent underline">
+            ホームへ戻る
+          </Link>
+        </div>
       </div>
     );
   }
 
   if (!task) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner />
+      <div className="flex h-full flex-col">
+        <MobileMenuHeader />
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <Spinner />
+        </div>
       </div>
     );
   }

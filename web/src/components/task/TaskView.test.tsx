@@ -218,11 +218,35 @@ describe("TaskView", () => {
     vi.clearAllMocks();
   });
 
-  it("renders a mobile menu button that controls the nav drawer", async () => {
+  it("keeps a single mobile menu button while the task is loading", () => {
+    render(<TaskView taskId="ws1" />);
+
+    const menus = screen.getAllByLabelText("メニュー");
+    expect(menus).toHaveLength(1);
+    expect(menus[0].getAttribute("aria-controls")).toBe("mobile-nav");
+    expect(menus[0].getAttribute("aria-expanded")).toBe("false");
+    expect(menus[0].className).toContain("h-11");
+    expect(menus[0].className).toContain("w-11");
+  });
+
+  it("keeps a mobile menu button when loading the task fails", async () => {
+    getJson.mockRejectedValueOnce(new Error("task unavailable"));
+    render(<TaskView taskId="ws1" />);
+
+    await screen.findByText("task unavailable");
+    const menus = screen.getAllByLabelText("メニュー");
+    expect(menus).toHaveLength(1);
+    expect(menus[0].getAttribute("aria-controls")).toBe("mobile-nav");
+    expect(menus[0].getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("renders a single mobile menu button in the conversation header", async () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    const menu = screen.getByLabelText("メニュー");
+    const menus = screen.getAllByLabelText("メニュー");
+    expect(menus).toHaveLength(1);
+    const [menu] = menus;
     expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
     expect(menu.getAttribute("aria-expanded")).toBe("false");
   });

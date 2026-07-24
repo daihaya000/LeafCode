@@ -19,6 +19,9 @@ describe("MobileMenuButton", () => {
     // h-11 / w-11 == 2.75rem == 44px touch target.
     expect(button.className).toContain("h-11");
     expect(button.className).toContain("w-11");
+    expect(button.className).toContain("focus-visible:outline-2");
+    expect(button.className).toContain("focus-visible:outline-offset-1");
+    expect(button.className).toContain("focus-visible:outline-primary");
   });
 
   it("reflects the open state through aria-expanded after a click", () => {

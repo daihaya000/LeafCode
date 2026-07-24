@@ -12,7 +12,7 @@ export function AttentionBadge() {
     <button
       type="button"
       onClick={() => openNext()}
-      className="inline-flex h-8 items-center justify-center rounded-lg hover:bg-surface-2"
+      className="inline-flex h-8 items-center justify-center rounded-lg hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
       aria-label={`待機中の要求 ${items.length} 件`}
       title="待機中の要求"
     >
