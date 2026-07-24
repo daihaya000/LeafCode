@@ -59,7 +59,7 @@ export type StreamAction =
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "sessionError"; message: string | null };
 
-/** Default timeout for prompt/command/abort so a hung engine cannot freeze the composer. */
+/** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
 /**
