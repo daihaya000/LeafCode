@@ -976,6 +976,28 @@ describe("TaskView", () => {
     expect(screen.queryByTestId("session-switcher")).toBeNull();
   });
 
+  it("moves compact into the kebab and removes the stop button on mobile", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const header = document.querySelector("header");
+    expect(header).toBeTruthy();
+    expect(within(header as HTMLElement).queryByRole("button", { name: "停止" })).toBeNull();
+    expect(within(header as HTMLElement).queryByRole("button", { name: "コンパクト" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
+    const menu = screen.getByRole("menu", { name: "タスクその他操作" });
+    expect(within(menu).getByRole("menuitem", { name: "コンテキスト圧縮" })).toBeTruthy();
+  });
+
   it("keeps files, graph, and diff in the kebab below lg while terminal stays there", async () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,

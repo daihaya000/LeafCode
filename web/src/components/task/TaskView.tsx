@@ -28,6 +28,7 @@ import {
   RefreshCw,
   RotateCcw,
   RotateCw,
+  Shrink,
   Square,
   Terminal,
   Trash2,
@@ -1383,9 +1384,10 @@ export function TaskView({ taskId }: { taskId: string }) {
         },
   );
 
-  // Zone C data: kebab groups. Stop and compact stay in Zone A; files/graph/
-  // diff stay in Zone B at lg, while task, session, panels, and danger actions
-  // are available from the kebab.
+  // Zone C data: kebab groups. On mobile, compact is available here because
+  // the header does not have room for a direct action. Files/graph/diff stay
+  // in Zone B at lg, while task, session, panels, and danger actions are
+  // available from the kebab.
   const headerKebabGroups = useMemo<KebabGroup[]>(() => {
     const hasSession = !!task?.sessionId;
     const sessionItems: KebabItem[] = [
@@ -1406,6 +1408,16 @@ export function TaskView({ taskId }: { taskId: string }) {
         busy: sessionActions.busy === "unrevert",
       },
     ];
+    if (!isMd && hasSession) {
+      sessionItems.unshift({
+        id: "compact",
+        label: "コンテキスト圧縮",
+        icon: <Shrink className="h-4 w-4" />,
+        onSelect: sessionActions.compact,
+        disabled: sessionActions.busy !== null,
+        busy: sessionActions.busy === "compact",
+      });
+    }
 
     const taskItems: KebabItem[] = [
       {
@@ -1523,9 +1535,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     working,
     stream,
     sessionActions.busy,
+    sessionActions.compact,
     sessionActions.revert,
     sessionActions.unrevert,
     lastRevertMessageId,
+    isMd,
     isLg,
     showDiff,
     sidePanel,
@@ -1736,14 +1750,15 @@ export function TaskView({ taskId }: { taskId: string }) {
             Zone A / Zone B so horizontal scroll is limited to those ops. */}
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1">
           <div className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* Zone A: always visible across all breakpoints: stop and compact. */}
-          {working && (
+          {/* Zone A: direct actions are retained at md and above. Mobile has
+              no header stop button and exposes compact through the kebab. */}
+          {isMd && working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
               <span className="hidden sm:inline">停止</span>
             </Button>
           )}
-          {task.sessionId && (
+          {isMd && task.sessionId && (
             <>
               <CompactButton
                 busy={sessionActions.busy === "compact"}
