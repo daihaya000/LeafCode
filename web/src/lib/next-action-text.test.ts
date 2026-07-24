@@ -5,10 +5,14 @@ import {
   normalizeSuggestion,
   extractAssistantText,
   sanitizePreviousSuggestions,
+  sanitizeSuggestionCount,
   NEXT_ACTION_SYSTEM_INSTRUCTION,
   NEXT_ACTION_TRANSCRIPT_MAX_CHARS,
   NEXT_ACTION_SUGGESTION_MAX_CHARS,
   NEXT_ACTION_PREVIOUS_MAX_COUNT,
+  NEXT_ACTION_COUNT_MIN,
+  NEXT_ACTION_COUNT_MAX,
+  NEXT_ACTION_COUNT_DEFAULT,
 } from "./next-action-text";
 import type { MessageWithParts } from "./types";
 
@@ -129,6 +133,52 @@ describe("sanitizePreviousSuggestions", () => {
     const many = Array.from({ length: NEXT_ACTION_PREVIOUS_MAX_COUNT + 3 }, (_, i) => `提案${i}`);
     const out = sanitizePreviousSuggestions(many);
     expect(out).toHaveLength(NEXT_ACTION_PREVIOUS_MAX_COUNT);
+  });
+});
+
+describe("sanitizeSuggestionCount", () => {
+  it("accepts integers within the 1–3 range", () => {
+    expect(sanitizeSuggestionCount(1)).toBe(1);
+    expect(sanitizeSuggestionCount(2)).toBe(2);
+    expect(sanitizeSuggestionCount(3)).toBe(3);
+  });
+
+  it("clamps values above the maximum to 3", () => {
+    expect(sanitizeSuggestionCount(4)).toBe(NEXT_ACTION_COUNT_MAX);
+    expect(sanitizeSuggestionCount(99)).toBe(NEXT_ACTION_COUNT_MAX);
+  });
+
+  it("clamps values below the minimum to 1", () => {
+    expect(sanitizeSuggestionCount(0)).toBe(NEXT_ACTION_COUNT_MIN);
+    expect(sanitizeSuggestionCount(-5)).toBe(NEXT_ACTION_COUNT_MIN);
+  });
+
+  it("floors fractional values before clamping", () => {
+    expect(sanitizeSuggestionCount(2.9)).toBe(2);
+    expect(sanitizeSuggestionCount(0.5)).toBe(NEXT_ACTION_COUNT_MIN);
+  });
+
+  it("accepts numeric strings", () => {
+    expect(sanitizeSuggestionCount("2")).toBe(2);
+    expect(sanitizeSuggestionCount(" 3 ")).toBe(3);
+    expect(sanitizeSuggestionCount("10")).toBe(NEXT_ACTION_COUNT_MAX);
+  });
+
+  it("falls back to the default for invalid input", () => {
+    expect(sanitizeSuggestionCount(undefined)).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount(null)).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount("")).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount("abc")).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount(NaN)).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount(Infinity)).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount([])).toBe(NEXT_ACTION_COUNT_DEFAULT);
+    expect(sanitizeSuggestionCount({})).toBe(NEXT_ACTION_COUNT_DEFAULT);
+  });
+
+  it("exposes a 1–3 range with default 1", () => {
+    expect(NEXT_ACTION_COUNT_MIN).toBe(1);
+    expect(NEXT_ACTION_COUNT_MAX).toBe(3);
+    expect(NEXT_ACTION_COUNT_DEFAULT).toBe(1);
   });
 });
 

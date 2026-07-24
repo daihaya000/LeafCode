@@ -40,6 +40,40 @@ function requestWithBody(body: unknown) {
   });
 }
 
+const ONE_MSG = [
+  {
+    info: { id: "m1", role: "user" },
+    parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+  },
+];
+
+/**
+ * Queue the standard ocServer mock sequence for a batch generation:
+ * messages → create temp → tool ids → one prompt per text → delete temp.
+ * `failPromptAt` makes the prompt at that batch index reject instead.
+ */
+function mockFlow(suggestionTexts: string[], failPromptAt?: number) {
+  ocServerMock.mockResolvedValueOnce(ONE_MSG);
+  ocServerMock.mockResolvedValueOnce({ id: "temp-multi" });
+  ocServerMock.mockResolvedValueOnce(["bash"]);
+  suggestionTexts.forEach((t, i) => {
+    if (failPromptAt === i) {
+      ocServerMock.mockRejectedValueOnce(new Error("engine error"));
+    } else {
+      ocServerMock.mockResolvedValueOnce({
+        parts: [{ type: "text", text: t }],
+      });
+    }
+  });
+  ocServerMock.mockResolvedValueOnce(true); // delete temp
+}
+
+function promptCalls() {
+  return ocServerMock.mock.calls.filter(
+    (c) => c[1] === "/session/temp-multi/message",
+  );
+}
+
 const WS = {
   id: "task-1",
   absolute_path: "/tmp/ws",
@@ -135,7 +169,11 @@ describe("POST /api/tasks/[id]/next-action", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ suggestion: "テストを実行してください" });
+    // Backward-compatible `suggestion` plus the new `suggestions` list.
+    expect(await res.json()).toEqual({
+      suggestion: "テストを実行してください",
+      suggestions: ["テストを実行してください"],
+    });
 
     // Verify call sequence
     const calls = ocServerMock.mock.calls;
@@ -234,7 +272,10 @@ describe("POST /api/tasks/[id]/next-action", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ suggestion: "別の提案をしてください" });
+    expect(await res.json()).toEqual({
+      suggestion: "別の提案をしてください",
+      suggestions: ["別の提案をしてください"],
+    });
     const promptBody = ocServerMock.mock.calls[3]?.[2]?.body as Record<string, unknown>;
     const parts = promptBody.parts as { type: string; text: string }[];
     const text = parts[0]?.text ?? "";
@@ -269,6 +310,182 @@ describe("POST /api/tasks/[id]/next-action", () => {
     const promptBody = ocServerMock.mock.calls[3]?.[2]?.body as Record<string, unknown>;
     const parts = promptBody.parts as { type: string; text: string }[];
     expect(parts[0]?.text).not.toContain("既出の提案");
+  });
+
+  it("generates the requested number of suggestions and returns suggestion + suggestions", async () => {
+    mockFlow(["提案A", "提案B", "提案C"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 3 }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      suggestion: "提案A",
+      suggestions: ["提案A", "提案B", "提案C"],
+    });
+
+    const calls = ocServerMock.mock.calls;
+    // 0: messages, 1: create temp, 2: tool ids, 3–5: prompts, 6: delete
+    expect(calls).toHaveLength(7);
+    expect(calls[3]?.[1]).toBe("/session/temp-multi/message");
+    expect(calls[4]?.[1]).toBe("/session/temp-multi/message");
+    expect(calls[5]?.[1]).toBe("/session/temp-multi/message");
+    expect(calls[6]?.[1]).toBe("/session/temp-multi");
+    expect(calls[6]?.[2]?.method).toBe("DELETE");
+  });
+
+  it("excludes earlier batch suggestions in each subsequent prompt", async () => {
+    mockFlow(["提案A", "提案B", "提案C"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 3 }),
+      contextFor("task-1"),
+    );
+    expect(res.status).toBe(200);
+
+    const calls = ocServerMock.mock.calls;
+    const textAt = (i: number) =>
+      ((calls[i]?.[2]?.body as Record<string, unknown>).parts as { text: string }[])[0]
+        ?.text ?? "";
+    // First prompt: no exclusion block.
+    expect(textAt(3)).not.toContain("既出の提案");
+    // Second prompt excludes the first suggestion.
+    expect(textAt(4)).toContain("【避けるべき既出の提案】");
+    expect(textAt(4)).toContain("- 提案A");
+    // Third prompt excludes both earlier suggestions.
+    expect(textAt(5)).toContain("- 提案A");
+    expect(textAt(5)).toContain("- 提案B");
+  });
+
+  it("combines client previousSuggestions with in-batch exclusions", async () => {
+    mockFlow(["提案B"]);
+
+    const res = await POST(
+      requestWithBody({
+        sessionId: "ses-1",
+        count: 2,
+        previousSuggestions: ["提案A"],
+      }),
+      contextFor("task-1"),
+    );
+    expect(res.status).toBe(200);
+
+    // First prompt already excludes the client-provided suggestion.
+    const first = promptCalls()[0]?.[2]?.body as Record<string, unknown>;
+    const firstText = (first.parts as { text: string }[])[0]?.text ?? "";
+    expect(firstText).toContain("- 提案A");
+  });
+
+  it("clamps count above the maximum to 3 prompts", async () => {
+    mockFlow(["提案A", "提案B", "提案C", "提案D", "提案E"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 99 }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { suggestions: string[] };
+    expect(body.suggestions).toHaveLength(3);
+    expect(promptCalls()).toHaveLength(3);
+  });
+
+  it("clamps count below the minimum to a single prompt", async () => {
+    mockFlow(["提案A"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 0 }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      suggestion: "提案A",
+      suggestions: ["提案A"],
+    });
+    expect(promptCalls()).toHaveLength(1);
+  });
+
+  it("treats invalid count as the default (1)", async () => {
+    mockFlow(["提案A"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: "abc" }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      suggestion: "提案A",
+      suggestions: ["提案A"],
+    });
+    expect(promptCalls()).toHaveLength(1);
+  });
+
+  it("accepts a numeric string count", async () => {
+    mockFlow(["提案A", "提案B"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: "2" }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { suggestions: string[] };
+    expect(body.suggestions).toEqual(["提案A", "提案B"]);
+    expect(promptCalls()).toHaveLength(2);
+  });
+
+  it("returns partial results when a later prompt in the batch fails", async () => {
+    mockFlow(["提案A", "提案B"], 1); // second prompt fails
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 3 }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      suggestion: "提案A",
+      suggestions: ["提案A"],
+    });
+    // Temp session still deleted (last call).
+    const last = ocServerMock.mock.calls.at(-1);
+    expect(last?.[1]).toBe("/session/temp-multi");
+    expect(last?.[2]?.method).toBe("DELETE");
+  });
+
+  it("propagates OcError status when every prompt in the batch fails", async () => {
+    const { OcError } = await import("@/lib/oc-server");
+    ocServerMock.mockResolvedValueOnce(ONE_MSG);
+    ocServerMock.mockResolvedValueOnce({ id: "temp-multi" });
+    ocServerMock.mockResolvedValueOnce(["bash"]);
+    ocServerMock.mockRejectedValueOnce(new OcError("engine down", 503));
+    ocServerMock.mockResolvedValueOnce(true); // delete temp
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 3 }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toBe("failed to generate suggestion");
+  });
+
+  it("skips exact duplicates within a batch", async () => {
+    mockFlow(["同じ提案", "同じ提案", "別の提案"]);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1", count: 3 }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { suggestions: string[] };
+    expect(body.suggestions).toEqual(["同じ提案", "別の提案"]);
   });
 
   it("returns 502 when prompt fails and still deletes temp session", async () => {
@@ -323,7 +540,10 @@ describe("POST /api/tasks/[id]/next-action", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ suggestion: "テストしてください" });
+    expect(await res.json()).toEqual({
+      suggestion: "テストしてください",
+      suggestions: ["テストしてください"],
+    });
     // Verify delete was attempted (5th call)
     const calls = ocServerMock.mock.calls;
     expect(calls.length).toBe(5);

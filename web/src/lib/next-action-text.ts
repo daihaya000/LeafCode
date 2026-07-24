@@ -16,8 +16,44 @@ export const NEXT_ACTION_TRANSCRIPT_MAX_CHARS = 16_000;
 /** Hard cap on the final suggestion length returned to the UI. */
 export const NEXT_ACTION_SUGGESTION_MAX_CHARS = 500;
 
-/** Hard cap on how many previous suggestions are sent back on regeneration. */
-export const NEXT_ACTION_PREVIOUS_MAX_COUNT = 5;
+/**
+ * Hard cap on how many previous suggestions are sent back on regeneration.
+ * Sized for several multi-suggestion generations (up to 3 per generation)
+ * so regeneration can exclude every suggestion still visible to the user.
+ */
+export const NEXT_ACTION_PREVIOUS_MAX_COUNT = 10;
+
+/** Minimum number of suggestions the API generates per request. */
+export const NEXT_ACTION_COUNT_MIN = 1;
+
+/** Maximum number of suggestions the API generates per request. */
+export const NEXT_ACTION_COUNT_MAX = 3;
+
+/** Default number of suggestions (initial generation). */
+export const NEXT_ACTION_COUNT_DEFAULT = 1;
+
+/**
+ * Sanitize the client-supplied suggestion count into a safe integer within
+ * [NEXT_ACTION_COUNT_MIN, NEXT_ACTION_COUNT_MAX]. Accepts numbers and
+ * numeric strings; anything invalid (non-numeric, NaN, Infinity) falls back
+ * to {@link NEXT_ACTION_COUNT_DEFAULT}. Fractional values are floored before
+ * clamping, so e.g. 2.9 → 2, 0 → 1, 99 → 3.
+ */
+export function sanitizeSuggestionCount(input: unknown): number {
+  let n: number;
+  if (typeof input === "number") {
+    n = input;
+  } else if (typeof input === "string" && input.trim() !== "") {
+    n = Number(input);
+  } else {
+    return NEXT_ACTION_COUNT_DEFAULT;
+  }
+  if (!Number.isFinite(n)) return NEXT_ACTION_COUNT_DEFAULT;
+  n = Math.floor(n);
+  if (n < NEXT_ACTION_COUNT_MIN) return NEXT_ACTION_COUNT_MIN;
+  if (n > NEXT_ACTION_COUNT_MAX) return NEXT_ACTION_COUNT_MAX;
+  return n;
+}
 
 /**
  * System instruction for the temporary NextAction session. It must produce a
