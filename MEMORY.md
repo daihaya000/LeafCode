@@ -4854,3 +4854,32 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 - 並行セッションがTask7を完了している場合がある。実装前に `git log` で対象ファイルの最新変更を確認する
 - `docs/superpowers/` は .gitignore 対象だが `git add -f` で強制追加可能
 - 既存の `archived` status を活用する変更はDB層変更不要で影響範囲が小さい
+
+---
+
+## 2026-07-24 Web build lint failure 修正
+
+### やったこと
+- `web/src/lib/quickaccess.ts` の `require('child_process')` を `node:child_process` の ESM import に置換した。
+- `npm run lint -- --quiet`、`npm run typecheck`、分離ビルド `NEXT_DIST_DIR=.next-build-verify npm run build` が成功することを確認した（既存警告8件は fail しない）。
+
+### 判断理由
+- Next build が ESLint の `@typescript-eslint/no-require-imports` で止まっていた。CommonJS の `require` が原因なので、Node 組み込みの ESM import（`node:child_process`）へ揃えて lint エラーを解消した。
+
+### 教訓
+- Next build 経路でも ESLint が fail 条件になる。Node 組み込みは `require` ではなく `node:` プレフィックス付き ESM import を使う。検証ビルドは既存 `.next` を壊さないよう `NEXT_DIST_DIR` で分離する。
+## 2026-07-24 Web build lint failure 修正
+
+### やったこと
+- `web/src/lib/quickaccess.ts` の `require('child_process')` を `import { execFile } from 'node:child_process'` 形式の ESM import に置換した。
+- Next build を止めていた ESLint `@typescript-eslint/no-require-imports` を解消した。
+- 検証: `npm run lint -- --quiet`、`npm run typecheck`、分離 `NEXT_DIST_DIR=.next-build-verify npm run build` が成功（既存警告8件は fail しない）。
+
+### 判断理由
+- Next.js の lint ゲートが `no-require-imports` でビルドを hard-fail するため、動的 `require` を残すと型チェック通過後でも本番ビルドが止まる。
+- CommonJS `require` ではなく `node:` 付き ESM import に揃えることで、lint 規則と Node の組み込みモジュール解決の両方に適合する。
+
+### 教訓
+- `require()` は ESLint `@typescript-eslint/no-require-imports` でビルドを落とす。Node 組み込みは最初から `node:*` の ESM import を使う。
+- 本番ビルド検証は既存 `.next` を壊さないよう `NEXT_DIST_DIR` を分離して走らせる。警告が残っていても fail しないものは記録し、ゲート失敗の真因と切り分ける。
+
