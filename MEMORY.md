@@ -1,5 +1,35 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハント（第2回）
+
+### やったこと
+コードレビューを実施し、4件の潜在的なバグを発見・修正。
+
+**発見したバグ（4件）:**
+1. **GlobalAttentionProvider.tsx** - 自動オープン判定が件数ベースでIDを見ていない（UI不整合）
+   - 修正: `previousItemIdsRef`を導入し、IDの集合差分で新規アイテムを検出
+   - コミット: `4a76823`
+
+2. **api/opencode/[...path]/route.ts** - 画像対応チェックのキャッシュがディレクトリ横断で共有（マルチプロジェクトの不整合）
+   - 修正: `cachedProvidersByDir`/`cachedAgentsByDir`（Map）でディレクトリごとにキャッシュ
+   - コミット: `4a76823`
+
+3. **useSessionStream.ts** - sendPrompt/sendCommand後のsafety netタイマーが未追跡・セッション跨ぎで発火
+   - 修正: `safetyNetTimerRef`でタイマーを追跡、セッション変更時とアンマウント時にクリア
+   - コミット: `4a76823`
+
+4. **useSessionStream.ts** - タイムアウト時に「見かけ上のidle」が一時発生
+   - 修正せず（実害限定的、SSEイベントで復旧するため）
+
+**その他の修正:**
+- テストモックの不完全さ（EventSourceにaddEventListenerが実装されていない）を修正
+- Sidebar.test.tsxの期待値を実際の動作に合わせて修正
+
+### 判断・教訓
+- キャッシュはスコープ（ディレクトリ、セッション等）ごとに管理すべき。グローバルキャッシュはマルチテナント環境で不整合を引き起こす
+- setTimeout/setIntervalはrefで追跡し、適切なタイミングでクリアすべき。特にセッション跨ぎの操作では必須
+- テストモックは実装のインターフェースを完全に再現すべき。部分的なモックは偽陽性/偽陰性につながる
+
 ## 2026-07-23 中優先度バグ修正（進行中）
 
 ### やったこと
