@@ -8,7 +8,6 @@ import {
   ArchiveRestore,
   ChevronRight,
   Cpu,
-  FolderGit2,
   GitBranch,
   Loader2,
   Plus,
@@ -544,7 +543,14 @@ export function Sidebar({
           onClick={() => onClose()}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
-          <FolderGit2 className="h-4.5 w-4.5 shrink-0" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon-192.png"
+            alt=""
+            width={18}
+            height={18}
+            className="h-4.5 w-4.5 shrink-0 rounded-[3px] object-contain"
+          />
           <span className="truncate">OpenCodeWebUI</span>
         </Link>
         <Link
