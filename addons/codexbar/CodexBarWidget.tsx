@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ChevronUp,
   RefreshCw,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import { cx, timeAgo } from "@/components/ui";
@@ -596,10 +597,14 @@ export function CodexBarWidget() {
           onClick={toggleProviderSettings}
           aria-expanded={settingsOpen}
           aria-controls="codexbar-provider-settings"
+          aria-label="更新するプロバイダー"
           title="更新するプロバイダー"
-          className="order-last min-w-0 basis-full rounded-md px-1.5 py-1 text-left text-[10px] font-medium text-muted hover:bg-surface-2 hover:text-text"
+          className={cx(
+            "h-6 w-6 rounded-md p-1 hover:bg-surface-2 hover:text-text",
+            settingsOpen ? "bg-surface-2 text-text" : "text-faint",
+          )}
         >
-          更新するプロバイダー
+          <SlidersHorizontal className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
@@ -632,7 +637,7 @@ export function CodexBarWidget() {
           aria-busy={settingsLoading || savingProviderId !== null}
           className="shrink-0 border-b border-border px-3 py-2"
         >
-          <p className="mb-1 min-w-0 text-[10px] text-muted">CodexBarで更新</p>
+          <p className="mb-1 min-w-0 text-[10px] font-medium text-muted">更新するプロバイダー</p>
           <div role="status" aria-live="polite" className="sr-only">
             {settingsLoading
               ? "読み込み中…"
