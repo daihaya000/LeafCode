@@ -75,6 +75,7 @@ vi.mock("@/components/shell/ShellContext", () => ({
 }));
 
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
+vi.mock("@/components/SubagentPermissionSelect", () => ({ SubagentPermissionSelect: () => null }));
 vi.mock("@/components/IntelligenceSelect", () => ({ IntelligenceSelect: () => null }));
 vi.mock("@/components/StatusBadge", () => ({ StatusBadge: () => null }));
 vi.mock("./DiffPane", () => ({
@@ -243,6 +244,53 @@ describe("TaskView", () => {
     });
 
     expect(getJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-rejects task permission when subagent is denied, leaving others manual", async () => {
+    localStorage.setItem("webui:subagent-permission", "deny");
+    try {
+      const replyPermission = vi.fn().mockResolvedValue(undefined);
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        permissions: [
+          {
+            id: "perm-task",
+            version: "v2",
+            sessionID: "sess1",
+            permission: "task",
+            patterns: [],
+            receivedAt: 1,
+          },
+          {
+            id: "perm-edit",
+            version: "v2",
+            sessionID: "sess1",
+            permission: "edit",
+            patterns: [],
+            receivedAt: 2,
+          },
+        ],
+        replyPermission,
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // task permission is auto-rejected (deny takes priority over full access)
+      expect(replyPermission).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "perm-task", permission: "task" }),
+        "reject",
+      );
+      // other permissions are untouched by the subagent setting (no auto reply)
+      const calls = replyPermission.mock.calls;
+      expect(calls.every((c) => c[0]?.id === "perm-task")).toBe(true);
+      expect(calls.every((c) => c[1] === "reject")).toBe(true);
+    } finally {
+      localStorage.removeItem("webui:subagent-permission");
+    }
   });
 
   it("polls when the current task is idle but the session is busy", async () => {

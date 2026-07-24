@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Bot, Cpu, FolderGit2, GitBranch, Mic, MicOff, Paperclip, X } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
@@ -15,6 +16,11 @@ import {
   writeAccessMode,
   type AccessMode,
 } from "@/lib/access-mode";
+import {
+  readSubagentPermission,
+  writeSubagentPermission,
+  type SubagentPermission,
+} from "@/lib/subagent-permission";
 import { readDefaultModel } from "@/lib/default-model";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
@@ -136,6 +142,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     Record<string, ProviderModelMeta>
   >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
+  const [subagentPermission, setSubagentPermission] =
+    useState<SubagentPermission>("allow");
   const [baseBranch, setBaseBranch] = useState("");
   const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
@@ -166,6 +174,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   useEffect(() => {
     setAccessMode(readAccessMode());
+    setSubagentPermission(readSubagentPermission());
   }, []);
 
   const refreshProjects = useCallback(async () => {
@@ -840,6 +849,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   onChange={(m) => {
                     setAccessMode(m);
                     writeAccessMode(m);
+                  }}
+                  className="min-w-0 shrink"
+                />
+                <SubagentPermissionSelect
+                  value={subagentPermission}
+                  disabled={submitting}
+                  onChange={(m) => {
+                    setSubagentPermission(m);
+                    writeSubagentPermission(m);
                   }}
                   className="min-w-0 shrink"
                 />

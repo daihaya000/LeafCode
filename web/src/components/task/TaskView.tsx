@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
+import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import { setActiveSessionAttention } from "@/lib/active-session-attention";
@@ -49,6 +50,13 @@ import {
   writeAccessMode,
   type AccessMode,
 } from "@/lib/access-mode";
+import {
+  permissionAutoAction,
+  readSubagentPermission,
+  writeSubagentPermission,
+  SUBAGENT_PERMISSION_EVENT,
+  type SubagentPermission,
+} from "@/lib/subagent-permission";
 import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
@@ -357,6 +365,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     Record<string, ProviderModelMeta>
   >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
+  const [subagentPermission, setSubagentPermission] =
+    useState<SubagentPermission>("allow");
   const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -453,6 +463,17 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () => window.removeEventListener("webui:access-mode", onMode);
   }, []);
 
+  useEffect(() => {
+    setSubagentPermission(readSubagentPermission());
+    const onSubagent = (e: Event) => {
+      const detail = (e as CustomEvent<SubagentPermission>).detail;
+      if (detail === "allow" || detail === "deny") setSubagentPermission(detail);
+    };
+    window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+    return () =>
+      window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+  }, []);
+
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.
   useEffect(() => {
@@ -473,6 +494,11 @@ export function TaskView({ taskId }: { taskId: string }) {
   const changeAccessMode = useCallback((mode: AccessMode) => {
     setAccessMode(mode);
     writeAccessMode(mode);
+  }, []);
+
+  const changeSubagentPermission = useCallback((mode: SubagentPermission) => {
+    setSubagentPermission(mode);
+    writeSubagentPermission(mode);
   }, []);
 
   // Persist right-panel display state so it survives task/session switches.
@@ -545,9 +571,13 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [task?.sessionId, permissions.length, stream.questions.length]);
 
 
-  // フルアクセス: pending 権限を自動承認（失敗時は手動カードへフォールバック）
+  // pending 権限を自動処理（失敗時は手動カードへフォールバック）:
+  // - サブエージェント不許可 かつ task 権限 → 自動 reject（フルアクセスより優先）
+  // - フルアクセス → 自動 approve（once）
+  // task 以外の権限はサブエージェント設定の影響を受けない。
   useEffect(() => {
-    if (accessMode !== "full") {
+    const fullAccess = accessMode === "full";
+    if (!fullAccess && subagentPermission !== "deny") {
       autoReplyIdsRef.current.clear();
       setAutoReplyFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
@@ -555,8 +585,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     for (const p of permissions) {
       if (autoReplyIdsRef.current.has(p.id)) continue;
       if (autoReplyFailedIds.has(p.id)) continue;
+      const action = permissionAutoAction({
+        permission: p.permission,
+        subagent: subagentPermission,
+        fullAccess,
+      });
+      if (action === "manual") continue;
       autoReplyIdsRef.current.add(p.id);
-      void onReplyPermission(p, "once")
+      void onReplyPermission(p, action === "reject" ? "reject" : "once")
         .then(() => {
           setAutoReplyFailedIds((prev) => {
             if (!prev.has(p.id)) return prev;
@@ -575,7 +611,13 @@ export function TaskView({ taskId }: { taskId: string }) {
           });
         });
     }
-  }, [accessMode, autoReplyFailedIds, permissions, onReplyPermission]);
+  }, [
+    accessMode,
+    subagentPermission,
+    autoReplyFailedIds,
+    permissions,
+    onReplyPermission,
+  ]);
 
   useEffect(() => {
     void (async () => {
@@ -1945,17 +1987,24 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </div>
                 );
                 })}
-                {(accessMode === "ask"
-                  ? stream.permissions
-                  : stream.permissions.filter((p) => autoReplyFailedIds.has(p.id))
-                ).map((p) => (
-                  <PermissionCard
-                    key={p.id}
-                    request={p}
-                    onReply={onReplyPermission}
-                    onEnableFullAccess={() => changeAccessMode("full")}
-                  />
-                ))}
+                {stream.permissions
+                  .filter(
+                    (p) =>
+                      autoReplyFailedIds.has(p.id) ||
+                      permissionAutoAction({
+                        permission: p.permission,
+                        subagent: subagentPermission,
+                        fullAccess: accessMode === "full",
+                      }) === "manual",
+                  )
+                  .map((p) => (
+                    <PermissionCard
+                      key={p.id}
+                      request={p}
+                      onReply={onReplyPermission}
+                      onEnableFullAccess={() => changeAccessMode("full")}
+                    />
+                  ))}
                 {accessMode === "full" &&
                   stream.permissions.some((p) => !autoReplyFailedIds.has(p.id)) && (
                   <p className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
@@ -2214,6 +2263,12 @@ export function TaskView({ taskId }: { taskId: string }) {
                     <AccessModeSelect
                       value={accessMode}
                       onChange={changeAccessMode}
+                      disabled={!task.sessionId}
+                      className="h-8 shrink-0"
+                    />
+                    <SubagentPermissionSelect
+                      value={subagentPermission}
+                      onChange={changeSubagentPermission}
                       disabled={!task.sessionId}
                       className="h-8 shrink-0"
                     />

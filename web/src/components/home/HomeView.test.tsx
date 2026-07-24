@@ -498,3 +498,53 @@ describe("HomeView image attachments", () => {
     });
   });
 });
+
+describe("HomeView subagent permission", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            { id: "project-1", name: "Project", rootPath: "/repo", favorite: false },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({ taskId: "task-1" });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it("defaults to 許可 and persists 不許可 when changed", async () => {
+    render(<HomeView />);
+    const select = (await screen.findByLabelText(
+      "サブエージェント",
+    )) as HTMLSelectElement;
+    expect(select.value).toBe("allow");
+
+    fireEvent.change(select, { target: { value: "deny" } });
+
+    await waitFor(() =>
+      expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),
+    );
+    expect(select.value).toBe("deny");
+  });
+});
