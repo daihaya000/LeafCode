@@ -1,5 +1,23 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第7回）— 権限 sessionId・GlobalAttention・Home画像
+
+### やったこと
+2分ループ第3サイクル。
+
+**修正内容:**
+1. **`POST /api/subagent-permission` に `sessionId`** — latestBindings だけだと切替レースで別セッションへ適用される。所属検証付きで明示指定可能に。TaskView 同期／トグルからも送る。
+2. **GlobalAttention で task 権限を自動 reject** — バックグラウンドタスクでもサブエージェント不許可が効く。
+3. **PermissionCard「常に許可」** — deny + task なら reject。
+4. **HomeView 画像** — 枚数・サイズ上限、agent モデル未設定時の手動モデルフォールバックを TaskView と揃えた。
+
+### 残課題
+- BFF opencode プロキシの画像枚数・サイズ上限
+- 初回 resync 前送信での messages init スキップ
+- sendPrompt タイムアウト時の楽観的 idle
+
+---
+
 ## 2026-07-24 バグハントループ（第6回）— PermissionCard / todos / secret mask
 
 ### やったこと

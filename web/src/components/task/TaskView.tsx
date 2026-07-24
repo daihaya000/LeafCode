@@ -501,6 +501,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     let cancelled = false;
     void sendJson("POST", "/api/subagent-permission", {
       taskId: task.id,
+      sessionId: task.sessionId,
       permission,
     }).catch((err) => {
       if (cancelled) return;
@@ -546,6 +547,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       try {
         await sendJson("POST", "/api/subagent-permission", {
           taskId: task.id,
+          ...(task.sessionId ? { sessionId: task.sessionId } : {}),
           permission: mode,
         });
         setSubagentPermission(mode);

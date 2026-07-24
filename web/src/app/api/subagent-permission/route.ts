@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWorkspace, latestBindings } from "@/lib/db";
+import { getWorkspace, latestBindings, listSessionBindings } from "@/lib/db";
 import { OcError } from "@/lib/oc-server";
 import {
   setSessionTaskPermission,
@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 type RequestBody = {
   permission?: unknown;
   taskId?: unknown;
+  sessionId?: unknown;
 };
 
 function isTaskPermission(value: unknown): value is TaskPermission {
@@ -30,9 +31,9 @@ function failure(err: unknown) {
 
 /**
  * Narrow session-write endpoint. It accepts only a task permission value and a
- * known taskId, then applies a session-scoped `task` ruleset to the task's
- * live OpenCode session. It never accepts an arbitrary directory, agent, or
- * config payload.
+ * known taskId (+ optional sessionId), then applies a session-scoped `task`
+ * ruleset. When sessionId is omitted, the workspace's latest binding is used.
+ * It never accepts an arbitrary directory, agent, or config payload.
  */
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as RequestBody | null;
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid task permission" }, { status: 400 });
   }
   const keys = Object.keys(body);
-  if (!keys.every((key) => ["permission", "taskId"].includes(key))) {
+  if (!keys.every((key) => ["permission", "taskId", "sessionId"].includes(key))) {
     return NextResponse.json(
       { error: "invalid task permission request" },
       { status: 400 },
@@ -52,11 +53,37 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (
+    body.sessionId !== undefined &&
+    (typeof body.sessionId !== "string" || !body.sessionId.trim())
+  ) {
+    return NextResponse.json(
+      { error: "invalid task permission session" },
+      { status: 400 },
+    );
+  }
 
   try {
     const workspace = getWorkspace(body.taskId);
-    const sessionId = latestBindings().get(body.taskId)?.opencode_session_id;
-    if (!workspace || !sessionId) {
+    if (!workspace) {
+      return NextResponse.json({ error: "task not found" }, { status: 404 });
+    }
+
+    let sessionId: string | undefined;
+    if (typeof body.sessionId === "string" && body.sessionId.trim()) {
+      const requested = body.sessionId.trim();
+      const belongs = listSessionBindings(body.taskId).some(
+        (b) => b.opencode_session_id === requested,
+      );
+      if (!belongs) {
+        return NextResponse.json({ error: "task not found" }, { status: 404 });
+      }
+      sessionId = requested;
+    } else {
+      sessionId = latestBindings().get(body.taskId)?.opencode_session_id;
+    }
+
+    if (!sessionId) {
       return NextResponse.json({ error: "task not found" }, { status: 404 });
     }
     await setSessionTaskPermission(

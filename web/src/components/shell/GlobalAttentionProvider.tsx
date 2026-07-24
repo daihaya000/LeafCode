@@ -11,7 +11,21 @@ import React, {
 import { apiUrl, getJson, ocJson } from "@/lib/client";
 import { isSseSilent, SSE_SILENCE_MS } from "@/lib/sse-health";
 import { notifyAttentionCountChanged } from "@/lib/events";
-import { parseGlobalEvent, isResolvedEvent, normalizeOcList, type AttentionItem, type AttentionScope } from "@/lib/attention";
+import {
+  parseGlobalEvent,
+  isResolvedEvent,
+  normalizeOcList,
+  replyPath,
+  type AttentionItem,
+  type AttentionScope,
+} from "@/lib/attention";
+import {
+  permissionAutoAction,
+  readSubagentPermission,
+  SUBAGENT_PERMISSION_EVENT,
+  type SubagentPermission,
+} from "@/lib/subagent-permission";
+import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
@@ -114,6 +128,52 @@ export function GlobalAttentionProvider({
     autoOpenedRef.current = true;
     setOpenState(true);
   }, [items.length]);
+
+  // バックグラウンドタスクの task 権限もサブエージェント不許可で自動 reject。
+  // TaskView の auto-reply はアクティブセッションにしか効かないため、ここで補完する。
+  const autoRejectIdsRef = useRef(new Set<string>());
+  const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
+    () => readSubagentPermission(),
+  );
+  useEffect(() => {
+    const onSubagent = (e: Event) => {
+      const detail = (e as CustomEvent<SubagentPermission>).detail;
+      if (detail === "allow" || detail === "deny") setSubagentPermission(detail);
+    };
+    window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+    return () =>
+      window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+  }, []);
+
+  useEffect(() => {
+    if (subagentPermission !== "deny") {
+      autoRejectIdsRef.current.clear();
+      return;
+    }
+    for (const item of items) {
+      if (item.kind !== "permission") continue;
+      if (autoRejectIdsRef.current.has(item.request.id)) continue;
+      const action = permissionAutoAction({
+        permission: item.request.permission,
+        subagent: subagentPermission,
+        fullAccess: false,
+      });
+      if (action !== "reject") continue;
+      autoRejectIdsRef.current.add(item.request.id);
+      void ocJson(replyPath(item), item.directory, {
+        method: "POST",
+        body:
+          item.request.version === "v2"
+            ? { reply: "reject" }
+            : { response: "reject" },
+        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+      })
+        .then(() => remove(item.request.id, item.request.sessionID))
+        .catch(() => {
+          autoRejectIdsRef.current.delete(item.request.id);
+        });
+    }
+  }, [items, remove, subagentPermission]);
 
   const syncPendingAttention = useCallback(async () => {
     const syncStartedAt = Date.now();

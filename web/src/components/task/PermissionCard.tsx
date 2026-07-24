@@ -40,7 +40,12 @@ export function PermissionCard({
   const onExtra = async (value: string) => {
     if (!value) return;
     if (value === "always") {
-      await reply("always");
+      const action = permissionAutoAction({
+        permission: request.permission,
+        subagent: readSubagentPermission(),
+        fullAccess: false,
+      });
+      await reply(action === "reject" ? "reject" : "always");
       return;
     }
     if (value === "full") {

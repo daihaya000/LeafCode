@@ -95,6 +95,16 @@ type AgentResponse = {
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
 
 const IMAGE_MIME_RE = /^image\//i;
+// Match POST /api/tasks R28 / TaskView limits.
+const MAX_IMAGE_COUNT = 10;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function estimateDataUrlBytes(uri: string): number {
+  const comma = uri.indexOf(",");
+  if (comma < 0) return Number.POSITIVE_INFINITY;
+  const b64 = uri.slice(comma + 1);
+  return Math.floor((b64.length * 3) / 4);
+}
 
 function ModelSelectIcon({ model }: { model: string }) {
   const providerID = model ? model.split("::")[0] : "";
@@ -435,14 +445,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     ) {
       return;
     }
-    // Match OpenCode's agent precedence: its configured model overrides the
-    // manual selector. Missing agent model metadata fails closed for images.
+    // Match OpenCode's agent precedence: configured agent model overrides the
+    // manual selector; when the agent has no model, fall back to the request
+    // model (same as TaskView / BFF image capability checks).
     const agentModel = agent ? agentModels[agent] : undefined;
-    const sendingModelKey = agent
-      ? agentModel
-        ? `${agentModel.providerID}::${agentModel.modelID}`
-        : ""
-      : model;
+    const sendingModelKey = agentModel
+      ? `${agentModel.providerID}::${agentModel.modelID}`
+      : model || "";
     const sendingImageSupported = sendingModelKey
       ? modelCapabilities[sendingModelKey]?.image === true ||
         modelCapabilities[sendingModelKey]?.attachment === true
@@ -452,6 +461,18 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     if (sendingImageBlocked) {
       setError(
         "選択中のモデルは画像入力に対応していないか、画像対応を確認できません。画像を削除するか、画像対応モデルを選んでください。",
+      );
+      return;
+    }
+    if (attachments.length > MAX_IMAGE_COUNT) {
+      setError(`画像は最大 ${MAX_IMAGE_COUNT} 枚まで添付できます。`);
+      return;
+    }
+    if (
+      attachments.some((a) => estimateDataUrlBytes(a.uri) > MAX_IMAGE_SIZE_BYTES)
+    ) {
+      setError(
+        `各画像は ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB 以下にしてください。`,
       );
       return;
     }
@@ -514,9 +535,16 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   }, []);
 
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
-    const next: Attachment[] = [];
-    for (const file of Array.from(files)) {
-      if (!IMAGE_MIME_RE.test(file.type)) continue;
+    const list = Array.from(files).filter((file) => IMAGE_MIME_RE.test(file.type));
+    if (list.length === 0) return;
+
+    const candidates: Attachment[] = [];
+    let rejected = 0;
+    for (const file of list) {
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        rejected += 1;
+        continue;
+      }
       try {
         const uri = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -524,12 +552,30 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           reader.onerror = () => reject(reader.error ?? new Error("read failed"));
           reader.readAsDataURL(file);
         });
-        next.push({ uri, mime: file.type, name: file.name, preview: uri });
+        if (estimateDataUrlBytes(uri) > MAX_IMAGE_SIZE_BYTES) {
+          rejected += 1;
+          continue;
+        }
+        candidates.push({ uri, mime: file.type, name: file.name, preview: uri });
       } catch {
-        /* skip unreadable file */
+        rejected += 1;
       }
     }
-    if (next.length > 0) setAttachments((current) => [...current, ...next]);
+
+    let appended = 0;
+    setAttachments((current) => {
+      const room = Math.max(0, MAX_IMAGE_COUNT - current.length);
+      const take = candidates.slice(0, room);
+      appended = take.length;
+      return take.length > 0 ? [...current, ...take] : current;
+    });
+
+    const skipped = rejected + (candidates.length - appended);
+    if (skipped > 0) {
+      setError(
+        `一部の画像をスキップしました（上限 ${MAX_IMAGE_COUNT} 枚 / ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB）。`,
+      );
+    }
   }, []);
 
   const onPaste = useCallback(
@@ -557,7 +603,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const effectiveModelKey = useMemo(() => {
     if (agent) {
       const agentModel = agentModels[agent];
-      return agentModel ? `${agentModel.providerID}::${agentModel.modelID}` : null;
+      if (agentModel) return `${agentModel.providerID}::${agentModel.modelID}`;
     }
     return model;
   }, [agent, agentModels, model]);
