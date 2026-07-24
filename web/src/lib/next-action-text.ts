@@ -1,0 +1,113 @@
+/**
+ * Pure helpers for the NextAction feature:
+ * - Format a conversation transcript into a prompt for the suggestion model.
+ * - Normalize a raw model response into a single user instruction.
+ *
+ * These functions have no side effects and do not touch the filesystem,
+ * network, or any OpenCode session. They are covered by unit tests.
+ */
+
+import { buildTranscript } from "./session-title";
+import type { MessageWithParts } from "./types";
+
+/** Hard cap on the conversation text sent to the suggestion model. */
+export const NEXT_ACTION_TRANSCRIPT_MAX_CHARS = 16_000;
+
+/** Hard cap on the final suggestion length returned to the UI. */
+export const NEXT_ACTION_SUGGESTION_MAX_CHARS = 500;
+
+/**
+ * System instruction for the temporary NextAction session. It must produce a
+ * single actionable Japanese user instruction with no preamble, no headings,
+ * no multiple candidates, and no markdown.
+ */
+export const NEXT_ACTION_SYSTEM_INSTRUCTION = [
+  "あなたはユーザーの次の一手を提案するアシスタントです。",
+  "以下の会話履歴に基づいて、ユーザーが次に送るべき指示を1件だけ出力してください。",
+  "ルール:",
+  "- 日本語で書く",
+  "- 実行可能な1件のユーザー指示のみを出力する",
+  "- 説明・前置き・見出し・番号付け・候補の列挙は禁止",
+  "- 未回答の質問・未解決の失敗・残タスクがあれば最優先で触れる",
+  "- 明確な次工程がない場合は直近の成果の確認・テスト・レビュー・コミットなど目的に沿う最小の次工程を提案する",
+  "- 存在しない結果や確認できない事実を前提にしない",
+  "- 出力は指示文1件だけ。余計な文字・引用符・改行を含めない",
+].join("\n");
+
+/**
+ * Build the user prompt body from a conversation transcript. The transcript
+ * is truncated to {@link NEXT_ACTION_TRANSCRIPT_MAX_CHARS} with recent
+ * messages prioritised (done by buildTranscript).
+ */
+export function formatConversationForPrompt(
+  messages: MessageWithParts[],
+): string {
+  const transcript = buildTranscript(
+    messages,
+    NEXT_ACTION_TRANSCRIPT_MAX_CHARS,
+  );
+  if (!transcript.trim()) return "";
+  return `以下の会話履歴に基づいて、次に送るべき指示を1件だけ出力してください。\n\n---\n${transcript}\n---`;
+}
+
+/**
+ * Normalize a raw model response into a single suggestion string.
+ *
+ * - Strips surrounding whitespace and common wrapping quotes/backticks.
+ * - Takes the first non-empty line (no multi-paragraph output).
+ * - Drops leading numbering ("1. ", "・", "- ") and bullet markers.
+ * - Caps to {@link NEXT_ACTION_SUGGESTION_MAX_CHARS} code points.
+ * - Returns empty string when nothing actionable remains.
+ */
+export function normalizeSuggestion(raw: string): string {
+  if (!raw) return "";
+  let s = raw.trim();
+  // Strip surrounding quotes / code fences that models sometimes emit.
+  const pairs: [string, string][] = [
+    ['"', '"'],
+    ["'", "'"],
+    ["`", "`"],
+    ["「", "」"],
+    ["『", "』"],
+  ];
+  for (const [open, close] of pairs) {
+    if (s.startsWith(open) && s.endsWith(close) && s.length >= 2) {
+      s = s.slice(open.length, s.length - close.length).trim();
+      break;
+    }
+  }
+  // Take the first non-empty line.
+  const firstLine =
+    s
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? "";
+  if (!firstLine) return "";
+  // Drop leading numbering / bullets.
+  s = firstLine.replace(/^(?:\d+[.)]\s*|[-*・]\s*)+/, "").trim();
+  if (!s) return "";
+  // Cap by code points so UI layout stays predictable.
+  const cps = Array.from(s);
+  if (cps.length > NEXT_ACTION_SUGGESTION_MAX_CHARS) {
+    s = cps.slice(0, NEXT_ACTION_SUGGESTION_MAX_CHARS).join("");
+  }
+  return s.trim();
+}
+
+/**
+ * Extract the assistant text from a synchronous prompt response. The
+ * OpenCode `/session/{id}/prompt` response shape is
+ * `{ info: AssistantMessage, parts: Part[] }`. The first text part is the
+ * suggestion candidate.
+ */
+export function extractAssistantText(response: {
+  parts?: { type?: string; text?: string }[];
+}): string {
+  const parts = response?.parts ?? [];
+  for (const p of parts) {
+    if (p?.type === "text" && typeof p.text === "string" && p.text.trim()) {
+      return p.text;
+    }
+  }
+  return "";
+}
