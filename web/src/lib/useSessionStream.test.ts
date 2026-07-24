@@ -4,7 +4,22 @@ import {
   createInitialStreamState,
   resolveResyncStatus,
   sessionStreamReducer,
+  SESSION_COMMAND_TIMEOUT_MS,
+  SESSION_MUTATION_TIMEOUT_MS,
 } from "./useSessionStream";
+
+describe("SESSION_COMMAND_TIMEOUT_MS", () => {
+  it("stays under the BFF's 290s long-running upstream timeout", () => {
+    // Kept just below LONG_RUNNING_UPSTREAM_TIMEOUT_MS in
+    // app/api/opencode/[...path]/route.ts so the BFF—not the client—produces
+    // the terminal response for a legitimately long `session.command`.
+    expect(SESSION_COMMAND_TIMEOUT_MS).toBeLessThan(290_000);
+  });
+
+  it("is longer than the default prompt/abort mutation timeout", () => {
+    expect(SESSION_COMMAND_TIMEOUT_MS).toBeGreaterThan(SESSION_MUTATION_TIMEOUT_MS);
+  });
+});
 
 describe("classifyToolFailureStatus", () => {
   it.each([

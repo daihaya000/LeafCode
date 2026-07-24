@@ -62,6 +62,17 @@ export type StreamAction =
 /** Default timeout for prompt/command/abort so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
+/**
+ * `session.command` is proxied by the BFF as a long-running synchronous
+ * mutation with up to a 290s upstream timeout (see
+ * `LONG_RUNNING_UPSTREAM_TIMEOUT_MS` in `app/api/opencode/[...path]/route.ts`).
+ * The default 60s client timeout aborts the request well before the BFF can
+ * legitimately finish (e.g. `/loop 2m`), so `sendCommand` alone uses this
+ * longer timeout, kept just under the BFF's 290s so the BFF—not the
+ * client—produces the terminal response.
+ */
+export const SESSION_COMMAND_TIMEOUT_MS = 289_000;
+
 const CANCELLED_TOOL_FAILURE_MESSAGES = new Set([
   "aborted",
   "tool execution aborted",
@@ -1321,7 +1332,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         await ocJson(`/session/${sid}/command`, directory, {
           method: "POST",
           body,
-          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+          timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
         });
       } catch (err) {
         pendingMutationRef.current = false;
