@@ -5126,3 +5126,21 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 - `probe`/`xyz` のような明らかなプレースホルダ値は、キー自体が有効でもコミット前に「値が実在するか」まで検証する。構文 OK ＝ 設定として正しい、ではない。
 - 未追跡の大きな JSON ダンプは調査用一時ファイルの典型。意味単位分類では「追跡有無」「内容の性質（成果物 vs ダンプ）」「由来（プローブ vs 実装）」を分けて判定する。
 
+
+---
+
+## 2026-07-24 サブエージェント不許可の実効化（config PATCH→セッション権限）
+
+### やったこと
+- 「サブエージェント不許可」が効かず起動できてしまうバグを修正。実行中 OpenCode へ実測プローブし、`PATCH /config`（agent.<name>.permission.task）が **200 を返すが GET にもファイルにも反映されない no-op** だと断定（small_model 等どのフィールドでも不変。設定は起動時ロードのみでホットリロードなし）。
+- 代替として **セッション単位の権限**を採用: `PATCH /session/{id}` に `permission:[{permission:"task",pattern:"*",action:deny|allow}]`。E2E 実測で deny→子セッション生成0件 / allow→1件 を確認し、task ツール起動を実際にブロックできることを実証。
+- `setAgentTaskPermission`→`setSessionTaskPermission(dir,sessionId,perm)` に置換。/api/subagent-permission は taskId 専用化しライブセッションへ適用。/api/tasks は生成直後・最初の prompt 前に適用。HomeView はセッション未生成のため保存のみ（適用はタスク作成時）。テスト全56件合格・tsc・eslint クリーン。
+
+### 判断理由
+- 実行前に評価される権限は、config を書いても起動済みプロセスには効かない。セッションは実行中エンジンのライブ状態であり、`session.update.permission` は権限エンジンが即評価する。
+- OpenCode の `session.update` は permission ルールを **追記(append)** し **last-match-wins** で評価するため、`{task,*,action}` を書けば直前ルールにも agent/config 既定にも常に勝つ。空配列 `[]` では消えない（allow へ戻すには allow ルールを追記）。
+- `session.command` は `tools` を受けず、prompt 専用の `tools:{task:false}` ではコマンド経路を塞げない。セッション権限なら prompt/command 両方を一括で塞げる。
+
+### 教訓
+- OpenCode の `PATCH /config` は稼働中エンジンに反映されない（起動時ロードのみ）。実行時に効かせたい制御は config ではなく **セッション/リクエストスコープ**の API を使う。「200 が返る」≠「反映された」。GET で往復確認する。
+- 権限系の修正は単体テストだけでなく、実エンジンへ最小プローブ（セッション作成→権限PATCH→子セッション有無）で **実挙動**を実証してから実装する。
