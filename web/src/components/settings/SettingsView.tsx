@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
+import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
@@ -78,7 +79,13 @@ type AccessInfo = {
   }[];
 };
 
-type SettingsTab = "general" | "project" | "connectivity" | "addons" | "agents";
+type SettingsTab =
+  | "general"
+  | "project"
+  | "connectivity"
+  | "extensions"
+  | "addons"
+  | "agents";
 
 const RESTART_LABELS = {
   webui: "WebUI（フロントエンド）",
@@ -103,7 +110,6 @@ export function SettingsView() {
   const [deletingRoot, setDeletingRoot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [mcpStatus, setMcpStatus] = useState<string>("未取得");
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
     readCostDisplayPrefs(),
   );
@@ -220,7 +226,7 @@ export function SettingsView() {
   }, [refreshAutoRate]);
 
   const refresh = useCallback(async () => {
-    const [h, p, r, o, a, m, host] = await Promise.allSettled([
+    const [h, p, r, o, a, host] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
@@ -229,10 +235,6 @@ export function SettingsView() {
         { scan: "1" },
       ),
       getJson<AccessInfo>("/api/access"),
-      timedFetch("/api/opencode/mcp").then(async (res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        return res.json();
-      }),
       timedFetch("/api/host", { timeoutMs: 1500 }).then(async (res) => {
         const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
         return { ok: res.ok && Boolean(body.ok) };
@@ -248,23 +250,6 @@ export function SettingsView() {
     if (a.status === "fulfilled") setAccess(a.value);
     if (host.status === "fulfilled") setHostOk(host.value.ok);
     else setHostOk(false);
-    if (m.status === "fulfilled") {
-      const raw = m.value;
-      const list = Array.isArray(raw)
-        ? raw
-        : Array.isArray((raw as { data?: unknown[] })?.data)
-          ? (raw as { data: unknown[] }).data
-          : raw && typeof raw === "object"
-            ? Object.keys(raw as object)
-            : [];
-      setMcpStatus(
-        list.length > 0
-          ? `${list.length} 件（読取のみ・接続変更は CLI/Desktop）`
-          : "MCP サーバーなし / 未接続",
-      );
-    } else {
-      setMcpStatus("取得不可（エンジン未起動または未対応）");
-    }
   }, []);
 
   useEffect(() => {
@@ -454,6 +439,7 @@ export function SettingsView() {
       badge: requiresAttention > 0 ? requiresAttention : undefined,
     },
     { key: "connectivity", label: "接続" },
+    { key: "extensions", label: "拡張機能" },
     { key: "addons", label: "アドオン" },
     { key: "agents", label: "エージェント" },
   ];
@@ -928,10 +914,19 @@ export function SettingsView() {
             </section>
 
             <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted">MCP（読取）</h2>
-              <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-                {mcpStatus}
-              </p>
+              <h2 className="mb-3 text-sm font-semibold text-muted">MCP サーバー</h2>
+              <div className="space-y-2 rounded-xl border border-border bg-surface px-4 py-3">
+                <p className="text-sm text-muted">
+                  MCP サーバーの一覧と有効/無効の切替は「拡張機能」タブで行えます。
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setActiveTab("extensions")}
+                >
+                  拡張機能タブを開く
+                </Button>
+              </div>
             </section>
 
             <section>
@@ -942,6 +937,8 @@ export function SettingsView() {
             </section>
           </>
         )}
+
+        {activeTab === "extensions" && <ExtensionsSettings />}
 
         {activeTab === "addons" && (
           <section>

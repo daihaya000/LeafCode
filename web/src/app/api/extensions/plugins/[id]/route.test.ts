@@ -29,7 +29,7 @@ function patch(id: string, body: unknown): Promise<Response> {
 }
 
 async function listPluginIds(): Promise<{ id: string; name: string; enabled: boolean }[]> {
-  const res = await GET(new NextRequest("http://localhost/api/extensions/plugins"));
+  const res = await GET();
   const body = (await res.json()) as {
     plugins: { id: string; name: string; enabled: boolean }[];
   };

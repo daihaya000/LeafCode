@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 const h = vi.hoisted(() => ({ ocServer: vi.fn() }));
 
@@ -50,7 +49,7 @@ describe("GET /api/extensions/mcp", () => {
     );
     h.ocServer.mockResolvedValueOnce({ blender: { status: "connected" } });
 
-    const res = await GET(new NextRequest("http://localhost/api/extensions/mcp"));
+    const res = await GET();
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       servers: { name: string; runtime?: string; meta?: string }[];
@@ -65,7 +64,7 @@ describe("GET /api/extensions/mcp", () => {
   });
 
   it("returns 500 with a safe message when the config file is missing", async () => {
-    const res = await GET(new NextRequest("http://localhost/api/extensions/mcp"));
+    const res = await GET();
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBeTruthy();

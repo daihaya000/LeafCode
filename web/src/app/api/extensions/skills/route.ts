@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { extensionsErrorResponse } from "@/lib/opencode-extensions/http";
 import { listSkills } from "@/lib/opencode-extensions/skills";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     return NextResponse.json({ skills: await listSkills() });
   } catch (err) {

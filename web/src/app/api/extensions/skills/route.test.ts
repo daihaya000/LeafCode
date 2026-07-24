@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 const h = vi.hoisted(() => ({ ocServer: vi.fn() }));
 
@@ -46,7 +45,7 @@ describe("GET /api/extensions/skills", () => {
       "---\ndescription: B\n---\n",
     );
 
-    const res = await GET(new NextRequest("http://localhost/api/extensions/skills"));
+    const res = await GET();
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       skills: { id: string; name: string; description?: string; enabled: boolean; toggleable: boolean }[];
@@ -61,7 +60,7 @@ describe("GET /api/extensions/skills", () => {
   });
 
   it("returns an empty list when no skill directories exist", async () => {
-    const res = await GET(new NextRequest("http://localhost/api/extensions/skills"));
+    const res = await GET();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ skills: [] });
   });

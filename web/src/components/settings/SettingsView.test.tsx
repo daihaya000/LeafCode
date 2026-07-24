@@ -35,6 +35,12 @@ vi.mock("@/components/addons/AddonSettings", () => ({
   AddonSettings: () => <div data-testid="addon-settings">addons</div>,
 }));
 
+vi.mock("@/components/settings/ExtensionsSettings", () => ({
+  ExtensionsSettings: () => (
+    <div data-testid="extensions-settings">extensions</div>
+  ),
+}));
+
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellMobileNav: () => ({
     mobileNavOpen: false,
@@ -440,5 +446,28 @@ describe("SettingsView", () => {
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(sendJson).not.toHaveBeenCalled();
     expect(screen.getByText("C:\\repo1")).toBeTruthy();
+  });
+
+  it("shows the 拡張機能 tab and renders extension management when selected", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("button", { name: "拡張機能" }));
+
+    expect(await screen.findByTestId("extensions-settings")).toBeTruthy();
+    expect(screen.queryByText("エンジン")).toBeNull();
+  });
+
+  it("routes the connectivity MCP section to the extensions tab", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    expect(
+      await screen.findByText(/一覧と有効\/無効の切替は「拡張機能」タブ/),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "拡張機能タブを開く" }));
+    expect(await screen.findByTestId("extensions-settings")).toBeTruthy();
   });
 });
