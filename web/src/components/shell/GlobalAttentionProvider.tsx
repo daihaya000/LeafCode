@@ -1,12 +1,14 @@
 "use client";
 
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { apiUrl, getJson, ocJson } from "@/lib/client";
 import { isSseSilent, SSE_SILENCE_MS } from "@/lib/sse-health";
@@ -20,6 +22,7 @@ import {
   type AttentionScope,
 } from "@/lib/attention";
 import {
+  isActionableAttentionPermission,
   permissionAutoAction,
   readSubagentPermission,
   SUBAGENT_PERMISSION_EVENT,
@@ -31,6 +34,8 @@ import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
 type GlobalAttentionContextValue = {
   items: AttentionItem[];
+  /** Badge / modal 用。自動 reject 中の task 権限は除く（失敗分は含む）。 */
+  actionableItems: AttentionItem[];
   open: boolean;
   setOpen: (open: boolean) => void;
   openNext: () => void;
@@ -107,7 +112,7 @@ export function GlobalAttentionProvider({
   children,
   activeScope,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   activeScope: AttentionScope | null;
 }) {
   const { items, add, remove, reconcileDirectory, resolveSessionTitle, setTasks } =
@@ -123,15 +128,12 @@ export function GlobalAttentionProvider({
     setOpenState(next);
   }, []);
 
-  const openNext = useCallback(() => {
-    if (items.length === 0) return;
-    autoOpenedRef.current = true;
-    setOpenState(true);
-  }, [items.length]);
-
   // バックグラウンドタスクの task 権限もサブエージェント不許可で自動 reject。
   // TaskView の auto-reply はアクティブセッションにしか効かないため、ここで補完する。
   const autoRejectIdsRef = useRef(new Set<string>());
+  const [autoRejectFailedIds, setAutoRejectFailedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
     () => readSubagentPermission(),
   );
@@ -145,14 +147,28 @@ export function GlobalAttentionProvider({
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
   }, []);
 
+  const actionableItems = useMemo(() => {
+    return items.filter((item) => {
+      if (item.kind !== "permission") return true;
+      return isActionableAttentionPermission(
+        item.request.permission,
+        subagentPermission,
+        item.request.id,
+        autoRejectFailedIds,
+      );
+    });
+  }, [items, subagentPermission, autoRejectFailedIds]);
+
   useEffect(() => {
     if (subagentPermission !== "deny") {
       autoRejectIdsRef.current.clear();
+      setAutoRejectFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     for (const item of items) {
       if (item.kind !== "permission") continue;
       if (autoRejectIdsRef.current.has(item.request.id)) continue;
+      if (autoRejectFailedIds.has(item.request.id)) continue;
       const action = permissionAutoAction({
         permission: item.request.permission,
         subagent: subagentPermission,
@@ -168,12 +184,32 @@ export function GlobalAttentionProvider({
             : { response: "reject" },
         timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       })
-        .then(() => remove(item.request.id, item.request.sessionID))
+        .then(() => {
+          setAutoRejectFailedIds((prev) => {
+            if (!prev.has(item.request.id)) return prev;
+            const next = new Set(prev);
+            next.delete(item.request.id);
+            return next;
+          });
+          remove(item.request.id, item.request.sessionID);
+        })
         .catch(() => {
           autoRejectIdsRef.current.delete(item.request.id);
+          setAutoRejectFailedIds((prev) => {
+            if (prev.has(item.request.id)) return prev;
+            const next = new Set(prev);
+            next.add(item.request.id);
+            return next;
+          });
         });
     }
-  }, [items, remove, subagentPermission]);
+  }, [autoRejectFailedIds, items, remove, subagentPermission]);
+
+  const openNext = useCallback(() => {
+    if (actionableItems.length === 0) return;
+    autoOpenedRef.current = true;
+    setOpenState(true);
+  }, [actionableItems.length]);
 
   const syncPendingAttention = useCallback(async () => {
     const syncStartedAt = Date.now();
@@ -293,23 +329,23 @@ export function GlobalAttentionProvider({
   // Notify badge subscribers whenever queue length changes
   useEffect(() => {
     notifyAttentionCountChanged();
-  }, [items.length]);
+  }, [actionableItems.length]);
 
   // Auto-open for new queue items. While the user is editing, defer until focus leaves.
   useEffect(() => {
     // Track previous item IDs to detect new arrivals even when count stays same
     // (e.g., 1 resolved + 1 arrived simultaneously)
     const previousIds = previousItemIdsRef.current;
-    const currentIds = new Set(items.map((item) => item.request.id));
+    const currentIds = new Set(actionableItems.map((item) => item.request.id));
     previousItemIdsRef.current = currentIds;
 
-    if (items.length === 0) {
+    if (actionableItems.length === 0) {
       autoOpenedRef.current = false;
       return;
     }
 
     // Check if any new IDs appeared (not just count increase)
-    const hasNewItems = items.some((item) => !previousIds.has(item.request.id));
+    const hasNewItems = actionableItems.some((item) => !previousIds.has(item.request.id));
     if (hasNewItems) autoOpenedRef.current = false;
 
     if (autoOpenedRef.current) return;
@@ -344,7 +380,7 @@ export function GlobalAttentionProvider({
       window.removeEventListener("focusout", onFocusOut);
       if (timer) clearTimeout(timer);
     };
-  }, [items]);
+  }, [actionableItems]);
 
   // Global EventSource subscription
   useEffect(() => {
@@ -435,6 +471,7 @@ export function GlobalAttentionProvider({
 
   const value = {
     items,
+    actionableItems,
     open,
     setOpen,
     openNext,

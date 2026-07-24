@@ -15,6 +15,7 @@ const { attentionState, mockOcJson, mockApiError } = vi.hoisted(() => {
   return {
     attentionState: {
       items: [] as AttentionItem[],
+      actionableItems: [] as AttentionItem[],
       open: false,
       setOpen: vi.fn(),
       openNext: vi.fn(),
@@ -88,10 +89,16 @@ describe("AttentionQueueModal", () => {
   beforeEach(() => {
     cleanup();
     attentionState.items = [];
+    attentionState.actionableItems = [];
     attentionState.open = false;
     attentionState.resolveSessionTitle.mockReset();
     attentionState.resolveSessionTitle.mockReturnValue(null);
   });
+
+  function enqueue(...queue: AttentionItem[]) {
+    attentionState.items = queue;
+    attentionState.actionableItems = queue;
+  }
 
   it("renders nothing when the queue is empty", () => {
     const { container } = render(<AttentionQueueModal />);
@@ -100,7 +107,7 @@ describe("AttentionQueueModal", () => {
 
   it("shows the resolved session title in the header", () => {
     const item = questionItem();
-    attentionState.items = [item];
+    enqueue(item);
     attentionState.open = true;
     attentionState.resolveSessionTitle.mockReturnValue("画像タスクの修正");
 
@@ -113,7 +120,7 @@ describe("AttentionQueueModal", () => {
   });
 
   it("falls back to sessionID when no title is resolved", () => {
-    attentionState.items = [questionItem("ses_fallback")];
+    enqueue(questionItem("ses_fallback"));
     attentionState.open = true;
     attentionState.resolveSessionTitle.mockReturnValue(null);
 
@@ -132,7 +139,7 @@ describe("AttentionQueueModal", () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);
       const item = questionItem();
-      attentionState.items = [item];
+      enqueue(item);
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
@@ -160,7 +167,7 @@ describe("AttentionQueueModal", () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);
       const item = questionItem();
-      attentionState.items = [item];
+      enqueue(item);
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
@@ -192,7 +199,7 @@ describe("AttentionQueueModal", () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);
       const item = questionItem();
-      attentionState.items = [item];
+      enqueue(item);
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
@@ -234,7 +241,7 @@ describe("AttentionQueueModal", () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);
       const item = permissionItem();
-      attentionState.items = [item];
+      enqueue(item);
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
@@ -274,8 +281,10 @@ describe("AttentionQueueModal", () => {
           receivedAt: 2,
         },
       };
-      // current = bash (older); task はフルアクセス一括処理の対象
+      // current = bash (older); task は自動 reject 対象なのでモーダル非表示、
+      // enableFullAccess は raw items から残りの task を reject する。
       attentionState.items = [bashPerm, taskPerm];
+      attentionState.actionableItems = [bashPerm];
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
@@ -320,6 +329,7 @@ describe("AttentionQueueModal", () => {
         },
       };
       attentionState.items = [taskPerm];
+      attentionState.actionableItems = [];
       attentionState.open = true;
 
       const { container } = render(<AttentionQueueModal />);
@@ -333,7 +343,7 @@ describe("AttentionQueueModal", () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);
       const item = permissionItem();
-      attentionState.items = [item];
+      enqueue(item);
       attentionState.open = true;
 
       render(<AttentionQueueModal />);
@@ -365,7 +375,7 @@ describe("AttentionQueueModal", () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);
       const item = permissionItem();
-      attentionState.items = [item];
+      enqueue(item);
       attentionState.open = true;
 
       render(<AttentionQueueModal />);

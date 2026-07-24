@@ -1,5 +1,15 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第10回）— バッジ空モーダル / 404判定
+
+### やったこと
+溜まったティックでの再探索で2件修正。
+
+1. **Attention バッジとモーダルの不整合** — `actionableItems` を Provider で共有。自動 reject 失敗分は手動応答のため残す。
+2. **useSessionStream の 404 判定** — `ApiError.status === 404` も吞み込み（メッセージに "404" が無いケース）。
+
+---
+
 ## 2026-07-24 バグハントループ（第9回）— sessionId stale / modal レース
 
 ### やったこと

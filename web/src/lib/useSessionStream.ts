@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import { apiUrl, ocJson } from "./client";
+import { apiUrl, ApiError, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import { isSseSilent, SSE_SILENCE_MS } from "./sse-health";
@@ -1413,7 +1413,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }
       } catch (err) {
         // 404 = already answered elsewhere; drop it from the queue either way
-        if (!(err instanceof Error && /404/.test(err.message))) throw err;
+        const is404 =
+          (err instanceof ApiError && err.status === 404) ||
+          (err instanceof Error && /404/.test(err.message));
+        if (!is404) throw err;
       }
       rememberReplied(request.id);
       dispatch({ kind: "permissionReplied", requestId: request.id });
@@ -1443,7 +1446,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           });
         }
       } catch (err) {
-        if (!(err instanceof Error && /404/.test(err.message))) throw err;
+        const is404 =
+          (err instanceof ApiError && err.status === 404) ||
+          (err instanceof Error && /404/.test(err.message));
+        if (!is404) throw err;
       }
       rememberReplied(request.id);
       dispatch({ kind: "questionReplied", requestId: request.id });
@@ -1468,7 +1474,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           });
         }
       } catch (err) {
-        if (!(err instanceof Error && /404/.test(err.message))) throw err;
+        const is404 =
+          (err instanceof ApiError && err.status === 404) ||
+          (err instanceof Error && /404/.test(err.message));
+        if (!is404) throw err;
       }
       rememberReplied(request.id);
       dispatch({ kind: "questionReplied", requestId: request.id });

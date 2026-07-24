@@ -17,48 +17,23 @@ import { writeAccessMode } from "@/lib/access-mode";
 import {
   permissionAutoAction,
   readSubagentPermission,
-  SUBAGENT_PERMISSION_EVENT,
-  type SubagentPermission,
 } from "@/lib/subagent-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
 export function AttentionQueueModal() {
-  const { items, open, setOpen, remove, resolveSessionTitle } = useGlobalAttention();
+  const { items, actionableItems, open, setOpen, remove, resolveSessionTitle } =
+    useGlobalAttention();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
-    () => readSubagentPermission(),
-  );
 
-  useEffect(() => {
-    const onSubagent = (e: Event) => {
-      const detail = (e as CustomEvent<SubagentPermission>).detail;
-      if (detail === "allow" || detail === "deny") setSubagentPermission(detail);
-    };
-    window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
-    return () =>
-      window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
-  }, []);
-
-  // Hide permissions that GlobalAttention / TaskView will auto-reject so the
-  // user cannot race-approve a denied task permission from the modal.
   const sorted = useMemo(() => {
-    return [...items]
-      .filter((item) => {
-        if (item.kind !== "permission") return true;
-        return (
-          permissionAutoAction({
-            permission: item.request.permission,
-            subagent: subagentPermission,
-            fullAccess: false,
-          }) === "manual"
-        );
-      })
-      .sort((a, b) => a.request.receivedAt - b.request.receivedAt);
-  }, [items, subagentPermission]);
+    return [...actionableItems].sort(
+      (a, b) => a.request.receivedAt - b.request.receivedAt,
+    );
+  }, [actionableItems]);
 
   const current = sorted[0];
   const total = sorted.length;
