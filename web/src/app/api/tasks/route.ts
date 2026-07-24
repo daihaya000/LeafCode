@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
+import {
+  setAgentTaskPermission,
+  type TaskPermission,
+} from "@/lib/opencode-task-permission";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import {
   normalizeCommands,
@@ -39,6 +43,10 @@ type AgentResponse = {
   name?: string;
   model?: ModelReference;
 }[];
+
+function isTaskPermission(value: unknown): value is TaskPermission {
+  return value === "allow" || value === "deny";
+}
 
 const IMAGE_MIME_RE = /^image\/[a-z0-9.+-]+$/i;
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([a-z0-9+/]+={0,2})$/i;
@@ -130,11 +138,27 @@ export async function POST(req: NextRequest) {
     title?: string;
     model?: { providerID?: string; modelID?: string };
     agent?: string;
+    subagentPermission?: unknown;
     variant?: unknown;
     files?: unknown;
   } | null;
 
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+  if (
+    body?.subagentPermission !== undefined &&
+    !isTaskPermission(body.subagentPermission)
+  ) {
+    return NextResponse.json({ error: "invalid task permission" }, { status: 400 });
+  }
+  if (
+    body?.subagentPermission !== undefined &&
+    (typeof body.agent !== "string" || !body.agent.trim())
+  ) {
+    return NextResponse.json(
+      { error: "execution agent is required for task permission" },
+      { status: 400 },
+    );
+  }
   const files = parseImageFiles(body?.files);
   if (files === null) {
     return NextResponse.json({ error: "invalid files" }, { status: 400 });
@@ -215,6 +239,23 @@ export async function POST(req: NextRequest) {
     // Bind before prompt so create-failure rollback can delete the OpenCode
     // session via destroyWorkspace (bindings are the only id source there).
     bindSession(workspace.id, session.id, title);
+
+    // This is deliberately before the first command/prompt: an OpenCode
+    // `permission.task: allow` otherwise creates a child session without ever
+    // emitting a pending permission event for TaskView to reject. Home sends
+    // the selected execution agent, so only that agent's task rule changes.
+    if (body?.subagentPermission !== undefined) {
+      const executionAgent =
+        typeof body.agent === "string" ? body.agent.trim() : undefined;
+      if (!executionAgent) {
+        throw new OcError("execution agent is required for task permission", 400);
+      }
+      await setAgentTaskPermission(
+        workspace.absolute_path,
+        executionAgent,
+        body.subagentPermission,
+      );
+    }
 
     const commandList = await ocServer<unknown>(
       workspace.absolute_path,

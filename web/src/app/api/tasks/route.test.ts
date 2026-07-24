@@ -58,6 +58,10 @@ vi.mock("@/lib/task-service", () => ({
   listTasks: vi.fn().mockResolvedValue({ tasks: [], engineOk: true }),
 }));
 
+vi.mock("@/lib/opencode-task-permission", () => ({
+  setAgentTaskPermission: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { POST } from "./route";
 
 function post(body: Record<string, unknown>) {
@@ -70,6 +74,73 @@ function post(body: Record<string, unknown>) {
 }
 
 describe("POST /api/tasks variant validation", () => {
+  it("applies the selected agent task permission before the first prompt", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    const { setAgentTaskPermission } = await import("@/lib/opencode-task-permission");
+    (ocServer as ReturnType<typeof vi.fn>).mockClear();
+    (setAgentTaskPermission as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      agent: "build",
+      subagentPermission: "deny",
+    });
+
+    expect(res.status).toBe(200);
+    expect(setAgentTaskPermission).toHaveBeenCalledWith("C:\\repo", "build", "deny");
+    const promptIndex = (ocServer as ReturnType<typeof vi.fn>).mock.calls.findIndex(
+      (call) => String(call[1]).includes("/prompt_async"),
+    );
+    expect(promptIndex).toBeGreaterThanOrEqual(0);
+    // The permission helper must finish before this call, otherwise OpenCode
+    // could execute task immediately under a pre-existing allow rule.
+    expect((setAgentTaskPermission as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+      .toBeLessThan((ocServer as ReturnType<typeof vi.fn>).mock.invocationCallOrder[promptIndex]);
+  });
+
+  it("returns 400 when subagentPermission is specified but agent is undefined", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      subagentPermission: "deny",
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/execution agent|required/i);
+  });
+
+  it("returns 400 when subagentPermission is specified but agent is not a string", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      agent: 42,
+      subagentPermission: "deny",
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/execution agent|required/i);
+  });
+
+  it("returns 400 when subagentPermission is specified but agent is only whitespace", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      agent: "   ",
+      subagentPermission: "allow",
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/execution agent|required/i);
+  });
+
   it("accepts request without variant", async () => {
     const res = await post({
       projectId: "project-1",

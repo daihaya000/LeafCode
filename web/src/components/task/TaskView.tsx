@@ -367,6 +367,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [subagentPermission, setSubagentPermission] =
     useState<SubagentPermission>("allow");
+  const [subagentPermissionSaving, setSubagentPermissionSaving] =
+    useState(false);
   const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -496,10 +498,32 @@ export function TaskView({ taskId }: { taskId: string }) {
     writeAccessMode(mode);
   }, []);
 
-  const changeSubagentPermission = useCallback((mode: SubagentPermission) => {
-    setSubagentPermission(mode);
-    writeSubagentPermission(mode);
-  }, []);
+  const changeSubagentPermission = useCallback(
+    async (mode: SubagentPermission) => {
+      if (mode === subagentPermission || subagentPermissionSaving || !task?.id) {
+        return;
+      }
+      setSubagentPermissionSaving(true);
+      try {
+        await sendJson("POST", "/api/subagent-permission", {
+          taskId: task.id,
+          permission: mode,
+        });
+        setSubagentPermission(mode);
+        writeSubagentPermission(mode);
+        setSendError(null);
+      } catch (err) {
+        setSendError(
+          err instanceof Error
+            ? `サブエージェント権限を適用できませんでした: ${err.message}`
+            : "サブエージェント権限を適用できませんでした。",
+        );
+      } finally {
+        setSubagentPermissionSaving(false);
+      }
+    },
+    [subagentPermission, subagentPermissionSaving, task?.id],
+  );
 
   // Persist right-panel display state so it survives task/session switches.
   const changeTab = useCallback((next: ChatTab) => {
@@ -2263,13 +2287,13 @@ export function TaskView({ taskId }: { taskId: string }) {
                     <AccessModeSelect
                       value={accessMode}
                       onChange={changeAccessMode}
-                      disabled={!task.sessionId}
+                      disabled={!task.sessionId || subagentPermissionSaving}
                       className="h-8 shrink-0"
                     />
                     <SubagentPermissionSelect
                       value={subagentPermission}
-                      onChange={changeSubagentPermission}
-                      disabled={!task.sessionId}
+                      onChange={(mode) => void changeSubagentPermission(mode)}
+                      disabled={!task.sessionId || subagentPermissionSaving}
                       className="h-8 shrink-0"
                     />
                   </div>

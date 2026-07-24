@@ -533,8 +533,18 @@ describe("HomeView subagent permission", () => {
     localStorage.clear();
   });
 
-  it("defaults to 許可 and persists 不許可 when changed", async () => {
+  it("applies 不許可 to the selected execution agent before persisting it", async () => {
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/agent")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ name: "build" }],
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
     render(<HomeView />);
+    await screen.findByLabelText("エージェント");
     const select = (await screen.findByLabelText(
       "サブエージェント",
     )) as HTMLSelectElement;
@@ -546,5 +556,34 @@ describe("HomeView subagent permission", () => {
       expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),
     );
     expect(select.value).toBe("deny");
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/subagent-permission", {
+      directory: "/repo",
+      agent: "build",
+      permission: "deny",
+    });
+  });
+
+  it("keeps the previous local preference and shows an error when apply fails", async () => {
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/agent")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ name: "build" }],
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    sendJson.mockRejectedValueOnce(new Error("engine unavailable"));
+    render(<HomeView />);
+    await screen.findByLabelText("エージェント");
+    const select = (await screen.findByLabelText("サブエージェント")) as HTMLSelectElement;
+
+    fireEvent.change(select, { target: { value: "deny" } });
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("engine unavailable"),
+    );
+    expect(select.value).toBe("allow");
+    expect(localStorage.getItem("webui:subagent-permission")).toBeNull();
   });
 });
