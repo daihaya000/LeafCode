@@ -164,6 +164,45 @@ describe("POST session image capability validation", () => {
     fetchMock.mockRestore();
   });
 
+  it("rejects oversized image payloads before capability lookup", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const hugeB64 = "A".repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3) + 4);
+    const response = await sessionPost("prompt_async", {
+      model: { providerID: "openai", modelID: "vision" },
+      parts: [
+        {
+          type: "file",
+          mime: "image/png",
+          url: `data:image/png;base64,${hugeB64}`,
+        },
+      ],
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid files" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("rejects more than 10 image parts before capability lookup", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const parts = Array.from({ length: 11 }, (_, i) => ({
+      type: "file",
+      mime: "image/png",
+      url: "data:image/png;base64,AA==",
+      filename: `n${i}.png`,
+    }));
+    const response = await sessionPost("prompt_async", {
+      model: { providerID: "openai", modelID: "vision" },
+      parts,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid files" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
   it("forwards image parts after the provider cache confirms capability", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

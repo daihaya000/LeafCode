@@ -396,10 +396,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const preferRestStatusRef = useRef(false);
   /** Track safety net timers to clear on unmount/session change */
   const safetyNetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messageCountRef = useRef(state.messages.length);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
   statusRef.current = state.status;
   connectionRef.current = state.connection;
+  messageCountRef.current = state.messages.length;
 
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey });
@@ -445,7 +447,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         pendingMutationRef.current ||
         statusRef.current?.type === "busy" ||
         statusRef.current?.type === "retry";
-      if (!streaming) {
+      // Early send before the first REST snapshot can leave messages empty for
+      // the whole turn if we skip init while streaming. Allow init when empty.
+      if (!streaming || messageCountRef.current === 0) {
         dispatch({ kind: "init", messages: Array.isArray(rows) ? rows : [] });
       }
     } catch (err) {
@@ -1262,7 +1266,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         });
       } catch (err) {
         pendingMutationRef.current = false;
-        dispatch({ kind: "status", status: { type: "idle" } });
+        // Do not flip to idle: the engine may still be busy after a client
+        // timeout. Prefer REST and resync so status/composer stay truthful.
+        preferRestStatusRef.current = true;
+        void resync();
         throw err;
       }
       // safety net: events normally arrive first, resync fills any gap
@@ -1318,7 +1325,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         });
       } catch (err) {
         pendingMutationRef.current = false;
-        dispatch({ kind: "status", status: { type: "idle" } });
+        preferRestStatusRef.current = true;
+        void resync();
         throw err;
       }
       // safety net: events normally arrive first, resync fills any gap

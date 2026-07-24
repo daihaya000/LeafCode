@@ -75,6 +75,41 @@ function containsImagePart(body: unknown): boolean {
   );
 }
 
+// Match POST /api/tasks R28 limits so prompt_async / command cannot bypass them.
+const MAX_IMAGE_COUNT = 10;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+
+function estimateDataUrlBytes(uri: string): number {
+  const comma = uri.indexOf(",");
+  if (comma < 0) return Number.POSITIVE_INFINITY;
+  const b64 = uri.slice(comma + 1);
+  return Math.floor((b64.length * 3) / 4);
+}
+
+/** Returns false when image parts exceed count or per-image size limits. */
+function imagePartsWithinLimits(body: unknown): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return true;
+  const { parts } = body as { parts?: unknown };
+  if (!Array.isArray(parts)) return true;
+  const images = parts.filter(
+    (part) =>
+      part &&
+      typeof part === "object" &&
+      !Array.isArray(part) &&
+      (part as { type?: unknown }).type === "file" &&
+      typeof (part as { mime?: unknown }).mime === "string" &&
+      /^image\//i.test((part as { mime: string }).mime),
+  );
+  if (images.length > MAX_IMAGE_COUNT) return false;
+  for (const part of images) {
+    const url = (part as { url?: unknown }).url;
+    if (typeof url === "string" && estimateDataUrlBytes(url) > MAX_IMAGE_SIZE_BYTES) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function modelFromRequest(body: Record<string, unknown>):
   | { providerID: string; modelID: string }
   | undefined {
@@ -303,13 +338,20 @@ async function proxy(
           if (
             (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
               /^\/session\/[^/]+\/command$/.test(pathname)) &&
-            containsImagePart(body) &&
-            !(await supportsImageInput(directory, body))
+            containsImagePart(body)
           ) {
-            return NextResponse.json(
-              { error: "image input is not supported by the selected model" },
-              { status: 400 },
-            );
+            if (!imagePartsWithinLimits(body)) {
+              return NextResponse.json(
+                { error: "invalid files" },
+                { status: 400 },
+              );
+            }
+            if (!(await supportsImageInput(directory, body))) {
+              return NextResponse.json(
+                { error: "image input is not supported by the selected model" },
+                { status: 400 },
+              );
+            }
           }
         } catch {
           // Preserve the existing behavior for non-JSON or malformed bodies.

@@ -1,5 +1,20 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第8回）— BFF画像上限・resync・タイムアウト
+
+### やったこと
+2分ループ第4サイクル。
+
+**修正内容:**
+1. **opencode プロキシの画像枚数・サイズ上限** — `prompt_async` / `command` で R28 と同じ 10枚・10MB を能力チェック前に検証。
+2. **初回 resync 前の送信で履歴が空のまま** — streaming 中でも `messages.length === 0` なら `init` を許可。
+3. **sendPrompt/sendCommand タイムアウト時の楽観的 idle** — idle に落とさず `preferRestStatus` + resync でエンジン状態に合わせる。
+
+### 残課題
+- 明確な高優先バグは枯渇気味。次ティックで再探索し、見つからなければループ継続監視のみ。
+
+---
+
 ## 2026-07-24 バグハントループ（第7回）— 権限 sessionId・GlobalAttention・Home画像
 
 ### やったこと
