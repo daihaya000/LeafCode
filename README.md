@@ -8,6 +8,10 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 `setup.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `setup.bat` を再実行してください。
 
+### production build
+
+`build.bat`、`setup.bat`、および `npm run build` は、同じポートで本番WebUI（`next start`）が稼働中ならビルドを中止します。稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。トレイからWebUIを停止してからビルドし、完了後に `start-webui.bat` で起動してください。
+
 セットアップの終了コード:
 
 | コード | 意味 | 復旧方法 |

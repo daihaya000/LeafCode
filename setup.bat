@@ -90,6 +90,12 @@ call :fail 4 "OpenCodeの導入に失敗しました。" "OpenCode Docsを確認
 exit /b 4
 
 :install_web
+call node scripts\production-webui-build-guard.mjs
+if not errorlevel 1 goto :web_build_guard_passed
+call :fail 6 "web build was cancelled to protect a running WebUI." "Stop the WebUI and run setup again."
+exit /b 6
+
+:web_build_guard_passed
 pushd web
 if errorlevel 1 goto :web_ci_failed_without_pushd
 call npm ci

@@ -1,7 +1,7 @@
 // OpenCode WebUI service worker: offline app shell + static asset caching.
 // Never touches /api/* (BFF proxy + SSE streams) so live data stays live.
 
-const CACHE = "opencode-webui-v2";
+const CACHE = "opencode-webui-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -44,6 +44,9 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // Bypass BFF/API and SSE entirely.
   if (url.pathname.startsWith("/api/")) return;
+  // Next build assets are versioned per deployment. Never serve an old chunk
+  // from Cache Storage after a new build has replaced web/.next.
+  if (url.pathname.startsWith("/_next/")) return;
 
   // Navigations: network-first, fall back to cached page then app shell.
   if (req.mode === "navigate") {
@@ -60,9 +63,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache-first, populate on miss.
+  // Static assets: cache-first, populate on miss (except /_next above).
   const isStatic =
-    url.pathname.startsWith("/_next/") ||
     /\.(?:png|svg|ico|webmanifest|woff2?|css|js)$/.test(url.pathname);
   if (isStatic) {
     event.respondWith(

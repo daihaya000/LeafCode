@@ -4,6 +4,14 @@ cd /d "%~dp0"
 
 echo [OpenCode WebUI] Building production bundle...
 
+rem Do not replace web\.next while the tray host's next start is serving it.
+node scripts\production-webui-build-guard.mjs
+if errorlevel 1 (
+  echo [OpenCode WebUI] Build cancelled. Stop the running production WebUI, then try again.
+  pause
+  exit /b 1
+)
+
 if not exist "web\node_modules\" (
   echo [OpenCode WebUI] Installing web dependencies...
   pushd web
