@@ -1229,6 +1229,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (working) throw new Error(`セッションの完了を待ってください`);
     setSendError(null);
     setAgent(`build`);
+    setIntelligence("");
     stickRef.current = true;
     try {
       await touchActivity();
@@ -1244,6 +1245,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!modelMeta) return [];
     return getIntelligenceVariants(modelMeta);
   }, [effectiveModelKey, providerModelsMap]);
+
+  useEffect(() => {
+    if (!intelligence) return;
+    if (!intelligenceVariants.some((v) => v.value === intelligence)) {
+      setIntelligence("");
+    }
+  }, [intelligence, intelligenceVariants]);
+
   // Prefer last assistant message's model once stream is loaded.
   // Seeding runs at most once per session scope: once a model is resolved
   // (either from a prior assistant message or from a user's manual choice),
@@ -2382,7 +2391,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                     {agents.length > 0 && (
                       <GhostSelect
                         value={agent}
-                        onChange={(e) => setAgent(e.target.value)}
+                        onChange={(e) => {
+                          setAgent(e.target.value);
+                          setIntelligence("");
+                        }}
                         disabled={!task.sessionId}
                         aria-label="エージェント"
                         icon={<Bot className="h-3.5 w-3.5" />}

@@ -55,6 +55,7 @@ describe("AttentionBadge", () => {
   it("uses the shared focus-visible outline when attention is pending", () => {
     useOptionalGlobalAttention.mockReturnValue({
       items: [{ id: "attention-1" }],
+      actionableItems: [{ id: "attention-1" }],
       openNext: vi.fn(),
     });
 

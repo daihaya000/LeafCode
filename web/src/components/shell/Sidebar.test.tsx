@@ -11,6 +11,10 @@ const { getJson, sendJson, timedFetch, attentionState } = vi.hoisted(() => ({
       kind: "question" | "permission";
       request: { sessionID: string };
     }>,
+    actionableItems: [] as Array<{
+      kind: "question" | "permission";
+      request: { sessionID: string };
+    }>,
   },
 }));
 
@@ -63,6 +67,7 @@ vi.mock("./GlobalAttentionProvider", () => ({
 describe("Sidebar", () => {
   beforeEach(() => {
     attentionState.items = [];
+    attentionState.actionableItems = [];
     usePathname.mockReturnValue("/");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") return Promise.resolve({ projects: [] });
@@ -278,6 +283,7 @@ describe("Sidebar", () => {
       kind: "question",
       request: { sessionID: "sess1" },
     }];
+    attentionState.actionableItems = attentionState.items;
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -333,6 +339,7 @@ describe("Sidebar", () => {
       kind: "permission",
       request: { sessionID: "sess1" },
     }];
+    attentionState.actionableItems = attentionState.items;
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -385,6 +392,7 @@ describe("Sidebar", () => {
       kind: "question",
       request: { sessionID: "sess1" },
     }];
+    attentionState.actionableItems = attentionState.items;
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -426,6 +434,7 @@ describe("Sidebar", () => {
 
     expect(await screen.findByLabelText("質問への回答待ち")).toBeTruthy();
     attentionState.items = [];
+    attentionState.actionableItems = [];
     view.rerender(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
     const spinner = await screen.findByLabelText("エージェントが処理中");
@@ -438,6 +447,7 @@ describe("Sidebar", () => {
       kind: "question",
       request: { sessionID: "other" },
     }];
+    attentionState.actionableItems = attentionState.items;
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {

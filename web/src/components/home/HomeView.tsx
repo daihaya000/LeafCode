@@ -615,6 +615,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     return getIntelligenceVariants(modelMeta);
   }, [effectiveModelKey, providerModelsMap]);
 
+  useEffect(() => {
+    if (!intelligence) return;
+    if (!intelligenceVariants.some((v) => v.value === intelligence)) {
+      setIntelligence("");
+    }
+  }, [intelligence, intelligenceVariants]);
+
   return (
     <div className="flex h-full flex-col">
       <MobileMenuHeader />
@@ -890,7 +897,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     aria-label="エージェント"
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={agent || "エージェント"}
-                    onChange={(e) => setAgent(e.target.value)}
+                    onChange={(e) => {
+                      setAgent(e.target.value);
+                      setIntelligence("");
+                    }}
                     className="min-w-0"
                     title={agent || "エージェント"}
                   >

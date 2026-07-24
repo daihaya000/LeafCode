@@ -1,5 +1,13 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第11回）— Sidebar actionable / intelligence リセット
+
+### やったこと
+1. **Sidebar** が raw `items` を見ていたため、自動 reject 中の task 権限で誤「承認待ち」表示 → `actionableItems` に統一。
+2. **エージェント切替時に intelligence が残る** → HomeView/TaskView でクリア＋variants 不一致時の useEffect ガード。
+
+---
+
 ## 2026-07-24 バグハントループ（第10回）— バッジ空モーダル / 404判定
 
 ### やったこと

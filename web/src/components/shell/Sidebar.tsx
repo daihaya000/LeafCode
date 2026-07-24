@@ -138,7 +138,7 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const costPrefs = useCostDisplayPrefs();
-  const { items: attentionItems } = useGlobalAttention();
+  const { actionableItems: attentionItems } = useGlobalAttention();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsLoadError, setProjectsLoadError] = useState(false);
