@@ -617,7 +617,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   useEffect(() => {
     if (!intelligence) return;
-    if (!intelligenceVariants.some((v) => v.value === intelligence)) {
+    if (!intelligenceVariants.some((v) => v === intelligence)) {
       setIntelligence("");
     }
   }, [intelligence, intelligenceVariants]);
