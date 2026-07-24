@@ -4,6 +4,12 @@ node_modules/
 .env*.local
 *.log
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# PowerShell / CLI accident artifacts
+/$null
+/-p/
 # Legacy worktree location (kept for backward compat; new worktrees live under
 # the machine-local data dir, but old DB rows may still point here).
 .webui-worktrees/
