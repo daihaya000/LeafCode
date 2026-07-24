@@ -81,6 +81,18 @@ export function classifyToolFailureStatus(
     : "error";
 }
 
+function normalizeCancelledToolPart(part: Part): Part {
+  if (
+    part.type !== "tool" ||
+    !part.state?.error ||
+    classifyToolFailureStatus(part.state.error) !== "cancelled" ||
+    part.state.status === "cancelled"
+  ) {
+    return part;
+  }
+  return { ...part, state: { ...part.state, status: "cancelled" } };
+}
+
 /**
  * Decide whether a REST `/session/status` snapshot should replace local status.
  * After sendPrompt/sendCommand we hold `pendingMutation` until SSE busy/idle; if
@@ -208,7 +220,14 @@ export function sessionStreamReducer(
     case "reset":
       return createInitialStreamState(action.scopeKey);
     case "init":
-      return { ...state, messages: action.messages, loaded: true };
+      return {
+        ...state,
+        messages: action.messages.map((message) => ({
+          ...message,
+          parts: message.parts.map(normalizeCancelledToolPart),
+        })),
+        loaded: true,
+      };
     case "messageUpdated": {
       const idx = state.messages.findIndex((m) => m.info.id === action.info.id);
       if (idx === -1) {
@@ -228,7 +247,7 @@ export function sessionStreamReducer(
         messages: state.messages.filter((m) => m.info.id !== action.messageID),
       };
     case "partUpdated": {
-      const { part } = action;
+      const part = normalizeCancelledToolPart(action.part);
       const idx = state.messages.findIndex((m) => m.info.id === part.messageID);
       if (idx === -1) {
         // part for an unseen message — create a placeholder entry

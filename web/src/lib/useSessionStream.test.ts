@@ -228,6 +228,36 @@ describe("session stream session.next text deltas", () => {
     expect(part.state?.input).toEqual({ cmd: "ls" });
   });
 
+  it("normalizes cancelled tool errors from REST init and part updates", () => {
+    const cancelled = {
+      id: "c1",
+      messageID: "a1",
+      type: "tool",
+      tool: "bash",
+      state: { status: "error" as const, error: "Tool execution cancelled" },
+    };
+    const ordinaryError = {
+      id: "c2",
+      messageID: "a1",
+      type: "tool",
+      tool: "bash",
+      state: { status: "error" as const, error: "command failed" },
+    };
+
+    let state = sessionStreamReducer(createInitialStreamState("scope"), {
+      kind: "init",
+      messages: [{ info: { id: "a1", role: "assistant" }, parts: [cancelled, ordinaryError] }],
+    });
+    expect(state.messages[0]!.parts[0]!.state?.status).toBe("cancelled");
+    expect(state.messages[0]!.parts[1]!.state?.status).toBe("error");
+
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: { ...cancelled, state: { ...cancelled.state, status: "error" } },
+    });
+    expect(state.messages[0]!.parts[0]!.state?.status).toBe("cancelled");
+  });
+
   it("does not wipe streamed text when ended arrives without text", () => {
     let state = createInitialStreamState("scope");
     state = sessionStreamReducer(state, {
