@@ -96,6 +96,14 @@ describe("Sidebar", () => {
     expect(drawer).toBeTruthy();
     expect(drawer?.getAttribute("role")).toBe("dialog");
     expect(drawer?.getAttribute("aria-modal")).toBe("true");
+    // WebKit (iOS Safari) does not reliably propagate height through
+    // `inset-y-0` alone to inner `h-full` flex scrollers; the drawer needs an
+    // explicit height (h-dvh) and overflow-hidden so its internal task list
+    // stays scrollable after collapsing the CodexBar addon.
+    expect(drawer?.className).toContain("h-dvh");
+    expect(drawer?.className).toContain("overflow-hidden");
+    expect(drawer?.className).toContain("top-0");
+    expect(drawer?.className).not.toContain("inset-y-0");
   });
 
   it("does not render the mobile drawer when closed", async () => {

@@ -1018,7 +1018,7 @@ export function Sidebar({
             role="dialog"
             aria-modal="true"
             aria-label="ナビゲーション"
-            className="absolute inset-y-0 left-0 w-[min(18rem,85vw)] pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]"
+            className="absolute top-0 left-0 h-dvh w-[min(18rem,85vw)] overflow-hidden pb-[env(safe-area-inset-bottom)] shadow-xl pt-[env(safe-area-inset-top)]"
           >
             {body(mobileOpen)}
           </aside>
