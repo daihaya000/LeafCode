@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  isActionableAttentionPermission,
   permissionAutoAction,
   readSubagentPermission,
   writeSubagentPermission,
@@ -94,5 +95,30 @@ describe("permissionAutoAction", () => {
         fullAccess: true,
       }),
     ).toBe("approve");
+  });
+});
+
+describe("isActionableAttentionPermission", () => {
+  it("hides auto-approve and auto-reject permissions unless they failed", () => {
+    const failed = new Set<string>();
+    expect(
+      isActionableAttentionPermission("bash", "allow", "p1", true, failed),
+    ).toBe(false);
+    expect(
+      isActionableAttentionPermission("task", "deny", "p2", false, failed),
+    ).toBe(false);
+    expect(
+      isActionableAttentionPermission("bash", "allow", "p3", false, failed),
+    ).toBe(true);
+  });
+
+  it("keeps failed auto-replies actionable for manual fallback", () => {
+    const failed = new Set(["p_fail"]);
+    expect(
+      isActionableAttentionPermission("bash", "allow", "p_fail", true, failed),
+    ).toBe(true);
+    expect(
+      isActionableAttentionPermission("task", "deny", "p_fail", true, failed),
+    ).toBe(true);
   });
 });

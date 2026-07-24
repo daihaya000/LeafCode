@@ -21,6 +21,7 @@ import {
   type AttentionItem,
   type AttentionScope,
 } from "@/lib/attention";
+import { readAccessMode, type AccessMode } from "@/lib/access-mode";
 import {
   isActionableAttentionPermission,
   permissionAutoAction,
@@ -128,24 +129,34 @@ export function GlobalAttentionProvider({
     setOpenState(next);
   }, []);
 
-  // バックグラウンドタスクの task 権限もサブエージェント不許可で自動 reject。
-  // TaskView の auto-reply はアクティブセッションにしか効かないため、ここで補完する。
-  const autoRejectIdsRef = useRef(new Set<string>());
-  const [autoRejectFailedIds, setAutoRejectFailedIds] = useState<Set<string>>(
+  // バックグラウンド権限も TaskView と同じ permissionAutoAction で自動処理。
+  // （サブエージェント不許可 → reject、フルアクセス → approve）
+  const autoReplyIdsRef = useRef(new Set<string>());
+  const [autoReplyFailedIds, setAutoReplyFailedIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
     () => readSubagentPermission(),
   );
+  const [accessMode, setAccessMode] = useState<AccessMode>(() => readAccessMode());
   useEffect(() => {
     const onSubagent = (e: Event) => {
       const detail = (e as CustomEvent<SubagentPermission>).detail;
       if (detail === "allow" || detail === "deny") setSubagentPermission(detail);
     };
+    const onAccess = (e: Event) => {
+      const detail = (e as CustomEvent<AccessMode>).detail;
+      if (detail === "ask" || detail === "full") setAccessMode(detail);
+    };
     window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
-    return () =>
+    window.addEventListener("webui:access-mode", onAccess);
+    return () => {
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+      window.removeEventListener("webui:access-mode", onAccess);
+    };
   }, []);
+
+  const fullAccess = accessMode === "full";
 
   const actionableItems = useMemo(() => {
     return items.filter((item) => {
@@ -154,38 +165,40 @@ export function GlobalAttentionProvider({
         item.request.permission,
         subagentPermission,
         item.request.id,
-        autoRejectFailedIds,
+        fullAccess,
+        autoReplyFailedIds,
       );
     });
-  }, [items, subagentPermission, autoRejectFailedIds]);
+  }, [items, subagentPermission, fullAccess, autoReplyFailedIds]);
 
   useEffect(() => {
-    if (subagentPermission !== "deny") {
-      autoRejectIdsRef.current.clear();
-      setAutoRejectFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
+    if (!fullAccess && subagentPermission !== "deny") {
+      autoReplyIdsRef.current.clear();
+      setAutoReplyFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     for (const item of items) {
       if (item.kind !== "permission") continue;
-      if (autoRejectIdsRef.current.has(item.request.id)) continue;
-      if (autoRejectFailedIds.has(item.request.id)) continue;
+      if (autoReplyIdsRef.current.has(item.request.id)) continue;
+      if (autoReplyFailedIds.has(item.request.id)) continue;
       const action = permissionAutoAction({
         permission: item.request.permission,
         subagent: subagentPermission,
-        fullAccess: false,
+        fullAccess,
       });
-      if (action !== "reject") continue;
-      autoRejectIdsRef.current.add(item.request.id);
+      if (action === "manual") continue;
+      autoReplyIdsRef.current.add(item.request.id);
+      const reply = action === "reject" ? "reject" : "once";
       void ocJson(replyPath(item), item.directory, {
         method: "POST",
         body:
           item.request.version === "v2"
-            ? { reply: "reject" }
-            : { response: "reject" },
+            ? { reply }
+            : { response: reply },
         timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
       })
         .then(() => {
-          setAutoRejectFailedIds((prev) => {
+          setAutoReplyFailedIds((prev) => {
             if (!prev.has(item.request.id)) return prev;
             const next = new Set(prev);
             next.delete(item.request.id);
@@ -194,8 +207,8 @@ export function GlobalAttentionProvider({
           remove(item.request.id, item.request.sessionID);
         })
         .catch(() => {
-          autoRejectIdsRef.current.delete(item.request.id);
-          setAutoRejectFailedIds((prev) => {
+          autoReplyIdsRef.current.delete(item.request.id);
+          setAutoReplyFailedIds((prev) => {
             if (prev.has(item.request.id)) return prev;
             const next = new Set(prev);
             next.add(item.request.id);
@@ -203,7 +216,13 @@ export function GlobalAttentionProvider({
           });
         });
     }
-  }, [autoRejectFailedIds, items, remove, subagentPermission]);
+  }, [
+    autoReplyFailedIds,
+    fullAccess,
+    items,
+    remove,
+    subagentPermission,
+  ]);
 
   const openNext = useCallback(() => {
     if (actionableItems.length === 0) return;

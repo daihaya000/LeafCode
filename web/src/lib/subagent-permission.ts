@@ -70,20 +70,21 @@ export function permissionAutoAction(args: {
 
 /**
  * GlobalAttention / AttentionBadge 用: ユーザーに見せるべき項目か。
- * 自動 reject 対象は隠すが、自動 reject に失敗した id は手動応答のため残す。
+ * 自動 approve/reject 対象は隠すが、自動処理に失敗した id は手動応答のため残す。
  */
 export function isActionableAttentionPermission(
   permission: string,
   subagent: SubagentPermission,
   requestId: string,
-  failedAutoRejectIds: ReadonlySet<string>,
+  fullAccess: boolean,
+  failedAutoIds: ReadonlySet<string>,
 ): boolean {
   const action = permissionAutoAction({
     permission,
     subagent,
-    fullAccess: false,
+    fullAccess,
   });
   if (action === "manual") return true;
-  if (action === "reject" && failedAutoRejectIds.has(requestId)) return true;
+  if (failedAutoIds.has(requestId)) return true;
   return false;
 }

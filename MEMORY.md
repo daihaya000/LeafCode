@@ -1,5 +1,12 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第12回）— フルアクセスのバックグラウンド自動承認
+
+### やったこと
+GlobalAttention がサブエージェント不許可の reject だけ補完し、フルアクセスの自動 approve がアクティブ TaskView に限定されていた。`access-mode` を購読し、TaskView と同じ `permissionAutoAction` でバックグラウンド権限も自動処理。`actionableItems` も fullAccess を反映。
+
+---
+
 ## 2026-07-24 バグハントループ（第11回）— Sidebar actionable / intelligence リセット
 
 ### やったこと
