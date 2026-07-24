@@ -231,6 +231,7 @@ function TodoPanel({
     <div className="rounded-xl border border-border bg-surface">
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs text-muted"
       >
@@ -2117,7 +2118,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           {/* Composer */}
           <div className="shrink-0 border-t border-border bg-surface px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
-              <TodoPanel todos={stream.todos} forceOpen={working} />
+              <TodoPanel todos={stream.todos} forceOpen={working && isMd} />
               {sendError && (
                 <p
                   role="alert"

@@ -253,6 +253,29 @@ describe("TaskView", () => {
     expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("keeps a newly created todo plan collapsed while working on mobile", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      todos: [{ id: "todo-1", content: "実装する", status: "in_progress" }],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByRole("button", { name: /プラン 0\/1/ }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(screen.queryByText("実装する")).toBeNull();
+  });
+
   it("calls compact from the mobile kebab menu", async () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
