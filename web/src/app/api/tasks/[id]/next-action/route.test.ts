@@ -186,6 +186,91 @@ describe("POST /api/tasks/[id]/next-action", () => {
     expect(promptBody.agent).toBe("build");
   });
 
+  it("does not embed an exclusion block on initial generation (no previousSuggestions)", async () => {
+    ocServerMock.mockResolvedValueOnce([
+      {
+        info: { id: "m1", role: "user" },
+        parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+      },
+    ]);
+    ocServerMock.mockResolvedValueOnce({ id: "temp-init" });
+    ocServerMock.mockResolvedValueOnce(["bash"]);
+    ocServerMock.mockResolvedValueOnce({
+      parts: [{ type: "text", text: "テストを実行してください" }],
+    });
+    ocServerMock.mockResolvedValueOnce(true);
+
+    const res = await POST(
+      requestWithBody({ sessionId: "ses-1" }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    const promptBody = ocServerMock.mock.calls[3]?.[2]?.body as Record<string, unknown>;
+    const parts = promptBody.parts as { type: string; text: string }[];
+    expect(parts[0]?.text).not.toContain("既出の提案");
+  });
+
+  it("embeds previous suggestions and the exclusion instruction in the prompt on regeneration", async () => {
+    ocServerMock.mockResolvedValueOnce([
+      {
+        info: { id: "m1", role: "user" },
+        parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+      },
+    ]);
+    ocServerMock.mockResolvedValueOnce({ id: "temp-regen" });
+    ocServerMock.mockResolvedValueOnce(["bash"]);
+    ocServerMock.mockResolvedValueOnce({
+      parts: [{ type: "text", text: "別の提案をしてください" }],
+    });
+    ocServerMock.mockResolvedValueOnce(true);
+
+    const res = await POST(
+      requestWithBody({
+        sessionId: "ses-1",
+        previousSuggestions: ["テストを実行してください"],
+      }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ suggestion: "別の提案をしてください" });
+    const promptBody = ocServerMock.mock.calls[3]?.[2]?.body as Record<string, unknown>;
+    const parts = promptBody.parts as { type: string; text: string }[];
+    const text = parts[0]?.text ?? "";
+    expect(text).toContain("【避けるべき既出の提案】");
+    expect(text).toContain("- テストを実行してください");
+    expect(text).toContain("実質的に同じ作業を指示する内容は避け");
+  });
+
+  it("ignores malformed previousSuggestions and generates normally", async () => {
+    ocServerMock.mockResolvedValueOnce([
+      {
+        info: { id: "m1", role: "user" },
+        parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+      },
+    ]);
+    ocServerMock.mockResolvedValueOnce({ id: "temp-bad" });
+    ocServerMock.mockResolvedValueOnce(["bash"]);
+    ocServerMock.mockResolvedValueOnce({
+      parts: [{ type: "text", text: "テストを実行してください" }],
+    });
+    ocServerMock.mockResolvedValueOnce(true);
+
+    const res = await POST(
+      requestWithBody({
+        sessionId: "ses-1",
+        previousSuggestions: "not-an-array",
+      }),
+      contextFor("task-1"),
+    );
+
+    expect(res.status).toBe(200);
+    const promptBody = ocServerMock.mock.calls[3]?.[2]?.body as Record<string, unknown>;
+    const parts = promptBody.parts as { type: string; text: string }[];
+    expect(parts[0]?.text).not.toContain("既出の提案");
+  });
+
   it("returns 502 when prompt fails and still deletes temp session", async () => {
     ocServerMock.mockResolvedValueOnce([
       {

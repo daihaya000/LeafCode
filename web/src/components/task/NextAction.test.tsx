@@ -151,4 +151,95 @@ describe("NextAction", () => {
       agent: "build",
     });
   });
+
+  it("does not send previousSuggestions on initial generation", async () => {
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+    render(
+      <NextAction taskId="task-1" sessionId="ses-1" onApply={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByLabelText("次の指示を提案"));
+    await waitFor(() => {
+      expect(screen.getByText("テスト")).toBeTruthy();
+    });
+    const body = sendJsonMock.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("previousSuggestions");
+  });
+
+  it("sends the shown suggestion back when regenerating", async () => {
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "テストを実行してください" });
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "エラーを修正してください" });
+    render(
+      <NextAction taskId="task-1" sessionId="ses-1" onApply={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByLabelText("次の指示を提案"));
+    await waitFor(() => {
+      expect(screen.getByText("テストを実行してください")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText("再生成"));
+    await waitFor(() => {
+      expect(screen.getByText("エラーを修正してください")).toBeTruthy();
+    });
+    // First call: no previousSuggestions.
+    expect(sendJsonMock.mock.calls[0]?.[2]).not.toHaveProperty(
+      "previousSuggestions",
+    );
+    // Second call: includes the suggestion that was on screen.
+    const second = sendJsonMock.mock.calls[1]?.[2] as Record<string, unknown>;
+    expect(second.previousSuggestions).toEqual(["テストを実行してください"]);
+  });
+
+  it("accumulates shown suggestions across multiple regenerations", async () => {
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "提案A" });
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "提案B" });
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "提案C" });
+    render(
+      <NextAction taskId="task-1" sessionId="ses-1" onApply={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByLabelText("次の指示を提案"));
+    await waitFor(() => {
+      expect(screen.getByText("提案A")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText("再生成"));
+    await waitFor(() => {
+      expect(screen.getByText("提案B")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText("再生成"));
+    await waitFor(() => {
+      expect(screen.getByText("提案C")).toBeTruthy();
+    });
+    const third = sendJsonMock.mock.calls[2]?.[2] as Record<string, unknown>;
+    expect(third.previousSuggestions).toEqual(["提案A", "提案B"]);
+  });
+
+  it("drops previous suggestions after invalidateKey changes", async () => {
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+    sendJsonMock.mockResolvedValueOnce({ suggestion: "新しい提案" });
+    const { rerender } = render(
+      <NextAction
+        taskId="task-1"
+        sessionId="ses-1"
+        onApply={vi.fn()}
+        invalidateKey="v1"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("次の指示を提案"));
+    await waitFor(() => {
+      expect(screen.getByText("テスト")).toBeTruthy();
+    });
+    // Conversation changed → component resets to idle and drops history.
+    rerender(
+      <NextAction
+        taskId="task-1"
+        sessionId="ses-1"
+        onApply={vi.fn()}
+        invalidateKey="v2"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("次の指示を提案"));
+    await waitFor(() => {
+      expect(screen.getByText("新しい提案")).toBeTruthy();
+    });
+    const second = sendJsonMock.mock.calls[1]?.[2] as Record<string, unknown>;
+    expect(second).not.toHaveProperty("previousSuggestions");
+  });
 });

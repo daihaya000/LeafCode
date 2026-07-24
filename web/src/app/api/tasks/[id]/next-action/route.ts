@@ -7,6 +7,7 @@ import {
   formatConversationForPrompt,
   NEXT_ACTION_SYSTEM_INSTRUCTION,
   normalizeSuggestion,
+  sanitizePreviousSuggestions,
 } from "@/lib/next-action-text";
 import type { MessageWithParts } from "@/lib/types";
 
@@ -19,6 +20,8 @@ type RequestBody = {
   sessionId?: unknown;
   model?: unknown;
   agent?: unknown;
+  /** Suggestions already shown to the user (sent on regeneration). */
+  previousSuggestions?: unknown;
 };
 
 /**
@@ -30,6 +33,10 @@ type RequestBody = {
  * so the original session is not mutated. The temp session is always
  * deleted in a finally block; deletion failures are logged but do not fail
  * a successful suggestion.
+ *
+ * On regeneration the client may send `previousSuggestions` (suggestions
+ * already displayed); they are sanitized and embedded in the prompt so the
+ * model avoids identical or substantially overlapping proposals.
  *
  * Conversation text and secrets are never written to logs or error responses.
  */
@@ -109,7 +116,14 @@ export async function POST(req: NextRequest, context: Ctx) {
     );
   }
 
-  const promptText = formatConversationForPrompt(messages);
+  // On regeneration the client sends the suggestions already shown, so the
+  // prompt can instruct the model to avoid repeating them. Initial generation
+  // sends nothing and behaves exactly as before.
+  const previousSuggestions = sanitizePreviousSuggestions(
+    body?.previousSuggestions,
+  );
+
+  const promptText = formatConversationForPrompt(messages, previousSuggestions);
   if (!promptText) {
     return NextResponse.json(
       { error: "conversation has no actionable content" },

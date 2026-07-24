@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Sparkles, Loader2, RefreshCw, ArrowDownToLine } from "lucide-react";
 import { Button } from "@/components/ui";
 import { sendJson } from "@/lib/client";
+import { NEXT_ACTION_PREVIOUS_MAX_COUNT } from "@/lib/next-action-text";
 
 type NextActionState =
   | { kind: "idle" }
@@ -39,11 +40,18 @@ export function NextAction({
 }: NextActionProps) {
   const [state, setState] = useState<NextActionState>({ kind: "idle" });
   const [lastInvalidateKey, setLastInvalidateKey] = useState(invalidateKey);
+  // Suggestions already shown for the current conversation state. Sent back
+  // on regeneration so the API can tell the model to avoid repeating them.
+  const [previousSuggestions, setPreviousSuggestions] = useState<string[]>([]);
 
   // Reset to idle when the invalidation key changes (conversation updated,
-  // revert, or task switch).
+  // revert, or task switch). Previously shown suggestions belong to the old
+  // conversation state, so drop them too.
   if (invalidateKey !== lastInvalidateKey) {
     setLastInvalidateKey(invalidateKey);
+    if (previousSuggestions.length > 0) {
+      setPreviousSuggestions([]);
+    }
     if (state.kind !== "idle" && state.kind !== "loading") {
       setState({ kind: "idle" });
     }
@@ -60,12 +68,28 @@ export function NextAction({
         }
       }
       if (agent) body.agent = agent;
+      // Regeneration: tell the API which suggestions were already shown so
+      // the model can produce a different one. Omitted on initial generation.
+      if (previousSuggestions.length > 0) {
+        body.previousSuggestions = previousSuggestions;
+      }
       const res = await sendJson<{ suggestion: string }>(
         "POST",
         `/api/tasks/${taskId}/next-action`,
         body,
       );
-      setState({ kind: "success", suggestion: res.suggestion });
+      const suggestion =
+        typeof res.suggestion === "string" ? res.suggestion : "";
+      if (suggestion) {
+        setPreviousSuggestions((prev) => {
+          if (prev.includes(suggestion)) return prev;
+          const next = [...prev, suggestion];
+          return next.length > NEXT_ACTION_PREVIOUS_MAX_COUNT
+            ? next.slice(next.length - NEXT_ACTION_PREVIOUS_MAX_COUNT)
+            : next;
+        });
+      }
+      setState({ kind: "success", suggestion });
     } catch (err) {
       console.warn("[NextAction] generate failed", err);
       setState({
@@ -75,7 +99,7 @@ export function NextAction({
         message: "提案の生成に失敗しました。",
       });
     }
-  }, [taskId, sessionId, model, agent]);
+  }, [taskId, sessionId, model, agent, previousSuggestions]);
 
   if (state.kind === "idle") {
     return (

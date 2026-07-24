@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   formatConversationForPrompt,
+  formatPreviousSuggestionsBlock,
   normalizeSuggestion,
   extractAssistantText,
+  sanitizePreviousSuggestions,
   NEXT_ACTION_SYSTEM_INSTRUCTION,
   NEXT_ACTION_TRANSCRIPT_MAX_CHARS,
   NEXT_ACTION_SUGGESTION_MAX_CHARS,
+  NEXT_ACTION_PREVIOUS_MAX_COUNT,
 } from "./next-action-text";
 import type { MessageWithParts } from "./types";
 
@@ -58,6 +61,74 @@ describe("formatConversationForPrompt", () => {
     expect(out.length).toBeLessThanOrEqual(
       NEXT_ACTION_TRANSCRIPT_MAX_CHARS + 200,
     );
+  });
+
+  it("does not include an exclusion block without previous suggestions (initial generation)", () => {
+    const out = formatConversationForPrompt([msg("user", "hello")]);
+    expect(out).not.toContain("既出の提案");
+  });
+
+  it("appends an exclusion block listing previous suggestions on regeneration", () => {
+    const out = formatConversationForPrompt(
+      [msg("user", "hello")],
+      ["テストを実行してください", "エラーを修正してください"],
+    );
+    expect(out).toContain("【避けるべき既出の提案】");
+    expect(out).toContain("- テストを実行してください");
+    expect(out).toContain("- エラーを修正してください");
+    // Instructs to avoid identical / substantially overlapping proposals.
+    expect(out).toContain("実質的に同じ作業を指示する内容は避け");
+  });
+
+  it("returns empty for empty messages even with previous suggestions", () => {
+    expect(formatConversationForPrompt([], ["テスト"])).toBe("");
+  });
+});
+
+describe("formatPreviousSuggestionsBlock", () => {
+  it("returns empty string for an empty list", () => {
+    expect(formatPreviousSuggestionsBlock([])).toBe("");
+  });
+
+  it("lists each suggestion as a bullet under the exclusion heading", () => {
+    const out = formatPreviousSuggestionsBlock(["a", "b"]);
+    expect(out).toContain("【避けるべき既出の提案】");
+    expect(out).toContain("- a");
+    expect(out).toContain("- b");
+  });
+});
+
+describe("sanitizePreviousSuggestions", () => {
+  it("returns empty for non-array input", () => {
+    expect(sanitizePreviousSuggestions(undefined)).toEqual([]);
+    expect(sanitizePreviousSuggestions(null)).toEqual([]);
+    expect(sanitizePreviousSuggestions("テスト")).toEqual([]);
+    expect(sanitizePreviousSuggestions({ 0: "テスト" })).toEqual([]);
+  });
+
+  it("drops non-string and empty entries and trims whitespace", () => {
+    expect(
+      sanitizePreviousSuggestions(["  テスト  ", "", "   ", 42, null, {}]),
+    ).toEqual(["テスト"]);
+  });
+
+  it("caps each entry to the suggestion max code points", () => {
+    const long = "あ".repeat(NEXT_ACTION_SUGGESTION_MAX_CHARS + 100);
+    const out = sanitizePreviousSuggestions([long]);
+    expect(out).toHaveLength(1);
+    expect(Array.from(out[0]!).length).toBe(NEXT_ACTION_SUGGESTION_MAX_CHARS);
+  });
+
+  it("deduplicates exact matches", () => {
+    expect(sanitizePreviousSuggestions(["テスト", "テスト"])).toEqual([
+      "テスト",
+    ]);
+  });
+
+  it("keeps at most NEXT_ACTION_PREVIOUS_MAX_COUNT entries", () => {
+    const many = Array.from({ length: NEXT_ACTION_PREVIOUS_MAX_COUNT + 3 }, (_, i) => `提案${i}`);
+    const out = sanitizePreviousSuggestions(many);
+    expect(out).toHaveLength(NEXT_ACTION_PREVIOUS_MAX_COUNT);
   });
 });
 
