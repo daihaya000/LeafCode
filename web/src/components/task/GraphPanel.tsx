@@ -47,16 +47,39 @@ function statusTone(s: GraphFileChange["status"]): string {
 }
 
 function GraphCell({ row }: { row: GraphRow }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  // Actual row height measured from the parent button via ResizeObserver.
+  // Falls back to ROW_H until the first measurement (or when ResizeObserver
+  // is unavailable, e.g. in JSDOM tests).
+  const [height, setHeight] = useState(ROW_H);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const target = svg.parentElement;
+    if (!target) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = entry.contentRect.height;
+        if (h > 0) setHeight(h);
+      }
+    });
+    ro.observe(target);
+    return () => ro.disconnect();
+  }, []);
+
   const w = Math.max(row.laneCount, 1) * LANE_W + 8;
-  const midY = ROW_H / 2;
+  const midY = height / 2;
   const x = (lane: number) => 8 + lane * LANE_W + LANE_W / 2;
   const nodeStroke = laneStroke(row.color);
 
   return (
     <svg
+      ref={svgRef}
       width={w}
-      height={ROW_H}
-      className="shrink-0 overflow-visible"
+      height={height}
+      className="shrink-0 overflow-visible self-stretch"
       aria-hidden
     >
       {row.passes.map((p) => (
@@ -65,7 +88,7 @@ function GraphCell({ row }: { row: GraphRow }) {
           x1={x(p.lane)}
           y1={0}
           x2={x(p.lane)}
-          y2={ROW_H}
+          y2={height}
           fill="none"
           stroke={laneStroke(p.color)}
           strokeWidth={2}
@@ -87,7 +110,7 @@ function GraphCell({ row }: { row: GraphRow }) {
           x1={x(row.lane)}
           y1={midY}
           x2={x(row.lane)}
-          y2={ROW_H}
+          y2={height}
           fill="none"
           stroke={nodeStroke}
           strokeWidth={2}
@@ -110,7 +133,7 @@ function GraphCell({ row }: { row: GraphRow }) {
         return (
           <path
             key={`e-${i}`}
-            d={`M ${x(e.fromLane)} ${midY} C ${x(e.fromLane)} ${midY + (ROW_H - midY) * 0.45}, ${x(e.toLane)} ${midY + (ROW_H - midY) * 0.55}, ${x(e.toLane)} ${ROW_H}`}
+            d={`M ${x(e.fromLane)} ${midY} C ${x(e.fromLane)} ${midY + (height - midY) * 0.45}, ${x(e.toLane)} ${midY + (height - midY) * 0.55}, ${x(e.toLane)} ${height}`}
             fill="none"
             stroke={laneStroke(e.color)}
             strokeWidth={2}
