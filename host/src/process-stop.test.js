@@ -6,6 +6,7 @@ import {
   parseChildPidOutput,
   reapInheritedHolders,
   stopProcessTreeGracefully,
+  stopWebTreeSync,
 } from './process-stop.js';
 
 test('parseChildPidOutput extracts numeric PIDs only', () => {
@@ -105,4 +106,61 @@ test('reapInheritedHolders kills live children and listeners', () => {
   });
   assert.deepEqual(result.sort((a, b) => a - b), [20, 40]);
   assert.deepEqual(killed.sort((a, b) => a - b), [20, 40]);
+});
+
+test('stopWebTreeSync kills the owned tree plus an identified reparented listener', () => {
+  const killed = [];
+  const result = stopWebTreeSync({
+    ownedPid: 42,
+    listeningPids: [34872],
+    isOwnedListener: (pid) => pid === 34872,
+    hardKill: (pid) => killed.push(pid),
+  });
+  assert.deepEqual(result, [42, 34872]);
+  assert.deepEqual(killed, [42, 34872]);
+});
+
+test('stopWebTreeSync never kills an unidentified listener', () => {
+  const killed = [];
+  const result = stopWebTreeSync({
+    ownedPid: 42,
+    listeningPids: [100],
+    isOwnedListener: () => false,
+    hardKill: (pid) => killed.push(pid),
+  });
+  assert.deepEqual(result, [42]);
+  assert.deepEqual(killed, [42]);
+});
+
+test('stopWebTreeSync is a no-op without an owned PID or listeners', () => {
+  const killed = [];
+  const result = stopWebTreeSync({
+    ownedPid: null,
+    listeningPids: [],
+    hardKill: (pid) => killed.push(pid),
+  });
+  assert.deepEqual(result, []);
+  assert.deepEqual(killed, []);
+});
+
+test('stopWebTreeSync still kills the owned tree when the identifier throws', () => {
+  // Exit-cleanup safety: a failing command-line lookup (PowerShell down/timeout)
+  // must not prevent killing the process we own, and must not kill anything else.
+  const killed = [];
+  const result = stopWebTreeSync({
+    ownedPid: 42,
+    listeningPids: [100, 101],
+    isOwnedListener: () => {
+      throw new Error('CIM unavailable');
+    },
+    hardKill: (pid) => killed.push(pid),
+  });
+  assert.deepEqual(result, [42]);
+  assert.deepEqual(killed, [42]);
+});
+
+test('stopWebTreeSync tolerates a missing hardKill callback', () => {
+  // No hardKill supplied: resolves targets without throwing.
+  const result = stopWebTreeSync({ ownedPid: 42, listeningPids: [] });
+  assert.deepEqual(result, [42]);
 });

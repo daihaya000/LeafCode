@@ -7,6 +7,7 @@
  */
 
 import { execSync as defaultExecSync } from 'child_process';
+import { resolveWebKillPids } from './restart-targets.js';
 
 /**
  * @param {number} pid
@@ -207,4 +208,34 @@ export function reapInheritedHolders(input) {
   }
 
   return [...killed];
+}
+
+/**
+ * Synchronously stop the WebUI process tree this host spawned. Designed for an
+ * 'exit' handler where async work is impossible, so every dependency is a
+ * synchronous callback. Targets the owned child PID (unambiguously ours) plus
+ * any port listeners identified as our own `next start` via `isOwnedListener`
+ * — so a reparented listener that survived a crash is stopped too, while an
+ * unrelated app on the port is never touched (see resolveWebKillPids).
+ * @param {{
+ *   ownedPid?: number | null,
+ *   listeningPids?: number[],
+ *   isOwnedListener?: (pid: number) => boolean,
+ *   hardKill?: (pid: number) => void,
+ * }} input
+ * @returns {number[]} killed PIDs
+ */
+export function stopWebTreeSync(input) {
+  const hardKill = input.hardKill ?? (() => {});
+  const targets = resolveWebKillPids({
+    ownedPid: input.ownedPid,
+    listeningPids: input.listeningPids,
+    isOwnedListener: input.isOwnedListener,
+  });
+  const killed = [];
+  for (const pid of targets) {
+    hardKill(pid);
+    killed.push(pid);
+  }
+  return killed;
 }

@@ -22,7 +22,7 @@ import {
   createControlServer,
   listenControlServer,
 } from './control-server.js';
-import { resolveKillPids } from './restart-targets.js';
+import { resolveKillPids, resolveWebKillPids } from './restart-targets.js';
 import {
   disposeOpencodeServer,
   hardKillTree,
@@ -30,7 +30,13 @@ import {
   reapInheritedHolders,
   softKillTree,
   stopProcessTreeGracefully,
+  stopWebTreeSync,
 } from './process-stop.js';
+// Reuse the build guard's listener identification so the stop path and the
+// build guard agree on what counts as "our" production WebUI (never kill an
+// unrelated app that happens to occupy the port). Import-safe: the guard only
+// runs main() when executed directly.
+import { isThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -311,7 +317,9 @@ function isProcessAlive(pid) {
   }
 }
 
-/** Run Windows PowerShell without routing the command through cmd.exe quoting. */
+/** Run Windows PowerShell without routing the command through cmd.exe quoting.
+ *  Bounded by a timeout so a degraded CIM/WMI never hangs the caller — this is
+ *  also invoked from the synchronous 'exit' handler, which must not block. */
 function runPowerShell(command) {
   return execFileSync(
     'powershell.exe',
@@ -320,6 +328,7 @@ function runPowerShell(command) {
       encoding: 'utf8',
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 8000,
     },
   ).trim();
 }
@@ -391,11 +400,93 @@ function getListeningPids(port) {
     const output = execSync('netstat -ano', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Bounded so a degraded network stack cannot hang the caller (this is
+      // also used from the synchronous 'exit' handler).
+      timeout: 5000,
     });
     return parseListeningPids(output, port);
   } catch {
     return [];
   }
+}
+
+/**
+ * Parse the JSON emitted by the batched Win32_Process query into a
+ * `pid -> commandLine` map. Defensive: any malformed / partial output yields an
+ * empty or partial map (callers then treat listeners as unidentified → safe).
+ * Exported for testing.
+ * @param {string} output
+ * @returns {Map<number, string>}
+ */
+export function parseCommandLineJson(output) {
+  const map = new Map();
+  if (typeof output !== 'string' || !output.trim()) return map;
+  let data;
+  try {
+    data = JSON.parse(output);
+  } catch {
+    return map;
+  }
+  const rows = Array.isArray(data) ? data : data == null ? [] : [data];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const pid = Number(row.ProcessId);
+    if (!Number.isInteger(pid) || pid <= 0) continue;
+    if (typeof row.CommandLine === 'string' && row.CommandLine) {
+      map.set(pid, row.CommandLine);
+    }
+  }
+  return map;
+}
+
+/**
+ * Fetch command lines for many PIDs in a single CIM query (instead of one
+ * PowerShell spawn per PID). PIDs are validated as positive integers before
+ * being embedded in the WQL filter, so arbitrary strings cannot be injected.
+ * Returns an empty map when PowerShell is unavailable, times out, or returns
+ * unparseable output — callers then identify nothing and kill only the owned
+ * tree (safe side).
+ * @param {number[]} pids
+ * @returns {Map<number, string>}
+ */
+function getCommandLineMap(pids) {
+  const ids = [
+    ...new Set(
+      (Array.isArray(pids) ? pids : [])
+        .map((p) => Number(p))
+        .filter((n) => Number.isInteger(n) && n > 0),
+    ),
+  ];
+  if (ids.length === 0) return new Map();
+  // Only validated integers reach the filter, so this cannot inject commands.
+  const filter = ids.map((id) => `ProcessId=${id}`).join(' OR ');
+  let output;
+  try {
+    output = runPowerShell(
+      `ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter '${filter}' | Select-Object ProcessId, CommandLine)`,
+    );
+  } catch {
+    return new Map();
+  }
+  return parseCommandLineJson(output);
+}
+
+/**
+ * Build an ownership predicate for a set of port listeners using ONE batched
+ * command-line query. The returned `(pid) => boolean` reuses the build guard's
+ * identification (web dir + `next start`), so the stop path and the guard agree
+ * on what counts as "our" WebUI. A listener that cannot be fetched/identified
+ * returns false — we never kill a process we cannot positively identify.
+ * @param {number[]} listenerPids
+ * @returns {(pid: number) => boolean}
+ */
+function makeOwnedWebListenerPredicate(listenerPids) {
+  const commandLines = getCommandLineMap(listenerPids);
+  return (pid) => {
+    const commandLine = commandLines.get(Number(pid));
+    if (!commandLine) return false;
+    return isThisWebUiNextStart(commandLine, WEB_DIR);
+  };
 }
 
 function isPortInUse(port) {
@@ -1343,9 +1434,15 @@ async function stopWebOnly() {
     webBuildProc = null;
   }
 
-  const pids = resolveKillPids({
+  // Union of the owned child and identified port listeners, so a reparented
+  // `next start` (survived a crash, outside the owned tree) is stopped too
+  // without touching an unrelated app on the port. Listeners are identified via
+  // a single batched command-line query (one PowerShell spawn, not one per PID).
+  const listeningPids = getListeningPids(WEBUI_PORT);
+  const pids = resolveWebKillPids({
     ownedPid: webProc?.pid,
-    listeningPids: getListeningPids(WEBUI_PORT),
+    listeningPids,
+    isOwnedListener: makeOwnedWebListenerPredicate(listeningPids),
   });
   for (const pid of pids) {
     expectedWebExitPids.add(pid);
@@ -1386,10 +1483,16 @@ async function stopChildren() {
   opencodeProc = null;
   await stopOpencodeProcessTree(opencodePids);
 
-  // WebUI: include listen-PID fallback so reused (webProc=null) WebUI is killed.
-  const webPids = resolveKillPids({
+  // WebUI: union of the owned child and identified port listeners. The owned
+  // PID covers listeners still in its tree; identified listeners cover a
+  // reparented `next start` that survived a crash and keeps holding the port.
+  // Unidentified listeners are never killed (protects unrelated apps). Listeners
+  // are identified via one batched command-line query.
+  const webListeningPids = getListeningPids(WEBUI_PORT);
+  const webPids = resolveWebKillPids({
     ownedPid: webProc?.pid,
-    listeningPids: getListeningPids(WEBUI_PORT),
+    listeningPids: webListeningPids,
+    isOwnedListener: makeOwnedWebListenerPredicate(webListeningPids),
   });
   const otherPids = [webBuildProc?.pid, caddyProc?.pid].filter(Boolean);
   for (const pid of webPids) {
@@ -1604,11 +1707,18 @@ async function quit() {
     clearTimeout(trayStableTimer);
     trayStableTimer = null;
   }
-  await stopChildren();
-  await closeControlServer(controlServer);
-  controlServer = null;
-  removeControlFile();
-  removeLock();
+  try {
+    await stopChildren();
+    await closeControlServer(controlServer);
+    controlServer = null;
+    removeControlFile();
+  } finally {
+    // Guarantee lock release even if shutdown throws. The 'exit' handler skips
+    // when `quitting` is true (to avoid a redundant lock removal), so quit()
+    // itself must always drop the lock — otherwise a failed quit() would leave
+    // a stale one. A rejection still propagates, preserving the exit(1) path.
+    removeLock();
+  }
   try {
     if (systray) {
       await systray.kill(false);
@@ -1617,6 +1727,55 @@ async function quit() {
     // best effort — exit regardless
   }
   process.exit(0);
+}
+
+/**
+ * Best-effort synchronous WebUI cleanup for an unexpected host exit (crash,
+ * uncaught exception, external kill). Node's 'exit' handler cannot run async
+ * work, so this only uses synchronous kills.
+ *
+ * It runs only while we still own a web child (`webProc.pid`). Once
+ * stopChildren/stopWebOnly has run it clears `webProc` (and has already killed
+ * the identified listeners); with no owned PID the resolver would fall back to
+ * unfiltered listeners, which could kill an unrelated app — so we skip instead.
+ * While `webProc` is set we stop its tree plus any port listener identified as
+ * our own `next start`, so an orphaned production WebUI does not keep holding
+ * :3000 and block the next build. Never throws.
+ */
+function stopWebTreeOnExit() {
+  if (!webProc?.pid) return;
+  try {
+    const listeningPids = getListeningPids(WEBUI_PORT);
+    const killed = stopWebTreeSync({
+      ownedPid: webProc.pid,
+      listeningPids,
+      // One batched command-line query for all listeners (not one spawn per
+      // PID); a listener that cannot be identified is left alone.
+      isOwnedListener: makeOwnedWebListenerPredicate(listeningPids),
+      hardKill: hardKillTree,
+    });
+    if (killed.length > 0) {
+      log(`Exit cleanup stopped WebUI process(es): ${killed.join(', ')}`);
+    }
+  } catch {
+    // best effort — never throw from an exit handler
+  }
+}
+
+/**
+ * 'exit' handler.
+ * - Normal quit(): `quitting` is true and quit() has already stopped the
+ *   children and removed the lock — return early so we neither re-sweep nor
+ *   double-remove the lock.
+ * - Unexpected exit (crash / uncaught exception / external kill): `quitting` is
+ *   false — best-effort synchronous WebUI sweep, then drop our lock so the next
+ *   start does not see a stale one. Children are stopped before releasing the
+ *   lock, mirroring quit()'s ordering.
+ */
+function onHostExit() {
+  if (quitting) return;
+  stopWebTreeOnExit();
+  removeLock();
 }
 
 function buildTrayMenu() {
@@ -1805,7 +1964,7 @@ async function main() {
   process.on('SIGTERM', () => {
     quit().catch(() => process.exit(1));
   });
-  process.on('exit', removeLock);
+  process.on('exit', onHostExit);
 
   try {
     await startControlServer();

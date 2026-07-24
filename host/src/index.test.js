@@ -253,3 +253,35 @@ test('parseCaddyPublicUrl treats a bare domain as auto-HTTPS', () => {
 `;
   assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://webui.example.com');
 });
+
+test('parseCommandLineJson maps a JSON array of processes', () => {
+  const map = host.parseCommandLineJson(
+    '[{"ProcessId":111,"CommandLine":"node next start"},{"ProcessId":222,"CommandLine":"other"}]',
+  );
+  assert.deepEqual(map, new Map([[111, 'node next start'], [222, 'other']]));
+});
+
+test('parseCommandLineJson accepts a single (non-array) object', () => {
+  const map = host.parseCommandLineJson('{"ProcessId":333,"CommandLine":"next start"}');
+  assert.deepEqual(map, new Map([[333, 'next start']]));
+});
+
+test('parseCommandLineJson returns an empty map for unusable output', () => {
+  // Empty/whitespace, JSON null (empty CIM result), invalid JSON, and non-string
+  // inputs all yield an empty map so callers identify nothing (safe side).
+  assert.deepEqual(host.parseCommandLineJson(''), new Map());
+  assert.deepEqual(host.parseCommandLineJson('   '), new Map());
+  assert.deepEqual(host.parseCommandLineJson('null'), new Map());
+  assert.deepEqual(host.parseCommandLineJson('not json'), new Map());
+  assert.deepEqual(host.parseCommandLineJson(null), new Map());
+  assert.deepEqual(host.parseCommandLineJson(undefined), new Map());
+});
+
+test('parseCommandLineJson skips rows with invalid PID or missing command line', () => {
+  const map = host.parseCommandLineJson(
+    '[{"ProcessId":0,"CommandLine":"x"},{"ProcessId":-1,"CommandLine":"x"},' +
+      '{"ProcessId":"abc","CommandLine":"x"},{"ProcessId":444,"CommandLine":null},' +
+      '{"ProcessId":555},{"ProcessId":666,"CommandLine":"next start"},null]',
+  );
+  assert.deepEqual(map, new Map([[666, 'next start']]));
+});
