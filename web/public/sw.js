@@ -1,7 +1,9 @@
 // OpenCode WebUI service worker: offline app shell + static asset caching.
 // Never touches /api/* (BFF proxy + SSE streams) so live data stays live.
 
-const CACHE = "opencode-webui-v3";
+// v4: favicon.ico swapped to the tray-matching blue ">_" tile; bump purges the
+// cache-first static cache so existing installs pick up the new icon.
+const CACHE = "opencode-webui-v4";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

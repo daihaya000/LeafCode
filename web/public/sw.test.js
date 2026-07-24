@@ -34,5 +34,5 @@ test("shouldCacheResponse returns false when ok is undefined", () => {
 });
 
 test("service worker uses a new cache version to discard legacy caches", () => {
-  assert.match(serviceWorker, /const CACHE = "opencode-webui-v2";/);
+  assert.match(serviceWorker, /const CACHE = "opencode-webui-v4";/);
 });

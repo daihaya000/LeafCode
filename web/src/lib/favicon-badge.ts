@@ -44,9 +44,12 @@ function ensureBadgeLink(): HTMLLinkElement {
 }
 
 /**
- * Draw a branded favicon ("C" glyph on a dark rounded square) with an optional
- * status dot, then swap it in via a dedicated <link rel="icon"> element.
- * No-op outside the browser or when canvas is unavailable.
+ * Draw a branded favicon with an optional status dot, then swap it in via a
+ * dedicated <link rel="icon"> element. The design mirrors the task-tray icon
+ * (host/src/icon.json): a blue #2563eb rounded square with a white terminal
+ * prompt glyph (">" chevron + "_" cursor). Geometry is the tray's 32px grid
+ * scaled 2x to the 64px canvas. No-op outside the browser or when canvas is
+ * unavailable.
  */
 export function applyFaviconBadge(state: NotifyState): void {
   if (typeof document === "undefined") return;
@@ -58,15 +61,27 @@ export function applyFaviconBadge(state: NotifyState): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  ctx.fillStyle = "#0b0b0c";
-  roundRect(ctx, 0, 0, size, size, 14);
+  // Tray-blue rounded square background.
+  ctx.fillStyle = "#2563eb";
+  roundRect(ctx, 0, 0, size, size, 13);
   ctx.fill();
 
-  ctx.fillStyle = "#e5e7eb";
-  ctx.font = "bold 40px ui-sans-serif, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("C", size / 2, size / 2 + 2);
+  // ">" chevron (tray: caps at (7.5,9.5)/(7.5,21.5), vertex at (14,15.5),
+  // 5px stroke on the 32px grid).
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(15, 19);
+  ctx.lineTo(28, 31);
+  ctx.lineTo(15, 43);
+  ctx.stroke();
+
+  // "_" cursor (tray: x 14-23, y 19-23 on the 32px grid).
+  ctx.fillStyle = "#ffffff";
+  roundRect(ctx, 28, 38, 18, 8, 4);
+  ctx.fill();
 
   const color = badgeColor(state);
   if (color) {
@@ -74,7 +89,7 @@ export function applyFaviconBadge(state: NotifyState): void {
     const cy = 16;
     ctx.beginPath();
     ctx.arc(cx, cy, 13, 0, Math.PI * 2);
-    ctx.fillStyle = "#0b0b0c"; // gap ring so the dot reads on any bg
+    ctx.fillStyle = "#ffffff"; // gap ring so the dot reads on the blue tile
     ctx.fill();
     ctx.beginPath();
     ctx.arc(cx, cy, 10, 0, Math.PI * 2);
