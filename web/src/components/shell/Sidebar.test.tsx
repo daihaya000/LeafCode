@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
@@ -880,6 +880,48 @@ describe("Sidebar archived section", () => {
     await screen.findByText("Archived task");
     expect(screen.getByLabelText("タスクを復元")).toBeTruthy();
     expect(screen.getByLabelText("タスクを完全に削除")).toBeTruthy();
+  });
+
+  it("groups archived tasks by project order and sorts tasks by update time then id", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            { id: "prj2", name: "Second", rootPath: "/second", favorite: false, lastOpenedAt: null },
+            { id: "prj1", name: "First", rootPath: "/first", favorite: false, lastOpenedAt: null },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [
+            { id: "z-task", projectId: "prj1", title: "Z task", updatedAt: "2026-07-18T02:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+            { id: "a-task", projectId: "prj1", title: "A task", updatedAt: "2026-07-18T02:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+            { id: "second-task", projectId: "prj2", title: "Second task", updatedAt: "2026-07-18T03:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+            { id: "unknown-task", projectId: "missing", title: "Unknown task", updatedAt: "2026-07-18T04:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    (await screen.findByRole("button", { name: "アーカイブを展開" })).click();
+
+    const groups = await screen.findAllByTestId("archived-project-group");
+    expect(groups).toHaveLength(3);
+    expect(groups.map((group) => group.firstElementChild?.firstElementChild?.textContent)).toEqual([
+      "Second",
+      "First",
+      "プロジェクトなし",
+    ]);
+    const firstTaskButtons = within(groups[1]!)
+      .getAllByRole("button")
+      .filter((button) => button.textContent?.includes("task"));
+    expect(firstTaskButtons).toHaveLength(2);
+    expect(firstTaskButtons[0]?.textContent).toContain("A task");
+    expect(firstTaskButtons[1]?.textContent).toContain("Z task");
   });
 
   it("restores an archived task", async () => {

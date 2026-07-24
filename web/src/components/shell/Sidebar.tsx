@@ -353,6 +353,33 @@ export function Sidebar({
     return map;
   }, [tasks]);
 
+  const archivedGroups = useMemo(() => {
+    const byProject = new Map<string, TaskSummary[]>();
+    for (const task of archivedTasks) {
+      const group = byProject.get(task.projectId) ?? [];
+      group.push(task);
+      byProject.set(task.projectId, group);
+    }
+    const sortTasks = (group: TaskSummary[]) =>
+      group.sort((a, b) => {
+        if (a.updatedAt !== b.updatedAt) {
+          return a.updatedAt < b.updatedAt ? 1 : -1;
+        }
+        return a.id.localeCompare(b.id);
+      });
+    const groups = projects.flatMap((project) => {
+      const group = byProject.get(project.id);
+      if (!group) return [];
+      byProject.delete(project.id);
+      return [{ name: project.name, tasks: sortTasks(group) }];
+    });
+    const unassigned = [...byProject.values()].flat();
+    if (unassigned.length > 0) {
+      groups.push({ name: "プロジェクトなし", tasks: sortTasks(unassigned) });
+    }
+    return groups;
+  }, [archivedTasks, projects]);
+
   const orphanCount = tasks.filter((t) => t.status === "orphaned").length;
 
   const toggleProject = (id: string) => {
@@ -837,9 +864,18 @@ export function Sidebar({
                   アーカイブされたタスクはありません
                 </li>
               ) : (
-                archivedTasks.map((task) => (
-                  <li key={task.id}>
-                    <div className="flex items-start gap-0.5 rounded-lg text-muted hover:bg-surface-2 hover:text-text">
+                archivedGroups.map((group) => (
+                  <li key={group.name} data-testid="archived-project-group">
+                    <div className="flex items-center justify-between px-2 py-1 text-[11px] font-medium text-muted">
+                      <span className="truncate">{group.name}</span>
+                      <span className="tabular-nums text-[10px] text-muted">
+                        {group.tasks.length}
+                      </span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {group.tasks.map((task) => (
+                        <li key={task.id}>
+                          <div className="flex items-start gap-0.5 rounded-lg text-muted hover:bg-surface-2 hover:text-text">
                       <button
                         type="button"
                         onClick={() => nav(`/task/${task.id}`)}
@@ -886,7 +922,10 @@ export function Sidebar({
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
-                    </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))
               )}
