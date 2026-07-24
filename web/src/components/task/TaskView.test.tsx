@@ -22,6 +22,7 @@ const {
   setActiveScope,
   copyText,
   diffPaneRefreshKeys,
+  sessionActionsCompact,
 } = vi.hoisted(() => ({
   getJson: vi.fn(),
   notifyTasksChanged: vi.fn(),
@@ -32,6 +33,7 @@ const {
   setActiveScope: vi.fn(),
   copyText: vi.fn(),
   diffPaneRefreshKeys: [] as number[],
+  sessionActionsCompact: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -101,7 +103,7 @@ vi.mock("./SessionActions", () => ({
   useSessionActions: () => ({
     busy: null,
     error: null,
-    compact: () => {},
+    compact: sessionActionsCompact,
     revert: () => {},
     unrevert: () => {},
   }),
@@ -249,6 +251,25 @@ describe("TaskView", () => {
     const [menu] = menus;
     expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
     expect(menu.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("calls compact from the mobile kebab menu", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    fireEvent.click(screen.getByLabelText("メニューを開く"));
+    const menu = screen.getByRole("menu", { name: "タスクその他操作" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "コンテキスト圧縮" }));
+
+    expect(sessionActionsCompact).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes the header cost while the current task is working", async () => {
