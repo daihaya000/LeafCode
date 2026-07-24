@@ -89,6 +89,20 @@ describe("Sidebar", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it("exposes the mobile drawer with id=mobile-nav when open", async () => {
+    render(<Sidebar mobileOpen onClose={vi.fn()} />);
+
+    const drawer = document.getElementById("mobile-nav");
+    expect(drawer).toBeTruthy();
+    expect(drawer?.getAttribute("role")).toBe("dialog");
+    expect(drawer?.getAttribute("aria-modal")).toBe("true");
+  });
+
+  it("does not render the mobile drawer when closed", async () => {
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    expect(document.getElementById("mobile-nav")).toBeNull();
+  });
+
   it("shows the session's cumulative cost at the end of the branch row", async () => {
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {

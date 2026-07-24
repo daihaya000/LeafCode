@@ -1014,6 +1014,7 @@ export function Sidebar({
           />
           <aside
             ref={mobileDrawerRef}
+            id="mobile-nav"
             role="dialog"
             aria-modal="true"
             aria-label="ナビゲーション"

@@ -72,6 +72,11 @@ vi.mock("@/lib/useSlashCommands", () => ({
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellExtras: () => ({ setExtras }),
   useShellSetActiveScope: () => setActiveScope,
+  useShellMobileNav: () => ({
+    mobileNavOpen: false,
+    openMobileNav: vi.fn(),
+    closeMobileNav: vi.fn(),
+  }),
 }));
 
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
@@ -211,6 +216,15 @@ describe("TaskView", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.clearAllMocks();
+  });
+
+  it("renders a mobile menu button that controls the nav drawer", async () => {
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const menu = screen.getByLabelText("メニュー");
+    expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("refreshes the header cost while the current task is working", async () => {

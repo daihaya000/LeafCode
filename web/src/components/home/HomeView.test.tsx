@@ -24,6 +24,13 @@ vi.mock("@/lib/access-mode", () => ({
   writeAccessMode: vi.fn(),
 }));
 vi.mock("@/lib/default-model", () => ({ readDefaultModel: () => "" }));
+vi.mock("@/components/shell/ShellContext", () => ({
+  useShellMobileNav: () => ({
+    mobileNavOpen: false,
+    openMobileNav: vi.fn(),
+    closeMobileNav: vi.fn(),
+  }),
+}));
 
 describe("HomeView image attachments", () => {
   beforeEach(() => {
@@ -60,6 +67,13 @@ describe("HomeView image attachments", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  it("keeps a mobile nav menu entry that controls the drawer", async () => {
+    render(<HomeView />);
+    const menu = await screen.findByLabelText("メニュー");
+    expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("submits an image selected without a text prompt", async () => {

@@ -19,6 +19,9 @@ type ShellContextValue = {
   setExtras: (next: ShellExtras) => void;
   activeScope: AttentionScope | null;
   setActiveScope: (scope: AttentionScope | null) => void;
+  mobileNavOpen: boolean;
+  openMobileNav: () => void;
+  closeMobileNav: () => void;
 };
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -26,12 +29,31 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 export function ShellProvider({ children }: { children: React.ReactNode }) {
   const [extras, setExtrasState] = useState<ShellExtras>({});
   const [activeScope, setActiveScope] = useState<AttentionScope | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const setExtras = useCallback((next: ShellExtras) => {
     setExtrasState(next);
   }, []);
+  const openMobileNav = useCallback(() => setMobileNavOpen(true), []);
+  const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
   const value = useMemo(
-    () => ({ extras, setExtras, activeScope, setActiveScope }),
-    [extras, activeScope, setActiveScope],
+    () => ({
+      extras,
+      setExtras,
+      activeScope,
+      setActiveScope,
+      mobileNavOpen,
+      openMobileNav,
+      closeMobileNav,
+    }),
+    [
+      extras,
+      setExtras,
+      activeScope,
+      setActiveScope,
+      mobileNavOpen,
+      openMobileNav,
+      closeMobileNav,
+    ],
   );
   return (
     <ShellContext.Provider value={value}>{children}</ShellContext.Provider>
@@ -54,4 +76,15 @@ export function useShellSetActiveScope() {
   const ctx = useContext(ShellContext);
   if (!ctx) throw new Error("useShellSetActiveScope requires ShellProvider");
   return ctx.setActiveScope;
+}
+
+/** Mobile navigation drawer open/close API. */
+export function useShellMobileNav() {
+  const ctx = useContext(ShellContext);
+  if (!ctx) throw new Error("useShellMobileNav requires ShellProvider");
+  return {
+    mobileNavOpen: ctx.mobileNavOpen,
+    openMobileNav: ctx.openMobileNav,
+    closeMobileNav: ctx.closeMobileNav,
+  };
 }

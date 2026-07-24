@@ -28,6 +28,7 @@ import {
   type ModelOption,
 } from "@/lib/model-options";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
+import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
@@ -458,7 +459,9 @@ export function SettingsView() {
   ];
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="flex h-full flex-col">
+      <MobileMenuHeader />
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto max-w-3xl px-4">
           <div className="flex h-14 items-center">
@@ -953,6 +956,7 @@ export function SettingsView() {
 
         {activeTab === "agents" && <AgentsSettings />}
       </main>
+      </div>
     </div>
   );
 }

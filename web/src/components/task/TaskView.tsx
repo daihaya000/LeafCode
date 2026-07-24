@@ -44,6 +44,8 @@ import {
   useShellSetActiveScope,
 } from "@/components/shell/ShellContext";
 import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
+import { MobileMenuButton } from "@/components/shell/MobileMenuButton";
+import { AttentionBadge } from "@/components/shell/AttentionBadge";
 import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
 import {
   readAccessMode,
@@ -1641,7 +1643,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
+      <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border bg-surface px-3 pt-[env(safe-area-inset-top)]">
+        <MobileMenuButton className="-ml-1" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
@@ -1717,6 +1720,10 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
+        {/* Mobile-only global attention entry (desktop shows it in sidebar). */}
+        <span className="md:hidden">
+          <AttentionBadge />
+        </span>
         {/* Right toolbar: outer wrapper (overflow visible) keeps the kebab
             popup from being clipped. Inner scroll container holds only
             Zone A / Zone B so horizontal scroll is limited to those ops. */}

@@ -2,11 +2,12 @@
 
 import { Bell } from "lucide-react";
 import { Badge } from "@/components/ui";
-import { useGlobalAttention } from "./GlobalAttentionProvider";
+import { useOptionalGlobalAttention } from "./GlobalAttentionProvider";
 
 export function AttentionBadge() {
-  const { items, openNext } = useGlobalAttention();
-  if (items.length === 0) return null;
+  const ctx = useOptionalGlobalAttention();
+  if (!ctx || ctx.items.length === 0) return null;
+  const { items, openNext } = ctx;
   return (
     <button
       type="button"

@@ -35,6 +35,14 @@ vi.mock("@/components/addons/AddonSettings", () => ({
   AddonSettings: () => <div data-testid="addon-settings">addons</div>,
 }));
 
+vi.mock("@/components/shell/ShellContext", () => ({
+  useShellMobileNav: () => ({
+    mobileNavOpen: false,
+    openMobileNav: vi.fn(),
+    closeMobileNav: vi.fn(),
+  }),
+}));
+
 type OrphansPayload = {
   orphans: { id: string; displayName: string; absolutePath: string }[];
   stray: { projectId: string; projectName: string; path: string }[];
@@ -149,6 +157,13 @@ describe("SettingsView", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  it("keeps a mobile nav menu entry that controls the drawer", async () => {
+    render(<SettingsView />);
+    const menu = await screen.findByLabelText("メニュー");
+    expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("shows the 全般 tab by default and hides other tabs' content", async () => {
