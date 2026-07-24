@@ -490,3 +490,62 @@ describe("GET provider/config responses", () => {
     fetchMock.mockRestore();
   });
 });
+
+describe("upstream timeout handling", () => {
+  it("gives synchronous session.command a long-running timeout", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((_input, init) => {
+        capturedSignal = (init as RequestInit | undefined)?.signal ?? undefined;
+        return Promise.resolve(jsonResponse({ ok: true }));
+      });
+
+    const response = await sessionPost("command", {
+      command: "loop",
+      arguments: "2m",
+    });
+
+    expect(response.status).toBe(200);
+    // A signal must be attached (not the bare SSE no-timeout path) and it must
+    // not be already aborted at fetch time.
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal?.aborted).toBe(false);
+    fetchMock.mockRestore();
+  });
+
+  it("converts an AbortSignal.timeout DOMException to a friendly 408", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      );
+
+    const response = await sessionPost("command", {
+      command: "loop",
+      arguments: "2m",
+    });
+
+    expect(response.status).toBe(408);
+    const body = (await response.json()) as { error: string; detail?: string };
+    expect(body.error).toMatch(/タイムアウト/);
+    expect(body.error).not.toContain("The operation was aborted");
+    fetchMock.mockRestore();
+  });
+
+  it("still reports non-timeout upstream failures as 503", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const response = await sessionPost("command", {
+      command: "loop",
+      arguments: "2m",
+    });
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("OpenCode engine unavailable");
+    fetchMock.mockRestore();
+  });
+});

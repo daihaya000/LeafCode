@@ -16,6 +16,24 @@ import {
 /** Upstream JSON/proxy timeout; SSE paths omit this so streams stay open. */
 const UPSTREAM_TIMEOUT_MS = 90_000;
 
+/**
+ * Synchronous mutations (session.command / session.prompt) block until the
+ * engine finishes running the command, which can far exceed the default proxy
+ * timeout (e.g. `/loop 2m`). Give them room up to maxDuration so a legitimately
+ * long-running command is not aborted mid-flight. Kept just under maxDuration
+ * (300s) so the abort—not the platform—produces the response.
+ */
+const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
+
+/** Match the synchronous, completion-blocking mutation endpoints. */
+function isLongRunningSyncMutation(method: string, pathname: string): boolean {
+  if (method !== "POST") return false;
+  return (
+    /^\/session\/[^/]+\/command$/.test(pathname) ||
+    /^\/session\/[^/]+\/prompt$/.test(pathname)
+  );
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -360,19 +378,40 @@ async function proxy(
     }
     const wantsSse =
       pathname === "/event" || pathname === "/global/event";
+    const upstreamTimeoutMs = isLongRunningSyncMutation(req.method, pathname)
+      ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
+      : UPSTREAM_TIMEOUT_MS;
     const init: RequestInit = {
       method: req.method,
       headers,
       redirect: "manual",
       cache: "no-store",
       // Long-lived SSE must not inherit a request timeout.
-      ...(wantsSse ? {} : { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) }),
+      ...(wantsSse ? {} : { signal: AbortSignal.timeout(upstreamTimeoutMs) }),
     };
     if (req.method !== "GET" && req.method !== "HEAD") {
       init.body = requestBody;
     }
     upstream = await fetch(target, init);
   } catch (err) {
+    // `AbortSignal.timeout` rejects with a DOMException whose raw message is
+    // "The operation was aborted due to timeout" — unhelpful when surfaced to
+    // the user. Convert it to a clear 408 so long commands report a real
+    // timeout instead of a generic engine failure.
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      const seconds = Math.round(
+        (isLongRunningSyncMutation(req.method, pathname)
+          ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
+          : UPSTREAM_TIMEOUT_MS) / 1000,
+      );
+      return NextResponse.json(
+        {
+          error: `コマンドが${seconds}秒でタイムアウトしました`,
+          detail: "OpenCode engine did not respond within the timeout",
+        },
+        { status: 408 },
+      );
+    }
     const message = err instanceof Error ? err.message : "upstream unreachable";
     return NextResponse.json(
       { error: "OpenCode engine unavailable", detail: message },
