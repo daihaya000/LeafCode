@@ -102,7 +102,7 @@ export function GlobalAttentionProvider({
   const openRef = useRef(open);
   openRef.current = open;
   const autoOpenedRef = useRef(false);
-  const previousItemCountRef = useRef(0);
+  const previousItemIdsRef = useRef<Set<string>>(new Set());
 
   const setOpen = useCallback((next: boolean) => {
     if (!next) autoOpenedRef.current = true;
@@ -237,13 +237,21 @@ export function GlobalAttentionProvider({
 
   // Auto-open for new queue items. While the user is editing, defer until focus leaves.
   useEffect(() => {
-    const previousItemCount = previousItemCountRef.current;
-    previousItemCountRef.current = items.length;
+    // Track previous item IDs to detect new arrivals even when count stays same
+    // (e.g., 1 resolved + 1 arrived simultaneously)
+    const previousIds = previousItemIdsRef.current;
+    const currentIds = new Set(items.map((item) => item.request.id));
+    previousItemIdsRef.current = currentIds;
+
     if (items.length === 0) {
       autoOpenedRef.current = false;
       return;
     }
-    if (items.length > previousItemCount) autoOpenedRef.current = false;
+
+    // Check if any new IDs appeared (not just count increase)
+    const hasNewItems = items.some((item) => !previousIds.has(item.request.id));
+    if (hasNewItems) autoOpenedRef.current = false;
+
     if (autoOpenedRef.current) return;
 
     const hasEditingFocus = () => {

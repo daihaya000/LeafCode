@@ -53,8 +53,9 @@ type AgentResponse = {
 // The composer requests these read endpoints before it sends a follow-up.
 // Keep only their capability/model metadata so this write proxy can enforce the
 // same fail-closed decision without forwarding an unsupported prompt first.
-let cachedProviders: ProviderResponse | undefined;
-let cachedAgents: AgentResponse | undefined;
+// Cache per directory to avoid cross-project contamination in multi-project setups.
+const cachedProvidersByDir = new Map<string, ProviderResponse>();
+const cachedAgentsByDir = new Map<string, AgentResponse>();
 
 function containsImagePart(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
@@ -99,11 +100,13 @@ function modelFromRequest(body: Record<string, unknown>):
     : undefined;
 }
 
-function supportsImageInput(body: unknown): boolean {
+function supportsImageInput(directory: string | null, body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const request = body as Record<string, unknown>;
   let model = modelFromRequest(request);
   const agent = request.agent;
+  const cachedAgents = directory ? cachedAgentsByDir.get(directory) : undefined;
+  const cachedProviders = directory ? cachedProvidersByDir.get(directory) : undefined;
   if (typeof agent === "string" && agent.trim()) {
     const configuredAgent = cachedAgents?.find(({ name }) => name === agent.trim());
     const agentModel = configuredAgent?.model;
@@ -129,17 +132,19 @@ function supportsImageInput(body: unknown): boolean {
 }
 
 async function cacheCapabilityMetadata(
+  directory: string | null,
   pathname: string,
   upstream: Response,
 ): Promise<void> {
+  if (!directory) return; // Cannot cache without directory key
   if (!upstream.ok || !upstream.headers.get("content-type")?.includes("application/json")) {
     return;
   }
   try {
     const payload = await upstream.clone().json();
-    if (pathname === "/provider") cachedProviders = payload as ProviderResponse;
+    if (pathname === "/provider") cachedProvidersByDir.set(directory, payload as ProviderResponse);
     if (pathname === "/agent" && Array.isArray(payload)) {
-      cachedAgents = payload as AgentResponse;
+      cachedAgentsByDir.set(directory, payload as AgentResponse);
     }
   } catch {
     // A malformed metadata response leaves the cache unavailable, which is
@@ -256,7 +261,7 @@ async function proxy(
             (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
               /^\/session\/[^/]+\/command$/.test(pathname)) &&
             containsImagePart(body) &&
-            !supportsImageInput(body)
+            !supportsImageInput(directory, body)
           ) {
             return NextResponse.json(
               { error: "image input is not supported by the selected model" },
@@ -292,7 +297,7 @@ async function proxy(
 
   const contentType = upstream.headers.get("content-type") ?? "";
   if (req.method === "GET" && (pathname === "/provider" || pathname === "/agent")) {
-    await cacheCapabilityMetadata(pathname, upstream);
+    await cacheCapabilityMetadata(directory, pathname, upstream);
   }
   const isSse =
     contentType.includes("text/event-stream") ||

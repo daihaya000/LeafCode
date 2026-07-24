@@ -356,6 +356,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const connectionRef = useRef<ConnectionState>(state.connection);
   /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
   const preferRestStatusRef = useRef(false);
+  /** Track safety net timers to clear on unmount/session change */
+  const safetyNetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
   statusRef.current = state.status;
@@ -365,7 +367,21 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     dispatch({ kind: "reset", scopeKey });
     pendingMutationRef.current = false;
     preferRestStatusRef.current = false;
+    // Clear safety net timer on session change to prevent cross-session resync
+    if (safetyNetTimerRef.current) {
+      clearTimeout(safetyNetTimerRef.current);
+      safetyNetTimerRef.current = null;
+    }
   }, [scopeKey]);
+
+  // Cleanup safety net timer on unmount
+  useEffect(() => {
+    return () => {
+      if (safetyNetTimerRef.current) {
+        clearTimeout(safetyNetTimerRef.current);
+      }
+    };
+  }, []);
 
   const resync = useCallback(async () => {
     const sid = sessionRef.current;
@@ -1212,7 +1228,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         throw err;
       }
       // safety net: events normally arrive first, resync fills any gap
-      setTimeout(() => void resync(), 800);
+      // Clear any existing timer and track the new one for cleanup
+      if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
+      safetyNetTimerRef.current = setTimeout(() => {
+        safetyNetTimerRef.current = null;
+        void resync();
+      }, 800);
     },
     [directory, resync],
   );
@@ -1262,7 +1283,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         dispatch({ kind: "status", status: { type: "idle" } });
         throw err;
       }
-      setTimeout(() => void resync(), 800);
+      // safety net: events normally arrive first, resync fills any gap
+      // Clear any existing timer and track the new one for cleanup
+      if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
+      safetyNetTimerRef.current = setTimeout(() => {
+        safetyNetTimerRef.current = null;
+        void resync();
+      }, 800);
     },
     [directory, resync],
   );

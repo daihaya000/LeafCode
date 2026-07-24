@@ -147,7 +147,8 @@ describe("POST session image capability validation", () => {
         }),
       )
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
-    await GET(new Request("http://localhost/api/opencode/provider") as never, {
+    // Cache is now per-directory, so include directory in the GET request
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
     fetchMock.mockClear();
@@ -188,10 +189,11 @@ describe("POST session image capability validation", () => {
         ]),
       );
     });
-    await GET(new Request("http://localhost/api/opencode/provider") as never, {
+    // Cache is now per-directory, so include directory in the GET requests
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
-    await GET(new Request("http://localhost/api/opencode/agent") as never, {
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo") as never, {
       params: Promise.resolve({ path: ["agent"] }),
     });
     fetchMock.mockClear();
