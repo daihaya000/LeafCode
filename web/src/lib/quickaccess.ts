@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -68,7 +68,6 @@ elseif (@($out).Count -eq 1) { Write-Output ('[' + ($out | ConvertTo-Json -Compr
 else { $out | ConvertTo-Json -Compress }
 `;
     
-    const { execSync } = require('child_process');
     const result = execSync(`powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -Command "${script.replace(/"/g, '\\"')}"`, {
       encoding: 'utf8',
       timeout: POWERSHELL_TIMEOUT_MS,
