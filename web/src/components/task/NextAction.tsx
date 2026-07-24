@@ -67,12 +67,12 @@ export function NextAction({
       );
       setState({ kind: "success", suggestion: res.suggestion });
     } catch (err) {
+      console.warn("[NextAction] generate failed", err);
       setState({
         kind: "error",
-        message:
-          err instanceof Error
-            ? err.message
-            : "提案の生成に失敗しました。",
+        // Never surface raw server messages — always show the fixed
+        // Japanese string per spec 5.2.
+        message: "提案の生成に失敗しました。",
       });
     }
   }, [taskId, sessionId, model, agent]);
@@ -131,7 +131,7 @@ export function NextAction({
   return (
     <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2">
       <p className="text-xs font-medium text-muted">次の指示</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm text-fg">
+      <p className="mt-1 whitespace-pre-wrap text-sm text-text">
         {state.suggestion}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
