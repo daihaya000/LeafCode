@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { Sparkles, Loader2, RefreshCw, ArrowDownToLine } from "lucide-react";
-import { Button, Spinner } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { sendJson } from "@/lib/client";
 
 type NextActionState =

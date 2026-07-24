@@ -172,7 +172,7 @@ export async function POST(req: NextRequest, context: Ctx) {
       try {
         await ocServer(dir, `/session/${tempId}`, { method: "DELETE" });
       } catch (err) {
-        // eslint-disable-next-line no-console
+        // Log but do not fail a successful suggestion.
         console.warn(
           "[next-action] failed to delete temp session",
           err instanceof Error ? err.message : "unknown",
