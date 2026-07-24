@@ -15,6 +15,7 @@ type SectionStatus = "loading" | "ready" | "error";
 function useExtensionSection<T extends { id: string }>(url: string, key: string) {
   const [status, setStatus] = useState<SectionStatus>("loading");
   const [items, setItems] = useState<T[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -23,9 +24,10 @@ function useExtensionSection<T extends { id: string }>(url: string, key: string)
     setStatus("loading");
     setError(null);
     try {
-      const data = await getJson<Record<string, T[]>>(url);
+      const data = await getJson<Record<string, unknown>>(url);
       const list = data[key];
-      setItems(Array.isArray(list) ? list : []);
+      setItems(Array.isArray(list) ? (list as T[]) : []);
+      setTruncated(data.truncated === true);
       setStatus("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "取得に失敗しました");
@@ -56,7 +58,7 @@ function useExtensionSection<T extends { id: string }>(url: string, key: string)
     [load],
   );
 
-  return { status, items, error, busyId, actionError, load, toggle };
+  return { status, items, truncated, error, busyId, actionError, load, toggle };
 }
 
 function useHostStatus() {
@@ -99,7 +101,7 @@ function ExtensionSwitch({
       disabled={busy}
       onClick={onToggle}
       className={cx(
-        "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-40",
+        "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
         enabled ? "bg-primary" : "bg-surface-3",
       )}
     >
@@ -117,6 +119,7 @@ function SectionShell({
   headingId,
   title,
   hint,
+  notice,
   status,
   error,
   actionError,
@@ -128,6 +131,7 @@ function SectionShell({
   headingId: string;
   title: string;
   hint: string;
+  notice?: string;
   status: SectionStatus;
   error: string | null;
   actionError: string | null;
@@ -142,6 +146,7 @@ function SectionShell({
         {title}
       </h2>
       <p className="mb-3 text-xs text-faint">{hint}</p>
+      {notice && <p className="mb-3 text-xs text-warning">{notice}</p>}
       {actionError && (
         <p role="alert" className="mb-2 text-xs text-danger">
           {actionError}
@@ -292,7 +297,7 @@ export function ExtensionsSettings() {
             >
               OpenCode を再起動
             </Button>
-            {hostOk !== true && (
+            {hostOk === false && (
               <span className="text-xs text-faint">
                 トレイホスト（start-webui.bat）経由で再起動する必要があります。
               </span>
@@ -310,6 +315,11 @@ export function ExtensionsSettings() {
         headingId="extensions-skills"
         title="Skills"
         hint="グローバル設定（~/.config/opencode）のスキルを一覧しています。"
+        notice={
+          skills.truncated
+            ? "スキル数が表示上限を超えたため、一部を一覧から省略しました。"
+            : undefined
+        }
         status={skills.status}
         error={skills.error}
         actionError={skills.actionError}

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parse } from "jsonc-parser";
 
 const h = vi.hoisted(() => ({ ocServer: vi.fn() }));
 
@@ -203,5 +204,25 @@ describe("setMcpEnabled", () => {
     await expect(setMcpEnabled("a\x00b", false)).rejects.toMatchObject({
       code: "invalid-name",
     });
+  });
+
+  it("keeps both changes when two toggles run concurrently", async () => {
+    await Promise.all([
+      setMcpEnabled("blender", false),
+      setMcpEnabled("github", false),
+    ]);
+
+    const out = fs.readFileSync(path.join(base, "opencode.jsonc"), "utf8");
+    expect(parse(out)).toMatchObject({
+      mcp: {
+        blender: { enabled: false },
+        github: { enabled: false },
+        legacy: { enabled: false },
+      },
+    });
+    // Neither update clobbered the other's surroundings.
+    expect(out).toContain("// top comment");
+    expect(out).toContain("// local server comment");
+    expect(out).toContain('"model": "openai/gpt-5.6-terra"');
   });
 });

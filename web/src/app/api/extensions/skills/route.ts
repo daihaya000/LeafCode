@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return NextResponse.json({ skills: await listSkills() });
+    const { skills, truncated } = await listSkills();
+    return NextResponse.json({ skills, truncated });
   } catch (err) {
     return extensionsErrorResponse(err, "スキル一覧を取得できません");
   }

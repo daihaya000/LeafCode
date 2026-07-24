@@ -55,13 +55,20 @@ const PLUGINS = [
   { id: "local:x.js", name: "x.js", kind: "local", enabled: true },
 ];
 
-function mockGetJson(overrides?: { skillsFail?: boolean; emptySkills?: boolean }) {
+function mockGetJson(overrides?: {
+  skillsFail?: boolean;
+  emptySkills?: boolean;
+  skillsTruncated?: boolean;
+}) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/extensions/skills") {
       if (overrides?.skillsFail) {
         return Promise.reject(new Error("スキル一覧を取得できません"));
       }
-      return Promise.resolve({ skills: overrides?.emptySkills ? [] : SKILLS });
+      return Promise.resolve({
+        skills: overrides?.emptySkills ? [] : SKILLS,
+        truncated: overrides?.skillsTruncated === true,
+      });
     }
     if (path === "/api/extensions/mcp") {
       return Promise.resolve({ servers: SERVERS });
@@ -98,6 +105,20 @@ function mockFetch(hostOk: boolean) {
   );
 }
 
+/** Host check never settles → hostOk stays null (unconfirmed). */
+function mockFetchPendingHost() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/host")) {
+        return new Promise<Response>(() => {});
+      }
+      return new Response("{}", { status: 404 });
+    }),
+  );
+}
+
 beforeEach(() => {
   getJson.mockReset();
   sendJson.mockReset();
@@ -122,6 +143,10 @@ describe("ExtensionsSettings", () => {
 
     const alphaSwitch = screen.getByRole("switch", { name: "alpha を無効化" });
     expect(alphaSwitch.getAttribute("aria-checked")).toBe("true");
+    // Keyboard focus is visible (focus-visible ring, matching other controls).
+    expect(alphaSwitch.className).toContain("focus-visible:outline-2");
+    expect(alphaSwitch.className).toContain("focus-visible:outline-offset-1");
+    expect(alphaSwitch.className).toContain("focus-visible:outline-primary");
     const betaSwitch = screen.getByRole("switch", { name: "beta を有効化" });
     expect(betaSwitch.getAttribute("aria-checked")).toBe("false");
 
@@ -220,6 +245,31 @@ describe("ExtensionsSettings", () => {
     await waitFor(() => expect(restart).toHaveProperty("disabled", true));
     expect(
       screen.getByText(/トレイホスト（start-webui\.bat）経由で再起動する/),
+    ).toBeTruthy();
+  });
+
+  it("withholds the tray-host hint while the host check is still pending", async () => {
+    mockFetchPendingHost();
+    render(<ExtensionsSettings />);
+    fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
+
+    const restart = await screen.findByRole("button", {
+      name: "OpenCode を再起動",
+    });
+    // Unconfirmed (hostOk=null): the button stays disabled, but the
+    // "use the tray host" hint is not shown — it is only for confirmed
+    // host unavailability.
+    await waitFor(() => expect(restart).toHaveProperty("disabled", true));
+    expect(
+      screen.queryByText(/トレイホスト（start-webui\.bat）経由で再起動する/),
+    ).toBeNull();
+  });
+
+  it("shows a notice when the skills listing was truncated", async () => {
+    mockGetJson({ skillsTruncated: true });
+    render(<ExtensionsSettings />);
+    expect(
+      await screen.findByText(/スキル数が表示上限を超えたため、一部を一覧から省略しました。/),
     ).toBeTruthy();
   });
 

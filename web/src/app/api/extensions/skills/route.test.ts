@@ -49,7 +49,9 @@ describe("GET /api/extensions/skills", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       skills: { id: string; name: string; description?: string; enabled: boolean; toggleable: boolean }[];
+      truncated: boolean;
     };
+    expect(body.truncated).toBe(false);
     expect(
       body.skills.map(({ id, enabled, toggleable }) => ({ id, enabled, toggleable })),
     ).toEqual([
@@ -62,6 +64,6 @@ describe("GET /api/extensions/skills", () => {
   it("returns an empty list when no skill directories exist", async () => {
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ skills: [] });
+    expect(await res.json()).toEqual({ skills: [], truncated: false });
   });
 });

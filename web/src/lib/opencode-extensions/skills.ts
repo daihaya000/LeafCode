@@ -16,6 +16,30 @@ const FRONTMATTER_READ_BYTES = 8192;
 const DESCRIPTION_MAX = 300;
 
 /**
+ * Bounds for the recursive skills scan. A huge or pathological skills tree
+ * (accidentally vendored hierarchies etc.) must not produce an unbounded
+ * listing or unbounded I/O: when either bound is hit the scan stops early
+ * and the result is flagged as truncated — a predictable, safe cutoff.
+ */
+export type SkillScanLimits = {
+  /** Maximum number of skills collected per root. */
+  maxSkills: number;
+  /** Maximum number of directories inspected while walking. */
+  maxScanDirs: number;
+};
+
+export const DEFAULT_SKILL_SCAN_LIMITS: SkillScanLimits = {
+  maxSkills: 512,
+  maxScanDirs: 4096,
+};
+
+export type SkillListResult = {
+  skills: SkillDto[];
+  /** True when a scan bound was hit and the listing may be incomplete. */
+  truncated: boolean;
+};
+
+/**
  * Extract `description` from SKILL.md frontmatter. Handles plain values,
  * quoted values, and block scalars (`>`, `|` and their chomping variants).
  * Not a full YAML parser — just enough for skill metadata.
@@ -78,14 +102,24 @@ async function isFile(p: string): Promise<boolean> {
   }
 }
 
+/** Per-root scan progress: directories inspected and whether a bound was hit. */
+type ScanState = { dirs: number; truncated: boolean };
+
 async function walkForSkills(
   root: string,
   dir: string,
   enabled: boolean,
   out: SkillDto[],
   depth: number,
+  scan: ScanState,
+  limits: SkillScanLimits,
 ): Promise<void> {
-  if (depth > MAX_DEPTH) return;
+  if (depth > MAX_DEPTH || scan.truncated) return;
+  scan.dirs += 1;
+  if (scan.dirs > limits.maxScanDirs) {
+    scan.truncated = true;
+    return;
+  }
   let entries: fs.Dirent[];
   try {
     entries = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -93,10 +127,15 @@ async function walkForSkills(
     return; // Missing root (e.g. no skills-disabled yet) → no skills.
   }
   for (const entry of entries) {
+    if (scan.truncated) return;
     if (!entry.isDirectory()) continue;
     if (SKIP_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
     const dirPath = path.join(dir, entry.name);
     if (await isFile(path.join(dirPath, "SKILL.md"))) {
+      if (out.length >= limits.maxSkills) {
+        scan.truncated = true;
+        return;
+      }
       // Only direct children of the root can be moved safely; nested skills
       // are view-only (their id is the relative path).
       const direct = path.dirname(dirPath) === root;
@@ -108,7 +147,7 @@ async function walkForSkills(
         toggleable: direct,
       });
     }
-    await walkForSkills(root, dirPath, enabled, out, depth + 1);
+    await walkForSkills(root, dirPath, enabled, out, depth + 1, scan, limits);
   }
 }
 
@@ -139,14 +178,18 @@ async function fetchEngineSkillDescriptions(): Promise<Map<string, string>> {
   return map;
 }
 
-export async function listSkills(): Promise<SkillDto[]> {
+export async function listSkills(
+  limits: SkillScanLimits = DEFAULT_SKILL_SCAN_LIMITS,
+): Promise<SkillListResult> {
   const resolvedEnabled = path.resolve(skillsDir());
   const resolvedDisabled = path.resolve(skillsDisabledDir());
   const enabled: SkillDto[] = [];
   const disabled: SkillDto[] = [];
+  const enabledScan: ScanState = { dirs: 0, truncated: false };
+  const disabledScan: ScanState = { dirs: 0, truncated: false };
   await Promise.all([
-    walkForSkills(resolvedEnabled, resolvedEnabled, true, enabled, 0),
-    walkForSkills(resolvedDisabled, resolvedDisabled, false, disabled, 0),
+    walkForSkills(resolvedEnabled, resolvedEnabled, true, enabled, 0, enabledScan, limits),
+    walkForSkills(resolvedDisabled, resolvedDisabled, false, disabled, 0, disabledScan, limits),
   ]);
   const engineDescriptions = await fetchEngineSkillDescriptions();
   const all = [...enabled, ...disabled];
@@ -154,7 +197,10 @@ export async function listSkills(): Promise<SkillDto[]> {
     const fromEngine = engineDescriptions.get(skill.name);
     if (fromEngine) skill.description = fromEngine;
   }
-  return all.sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    skills: all.sort((a, b) => a.name.localeCompare(b.name)),
+    truncated: enabledScan.truncated || disabledScan.truncated,
+  };
 }
 
 /**

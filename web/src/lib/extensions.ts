@@ -54,6 +54,10 @@ export type PluginDto = {
   managedByWebui?: boolean;
 };
 
-export type SkillListResponse = { skills: SkillDto[] };
+export type SkillListResponse = {
+  skills: SkillDto[];
+  /** True when the recursive scan hit its entry bound and may be incomplete. */
+  truncated: boolean;
+};
 export type McpListResponse = { servers: McpDto[] };
 export type PluginListResponse = { plugins: PluginDto[] };

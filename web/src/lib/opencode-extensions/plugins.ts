@@ -90,14 +90,26 @@ function isValidStateEntry(entry: unknown): entry is StateEntry {
 }
 
 function readStateFile(): StateFile {
+  let raw: string;
   try {
-    const raw = fs.readFileSync(extensionsStatePath(), "utf8");
+    raw = fs.readFileSync(extensionsStatePath(), "utf8");
+  } catch (err) {
+    // Absence is normal (first run); anything else is worth diagnosing.
+    // Either way the caller falls back to "nothing disabled" — the config
+    // file remains the source of truth, so this never blocks the listing.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn("[extensions] 拡張機能の状態ファイルを読み込めません", err);
+    }
+    return { disabledPlugins: [] };
+  }
+  try {
     const parsed = JSON.parse(raw) as { disabledPlugins?: unknown };
     const list = Array.isArray(parsed.disabledPlugins)
       ? parsed.disabledPlugins.filter(isValidStateEntry)
       : [];
     return { disabledPlugins: list };
-  } catch {
+  } catch (err) {
+    console.warn("[extensions] 拡張機能の状態ファイルが壊れているため無視します", err);
     return { disabledPlugins: [] };
   }
 }
@@ -143,21 +155,41 @@ function toConfiguredDto(
   return dto;
 }
 
-export async function listPlugins(): Promise<PluginDto[]> {
-  const content = readConfigContent(opencodeConfigFilePath());
-  const configured = getPluginArray(content) ?? [];
-  let state = readStateFile();
+/**
+ * Read config and state under the process lock and prune stale disabled
+ * records. The config file is the source of truth: if a "disabled" entry's
+ * value is present in the config again (manually re-added), drop the record.
+ *
+ * The read-modify-write of the state file must run inside the same lock as
+ * the toggles: a disable transiently writes the state record *before* the
+ * config removal, so a listing that read the config before the lock could
+ * see "record + value still in config", misread it as a manual re-add, and
+ * overwrite the fresh record (lost update). Under the lock the prune only
+ * ever observes a config/state pair consistent at some lock boundary.
+ */
+async function loadConfiguredSnapshot(): Promise<{
+  configured: unknown[];
+  state: StateFile;
+}> {
+  return withConfigLock(async () => {
+    const content = readConfigContent(opencodeConfigFilePath());
+    const configured = getPluginArray(content) ?? [];
+    const state = readStateFile();
+    const configHashes = new Set(configured.map((v) => valueHash(v)));
+    const pruned = state.disabledPlugins.filter(
+      (e) => !configHashes.has(valueHash(e.value)),
+    );
+    if (pruned.length === state.disabledPlugins.length) {
+      return { configured, state };
+    }
+    const next: StateFile = { disabledPlugins: pruned };
+    await writeStateFile(next);
+    return { configured, state: next };
+  });
+}
 
-  // The config file is the source of truth: if a "disabled" entry's value is
-  // present in the config again (manually re-added), drop the stale record.
-  const configHashes = new Set(configured.map((v) => valueHash(v)));
-  const pruned = state.disabledPlugins.filter(
-    (e) => !configHashes.has(valueHash(e.value)),
-  );
-  if (pruned.length !== state.disabledPlugins.length) {
-    state = { disabledPlugins: pruned };
-    await writeStateFile(state);
-  }
+export async function listPlugins(): Promise<PluginDto[]> {
+  const { configured, state } = await loadConfiguredSnapshot();
 
   const result: PluginDto[] = [];
   configured.forEach((value, index) => {

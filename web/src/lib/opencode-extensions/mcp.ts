@@ -1,11 +1,10 @@
 import { ocServer } from "../oc-server";
 import type { McpDto, McpRuntimeStatus } from "../extensions";
 import {
-  atomicWriteFile,
   parseJsoncConfig,
   readConfigContent,
   setMcpEnabledInContent,
-  withConfigLock,
+  updateConfigFile,
 } from "./jsonc-edit";
 import { opencodeConfigFilePath } from "./paths";
 import { ExtensionsError } from "./safe-move";
@@ -159,20 +158,17 @@ function assertValidMcpName(name: unknown): asserts name is string {
 }
 
 /**
- * Flip only `mcp[name].enabled` in the global config. Runs under the
- * process-wide config lock and re-reads the file before writing so
- * concurrent toggles cannot clobber each other.
+ * Flip only `mcp[name].enabled` in the global config. `updateConfigFile`
+ * guarantees the re-read → minimal JSONC edit → atomic write cycle runs
+ * inside the process-wide config lock, so concurrent toggles cannot
+ * clobber each other with a stale read.
  */
 export async function setMcpEnabled(
   name: string,
   enabled: boolean,
 ): Promise<void> {
   assertValidMcpName(name);
-  await withConfigLock(async () => {
-    const filePath = opencodeConfigFilePath();
-    const content = readConfigContent(filePath);
-    const next = setMcpEnabledInContent(content, name, enabled);
-    if (next === content) return;
-    await atomicWriteFile(filePath, next);
-  });
+  await updateConfigFile(opencodeConfigFilePath(), (content) =>
+    setMcpEnabledInContent(content, name, enabled),
+  );
 }

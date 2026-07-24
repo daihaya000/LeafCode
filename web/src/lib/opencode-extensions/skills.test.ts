@@ -16,7 +16,12 @@ vi.mock("@/lib/oc-server", () => ({
   },
 }));
 
-import { listSkills, parseFrontmatterDescription, setSkillEnabled } from "./skills";
+import {
+  DEFAULT_SKILL_SCAN_LIMITS,
+  listSkills,
+  parseFrontmatterDescription,
+  setSkillEnabled,
+} from "./skills";
 
 let base: string;
 
@@ -84,7 +89,8 @@ describe("listSkills", () => {
     makeSkill("skills", "alpha", "---\ndescription: Alpha skill\n---\n");
     makeSkill("skills-disabled", "beta", "---\ndescription: Beta skill\n---\n");
 
-    const skills = await listSkills();
+    const { skills, truncated } = await listSkills();
+    expect(truncated).toBe(false);
     expect(skills).toEqual([
       {
         id: "alpha",
@@ -104,7 +110,7 @@ describe("listSkills", () => {
   });
 
   it("returns an empty list when neither directory exists", async () => {
-    expect(await listSkills()).toEqual([]);
+    expect(await listSkills()).toEqual({ skills: [], truncated: false });
   });
 
   it("ignores directories without SKILL.md and stray files", async () => {
@@ -112,7 +118,7 @@ describe("listSkills", () => {
     fs.writeFileSync(path.join(base, "skills", "README.md"), "readme");
     makeSkill("skills", "real", "---\nname: real\n---\n");
 
-    const skills = await listSkills();
+    const { skills } = await listSkills();
     expect(skills.map((s) => s.name)).toEqual(["real"]);
   });
 
@@ -120,7 +126,7 @@ describe("listSkills", () => {
     makeSkill("skills", "group", "---\nname: group\n---\n");
     makeSkill(path.join("skills", "group"), "inner", "---\nname: inner\n---\n");
 
-    const skills = await listSkills();
+    const { skills } = await listSkills();
     const inner = skills.find((s) => s.name === "inner");
     expect(inner).toMatchObject({
       id: "group/inner",
@@ -135,15 +141,57 @@ describe("listSkills", () => {
       { name: "alpha", description: "From engine", content: "SHOULD NOT LEAK" },
     ]);
 
-    const skills = await listSkills();
+    const { skills } = await listSkills();
     expect(skills[0].description).toBe("From engine");
     expect(JSON.stringify(skills)).not.toContain("SHOULD NOT LEAK");
   });
 
   it("keeps frontmatter descriptions when the engine is unavailable", async () => {
     makeSkill("skills", "alpha", "---\ndescription: From file\n---\n");
-    const skills = await listSkills();
+    const { skills } = await listSkills();
     expect(skills[0].description).toBe("From file");
+  });
+});
+
+describe("listing bounds", () => {
+  it("stops collecting at maxSkills and reports truncation", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      makeSkill("skills", `skill-${i}`, "---\nname: x\n---\n");
+    }
+
+    const { skills, truncated } = await listSkills({
+      maxSkills: 3,
+      maxScanDirs: 100,
+    });
+    expect(skills).toHaveLength(3);
+    expect(truncated).toBe(true);
+  });
+
+  it("stops walking at maxScanDirs and reports truncation", async () => {
+    for (let i = 0; i < 10; i += 1) {
+      fs.mkdirSync(path.join(base, "skills", `dir-${i}`), { recursive: true });
+    }
+    makeSkill("skills", "real", "---\nname: real\n---\n");
+
+    // Root + 3 children = 4 inspected dirs; the 5th hits the bound.
+    const { truncated } = await listSkills({ maxSkills: 100, maxScanDirs: 4 });
+    expect(truncated).toBe(true);
+  });
+
+  it("reports truncated=false when within the bounds", async () => {
+    makeSkill("skills", "alpha", "---\nname: alpha\n---\n");
+    const result = await listSkills({ maxSkills: 10, maxScanDirs: 10 });
+    expect(result).toEqual({
+      skills: [
+        expect.objectContaining({ id: "alpha", enabled: true }),
+      ],
+      truncated: false,
+    });
+  });
+
+  it("exports positive default bounds", () => {
+    expect(DEFAULT_SKILL_SCAN_LIMITS.maxSkills).toBeGreaterThan(0);
+    expect(DEFAULT_SKILL_SCAN_LIMITS.maxScanDirs).toBeGreaterThan(0);
   });
 });
 

@@ -4,12 +4,36 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse } from "jsonc-parser";
 
-const h = vi.hoisted(() => ({ dataDir: "" }));
+const h = vi.hoisted(() => ({
+  dataDir: "",
+  /** Gate to hold a config write mid-transaction (state written, config pending). */
+  hold: {
+    active: false,
+    reached: null as (() => void) | null,
+    release: null as (() => void) | null,
+  },
+}));
 
 vi.mock("@/lib/paths", () => ({
   dataDir: () => h.dataDir,
   ensureDataDir: () => undefined,
 }));
+
+vi.mock("./jsonc-edit", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("./jsonc-edit")>();
+  return {
+    ...orig,
+    atomicWriteFile: async (filePath: string, content: string) => {
+      if (h.hold.active && filePath.endsWith("opencode.jsonc")) {
+        h.hold.reached?.();
+        await new Promise<void>((resolve) => {
+          h.hold.release = resolve;
+        });
+      }
+      return orig.atomicWriteFile(filePath, content);
+    },
+  };
+});
 
 import { listPlugins, setPluginEnabled } from "./plugins";
 
@@ -52,6 +76,9 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.OPENCODE_CONFIG_DIR;
+  h.hold.active = false;
+  h.hold.reached = null;
+  h.hold.release = null;
   fs.rmSync(base, { recursive: true, force: true });
   fs.rmSync(data, { recursive: true, force: true });
 });
@@ -85,6 +112,19 @@ describe("listPlugins", () => {
       { id: "local:cursor-acp.js", name: "cursor-acp.js", kind: "local", enabled: true },
       { id: "local:old.ts", name: "old.ts", kind: "local", enabled: false },
     ]);
+  });
+
+  it("diagnoses a corrupt state file and falls back to empty state", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      fs.writeFileSync(statePath(), "{ corrupted");
+      const plugins = await listPlugins();
+      // The listing still works; configured plugins come from the config.
+      expect(plugins.filter((p) => p.kind === "config")).toHaveLength(3);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("shows disabled configured plugins as WebUI-managed", async () => {
@@ -232,6 +272,55 @@ describe("configured plugin toggles", () => {
     await expect(
       setPluginEnabled("config:0000000000000000.0", true),
     ).rejects.toMatchObject({ code: "not-found" });
+  });
+});
+
+describe("concurrent operations", () => {
+  it("serializes concurrent disables of different plugins without losing either", async () => {
+    const plugins = await listPlugins();
+    const a = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
+    const b = plugins.find((p) => p.name === "@bybrawe/opencode-loop@latest")!;
+
+    await Promise.all([
+      setPluginEnabled(a.id, false),
+      setPluginEnabled(b.id, false),
+    ]);
+
+    expect(readConfig().plugin).toEqual([["opencode-bar", { token: "s3cret" }]]);
+    expect(readState().disabledPlugins.map((e) => e.value).sort()).toEqual([
+      "@bybrawe/opencode-loop@latest",
+      "opencode-claude-auth@latest",
+    ]);
+  });
+
+  it("a concurrent listing cannot drop an in-flight disable record", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
+
+    // Hold the disable mid-transaction: its state record is written but the
+    // config removal is still pending — the exact window where a listing
+    // with a stale pre-lock config read used to prune the fresh record.
+    h.hold.active = true;
+    const reached = new Promise<void>((resolve) => {
+      h.hold.reached = resolve;
+    });
+    const disable = setPluginEnabled(target.id, false);
+    await reached;
+
+    // Must serialize behind the in-flight disable, never observing the
+    // transient "record + value still in config" state.
+    const listing = listPlugins();
+
+    h.hold.release?.();
+    h.hold.active = false;
+    await Promise.all([disable, listing]);
+
+    expect(readState().disabledPlugins).toHaveLength(1);
+    expect(readConfig().plugin).toHaveLength(2);
+    const after = await listPlugins();
+    expect(
+      after.find((p) => p.name === "opencode-claude-auth@latest"),
+    ).toMatchObject({ enabled: false, managedByWebui: true });
   });
 });
 

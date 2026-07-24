@@ -14,6 +14,12 @@ import { ExtensionsError } from "./safe-move";
  * In-process serialization for global config updates. Concurrent toggles
  * (two browser tabs) must not overwrite each other: every mutation runs
  * inside this chain and re-reads the file under the lock.
+ *
+ * Single-file config mutations must use `updateConfigFile`, which enforces
+ * the "re-read → minimal JSONC edit → atomic write" cycle inside the lock.
+ * `withConfigLock` is only for transactions that span the config file and
+ * the extension state file (configured plugin toggles); those must perform
+ * every read inside the locked section as well.
  */
 let configLockChain: Promise<unknown> = Promise.resolve();
 
@@ -24,6 +30,25 @@ export function withConfigLock<T>(fn: () => Promise<T>): Promise<T> {
     () => undefined,
   );
   return run;
+}
+
+/**
+ * Atomic read-modify-write of a config file under the process lock:
+ * re-read the file fresh, apply `mutate` (a minimal JSONC text edit that
+ * preserves comments and formatting), and write back atomically only when
+ * the content actually changed. Reading before the lock is impossible by
+ * construction, so concurrent updates cannot clobber each other.
+ */
+export async function updateConfigFile(
+  filePath: string,
+  mutate: (content: string) => string,
+): Promise<void> {
+  await withConfigLock(async () => {
+    const content = readConfigContent(filePath);
+    const next = mutate(content);
+    if (next === content) return;
+    await atomicWriteFile(filePath, next);
+  });
 }
 
 export function readConfigContent(filePath: string): string {

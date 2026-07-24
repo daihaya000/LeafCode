@@ -12,6 +12,7 @@ import {
   readConfigContent,
   removePluginEntryInContent,
   setMcpEnabledInContent,
+  updateConfigFile,
   withConfigLock,
 } from "./jsonc-edit";
 
@@ -227,6 +228,57 @@ describe("atomicWriteFile", () => {
     const target = path.join(base, "deep", "dir", "f.json");
     await atomicWriteFile(target, "{}");
     expect(fs.existsSync(target)).toBe(true);
+  });
+});
+
+describe("updateConfigFile", () => {
+  let base: string;
+  beforeEach(() => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), "jsonc-update-"));
+  });
+  afterEach(() => {
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it("re-reads, applies the minimal edit and writes atomically", async () => {
+    const target = path.join(base, "opencode.jsonc");
+    fs.writeFileSync(target, SAMPLE);
+
+    await updateConfigFile(target, (content) =>
+      setMcpEnabledInContent(content, "blender", false),
+    );
+
+    const out = fs.readFileSync(target, "utf8");
+    expect(parse(out)).toMatchObject({
+      mcp: { blender: { enabled: false }, "off-server": { enabled: false } },
+    });
+    expect(out).toContain("// Requires uvx on PATH.");
+    expect(out).toContain("// NOTE: local plugins are auto-loaded");
+  });
+
+  it("does not write when the mutation leaves the content unchanged", async () => {
+    const target = path.join(base, "opencode.jsonc");
+    fs.writeFileSync(target, SAMPLE);
+    const before = fs.statSync(target).mtimeMs;
+
+    await updateConfigFile(target, (content) => content);
+
+    expect(fs.readFileSync(target, "utf8")).toBe(SAMPLE);
+    expect(fs.statSync(target).mtimeMs).toBe(before);
+  });
+
+  it("applies concurrent updates on fresh content without losing either", async () => {
+    const target = path.join(base, "opencode.jsonc");
+    fs.writeFileSync(target, SAMPLE);
+
+    await Promise.all([
+      updateConfigFile(target, (c) => setMcpEnabledInContent(c, "blender", false)),
+      updateConfigFile(target, (c) => setMcpEnabledInContent(c, "off-server", true)),
+    ]);
+
+    expect(parse(fs.readFileSync(target, "utf8"))).toMatchObject({
+      mcp: { blender: { enabled: false }, "off-server": { enabled: true } },
+    });
   });
 });
 
