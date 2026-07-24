@@ -5103,3 +5103,26 @@ popup繧単ortal/fixed縺ｫ縺吶ｋ繧医ｊ縲√け繝ｪ繝・・縺吶ｋ�
 ### 教訓
 - responsiveな初期開閉状態はCSSによる非表示ではなく、状態を初期化する入力条件をviewportごとに分ける。ユーザーが手動で開いた後の状態は維持する。
 
+---
+
+## 2026-07-24 プローブ由来の一時差分・成果物のクリーンアップ
+
+### やったこと
+- ワーキングツリーの未コミット差分を内容・差分・改行属性から分類し、意味単位に切り分けた。
+- プローブ（調査/検証）由来の一時成果物を除去した:
+  - `config.json` の `small_model: "probe/xyz"` を revert（`git restore`）。プローブ用の偽 provider/model 値で、実在しない設定だったため。
+  - 未追跡の API/エージェントダンプ4件を削除: `agent_list.json`（208KB, エージェント一覧ダンプ）, `build_model.json`（52B, build エージェントの model 探査結果 `{"name":"build","model":null}`）, `provider_nodirectory.json` / `provider_withdirectory.json`（各4.3MB, provider/model 一覧ダンプ）。
+  - `_perm_probe.txt` は既に存在せず（GONE 確認）。
+- config.json は revert 後に `node -e JSON.parse` で構文確認し、opencode スキーマ整合（トップキー `agent`/`$schema`、`agent.build.permission.task: deny`）を確認。
+- 直近の正規コミット `7baa4c2`（画像入力フォールバック）・`878a470`（サブエージェント不許可のセッション権限ブロック）は amend/revert せず保全。
+
+### 判断理由
+- `small_model` は有効な opencode 設定キーだが、値 `provider/model-id` 形式であるべきところ `probe/xyz` は実在 provider でないプレースホルダ。`_perm_probe.txt` や provider/agent ダンプ群と同じ調査セッションの残骸と判断し、コミットせず revert した。
+- ダンプ4件はいずれも API レスポンス/探査結果の生ダンプでプロジェクト成果物ではなく、リポジトリに残すと肥大化・秘匿情報混入リスクになるため削除した。
+- 他の M 表示ファイル（`MEMORY.md`, `host/src/index.js`, `web/src/**` 7件）は `git diff --ignore-cr-at-eol` で差分ゼロ = LF→CRLF の改行のみのノイズ（OneDrive/並列セッション由来）で実内容変更なし。並列セッションの作業領域を尊重し、内容変更のないこれらは触らず（stage/commit せず）残した。
+
+### 教訓
+- `git status` が M でも `git diff` が空なら改行/stat のみの差分を疑う。`git diff --ignore-cr-at-eol` と `git ls-files --eol` で LF/CRLF を切り分けると、OneDrive や並列セッション由来のノイズを実変更と誤認しない。
+- `probe`/`xyz` のような明らかなプレースホルダ値は、キー自体が有効でもコミット前に「値が実在するか」まで検証する。構文 OK ＝ 設定として正しい、ではない。
+- 未追跡の大きな JSON ダンプは調査用一時ファイルの典型。意味単位分類では「追跡有無」「内容の性質（成果物 vs ダンプ）」「由来（プローブ vs 実装）」を分けて判定する。
+
