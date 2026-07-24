@@ -1339,9 +1339,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const refreshTodos = useCallback(async () => {
     const sid = sessionRef.current;
     if (!directory || !sid) return;
+    const requestedScope = `${directory}\u0000${sid}`;
     try {
       const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
-      if (sessionRef.current !== sid) return;
+      // Directory 切替と競合した in-flight 応答で古い todos を載せない。
+      if (scopeRef.current !== requestedScope || sessionRef.current !== sid) {
+        return;
+      }
       if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
     } catch {
       /* non-fatal: SSE may still deliver updates */

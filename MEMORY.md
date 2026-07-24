@@ -1,5 +1,28 @@
 ﻿# MEMORY.md — OpenCode WebUI
 
+## 2026-07-24 バグハントループ（第6回）— PermissionCard / todos / secret mask
+
+### やったこと
+2分ループ第2サイクル。第5回の残課題を消化。
+
+**修正内容:**
+1. **PermissionCard のフルアクセス** — 表示中カードが `task` 権限でも、サブエージェント不許可時は `once` ではなく `reject`。
+2. **refreshTodos の scope ガード** — `sessionId` だけでなく `directory\0sessionId` の scope 一致を確認し、高速切替時の古い todos 上書きを防止。
+3. **GET `/provider/<id>` の secret マスク漏れ** — exact match から prefix マッチへ変更（`/provider*`, `/config/*`）。
+4. **HomeView の agent 未確定時 400** — `subagentPermission` は `agent` があるときだけ送信。
+
+**変更ファイル:**
+- `web/src/components/task/PermissionCard.tsx`
+- `web/src/lib/useSessionStream.ts`
+- `web/src/app/api/opencode/[...path]/route.ts` (+ test)
+- `web/src/components/home/HomeView.tsx`
+- `web/src/components/shell/AttentionQueueModal.test.tsx`
+
+### 教訓
+- 「一括承認の前に現在カードを once」パターンは、ポリシー例外（task deny）と組み合わせると必ず穴になる。同一の `permissionAutoAction` を共有する。
+
+---
+
 ## 2026-07-24 バグハントループ（第5回）— 権限同期・画像上限・UI重複
 
 ### やったこと
@@ -19,10 +42,10 @@
 - `web/src/components/shell/AttentionQueueModal.test.tsx`
 
 ### 残課題（次ティック候補）
-- PermissionCard で「フルアクセス」選択時、現在カードの `task` 権限が先に `once` 承認される経路
-- `refreshTodos` の directory scope ガード
-- GET `/provider/<id>` の secret マスク漏れ
-- HomeView が agent 未ロード時も `subagentPermission` を送って 400 になる件
+- PermissionCard で「フルアクセス」選択時、現在カードの `task` 権限が先に `once` 承認される経路 → 第6回で修正
+- `refreshTodos` の directory scope ガード → 第6回で修正
+- GET `/provider/<id>` の secret マスク漏れ → 第6回で修正
+- HomeView が agent 未ロード時も `subagentPermission` を送って 400 になる件 → 第6回で修正
 
 ### 教訓
 - 「トグル時だけエンジンへ書く」設定は、既存セッション／別経路のセッション作成で必ず穴が開く。オープン時同期が必要。

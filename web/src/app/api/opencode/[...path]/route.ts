@@ -359,16 +359,16 @@ async function proxy(
     outHeaders.set("X-Accel-Buffering", "no");
   }
 
-  // Mask secrets on config/provider GET JSON responses
-  const MASKED_GET_PATHS = new Set([
-    "/config",
-    "/provider",
-    "/config/providers",
-    "/global/config",
-  ]);
+  // Mask secrets on config/provider GET JSON responses (exact + prefix).
+  // Exact-only matching left `/provider/<id>` unmasked (R52).
+  const shouldMaskSecrets =
+    pathname === "/config" ||
+    pathname === "/global/config" ||
+    pathname.startsWith("/provider") ||
+    pathname.startsWith("/config/");
   if (
     req.method === "GET" &&
-    MASKED_GET_PATHS.has(pathname) &&
+    shouldMaskSecrets &&
     contentType.includes("application/json")
   ) {
     const json = await upstream.json();

@@ -478,9 +478,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : {}),
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-        ...(agent ? { agent } : {}),
+        ...(agent ? { agent, subagentPermission } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
-        subagentPermission,
       });
       notifyTasksChanged();
       router.push(`/task/${data.taskId}`);

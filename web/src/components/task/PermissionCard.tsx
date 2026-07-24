@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui";
+import {
+  permissionAutoAction,
+  readSubagentPermission,
+} from "@/lib/subagent-permission";
 import type { PermissionRequest } from "@/lib/types";
 
 export function PermissionCard({
@@ -44,8 +48,14 @@ export function PermissionCard({
       setError(null);
       try {
         // Reply first so enabling full-access auto-approve cannot race a
-        // second POST for this same request id.
-        await onReply(request, "once");
+        // second POST for this same request id. Subagent deny + task は
+        // reject を優先（フルアクセス一括承認より強い）。
+        const action = permissionAutoAction({
+          permission: request.permission,
+          subagent: readSubagentPermission(),
+          fullAccess: true,
+        });
+        await onReply(request, action === "reject" ? "reject" : "once");
         onEnableFullAccess?.();
       } catch (err) {
         setError(err instanceof Error ? err.message : "応答に失敗しました");
