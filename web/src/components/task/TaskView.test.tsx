@@ -1310,4 +1310,92 @@ describe("TaskView voice input", () => {
     const micBtn = await screen.findByRole("button", { name: "音声入力" });
     expect((micBtn as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("shows NextAction when idle, loaded, with messages and no attention", async () => {
+    taskStatus = "idle";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+      visibleMessages: [
+        {
+          info: { id: "m1", role: "user" },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hello" }],
+        },
+      ],
+      loaded: true,
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
+  });
+
+  it("does not show NextAction when working", async () => {
+    taskStatus = "working";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "busy" },
+      visibleMessages: [
+        {
+          info: { id: "m1", role: "user" },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hello" }],
+        },
+      ],
+      loaded: true,
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
+  });
+
+  it("does not show NextAction when no messages", async () => {
+    taskStatus = "idle";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+      visibleMessages: [],
+      loaded: true,
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
+  });
+
+  it("does not show NextAction when attention is pending", async () => {
+    taskStatus = "idle";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+      visibleMessages: [
+        {
+          info: { id: "m1", role: "user" },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hello" }],
+        },
+      ],
+      loaded: true,
+      permissions: [
+        {
+          id: "perm-1",
+          version: "v1",
+          sessionID: "sess1",
+          permission: "bash",
+          patterns: [],
+          receivedAt: Date.now(),
+        },
+      ],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
+  });
 });

@@ -126,6 +126,7 @@ import {
   useSessionActions,
 } from "./SessionActions";
 import { SessionSwitcherDialog } from "./SessionSwitcherDialog";
+import { NextAction } from "./NextAction";
 import {
   HeaderKebabMenu,
   type KebabGroup,
@@ -844,6 +845,22 @@ export function TaskView({ taskId }: { taskId: string }) {
     streamActive || (streamStatusType === undefined && task?.status === "working");
   // Block composer while the task is known-busy even before stream.status loads.
   const working = hasActiveTask;
+  // NextAction invalidation key: changes when conversation content, revert
+  // position, or task changes — so stale suggestions are discarded.
+  const nextActionInvalidateKey = useMemo(() => {
+    const msgs = stream.visibleMessages;
+    const lastId = msgs.length > 0 ? msgs[msgs.length - 1]?.info.id ?? "" : "";
+    const revertId = stream.revert?.messageID ?? "";
+    return `${taskId}:${msgs.length}:${lastId}:${revertId}`;
+  }, [taskId, stream.visibleMessages, stream.revert]);
+  // Show NextAction only when idle, conversation loaded, no attention pending.
+  const showNextAction =
+    !!task?.sessionId &&
+    !working &&
+    stream.loaded &&
+    stream.visibleMessages.length > 0 &&
+    stream.permissions.length === 0 &&
+    stream.questions.length === 0;
   const [sending, setSending] = useState(false);
   const composerLocked = working || sending;
   const voiceDisabled = composerLocked || !task?.sessionId;
@@ -2188,6 +2205,16 @@ export function TaskView({ taskId }: { taskId: string }) {
           <div className="shrink-0 border-t border-border bg-surface px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
               <TodoPanel todos={stream.todos} forceOpen={working && isMd} />
+              {showNextAction && (
+                <NextAction
+                  taskId={taskId}
+                  sessionId={task.sessionId!}
+                  model={model || undefined}
+                  agent={agent || undefined}
+                  onApply={restoreToComposer}
+                  invalidateKey={nextActionInvalidateKey}
+                />
+              )}
               {sendError && (
                 <p
                   role="alert"
