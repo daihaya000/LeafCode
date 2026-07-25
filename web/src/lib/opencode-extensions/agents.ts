@@ -29,33 +29,101 @@ type AgentResponse = {
   model?: { providerID?: string; modelID?: string };
 }[];
 
+/**
+ * Metadata remembered for a disabled agent.
+ *
+ * A disabled agent disappears from the engine's `/agent` response, so without
+ * a snapshot the listing would only know its name — and the settings table
+ * derives Rank/role from `name` + `model` (see agent-utils.parseAgent). We
+ * therefore capture the engine metadata at disable time and replay it while
+ * the agent stays disabled.
+ */
+type AgentSnapshot = {
+  description?: string;
+  mode?: AgentDto["mode"];
+  model?: { providerID: string; modelID: string };
+};
+
 type AgentStateFile = {
-  disabled?: string[];
+  /** name → metadata snapshot captured when the agent was disabled. */
+  disabled?: Record<string, AgentSnapshot>;
 };
 
 function agentStatePath(): string {
   return path.join(dataDir(), "agent-state.json");
 }
 
+function normalizeSnapshot(value: unknown): AgentSnapshot {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const v = value as Record<string, unknown>;
+  const snapshot: AgentSnapshot = {};
+  if (typeof v.description === "string") snapshot.description = v.description;
+  if (v.mode === "subagent" || v.mode === "primary" || v.mode === "all") {
+    snapshot.mode = v.mode;
+  }
+  const model = parseModelValue(v.model);
+  if (model) snapshot.model = model;
+  return snapshot;
+}
+
 function readAgentState(): AgentStateFile {
   const filePath = agentStatePath();
+  let parsed: unknown;
   try {
-    const text = fs.readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(text) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return parsed as AgentStateFile;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+  } catch {
+    // Missing or corrupted state means "nothing remembered", which is safe.
     return {};
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  const raw = (parsed as { disabled?: unknown }).disabled;
+  const disabled: Record<string, AgentSnapshot> = {};
+  if (Array.isArray(raw)) {
+    // Legacy shape: plain array of names, no metadata.
+    for (const name of raw) {
+      if (typeof name === "string" && name) disabled[name] = {};
+    }
+  } else if (raw && typeof raw === "object") {
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (!name) continue;
+      disabled[name] = normalizeSnapshot(value);
+    }
+  }
+  return { disabled };
 }
 
 function writeAgentState(state: AgentStateFile): void {
   const filePath = agentStatePath();
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf8");
+}
+
+/**
+ * Accept both engine/state shape (`{ providerID, modelID }`) and the
+ * OpenCode config shape (`"provider/model-id"`).
+ */
+function parseModelValue(
+  value: unknown,
+): { providerID: string; modelID: string } | undefined {
+  if (typeof value === "string") {
+    const slash = value.indexOf("/");
+    if (slash > 0 && slash < value.length - 1) {
+      return {
+        providerID: value.slice(0, slash),
+        modelID: value.slice(slash + 1),
+      };
+    }
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const m = value as Record<string, unknown>;
+  const providerID = typeof m.providerID === "string" ? m.providerID : undefined;
+  const modelID = typeof m.modelID === "string" ? m.modelID : undefined;
+  return providerID && modelID ? { providerID, modelID } : undefined;
 }
 
 function readConfigAgentMap(): Record<string, unknown> {
@@ -72,9 +140,15 @@ function readConfigAgentMap(): Record<string, unknown> {
   }
 }
 
+/**
+ * Build a listing entry for an agent that only exists in `opencode.jsonc`.
+ * `snapshot` fills the gaps the config override does not carry (a disabled
+ * built-in usually only has `disable: true`), so Rank/role/model stay visible.
+ */
 function agentEntryFromConfig(
   name: string,
   entry: unknown,
+  snapshot: AgentSnapshot | undefined,
 ): AgentDto | undefined {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     return undefined;
@@ -82,28 +156,13 @@ function agentEntryFromConfig(
   const e = entry as Record<string, unknown>;
   const disabled = e.disable === true;
   const description =
-    typeof e.description === "string" ? e.description : undefined;
+    typeof e.description === "string" ? e.description : snapshot?.description;
   const modeValue = e.mode;
   const mode: AgentDto["mode"] =
     modeValue === "subagent" || modeValue === "primary" || modeValue === "all"
       ? modeValue
-      : "subagent";
-  const modelValue = e.model;
-  let model: AgentDto["model"];
-  if (
-    modelValue &&
-    typeof modelValue === "object" &&
-    !Array.isArray(modelValue)
-  ) {
-    const m = modelValue as Record<string, unknown>;
-    const providerID =
-      typeof m.providerID === "string" ? m.providerID : undefined;
-    const modelID =
-      typeof m.modelID === "string" ? m.modelID : undefined;
-    if (providerID && modelID) {
-      model = { providerID, modelID };
-    }
-  }
+      : (snapshot?.mode ?? "subagent");
+  const model = parseModelValue(e.model) ?? snapshot?.model;
   return {
     name,
     description,
@@ -147,21 +206,24 @@ export async function listAgents(): Promise<AgentDto[]> {
 
   const byName = new Map(active.map((a) => [a.name, a]));
   const agentsConfig = readConfigAgentMap();
+  const state = readAgentState();
+  const snapshots = state.disabled ?? {};
 
   for (const [name, entry] of Object.entries(agentsConfig)) {
     if (byName.has(name)) continue;
-    const dto = agentEntryFromConfig(name, entry);
+    const dto = agentEntryFromConfig(name, entry, snapshots[name]);
     if (dto && !dto.enabled) {
       byName.set(name, dto);
     }
   }
 
-  const state = readAgentState();
-  for (const name of state.disabled ?? []) {
+  for (const [name, snapshot] of Object.entries(snapshots)) {
     if (byName.has(name)) continue;
     byName.set(name, {
       name,
-      mode: "subagent",
+      description: snapshot.description,
+      mode: snapshot.mode ?? "subagent",
+      model: snapshot.model,
       enabled: false,
       toggleable: true,
     });
@@ -181,9 +243,11 @@ export async function setAgentEnabled(
   }
 
   let known = false;
+  let liveEntry: AgentResponse[number] | undefined;
   try {
     const upstream = await ocServer<AgentResponse>(null, "/agent");
-    if (upstream.some((a) => a.name === name)) known = true;
+    liveEntry = upstream.find((a) => a.name === name);
+    if (liveEntry) known = true;
   } catch {
     // Engine unavailable; rely on config/state.
   }
@@ -193,7 +257,7 @@ export async function setAgentEnabled(
   }
   if (!known) {
     const state = readAgentState();
-    if (state.disabled?.includes(name)) known = true;
+    if (state.disabled?.[name] !== undefined) known = true;
   }
   if (!known) {
     throw new ExtensionsError(
@@ -207,19 +271,37 @@ export async function setAgentEnabled(
   );
 
   const state = readAgentState();
-  const disabled = new Set(state.disabled ?? []);
+  const disabled = { ...(state.disabled ?? {}) };
   if (enabled) {
-    disabled.delete(name);
+    delete disabled[name];
   } else {
-    disabled.add(name);
+    // Remember the metadata now: once disabled the engine stops reporting the
+    // agent, and the settings table needs `model` to resolve Rank/role.
+    disabled[name] =
+      snapshotFromLive(liveEntry) ?? disabled[name] ?? snapshotFromConfig(name);
   }
-  const next = Array.from(disabled).sort();
-  if (
-    next.length !== (state.disabled ?? []).length ||
-    next.some((n, i) => n !== (state.disabled ?? [])[i])
-  ) {
-    writeAgentState({ ...state, disabled: next });
+  const sorted: Record<string, AgentSnapshot> = {};
+  for (const key of Object.keys(disabled).sort()) {
+    sorted[key] = disabled[key];
   }
+  writeAgentState({ ...state, disabled: sorted });
+}
+
+function snapshotFromLive(
+  entry: AgentResponse[number] | undefined,
+): AgentSnapshot | undefined {
+  if (!entry) return undefined;
+  return normalizeSnapshot({
+    description: entry.description,
+    mode: entry.mode,
+    model: entry.model,
+  });
+}
+
+function snapshotFromConfig(name: string): AgentSnapshot {
+  const entry = readConfigAgentMap()[name];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return {};
+  return normalizeSnapshot(entry as Record<string, unknown>);
 }
 
 function updateAgentDisable(

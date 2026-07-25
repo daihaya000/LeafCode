@@ -78,7 +78,7 @@ describe("agents extension", () => {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     expect(config.agent.build.disable).toBe(true);
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    expect(state.disabled).toContain("build");
+    expect(Object.keys(state.disabled)).toContain("build");
   });
 
   it("enables a previously disabled agent", async () => {
@@ -93,7 +93,85 @@ describe("agents extension", () => {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     expect(config.agent.build.disable).toBe(false);
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    expect(state.disabled).not.toContain("build");
+    expect(Object.keys(state.disabled)).not.toContain("build");
+  });
+
+  it("remembers metadata when disabling so rank stays resolvable", async () => {
+    const live = {
+      name: "a-critical-architect-anthropic-claude-fable-5",
+      description: "critical architect",
+      mode: "subagent" as const,
+      model: { providerID: "anthropic", modelID: "claude-fable-5" },
+    };
+    mockOcServer.mockResolvedValueOnce([live]);
+    fs.writeFileSync(configPath, "{}");
+    await setAgentEnabled(live.name, false);
+
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    expect(state.disabled[live.name]).toEqual({
+      description: "critical architect",
+      mode: "subagent",
+      model: { providerID: "anthropic", modelID: "claude-fable-5" },
+    });
+
+    // The engine stops reporting a disabled agent; the listing must still
+    // expose model/description so the table can derive Rank and role.
+    mockOcServer.mockResolvedValueOnce([]);
+    const agents = await listAgents();
+    const row = agents.find((a) => a.name === live.name);
+    expect(row).toMatchObject({
+      enabled: false,
+      description: "critical architect",
+      mode: "subagent",
+      model: { providerID: "anthropic", modelID: "claude-fable-5" },
+    });
+  });
+
+  it("fills config-only disabled entries from the snapshot", async () => {
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ agent: { "c-explore-openai-gpt-5-6-luna": { disable: true } } }),
+    );
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        disabled: {
+          "c-explore-openai-gpt-5-6-luna": {
+            description: "explorer",
+            mode: "subagent",
+            model: { providerID: "openai", modelID: "gpt-5-6-luna" },
+          },
+        },
+      }),
+    );
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === "c-explore-openai-gpt-5-6-luna")).toMatchObject({
+      enabled: false,
+      description: "explorer",
+      model: { providerID: "openai", modelID: "gpt-5-6-luna" },
+    });
+  });
+
+  it("reads config model overrides written as provider/model strings", async () => {
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        agent: {
+          "d-researcher-openai-gpt-5-5": {
+            disable: true,
+            model: "openai/gpt-5-5",
+          },
+        },
+      }),
+    );
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === "d-researcher-openai-gpt-5-5")).toMatchObject({
+      enabled: false,
+      model: { providerID: "openai", modelID: "gpt-5-5" },
+    });
   });
 
   it("rejects unknown agents", async () => {

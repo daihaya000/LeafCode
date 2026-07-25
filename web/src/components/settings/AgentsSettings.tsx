@@ -100,13 +100,15 @@ function AgentGroupTable({
               <th scope="col" className="w-1/4 px-4 py-2 font-medium">
                 エージェント
               </th>
-              <th scope="col" className="w-1/4 px-4 py-2 font-medium">
+              <th scope="col" className="w-1/5 px-4 py-2 font-medium">
                 モデル
               </th>
               <th scope="col" className="w-24 px-4 py-2 font-medium">
                 Mode
               </th>
-              <th scope="col" className="w-20 px-4 py-2 font-medium">
+              {/* Wide enough for badge + 44px switch: a narrower cell makes the
+                  switch spill into the 説明 column under table-fixed. */}
+              <th scope="col" className="w-36 px-4 py-2 font-medium">
                 状態
               </th>
               <th scope="col" className="px-4 py-2 font-medium">
@@ -148,7 +150,7 @@ function AgentGroupTable({
                     <Badge tone={modeTone(row.mode)}>{row.mode}</Badge>
                   </td>
                   <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 whitespace-nowrap">
                       <Badge tone={enabledTone(row.enabled)}>
                         {row.enabled ? "有効" : "無効"}
                       </Badge>

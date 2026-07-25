@@ -97,6 +97,35 @@ describe("AgentsSettings", () => {
     expect(screen.getAllByText("無効").length).toBeGreaterThan(0);
   });
 
+  it("keeps rank and model visible for a disabled agent", async () => {
+    stubFetch(() =>
+      new Response(
+        JSON.stringify({
+          agents: [
+            {
+              name: "a-critical-architect-anthropic-claude-fable-5",
+              mode: "subagent",
+              description: "Critical architect",
+              model: { providerID: "anthropic", modelID: "claude-fable-5" },
+              enabled: false,
+              toggleable: true,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+
+    expect(
+      screen.queryByRole("heading", { name: "その他のエージェント" }),
+    ).toBeNull();
+    expect(screen.getAllByText("critical-architect").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/claude-fable-5/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("無効").length).toBeGreaterThan(0);
+  });
+
   it("filters agents via the search box", async () => {
     render(<AgentsSettings />);
     await screen.findByRole("heading", { name: "Rank A" });
