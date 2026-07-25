@@ -61,3 +61,20 @@ export type SkillListResponse = {
 };
 export type McpListResponse = { servers: McpDto[] };
 export type PluginListResponse = { plugins: PluginDto[] };
+
+export type ProviderModelDto = {
+  id: string;
+  name: string;
+  enabled: boolean;
+};
+
+export type ProviderModelsDto = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  models: ProviderModelDto[];
+};
+
+export type ProviderModelListResponse = {
+  providers: ProviderModelsDto[];
+};

@@ -1,0 +1,159 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+const h = vi.hoisted(() => ({
+  ocServer: vi.fn(),
+  dataDir: "",
+}));
+
+vi.mock("@/lib/oc-server", () => ({
+  ocServer: h.ocServer,
+  OcError: class OcError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
+}));
+
+vi.mock("@/lib/paths", () => ({
+  dataDir: () => h.dataDir,
+  ensureDataDir: () => undefined,
+}));
+
+import { PATCH } from "./route";
+import { GET } from "../route";
+
+let data: string;
+
+function statePath(): string {
+  return path.join(data, "provider-model-state.json");
+}
+
+function readState(): { disabled: Record<string, true> } {
+  try {
+    return JSON.parse(fs.readFileSync(statePath(), "utf8"));
+  } catch {
+    return { disabled: {} };
+  }
+}
+
+function patch(key: string, body: unknown): Promise<Response> {
+  return PATCH(
+    new NextRequest(
+      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+    { params: Promise.resolve({ key }) },
+  );
+}
+
+const MOCK_PROVIDER_RESPONSE = {
+  all: [
+    {
+      id: "openai",
+      name: "OpenAI",
+      models: {
+        "gpt-5": { name: "GPT-5" },
+        "gpt-5-mini": { name: "GPT-5 Mini" },
+      },
+    },
+  ],
+  connected: ["openai"],
+  default: { provider: "openai", model: "gpt-5" },
+};
+
+beforeEach(() => {
+  data = fs.mkdtempSync(path.join(os.tmpdir(), "api-provider-models-patch-"));
+  h.dataDir = data;
+  h.ocServer.mockReset();
+  h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
+});
+
+afterEach(() => {
+  fs.rmSync(data, { recursive: true, force: true });
+});
+
+describe("PATCH /api/extensions/provider-models/[key]", () => {
+  it("disables a provider", async () => {
+    const res = await patch("openai", { enabled: false });
+    expect(res.status).toBe(200);
+    expect((await res.json())).toEqual({ ok: true });
+
+    const state = readState();
+    expect(state.disabled).toEqual({ openai: true });
+  });
+
+  it("enables a previously disabled provider", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({ disabled: { openai: true } }),
+    );
+
+    const res = await patch("openai", { enabled: true });
+    expect(res.status).toBe(200);
+
+    const state = readState();
+    expect(state.disabled).toEqual({});
+  });
+
+  it("disables a model", async () => {
+    const res = await patch("openai::gpt-5-mini", { enabled: false });
+    expect(res.status).toBe(200);
+
+    const state = readState();
+    expect(state.disabled).toEqual({ "openai::gpt-5-mini": true });
+  });
+
+  it("enables a previously disabled model", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({ disabled: { "openai::gpt-5-mini": true } }),
+    );
+
+    const res = await patch("openai::gpt-5-mini", { enabled: true });
+    expect(res.status).toBe(200);
+
+    const state = readState();
+    expect(state.disabled).toEqual({});
+  });
+
+  it("returns 400 for non-boolean enabled", async () => {
+    const res = await patch("openai", { enabled: "yes" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for missing body", async () => {
+    const res = await patch("openai", {});
+    expect(res.status).toBe(400);
+  });
+
+  it("reflects the toggle in the GET listing", async () => {
+    // Disable a model.
+    await patch("openai::gpt-5-mini", { enabled: false });
+
+    const res = await GET();
+    const body = (await res.json()) as {
+      providers: { id: string; models: { id: string; enabled: boolean }[] }[];
+    };
+    const openai = body.providers.find((p) => p.id === "openai")!;
+    const mini = openai.models.find((m) => m.id === "gpt-5-mini")!;
+    expect(mini.enabled).toBe(false);
+    const gpt5 = openai.models.find((m) => m.id === "gpt-5")!;
+    expect(gpt5.enabled).toBe(true);
+  });
+
+  it("handles URL-encoded keys", async () => {
+    const res = await patch("openai%3A%3Agpt-5-mini", { enabled: false });
+    expect(res.status).toBe(200);
+
+    const state = readState();
+    expect(state.disabled).toEqual({ "openai::gpt-5-mini": true });
+  });
+});
