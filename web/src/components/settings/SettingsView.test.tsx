@@ -54,6 +54,14 @@ type OrphansPayload = {
   stray: { projectId: string; projectName: string; path: string }[];
 };
 
+const AGENT_FIXTURE = {
+  name: "a-explorer-openai-gpt-5",
+  mode: "subagent",
+  model: { providerID: "openai", modelID: "gpt-5" },
+  enabled: true,
+  toggleable: true,
+};
+
 function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/health") {
@@ -61,6 +69,9 @@ function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
     }
     if (path === "/api/projects") return Promise.resolve({ projects: [] });
     if (path === "/api/roots") return Promise.resolve({ roots: [] });
+    if (path === "/api/extensions/agents") {
+      return Promise.resolve({ agents: [AGENT_FIXTURE] });
+    }
     if (path === "/api/workspaces/orphans") {
       return Promise.resolve(
         overrides?.orphans ?? { orphans: [], stray: [] },
@@ -109,18 +120,6 @@ function mockFetch(
           { status: 200 },
         );
       }
-      if (url.includes("/api/opencode/agent")) {
-        return new Response(
-          JSON.stringify([
-            {
-              name: "a-explorer-openai-gpt-5",
-              mode: "subagent",
-              model: { providerID: "openai", modelID: "gpt-5" },
-            },
-          ]),
-          { status: 200 },
-        );
-      }
       return new Response("{}", { status: 404 });
     }),
   );
@@ -133,6 +132,9 @@ function mockSettingsGetJson(roots: string[]) {
     }
     if (path === "/api/projects") return Promise.resolve({ projects: [] });
     if (path === "/api/roots") return Promise.resolve({ roots: [...roots] });
+    if (path === "/api/extensions/agents") {
+      return Promise.resolve({ agents: [AGENT_FIXTURE] });
+    }
     if (path === "/api/workspaces/orphans") {
       return Promise.resolve({ orphans: [], stray: [] });
     }
