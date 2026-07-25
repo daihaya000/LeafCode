@@ -53,6 +53,7 @@ function createSandbox(options = {}) {
 
   if (options.withNode !== false) {
     writeBat(join(bin, "node.cmd"), [
+      'if "%~1"=="scripts\\production-webui-build-guard.mjs" exit /b %SETUP_TEST_GUARD_EXIT%',
       'if not "%~1"=="-p" exit /b 0',
       'if exist "%SETUP_TEST_ROOT%\\node-installed" echo %SETUP_TEST_NODE_MAJOR_AFTER_INSTALL%',
       'if exist "%SETUP_TEST_ROOT%\\node-installed" exit /b 0',
@@ -103,6 +104,7 @@ function createSandbox(options = {}) {
     SETUP_TEST_NPM_WEB_BUILD_EXIT: String(options.npmWebBuildExit ?? 0),
     SETUP_TEST_NPM_HOST_CI_EXIT: String(options.npmHostCiExit ?? 0),
     SETUP_TEST_CREATE_BUILD_ID: options.createBuildId === false ? "0" : "1",
+    SETUP_TEST_GUARD_EXIT: String(options.guardExit ?? 0),
   };
   return {
     root,
@@ -218,6 +220,35 @@ test("setup.bat reaches exit /b 0 with BUILD_ID present", { skip: !isWindows }, 
     assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
     assert.match(`${result.stdout}\n${result.stderr}`, /セットアップが完了しました/);
   } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat continues when the guard stopped the running WebUI (exit 10)", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ guardExit: 10 });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "guard stopped the WebUI");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(`${result.stdout}\n${result.stderr}`, /WebUIをビルドのために停止しました/);
+    assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
+  } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat still aborts when the guard cannot free the port", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ guardExit: 1 });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "guard refused");
+    assert.equal(result.status, 6, `${result.stdout}\n${result.stderr}`);
+    assert.match(`${result.stdout}\n${result.stderr}`, /web build was cancelled/);
+    assert.equal(existsSync(join(sandbox.root, "started.txt")), false);
+  } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat passes --stop to the production WebUI guard", { skip: !isWindows }, () => {
+  const source = readFileSync(setupSource, "utf8");
+  assert.match(source, /call node scripts\\production-webui-build-guard\.mjs --stop/);
+  assert.match(source, /set "WEB_GUARD_EXIT=%ERRORLEVEL%"/);
+  assert.match(source, /if "%WEB_GUARD_EXIT%"=="10" goto :web_build_guard_stopped/);
 });
 
 test("setup.bat returns documented failures without starting a host", { skip: !isWindows }, () => {

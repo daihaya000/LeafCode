@@ -10,7 +10,15 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ### production build
 
-`build.bat`、`setup.bat`、および `npm run build` は、同じポートで本番WebUI（`next start`）が稼働中ならビルドを中止します。稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。トレイからWebUIを停止してからビルドし、完了後に `start-webui.bat` で起動してください。
+稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` と `setup.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `start-webui.bat` からの起動を案内します）。
+
+停止できない場合はビルドを中止します。
+
+- ポートのリスナーの正体を特定できない場合は、無関係なアプリを止めないため何も停止せず中止します。
+- 稼働中のトレイhostが停止エンドポイントを持たない旧バージョンの場合も中止します（強制終了してもhostが自動再起動してしまうため）。トレイからWebUIを停止するか、hostを再起動してから再実行してください。
+- トレイhostが動いていない孤立した `next start` だけは、この repo の `next start` と確認できた場合に限り強制終了します。
+
+`npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
 
 セットアップの終了コード:
 

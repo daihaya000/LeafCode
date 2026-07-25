@@ -90,10 +90,16 @@ call :fail 4 "OpenCodeの導入に失敗しました。" "OpenCode Docsを確認
 exit /b 4
 
 :install_web
-call node scripts\production-webui-build-guard.mjs
-if not errorlevel 1 goto :web_build_guard_passed
+call node scripts\production-webui-build-guard.mjs --stop
+set "WEB_GUARD_EXIT=%ERRORLEVEL%"
+if "%WEB_GUARD_EXIT%"=="0" goto :web_build_guard_passed
+if "%WEB_GUARD_EXIT%"=="10" goto :web_build_guard_stopped
 call :fail 6 "web build was cancelled to protect a running WebUI." "Stop the WebUI and run setup again."
 exit /b 6
+
+:web_build_guard_stopped
+echo [Setup] 稼働中のWebUIをビルドのために停止しました。セットアップ完了後にトレイまたは start-webui.bat から起動してください。
+goto :web_build_guard_passed
 
 :web_build_guard_passed
 pushd web

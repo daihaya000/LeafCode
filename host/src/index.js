@@ -1569,6 +1569,31 @@ async function restartWeb() {
   }
 }
 
+/**
+ * Stop the WebUI without scheduling a restart. Used by build.bat via the
+ * control plane: going through stopWebOnly() clears the restart timers and
+ * registers the PIDs in expectedWebExitPids, so the watchdog does not respawn
+ * `next start` on top of the build.
+ */
+async function stopWebForBuild() {
+  if (restartingServices) {
+    log('Service restart is already in progress');
+    throw new Error('a service restart is already in progress');
+  }
+  restartingServices = true;
+  log('Stopping WebUI on build request…');
+  try {
+    await stopWebOnly();
+    log('WebUI stopped for build');
+  } catch (err) {
+    error(`WebUI stop failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  } finally {
+    restartingServices = false;
+    await refreshStatusMenu();
+  }
+}
+
 async function restartOpencode() {
   if (restartingServices) {
     log('Service restart is already in progress');
@@ -1685,6 +1710,7 @@ async function startControlServer() {
     onRestartWebui: () => restartWeb(),
     onRestartOpencode: () => restartOpencode(),
     onRestartAll: () => restartServices(),
+    onStopWebui: () => stopWebForBuild(),
   });
   try {
     await listenControlServer(server, CONTROL_PORT);
