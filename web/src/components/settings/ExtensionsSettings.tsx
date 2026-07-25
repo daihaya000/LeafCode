@@ -399,7 +399,13 @@ function mcpStatusBadge(server: McpDto): {
   }
 }
 
-export function ExtensionsSettings() {
+export type ExtensionSection = "skills" | "mcp" | "plugins";
+
+export function ExtensionsSettings({
+  activeSection,
+}: {
+  activeSection: ExtensionSection;
+}) {
   const skills = useExtensionSection<SkillDto>("/api/extensions/skills", "skills");
   const mcp = useExtensionSection<McpDto>("/api/extensions/mcp", "servers");
   const plugins = useExtensionSection<PluginDto>(
@@ -503,153 +509,159 @@ export function ExtensionsSettings() {
         </div>
       )}
 
-      <SectionShell
-        headingId="extensions-skills"
-        title="Skills"
-        hint="グローバル設定（~/.config/opencode）のスキルを一覧しています。"
-        notice={
-          skills.truncated
-            ? "スキル数が表示上限を超えたため、一部を一覧から省略しました。"
-            : undefined
-        }
-        status={skills.status}
-        error={skills.error}
-        actionError={skills.actionError}
-        onRetry={() => void skills.load()}
-        emptyText="スキルがありません。~/.config/opencode/skills/<名前>/SKILL.md を配置するとここに表示されます。"
-        itemCount={skills.items.length}
-      >
-        {buildSkillTree(skills.items).map((node) => (
-          <SkillSubtree
-            key={node.name}
-            node={node}
-            busyId={skills.busyId}
-            onToggle={(item, enabled) =>
-              void skills
-                .toggle(
-                  item,
-                  `/api/extensions/skills/${encodeURIComponent(item.id)}`,
-                  enabled,
-                )
-                .then(onToggled)
-            }
-          />
-        ))}
-      </SectionShell>
+      {activeSection === "skills" && (
+        <SectionShell
+          headingId="extensions-skills"
+          title="Skills"
+          hint="グローバル設定（~/.config/opencode）のスキルを一覧しています。"
+          notice={
+            skills.truncated
+              ? "スキル数が表示上限を超えたため、一部を一覧から省略しました。"
+              : undefined
+          }
+          status={skills.status}
+          error={skills.error}
+          actionError={skills.actionError}
+          onRetry={() => void skills.load()}
+          emptyText="スキルがありません。~/.config/opencode/skills/<名前>/SKILL.md を配置するとここに表示されます。"
+          itemCount={skills.items.length}
+        >
+          {buildSkillTree(skills.items).map((node) => (
+            <SkillSubtree
+              key={node.name}
+              node={node}
+              busyId={skills.busyId}
+              onToggle={(item, enabled) =>
+                void skills
+                  .toggle(
+                    item,
+                    `/api/extensions/skills/${encodeURIComponent(item.id)}`,
+                    enabled,
+                  )
+                  .then(onToggled)
+              }
+            />
+          ))}
+        </SectionShell>
+      )}
 
-      <SectionShell
-        headingId="extensions-mcp"
-        title="MCP サーバー"
-        hint="opencode.jsonc の mcp 設定を一覧しています。追加・編集・認証は引き続き CLI/Desktop で行ってください。"
-        status={mcp.status}
-        error={mcp.error}
-        actionError={mcp.actionError}
-        onRetry={() => void mcp.load()}
-        emptyText={'MCP サーバーが設定されていません。~/.config/opencode/opencode.jsonc の "mcp" オブジェクトに追加してください。'}
-        itemCount={mcp.items.length}
-      >
-        {mcp.items.map((server) => {
-          const badge = mcpStatusBadge(server);
-          return (
+      {activeSection === "mcp" && (
+        <SectionShell
+          headingId="extensions-mcp"
+          title="MCP サーバー"
+          hint="opencode.jsonc の mcp 設定を一覧しています。追加・編集・認証は引き続き CLI/Desktop で行ってください。"
+          status={mcp.status}
+          error={mcp.error}
+          actionError={mcp.actionError}
+          onRetry={() => void mcp.load()}
+          emptyText={'MCP サーバーが設定されていません。~/.config/opencode/opencode.jsonc の "mcp" オブジェクトに追加してください。'}
+          itemCount={mcp.items.length}
+        >
+          {mcp.items.map((server) => {
+            const badge = mcpStatusBadge(server);
+            return (
+              <li
+                key={server.id}
+                aria-busy={mcp.busyId === server.id || undefined}
+                className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 truncate text-sm font-medium">
+                      {server.name}
+                    </p>
+                    <Badge tone={badge.tone} pulse={badge.pulse}>
+                      {badge.text}
+                    </Badge>
+                  </div>
+                  {server.detail && (
+                    <p className="mt-0.5 truncate font-mono text-xs text-faint">
+                      {server.detail}
+                    </p>
+                  )}
+                  {server.meta && (
+                    <p className="truncate font-mono text-[11px] text-faint">
+                      {server.meta}
+                    </p>
+                  )}
+                </div>
+                <ExtensionSwitch
+                  name={server.name}
+                  enabled={server.enabled}
+                  busy={mcp.busyId === server.id}
+                  onToggle={() =>
+                    void mcp
+                      .toggle(
+                        server,
+                        `/api/extensions/mcp/${encodeURIComponent(server.id)}`,
+                        !server.enabled,
+                      )
+                      .then(onToggled)
+                  }
+                />
+              </li>
+            );
+          })}
+        </SectionShell>
+      )}
+
+      {activeSection === "plugins" && (
+        <SectionShell
+          headingId="extensions-plugins"
+          title="プラグイン"
+          hint="設定済みプラグイン（opencode.jsonc）とローカル自動読込（plugin/*.js|ts）を一覧しています。"
+          status={plugins.status}
+          error={plugins.error}
+          actionError={plugins.actionError}
+          onRetry={() => void plugins.load()}
+          emptyText="プラグインがありません。opencode.jsonc の plugin 配列、または ~/.config/opencode/plugin/ への .js/.ts 配置で追加できます。"
+          itemCount={plugins.items.length}
+        >
+          {plugins.items.map((p) => (
             <li
-              key={server.id}
-              aria-busy={mcp.busyId === server.id || undefined}
+              key={p.id}
+              aria-busy={plugins.busyId === p.id || undefined}
               className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="min-w-0 truncate text-sm font-medium">
-                    {server.name}
+                  <p className="min-w-0 truncate font-mono text-sm font-medium">
+                    {p.name}
                   </p>
-                  <Badge tone={badge.tone} pulse={badge.pulse}>
-                    {badge.text}
+                  <Badge tone="neutral">
+                    {p.kind === "config" ? "設定済み" : "ローカル自動読込"}
                   </Badge>
+                  <Badge tone={p.enabled ? "success" : "neutral"}>
+                    {p.enabled ? "有効" : "無効"}
+                  </Badge>
+                  {p.hasOptions && <Badge tone="neutral">オプション付き</Badge>}
+                  {p.managedByWebui && <Badge tone="warning">WebUI 管理</Badge>}
                 </div>
-                {server.detail && (
-                  <p className="mt-0.5 truncate font-mono text-xs text-faint">
-                    {server.detail}
-                  </p>
-                )}
-                {server.meta && (
-                  <p className="truncate font-mono text-[11px] text-faint">
-                    {server.meta}
+                {p.managedByWebui && (
+                  <p className="mt-0.5 text-[11px] text-faint">
+                    無効状態は WebUI のローカル管理情報です。opencode.jsonc
+                    を手動で変更した場合は設定が優先されます。
                   </p>
                 )}
               </div>
               <ExtensionSwitch
-                name={server.name}
-                enabled={server.enabled}
-                busy={mcp.busyId === server.id}
+                name={p.name}
+                enabled={p.enabled}
+                busy={plugins.busyId === p.id}
                 onToggle={() =>
-                  void mcp
+                  void plugins
                     .toggle(
-                      server,
-                      `/api/extensions/mcp/${encodeURIComponent(server.id)}`,
-                      !server.enabled,
+                      p,
+                      `/api/extensions/plugins/${encodeURIComponent(p.id)}`,
+                      !p.enabled,
                     )
                     .then(onToggled)
                 }
               />
             </li>
-          );
-        })}
-      </SectionShell>
-
-      <SectionShell
-        headingId="extensions-plugins"
-        title="プラグイン"
-        hint="設定済みプラグイン（opencode.jsonc）とローカル自動読込（plugin/*.js|ts）を一覧しています。"
-        status={plugins.status}
-        error={plugins.error}
-        actionError={plugins.actionError}
-        onRetry={() => void plugins.load()}
-        emptyText="プラグインがありません。opencode.jsonc の plugin 配列、または ~/.config/opencode/plugin/ への .js/.ts 配置で追加できます。"
-        itemCount={plugins.items.length}
-      >
-        {plugins.items.map((p) => (
-          <li
-            key={p.id}
-            aria-busy={plugins.busyId === p.id || undefined}
-            className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="min-w-0 truncate font-mono text-sm font-medium">
-                  {p.name}
-                </p>
-                <Badge tone="neutral">
-                  {p.kind === "config" ? "設定済み" : "ローカル自動読込"}
-                </Badge>
-                <Badge tone={p.enabled ? "success" : "neutral"}>
-                  {p.enabled ? "有効" : "無効"}
-                </Badge>
-                {p.hasOptions && <Badge tone="neutral">オプション付き</Badge>}
-                {p.managedByWebui && <Badge tone="warning">WebUI 管理</Badge>}
-              </div>
-              {p.managedByWebui && (
-                <p className="mt-0.5 text-[11px] text-faint">
-                  無効状態は WebUI のローカル管理情報です。opencode.jsonc
-                  を手動で変更した場合は設定が優先されます。
-                </p>
-              )}
-            </div>
-            <ExtensionSwitch
-              name={p.name}
-              enabled={p.enabled}
-              busy={plugins.busyId === p.id}
-              onToggle={() =>
-                void plugins
-                  .toggle(
-                    p,
-                    `/api/extensions/plugins/${encodeURIComponent(p.id)}`,
-                    !p.enabled,
-                  )
-                  .then(onToggled)
-              }
-            />
-          </li>
-        ))}
-      </SectionShell>
+          ))}
+        </SectionShell>
+      )}
     </div>
   );
 }

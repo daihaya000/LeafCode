@@ -83,7 +83,9 @@ type SettingsTab =
   | "general"
   | "project"
   | "connectivity"
-  | "extensions"
+  | "skills"
+  | "mcp"
+  | "plugins"
   | "addons"
   | "agents";
 
@@ -439,7 +441,9 @@ export function SettingsView() {
       badge: requiresAttention > 0 ? requiresAttention : undefined,
     },
     { key: "connectivity", label: "接続" },
-    { key: "extensions", label: "拡張機能" },
+    { key: "skills", label: "Skills" },
+    { key: "mcp", label: "MCP" },
+    { key: "plugins", label: "プラグイン" },
     { key: "addons", label: "アドオン" },
     { key: "agents", label: "エージェント" },
   ];
@@ -917,14 +921,14 @@ export function SettingsView() {
               <h2 className="mb-3 text-sm font-semibold text-muted">MCP サーバー</h2>
               <div className="space-y-2 rounded-xl border border-border bg-surface px-4 py-3">
                 <p className="text-sm text-muted">
-                  MCP サーバーの一覧と有効/無効の切替は「拡張機能」タブで行えます。
+                  MCP サーバーの一覧と有効/無効の切替は「MCP」タブで行えます。
                 </p>
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setActiveTab("extensions")}
+                  onClick={() => setActiveTab("mcp")}
                 >
-                  拡張機能タブを開く
+                  MCPタブを開く
                 </Button>
               </div>
             </section>
@@ -938,7 +942,9 @@ export function SettingsView() {
           </>
         )}
 
-        {activeTab === "extensions" && <ExtensionsSettings />}
+        {(activeTab === "skills" ||
+          activeTab === "mcp" ||
+          activeTab === "plugins") && <ExtensionsSettings activeSection={activeTab} />}
 
         {activeTab === "addons" && (
           <section>

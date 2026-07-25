@@ -36,8 +36,8 @@ vi.mock("@/components/addons/AddonSettings", () => ({
 }));
 
 vi.mock("@/components/settings/ExtensionsSettings", () => ({
-  ExtensionsSettings: () => (
-    <div data-testid="extensions-settings">extensions</div>
+  ExtensionsSettings: ({ activeSection }: { activeSection: string }) => (
+    <div data-testid={`extensions-${activeSection}`}>{activeSection}</div>
   ),
 }));
 
@@ -448,26 +448,33 @@ describe("SettingsView", () => {
     expect(screen.getByText("C:\\repo1")).toBeTruthy();
   });
 
-  it("shows the 拡張機能 tab and renders extension management when selected", async () => {
+  it("shows the Skills, MCP and プラグイン tabs and renders the matching section", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "拡張機能" }));
-
-    expect(await screen.findByTestId("extensions-settings")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Skills" }));
+    expect(await screen.findByTestId("extensions-skills")).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "MCP" }));
+    expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
+    expect(screen.queryByTestId("extensions-skills")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "プラグイン" }));
+    expect(await screen.findByTestId("extensions-plugins")).toBeTruthy();
+    expect(screen.queryByTestId("extensions-mcp")).toBeNull();
   });
 
-  it("routes the connectivity MCP section to the extensions tab", async () => {
+  it("routes the connectivity MCP section to the MCP tab", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
     expect(
-      await screen.findByText(/一覧と有効\/無効の切替は「拡張機能」タブ/),
+      await screen.findByText(/一覧と有効\/無効の切替は「MCP」タブ/),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "拡張機能タブを開く" }));
-    expect(await screen.findByTestId("extensions-settings")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "MCPタブを開く" }));
+    expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
   });
 });

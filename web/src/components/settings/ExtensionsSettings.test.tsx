@@ -146,14 +146,14 @@ afterEach(() => {
 });
 
 describe("ExtensionsSettings", () => {
-  it("lists skills, MCP servers and plugins with accessible switches", async () => {
-    render(<ExtensionsSettings />);
+  it("lists skills with accessible switches", async () => {
+    render(<ExtensionsSettings activeSection="skills" />);
 
     expect(await screen.findByRole("heading", { name: "Skills" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "MCP サーバー" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "プラグイン" })).toBeTruthy();
 
-    const alphaSwitch = screen.getByRole("switch", { name: "alpha を無効化" });
+    const alphaSwitch = await screen.findByRole("switch", {
+      name: "alpha を無効化",
+    });
     expect(alphaSwitch.getAttribute("aria-checked")).toBe("true");
     // Keyboard focus is visible (focus-visible ring, matching other controls).
     expect(alphaSwitch.className).toContain("focus-visible:outline-2");
@@ -161,15 +161,28 @@ describe("ExtensionsSettings", () => {
     expect(alphaSwitch.className).toContain("focus-visible:outline-primary");
     const betaSwitch = screen.getByRole("switch", { name: "beta を有効化" });
     expect(betaSwitch.getAttribute("aria-checked")).toBe("false");
+  });
 
+  it("lists MCP servers with status text", async () => {
+    render(<ExtensionsSettings activeSection="mcp" />);
+
+    expect(
+      screen.getByRole("heading", { name: "MCP サーバー" }),
+    ).toBeTruthy();
     // Status is conveyed as text, not color alone.
-    expect(screen.getByText("接続中")).toBeTruthy();
-    expect(screen.getByText("設定済み")).toBeTruthy();
+    expect(await screen.findByText("接続中")).toBeTruthy();
+  });
+
+  it("lists plugins with kind badges", async () => {
+    render(<ExtensionsSettings activeSection="plugins" />);
+
+    expect(screen.getByRole("heading", { name: "プラグイン" })).toBeTruthy();
+    expect(await screen.findByText("設定済み")).toBeTruthy();
     expect(screen.getByText("ローカル自動読込")).toBeTruthy();
   });
 
   it("toggles a skill and shows a single restart banner", async () => {
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     const alphaSwitch = await screen.findByRole("switch", { name: "alpha を無効化" });
 
     fireEvent.click(alphaSwitch);
@@ -185,6 +198,24 @@ describe("ExtensionsSettings", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the restart banner across section switches", async () => {
+    const { rerender } = render(<ExtensionsSettings activeSection="skills" />);
+    fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
+    expect(
+      await screen.findByText("変更を反映するには OpenCode の再起動が必要です。"),
+    ).toBeTruthy();
+
+    rerender(<ExtensionsSettings activeSection="mcp" />);
+
+    // The banner survives the section switch (same mount, state preserved)…
+    expect(
+      screen.getByText("変更を反映するには OpenCode の再起動が必要です。"),
+    ).toBeTruthy();
+    // …and the MCP section is shown in place of the skills section.
+    expect(screen.getByRole("heading", { name: "MCP サーバー" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
+  });
+
   it("marks only the toggled row as busy", async () => {
     let resolveToggle: (() => void) | undefined;
     sendJson.mockImplementation(
@@ -194,7 +225,7 @@ describe("ExtensionsSettings", () => {
         }),
     );
 
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     const alphaSwitch = await screen.findByRole("switch", { name: "alpha を無効化" });
     const betaSwitch = screen.getByRole("switch", { name: "beta を有効化" });
 
@@ -214,7 +245,7 @@ describe("ExtensionsSettings", () => {
 
   it("shows the empty state with placement guidance", async () => {
     mockGetJson({ emptySkills: true });
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     expect(
       await screen.findByText(/skills\/<名前>\/SKILL\.md を配置すると/),
     ).toBeTruthy();
@@ -222,7 +253,7 @@ describe("ExtensionsSettings", () => {
 
   it("shows a retryable error for a failed section", async () => {
     mockGetJson({ skillsFail: true });
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("スキル一覧を取得できません");
@@ -237,7 +268,7 @@ describe("ExtensionsSettings", () => {
 
   it("shows a toggle failure inline and keeps the row", async () => {
     sendJson.mockRejectedValueOnce(new Error("移動先に同名の項目が既に存在します"));
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     expect(
@@ -248,7 +279,7 @@ describe("ExtensionsSettings", () => {
 
   it("disables the restart button with a hint when the host is unavailable", async () => {
     mockFetch(false);
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     const restart = await screen.findByRole("button", {
@@ -262,7 +293,7 @@ describe("ExtensionsSettings", () => {
 
   it("withholds the tray-host hint while the host check is still pending", async () => {
     mockFetchPendingHost();
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     const restart = await screen.findByRole("button", {
@@ -279,14 +310,14 @@ describe("ExtensionsSettings", () => {
 
   it("shows a notice when the skills listing was truncated", async () => {
     mockGetJson({ skillsTruncated: true });
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     expect(
       await screen.findByText(/スキル数が表示上限を超えたため、一部を一覧から省略しました。/),
     ).toBeTruthy();
   });
 
   it("restarts OpenCode, then clears the banner and reloads all sections", async () => {
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
     fireEvent.click(await screen.findByRole("switch", { name: "alpha を無効化" }));
 
     const restart = await screen.findByRole("button", {
@@ -332,7 +363,7 @@ describe("ExtensionsSettings", () => {
         },
       ],
     });
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
 
     // Parent skill is rendered with its normal toggle switch.
     const parentSwitch = await screen.findByRole("switch", {
@@ -382,7 +413,7 @@ describe("ExtensionsSettings", () => {
         },
       ],
     });
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
 
     // The virtual parent folder label is rendered at the top level.
     const folderLabel = await screen.findByText("reverse-skill");
@@ -436,7 +467,7 @@ describe("ExtensionsSettings", () => {
         },
       ],
     });
-    render(<ExtensionsSettings />);
+    render(<ExtensionsSettings activeSection="skills" />);
 
     const parentSwitch = await screen.findByRole("switch", {
       name: "ns を無効化",
