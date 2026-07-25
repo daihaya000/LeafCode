@@ -11,7 +11,7 @@ import {
   updateConfigFile,
   detectFormatting,
 } from "./jsonc-edit";
-import { opencodeConfigFilePath } from "./paths";
+import { agentDefinitionDirs, opencodeConfigFilePath } from "./paths";
 
 export type AgentDto = BaseAgentDto & {
   enabled: boolean;
@@ -209,16 +209,22 @@ export async function listAgents(): Promise<AgentDto[]> {
   const state = readAgentState();
   const snapshots = state.disabled ?? {};
 
+  // Precedence for a disabled agent's metadata: explicit config override, then
+  // the snapshot taken at disable time, then its definition file.
+  const recall = (name: string): AgentSnapshot =>
+    mergeSnapshots(snapshots[name], snapshotFromDefinition(name));
+
   for (const [name, entry] of Object.entries(agentsConfig)) {
     if (byName.has(name)) continue;
-    const dto = agentEntryFromConfig(name, entry, snapshots[name]);
+    const dto = agentEntryFromConfig(name, entry, recall(name));
     if (dto && !dto.enabled) {
       byName.set(name, dto);
     }
   }
 
-  for (const [name, snapshot] of Object.entries(snapshots)) {
+  for (const name of Object.keys(snapshots)) {
     if (byName.has(name)) continue;
+    const snapshot = recall(name);
     byName.set(name, {
       name,
       description: snapshot.description,
@@ -277,8 +283,12 @@ export async function setAgentEnabled(
   } else {
     // Remember the metadata now: once disabled the engine stops reporting the
     // agent, and the settings table needs `model` to resolve Rank/role.
-    disabled[name] =
-      snapshotFromLive(liveEntry) ?? disabled[name] ?? snapshotFromConfig(name);
+    disabled[name] = mergeSnapshots(
+      snapshotFromLive(liveEntry),
+      disabled[name],
+      snapshotFromConfig(name),
+      snapshotFromDefinition(name),
+    );
   }
   const sorted: Record<string, AgentSnapshot> = {};
   for (const key of Object.keys(disabled).sort()) {
@@ -302,6 +312,58 @@ function snapshotFromConfig(name: string): AgentSnapshot {
   const entry = readConfigAgentMap()[name];
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return {};
   return normalizeSnapshot(entry as Record<string, unknown>);
+}
+
+/** Agent names are used to build file paths, so keep them to a safe charset. */
+const SAFE_AGENT_NAME = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * Read `description` / `mode` / `model` from an agent definition markdown's
+ * frontmatter. This is the recovery path for agents that were disabled before
+ * snapshots existed (or whose state file was cleared): the engine no longer
+ * reports them, but their definition file still carries the metadata the
+ * settings table needs to resolve Rank/role.
+ *
+ * Deliberately minimal — the three keys are single-line scalars in agent files.
+ */
+function snapshotFromDefinition(name: string): AgentSnapshot | undefined {
+  if (!SAFE_AGENT_NAME.test(name)) return undefined;
+  for (const dir of agentDefinitionDirs()) {
+    let text: string;
+    try {
+      text = fs.readFileSync(path.join(dir, `${name}.md`), "utf8");
+    } catch {
+      continue;
+    }
+    const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+    if (!block) continue;
+    const found: Record<string, string> = {};
+    for (const line of block[1].split(/\r?\n/)) {
+      const kv = /^(description|mode|model)\s*:\s*(.*)$/.exec(line);
+      if (!kv) continue;
+      const value = kv[2].trim().replace(/^["']|["']$/g, "").trim();
+      if (value && found[kv[1]] === undefined) found[kv[1]] = value;
+    }
+    const snapshot = normalizeSnapshot(found);
+    if (snapshot.description || snapshot.mode || snapshot.model) {
+      return snapshot;
+    }
+  }
+  return undefined;
+}
+
+/** Merge snapshots by preferring the earlier (higher-precedence) source. */
+function mergeSnapshots(
+  ...sources: (AgentSnapshot | undefined)[]
+): AgentSnapshot {
+  const merged: AgentSnapshot = {};
+  for (const source of sources) {
+    if (!source) continue;
+    merged.description ??= source.description;
+    merged.mode ??= source.mode;
+    merged.model ??= source.model;
+  }
+  return merged;
 }
 
 function updateAgentDisable(

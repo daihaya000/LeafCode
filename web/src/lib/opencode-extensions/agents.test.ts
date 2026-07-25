@@ -154,6 +154,72 @@ describe("agents extension", () => {
     });
   });
 
+  it("recovers metadata from the agent definition file", async () => {
+    // Agents disabled before snapshots existed only have `disable: true`, so
+    // the definition file is the only remaining source of Rank/role metadata.
+    const name = "a-critical-architect-openai-gpt-5-6-sol";
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ agent: { [name]: { disable: true } } }),
+    );
+    fs.mkdirSync(path.join(base, "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, "agents", `${name}.md`),
+      [
+        "---",
+        "description: Critical architect subagent",
+        "mode: subagent",
+        "model: openai/gpt-5.6-sol",
+        "temperature: 0.1",
+        "---",
+        "# body",
+      ].join("\n"),
+    );
+
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === name)).toMatchObject({
+      enabled: false,
+      description: "Critical architect subagent",
+      mode: "subagent",
+      model: { providerID: "openai", modelID: "gpt-5.6-sol" },
+    });
+  });
+
+  it("prefers the stored snapshot over the definition file", async () => {
+    const name = "c-explore-openai-gpt-5-6-luna";
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(configPath, "{}");
+    fs.mkdirSync(path.join(base, "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, "agents", `${name}.md`),
+      "---\ndescription: from definition\nmode: subagent\n---\n",
+    );
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ disabled: { [name]: { description: "from snapshot" } } }),
+    );
+
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === name)?.description).toBe(
+      "from snapshot",
+    );
+  });
+
+  it("ignores definition lookups for unsafe agent names", async () => {
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ agent: { "../escape": { disable: true } } }),
+    );
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === "../escape")).toMatchObject({
+      enabled: false,
+      model: undefined,
+    });
+  });
+
   it("reads config model overrides written as provider/model strings", async () => {
     mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
     fs.writeFileSync(

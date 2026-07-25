@@ -32,6 +32,16 @@ export function pluginDisabledDir(): string {
 }
 
 /**
+ * Directories holding agent definition markdown files, in lookup order.
+ * OpenCode reads `agent/`; this config repo uses the plural `agents/`, so both
+ * are probed.
+ */
+export function agentDefinitionDirs(): string[] {
+  const dir = opencodeConfigDir();
+  return [path.join(dir, "agents"), path.join(dir, "agent")];
+}
+
+/**
  * Global config file path, preferring `opencode.jsonc`.
  * Returns the `.json` path when neither exists so callers can raise a
  * consistent "not found" error on read.
