@@ -786,16 +786,23 @@ export function Sidebar({
                                         />
                                       </span>
                                     )}
-                                    {(task.cost ?? 0) > 0 && (
+                                    {(task.cost ?? 0) > 0 ? (
                                       <span
                                         className={cx(
-                                          "shrink-0 whitespace-nowrap text-faint",
+                                          "min-w-[2.75rem] shrink-0 text-right tabular-nums whitespace-nowrap text-faint",
                                           !task.providerID && "ml-auto",
                                         )}
                                         title="このセッションの累計コスト"
                                       >
-                                        · {formatCostValue(task.cost!, costPrefs)}
+                                        {formatCostValue(task.cost!, costPrefs)}
                                       </span>
+                                    ) : (
+                                      // Reserve the cost column so the provider icon
+                                      // stays in the same place on every row.
+                                      <span
+                                        aria-hidden
+                                        className="min-w-[2.75rem] shrink-0"
+                                      />
                                     )}
                                   </div>
                                 </button>

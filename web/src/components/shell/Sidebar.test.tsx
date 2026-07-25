@@ -173,6 +173,10 @@ describe("Sidebar", () => {
       Array.from(row!.children).indexOf(provider.closest("span")!),
     ).toBeLessThan(Array.from(row!.children).indexOf(cost));
     expect(text.indexOf("main")).toBeLessThan(text.indexOf("¥18.5"));
+    // Fixed-width right-aligned cost column keeps the provider icon aligned
+    // across rows with different cost lengths.
+    expect(cost.className).toContain("min-w-[2.75rem]");
+    expect(cost.className).toContain("text-right");
   });
 
   it("refreshes a working task cost while the sidebar is visible", async () => {
@@ -276,6 +280,12 @@ describe("Sidebar", () => {
 
     await screen.findByText("Task title");
     expect(screen.queryByTitle("このセッションの累計コスト")).toBeNull();
+    // The cost column stays reserved so the provider icon keeps the same
+    // horizontal position as rows that do show a cost.
+    const row = screen.getByText("main").parentElement!;
+    const spacer = row.children[row.children.length - 1] as HTMLElement;
+    expect(spacer.className).toContain("min-w-[2.75rem]");
+    expect(spacer.textContent).toBe("");
   });
 
   it("shows a warning dot when the task session is waiting for a question answer", async () => {
