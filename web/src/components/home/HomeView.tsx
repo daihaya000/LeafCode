@@ -23,7 +23,9 @@ import {
 } from "@/lib/subagent-permission";
 import {
   readDefaultModel,
+  readDefaultModelFromServer,
   readLastUsedModel,
+  writeDefaultModel,
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
@@ -200,6 +202,19 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   useEffect(() => {
     setAccessMode(readAccessMode());
     setSubagentPermission(readSubagentPermission());
+  }, []);
+
+  // DB → localStorage migration so the default model set on another
+  // browser/origin is restored here. Non-fatal: when the server is
+  // unreachable or has no value, the existing localStorage copy (if any)
+  // is left untouched and readDefaultModel() behaves as before.
+  useEffect(() => {
+    void (async () => {
+      const serverValue = await readDefaultModelFromServer().catch(() => null);
+      if (serverValue && !readDefaultModel()) {
+        writeDefaultModel(serverValue);
+      }
+    })();
   }, []);
 
   const refreshProjects = useCallback(async () => {

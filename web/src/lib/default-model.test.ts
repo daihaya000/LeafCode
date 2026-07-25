@@ -3,10 +3,19 @@ import {
   DEFAULT_MODEL_EVENT,
   LAST_USED_MODEL_EVENT,
   readDefaultModel,
+  readDefaultModelFromServer,
   readLastUsedModel,
   writeDefaultModel,
+  writeDefaultModelToServer,
   writeLastUsedModel,
 } from "./default-model";
+
+const { getJson, sendJson } = vi.hoisted(() => ({
+  getJson: vi.fn(),
+  sendJson: vi.fn(),
+}));
+
+vi.mock("./client", () => ({ getJson, sendJson }));
 
 describe("default-model storage", () => {
   beforeEach(() => {
@@ -82,5 +91,61 @@ describe("last-used-model storage", () => {
     writeLastUsedModel("anthropic::claude-sonnet-5");
     window.removeEventListener(LAST_USED_MODEL_EVENT, onEvent);
     expect(detail).toEqual(["anthropic::claude-sonnet-5"]);
+  });
+});
+
+describe("default-model server sync", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    getJson.mockReset();
+    sendJson.mockReset();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("readDefaultModelFromServer returns the server value", async () => {
+    getJson.mockResolvedValue({ value: "openai::gpt-5" });
+    expect(await readDefaultModelFromServer()).toBe("openai::gpt-5");
+    expect(getJson).toHaveBeenCalledWith("/api/settings/default-model");
+  });
+
+  it("readDefaultModelFromServer returns null when server has no value", async () => {
+    getJson.mockResolvedValue({ value: null });
+    expect(await readDefaultModelFromServer()).toBeNull();
+  });
+
+  it("readDefaultModelFromServer returns null when server stores empty string", async () => {
+    getJson.mockResolvedValue({ value: "" });
+    expect(await readDefaultModelFromServer()).toBeNull();
+  });
+
+  it("readDefaultModelFromServer returns null on fetch failure", async () => {
+    getJson.mockRejectedValue(new Error("network"));
+    expect(await readDefaultModelFromServer()).toBeNull();
+  });
+
+  it("writeDefaultModelToServer sends PUT with the value", async () => {
+    sendJson.mockResolvedValue({ ok: true });
+    await writeDefaultModelToServer("openai::gpt-5");
+    expect(sendJson).toHaveBeenCalledWith("PUT", "/api/settings/default-model", {
+      value: "openai::gpt-5",
+    });
+  });
+
+  it("writeDefaultModelToServer sends PUT with null", async () => {
+    sendJson.mockResolvedValue({ ok: true });
+    await writeDefaultModelToServer(null);
+    expect(sendJson).toHaveBeenCalledWith("PUT", "/api/settings/default-model", {
+      value: null,
+    });
+  });
+
+  it("writeDefaultModelToServer swallows fetch errors", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    sendJson.mockRejectedValue(new Error("network"));
+    await expect(writeDefaultModelToServer("openai::gpt-5")).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
   });
 });

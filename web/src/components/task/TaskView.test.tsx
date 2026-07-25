@@ -71,6 +71,14 @@ vi.mock("@/lib/useSlashCommands", () => ({
   useSlashCommands: () => slashCommands,
 }));
 
+vi.mock("@/lib/default-model", () => ({
+  DEFAULT_MODEL_EVENT: "webui:default-model",
+  readDefaultModel: () => null,
+  readDefaultModelFromServer: () => Promise.resolve(null),
+  writeDefaultModel: vi.fn(),
+  writeLastUsedModel: vi.fn(),
+}));
+
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellExtras: () => ({ setExtras }),
   useShellSetActiveScope: () => setActiveScope,

@@ -64,6 +64,8 @@ import {
 import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
+  readDefaultModelFromServer,
+  writeDefaultModel,
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { formatTokens, providerIconSrcForOpencodeId } from "@addons/codexbar";
@@ -491,6 +493,19 @@ export function TaskView({ taskId }: { taskId: string }) {
     window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
     return () =>
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+  }, []);
+
+  // DB → localStorage migration so the default model set on another
+  // browser/origin is restored here. Non-fatal: when the server is
+  // unreachable or has no value, the existing localStorage copy (if any)
+  // is left untouched and readDefaultModel() behaves as before.
+  useEffect(() => {
+    void (async () => {
+      const serverValue = await readDefaultModelFromServer().catch(() => null);
+      if (serverValue && !readDefaultModel()) {
+        writeDefaultModel(serverValue);
+      }
+    })();
   }, []);
 
   // Apply localStorage のサブエージェント権限を、タスクを開いた／セッションを

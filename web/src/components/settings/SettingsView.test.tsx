@@ -86,6 +86,9 @@ function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
         addresses: [],
       });
     }
+    if (path === "/api/settings/default-model") {
+      return Promise.resolve({ value: null });
+    }
     return Promise.reject(new Error(`Unexpected getJson: ${path}`));
   });
 }
@@ -146,6 +149,9 @@ function mockSettingsGetJson(roots: string[]) {
         hint: "",
         addresses: [],
       });
+    }
+    if (path === "/api/settings/default-model") {
+      return Promise.resolve({ value: null });
     }
     return Promise.reject(new Error(`Unexpected: ${path}`));
   });
@@ -478,5 +484,64 @@ describe("SettingsView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "MCPタブを開く" }));
     expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
+  });
+
+  it("prefers the server-stored default model over localStorage on load", async () => {
+    localStorage.setItem("webui:default-model", "local::model");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: "server::model" });
+      }
+      return Promise.reject(new Error(`Unexpected: ${path}`));
+    });
+    // Re-apply the standard mock but override the default-model endpoint.
+    mockGetJson();
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: "server::model" });
+      }
+      if (path === "/api/health") {
+        return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
+      }
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/roots") return Promise.resolve({ roots: [] });
+      if (path === "/api/extensions/agents") {
+        return Promise.resolve({ agents: [AGENT_FIXTURE] });
+      }
+      if (path === "/api/workspaces/orphans") {
+        return Promise.resolve({ orphans: [], stray: [] });
+      }
+      if (path === "/api/access") {
+        return Promise.resolve({
+          bind: "0.0.0.0",
+          port: 3000,
+          localUrl: "http://localhost:3000",
+          hint: "",
+          addresses: [],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected: ${path}`));
+    });
+
+    render(<SettingsView />);
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:default-model")).toBe("server::model");
+    });
+  });
+
+  it("migrates a localStorage-only default model to the server on load", async () => {
+    localStorage.setItem("webui:default-model", "local::model");
+    mockGetJson(); // returns { value: null } for /api/settings/default-model
+    sendJson.mockResolvedValue({ ok: true });
+
+    render(<SettingsView />);
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/default-model",
+        { value: "local::model" },
+      );
+    });
+    expect(localStorage.getItem("webui:default-model")).toBe("local::model");
   });
 });

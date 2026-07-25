@@ -24,7 +24,18 @@ vi.mock("@/lib/access-mode", () => ({
   writeAccessMode: vi.fn(),
 }));
 vi.mock("@/lib/default-model", () => ({
-  readDefaultModel: () => "",
+  readDefaultModel: () => {
+    const v = localStorage.getItem("webui:default-model");
+    return typeof v === "string" && v.length > 0 ? v : null;
+  },
+  readDefaultModelFromServer: () => Promise.resolve(null),
+  writeDefaultModel: (value: string | null) => {
+    if (value) {
+      localStorage.setItem("webui:default-model", value);
+    } else {
+      localStorage.removeItem("webui:default-model");
+    }
+  },
   readLastUsedModel: () => {
     const v = localStorage.getItem("webui:last-used-model");
     return typeof v === "string" && v.length > 0 ? v : null;

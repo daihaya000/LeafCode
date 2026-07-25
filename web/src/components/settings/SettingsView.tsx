@@ -22,7 +22,9 @@ import {
 } from "@/lib/currency";
 import {
   readDefaultModel,
+  readDefaultModelFromServer,
   writeDefaultModel,
+  writeDefaultModelToServer,
 } from "@/lib/default-model";
 import {
   formatModelLabel,
@@ -130,7 +132,21 @@ export function SettingsView() {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [defaultModel, setDefaultModel] = useState<string>("");
   useEffect(() => {
-    setDefaultModel(readDefaultModel() ?? "");
+    void (async () => {
+      const serverValue = await readDefaultModelFromServer().catch(() => null);
+      const localValue = readDefaultModel();
+      // DB優先。DBにあればそれ、なければlocalStorage。
+      const resolved = serverValue ?? localValue ?? "";
+      setDefaultModel(resolved);
+      // DB値を localStorage へも反映（他画面/他ブラウザで開いた時の同期源）。
+      if (serverValue && serverValue !== localValue) {
+        writeDefaultModel(serverValue);
+      }
+      // DBに無くlocalStorageにある場合はDBへ保存（マイグレーション）。
+      if (serverValue == null && localValue) {
+        await writeDefaultModelToServer(localValue).catch(() => undefined);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -154,7 +170,7 @@ export function SettingsView() {
         setModelOptions(sortModelOptions(options));
         setDefaultModel((cur) => {
           if (cur && options.some((o) => o.value === cur)) return cur;
-          return readDefaultModel() ?? "";
+          return readDefaultModel() ?? cur ?? "";
         });
       } catch {
         /* non-fatal */
@@ -583,6 +599,9 @@ export function SettingsView() {
                         const v = e.target.value;
                         setDefaultModel(v);
                         writeDefaultModel(v || null);
+                        void writeDefaultModelToServer(v || null).catch(
+                          () => undefined,
+                        );
                       }}
                       className="min-w-56 flex-1"
                     >
@@ -606,6 +625,9 @@ export function SettingsView() {
                         onClick={() => {
                           setDefaultModel("");
                           writeDefaultModel(null);
+                          void writeDefaultModelToServer(null).catch(
+                            () => undefined,
+                          );
                         }}
                       >
                         クリア
