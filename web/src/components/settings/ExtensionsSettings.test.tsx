@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionsSettings } from "./ExtensionsSettings";
@@ -59,14 +60,25 @@ function mockGetJson(overrides?: {
   skillsFail?: boolean;
   emptySkills?: boolean;
   skillsTruncated?: boolean;
+  extraSkills?: {
+    id: string;
+    name: string;
+    description?: string;
+    enabled: boolean;
+    toggleable: boolean;
+  }[];
 }) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/extensions/skills") {
       if (overrides?.skillsFail) {
         return Promise.reject(new Error("スキル一覧を取得できません"));
       }
+      const base = overrides?.emptySkills ? [] : SKILLS;
+      const skills = overrides?.extraSkills
+        ? [...base, ...overrides.extraSkills]
+        : base;
       return Promise.resolve({
-        skills: overrides?.emptySkills ? [] : SKILLS,
+        skills,
         truncated: overrides?.skillsTruncated === true,
       });
     }
@@ -300,4 +312,85 @@ describe("ExtensionsSettings", () => {
     ).length;
     expect(skillLoadsAfter).toBe(skillLoadsBefore + 1);
   }, 10000);
+
+  it("nests sub-skills under their parent skill", async () => {
+    mockGetJson({
+      extraSkills: [
+        {
+          id: "playwright-cli",
+          name: "playwright-cli",
+          description: "Browser automation",
+          enabled: true,
+          toggleable: true,
+        },
+        {
+          id: "playwright-cli/screenshot",
+          name: "screenshot",
+          description: "Take screenshots",
+          enabled: true,
+          toggleable: false,
+        },
+      ],
+    });
+    render(<ExtensionsSettings />);
+
+    // Parent skill is rendered with its normal toggle switch.
+    const parentSwitch = await screen.findByRole("switch", {
+      name: "playwright-cli を無効化",
+    });
+    expect(parentSwitch).toBeTruthy();
+
+    // The sub-skill label is rendered inside the parent's <li>.
+    const parentLi = parentSwitch.closest("li");
+    expect(parentLi).not.toBeNull();
+    const subSkillText = screen.getByText("screenshot");
+    expect(subSkillText).toBeTruthy();
+    expect(parentLi!.contains(subSkillText)).toBe(true);
+
+    // Sub-skill title exposes the full id for discovery.
+    const subSkillEl = subSkillText.closest("[title='playwright-cli/screenshot']") ??
+      subSkillText.parentElement?.querySelector("[title='playwright-cli/screenshot']");
+    // Fallback: at least one descendant of the parent li carries the full id as title.
+    const titledEl = parentLi!.querySelector(
+      "[title='playwright-cli/screenshot']",
+    );
+    expect(titledEl).not.toBeNull();
+
+    // Sub-skills are not independently toggleable.
+    expect(
+      screen.queryByRole("switch", { name: /screenshot/ }),
+    ).toBeNull();
+  });
+
+  it("groups sub-skills under a parent directory that is not a skill itself", async () => {
+    mockGetJson({
+      extraSkills: [
+        {
+          id: "reverse-skill/recon",
+          name: "recon",
+          description: "Reconnaissance sub-skill",
+          enabled: true,
+          toggleable: false,
+        },
+      ],
+    });
+    render(<ExtensionsSettings />);
+
+    // The virtual parent folder label is rendered at the top level.
+    const folderLabel = await screen.findByText("reverse-skill");
+    expect(folderLabel).toBeTruthy();
+
+    // The folder row carries a neutral "フォルダ" badge and has no switch.
+    const folderLi = folderLabel.closest("li");
+    expect(folderLi).not.toBeNull();
+    expect(within(folderLi!).getByText("フォルダ")).toBeTruthy();
+    expect(
+      within(folderLi!).queryByRole("switch"),
+    ).toBeNull();
+
+    // The child sub-skill is nested underneath the folder row.
+    const subSkillText = screen.getByText("recon");
+    expect(subSkillText).toBeTruthy();
+    expect(folderLi!.contains(subSkillText)).toBe(true);
+  });
 });

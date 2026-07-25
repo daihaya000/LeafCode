@@ -12,6 +12,169 @@ import type { HealthDto } from "@/lib/types";
 
 type SectionStatus = "loading" | "ready" | "error";
 
+type SkillTreeNode = {
+  kind: "skill" | "group";
+  item?: SkillDto;
+  name: string;
+  children: SkillTreeNode[];
+};
+
+function buildSkillTree(items: SkillDto[]): SkillTreeNode[] {
+  const map = new Map<string, SkillTreeNode>();
+  for (const item of items) {
+    const parts = item.id.split("/");
+    if (parts.length === 1) {
+      const existing = map.get(parts[0]);
+      if (existing) {
+        if (existing.kind === "group") {
+          existing.kind = "skill";
+          existing.item = item;
+        }
+      } else {
+        map.set(parts[0], {
+          kind: "skill",
+          item,
+          name: item.name,
+          children: [],
+        });
+      }
+    } else {
+      const [first, ...rest] = parts;
+      let parent = map.get(first);
+      if (!parent) {
+        parent = { kind: "group", name: first, children: [] };
+        map.set(first, parent);
+      }
+      parent.children.push({
+        kind: "skill",
+        item,
+        name: rest.join("/"),
+        children: [],
+      });
+    }
+  }
+  const nodes = Array.from(map.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  for (const node of nodes) {
+    if (node.children.length > 0) {
+      node.children.sort((a, b) => a.item!.id.localeCompare(b.item!.id));
+    }
+  }
+  return nodes;
+}
+
+function SkillRow({
+  item,
+  depth,
+  busy,
+  onToggle,
+}: {
+  item: SkillDto;
+  depth: number;
+  busy: boolean;
+  onToggle: () => void;
+}) {
+  const displayName =
+    depth > 0 ? (item.id.split("/").pop() ?? item.name) : item.name;
+  return (
+    <li
+      aria-busy={busy || undefined}
+      className={cx(
+        "flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3",
+        depth > 0 && "ml-4 border-l-2 border-l-border",
+      )}
+      title={depth > 0 ? item.id : undefined}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 truncate text-sm font-medium">{displayName}</p>
+          <Badge tone={item.enabled ? "success" : "neutral"}>
+            {item.enabled ? "有効" : "無効"}
+          </Badge>
+          {!item.toggleable && <Badge tone="neutral">切替不可</Badge>}
+        </div>
+        {item.description && (
+          <p className="mt-0.5 text-xs break-words text-faint">
+            {item.description}
+          </p>
+        )}
+      </div>
+      {item.toggleable && (
+        <ExtensionSwitch
+          name={item.name}
+          enabled={item.enabled}
+          busy={busy}
+          onToggle={onToggle}
+        />
+      )}
+    </li>
+  );
+}
+
+function SkillSubtree({
+  node,
+  busyId,
+  onToggle,
+}: {
+  node: SkillTreeNode;
+  busyId: string | null;
+  onToggle: (item: SkillDto, enabled: boolean) => void;
+}) {
+  const isGroup = node.kind === "group";
+  const item = node.item;
+  const isBusy = !isGroup && item !== undefined && busyId === item.id;
+  return (
+    <li className="space-y-2" aria-busy={isBusy || undefined}>
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate text-sm font-medium">
+              {isGroup ? node.name : item!.name}
+            </p>
+            {isGroup ? (
+              <Badge tone="neutral">フォルダ</Badge>
+            ) : (
+              <>
+                <Badge tone={item!.enabled ? "success" : "neutral"}>
+                  {item!.enabled ? "有効" : "無効"}
+                </Badge>
+                {!item!.toggleable && <Badge tone="neutral">切替不可</Badge>}
+              </>
+            )}
+          </div>
+          {!isGroup && item!.description && (
+            <p className="mt-0.5 text-xs break-words text-faint">
+              {item!.description}
+            </p>
+          )}
+        </div>
+        {!isGroup && item!.toggleable && (
+          <ExtensionSwitch
+            name={item!.name}
+            enabled={item!.enabled}
+            busy={busyId === item!.id}
+            onToggle={() => onToggle(item!, !item!.enabled)}
+          />
+        )}
+      </div>
+      {node.children.length > 0 && (
+        <ul className="space-y-2">
+          {node.children.map((child) => (
+            <SkillRow
+              key={child.item!.id}
+              item={child.item!}
+              depth={1}
+              busy={busyId === child.item!.id}
+              onToggle={() => {}}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 function useExtensionSection<T extends { id: string }>(url: string, key: string) {
   const [status, setStatus] = useState<SectionStatus>("loading");
   const [items, setItems] = useState<T[]>([]);
@@ -327,43 +490,21 @@ export function ExtensionsSettings() {
         emptyText="スキルがありません。~/.config/opencode/skills/<名前>/SKILL.md を配置するとここに表示されます。"
         itemCount={skills.items.length}
       >
-        {skills.items.map((s) => (
-          <li
-            key={s.id}
-            aria-busy={skills.busyId === s.id || undefined}
-            className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="min-w-0 truncate text-sm font-medium">{s.name}</p>
-                <Badge tone={s.enabled ? "success" : "neutral"}>
-                  {s.enabled ? "有効" : "無効"}
-                </Badge>
-                {!s.toggleable && <Badge tone="neutral">切替不可</Badge>}
-              </div>
-              {s.description && (
-                <p className="mt-0.5 text-xs break-words text-faint">
-                  {s.description}
-                </p>
-              )}
-            </div>
-            {s.toggleable && (
-              <ExtensionSwitch
-                name={s.name}
-                enabled={s.enabled}
-                busy={skills.busyId === s.id}
-                onToggle={() =>
-                  void skills
-                    .toggle(
-                      s,
-                      `/api/extensions/skills/${encodeURIComponent(s.id)}`,
-                      !s.enabled,
-                    )
-                    .then(onToggled)
-                }
-              />
-            )}
-          </li>
+        {buildSkillTree(skills.items).map((node) => (
+          <SkillSubtree
+            key={node.name}
+            node={node}
+            busyId={skills.busyId}
+            onToggle={(item, enabled) =>
+              void skills
+                .toggle(
+                  item,
+                  `/api/extensions/skills/${encodeURIComponent(item.id)}`,
+                  enabled,
+                )
+                .then(onToggled)
+            }
+          />
         ))}
       </SectionShell>
 
