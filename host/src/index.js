@@ -161,6 +161,28 @@ function detectCaddyPublicUrl() {
   }
 }
 
+/**
+ * Pure decision for {@link resolveBrowserUrl}: pick the Caddy HTTPS origin
+ * when it is enabled and reachable, otherwise the local WebUI URL. Exposed
+ * for unit testing so the I/O (fetch) can be injected.
+ */
+export function pickBrowserUrl({ caddyUrl, webuiUrl, caddyUp }) {
+  if (caddyUrl && caddyUp) return caddyUrl;
+  return webuiUrl;
+}
+
+/**
+ * Decide which URL to open in the browser on startup. Prefers the public
+ * Caddy HTTPS origin when Caddy is enabled and reachable; otherwise falls
+ * back to the local WebUI URL (http://127.0.0.1:WEBUI_PORT). The reachability
+ * probe avoids opening a dead https://... tab when Caddy failed to start.
+ */
+async function resolveBrowserUrl() {
+  const caddyUrl = detectCaddyPublicUrl();
+  const caddyUp = caddyUrl ? await isHttpUp(caddyUrl) : false;
+  return pickBrowserUrl({ caddyUrl, webuiUrl: WEBUI_URL, caddyUp });
+}
+
 const iconData = JSON.parse(readFileSync(join(__dirname, 'icon.json'), 'utf8'));
 const TRAY_ICON = iconData.base64;
 
@@ -1310,8 +1332,9 @@ async function handleExistingInstance() {
   }
 
   if (process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
-    log(`Host already running (PID ${lockPid}). Opening ${WEBUI_URL}`);
-    openBrowser(WEBUI_URL);
+    const browserUrl = await resolveBrowserUrl();
+    log(`Host already running (PID ${lockPid}). Opening ${browserUrl}`);
+    openBrowser(browserUrl);
   } else {
     log(`Host already running (PID ${lockPid}).`);
   }
@@ -1815,7 +1838,9 @@ function buildTrayMenu() {
         tooltip: `Open ${WEBUI_URL}`,
         checked: false,
         enabled: true,
-        click: () => openBrowser(WEBUI_URL),
+        click: () => {
+          void resolveBrowserUrl().then((url) => openBrowser(url));
+        },
       },
       SysTray.separator,
       {
@@ -2019,7 +2044,7 @@ async function main() {
       proc: () => opencodeProc,
     });
     if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
-      openBrowser(WEBUI_URL);
+      openBrowser(await resolveBrowserUrl());
     }
     return;
   }
@@ -2040,12 +2065,12 @@ async function main() {
   const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
     proc: () => webProc,
   });
-  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
-    proc: () => opencodeProc,
-  });
-  if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
-    openBrowser(WEBUI_URL);
-  }
+await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+      proc: () => opencodeProc,
+    });
+    if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+      openBrowser(await resolveBrowserUrl());
+    }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

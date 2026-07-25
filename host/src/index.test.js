@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as host from './index.js';
 import {
   isHeadless,
+  pickBrowserUrl,
   resetOpencodeRestartBudget,
   resetCaddyRestartBudget,
   shouldRestartOpencode,
@@ -252,6 +253,39 @@ test('parseCaddyPublicUrl treats a bare domain as auto-HTTPS', () => {
 }
 `;
   assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://webui.example.com');
+});
+
+test('pickBrowserUrl prefers a reachable Caddy URL', () => {
+  assert.equal(
+    pickBrowserUrl({
+      caddyUrl: 'https://192.168.0.102:8443',
+      webuiUrl: 'http://127.0.0.1:3000',
+      caddyUp: true,
+    }),
+    'https://192.168.0.102:8443',
+  );
+});
+
+test('pickBrowserUrl falls back to WebUI URL when Caddy is down', () => {
+  assert.equal(
+    pickBrowserUrl({
+      caddyUrl: 'https://192.168.0.102:8443',
+      webuiUrl: 'http://127.0.0.1:3000',
+      caddyUp: false,
+    }),
+    'http://127.0.0.1:3000',
+  );
+});
+
+test('pickBrowserUrl falls back to WebUI URL when Caddy is disabled (null)', () => {
+  assert.equal(
+    pickBrowserUrl({
+      caddyUrl: null,
+      webuiUrl: 'http://127.0.0.1:3000',
+      caddyUp: false,
+    }),
+    'http://127.0.0.1:3000',
+  );
 });
 
 test('parseCommandLineJson maps a JSON array of processes', () => {
