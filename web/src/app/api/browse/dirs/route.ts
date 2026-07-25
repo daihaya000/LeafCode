@@ -42,7 +42,7 @@ function listDirs(dir: string, includeFiles = false): Entry[] {
     names = fs.readdirSync(dir, { withFileTypes: true });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "cannot read directory",
+      err instanceof Error ? err.message : "ディレクトリを読み取れません",
     );
   }
   for (const d of names) {
@@ -90,7 +90,10 @@ export async function GET(req: NextRequest) {
     try {
       resolved = path.resolve(raw);
     } catch {
-      return NextResponse.json({ error: "invalid path" }, { status: 400 });
+      return NextResponse.json(
+        { error: "パスの形式が正しくありません" },
+        { status: 400 },
+      );
     }
   }
 
@@ -106,7 +109,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (!fs.existsSync(resolved)) {
-    return NextResponse.json({ error: "path not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "フォルダが見つかりません" },
+      { status: 404 },
+    );
   }
   let st: fs.Stats;
   try {
@@ -118,7 +124,10 @@ export async function GET(req: NextRequest) {
     );
   }
   if (!st.isDirectory()) {
-    return NextResponse.json({ error: "not a directory" }, { status: 400 });
+    return NextResponse.json(
+      { error: "フォルダではありません" },
+      { status: 400 },
+    );
   }
 
   const parentDir = path.dirname(resolved);
@@ -137,7 +146,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "list failed" },
+      { error: err instanceof Error ? err.message : "一覧取得に失敗しました" },
       { status: 400 },
     );
   }

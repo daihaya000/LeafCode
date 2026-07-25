@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ChevronRight,
   Folder,
@@ -30,12 +30,33 @@ type Props = {
   label?: string;
 };
 
+/** Lightweight client-side path format validation (Windows + Unix). */
+function isValidPathShape(p: string): boolean {
+  const trimmed = p.trim();
+  if (!trimmed) return false;
+  // Windows drive path (C:\ or C:/) or Unix absolute path.
+  return /^[A-Za-z]:[\\/]/.test(trimmed) || /^\//.test(trimmed);
+}
+
+/** Translate an API error into a Japanese message based on HTTP status. */
+function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "status" in err) {
+    const status = (err as { status?: number }).status;
+    if (status === 404) return "フォルダが見つかりません";
+    if (status === 400) return "このフォルダは追加できません（許可されていません）";
+    if (status === 408) return "通信がタイムアウトしました";
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
 export function AddProjectButton({
   onAdded,
   variant = "button",
   className,
   label = "プロジェクトを追加",
 }: Props) {
+  const titleId = useId();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,14 +66,26 @@ export function AddProjectButton({
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [quickAccess, setQuickAccess] = useState<DirEntry[]>([]);
   const [manualPath, setManualPath] = useState("");
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const attention = useOptionalGlobalAttention();
   const attentionOpen = attention?.open ?? false;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
+  const reqIdRef = useRef(0);
 
   useEffect(() => {
     if (attentionOpen && open) setOpen(false);
   }, [attentionOpen, open]);
+
+  // M3: lock body scroll while the dialog is open.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -90,27 +123,31 @@ export function AddProjectButton({
   }, [open, busy]);
 
   const load = useCallback(async (dir: string | null) => {
+    // H3: invalidate any in-flight request before starting a new one.
+    const id = ++reqIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const q = dir ? { path: dir } : undefined;
       const data = await getJson<DirList>("/api/browse/dirs", q);
+      // H3: drop the response if a newer request superseded this one.
+      if (id !== reqIdRef.current) return;
       setCwd(data.path);
       setParent(data.parent);
       setEntries(data.entries ?? []);
       setQuickAccess(data.quickAccess ?? []);
-      // Sync manualPath to the browsed directory on every navigation so the
-      // "add this folder" action targets the folder currently shown, not a
-      // stale initial path (regression from R9#3's guard: `!manualPath`
-      // blocked syncing after the very first load, so browsing deeper never
-      // updated the path field again).
-      if (data.path) setManualPath(data.path);
+      // H1: do NOT overwrite manualPath here; respect user input.
+      // C1: default the selection to the folder currently shown.
+      setSelectedPath(data.path);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "一覧取得に失敗しました");
+      if (id !== reqIdRef.current) return;
+      // H4: translate API errors to Japanese.
+      setError(apiErrorMessage(err, "一覧取得に失敗しました"));
       setEntries([]);
       setQuickAccess([]);
+      setSelectedPath(null);
     } finally {
-      setLoading(false);
+      if (id === reqIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -119,36 +156,57 @@ export function AddProjectButton({
     void load(null);
   }, [open, load]);
 
-  const create = async (rootPath: string) => {
-    const data = await sendJson<{ project: ProjectDto }>("POST", "/api/projects", {
-      rootPath,
-    });
-    notifyTasksChanged();
-    onAdded?.(data.project);
-    return data.project;
-  };
-
-  const confirm = async (rootPath: string) => {
-    const p = rootPath.trim();
-    if (!p) return;
-    setBusy(true);
+  // M5: reset transient state when the dialog closes so the next open
+  // doesn't briefly show stale entries/selection.
+  useEffect(() => {
+    if (open) return;
+    setCwd(null);
+    setParent(null);
+    setEntries([]);
+    setQuickAccess([]);
+    setSelectedPath(null);
+    setManualPath("");
     setError(null);
-    try {
-      await create(p);
-      setOpen(false);
-      setManualPath("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "追加に失敗しました");
-    } finally {
-      setBusy(false);
-    }
-  };
+  }, [open]);
+
+  const confirm = useCallback(
+    async (rootPath: string) => {
+      // A4: guard against double-submit while a request is in flight.
+      if (busy) return;
+      const p = rootPath.trim();
+      if (!p) return;
+      // H2: lightweight client-side path shape validation.
+      if (!isValidPathShape(p)) {
+        setError("パスの形式が正しくありません");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const data = await sendJson<{ project: ProjectDto }>("POST", "/api/projects", {
+          rootPath: p,
+        });
+        notifyTasksChanged();
+        onAdded?.(data.project);
+        setOpen(false);
+      } catch (err) {
+        // H4: translate API errors to Japanese.
+        setError(apiErrorMessage(err, "追加に失敗しました"));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, onAdded],
+  );
 
   const openPicker = () => {
     if (attentionOpen) return;
     setError(null);
     setOpen(true);
   };
+
+  // The add target: manual input wins, then explicit selection, then cwd.
+  const addTarget = manualPath.trim() || selectedPath || cwd || "";
 
   return (
     <>
@@ -179,11 +237,12 @@ export function AddProjectButton({
           className="fixed inset-0 z-[65] flex items-end justify-center sm:items-center sm:p-4"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="add-project-title"
+          aria-labelledby={titleId}
         >
           <button
             type="button"
             aria-label="閉じる"
+            disabled={busy}
             className="absolute inset-0 bg-black/50"
             onClick={() => !busy && setOpen(false)}
           />
@@ -192,7 +251,7 @@ export function AddProjectButton({
             className="relative flex max-h-[85dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface shadow-xl sm:rounded-2xl"
           >
             <div className="flex items-center gap-2 border-b border-border px-3 py-3">
-              <h2 id="add-project-title" className="flex-1 text-sm font-semibold">
+              <h2 id={titleId} className="flex-1 text-sm font-semibold">
                 フォルダを選択
               </h2>
               <button
@@ -200,7 +259,7 @@ export function AddProjectButton({
                 disabled={busy}
                 aria-label="閉じる"
                 onClick={() => setOpen(false)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 disabled:opacity-40"
               >
                 <X className="h-4.5 w-4.5" />
               </button>
@@ -209,7 +268,7 @@ export function AddProjectButton({
             <div className="flex items-center gap-1 border-b border-border px-2 py-2">
               <button
                 type="button"
-                disabled={loading || cwd === null}
+                disabled={loading || busy || cwd === null}
                 onClick={() => void load(parent)}
                 className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs text-muted hover:bg-surface-2 disabled:opacity-40"
               >
@@ -235,10 +294,22 @@ export function AddProjectButton({
                       <ul>
                         {quickAccess.map((e) => (
                           <li key={`qa-${e.path}`}>
-                            <button
-                              type="button"
-                              onClick={() => void load(e.path)}
-                              className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              aria-label={e.name}
+                              aria-pressed={selectedPath === e.path}
+                              onClick={() => setSelectedPath(e.path)}
+                              onKeyDown={(ev) => {
+                                if (ev.key === "Enter" || ev.key === " ") {
+                                  ev.preventDefault();
+                                  setSelectedPath(e.path);
+                                }
+                              }}
+                              className={cx(
+                                "flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3",
+                                selectedPath === e.path && "bg-surface-2",
+                              )}
                             >
                               <Star className="h-4 w-4 shrink-0 fill-warning text-warning" />
                               <span className="min-w-0 flex-1">
@@ -249,8 +320,19 @@ export function AddProjectButton({
                                   {e.path}
                                 </span>
                               </span>
-                              <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-                            </button>
+                              <button
+                                type="button"
+                                disabled={loading || busy}
+                                aria-label={`${e.name} を開く`}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  void load(e.path);
+                                }}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 disabled:opacity-40"
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -269,17 +351,40 @@ export function AddProjectButton({
                       )}
                       {entries.map((e) => (
                         <li key={e.path}>
-                          <button
-                            type="button"
-                            onClick={() => void load(e.path)}
-                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3"
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            aria-label={e.name}
+                            aria-pressed={selectedPath === e.path}
+                            onClick={() => setSelectedPath(e.path)}
+                            onKeyDown={(ev) => {
+                              if (ev.key === "Enter" || ev.key === " ") {
+                                ev.preventDefault();
+                                setSelectedPath(e.path);
+                              }
+                            }}
+                            className={cx(
+                              "flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3",
+                              selectedPath === e.path && "bg-surface-2",
+                            )}
                           >
                             <Folder className="h-4.5 w-4.5 shrink-0 text-muted" />
                             <span className="min-w-0 flex-1 truncate text-sm">
                               {e.name}
                             </span>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-                          </button>
+                            <button
+                              type="button"
+                              disabled={loading || busy}
+                              aria-label={`${e.name} を開く`}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                void load(e.path);
+                              }}
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 disabled:opacity-40"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -295,7 +400,11 @@ export function AddProjectButton({
                 placeholder="またはパスを入力 C:\path\to\repo"
                 className="h-10 w-full rounded-lg border border-border bg-bg px-3 font-mono text-xs outline-none focus:border-border-strong"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") void confirm(manualPath);
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (busy) return;
+                    void confirm(manualPath);
+                  }
                 }}
               />
               {error && (
@@ -307,7 +416,7 @@ export function AddProjectButton({
                 <Button
                   variant="secondary"
                   className="flex-1"
-                  disabled={busy || !cwd}
+                  disabled={busy || loading || !cwd}
                   onClick={() => cwd && void load(cwd)}
                 >
                   再読込
@@ -316,8 +425,8 @@ export function AddProjectButton({
                   variant="primary"
                   className="flex-1"
                   busy={busy}
-                  disabled={!manualPath.trim() && !cwd}
-                  onClick={() => void confirm(manualPath.trim() || cwd || "")}
+                  disabled={busy || !addTarget}
+                  onClick={() => void confirm(addTarget)}
                 >
                   このフォルダを追加
                 </Button>
