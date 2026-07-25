@@ -7,6 +7,10 @@ import vm from "node:vm";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const source = readFileSync(join(repoRoot, "web", "public", "sw.js"), "utf8");
+// Read the active cache name from sw.js so a version bump does not break the
+// test: only the caches that are *not* the current one must be deleted.
+const currentCache = /const CACHE = "([^"]+)"/.exec(source)?.[1];
+const staleCaches = ["opencode-webui-v1", "unrelated-cache"];
 
 function loadWorker() {
   const events = new Map();
@@ -15,7 +19,7 @@ function loadWorker() {
     URL,
     Promise,
     caches: {
-      keys: async () => ["opencode-webui-v2", "opencode-webui-v3", "unrelated-cache"],
+      keys: async () => [staleCaches[0], currentCache, staleCaches[1]],
       delete: async (name) => {
         deleted.push(name);
         return true;
@@ -61,5 +65,6 @@ test("service worker cache version removes the previous Next asset cache on acti
     },
   });
   await activation;
-  assert.deepEqual(deleted, ["opencode-webui-v2", "unrelated-cache"]);
+  assert.ok(currentCache, "sw.js must declare a CACHE name");
+  assert.deepEqual(deleted, staleCaches);
 });
