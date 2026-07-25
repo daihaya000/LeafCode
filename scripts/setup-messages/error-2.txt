@@ -1,0 +1,2 @@
+[Setup] Node.jsの導入に失敗しました。
+[Setup] 復旧案内: nodejs.org からNode.jsを手動導入して再実行してください。

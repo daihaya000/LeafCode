@@ -1,0 +1,2 @@
+[Setup] wingetが見つかりません。
+[Setup] 復旧案内: Microsoft Storeから「アプリインストーラー」を導入してください。

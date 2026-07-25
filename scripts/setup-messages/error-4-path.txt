@@ -1,0 +1,2 @@
+[Setup] OpenCodeがこのコマンドプロンプトで利用できません。
+[Setup] 復旧案内: OpenCode Docs (https://opencode.ai/docs) を確認し、必要なら再ログインしてから再実行してください。

@@ -1,0 +1,7 @@
+# cmd.exe needs CRLF: with LF-only line endings labels and goto break.
+# Batch files must also stay ASCII-only (see docs/specs/bat-encoding-safety.md).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Japanese setup messages are printed with `type`, so keep them UTF-8 + CRLF.
+scripts/setup-messages/*.txt text eol=crlf

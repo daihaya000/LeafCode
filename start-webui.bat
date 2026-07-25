@@ -1,4 +1,7 @@
 @echo off
+rem KEEP THIS FILE ASCII-ONLY (bytes 0x00-0x7F, CRLF, no BOM). cmd.exe misparses
+rem batch files that contain multi-byte characters, even inside rem comments.
+rem See docs\specs\bat-encoding-safety.md
 setlocal
 cd /d "%~dp0"
 
@@ -47,8 +50,9 @@ if not exist "host\node_modules\" (
 )
 
 set OPENCODE_WEBUI_MODE=prod
-rem VPN/スマホ向け: WebUI を全インターフェースで待ち受け (OpenCode は 127.0.0.1 のまま)
-rem ローカルのみにする場合: set OPENCODE_WEBUI_HOST=127.0.0.1
+rem For VPN / phone access the WebUI listens on every interface. OpenCode itself
+rem stays on 127.0.0.1. To keep the WebUI local only, set the variable yourself:
+rem   set OPENCODE_WEBUI_HOST=127.0.0.1
 if not defined OPENCODE_WEBUI_HOST set OPENCODE_WEBUI_HOST=0.0.0.0
 cd host
 node src\index.js
