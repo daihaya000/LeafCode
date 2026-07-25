@@ -10,6 +10,8 @@ import {
 } from "jsonc-parser";
 import { ExtensionsError } from "./safe-move";
 
+export { applyEdits, modify } from "jsonc-parser";
+
 /**
  * In-process serialization for global config updates. Concurrent toggles
  * (two browser tabs) must not overwrite each other: every mutation runs

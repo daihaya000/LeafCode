@@ -14,6 +14,8 @@ export type AgentDto = {
   description?: string;
   mode: "subagent" | "primary" | "all";
   model?: { providerID: string; modelID: string };
+  enabled?: boolean;
+  toggleable?: boolean;
 };
 
 export type AgentRank = "A" | "B" | "C" | "D" | "E";
@@ -79,7 +81,7 @@ export function parseAgent(dto: AgentDto): ParsedAgent {
   return { ...dto, rank, role, displayName: role };
 }
 
-/** Case-insensitive substring search over name/role/provider/model/desc/mode. */
+/** Case-insensitive substring search over name/role/provider/model/desc/mode/state. */
 export function filterAgents(
   agents: ParsedAgent[],
   query: string,
@@ -87,6 +89,7 @@ export function filterAgents(
   const q = query.trim().toLowerCase();
   if (!q) return agents;
   return agents.filter((a) => {
+    const stateLabel = a.enabled === false ? "無効" : "有効";
     const haystack = [
       a.name,
       a.role ?? "",
@@ -94,6 +97,7 @@ export function filterAgents(
       a.model?.modelID ?? "",
       a.description ?? "",
       a.mode,
+      stateLabel,
     ]
       .join(" ")
       .toLowerCase();
