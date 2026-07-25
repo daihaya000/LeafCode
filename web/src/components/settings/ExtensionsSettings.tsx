@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Badge, Button, cx } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import type {
@@ -124,9 +124,38 @@ function SkillSubtree({
   const isGroup = node.kind === "group";
   const item = node.item;
   const isBusy = !isGroup && item !== undefined && busyId === item.id;
+  const hasChildren = node.children.length > 0;
+  const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
   return (
     <li className="space-y-2" aria-busy={isBusy || undefined}>
       <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        {hasChildren && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            aria-label={`${node.name} のサブスキルを${expanded ? "折りたたむ" : "展開"}`}
+            onClick={() => setExpanded((e) => !e)}
+            className="shrink-0 rounded-md p-1 text-faint transition-colors hover:bg-surface-3 hover:text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className={cx(
+                "h-4 w-4 transition-transform",
+                expanded ? "rotate-90" : "rotate-0",
+              )}
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 truncate text-sm font-medium">
@@ -158,8 +187,8 @@ function SkillSubtree({
           />
         )}
       </div>
-      {node.children.length > 0 && (
-        <ul className="space-y-2">
+      {hasChildren && expanded && (
+        <ul id={panelId} className="space-y-2">
           {node.children.map((child) => (
             <SkillRow
               key={child.item!.id}

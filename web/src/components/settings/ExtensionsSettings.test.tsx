@@ -340,23 +340,31 @@ describe("ExtensionsSettings", () => {
     });
     expect(parentSwitch).toBeTruthy();
 
-    // The sub-skill label is rendered inside the parent's <li>.
     const parentLi = parentSwitch.closest("li");
     expect(parentLi).not.toBeNull();
+
+    // Sub-skills are collapsed by default.
+    expect(screen.queryByText("screenshot")).toBeNull();
+
+    const expandBtn = screen.getByRole("button", {
+      name: /playwright-cli のサブスキルを展開/,
+    });
+    expect(expandBtn.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(expandBtn);
+    expect(expandBtn.getAttribute("aria-expanded")).toBe("true");
+
+    // Now the sub-skill label is rendered inside the parent's <li>.
     const subSkillText = screen.getByText("screenshot");
-    expect(subSkillText).toBeTruthy();
     expect(parentLi!.contains(subSkillText)).toBe(true);
 
     // Sub-skill title exposes the full id for discovery.
-    const subSkillEl = subSkillText.closest("[title='playwright-cli/screenshot']") ??
-      subSkillText.parentElement?.querySelector("[title='playwright-cli/screenshot']");
-    // Fallback: at least one descendant of the parent li carries the full id as title.
     const titledEl = parentLi!.querySelector(
       "[title='playwright-cli/screenshot']",
     );
     expect(titledEl).not.toBeNull();
 
-    // Sub-skills are not independently toggleable.
+    // Sub-skills are not independently toggleable, even after expanding.
     expect(
       screen.queryByRole("switch", { name: /screenshot/ }),
     ).toBeNull();
@@ -388,9 +396,20 @@ describe("ExtensionsSettings", () => {
       within(folderLi!).queryByRole("switch"),
     ).toBeNull();
 
-    // The child sub-skill is nested underneath the folder row.
+    // Sub-skills are collapsed by default.
+    expect(screen.queryByText("recon")).toBeNull();
+
+    const expandBtn = screen.getByRole("button", {
+      name: /reverse-skill のサブスキルを展開/,
+    });
+    fireEvent.click(expandBtn);
+
+    // The child sub-skill is now nested underneath the folder row.
     const subSkillText = screen.getByText("recon");
-    expect(subSkillText).toBeTruthy();
     expect(folderLi!.contains(subSkillText)).toBe(true);
+    expect(within(folderLi!).getByText("フォルダ")).toBeTruthy();
+    expect(
+      within(folderLi!).queryByRole("switch"),
+    ).toBeNull();
   });
 });
