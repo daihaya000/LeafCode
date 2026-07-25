@@ -213,11 +213,15 @@ describe("TaskView", () => {
       sendPrompt: vi.fn(),
       sendCommand: vi.fn(),
     });
-    getJson.mockImplementation((path: string) =>
-      path === "/api/files/content"
-        ? Promise.resolve({ name: "plan.md", content: "計画本文" })
-        : Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) }),
-    );
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/files/content") {
+        return Promise.resolve({ name: "plan.md", content: "計画本文" });
+      }
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      return Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) });
+    });
     sendJson.mockResolvedValue(undefined);
   });
 
@@ -240,7 +244,12 @@ describe("TaskView", () => {
   });
 
   it("keeps a mobile menu button when loading the task fails", async () => {
-    getJson.mockRejectedValueOnce(new Error("task unavailable"));
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      return Promise.reject(new Error("task unavailable"));
+    });
     render(<TaskView taskId="ws1" />);
 
     await screen.findByText("task unavailable");
@@ -315,7 +324,8 @@ describe("TaskView", () => {
     });
 
     expect(screen.getByText("累計 $0.2000")).toBeTruthy();
-    expect(getJson).toHaveBeenCalledTimes(2);
+    // 3 calls: 1 initial sidepanel-width (DB migration) + 1 task load + 1 poll.
+    expect(getJson).toHaveBeenCalledTimes(3);
   });
 
   it("does not poll when the current task is idle", async () => {
@@ -333,7 +343,8 @@ describe("TaskView", () => {
       await vi.advanceTimersByTimeAsync(9000);
     });
 
-    expect(getJson).toHaveBeenCalledTimes(1);
+    // 2 calls: 1 sidepanel-width (DB migration) + 1 task load. No polls.
+    expect(getJson).toHaveBeenCalledTimes(2);
   });
 
   it("auto-rejects task permission when subagent is denied, leaving others manual", async () => {
@@ -393,7 +404,8 @@ describe("TaskView", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(getJson).toHaveBeenCalledTimes(2);
+    // 3 calls: 1 sidepanel-width (DB migration) + 1 task load + 1 poll.
+    expect(getJson).toHaveBeenCalledTimes(3);
   });
 
   it("polls while the current session is retrying", async () => {
@@ -410,7 +422,8 @@ describe("TaskView", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(getJson).toHaveBeenCalledTimes(2);
+    // 3 calls: 1 sidepanel-width (DB migration) + 1 task load + 1 poll.
+    expect(getJson).toHaveBeenCalledTimes(3);
   });
 
   it("notifies task changes when the stream status type changes", async () => {
@@ -455,11 +468,24 @@ describe("TaskView", () => {
     });
 
     expect(screen.getByText("累計 $0.2000")).toBeTruthy();
-    expect(getJson).toHaveBeenCalledTimes(2);
+    // 3 calls: 1 sidepanel-width (DB migration) + 1 task load + 1 visibility refresh.
+    expect(getJson).toHaveBeenCalledTimes(3);
   });
 
   it("keeps the current header cost when a working-task refresh fails", async () => {
-    getJson.mockResolvedValueOnce({ task: task(0.1) }).mockRejectedValueOnce(new Error("offline"));
+    let taskCalls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/files/content") {
+        return Promise.resolve({ name: "plan.md", content: "計画本文" });
+      }
+      taskCalls += 1;
+      // Initial load succeeds; the first poll refresh fails.
+      if (taskCalls === 1) return Promise.resolve({ task: task(0.1) });
+      return Promise.reject(new Error("offline"));
+    });
     vi.useFakeTimers();
     render(<TaskView taskId="ws1" />);
 
@@ -469,7 +495,6 @@ describe("TaskView", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(getJson).toHaveBeenCalledTimes(2);
     expect(screen.getByText("累計 $0.1000")).toBeTruthy();
     expect(screen.queryByText("offline")).toBeNull();
   });
@@ -543,7 +568,12 @@ describe("TaskView", () => {
     const streamMock = useSessionStream();
     streamMock.status = { type: "idle" };
     const sendPrompt = streamMock.sendPrompt;
-    sendJson.mockRejectedValue(new Error("activity unavailable"));
+    // Only the activity-touch call fails; the sidepanel-width DB write must
+    // still succeed so it doesn't emit a noisy warning unrelated to this test.
+    sendJson.mockImplementation((method: string, url: string) => {
+      if (url === "/api/settings/sidepanel-width") return Promise.resolve(undefined);
+      return Promise.reject(new Error("activity unavailable"));
+    });
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
     notifyTasksChanged.mockClear();
@@ -781,9 +811,18 @@ describe("TaskView", () => {
   });
 
   it("stops polling after idle even when the completion refresh fails", async () => {
-    getJson
-      .mockResolvedValueOnce({ task: task(0.1) })
-      .mockRejectedValueOnce(new Error("offline"));
+    let taskCalls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/files/content") {
+        return Promise.resolve({ name: "plan.md", content: "計画本文" });
+      }
+      taskCalls += 1;
+      if (taskCalls === 1) return Promise.resolve({ task: task(0.1) });
+      return Promise.reject(new Error("offline"));
+    });
     vi.useFakeTimers();
     const view = render(<TaskView taskId="ws1" />);
 
@@ -797,21 +836,34 @@ describe("TaskView", () => {
       await Promise.resolve();
     });
 
-    expect(getJson).toHaveBeenCalledTimes(2);
+    // Initial load + one failed poll refresh while working.
+    expect(taskCalls).toBe(2);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(getJson).toHaveBeenCalledTimes(2);
+    expect(taskCalls).toBe(2);
   });
 
   it("ignores an older task refresh after a newer refresh completes", async () => {
     let resolveInitial: ((value: { task: TaskSummary }) => void) | undefined;
-    getJson
-      .mockImplementationOnce(() => new Promise<{ task: TaskSummary }>((resolve) => {
-        resolveInitial = resolve;
-      }))
-      .mockResolvedValueOnce({ task: task(0.2) });
+    let taskCalls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/files/content") {
+        return Promise.resolve({ name: "plan.md", content: "計画本文" });
+      }
+      taskCalls += 1;
+      // Initial load stays pending; the first poll refresh resolves with 0.2.
+      if (taskCalls === 1) {
+        return new Promise<{ task: TaskSummary }>((resolve) => {
+          resolveInitial = resolve;
+        });
+      }
+      return Promise.resolve({ task: task(0.2) });
+    });
     const view = render(<TaskView taskId="ws1" />);
 
     await act(async () => {

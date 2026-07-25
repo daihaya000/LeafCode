@@ -1102,8 +1102,13 @@ describe("Sidebar", () => {
     await waitFor(() => expect(btnA).toHaveProperty("disabled", true));
     await act(async () => { fireEvent.click(btnB); });
     await waitFor(() => expect(btnB).toHaveProperty("disabled", true));
-    // Both refresh-title calls must have been issued.
-    expect(sendJson).toHaveBeenCalledTimes(2);
+    // Both refresh-title calls must have been issued. The sidebar DB-sync
+    // layer also calls sendJson for /api/settings/sidebar; filter those out
+    // so this assertion only counts the refresh-title requests.
+    const titleRefreshCalls = (sendJson.mock.calls as [string, string][]).filter(
+      ([, url]) => /\/ws[AB]\//.test(url),
+    );
+    expect(titleRefreshCalls).toHaveLength(2);
 
     // A finishes first — must NOT clear B's busy state.
     resolveA?.({ title: "A done" });
@@ -1371,4 +1376,129 @@ describe("Sidebar engine health polling", () => {
       { timeout: 8000 },
     );
   }, 15000);
+});
+
+describe("Sidebar DB persistence", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    attentionState.items = [];
+    attentionState.actionableItems = [];
+    usePathname.mockReturnValue("/");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      if (path === "/api/settings/sidebar") return Promise.resolve({ value: null });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({ ok: true });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it("migrates a localStorage-only sidebar state to the server on load", async () => {
+    localStorage.setItem("webui.sidebar.expanded", JSON.stringify(["prj1"]));
+    localStorage.setItem("webui.sidebar.width", "300");
+    localStorage.setItem("webui.sidebar.archived_expanded", "true");
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/sidebar",
+        {
+          value: JSON.stringify({
+            expanded: ["prj1"],
+            width: 300,
+            archivedExpanded: true,
+          }),
+        },
+      );
+    });
+  });
+
+  it("prefers the server sidebar state over localStorage on load", async () => {
+    localStorage.setItem("webui.sidebar.expanded", JSON.stringify(["local"]));
+    localStorage.setItem("webui.sidebar.width", "200");
+    localStorage.setItem("webui.sidebar.archived_expanded", "false");
+
+    const remote = {
+      expanded: ["prj-remote"],
+      width: 400,
+      archivedExpanded: true,
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      if (path === "/api/settings/sidebar") {
+        return Promise.resolve({ value: JSON.stringify(remote) });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui.sidebar.expanded")).toBe(
+        JSON.stringify(["prj-remote"]),
+      );
+    });
+    expect(localStorage.getItem("webui.sidebar.width")).toBe("400");
+    expect(localStorage.getItem("webui.sidebar.archived_expanded")).toBe("true");
+  });
+
+  it("writes the sidebar state to the DB when a project is toggled", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{ id: "prj1", name: "Repo", rootPath: "/repo", favorite: false, lastOpenedAt: null }],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      if (path === "/api/settings/sidebar") return Promise.resolve({ value: null });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const expandBtn = await screen.findByLabelText("Repoを展開");
+    fireEvent.click(expandBtn);
+
+    await waitFor(() => {
+      const sidebarPuts = (sendJson.mock.calls as [string, string, unknown][]).filter(
+        ([method, url]) => method === "PUT" && url === "/api/settings/sidebar",
+      );
+      expect(sidebarPuts.length).toBeGreaterThanOrEqual(1);
+      const last = sidebarPuts[sidebarPuts.length - 1]!;
+      const parsed = JSON.parse((last[2] as { value: string }).value);
+      expect(parsed.expanded).toContain("prj1");
+    });
+  });
+
+  it("writes the sidebar state to the DB when the archived section is toggled", async () => {
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const archiveHeading = await screen.findByRole("button", {
+      name: "アーカイブを展開",
+    });
+    fireEvent.click(archiveHeading);
+
+    await waitFor(() => {
+      const sidebarPuts = (sendJson.mock.calls as [string, string, unknown][]).filter(
+        ([method, url]) => method === "PUT" && url === "/api/settings/sidebar",
+      );
+      expect(sidebarPuts.length).toBeGreaterThanOrEqual(1);
+      const last = sidebarPuts[sidebarPuts.length - 1]!;
+      const parsed = JSON.parse((last[2] as { value: string }).value);
+      expect(parsed.archivedExpanded).toBe(true);
+    });
+  });
 });

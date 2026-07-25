@@ -29,6 +29,10 @@ import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { AttentionBadge } from "./AttentionBadge";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
+import {
+  readSidebarFromServer,
+  writeSidebarToServer,
+} from "@/lib/sidebar-settings";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
 const EXPANDED_KEY = "webui.sidebar.expanded";
@@ -85,6 +89,22 @@ function loadWidth(): number {
 function saveWidth(n: number) {
   try {
     localStorage.setItem(WIDTH_KEY, String(clampWidth(n)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadArchivedExpanded(): boolean {
+  try {
+    return localStorage.getItem(ARCHIVED_EXPANDED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveArchivedExpanded(value: boolean) {
+  try {
+    localStorage.setItem(ARCHIVED_EXPANDED_KEY, String(value));
   } catch {
     /* ignore */
   }
@@ -272,17 +292,53 @@ export function Sidebar({
   }, []);
 
   useEffect(() => {
-    setExpanded(loadExpanded());
-    setWidth(loadWidth());
-    setArchivedExpanded(() => {
-      try {
-        return localStorage.getItem(ARCHIVED_EXPANDED_KEY) === "true";
-      } catch {
-        return false;
-      }
-    });
+    // Fast path: hydrate from localStorage so the sidebar paints without
+    // waiting on the network. The DB read below may override these once it
+    // resolves (DB wins on conflict), and a localStorage-only value is
+    // migrated up to the DB so it survives origin/session changes.
+    const localExpanded = loadExpanded();
+    const localWidth = loadWidth();
+    const localArchivedExpanded = loadArchivedExpanded();
+    setExpanded(localExpanded);
+    setWidth(localWidth);
+    setArchivedExpanded(localArchivedExpanded);
     setHydrated(true);
     void refresh();
+
+    void (async () => {
+      const remote = await readSidebarFromServer();
+      const hasRemote =
+        remote.expanded !== null ||
+        remote.width !== null ||
+        remote.archivedExpanded !== null;
+      if (!hasRemote) {
+        // Nothing in the DB yet — push the localStorage value up so future
+        // sessions (other browsers/origins) pick it up.
+        void writeSidebarToServer({
+          expanded: [...localExpanded],
+          width: localWidth,
+          archivedExpanded: localArchivedExpanded,
+        });
+        return;
+      }
+      const nextExpanded =
+        remote.expanded !== null ? new Set(remote.expanded) : localExpanded;
+      const nextWidth =
+        remote.width !== null ? clampWidth(remote.width) : localWidth;
+      const nextArchivedExpanded =
+        remote.archivedExpanded !== null
+          ? remote.archivedExpanded
+          : localArchivedExpanded;
+      setExpanded(nextExpanded);
+      setWidth(nextWidth);
+      setArchivedExpanded(nextArchivedExpanded);
+      // Mirror the DB value back to localStorage so the next paint is instant
+      // and synchronous reads stay consistent.
+      saveExpanded(nextExpanded);
+      saveWidth(nextWidth);
+      saveArchivedExpanded(nextArchivedExpanded);
+    })();
+
     const onVisible = () => {
       const visible = document.visibilityState === "visible";
       setPageVisible(visible);
@@ -300,6 +356,28 @@ export function Sidebar({
   const hasActiveTask = tasks.some(
     (task) => task.status === "working",
   );
+
+  /**
+   * Mirror the current sidebar geometry to the DB. Called from every mutation
+   * site (toggle/resize/reset) with the freshly-computed values so the server
+   * copy stays in lockstep with localStorage. Failures are non-fatal (warned
+   * inside writeSidebarToServer); the localStorage copy is already updated.
+   */
+  const persistSidebar = useCallback(
+    (
+      nextExpanded: Set<string>,
+      nextWidth: number,
+      nextArchivedExpanded: boolean,
+    ) => {
+      void writeSidebarToServer({
+        expanded: [...nextExpanded],
+        width: nextWidth,
+        archivedExpanded: nextArchivedExpanded,
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!pageVisible || !hasActiveTask) return;
     const poll = setInterval(() => void refresh(), ACTIVE_TASK_POLL_MS);
@@ -326,9 +404,10 @@ export function Sidebar({
       const next = new Set(prev);
       next.add(task.projectId);
       saveExpanded(next);
+      persistSidebar(next, width, archivedExpanded);
       return next;
     });
-  }, [activeTaskId, tasks, hydrated]);
+  }, [activeTaskId, tasks, hydrated, width, archivedExpanded, persistSidebar]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -340,6 +419,7 @@ export function Sidebar({
       setResizing(false);
       setWidth((w) => {
         saveWidth(w);
+        persistSidebar(expanded, w, archivedExpanded);
         return w;
       });
     };
@@ -355,7 +435,7 @@ export function Sidebar({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [resizing]);
+  }, [resizing, expanded, archivedExpanded, persistSidebar]);
 
   const tasksByProject = useMemo(() => {
     const map = new Map<string, TaskSummary[]>();
@@ -422,6 +502,7 @@ export function Sidebar({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       saveExpanded(next);
+      persistSidebar(next, width, archivedExpanded);
       return next;
     });
   };
@@ -446,11 +527,8 @@ export function Sidebar({
   const toggleArchived = () => {
     setArchivedExpanded((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem(ARCHIVED_EXPANDED_KEY, String(next));
-      } catch {
-        /* ignore */
-      }
+      saveArchivedExpanded(next);
+      persistSidebar(expanded, width, next);
       return next;
     });
   };
@@ -1065,6 +1143,7 @@ export function Sidebar({
           onDoubleClick={() => {
             setWidth(DEFAULT_WIDTH);
             saveWidth(DEFAULT_WIDTH);
+            persistSidebar(expanded, DEFAULT_WIDTH, archivedExpanded);
           }}
           className={cx(
             "absolute top-0 right-0 z-10 h-full w-1.5 translate-x-1/2 cursor-col-resize touch-none",

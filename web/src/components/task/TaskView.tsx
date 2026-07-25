@@ -85,6 +85,10 @@ import { copyText } from "@/lib/clipboard";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
+  readSideWidthFromServer,
+  writeSideWidthToServer,
+} from "@/lib/sidepanel-settings";
+import {
   formatModelLabel,
   sortModelOptions,
   type ModelOption,
@@ -423,10 +427,29 @@ export function TaskView({ taskId }: { taskId: string }) {
   );
 
   useEffect(() => {
-    setSideWidth(loadSideWidth());
+    // Fast path: hydrate from localStorage so the panel paints without
+    // waiting on the network. The DB read below may override this once it
+    // resolves (DB wins on conflict), and a localStorage-only value is
+    // migrated up to the DB so it survives origin/session changes.
+    const localWidth = loadSideWidth();
+    setSideWidth(localWidth);
     setTab(readChatTab());
     setShowDiff(readShowDiff());
     setSidePanel(readSidePanel());
+
+    void (async () => {
+      const remote = await readSideWidthFromServer();
+      if (remote === null) {
+        // Nothing in the DB yet — push the localStorage value up so future
+        // sessions (other browsers/origins) pick it up.
+        void writeSideWidthToServer(localWidth);
+        return;
+      }
+      const next = clampSideWidth(remote);
+      setSideWidth(next);
+      saveSideWidth(next);
+    })();
+
     const mq = window.matchMedia("(min-width: 1024px)");
     const mqMd = window.matchMedia("(min-width: 768px)");
     const apply = () => {
@@ -457,6 +480,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       sideDragRef.current = null;
       setSideWidth((w) => {
         saveSideWidth(w);
+        void writeSideWidthToServer(w);
         return w;
       });
     };
@@ -2526,6 +2550,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               onDoubleClick={() => {
                 setSideWidth(SIDE_DEFAULT);
                 saveSideWidth(SIDE_DEFAULT);
+                void writeSideWidthToServer(SIDE_DEFAULT);
               }}
               className={cx(
                 "absolute top-0 left-0 z-10 hidden h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none lg:block",
