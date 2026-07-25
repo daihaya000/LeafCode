@@ -170,6 +170,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
   const [loaded, setLoaded] = useState(false);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
@@ -351,15 +354,27 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     );
   }, [refreshProjects, refreshEngine]);
 
+  // Track page visibility so background tabs stop polling (mirrors Sidebar).
+  useEffect(() => {
+    const onVisible = () => {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible) void refreshEngine();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshEngine]);
+
   // Re-check engine health while the "engine not connected" warning is shown
   // so it self-clears once OpenCode becomes reachable (no manual reload needed).
+  // Paused while the tab is hidden to avoid pointless background fetches.
   useEffect(() => {
-    if (engineOk) return;
+    if (!pageVisible || engineOk) return;
     const id = setInterval(() => {
       void refreshEngine();
     }, ENGINE_HEALTH_POLL_MS);
     return () => clearInterval(id);
-  }, [engineOk, refreshEngine]);
+  }, [engineOk, pageVisible, refreshEngine]);
 
   useEffect(() => {
     const project = projects.find((p) => p.id === projectId);

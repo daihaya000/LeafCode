@@ -821,4 +821,51 @@ describe("HomeView engine health polling", () => {
       { timeout: 8000 },
     );
   }, 15000);
+
+  it("pauses engine health polling while the tab is hidden and resumes on visibility", async () => {
+    vi.useFakeTimers();
+    render(<HomeView />);
+
+    // Flush the initial load promises (refreshProjects + refreshEngine).
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(
+      screen.getByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。"),
+    ).toBeTruthy();
+
+    const tasksCallsBefore = getJson.mock.calls.filter(
+      ([p]) => p === "/api/tasks",
+    ).length;
+
+    // Hide the tab — polling should stop.
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      writable: true,
+      configurable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    // Advance well past several poll intervals — no new /api/tasks calls.
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000 * 3); });
+    const tasksCallsWhileHidden = getJson.mock.calls.filter(
+      ([p]) => p === "/api/tasks",
+    ).length;
+    expect(tasksCallsWhileHidden).toBe(tasksCallsBefore);
+
+    // Show the tab — an immediate refresh fires and polling resumes.
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      writable: true,
+      configurable: true,
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    const tasksCallsAfterVisible = getJson.mock.calls.filter(
+      ([p]) => p === "/api/tasks",
+    ).length;
+    expect(tasksCallsAfterVisible).toBeGreaterThan(tasksCallsWhileHidden);
+  });
 });
