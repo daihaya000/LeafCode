@@ -245,4 +245,59 @@ describe("ProviderModelsSettings", () => {
 
     expect(await screen.findByText("更新に失敗しました")).toBeTruthy();
   });
+
+  it("keeps the list mounted (no reload flash) when toggling a provider", async () => {
+    render(<ProviderModelsSettings />);
+
+    const expandBtn = await screen.findByRole("button", {
+      name: /OpenAI のモデルを展開/,
+    });
+    fireEvent.click(expandBtn);
+    await screen.findByText("GPT-5");
+
+    const openaiSwitch = screen.getByRole("switch", {
+      name: "OpenAI を無効化",
+    });
+    fireEvent.click(openaiSwitch);
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+
+    // The expanded models stay visible (no "読み込み中…" flash).
+    expect(screen.getByText("GPT-5")).toBeTruthy();
+    expect(screen.queryByText("読み込み中…")).toBeNull();
+
+    // The provider switch flips optimistically.
+    await waitFor(() =>
+      expect(openaiSwitch.getAttribute("aria-checked")).toBe("false"),
+    );
+    // The model rows are disabled because the provider is now off.
+    const gpt5Switch = screen.getByRole("switch", { name: /GPT-5/ });
+    expect(gpt5Switch).toHaveProperty("disabled", true);
+  });
+
+  it("optimistically toggles a model without reloading the list", async () => {
+    render(<ProviderModelsSettings />);
+
+    const expandBtn = await screen.findByRole("button", {
+      name: /OpenAI のモデルを展開/,
+    });
+    fireEvent.click(expandBtn);
+
+    const gpt4oSwitch = await screen.findByRole("switch", {
+      name: "GPT-4o を有効化",
+    });
+    expect(gpt4oSwitch.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(gpt4oSwitch);
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+
+    // No reload flash.
+    expect(screen.queryByText("読み込み中…")).toBeNull();
+    // The model switch flips optimistically.
+    await waitFor(() =>
+      expect(gpt4oSwitch.getAttribute("aria-checked")).toBe("true"),
+    );
+    // Sibling model remains visible and unchanged.
+    expect(screen.getByText("GPT-5")).toBeTruthy();
+  });
 });

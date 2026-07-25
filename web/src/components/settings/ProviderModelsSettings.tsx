@@ -218,9 +218,42 @@ export function ProviderModelsSettings() {
           `/api/extensions/provider-models/${encodeURIComponent(key)}`,
           { enabled },
         );
-        await load();
+        // Optimistic update: reflect the change in the local list without a
+        // full reload so expanded rows stay open and the list never flashes
+        // to "読み込み中…". Toggling a provider also flips its models.
+        setProviders((prev) =>
+          prev.map((p) => {
+            if (key === p.id) {
+              const providerEnabled = enabled;
+              return {
+                ...p,
+                enabled: providerEnabled,
+                models: p.models.map((m) => ({
+                  ...m,
+                  // Keep the prior model enabled state when the provider turns
+                  // on, and force all off when the provider turns off.
+                  enabled: providerEnabled && m.enabled,
+                })),
+              };
+            }
+            if (key.startsWith(`${p.id}::`)) {
+              const modelID = key.slice(p.id.length + 2);
+              return {
+                ...p,
+                models: p.models.map((m) =>
+                  m.id === modelID
+                    ? { ...m, enabled: p.enabled && enabled }
+                    : m,
+                ),
+              };
+            }
+            return p;
+          }),
+        );
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "操作に失敗しました");
+        // On failure, resync from the server so the UI reflects the real state.
+        void load();
       } finally {
         setBusyId(null);
       }
