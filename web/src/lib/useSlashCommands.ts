@@ -1,6 +1,7 @@
 "use client";
 
 import { timedFetch } from "@/lib/client";
+import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
 import { useEffect, useState } from "react";
 import {
   normalizeCommands,
@@ -13,11 +14,9 @@ export function useSlashCommands(directory?: string | null): SlashCommand[] {
 
   useEffect(() => {
     let cancelled = false;
-    const headers: HeadersInit = {};
-    if (directory) headers["x-opencode-directory"] = directory;
-    const url = directory
-      ? `/api/opencode/command?directory=${encodeURIComponent(directory)}`
-      : "/api/opencode/command";
+    const headers: HeadersInit = directoryHeaders(directory);
+    const base = new URL("/api/opencode/command", window.location.origin);
+    const url = withDirectoryQuery(base, directory).toString();
 
     void timedFetch(url, { headers })
       .then((res) => (res.ok ? res.json() : []))

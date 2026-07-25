@@ -22,6 +22,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { cx } from "@/components/ui";
 import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
 import { getJson } from "@/lib/client";
+import { directoryHeaders } from "@/lib/directory-header";
 import type { TaskSummary } from "@/lib/types";
 
 type Item =
@@ -131,7 +132,7 @@ export function CommandPalette({
       u.searchParams.set("query", query.trim());
       u.searchParams.set("limit", "12");
       fetch(u.toString(), {
-        headers: { "x-opencode-directory": directory },
+        headers: directoryHeaders(directory),
         cache: "no-store",
         signal: AbortSignal.any([
           controller.signal,

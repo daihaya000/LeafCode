@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
 import { isIntelligenceVariant } from "@/lib/model-variants";
 import { ocServer } from "@/lib/oc-server";
 import {
@@ -312,11 +313,12 @@ async function proxy(
 
   const target = new URL(pathname + incoming.search, OPENCODE_BASE_URL);
   // Defense in depth: the allowlist check above validated `directory` (header
-  // preferred). Overwrite any `?directory=` query the caller may have sent with
-  // the validated value so a mismatched header/query pair cannot smuggle an
-  // unvalidated path through to OpenCode.
-  if (directory && target.searchParams.has("directory")) {
-    target.searchParams.set("directory", directory);
+  // preferred). Always set the validated `?directory=` on the upstream URL so
+  // a mismatched header/query pair cannot smuggle an unvalidated path through
+  // to OpenCode. The query is safe for non-Latin-1 paths (URLSearchParams
+  // percent-encodes), while the header below is omitted for unsafe values.
+  if (directory) {
+    withDirectoryQuery(target, directory);
   }
 
   const headers = new Headers();
@@ -324,8 +326,8 @@ async function proxy(
     if (HOP_BY_HOP.has(key.toLowerCase())) return;
     headers.set(key, value);
   });
-  if (directory) {
-    headers.set("x-opencode-directory", directory);
+  for (const [key, value] of Object.entries(directoryHeaders(directory))) {
+    headers.set(key, value);
   }
 
   let requestBody: ArrayBuffer | undefined;

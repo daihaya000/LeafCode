@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { directoryHeaders } from "@/lib/directory-header";
 import { gitDiff, gitStatus } from "@/lib/git";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
 
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
       );
       url.searchParams.set("directory", check.path);
       const res = await fetch(url, {
-        headers: { "x-opencode-directory": check.path },
+        headers: directoryHeaders(check.path),
         cache: "no-store",
         signal: AbortSignal.timeout(30_000),
       });

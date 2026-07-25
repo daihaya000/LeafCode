@@ -3,6 +3,7 @@
 /** Client-side fetch helpers (browser → BFF). */
 
 import { assertSafeOpenCodePath } from "./opencode-id";
+import { directoryHeaders } from "./directory-header";
 
 /** Default abort for hung BFF/engine calls that omit an explicit timeout. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
@@ -256,7 +257,7 @@ export async function ocJson<T>(
     const res = await fetch(apiUrl(`/api/opencode${path}`, { directory }), {
       method: init?.method ?? "GET",
       headers: {
-        "x-opencode-directory": directory,
+        ...directoryHeaders(directory),
         ...(init?.body !== undefined
           ? { "content-type": "application/json" }
           : {}),

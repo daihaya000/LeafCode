@@ -1,5 +1,6 @@
 import { OPENCODE_BASE_URL, isBlockedOpencodeWrite } from "./opencode";
 import { resolvedOpenCodePathname } from "./opencode-id";
+import { directoryHeaders, withDirectoryQuery } from "./directory-header";
 
 export class OcError extends Error {
   status: number;
@@ -35,13 +36,18 @@ export async function ocServer<T>(
     );
   }
 
-  const headers: Record<string, string> = {};
-  if (directory) headers["x-opencode-directory"] = directory;
+  const headers: Record<string, string> = {
+    ...directoryHeaders(directory),
+  };
   if (init?.body !== undefined) headers["content-type"] = "application/json";
 
   let res: Response;
   try {
-    res = await fetch(new URL(path, OPENCODE_BASE_URL), {
+    const url = withDirectoryQuery(
+      new URL(path, OPENCODE_BASE_URL),
+      directory,
+    );
+    res = await fetch(url, {
       method,
       headers,
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,

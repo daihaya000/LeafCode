@@ -5,6 +5,7 @@ vi.mock("@/lib/allowlist", () => ({
   assertAllowedDirectory: vi.fn(() => ({ ok: true, path: "C:\\repo" })),
 }));
 
+import { assertAllowedDirectory } from "@/lib/allowlist";
 import { GET, POST } from "./route";
 
 function post(body: string, contentType = "application/json") {
@@ -547,5 +548,71 @@ describe("upstream timeout handling", () => {
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe("OpenCode engine unavailable");
     fetchMock.mockRestore();
+  });
+});
+
+describe("non-Latin-1 directory handling", () => {
+  it("forwards a Japanese directory via query and omits the header without throwing", async () => {
+    const directory = "C:\\Users\\会議\\project";
+    vi.mocked(assertAllowedDirectory).mockReturnValueOnce({
+      ok: true,
+      path: directory,
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ ok: true }));
+
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/opencode/session?directory=${encodeURIComponent(directory)}`,
+      ) as never,
+      { params: Promise.resolve({ path: ["session"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0] ?? [];
+    const url = new URL(String(upstreamUrl));
+    // The validated directory must be present on the upstream URL query.
+    expect(url.searchParams.get("directory")).toBe(directory);
+    // The raw serialized query must be percent-encoded (no raw multibyte).
+    expect(url.search).not.toContain("会議");
+    // The header must NOT be set for non-Latin-1 values.
+    const headers = new Headers(
+      (upstreamInit as RequestInit | undefined)?.headers as HeadersInit | undefined,
+    );
+    expect(headers.get("x-opencode-directory")).toBeNull();
+    fetchMock.mockRestore();
+    vi.mocked(assertAllowedDirectory).mockReset();
+  });
+
+  it("attaches the header and the query for an ASCII directory (regression)", async () => {
+    const directory = "C:\\repo";
+    vi.mocked(assertAllowedDirectory).mockReturnValueOnce({
+      ok: true,
+      path: directory,
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ ok: true }));
+
+    const response = await GET(
+      new NextRequest(
+        `http://localhost/api/opencode/session?directory=${encodeURIComponent(directory)}`,
+      ) as never,
+      { params: Promise.resolve({ path: ["session"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0] ?? [];
+    const url = new URL(String(upstreamUrl));
+    expect(url.searchParams.get("directory")).toBe(directory);
+    const headers = new Headers(
+      (upstreamInit as RequestInit | undefined)?.headers as HeadersInit | undefined,
+    );
+    expect(headers.get("x-opencode-directory")).toBe(directory);
+    fetchMock.mockRestore();
+    vi.mocked(assertAllowedDirectory).mockReset();
   });
 });

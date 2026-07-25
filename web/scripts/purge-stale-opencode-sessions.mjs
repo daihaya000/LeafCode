@@ -16,6 +16,17 @@ const baseUrl = process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4096";
 
 const WEBUI_DIR_RE = /opencode-webui[/\\]worktrees|\.webui-worktrees/i;
 
+/** True when every char is in U+0000–U+00FF and no CR/LF/NUL is present. */
+function isHeaderSafeValue(value) {
+  if (!value) return false;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code > 0xff) return false;
+    if (code === 0x0d || code === 0x0a || code === 0x00) return false;
+  }
+  return true;
+}
+
 if (!fs.existsSync(dbPath)) {
   console.error("opencode.db not found:", dbPath);
   process.exit(1);
@@ -80,9 +91,19 @@ for (const row of preview.targets) {
       cache: "no-store",
     });
     if (!res.ok && res.status !== 404) {
-      res = await fetch(new URL(`/session/${row.id}`, baseUrl), {
+      // HTTP header values are ByteString (U+0000–U+00FF). Non-Latin-1 paths
+      // (e.g. Japanese) would make Headers.set() throw, so only attach the
+      // x-opencode-directory header when the path is header-safe. The query
+      // parameter is always safe (URLSearchParams percent-encodes).
+      const headers = {};
+      if (row.directory && isHeaderSafeValue(row.directory)) {
+        headers["x-opencode-directory"] = row.directory;
+      }
+      const retryUrl = new URL(`/session/${row.id}`, baseUrl);
+      retryUrl.searchParams.set("directory", row.directory);
+      res = await fetch(retryUrl, {
         method: "DELETE",
-        headers: { "x-opencode-directory": row.directory },
+        headers,
         cache: "no-store",
       });
     }
