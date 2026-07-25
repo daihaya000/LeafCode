@@ -5,6 +5,7 @@ import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
+import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
@@ -87,7 +88,8 @@ type SettingsTab =
   | "mcp"
   | "plugins"
   | "addons"
-  | "agents";
+  | "agents"
+  | "providers";
 
 const RESTART_LABELS = {
   webui: "WebUI（フロントエンド）",
@@ -446,6 +448,7 @@ export function SettingsView() {
     { key: "plugins", label: "プラグイン" },
     { key: "addons", label: "アドオン" },
     { key: "agents", label: "エージェント" },
+    { key: "providers", label: "プロバイダー/モデル" },
   ];
 
   return (
@@ -958,6 +961,8 @@ export function SettingsView() {
         )}
 
         {activeTab === "agents" && <AgentsSettings />}
+
+        {activeTab === "providers" && <ProviderModelsSettings />}
       </main>
       </div>
     </div>

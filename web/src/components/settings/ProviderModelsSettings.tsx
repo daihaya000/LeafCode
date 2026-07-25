@@ -1,0 +1,293 @@
+"use client";
+
+import { useCallback, useEffect, useId, useState } from "react";
+import { Badge, Button, cx } from "@/components/ui";
+import { getJson, sendJson } from "@/lib/client";
+import { providerIconSrcForOpencodeId } from "@addons/codexbar";
+
+type ModelDto = {
+  id: string;
+  name: string;
+  enabled: boolean;
+};
+
+type ProviderDto = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  models: ModelDto[];
+};
+
+type ProviderModelsResponse = {
+  providers: ProviderDto[];
+};
+
+type Status = "loading" | "ready" | "error";
+
+function ExtensionSwitch({
+  name,
+  enabled,
+  busy,
+  onToggle,
+}: {
+  name: string;
+  enabled: boolean;
+  busy: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={`${name} を${enabled ? "無効化" : "有効化"}`}
+      disabled={busy}
+      onClick={onToggle}
+      className={cx(
+        "relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+        enabled ? "bg-primary" : "bg-surface-3",
+      )}
+    >
+      <span
+        className={cx(
+          "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-surface shadow transition-transform",
+          enabled ? "translate-x-5" : "translate-x-0",
+        )}
+      />
+    </button>
+  );
+}
+
+function ProviderIcon({ providerId }: { providerId: string }) {
+  const src = providerIconSrcForOpencodeId(providerId);
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        width={20}
+        height={20}
+        className="h-5 w-5 shrink-0 rounded-[4px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <span className="h-5 w-5 shrink-0 rounded-full border border-faint" />
+  );
+}
+
+function ProviderGroup({
+  provider,
+  busyId,
+  onToggleProvider,
+  onToggleModel,
+}: {
+  provider: ProviderDto;
+  busyId: string | null;
+  onToggleProvider: (enabled: boolean) => void;
+  onToggleModel: (model: ModelDto, enabled: boolean) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
+  const isBusy = busyId === provider.id;
+  const hasModels = provider.models.length > 0;
+
+  return (
+    <li aria-busy={isBusy || undefined} className="space-y-2">
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        {hasModels && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            aria-label={`${provider.name} のモデルを${expanded ? "折りたたむ" : "展開"}`}
+            onClick={() => setExpanded((e) => !e)}
+            className="shrink-0 rounded-md p-1 text-faint transition-colors hover:bg-surface-3 hover:text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className={cx(
+                "h-4 w-4 transition-transform",
+                expanded ? "rotate-90" : "rotate-0",
+              )}
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        )}
+        <ProviderIcon providerId={provider.id} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 truncate text-sm font-medium">
+              {provider.name}
+            </p>
+            <Badge tone={provider.enabled ? "success" : "neutral"}>
+              {provider.enabled ? "有効" : "無効"}
+            </Badge>
+          </div>
+        </div>
+        <ExtensionSwitch
+          name={provider.name}
+          enabled={provider.enabled}
+          busy={isBusy}
+          onToggle={() => onToggleProvider(!provider.enabled)}
+        />
+      </div>
+      {hasModels && expanded && (
+        <ul id={panelId} className="space-y-2">
+          {provider.models.map((model) => {
+            const modelKey = `${provider.id}::${model.id}`;
+            const modelBusy = busyId === modelKey;
+            const disabled = !provider.enabled;
+            return (
+              <li
+                key={model.id}
+                aria-busy={modelBusy || undefined}
+                className={cx(
+                  "ml-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 border-l-2 border-l-border",
+                  disabled && "opacity-50",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 truncate text-sm font-medium">
+                      {model.name}
+                    </p>
+                    <Badge tone={model.enabled ? "success" : "neutral"}>
+                      {model.enabled ? "有効" : "無効"}
+                    </Badge>
+                  </div>
+                </div>
+                <ExtensionSwitch
+                  name={model.name}
+                  enabled={model.enabled}
+                  busy={modelBusy || disabled}
+                  onToggle={() => onToggleModel(model, !model.enabled)}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+export function ProviderModelsSettings() {
+  const [status, setStatus] = useState<Status>("loading");
+  const [providers, setProviders] = useState<ProviderDto[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setStatus("loading");
+    setError(null);
+    try {
+      const data = await getJson<ProviderModelsResponse>(
+        "/api/extensions/provider-models",
+      );
+      setProviders(data.providers ?? []);
+      setStatus("ready");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "取得に失敗しました");
+      setStatus("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const toggle = useCallback(
+    async (key: string, enabled: boolean) => {
+      setBusyId(key);
+      setActionError(null);
+      try {
+        await sendJson(
+          "PATCH",
+          `/api/extensions/provider-models/${encodeURIComponent(key)}`,
+          { enabled },
+        );
+        await load();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "操作に失敗しました");
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [load],
+  );
+
+  return (
+    <div className="space-y-8">
+      <section aria-labelledby="provider-models-heading">
+        <h2
+          id="provider-models-heading"
+          className="mb-3 text-sm font-semibold text-muted"
+        >
+          プロバイダー/モデル
+        </h2>
+        <p className="mb-3 text-xs text-faint">
+          利用可能な AI プロバイダーとモデルの表示を切り替えます。OpenCode
+          設定ファイルは変更しません。
+        </p>
+        {actionError && (
+          <p role="alert" className="mb-2 text-xs text-danger">
+            {actionError}
+          </p>
+        )}
+        {status === "loading" && (
+          <p
+            aria-busy="true"
+            className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-sm text-muted"
+          >
+            読み込み中…
+          </p>
+        )}
+        {status === "error" && (
+          <div
+            role="alert"
+            className="space-y-3 rounded-xl border border-danger/30 bg-danger-bg px-4 py-4 text-sm"
+          >
+            <p className="text-muted">{error ?? "取得に失敗しました"}</p>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              再試行
+            </Button>
+          </div>
+        )}
+        {status === "ready" &&
+          (providers.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted">
+              利用可能なプロバイダーがありません
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {providers.map((provider) => (
+                <ProviderGroup
+                  key={provider.id}
+                  provider={provider}
+                  busyId={busyId}
+                  onToggleProvider={(enabled) =>
+                    void toggle(provider.id, enabled)
+                  }
+                  onToggleModel={(model, enabled) =>
+                    void toggle(`${provider.id}::${model.id}`, enabled)
+                  }
+                />
+              ))}
+            </ul>
+          ))}
+      </section>
+    </div>
+  );
+}
