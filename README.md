@@ -8,6 +8,10 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 `setup.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `setup.bat` を再実行してください。
 
+### 文字化け・エンコード
+
+`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`setup.bat` は英語の要約行（`[Setup] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `setup.bat` は完走します。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
+
 ### production build
 
 稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` と `setup.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `start-webui.bat` からの起動を案内します）。
@@ -19,6 +23,8 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 - トレイhostが動いていない孤立した `next start` だけは、この repo の `next start` と確認できた場合に限り強制終了します。
 
 `npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
+
+`setup.bat` は各エラーを `[Setup] ERROR <code>: <english summary>` の英語行として表示します。下記のコード表と対応します。
 
 セットアップの終了コード:
 
