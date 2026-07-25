@@ -59,7 +59,7 @@ describe("resolveValidatedAllowlistPath", () => {
     fs.rmSync(protectedPath, { recursive: true, force: true });
   });
 
-  it("rejects every profile below USERPROFILE's parent", () => {
+  it("rejects other profiles and the profile parent, but allows USERPROFILE itself", () => {
     const profileParent = fs.mkdtempSync(path.join(os.tmpdir(), "profiles-"));
     const currentProfile = path.join(profileParent, "current-user");
     const otherProfile = path.join(profileParent, "other-user");
@@ -67,7 +67,28 @@ describe("resolveValidatedAllowlistPath", () => {
     fs.mkdirSync(otherProfile);
     vi.stubEnv("USERPROFILE", currentProfile);
 
-    expect(resolveValidatedAllowlistPath(otherProfile)).toHaveProperty("error");
-    fs.rmSync(profileParent, { recursive: true, force: true });
+    try {
+      expect(resolveValidatedAllowlistPath(otherProfile)).toHaveProperty("error");
+      expect(resolveValidatedAllowlistPath(profileParent)).toHaveProperty("error");
+      expect(resolveValidatedAllowlistPath(currentProfile)).toEqual({
+        canonicalPath: fs.realpathSync.native(currentProfile),
+      });
+    } finally {
+      fs.rmSync(profileParent, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps rejecting descendants of USERPROFILE's own protected system locations", () => {
+    const systemRoot = fs.mkdtempSync(path.join(os.tmpdir(), "winroot-"));
+    const profile = path.join(systemRoot, "current-user");
+    fs.mkdirSync(profile);
+    vi.stubEnv("SystemRoot", systemRoot);
+    vi.stubEnv("USERPROFILE", profile);
+
+    try {
+      expect(resolveValidatedAllowlistPath(profile)).toHaveProperty("error");
+    } finally {
+      fs.rmSync(systemRoot, { recursive: true, force: true });
+    }
   });
 });

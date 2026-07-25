@@ -32,7 +32,10 @@ function canonicalizeExistingPath(configuredPath: string | undefined): string | 
   }
 }
 
-/** Resolve protected OS locations and the roots of every local user profile. */
+/**
+ * Resolve protected OS locations and the roots of other local user profiles.
+ * The current user's own profile root (USERPROFILE) stays allowed on purpose.
+ */
 function getProtectedPaths(): ProtectedPath[] {
   const configuredPaths = [
     process.env.SystemRoot,
@@ -49,6 +52,7 @@ function getProtectedPaths(): ProtectedPath[] {
         : [];
     },
   );
+  const ownProfile = canonicalizeExistingPath(process.env.USERPROFILE);
   const profileParent = canonicalizeExistingPath(
     process.env.USERPROFILE && path.dirname(process.env.USERPROFILE),
   );
@@ -59,9 +63,11 @@ function getProtectedPaths(): ProtectedPath[] {
     for (const entry of fs.readdirSync(profileParent, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const profilePath = canonicalizeExistingPath(path.join(profileParent, entry.name));
-      if (profilePath) {
-        protectedPaths.push({ path: profilePath, includesDescendants: false });
+      if (!profilePath) continue;
+      if (ownProfile && profilePath.toLowerCase() === ownProfile.toLowerCase()) {
+        continue;
       }
+      protectedPaths.push({ path: profilePath, includesDescendants: false });
     }
   } catch {
     // Keep the parent root protected if profile enumeration is unavailable.
