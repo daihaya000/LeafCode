@@ -412,4 +412,55 @@ describe("ExtensionsSettings", () => {
       within(folderLi!).queryByRole("switch"),
     ).toBeNull();
   });
+
+  it("toggles a toggleable sub-skill via PATCH (defensive: guard future API changes)", async () => {
+    // Today's API marks sub-skills as toggleable=false, so the sub-skill switch
+    // is never rendered. If a future API revision returns toggleable=true for a
+    // sub-skill, the sub-skill row must still issue a PATCH with its nested id
+    // (regression: a previous build wired onToggle to a no-op `() => {}`).
+    mockGetJson({
+      extraSkills: [
+        {
+          id: "ns",
+          name: "ns",
+          description: "namespace parent",
+          enabled: true,
+          toggleable: true,
+        },
+        {
+          id: "ns/leaf",
+          name: "leaf",
+          description: "toggleable leaf",
+          enabled: true,
+          toggleable: true,
+        },
+      ],
+    });
+    render(<ExtensionsSettings />);
+
+    const parentSwitch = await screen.findByRole("switch", {
+      name: "ns を無効化",
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /ns のサブスキルを展開/ }),
+    );
+
+    const leafSwitch = await screen.findByRole("switch", {
+      name: "leaf を無効化",
+    });
+    fireEvent.click(leafSwitch);
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+    expect(sendJson).toHaveBeenCalledWith(
+      "PATCH",
+      "/api/extensions/skills/ns%2Fleaf",
+      { enabled: false },
+    );
+    // parent toggle is left untouched in the same gesture.
+    const parentCall = sendJson.mock.calls.find(
+      ([, p]) => p === "/api/extensions/skills/ns",
+    );
+    expect(parentCall).toBeUndefined();
+    void parentSwitch;
+  });
 });

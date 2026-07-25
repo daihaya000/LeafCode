@@ -195,7 +195,7 @@ function SkillSubtree({
               item={child.item!}
               depth={1}
               busy={busyId === child.item!.id}
-              onToggle={() => {}}
+              onToggle={() => onToggle(child.item!, !child.item!.enabled)}
             />
           ))}
         </ul>
