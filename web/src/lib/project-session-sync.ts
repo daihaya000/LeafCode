@@ -20,10 +20,12 @@ import {
 } from "./project-session-store";
 
 /**
- * Bridges the global SQLite DB and the project-local manifest so session
- * bindings live "inside the repository" and can be resumed after a close/reopen
- * (or restored on a fresh machine / clone). All operations are best-effort and
- * never throw into the caller's request path.
+ * Bridges the global SQLite DB and the machine-local manifest under
+ * `<dataDir>/projects/<key>/sessions.json` so session bindings can be resumed
+ * after a close/reopen and survive a DB reset. Bindings are intentionally not
+ * stored in the repository (spec change 2026-07-25): they follow the machine,
+ * not a clone. All operations are best-effort and never throw into the
+ * caller's request path.
  */
 
 function log(scope: string, err: unknown): void {
@@ -55,7 +57,7 @@ function manifestFromDb(project: ProjectRow): ProjectSessionManifest {
   return { ...manifest, workspaces: wsEntries, updatedAt: new Date().toISOString() };
 }
 
-/** Rebuild the project's manifest from DB truth and write it into the repo. */
+/** Rebuild the project's manifest from DB truth and write it to the machine-local data dir. */
 export function persistProjectSessions(projectId: string): void {
   try {
     const project = getProject(projectId);
@@ -113,10 +115,12 @@ export function restoreProjectFromManifest(
         : "active";
       // A git worktree we provisioned lives either under the project root
       // (legacy <repoRoot>/.webui-worktrees/…) or under the machine-local
-      // data dir (<dataDir>/worktrees/…, OneDrive-safe location). A
-      // manifest that points its worktreePath elsewhere is untrusted (e.g. a
-      // cloned repo carrying a crafted sessions.json) and must not be imported,
-      // since destroying it would drive a recursive delete outside the repo.
+      // data dir (<dataDir>/worktrees/…, OneDrive-safe location). Manifests
+      // are machine-local now, so a crafted in-repo sessions.json is never
+      // read; this guard remains defense-in-depth against a tampered
+      // machine-local manifest — a worktreePath pointing elsewhere must not
+      // be imported, since destroying it would drive a recursive delete
+      // outside the repo.
       const worktreeBase = path.resolve(dataDir(), "worktrees");
       if (
         ws.isolation === "git_worktree" &&
@@ -151,7 +155,8 @@ export function restoreProjectFromManifest(
         result.workspaces += 1;
       } else {
         // ID collision with another project's workspace: never bind sessions
-        // onto a foreign row (copied repo + shared sessions.json).
+        // onto a foreign row (machine-local manifests are keyed per root, but
+        // a tampered manifest could still reuse a foreign workspace id).
         const existing = getWorkspace(ws.id);
         if (!existing || existing.project_id !== projectId) {
           log(
@@ -172,7 +177,7 @@ export function restoreProjectFromManifest(
   return result;
 }
 
-/** Restore every known project (by DB root path) from its repo manifest. */
+/** Restore every known project (by DB root path) from its machine-local manifest. */
 export function restoreAllKnownProjects(): RestoreResult {
   const total: RestoreResult = { workspaces: 0, sessions: 0 };
   for (const project of listProjects()) {
@@ -185,8 +190,8 @@ export function restoreAllKnownProjects(): RestoreResult {
 
 /**
  * Register a project by its root path (upsert) and restore its sessions from
- * the repo manifest. Used when (re)opening a repository so its sessions come
- * back even if the global DB was cleared.
+ * the machine-local manifest. Used when (re)opening a repository so its
+ * sessions come back even if the global DB was cleared.
  */
 export function adoptProjectFromManifest(rootPath: string): {
   project: ProjectRow;

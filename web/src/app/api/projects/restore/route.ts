@@ -10,11 +10,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Restore session bindings from project-local manifests.
+ * Restore session bindings from machine-local manifests
+ * (`<dataDir>/projects/<key>/sessions.json`).
  *
  * - No body: restore every project already known to the DB.
- * - `{ rootPath }`: register (upsert) that repository and restore its sessions,
- *   even if the global DB has no record of it yet (e.g. fresh machine / clone).
+ * - `{ rootPath }`: register (upsert) that repository and restore its sessions
+ *   from the machine-local manifest. A legacy in-repo manifest is still
+ *   migrated if present.
  */
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {

@@ -1,21 +1,35 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
+import { dataDir } from "./paths";
 
 /**
- * Project-local persistence of session metadata.
+ * Machine-local persistence of session metadata.
  *
  * The global SQLite DB ({APPDATA}/opencode-webui/webui.db) is the runtime source
- * of truth, but it lives outside the repository. To keep the session exchanges
- * "inside the project" — so they survive a DB reset, a fresh machine, or a clone
- * of the repo — we mirror the workspace/session bindings into a manifest file at
- * `<projectRoot>/.opencode-webui/sessions.json`. On (re)opening a project the
- * manifest is imported back into the DB so the sessions can be resumed.
+ * of truth. So that workspace/session bindings survive a DB reset, we mirror
+ * them into a machine-local manifest at
+ * `<dataDir>/projects/<sha1(rootPath)>/sessions.json`. On (re)opening a project
+ * the manifest is imported back into the DB so the sessions can be resumed.
+ *
+ * Session metadata is intentionally never written into the repository
+ * (spec change 2026-07-25): bindings survive a DB reset, but intentionally not
+ * a machine change/clone. Legacy in-repo manifests
+ * (`<root>/.opencode-webui/sessions.json`) are migrated on read and deleted
+ * best-effort.
  */
 
 export const MANIFEST_DIR = ".opencode-webui";
 export const MANIFEST_FILE = "sessions.json";
 export const MANIFEST_VERSION = 1 as const;
+
+/** Stable per-project key: sha1 of the resolved root path (lowercased on win32, case-insensitive FS). */
+export function projectKey(rootPath: string): string {
+  const resolved = path.resolve(rootPath);
+  const norm = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  return crypto.createHash("sha1").update(norm).digest("hex");
+}
 
 export type ManifestSession = {
   opencodeSessionId: string;
@@ -136,49 +150,76 @@ export function removeWorkspaceFromManifest(
 }
 
 export function manifestDir(rootPath: string): string {
-  return path.join(rootPath, MANIFEST_DIR);
+  return path.join(dataDir(), "projects", projectKey(rootPath));
 }
 
 export function manifestPath(rootPath: string): string {
-  return path.join(rootPath, MANIFEST_DIR, MANIFEST_FILE);
+  return path.join(manifestDir(rootPath), MANIFEST_FILE);
 }
 
-/** Read + defensively parse the manifest for a project root (null if absent). */
+/** Legacy in-repo manifest location (pre-2026-07-25); read-only, migrated on sight. */
+export function legacyManifestDir(rootPath: string): string {
+  return path.join(rootPath, MANIFEST_DIR);
+}
+
+export function legacyManifestPath(rootPath: string): string {
+  return path.join(legacyManifestDir(rootPath), MANIFEST_FILE);
+}
+
+/**
+ * Read + defensively parse the manifest for a project root (null if absent).
+ * Falls back to the legacy in-repo manifest and migrates it best-effort into
+ * the machine-local location when it parses successfully.
+ */
 export function readProjectManifest(
   rootPath: string,
 ): ProjectSessionManifest | null {
   const file = manifestPath(rootPath);
-  let text: string;
   try {
-    text = fs.readFileSync(file, "utf8");
+    const parsed = parseManifest(JSON.parse(fs.readFileSync(file, "utf8")));
+    if (parsed) return parsed;
+  } catch {
+    // absent or unparsable: fall through to the legacy location
+  }
+
+  const legacyFile = legacyManifestPath(rootPath);
+  let legacyText: string;
+  try {
+    legacyText = fs.readFileSync(legacyFile, "utf8");
   } catch {
     return null;
   }
-  let json: unknown;
+  let legacyJson: unknown;
   try {
-    json = JSON.parse(text);
+    legacyJson = JSON.parse(legacyText);
   } catch {
     return null;
   }
-  return parseManifest(json);
+  const parsed = parseManifest(legacyJson);
+  if (!parsed) return null;
+
+  // Best-effort migration: copy to the machine-local location, then remove the
+  // in-repo dir. Failures must never break the read itself.
+  try {
+    writeProjectManifest(rootPath, parsed);
+  } catch {
+    /* best effort */
+  }
+  try {
+    fs.rmSync(legacyManifestDir(rootPath), { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
+  return parsed;
 }
 
-/** Persist the manifest to `<root>/.opencode-webui/sessions.json` (atomic-ish). */
+/** Persist the manifest to the machine-local data dir (atomic-ish). */
 export function writeProjectManifest(
   rootPath: string,
   manifest: ProjectSessionManifest,
 ): void {
   const dir = manifestDir(rootPath);
   fs.mkdirSync(dir, { recursive: true });
-  // Keep our metadata dir out of the user's repo: a self-ignoring .gitignore
-  // makes git treat the whole folder (manifest included) as ignored, so it
-  // never shows up as an untracked change or gets committed by accident.
-  const ignore = path.join(dir, ".gitignore");
-  try {
-    if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, "*\n", "utf8");
-  } catch {
-    /* best effort */
-  }
   const file = manifestPath(rootPath);
   const tmp = `${file}.tmp`;
   const body = JSON.stringify(manifest, null, 2);

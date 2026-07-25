@@ -1,13 +1,19 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({ dataDir: "" }));
+vi.mock("./paths", () => ({ dataDir: () => h.dataDir }));
+
 import {
-  MANIFEST_DIR,
   MANIFEST_FILE,
   emptyManifest,
+  legacyManifestDir,
+  legacyManifestPath,
   manifestPath,
   parseManifest,
+  projectKey,
   readProjectManifest,
   removeWorkspaceFromManifest,
   upsertWorkspaceInManifest,
@@ -98,23 +104,51 @@ describe("fs round trip", () => {
   let root: string;
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "ocw-manifest-"));
+    h.dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "ocw-manifest-data-"));
   });
   afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(h.dataDir, { recursive: true, force: true });
   });
 
-  it("writes to .opencode-webui/sessions.json and reads back", () => {
+  it("writes to the machine-local data dir, never into the repo", () => {
     let m = emptyManifest({ name: "Demo", rootPath: root });
     m = upsertWorkspaceInManifest(m, ws("a"));
     writeProjectManifest(root, m);
 
-    expect(fs.existsSync(path.join(root, MANIFEST_DIR, MANIFEST_FILE))).toBe(true);
-    expect(manifestPath(root)).toBe(path.join(root, MANIFEST_DIR, MANIFEST_FILE));
+    expect(manifestPath(root)).toBe(
+      path.join(h.dataDir, "projects", projectKey(root), MANIFEST_FILE),
+    );
+    expect(fs.existsSync(manifestPath(root))).toBe(true);
+    expect(fs.existsSync(path.join(root, ".opencode-webui"))).toBe(false);
 
     const back = readProjectManifest(root);
     expect(back).not.toBeNull();
     expect(back!.workspaces).toHaveLength(1);
     expect(back!.workspaces[0].sessions[0].opencodeSessionId).toBe("ses_a");
+  });
+
+  it("migrates a legacy in-repo manifest and removes it", () => {
+    let m = emptyManifest({ name: "Demo", rootPath: root });
+    m = upsertWorkspaceInManifest(m, ws("a"));
+    fs.mkdirSync(legacyManifestDir(root), { recursive: true });
+    fs.writeFileSync(legacyManifestPath(root), JSON.stringify(m), "utf8");
+
+    const back = readProjectManifest(root);
+    expect(back).not.toBeNull();
+    expect(back!.workspaces).toHaveLength(1);
+    expect(back!.workspaces[0].sessions[0].opencodeSessionId).toBe("ses_a");
+
+    expect(fs.existsSync(manifestPath(root))).toBe(true);
+    expect(fs.existsSync(path.join(root, ".opencode-webui"))).toBe(false);
+  });
+
+  it("leaves an unparsable legacy file untouched", () => {
+    fs.mkdirSync(legacyManifestDir(root), { recursive: true });
+    fs.writeFileSync(legacyManifestPath(root), "{not json", "utf8");
+
+    expect(readProjectManifest(root)).toBeNull();
+    expect(fs.existsSync(legacyManifestPath(root))).toBe(true);
   });
 
   it("returns null when no manifest exists", () => {
