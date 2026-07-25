@@ -371,6 +371,22 @@ export function Sidebar({
     return map;
   }, [tasks]);
 
+  /**
+   * Width (in `ch`) reserved for the cost column, taken from the longest cost
+   * label across every project. Provider icons then share one column for the
+   * whole sidebar instead of shifting per group, and no dead space is left at
+   * the row end. `0` means no task has a cost, so the column is dropped and the
+   * icon sits flush right.
+   */
+  const costColumnCh = useMemo(
+    () =>
+      tasks.reduce((widest, t) => {
+        if (t.status === "orphaned" || (t.cost ?? 0) <= 0) return widest;
+        return Math.max(widest, formatCostValue(t.cost!, costPrefs).length);
+      }, 0),
+    [tasks, costPrefs],
+  );
+
   const archivedGroups = useMemo(() => {
     const byProject = new Map<string, TaskSummary[]>();
     for (const task of archivedTasks) {
@@ -643,14 +659,6 @@ export function Sidebar({
             {projects.map((p) => {
               const open = expanded.has(p.id);
               const children = tasksByProject.get(p.id) ?? [];
-              // Reserve only as much width as this group's longest cost label
-              // needs, so provider icons line up across rows without leaving
-              // dead space at the row end (0 = no costs, no column at all).
-              const costColumnCh = children.reduce((widest, t) => {
-                const label =
-                  (t.cost ?? 0) > 0 ? formatCostValue(t.cost!, costPrefs) : "";
-                return Math.max(widest, label.length);
-              }, 0);
               return (
                 <li key={p.id}>
                   <div className="flex min-w-0 items-center gap-0.5">

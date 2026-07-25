@@ -80,6 +80,7 @@ describe("Sidebar", () => {
     cleanup();
     vi.useRealTimers();
     vi.clearAllMocks();
+    localStorage.clear(); // keep persisted expanded-state out of later tests
   });
 
   it("renders addons directly below the labelled add-project button", async () => {
@@ -337,6 +338,85 @@ describe("Sidebar", () => {
     expect(spacer.textContent).toBe("");
     // Same reserved width on both rows => provider icons share one column.
     expect(spacer.style.minWidth).toBe((cost as HTMLElement).style.minWidth);
+  });
+
+  it("sizes the cost column from the longest cost across all projects", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    localStorage.setItem(
+      "webui.sidebar.expanded",
+      JSON.stringify(["prj1", "prj2"]),
+    );
+    const base = {
+      directory: "/repo",
+      isolation: "current_folder",
+      status: "idle",
+      branch: "main",
+      additions: 0,
+      deletions: 0,
+      filesChanged: 0,
+      providerID: "openai",
+      createdAt: "2026-07-18T00:00:00Z",
+      updatedAt: "2026-07-18T00:00:00Z",
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+            {
+              id: "prj2",
+              name: "Other",
+              rootPath: "/other",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              ...base,
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Cheap",
+              sessionId: "sess1",
+              cost: 0.01, // ¥1.5 (4 chars)
+            },
+            {
+              ...base,
+              id: "ws2",
+              projectId: "prj2",
+              projectName: "Other",
+              title: "Pricey",
+              sessionId: "sess2",
+              cost: 12.3456, // ¥1,852 (6 chars)
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await screen.findByText("Pricey");
+    const widths = screen
+      .getAllByTitle("このセッションの累計コスト")
+      .map((el) => (el as HTMLElement).style.minWidth);
+    expect(widths).toHaveLength(2);
+    // The longest label lives in another project, yet both rows reserve it.
+    expect(widths[0]).toBe("6ch");
+    expect(widths[1]).toBe("6ch");
   });
 
   it("shows a warning dot when the task session is waiting for a question answer", async () => {
