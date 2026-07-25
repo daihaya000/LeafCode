@@ -173,10 +173,10 @@ describe("Sidebar", () => {
       Array.from(row!.children).indexOf(provider.closest("span")!),
     ).toBeLessThan(Array.from(row!.children).indexOf(cost));
     expect(text.indexOf("main")).toBeLessThan(text.indexOf("¥18.5"));
-    // Fixed-width right-aligned cost column keeps the provider icon aligned
-    // across rows with different cost lengths.
-    expect(cost.className).toContain("min-w-[2.75rem]");
+    // Right-aligned cost column sized to the longest label in the group keeps
+    // the provider icon aligned across rows with different cost lengths.
     expect(cost.className).toContain("text-right");
+    expect((cost as HTMLElement).style.minWidth).toBe("5ch"); // "¥18.5"
   });
 
   it("refreshes a working task cost while the sidebar is visible", async () => {
@@ -280,12 +280,63 @@ describe("Sidebar", () => {
 
     await screen.findByText("Task title");
     expect(screen.queryByTitle("このセッションの累計コスト")).toBeNull();
-    // The cost column stays reserved so the provider icon keeps the same
-    // horizontal position as rows that do show a cost.
+    // No task in the group has a cost, so no column is reserved at all and the
+    // branch row ends with the branch label.
     const row = screen.getByText("main").parentElement!;
-    const spacer = row.children[row.children.length - 1] as HTMLElement;
-    expect(spacer.className).toContain("min-w-[2.75rem]");
+    expect(row.children[row.children.length - 1].textContent).toBe("main");
+  });
+
+  it("reserves the same cost column on rows without a cost so icons align", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    const base = {
+      projectId: "prj1",
+      projectName: "Repo",
+      directory: "/repo",
+      isolation: "current_folder",
+      status: "idle",
+      branch: "main",
+      additions: 0,
+      deletions: 0,
+      filesChanged: 0,
+      providerID: "openai",
+      createdAt: "2026-07-18T00:00:00Z",
+      updatedAt: "2026-07-18T00:00:00Z",
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj1",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            { ...base, id: "ws1", title: "Paid", sessionId: "sess1", cost: 0.1234 },
+            { ...base, id: "ws2", title: "Free", sessionId: "sess2" },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const cost = await screen.findByTitle("このセッションの累計コスト");
+    const freeRow = screen.getByText("Free").closest("button")!;
+    const spacer = freeRow.querySelector<HTMLElement>("span[aria-hidden]")!;
+    expect(spacer).toBeTruthy();
     expect(spacer.textContent).toBe("");
+    // Same reserved width on both rows => provider icons share one column.
+    expect(spacer.style.minWidth).toBe((cost as HTMLElement).style.minWidth);
   });
 
   it("shows a warning dot when the task session is waiting for a question answer", async () => {

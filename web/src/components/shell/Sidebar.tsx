@@ -630,6 +630,14 @@ export function Sidebar({
             {projects.map((p) => {
               const open = expanded.has(p.id);
               const children = tasksByProject.get(p.id) ?? [];
+              // Reserve only as much width as this group's longest cost label
+              // needs, so provider icons line up across rows without leaving
+              // dead space at the row end (0 = no costs, no column at all).
+              const costColumnCh = children.reduce((widest, t) => {
+                const label =
+                  (t.cost ?? 0) > 0 ? formatCostValue(t.cost!, costPrefs) : "";
+                return Math.max(widest, label.length);
+              }, 0);
               return (
                 <li key={p.id}>
                   <div className="flex min-w-0 items-center gap-0.5">
@@ -796,24 +804,31 @@ export function Sidebar({
                                         />
                                       </span>
                                     )}
-                                    {(task.cost ?? 0) > 0 ? (
-                                      <span
-                                        className={cx(
-                                          "min-w-[2.75rem] shrink-0 text-right tabular-nums whitespace-nowrap text-faint",
-                                          !task.providerID && "ml-auto",
-                                        )}
-                                        title="このセッションの累計コスト"
-                                      >
-                                        {formatCostValue(task.cost!, costPrefs)}
-                                      </span>
-                                    ) : (
-                                      // Reserve the cost column so the provider icon
-                                      // stays in the same place on every row.
-                                      <span
-                                        aria-hidden
-                                        className="min-w-[2.75rem] shrink-0"
-                                      />
-                                    )}
+                                    {costColumnCh > 0 &&
+                                      ((task.cost ?? 0) > 0 ? (
+                                        <span
+                                          className={cx(
+                                            "shrink-0 text-right tabular-nums whitespace-nowrap text-faint",
+                                            !task.providerID && "ml-auto",
+                                          )}
+                                          style={{
+                                            minWidth: `${costColumnCh}ch`,
+                                          }}
+                                          title="このセッションの累計コスト"
+                                        >
+                                          {formatCostValue(task.cost!, costPrefs)}
+                                        </span>
+                                      ) : (
+                                        // Reserve the same cost column so the provider
+                                        // icon stays in the same place on every row.
+                                        <span
+                                          aria-hidden
+                                          className="shrink-0"
+                                          style={{
+                                            minWidth: `${costColumnCh}ch`,
+                                          }}
+                                        />
+                                      ))}
                                   </div>
                                 </button>
                                 <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
