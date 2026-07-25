@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
@@ -1069,4 +1069,45 @@ describe("Sidebar archived section", () => {
     });
     confirmSpy.mockRestore();
   });
+});
+
+describe("Sidebar engine health polling", () => {
+  let engineOk: boolean;
+
+  beforeEach(() => {
+    localStorage.clear();
+    attentionState.items = [];
+    attentionState.actionableItems = [];
+    usePathname.mockReturnValue("/");
+    engineOk = false;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk });
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("shows the engine-not-connected banner and self-clears once engineOk flips to true", async () => {
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const banner = await screen.findByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。");
+    expect(banner).toBeTruthy();
+
+    // Engine becomes reachable; next 3s poll tick should clear the banner.
+    engineOk = true;
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。"),
+        ).toBeNull(),
+      { timeout: 8000 },
+    );
+  }, 15000);
 });

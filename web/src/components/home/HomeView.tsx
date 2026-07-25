@@ -130,6 +130,13 @@ function ModelSelectIcon({ model }: { model: string }) {
   return <Cpu className="h-3.5 w-3.5" />;
 }
 
+/** Poll interval for re-checking engine health while the "engine not connected"
+ *  warning is shown. The initial /api/tasks fetch may report engineOk=false
+ *  before OpenCode is fully up (just after the host opened the browser). Poll
+ *  so the warning self-clears once the engine becomes reachable, without
+ *  requiring a manual reload. Stops as soon as engineOk flips to true. */
+const ENGINE_HEALTH_POLL_MS = 3000;
+
 export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
@@ -343,6 +350,16 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       setLoaded(true),
     );
   }, [refreshProjects, refreshEngine]);
+
+  // Re-check engine health while the "engine not connected" warning is shown
+  // so it self-clears once OpenCode becomes reachable (no manual reload needed).
+  useEffect(() => {
+    if (engineOk) return;
+    const id = setInterval(() => {
+      void refreshEngine();
+    }, ENGINE_HEALTH_POLL_MS);
+    return () => clearInterval(id);
+  }, [engineOk, refreshEngine]);
 
   useEffect(() => {
     const project = projects.find((p) => p.id === projectId);

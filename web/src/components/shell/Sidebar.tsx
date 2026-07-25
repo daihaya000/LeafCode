@@ -297,6 +297,16 @@ export function Sidebar({
     return () => clearInterval(poll);
   }, [hasActiveTask, pageVisible, refresh]);
 
+  // Re-check engine health while the "engine not connected" banner is shown so
+  // it self-clears once OpenCode becomes reachable (no manual reload needed).
+  // Skipped while the tab is hidden to avoid background fetches; visibility
+  // change already triggers refresh on focus.
+  useEffect(() => {
+    if (!pageVisible || engineOk) return;
+    const poll = setInterval(() => void refresh(), ACTIVE_TASK_POLL_MS);
+    return () => clearInterval(poll);
+  }, [engineOk, pageVisible, refresh]);
+
   // Ensure the project owning the active task is expanded
   useEffect(() => {
     if (!activeTaskId || !hydrated) return;

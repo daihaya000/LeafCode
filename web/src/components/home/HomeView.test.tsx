@@ -741,3 +741,84 @@ describe("HomeView last-used model", () => {
     );
   });
 });
+
+describe("HomeView engine health polling", () => {
+  beforeEach(() => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "project-1",
+              name: "Project",
+              rootPath: "/repo",
+              favorite: false,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: false });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({ taskId: "task-1" });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("shows the engine-not-connected warning and self-clears once engineOk flips to true", async () => {
+    let engineOk = false;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "project-1",
+              name: "Project",
+              rootPath: "/repo",
+              favorite: false,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<HomeView />);
+
+    // Initial fetch reports engine down -> warning banner appears.
+    const warning = await screen.findByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。");
+    expect(warning).toBeTruthy();
+
+    // Engine becomes reachable; next 3s poll tick should clear the warning.
+    engineOk = true;
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。"),
+        ).toBeNull(),
+      { timeout: 8000 },
+    );
+  }, 15000);
+});
