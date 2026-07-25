@@ -109,9 +109,30 @@ scripts\allow-firewall-8443.bat
 
 - アクセス URL: `https://localhost:8443` / `https://<LAN もしくは VPN の IP>:8443`
 - **アクセスする名前/IP は `deploy/Caddyfile` の site 行に列挙**してください（列挙した名前にだけ証明書が発行されます）。既定は `localhost, 127.0.0.1` に加えて、ご自身の環境のLAN IP（例: `192.168.1.100`）を追記します。LAN IP が変わる場合は DHCP 予約推奨。
-- スマホは警告なしにするには CA(`%APPDATA%\Caddy\pki\authorities\local\root.crt`)を端末へインストール。未インストールでも「警告を無視して続行」で利用可（ただし PWA/Service Worker は信頼済み証明書が必要）。
-- 公開ドメインがある場合は Caddyfile の Let's Encrypt ブロック（コメント）を使うと、全端末で警告なしの正規 TLS になります（80/443 到達性 + DNS 必須）。
-- HTTP(:8080) に戻したい場合は Caddyfile の該当ブロックのコメントを解除してください。
+- 公開ドメインがある場合は Caddyfile の Let's Encrypt ブロック（コメント）を使うと、CA 導入不要で全端末が警告なしの正規 TLS になります（80/443 到達性 + DNS 必須）。
+- HTTP で WebUI 自体を配信したい場合は Caddyfile の `:8080` ブロックの `handle`（リダイレクト）を、コメントで示した `reverse_proxy` 版に差し替えてください。
+
+#### 別端末（スマホ / 別PC）で「保護されていない通信」になる場合
+
+`tls internal` は **Caddy 自身のローカル CA** で署名するため、その CA を知らない端末では必ず証明書警告になります（設定ミスではありません）。端末側にルート CA を入れると解消します。Caddyfile の `:8080` ブロックがルート CA を配布します（公開鍵証明書のみ。秘密鍵 `root.key` は同じフォルダにありますが配信されません）。
+
+```bat
+rem 配布用ポートを開放（管理者 / 1回だけ）
+scripts\allow-firewall-8080.bat
+```
+
+端末のブラウザで `http://<LAN もしくは VPN の IP>:8080/caddy-root.crt` を開いてダウンロードし、下記の手順で導入します。
+
+| 端末 | 導入手順 |
+| --- | --- |
+| Android | 設定 → セキュリティ → 暗号化と認証情報 → 証明書をインストール → **CA 証明書** を選び、ダウンロードした `caddy-root.crt` を指定。以後 Chrome も信頼します（「ネットワークが監視される可能性」の通知は仕様） |
+| iOS / iPadOS | Safari で開き「プロファイルを許可」→ 設定 → 一般 → VPN とデバイス管理 からインストール → **設定 → 一般 → 情報 → 証明書信頼設定で当該 CA を ON**（この最後の操作を忘れると信頼されません） |
+| 別の Windows PC | `certutil -addstore -f Root caddy-root.crt` を管理者で実行（または .crt をダブルクリック →「ローカル コンピューター」→「信頼されたルート証明機関」） |
+| macOS | キーチェーンアクセスの「システム」に追加し、当該 CA を「常に信頼」に変更 |
+
+- ルート CA を入れずに「警告を無視して続行」でも閲覧はできますが、**PWA / Service Worker / クリップボード / 通知は信頼済み証明書でないと動きません**。
+- ルート CA は 10 年有効で、Caddy の再インストールや `%APPDATA%\Caddy\pki` の削除で再生成されると端末側の再導入が必要になります。
+- 配布 URL が 404 になる場合は Caddy が `APPDATA` 環境変数を引き継いでいません。`deploy/Caddyfile` の `root *` をルート CA の絶対パスに書き換えてください。
 
 Remote Workspace API はスタブ（`/api/remote` → 501）。当面は VPN + ローカルパスを開く運用です。
 

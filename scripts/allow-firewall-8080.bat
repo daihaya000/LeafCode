@@ -8,6 +8,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [OK] Firewall rule added: TCP 8080 inbound allow
-echo Phone URL example (replace with your PC's LAN IP from `ipconfig`):
-echo   http://192.168.1.100:8080
+echo Port 8080 serves Caddy's root CA so other devices can trust the local
+echo HTTPS cert. Open this on the phone/PC (use your LAN IP from `ipconfig`):
+echo   http://192.168.1.100:8080/caddy-root.crt
 pause

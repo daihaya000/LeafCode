@@ -26,6 +26,11 @@ if errorlevel 1 (
 echo.
 echo [OK] Caddy local root CA is now trusted on this PC.
 echo.
-echo For a phone/tablet, copy this root cert to the device and install it:
+echo Other devices (phone / tablet / another PC) still warn until they trust
+echo the same CA. Open this URL on the device and install the certificate:
+echo   http://^<this-PC-LAN-IP^>:8080/caddy-root.crt
+echo   ^(run scripts\allow-firewall-8080.bat once to open the port^)
+echo Local copy of the same file:
 echo   %%APPDATA%%\Caddy\pki\authorities\local\root.crt
+echo See the README HTTPS section for per-OS install steps.
 pause
