@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const setupSource = join(repoRoot, "setup.bat");
+const messagesSource = join(repoRoot, "scripts", "setup-messages");
 const isWindows = process.platform === "win32";
 
 function writeBat(path, contents) {
@@ -23,6 +24,10 @@ function createSandbox(options = {}) {
   mkdirSync(join(root, "web"));
   mkdirSync(join(root, "host"));
   writeFileSync(join(root, "setup.bat"), readFileSync(setupSource));
+  if (options.withMessages !== false) {
+    mkdirSync(join(root, "scripts"), { recursive: true });
+    cpSync(messagesSource, join(root, "scripts", "setup-messages"), { recursive: true });
+  }
   writeBat(join(root, "start-webui.bat"), options.asyncStart
     ? 'type nul > "%~dp0started.txt"\nping -n 15 127.0.0.1 >nul\ntype nul > "%~dp0finished.txt"\ntype nul > "%~dp0exited.txt"\ncd /d "%TEMP%"\nexit /b 0'
     : 'type nul > "%~dp0started.txt"\nexit /b 0');
@@ -109,16 +114,20 @@ function createSandbox(options = {}) {
   return {
     root,
     log,
-    run({ captureOutput = true, timeout = 30_000 } = {}) {
+    run({ captureOutput = true, timeout = 30_000, codePage } = {}) {
       const startedAt = Date.now();
       const outFile = join(root, "stdout.txt");
       const errFile = join(root, "stderr.txt");
+      const codePageFile = join(root, "code-page-after.txt");
       const wrapper = join(root, "_run.bat");
-      if (captureOutput) {
-        writeFileSync(wrapper, `@echo off\r\ncall setup.bat >"${outFile}" 2>"${errFile}"\r\n`, "utf8");
-      } else {
-        writeFileSync(wrapper, "@echo off\r\ncall setup.bat\r\n", "utf8");
-      }
+      const lines = ["@echo off"];
+      if (codePage !== undefined) lines.push(`chcp ${codePage} >nul`);
+      lines.push(captureOutput ? `call setup.bat >"${outFile}" 2>"${errFile}"` : "call setup.bat");
+      // Keep setup.bat's exit code: the trailing chcp probe must not overwrite it.
+      lines.push('set "SETUP_TEST_STATUS=%ERRORLEVEL%"');
+      lines.push(`chcp >"${codePageFile}" 2>&1`);
+      lines.push("exit /b %SETUP_TEST_STATUS%");
+      writeFileSync(wrapper, `${lines.join("\r\n")}\r\n`, "utf8");
       const result = spawnSync(process.env.ComSpec ?? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe"), ["/d", "/c", "call _run.bat"], {
         cwd: root, encoding: "utf8", env, timeout, windowsHide: true,
         stdio: "ignore",
@@ -126,8 +135,14 @@ function createSandbox(options = {}) {
       if (captureOutput) {
         result.stdout = existsSync(outFile) ? readFileSync(outFile, "utf8") : "";
         result.stderr = existsSync(errFile) ? readFileSync(errFile, "utf8") : "";
+        // Raw bytes let assertions detect mojibake that utf8 decoding would hide.
+        result.stdoutBytes = existsSync(outFile) ? readFileSync(outFile, "latin1") : "";
+        result.stderrBytes = existsSync(errFile) ? readFileSync(errFile, "latin1") : "";
       }
-      return { ...result, elapsedMs: Date.now() - startedAt };
+      const codePageAfter = existsSync(codePageFile)
+        ? /(\d{3,5})/.exec(readFileSync(codePageFile, "latin1"))?.[1]
+        : undefined;
+      return { ...result, codePageAfter, elapsedMs: Date.now() - startedAt };
     },
     cleanup() {
       try {
@@ -241,6 +256,61 @@ test("setup.bat still aborts when the guard cannot free the port", { skip: !isWi
     assert.equal(result.status, 6, `${result.stdout}\n${result.stderr}`);
     assert.match(`${result.stdout}\n${result.stderr}`, /web build was cancelled/);
     assert.equal(existsSync(join(sandbox.root, "started.txt")), false);
+  } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat runs cleanly on legacy and UTF-8 code pages", { skip: !isWindows }, () => {
+  for (const codePage of [932, 437, 65001]) {
+    const sandbox = createSandbox();
+    try {
+      const result = sandbox.run({ codePage });
+      assertCompleted(result, `code page ${codePage}`);
+      assert.equal(result.status, 0, `cp${codePage}: ${result.stdout}\n${result.stderr}`);
+      assert.match(result.stdout, /\[Setup\] Setup completed\./, `cp${codePage} lost the ASCII summary`);
+      assert.match(result.stdout, /セットアップが完了しました/, `cp${codePage} lost the Japanese message`);
+      assert.match(result.stdout, /トレイアイコンが表示されない場合は start-webui\.bat/, `cp${codePage} truncated the Japanese message`);
+      // A non-ASCII batch file makes cmd.exe lose its read position and execute
+      // fragments of later lines, which shows up as unknown-command errors.
+      assert.doesNotMatch(result.stdoutBytes, /is not recognized as an internal or external command/, `cp${codePage} misparsed setup.bat`);
+      assert.equal(result.stderrBytes.trim(), "", `cp${codePage} wrote to stderr: ${result.stderrBytes}`);
+    } finally { sandbox.cleanup(); }
+  }
+});
+
+test("setup.bat restores the code page it inherited", { skip: !isWindows }, () => {
+  for (const codePage of [932, 437]) {
+    const sandbox = createSandbox();
+    try {
+      const result = sandbox.run({ codePage });
+      assertCompleted(result, `code page ${codePage}`);
+      assert.equal(result.status, 0, `cp${codePage}: ${result.stdout}\n${result.stderr}`);
+      assert.equal(result.codePageAfter, String(codePage), `cp${codePage} was not restored`);
+    } finally { sandbox.cleanup(); }
+  }
+});
+
+test("setup.bat completes with English-only output when the message files are missing", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ withMessages: false });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "missing message files");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[Setup\] Setup completed\./);
+    assert.doesNotMatch(result.stdout, /セットアップ/);
+    assert.equal(result.stderrBytes.trim(), "", `stderr: ${result.stderrBytes}`);
+  } finally { sandbox.cleanup(); }
+});
+
+test("setup.bat reports failures as an ASCII code line plus Japanese detail", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ npmWebCiExit: 1 });
+  try {
+    const result = sandbox.run({ codePage: 932 });
+    assertCompleted(result, "failure formatting");
+    assert.equal(result.status, 5, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[Setup\] ERROR 5: web dependencies could not be installed\./);
+    assert.match(result.stdout, /webの依存関係の導入に失敗しました/);
+    assert.match(result.stdout, /\[Setup\] FAILED with exit code 5\./);
+    assert.match(result.stdout, /セットアップに失敗しました/);
   } finally { sandbox.cleanup(); }
 });
 
