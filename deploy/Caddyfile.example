@@ -1,30 +1,45 @@
-# Example Caddy reverse proxy for OpenCode WebUI (remote via VPN).
+# Example Caddy reverse proxy for OpenCode WebUI (LAN / VPN, local HTTPS).
 #
 # The tray host can manage Caddy for you:
 #   set OPENCODE_WEBUI_CADDY=1
 #   (optional) set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
-# On first run the host copies this example to deploy/Caddyfile — edit that copy.
+# On first run the host copies this example to deploy/Caddyfile — edit that copy
+# (deploy/Caddyfile is gitignored, so your IPs and auth stay local).
 #
 # Manual usage:
 #   caddy run --config deploy/Caddyfile --adapter caddyfile
 #
-# SECURITY: never expose the WebUI without VPN and/or auth. OpenCode itself
-# stays bound to 127.0.0.1; only the Next.js BFF (:3000) is proxied here.
-
+# Default: HTTPS on :8443 with Caddy's local CA (self-signed).
+#   Access:  https://<host-or-LAN-or-VPN-IP>:8443
+#
+# TRUST (one-time, so browsers don't warn):
+#   - On this PC:      run  scripts\caddy-trust.bat  as Administrator.
+#   - On any other
+#     device:          install the root CA served at
+#                      http://<LAN-or-VPN-IP>:8080/caddy-root.crt
+#                      (see the :8080 block at the bottom and README).
+# `skip_install_trust` keeps startup non-interactive (no UAC prompt on launch);
+# trust is installed explicitly via the script above instead.
+#
+# SECURITY: never expose the WebUI outside a LAN/VPN without auth. OpenCode
+# itself stays bound to 127.0.0.1; only the Next.js BFF (:3000) is proxied here.
 {
-	# Email for ACME/Let's Encrypt when using a public domain + real TLS.
-	email you@example.com
+	admin localhost:2019
+	skip_install_trust
 }
 
-# ---------------------------------------------------------------------------
-# Option A: HTTPS with a domain (public DNS or split-horizon over VPN).
-# ---------------------------------------------------------------------------
-webui.example.com {
-	# Prefer Basic Auth (or VPN-only binding) in production.
-	# Generate a hash with:  caddy hash-password
-	basicauth /* {
-		# user JDJhJDE0...hashed...
-	}
+# List every name/IP you will reach this by, so `tls internal` can pre-issue a
+# cert for them. Add your LAN IP (DHCP reservation recommended), VPN IP or
+# hostname here — a name that is not listed gets no certificate.
+https://localhost:8443, https://127.0.0.1:8443 {
+	tls internal
+
+	# --- Optional Basic Auth (recommended for remote) --------------------
+	# Generate a hash:  caddy hash-password
+	# then uncomment and paste it:
+	# basic_auth /* {
+	#	user JDJhJDE0...hashed...
+	# }
 
 	reverse_proxy 127.0.0.1:3000 {
 		# SSE / long-lived streams (event timeline) must not be buffered.
@@ -42,15 +57,61 @@ webui.example.com {
 }
 
 # ---------------------------------------------------------------------------
-# Option B: LAN / VPN over plain HTTP on a fixed port (no public domain).
-# Bind to your VPN interface IP for safety. Uncomment to use.
+# Root CA distribution over plain HTTP (:8080).
+#
+# `tls internal` signs with Caddy's OWN CA, so any other device (phone, tablet,
+# another PC) shows "not secure" until that CA is installed there. This block
+# hands out the public root certificate so a device can fetch and trust it:
+#
+#   http://<LAN-or-VPN-IP>:8080/caddy-root.crt
+#
+# Only that one path is served: every request inside the handle is rewritten to
+# root.crt, so the private key sitting in the same folder is never reachable.
+# Open the port once with:  scripts\allow-firewall-8080.bat
 # ---------------------------------------------------------------------------
-# :8080 {
+:8080 {
+	handle /caddy-root.crt {
+		root * {env.APPDATA}/Caddy/pki/authorities/local
+		rewrite * /root.crt
+		# Makes phones treat the download as a certificate to install.
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+
+	# Anything else is pushed to the HTTPS site instead of served over HTTP.
+	# To serve the WebUI over plain HTTP instead, replace this handle with:
+	#   handle {
+	#       reverse_proxy 127.0.0.1:3000 {
+	#           flush_interval -1
+	#           transport http {
+	#               read_timeout 0
+	#               write_timeout 0
+	#           }
+	#       }
+	#   }
+	handle {
+		redir https://{host}:8443{uri} 302
+	}
+}
+
+# ---------------------------------------------------------------------------
+# Public domain + automatic Let's Encrypt TLS (trusted on every device, no CA
+# install needed). Requires port 80/443 reachable and DNS pointing here.
+# Add `email you@example.com` to the global block above for ACME notices.
+# ---------------------------------------------------------------------------
+# webui.example.com {
+# 	basic_auth /* {
+# 		user JDJhJDE0...hashed...
+# 	}
 # 	reverse_proxy 127.0.0.1:3000 {
 # 		flush_interval -1
 # 		transport http {
 # 			read_timeout 0
 # 			write_timeout 0
 # 		}
+# 	}
+# 	header {
+# 		X-Content-Type-Options nosniff
+# 		Referrer-Policy no-referrer
 # 	}
 # }
