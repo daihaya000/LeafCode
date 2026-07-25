@@ -23,7 +23,20 @@ vi.mock("@/lib/access-mode", () => ({
   readAccessMode: () => "ask",
   writeAccessMode: vi.fn(),
 }));
-vi.mock("@/lib/default-model", () => ({ readDefaultModel: () => "" }));
+vi.mock("@/lib/default-model", () => ({
+  readDefaultModel: () => "",
+  readLastUsedModel: () => {
+    const v = localStorage.getItem("webui:last-used-model");
+    return typeof v === "string" && v.length > 0 ? v : null;
+  },
+  writeLastUsedModel: (value: string | null) => {
+    if (value) {
+      localStorage.setItem("webui:last-used-model", value);
+    } else {
+      localStorage.removeItem("webui:last-used-model");
+    }
+  },
+}));
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellMobileNav: () => ({
     mobileNavOpen: false,
@@ -576,6 +589,155 @@ describe("HomeView subagent permission", () => {
       "POST",
       "/api/subagent-permission",
       expect.anything(),
+    );
+  });
+});
+
+describe("HomeView last-used model", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "project-1",
+              name: "Project",
+              rootPath: "/repo",
+              favorite: false,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({ taskId: "task-1" });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it("preselects the last-used model when it is an available option", async () => {
+    localStorage.setItem("webui:last-used-model", "openai::gpt-5");
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  "gpt-5": { name: "GPT-5" },
+                  vision: { name: "Vision" },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    render(<HomeView />);
+
+    const select = (await screen.findByLabelText(
+      "モデル",
+    )) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(select.value).toBe("openai::gpt-5");
+    });
+  });
+
+  it("falls back to the provider default when last-used is not available", async () => {
+    localStorage.setItem("webui:last-used-model", "mystery::ghost");
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: { vision: { name: "Vision" } },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    render(<HomeView />);
+
+    const select = (await screen.findByLabelText(
+      "モデル",
+    )) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(select.value).toBe("openai::vision");
+    });
+  });
+
+  it("records the model actually submitted as last-used on success", async () => {
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: {
+                    name: "Vision",
+                    capabilities: { input: { image: false } },
+                  },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    render(<HomeView />);
+
+    const prompt = screen.getByPlaceholderText(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    fireEvent.change(prompt, { target: { value: "hello" } });
+    const submit = screen.getByRole("button", {
+      name: "タスク開始",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(localStorage.getItem("webui:last-used-model")).toBe(
+        "openai::vision",
+      ),
     );
   });
 });

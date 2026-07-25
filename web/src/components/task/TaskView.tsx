@@ -64,6 +64,7 @@ import {
 import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
+  writeLastUsedModel,
 } from "@/lib/default-model";
 import { formatTokens, providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { computeContextUsage } from "@/lib/context-usage";
@@ -1097,6 +1098,9 @@ export function TaskView({ taskId }: { taskId: string }) {
       } else {
         await stream.sendPrompt(text, opts);
       }
+      // Remember the model actually applied to this submission so the next
+      // new session preselects it.
+      writeLastUsedModel(sendingModelKey || null);
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "送信に失敗しました");
       setInput(text);

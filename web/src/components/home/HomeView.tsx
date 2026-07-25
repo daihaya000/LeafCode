@@ -21,7 +21,11 @@ import {
   writeSubagentPermission,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
-import { readDefaultModel } from "@/lib/default-model";
+import {
+  readDefaultModel,
+  readLastUsedModel,
+  writeLastUsedModel,
+} from "@/lib/default-model";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
@@ -264,15 +268,22 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 
-          // Prefer user-configured default model, then OpenCode config.model
-          // (provider/modelID), then provider defaults.
+          // Prefer the last actually-used model, then the user-configured
+          // default model, then OpenCode config.model (provider/modelID),
+          // then provider defaults.
           let initial = "";
-          const savedDefault = readDefaultModel();
-          if (
-            savedDefault &&
-            options.some((o) => o.value === savedDefault)
-          ) {
-            initial = savedDefault;
+          const lastUsed = readLastUsedModel();
+          if (lastUsed && options.some((o) => o.value === lastUsed)) {
+            initial = lastUsed;
+          }
+          if (!initial) {
+            const savedDefault = readDefaultModel();
+            if (
+              savedDefault &&
+              options.some((o) => o.value === savedDefault)
+            ) {
+              initial = savedDefault;
+            }
           }
           if (!initial) {
             const cfg = config?.model?.trim();
@@ -502,6 +513,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         ...(agent ? { agent, subagentPermission } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
       });
+      // Remember the model actually applied to this submission so the next
+      // new session preselects it.
+      writeLastUsedModel(sendingModelKey || null);
       notifyTasksChanged();
       router.push(`/task/${data.taskId}`);
     } catch (err) {
