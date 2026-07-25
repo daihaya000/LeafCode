@@ -91,123 +91,83 @@ function getUpButton(): HTMLButtonElement {
   return screen.getByRole("button", { name: "上へ" }) as HTMLButtonElement;
 }
 
-/** Find the entry row (div[role=button]) whose accessible name is exactly `name`. */
-async function findEntryRow(name: string): Promise<HTMLElement> {
-  const rows = await screen.findAllByRole("button", { name });
-  const row = rows.find((el) => el.getAttribute("aria-label") === name);
-  if (!row) throw new Error(`row for ${name} not found`);
-  return row;
-}
-
-async function findOpenButton(name: string): Promise<HTMLElement> {
+/** Find the folder entry button whose accessible name is `${name} を開く`. */
+async function findEntryButton(name: string): Promise<HTMLElement> {
   return screen.findByRole("button", { name: `${name} を開く` });
 }
 
-describe("AddProjectButton selected path sync", () => {
-  it("sets the initial directory as the selected path when the dialog opens", async () => {
+describe("AddProjectButton path sync (row click opens + syncs field)", () => {
+  it("syncs the path field to the initial folder when the dialog opens", async () => {
     render(<AddProjectButton />);
     openDialog();
 
-    // manualPath stays empty (user input respected); selection defaults to ROOT.
-    await waitFor(() => expect(getInput().value).toBe(""));
-    // The add button becomes enabled because cwd/selectedPath is ROOT.
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
+    expect(getAddButton().disabled).toBe(false);
     expect(getJson).toHaveBeenCalledWith("/api/browse/dirs", undefined);
   });
 
-  it("updates the selected path after navigating into a subfolder", async () => {
+  it("syncs the path field after clicking a folder row to open it", async () => {
     render(<AddProjectButton />);
     openDialog();
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
 
-    // Open the "OpenCode" subfolder via the open affordance.
-    const openBtn = await findOpenButton("OpenCode");
-    fireEvent.click(openBtn);
+    // Clicking the "OpenCode" row opens it and syncs the field.
+    fireEvent.click(await findEntryButton("OpenCode"));
 
-    // manualPath remains empty; the add button stays enabled via selectedPath=CHILD.
-    await waitFor(() => expect(getInput().value).toBe(""));
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(CHILD));
     expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: CHILD });
+    expect(getAddButton().disabled).toBe(false);
   });
 
-  it("updates the selected path after navigating up", async () => {
+  it("syncs the path field after navigating up", async () => {
     render(<AddProjectButton />);
     openDialog();
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
 
-    fireEvent.click(await findOpenButton("OpenCode"));
-    await waitFor(() =>
-      expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: CHILD }),
-    );
+    fireEvent.click(await findEntryButton("OpenCode"));
+    await waitFor(() => expect(getInput().value).toBe(CHILD));
 
     fireEvent.click(getUpButton());
-    await waitFor(() =>
-      expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: ROOT }),
-    );
-    // After navigating up, the add button is still enabled (selectedPath=ROOT).
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
+    expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: ROOT });
   });
 
-  it("preserves user-edited manual path when navigating (no override)", async () => {
+  it("overrides user-edited path when navigating (field tracks the open folder)", async () => {
     render(<AddProjectButton />);
     openDialog();
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
 
     const input = getInput();
     fireEvent.change(input, { target: { value: "C:\\stale" } });
     expect(input.value).toBe("C:\\stale");
 
-    fireEvent.click(await findOpenButton("OpenCode"));
-    // manualPath is NOT overwritten by navigation.
-    await waitFor(() =>
-      expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: CHILD }),
-    );
-    await waitFor(() => expect(input.value).toBe("C:\\stale"));
-  });
-});
-
-describe("AddProjectButton select + add", () => {
-  it("selects a folder by clicking the row and adds it", async () => {
-    render(<AddProjectButton />);
-    openDialog();
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
-
-    // Click the "OpenCode" row (select, not open).
-    const row = await findEntryRow("OpenCode");
-    fireEvent.click(row);
-
-    // Add button enabled; clicking it sends the selected path.
-    const addBtn = getAddButton();
-    expect(addBtn.disabled).toBe(false);
-    fireEvent.click(addBtn);
-
-    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
-    expect(sendJson).toHaveBeenCalledWith("POST", "/api/projects", {
-      rootPath: CHILD,
-    });
+    // Opening a subfolder syncs the field to that folder (standard explorer UX).
+    fireEvent.click(await findEntryButton("OpenCode"));
+    await waitFor(() => expect(getInput().value).toBe(CHILD));
   });
 
-  it("opening a leaf folder keeps it selected for add", async () => {
+  it("adds the open folder when clicking add after navigating into a leaf", async () => {
     render(<AddProjectButton />);
     openDialog();
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
 
-    // Navigate into OpenCode, then open the empty "empty" leaf.
-    fireEvent.click(await findOpenButton("OpenCode"));
-    await waitFor(() =>
-      expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: CHILD }),
-    );
-    fireEvent.click(await findOpenButton("empty"));
-    await waitFor(() =>
-      expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: LEAF }),
-    );
+    // Open -> OpenCode -> empty (leaf, no subfolders).
+    fireEvent.click(await findEntryButton("OpenCode"));
+    await waitFor(() => expect(getInput().value).toBe(CHILD));
+    fireEvent.click(await findEntryButton("empty"));
+    await waitFor(() => expect(getInput().value).toBe(LEAF));
 
-    // entries empty -> "サブフォルダがありません" shown, but add button still enabled
-    // because selectedPath (or cwd) is the leaf.
+    // Leaf has no subfolders but the field holds LEAF, so add is enabled.
     await waitFor(() =>
       expect(screen.getByText("サブフォルダがありません")).toBeTruthy(),
     );
     expect(getAddButton().disabled).toBe(false);
+
+    fireEvent.click(getAddButton());
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/projects", {
+      rootPath: LEAF,
+    });
   });
 });
 
@@ -284,29 +244,24 @@ describe("AddProjectButton concurrency + UX", () => {
     render(<AddProjectButton />);
     openDialog();
 
-    // While the initial load is pending, the entry open buttons are disabled,
-    // so a second load cannot be triggered concurrently. Verify the add button
-    // is disabled (no cwd yet) and the spinner is shown.
+    // While the initial load is pending, entry buttons are disabled.
     await waitFor(() => expect(screen.getByText("…")).toBeTruthy());
 
-    // Now resolve the initial load with a stale-ish payload that includes a
-    // "stale" entry, then immediately issue a newer load for CHILD. The newer
-    // load's response (no "stale" entry) must win.
+    // Resolve the initial load, then issue a newer load for CHILD.
     act(() =>
       resolveFirst?.(makeDirList(ROOT, "C:\\Users\\Daichi", [{ name: "OpenCode", path: CHILD }])),
     );
-    await waitFor(() => expect(getAddButton().disabled).toBe(false));
+    await waitFor(() => expect(getInput().value).toBe(ROOT));
 
-    // Issue a newer load for CHILD via the open button.
-    fireEvent.click(await findOpenButton("OpenCode"));
+    fireEvent.click(await findEntryButton("OpenCode"));
     await waitFor(() =>
       expect(getJson).toHaveBeenLastCalledWith("/api/browse/dirs", { path: CHILD }),
     );
 
-    // The newer load resolved to CHILD with "web" entry (no "stale").
-    await waitFor(() => expect(screen.getByText(CHILD)).toBeTruthy());
-    expect(screen.queryByText("stale")).toBeNull();
+    // Newer load wins: CHILD with "web" entry, no "stale".
+    await waitFor(() => expect(getInput().value).toBe(CHILD));
     expect(screen.getByText("web")).toBeTruthy();
+    expect(screen.queryByText("stale")).toBeNull();
   });
 
   it("Enter key in input does not submit while busy", async () => {
@@ -368,7 +323,6 @@ describe("AddProjectButton concurrency + UX", () => {
 
     // Render a second instance and open its dialog; its title id must differ.
     const { unmount: unmountB } = render(<AddProjectButton />);
-    // The second instance's trigger button is distinct from the first's.
     const triggers = screen.getAllByRole("button", { name: "プロジェクトを追加" });
     expect(triggers.length).toBe(2);
     fireEvent.click(triggers[1]);

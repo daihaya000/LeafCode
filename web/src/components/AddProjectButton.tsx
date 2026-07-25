@@ -66,7 +66,6 @@ export function AddProjectButton({
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [quickAccess, setQuickAccess] = useState<DirEntry[]>([]);
   const [manualPath, setManualPath] = useState("");
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const attention = useOptionalGlobalAttention();
   const attentionOpen = attention?.open ?? false;
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -136,16 +135,16 @@ export function AddProjectButton({
       setParent(data.parent);
       setEntries(data.entries ?? []);
       setQuickAccess(data.quickAccess ?? []);
-      // H1: do NOT overwrite manualPath here; respect user input.
-      // C1: default the selection to the folder currently shown.
-      setSelectedPath(data.path);
+      // Sync the path field to the folder currently shown so the "add this
+      // folder" action targets what the user navigated to. This mirrors the
+      // standard explorer UX: clicking a folder opens it and selects it.
+      if (data.path) setManualPath(data.path);
     } catch (err) {
       if (id !== reqIdRef.current) return;
       // H4: translate API errors to Japanese.
       setError(apiErrorMessage(err, "一覧取得に失敗しました"));
       setEntries([]);
       setQuickAccess([]);
-      setSelectedPath(null);
     } finally {
       if (id === reqIdRef.current) setLoading(false);
     }
@@ -164,7 +163,6 @@ export function AddProjectButton({
     setParent(null);
     setEntries([]);
     setQuickAccess([]);
-    setSelectedPath(null);
     setManualPath("");
     setError(null);
   }, [open]);
@@ -205,8 +203,9 @@ export function AddProjectButton({
     setOpen(true);
   };
 
-  // The add target: manual input wins, then explicit selection, then cwd.
-  const addTarget = manualPath.trim() || selectedPath || cwd || "";
+  // The add target: the path field (synced to the current folder on every
+  // navigation), falling back to the current directory.
+  const addTarget = manualPath.trim() || cwd || "";
 
   return (
     <>
@@ -294,22 +293,12 @@ export function AddProjectButton({
                       <ul>
                         {quickAccess.map((e) => (
                           <li key={`qa-${e.path}`}>
-                            <div
-                              role="button"
-                              tabIndex={0}
-                              aria-label={e.name}
-                              aria-pressed={selectedPath === e.path}
-                              onClick={() => setSelectedPath(e.path)}
-                              onKeyDown={(ev) => {
-                                if (ev.key === "Enter" || ev.key === " ") {
-                                  ev.preventDefault();
-                                  setSelectedPath(e.path);
-                                }
-                              }}
-                              className={cx(
-                                "flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3",
-                                selectedPath === e.path && "bg-surface-2",
-                              )}
+                            <button
+                              type="button"
+                              disabled={loading || busy}
+                              aria-label={`${e.name} を開く`}
+                              onClick={() => void load(e.path)}
+                              className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3 disabled:opacity-40"
                             >
                               <Star className="h-4 w-4 shrink-0 fill-warning text-warning" />
                               <span className="min-w-0 flex-1">
@@ -320,19 +309,8 @@ export function AddProjectButton({
                                   {e.path}
                                 </span>
                               </span>
-                              <button
-                                type="button"
-                                disabled={loading || busy}
-                                aria-label={`${e.name} を開く`}
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  void load(e.path);
-                                }}
-                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 disabled:opacity-40"
-                              >
-                                <ChevronRight className="h-4 w-4" />
-                              </button>
-                            </div>
+                              <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -351,40 +329,19 @@ export function AddProjectButton({
                       )}
                       {entries.map((e) => (
                         <li key={e.path}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            aria-label={e.name}
-                            aria-pressed={selectedPath === e.path}
-                            onClick={() => setSelectedPath(e.path)}
-                            onKeyDown={(ev) => {
-                              if (ev.key === "Enter" || ev.key === " ") {
-                                ev.preventDefault();
-                                setSelectedPath(e.path);
-                              }
-                            }}
-                            className={cx(
-                              "flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3",
-                              selectedPath === e.path && "bg-surface-2",
-                            )}
+                          <button
+                            type="button"
+                            disabled={loading || busy}
+                            aria-label={`${e.name} を開く`}
+                            onClick={() => void load(e.path)}
+                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-3 text-left hover:bg-surface-2 active:bg-surface-3 disabled:opacity-40"
                           >
                             <Folder className="h-4.5 w-4.5 shrink-0 text-muted" />
                             <span className="min-w-0 flex-1 truncate text-sm">
                               {e.name}
                             </span>
-                            <button
-                              type="button"
-                              disabled={loading || busy}
-                              aria-label={`${e.name} を開く`}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                void load(e.path);
-                              }}
-                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 disabled:opacity-40"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </button>
-                          </div>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
+                          </button>
                         </li>
                       ))}
                     </ul>
