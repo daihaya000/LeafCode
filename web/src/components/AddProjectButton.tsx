@@ -99,9 +99,12 @@ export function AddProjectButton({
       setParent(data.parent);
       setEntries(data.entries ?? []);
       setQuickAccess(data.quickAccess ?? []);
-      // Only sync manualPath on initial load (when empty) to avoid overwriting
-      // user-typed paths during navigation (R9#3).
-      if (data.path && !manualPath) setManualPath(data.path);
+      // Sync manualPath to the browsed directory on every navigation so the
+      // "add this folder" action targets the folder currently shown, not a
+      // stale initial path (regression from R9#3's guard: `!manualPath`
+      // blocked syncing after the very first load, so browsing deeper never
+      // updated the path field again).
+      if (data.path) setManualPath(data.path);
     } catch (err) {
       setError(err instanceof Error ? err.message : "一覧取得に失敗しました");
       setEntries([]);
@@ -109,7 +112,7 @@ export function AddProjectButton({
     } finally {
       setLoading(false);
     }
-  }, [manualPath]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
