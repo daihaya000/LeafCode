@@ -548,7 +548,11 @@ export function Sidebar({
           err instanceof Error ? err.message : "タイトルの更新に失敗しました",
         );
       } finally {
-        setRefreshingId(null);
+        // Functional update: only clear when this task still owns the refresh
+        // slot. Two near-simultaneous refreshes used to overwrite refreshingId
+        // with B, then A's finally wiped the slot to null mid-flight, dropping
+        // B's spinner.
+        setRefreshingId((cur) => (cur === task.id ? null : cur));
       }
     },
     [refreshingId],

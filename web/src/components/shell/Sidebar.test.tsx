@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
@@ -961,6 +961,84 @@ describe("Sidebar", () => {
       expect(btn.className).toContain("md:w-6");
       expect(btn.className).not.toContain("md:h-8");
     }
+  });
+
+  it("keeps task B's spinner when task A's refresh finishes first (race regression)", async () => {
+    localStorage.clear(); // isolate from prior tests' expanded-state persistence
+    // Two tasks, each with a sessionId so the refresh button is rendered.
+    const base = {
+      projectId: "prj1",
+      projectName: "Repo",
+      directory: "/repo",
+      isolation: "current_folder" as const,
+      status: "idle" as const,
+      branch: "main",
+      additions: 0,
+      deletions: 0,
+      filesChanged: 0,
+      createdAt: "2026-07-18T00:00:00Z",
+      updatedAt: "2026-07-18T00:00:00Z",
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{ id: "prj1", name: "Repo", rootPath: "/repo", favorite: false, lastOpenedAt: null }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            { ...base, id: "wsA", title: "Task A", sessionId: "sessA" },
+            { ...base, id: "wsB", title: "Task B", sessionId: "sessB" },
+          ],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    // Deferred promises so we control resolution order.
+    let resolveA: ((v: { title: string }) => void) | undefined;
+    let resolveB: ((v: { title: string }) => void) | undefined;
+    sendJson.mockImplementation((_method: string, url: string) => {
+      if (url.includes("/wsA/")) return new Promise((r) => { resolveA = r; });
+      if (url.includes("/wsB/")) return new Promise((r) => { resolveB = r; });
+      return Promise.resolve({ ok: true });
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    // Project group is collapsed by default — expand it to reveal tasks.
+    const expandBtn = await screen.findByLabelText("Repoを展開");
+    fireEvent.click(expandBtn);
+    await screen.findByText("Task A");
+
+    const buttons = screen.getAllByLabelText("会話からタイトルを再生成");
+    expect(buttons.length).toBe(2);
+    const [btnA, btnB] = buttons;
+
+    // Start A, then B (overwrites refreshingId to B).
+    await act(async () => { fireEvent.click(btnA); });
+    await waitFor(() => expect(btnA).toHaveProperty("disabled", true));
+    await act(async () => { fireEvent.click(btnB); });
+    await waitFor(() => expect(btnB).toHaveProperty("disabled", true));
+    // Both refresh-title calls must have been issued.
+    expect(sendJson).toHaveBeenCalledTimes(2);
+
+    // A finishes first — must NOT clear B's busy state.
+    resolveA?.({ title: "A done" });
+    await waitFor(() => {
+      const btns = screen.getAllByLabelText("会話からタイトルを再生成");
+      expect(btns[0]).toHaveProperty("disabled", false); // A cleared
+      expect(btns[1]).toHaveProperty("disabled", true);  // B still busy
+    });
+
+    // B finishes — clears its own slot.
+    resolveB?.({ title: "B done" });
+    await waitFor(() => {
+      const btns = screen.getAllByLabelText("会話からタイトルを再生成");
+      expect(btns[1]).toHaveProperty("disabled", false);
+    });
   });
 });
 
