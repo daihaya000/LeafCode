@@ -39,6 +39,15 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const ACTIVE_TASK_POLL_MS = 3000;
 
+/**
+ * Shared geometry for the per-task row action buttons (refresh title / archive /
+ * restore / destroy). Touch keeps the 44px target; on md+ the box shrinks to
+ * 24px so two icon buttons do not eat ~30% of a 240px sidebar row (still at or
+ * above the WCAG 2.2 AA 24x24 minimum for pointer targets).
+ */
+const TASK_ROW_ACTION_BTN =
+  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-6 md:w-6";
+
 function loadExpanded(): Set<string> {
   try {
     const raw = localStorage.getItem(EXPANDED_KEY);
@@ -840,7 +849,10 @@ export function Sidebar({
                                       aria-busy={refreshingId === task.id}
                                       disabled={refreshingId === task.id}
                                       onClick={(e) => void refreshTitle(task, e)}
-                                      className="inline-flex h-11 w-11 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50 md:h-8 md:w-8"
+                                      className={cx(
+                                        TASK_ROW_ACTION_BTN,
+                                        "text-faint hover:bg-surface-2 hover:text-text disabled:opacity-50",
+                                      )}
                                     >
                                       <RefreshCw
                                         className={cx(
@@ -856,7 +868,10 @@ export function Sidebar({
                                     aria-label="タスクをアーカイブ"
                                     title="タスクをアーカイブ"
                                     onClick={(e) => void archiveTask(task, e)}
-                                    className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                                    className={cx(
+                                      TASK_ROW_ACTION_BTN,
+                                      "text-muted hover:bg-surface-2 hover:text-text",
+                                    )}
                                   >
                                     <Archive className="h-3 w-3" />
                                   </button>
@@ -946,7 +961,10 @@ export function Sidebar({
                           aria-label="タスクを復元"
                           title="タスクを復元"
                           onClick={(e) => void restoreArchivedTask(task, e)}
-                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-faint hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                          className={cx(
+                            TASK_ROW_ACTION_BTN,
+                            "text-faint hover:bg-surface-2 hover:text-text",
+                          )}
                         >
                           <ArchiveRestore className="h-3 w-3" />
                         </button>
@@ -955,7 +973,10 @@ export function Sidebar({
                           aria-label="タスクを完全に削除"
                           title="タスクを完全に削除"
                           onClick={(e) => void destroyArchivedTask(task, e)}
-                          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                          className={cx(
+                            TASK_ROW_ACTION_BTN,
+                            "text-muted hover:bg-danger-bg hover:text-danger",
+                          )}
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>

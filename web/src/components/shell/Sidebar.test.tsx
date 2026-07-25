@@ -910,6 +910,58 @@ describe("Sidebar", () => {
       expect(sendJson).toHaveBeenCalledWith("PATCH", "/api/tasks/ws1/archive");
     });
   });
+
+  it("keeps task row action buttons compact on desktop and tappable on touch", async () => {
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Task title",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "idle",
+            sessionId: "sess1",
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    await screen.findByText("Task title");
+
+    for (const label of ["会話からタイトルを再生成", "タスクをアーカイブ"]) {
+      const btn = screen.getByLabelText(label);
+      // 44px touch target on phones, 24px box on md+ so two icon buttons do not
+      // crowd out the task title inside a 240px sidebar.
+      expect(btn.className).toContain("h-11");
+      expect(btn.className).toContain("md:h-6");
+      expect(btn.className).toContain("md:w-6");
+      expect(btn.className).not.toContain("md:h-8");
+    }
+  });
 });
 
 describe("Sidebar archived section", () => {
