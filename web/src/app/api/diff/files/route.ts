@@ -11,6 +11,21 @@ export const dynamic = "force-dynamic";
 
 const MAX_UNTRACKED_BYTES = 200_000;
 
+function normalizeWindowsNamespace(value: string): string {
+  if (value.slice(0, 8).toLowerCase() === "\\\\?\\unc\\") {
+    return `\\\\${value.slice(8)}`;
+  }
+  return value.startsWith("\\\\?\\") ? value.slice(4) : value;
+}
+
+function isUnder(parent: string, child: string): boolean {
+  const relative = path.relative(
+    normalizeWindowsNamespace(parent),
+    normalizeWindowsNamespace(child),
+  );
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 function isProbablyBinary(buf: Buffer): boolean {
   const len = Math.min(buf.length, 8000);
   for (let i = 0; i < len; i++) {
@@ -164,7 +179,7 @@ export async function GET(req: NextRequest) {
           });
           continue;
         }
-        const abs = path.join(dir, rel);
+        const abs = path.resolve(dir, rel);
         const entry: DiffFile = {
           path: norm,
           additions: 0,
@@ -173,14 +188,31 @@ export async function GET(req: NextRequest) {
           untracked: true,
           hunks: [],
         };
+        // Lexical escape (e.g. ?? ../outside) — list path only, never read.
+        if (!isUnder(dir, abs)) {
+          files.push(entry);
+          continue;
+        }
         try {
-          const st = fs.statSync(abs);
-          if (st.isDirectory()) {
+          const lst = fs.lstatSync(abs);
+          // Do not follow symlinks/junctions into arbitrary targets (same
+          // policy as /api/files/content). Path still appears in the list.
+          if (lst.isSymbolicLink()) {
             files.push(entry);
             continue;
           }
-          if (st.size <= MAX_UNTRACKED_BYTES) {
-            const buf = fs.readFileSync(abs);
+          if (lst.isDirectory()) {
+            files.push(entry);
+            continue;
+          }
+          const workspace = fs.realpathSync.native(dir);
+          const real = fs.realpathSync.native(abs);
+          if (!isUnder(workspace, real)) {
+            files.push(entry);
+            continue;
+          }
+          if (lst.size <= MAX_UNTRACKED_BYTES) {
+            const buf = fs.readFileSync(real);
             if (isProbablyBinary(buf)) {
               entry.binary = true;
             } else {
