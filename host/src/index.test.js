@@ -146,6 +146,25 @@ test('stronglyLooksLikeHostCommandLine rejects unrelated node processes', () => 
   );
 });
 
+test('isOurCaddyCommandLine matches only our Caddyfile', () => {
+  const ours = 'C:\\OpenCodeWebUI\\deploy\\Caddyfile';
+  assert.equal(
+    host.isOurCaddyCommandLine(
+      `caddy.exe run --config ${ours} --adapter caddyfile`,
+      ours,
+    ),
+    true,
+  );
+  assert.equal(
+    host.isOurCaddyCommandLine(
+      'caddy.exe run --config C:\\other\\Caddyfile --adapter caddyfile',
+      ours,
+    ),
+    false,
+  );
+  assert.equal(host.isOurCaddyCommandLine(null, ours), false);
+});
+
 function getOpencodeExitDecision(options) {
   assert.equal(
     typeof host.getOpencodeExitDecision,

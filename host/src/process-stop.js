@@ -10,16 +10,27 @@ import { execSync as defaultExecSync } from 'child_process';
 import { resolveWebKillPids } from './restart-targets.js';
 
 /**
+ * @param {unknown} pid
+ * @returns {number | null}
+ */
+function asPid(pid) {
+  const n = Number(pid);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
+/**
  * @param {number} pid
  * @param {{ execSync?: typeof import('child_process').execSync }} [deps]
  */
 export function softKillTree(pid, deps = {}) {
-  if (!pid) return false;
+  const id = asPid(pid);
+  if (!id) return false;
   const run = deps.execSync ?? defaultExecSync;
   try {
     // Without /F: asks the process to close (WM_CLOSE / console break). Gives
     // Bun/Node a chance to release the listen socket before the kernel orphans it.
-    run(`taskkill /T /PID ${pid}`, { stdio: 'ignore' });
+    run(`taskkill /T /PID ${id}`, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -31,10 +42,11 @@ export function softKillTree(pid, deps = {}) {
  * @param {{ execSync?: typeof import('child_process').execSync }} [deps]
  */
 export function hardKillTree(pid, deps = {}) {
-  if (!pid) return false;
+  const id = asPid(pid);
+  if (!id) return false;
   const run = deps.execSync ?? defaultExecSync;
   try {
-    run(`taskkill /T /F /PID ${pid}`, { stdio: 'ignore' });
+    run(`taskkill /T /F /PID ${id}`, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -48,11 +60,12 @@ export function hardKillTree(pid, deps = {}) {
  * @returns {number[]}
  */
 export function listChildPids(pid, deps = {}) {
-  if (!pid) return [];
+  const id = asPid(pid);
+  if (!id) return [];
   const run = deps.execSync ?? defaultExecSync;
   try {
     const output = run(
-      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${pid}\\").ProcessId"`,
+      `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${id}\\").ProcessId"`,
       { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
     );
     return parseChildPidOutput(output);

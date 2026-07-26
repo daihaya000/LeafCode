@@ -975,18 +975,65 @@ function spawnCaddy() {
 }
 
 /**
+ * True when a caddy.exe command line was started with our Caddyfile
+ * (`run --config <path>`). Used so takeover does not kill unrelated Caddy.
+ * @param {string | null | undefined} commandLine
+ * @param {string} caddyfile
+ */
+export function isOurCaddyCommandLine(commandLine, caddyfile) {
+  if (typeof commandLine !== 'string' || !commandLine || !caddyfile) return false;
+  const normalizedCmd = commandLine.replace(/\//g, '\\').toLowerCase();
+  const normalizedFile = String(caddyfile).replace(/\//g, '\\').toLowerCase();
+  if (!normalizedCmd.includes(normalizedFile)) return false;
+  return /\bcaddy(\.exe)?\b/i.test(commandLine) && /--config/i.test(commandLine);
+}
+
+/**
  * Stop any stray Caddy left behind when taking over a degraded host. That host
  * is killed without /T so its OpenCode/WebUI can be reused via health check, but
  * Caddy has no port-reuse path in resolvePortPlan and still holds its ports —
  * a fresh spawnCaddy() would fail to bind and orphan the old process. Only used
  * on the abnormal takeover path, and only when this host manages Caddy.
+ * Only kills caddy.exe instances whose command line references our Caddyfile.
  */
 function stopStrayCaddy() {
   try {
-    execSync('taskkill /F /IM caddy.exe', { stdio: 'ignore' });
-    log('Stopped orphaned Caddy from the degraded host before takeover');
+    const output = execSync(
+      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name='caddy.exe'\\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"`,
+      {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    );
+    const rows = (() => {
+      try {
+        const parsed = JSON.parse(String(output || '').trim() || 'null');
+        if (!parsed) return [];
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [];
+      }
+    })();
+    let stopped = 0;
+    for (const row of rows) {
+      const pid = Number(row?.ProcessId);
+      if (!Number.isInteger(pid) || pid <= 0) continue;
+      if (!isOurCaddyCommandLine(row?.CommandLine, CADDYFILE)) continue;
+      try {
+        execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+        stopped += 1;
+      } catch {
+        /* already gone */
+      }
+    }
+    if (stopped > 0) {
+      log(
+        `Stopped ${stopped} orphaned Caddy process(es) from the degraded host before takeover`,
+      );
+    }
   } catch {
-    // No stray Caddy running (taskkill exits non-zero when none matched).
+    // No stray Caddy running / CIM unavailable.
   }
 }
 

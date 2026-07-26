@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import {
   disposeAuthHeaders,
   disposeOpencodeServer,
+  hardKillTree,
+  listChildPids,
   parseChildPidOutput,
   reapInheritedHolders,
+  softKillTree,
   stopProcessTreeGracefully,
   stopWebTreeSync,
 } from './process-stop.js';
@@ -12,6 +15,22 @@ import {
 test('parseChildPidOutput extracts numeric PIDs only', () => {
   assert.deepEqual(parseChildPidOutput('12\r\n34\r\n\r\nabc\r\n56\n'), [12, 34, 56]);
   assert.deepEqual(parseChildPidOutput(''), []);
+});
+
+test('softKillTree / hardKillTree / listChildPids reject non-integer PIDs', () => {
+  const calls = [];
+  const execSync = (cmd) => {
+    calls.push(cmd);
+    return '';
+  };
+  assert.equal(softKillTree('1 & calc', { execSync }), false);
+  assert.equal(hardKillTree('12; rm', { execSync }), false);
+  assert.deepEqual(listChildPids('1 | whoami', { execSync }), []);
+  assert.equal(softKillTree(12.5, { execSync }), false);
+  assert.equal(softKillTree(0, { execSync }), false);
+  assert.deepEqual(calls, []);
+  assert.equal(softKillTree(42, { execSync }), true);
+  assert.deepEqual(calls, ['taskkill /T /PID 42']);
 });
 
 test('disposeAuthHeaders is empty without password', () => {

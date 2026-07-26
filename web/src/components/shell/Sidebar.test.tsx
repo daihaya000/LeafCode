@@ -1470,6 +1470,98 @@ describe("Sidebar DB persistence", () => {
     expect(localStorage.getItem("webui.sidebar.archived_expanded")).toBe("true");
   });
 
+  it("does not persist stale localStorage before server hydrate finishes", async () => {
+    let resolveSidebar!: (value: { value: string }) => void;
+    const sidebarDeferred = new Promise<{ value: string }>((resolve) => {
+      resolveSidebar = resolve;
+    });
+    usePathname.mockReturnValue("/task/ws1");
+    localStorage.setItem("webui.sidebar.expanded", JSON.stringify(["stale"]));
+    localStorage.setItem("webui.sidebar.width", "200");
+
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "prj-remote",
+              name: "Repo",
+              rootPath: "/repo",
+              favorite: false,
+              lastOpenedAt: null,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [
+            {
+              id: "ws1",
+              projectId: "prj-remote",
+              projectName: "Repo",
+              title: "Task",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "idle",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              cost: null,
+              providerID: null,
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            },
+          ],
+          engineOk: true,
+        });
+      }
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      if (path === "/api/settings/sidebar") return sidebarDeferred;
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(getJson).toHaveBeenCalledWith("/api/tasks");
+    });
+    // Active-task auto-expand would previously persist while hydrated=true and
+    // overwrite the DB with stale localStorage before the remote read returned.
+    expect(
+      (sendJson.mock.calls as [string, string, unknown][]).some(
+        ([method, url]) => method === "PUT" && url === "/api/settings/sidebar",
+      ),
+    ).toBe(false);
+
+    resolveSidebar({
+      value: JSON.stringify({
+        expanded: ["prj-remote"],
+        width: 400,
+        archivedExpanded: true,
+      }),
+    });
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui.sidebar.expanded")).toBe(
+        JSON.stringify(["prj-remote"]),
+      );
+    });
+    expect(
+      (sendJson.mock.calls as [string, string, unknown][]).some(
+        ([method, url, body]) => {
+          if (method !== "PUT" || url !== "/api/settings/sidebar") return false;
+          const parsed = JSON.parse((body as { value: string }).value) as {
+            expanded: string[];
+          };
+          return parsed.expanded.includes("stale") && !parsed.expanded.includes("prj-remote");
+        },
+      ),
+    ).toBe(false);
+  });
+
   it("writes the sidebar state to the DB when a project is toggled", async () => {
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {

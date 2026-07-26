@@ -179,6 +179,7 @@ export function Sidebar({
   const [engineUnavailableCount, setEngineUnavailableCount] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
+  const canPersistRef = useRef(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [resizing, setResizing] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -302,17 +303,16 @@ export function Sidebar({
   }, [updateEngineHealth]);
 
   useEffect(() => {
-    // Fast path: hydrate from localStorage so the sidebar paints without
-    // waiting on the network. The DB read below may override these once it
-    // resolves (DB wins on conflict), and a localStorage-only value is
-    // migrated up to the DB so it survives origin/session changes.
+    // Fast path: paint from localStorage without waiting on the network.
+    // Do NOT mark hydrated / allow DB persists until the server read finishes —
+    // otherwise active-task auto-expand (and other early writes) can overwrite
+    // the DB with stale localStorage before "DB wins" applies.
     const localExpanded = loadExpanded();
     const localWidth = loadWidth();
     const localArchivedExpanded = loadArchivedExpanded();
     setExpanded(localExpanded);
     setWidth(localWidth);
     setArchivedExpanded(localArchivedExpanded);
-    setHydrated(true);
     void refresh();
 
     void (async () => {
@@ -324,6 +324,8 @@ export function Sidebar({
       if (!hasRemote) {
         // Nothing in the DB yet — push the localStorage value up so future
         // sessions (other browsers/origins) pick it up.
+        canPersistRef.current = true;
+        setHydrated(true);
         void writeSidebarToServer({
           expanded: [...localExpanded],
           width: localWidth,
@@ -347,6 +349,8 @@ export function Sidebar({
       saveExpanded(nextExpanded);
       saveWidth(nextWidth);
       saveArchivedExpanded(nextArchivedExpanded);
+      canPersistRef.current = true;
+      setHydrated(true);
     })();
 
     const onVisible = () => {
@@ -379,6 +383,7 @@ export function Sidebar({
       nextWidth: number,
       nextArchivedExpanded: boolean,
     ) => {
+      if (!canPersistRef.current) return;
       void writeSidebarToServer({
         expanded: [...nextExpanded],
         width: nextWidth,
