@@ -201,7 +201,7 @@ export function ModelSelect({
         title={title ?? selected?.label ?? "モデル"}
         onClick={() => setOpen((current) => !current)}
         className={cx(
-          "group inline-flex h-8 min-w-0 appearance-none items-center gap-1.5 rounded-lg border border-border bg-bg px-2 text-xs font-medium text-muted shadow-sm transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none hover:bg-surface-2 hover:text-text focus:border-border-strong focus:bg-surface-2 focus:text-text",
+          "group inline-flex h-8 min-w-0 appearance-none items-center gap-1.5 rounded-lg border border-border bg-bg px-2 text-xs font-medium text-muted transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none hover:bg-surface-2 hover:text-text focus:border-border-strong focus:bg-surface-2 focus:text-text",
           disabled && "cursor-not-allowed opacity-40",
         )}
       >

@@ -875,7 +875,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   disabled={submitting}
                   aria-label="画像を添付"
                   title="画像を添付"
-                  className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted shadow-sm transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
+                  className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
                 >
                   <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
