@@ -6,6 +6,25 @@
  */
 
 export type ModelOption = { value: string; label: string; group: string };
+export type ModelOrderPreference = {
+  providerOrder?: string[];
+  modelOrder?: Record<string, string[]>;
+};
+
+export function modelOrderPreferenceFromProviders(
+  providers: { id: string; models?: { id: string }[] }[] | undefined | null,
+): ModelOrderPreference | undefined {
+  if (!providers || providers.length === 0) return undefined;
+  return {
+    providerOrder: providers.map((provider) => provider.id),
+    modelOrder: Object.fromEntries(
+      providers.map((provider) => [
+        provider.id,
+        (provider.models ?? []).map((model) => model.id),
+      ]),
+    ),
+  };
+}
 
 /**
  * Normalize OpenCode provider model display names for the dropdown.
@@ -126,11 +145,32 @@ function parseOptionValue(value: string): { providerID: string; modelID: string 
   };
 }
 
-/** Sort model options: provider bucket first, then intelligence desc, then label. */
-export function sortModelOptions<T extends ModelOption>(options: T[]): T[] {
+/** Sort model options: saved order first, then provider bucket / intelligence / label. */
+export function sortModelOptions<T extends ModelOption>(
+  options: T[],
+  order?: ModelOrderPreference,
+): T[] {
+  const providerIndex = new Map(
+    (order?.providerOrder ?? []).map((providerID, index) => [providerID, index]),
+  );
+  const modelIndex = new Map<string, Map<string, number>>();
+  for (const [providerID, models] of Object.entries(order?.modelOrder ?? {})) {
+    modelIndex.set(
+      providerID,
+      new Map(models.map((modelID, index) => [modelID, index])),
+    );
+  }
   return [...options].sort((a, b) => {
     const pa = parseOptionValue(a.value);
     const pb = parseOptionValue(b.value);
+    const providerOrderA = providerIndex.get(pa.providerID);
+    const providerOrderB = providerIndex.get(pb.providerID);
+    if (providerOrderA !== undefined || providerOrderB !== undefined) {
+      const diff =
+        (providerOrderA ?? Number.MAX_SAFE_INTEGER) -
+        (providerOrderB ?? Number.MAX_SAFE_INTEGER);
+      if (diff !== 0) return diff;
+    }
     const providerDiff =
       providerSortKey(pa.providerID) - providerSortKey(pb.providerID);
     if (providerDiff !== 0) return providerDiff;
@@ -138,6 +178,14 @@ export function sortModelOptions<T extends ModelOption>(options: T[]): T[] {
     // provider id alphabetical so groups stay contiguous.
     if (pa.providerID !== pb.providerID) {
       return pa.providerID.localeCompare(pb.providerID);
+    }
+    const modelOrderA = modelIndex.get(pa.providerID)?.get(pa.modelID);
+    const modelOrderB = modelIndex.get(pb.providerID)?.get(pb.modelID);
+    if (modelOrderA !== undefined || modelOrderB !== undefined) {
+      const diff =
+        (modelOrderA ?? Number.MAX_SAFE_INTEGER) -
+        (modelOrderB ?? Number.MAX_SAFE_INTEGER);
+      if (diff !== 0) return diff;
     }
     const scoreDiff =
       modelIntelligenceScore(pb.modelID) - modelIntelligenceScore(pa.modelID);

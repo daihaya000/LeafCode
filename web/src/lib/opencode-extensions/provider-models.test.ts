@@ -24,7 +24,11 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
-import { listProviderModels, setProviderModelEnabled } from "./provider-models";
+import {
+  listProviderModels,
+  saveProviderModelOrder,
+  setProviderModelEnabled,
+} from "./provider-models";
 
 let data: string;
 
@@ -32,7 +36,11 @@ function statePath(): string {
   return path.join(data, "provider-model-state.json");
 }
 
-function readState(): { disabled: Record<string, true> } {
+function readState(): {
+  disabled: Record<string, true>;
+  providerOrder?: string[];
+  modelOrder?: Record<string, string[]>;
+} {
   try {
     return JSON.parse(fs.readFileSync(statePath(), "utf8"));
   } catch {
@@ -149,6 +157,29 @@ describe("listProviderModels", () => {
     expect(names).toEqual([...names].sort());
   });
 
+  it("uses saved provider and model order before fallback sorting", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({
+        disabled: {},
+        providerOrder: ["ollama", "openai", "anthropic"],
+        modelOrder: { openai: ["gpt-5-mini", "gpt-5"] },
+      }),
+    );
+
+    const providers = await listProviderModels();
+    expect(providers.map((provider) => provider.id)).toEqual([
+      "ollama",
+      "openai",
+      "anthropic",
+    ]);
+    expect(providers.find((provider) => provider.id === "openai")!.models.map((model) => model.id)).toEqual([
+      "gpt-5-mini",
+      "gpt-5",
+    ]);
+  });
+
   it("returns empty list when no providers", async () => {
     h.ocServer.mockResolvedValue({
       all: [],
@@ -229,5 +260,25 @@ describe("setProviderModelEnabled", () => {
     await setProviderModelEnabled("openai", true);
     const state = readState();
     expect(state.disabled).toEqual({ "anthropic::claude-haiku-4-5": true });
+  });
+});
+
+describe("saveProviderModelOrder", () => {
+  it("persists provider and model order while preserving disabled entries", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({ disabled: { openai: true } }),
+    );
+
+    await saveProviderModelOrder({
+      providerOrder: ["anthropic", "openai"],
+      modelOrder: { openai: ["gpt-5-mini", "gpt-5"] },
+    });
+
+    const state = readState();
+    expect(state.disabled).toEqual({ openai: true });
+    expect(state.providerOrder).toEqual(["anthropic", "openai"]);
+    expect(state.modelOrder?.openai).toEqual(["gpt-5-mini", "gpt-5"]);
   });
 });

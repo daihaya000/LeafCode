@@ -187,4 +187,23 @@ describe("sortModelOptions", () => {
     sortModelOptions(input);
     expect(input).toEqual(copy);
   });
+
+  it("applies saved provider and model order before default ranking", () => {
+    const input: ModelOption[] = [
+      { value: "openai::gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
+      { value: "anthropic::claude-opus-5", label: "Claude Opus 5", group: "Anthropic" },
+      { value: "openai::gpt-5.6-sol", label: "GPT-5.6 Sol", group: "OpenAI" },
+    ];
+
+    expect(
+      sortModelOptions(input, {
+        providerOrder: ["anthropic", "openai"],
+        modelOrder: { openai: ["gpt-5.5", "gpt-5.6-sol"] },
+      }).map((option) => option.value),
+    ).toEqual([
+      "anthropic::claude-opus-5",
+      "openai::gpt-5.5",
+      "openai::gpt-5.6-sol",
+    ]);
+  });
 });

@@ -300,4 +300,41 @@ describe("ProviderModelsSettings", () => {
     // Sibling model remains visible and unchanged.
     expect(screen.getByText("GPT-5")).toBeTruthy();
   });
+
+  it("reorders providers and models with drag and drop", async () => {
+    render(<ProviderModelsSettings />);
+
+    const openaiDrag = await screen.findByLabelText("OpenAI をドラッグして並び替え");
+    const anthropicDrag = screen.getByLabelText("Anthropic をドラッグして並び替え");
+    const dataTransfer = { effectAllowed: "" };
+
+    fireEvent.dragStart(openaiDrag.closest("li")!, { dataTransfer });
+    fireEvent.dragOver(anthropicDrag.closest("li")!, { dataTransfer });
+    fireEvent.drop(anthropicDrag.closest("li")!, { dataTransfer });
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "PATCH",
+      "/api/extensions/provider-models/order",
+      expect.objectContaining({ providerOrder: ["anthropic", "openai"] }),
+    ));
+
+    const expandBtn = screen.getByRole("button", {
+      name: /OpenAI のモデルを展開/,
+    });
+    fireEvent.click(expandBtn);
+    const gpt5Drag = await screen.findByLabelText("GPT-5 をドラッグして並び替え");
+    const gpt4oDrag = screen.getByLabelText("GPT-4o をドラッグして並び替え");
+
+    fireEvent.dragStart(gpt4oDrag.closest("li")!, { dataTransfer });
+    fireEvent.dragOver(gpt5Drag.closest("li")!, { dataTransfer });
+    fireEvent.drop(gpt5Drag.closest("li")!, { dataTransfer });
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "PATCH",
+      "/api/extensions/provider-models/order",
+      expect.objectContaining({
+        modelOrder: expect.objectContaining({ openai: ["gpt-4o", "gpt-5"] }),
+      }),
+    ));
+  });
 });

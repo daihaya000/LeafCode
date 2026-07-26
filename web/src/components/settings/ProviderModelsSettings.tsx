@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
+import { GripVertical } from "lucide-react";
 import { Badge, Button, cx } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
@@ -23,6 +24,18 @@ type ProviderModelsResponse = {
 };
 
 type Status = "loading" | "ready" | "error";
+type DragState =
+  | { kind: "provider"; id: string }
+  | { kind: "model"; providerId: string; id: string };
+
+function moveItem<T>(items: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0) return items;
+  const next = [...items];
+  const [item] = next.splice(from, 1);
+  if (item === undefined) return items;
+  next.splice(to, 0, item);
+  return next;
+}
 
 function ExtensionSwitch({
   name,
@@ -84,11 +97,19 @@ function ProviderGroup({
   busyId,
   onToggleProvider,
   onToggleModel,
+  onDragStartProvider,
+  onDropProvider,
+  onDragStartModel,
+  onDropModel,
 }: {
   provider: ProviderDto;
   busyId: string | null;
   onToggleProvider: (enabled: boolean) => void;
   onToggleModel: (model: ModelDto, enabled: boolean) => void;
+  onDragStartProvider: () => void;
+  onDropProvider: () => void;
+  onDragStartModel: (model: ModelDto) => void;
+  onDropModel: (model: ModelDto) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -96,8 +117,25 @@ function ProviderGroup({
   const hasModels = provider.models.length > 0;
 
   return (
-    <li aria-busy={isBusy || undefined} className="space-y-2">
+    <li
+      aria-busy={isBusy || undefined}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        onDragStartProvider();
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDropProvider();
+      }}
+      className="space-y-2"
+    >
       <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        <GripVertical
+          aria-label={`${provider.name} をドラッグして並び替え`}
+          className="h-4 w-4 shrink-0 cursor-grab text-faint"
+        />
         {hasModels && (
           <button
             type="button"
@@ -151,12 +189,28 @@ function ProviderGroup({
             return (
               <li
                 key={model.id}
+                draggable={!disabled}
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  event.dataTransfer.effectAllowed = "move";
+                  onDragStartModel(model);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDropModel(model);
+                }}
                 aria-busy={modelBusy || undefined}
                 className={cx(
                   "ml-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 border-l-2 border-l-border",
                   disabled && "opacity-50",
                 )}
               >
+                <GripVertical
+                  aria-label={`${model.name} をドラッグして並び替え`}
+                  className="h-4 w-4 shrink-0 cursor-grab text-faint"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="min-w-0 truncate text-sm font-medium">
@@ -188,6 +242,7 @@ export function ProviderModelsSettings() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<DragState | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -261,6 +316,63 @@ export function ProviderModelsSettings() {
     [load],
   );
 
+  const saveOrder = useCallback(async (nextProviders: ProviderDto[]) => {
+    setActionError(null);
+    try {
+      await sendJson("PATCH", "/api/extensions/provider-models/order", {
+        providerOrder: nextProviders.map((provider) => provider.id),
+        modelOrder: Object.fromEntries(
+          nextProviders.map((provider) => [
+            provider.id,
+            provider.models.map((model) => model.id),
+          ]),
+        ),
+      });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "並び順の保存に失敗しました");
+      void load();
+    }
+  }, [load]);
+
+  const moveProvider = useCallback(
+    (targetId: string) => {
+      if (dragging?.kind !== "provider" || dragging.id === targetId) return;
+      setProviders((prev) => {
+        const from = prev.findIndex((provider) => provider.id === dragging.id);
+        const to = prev.findIndex((provider) => provider.id === targetId);
+        const next = moveItem(prev, from, to);
+        void saveOrder(next);
+        return next;
+      });
+      setDragging(null);
+    },
+    [dragging, saveOrder],
+  );
+
+  const moveModel = useCallback(
+    (providerId: string, targetId: string) => {
+      if (
+        dragging?.kind !== "model" ||
+        dragging.providerId !== providerId ||
+        dragging.id === targetId
+      ) {
+        return;
+      }
+      setProviders((prev) => {
+        const next = prev.map((provider) => {
+          if (provider.id !== providerId) return provider;
+          const from = provider.models.findIndex((model) => model.id === dragging.id);
+          const to = provider.models.findIndex((model) => model.id === targetId);
+          return { ...provider, models: moveItem(provider.models, from, to) };
+        });
+        void saveOrder(next);
+        return next;
+      });
+      setDragging(null);
+    },
+    [dragging, saveOrder],
+  );
+
   return (
     <div className="space-y-8">
       <section aria-labelledby="provider-models-heading">
@@ -310,6 +422,18 @@ export function ProviderModelsSettings() {
                   key={provider.id}
                   provider={provider}
                   busyId={busyId}
+                  onDragStartProvider={() =>
+                    setDragging({ kind: "provider", id: provider.id })
+                  }
+                  onDropProvider={() => moveProvider(provider.id)}
+                  onDragStartModel={(model) =>
+                    setDragging({
+                      kind: "model",
+                      providerId: provider.id,
+                      id: model.id,
+                    })
+                  }
+                  onDropModel={(model) => moveModel(provider.id, model.id)}
                   onToggleProvider={(enabled) =>
                     void toggle(provider.id, enabled)
                   }

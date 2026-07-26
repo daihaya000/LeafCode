@@ -193,6 +193,7 @@ export function ModelSelect({
     <div ref={rootRef} className={cx("relative inline-flex min-w-0", className)}>
       <button
         type="button"
+        value={value}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}

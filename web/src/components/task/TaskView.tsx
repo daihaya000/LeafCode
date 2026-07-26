@@ -91,6 +91,7 @@ import {
 } from "@/lib/sidepanel-settings";
 import {
   formatModelLabel,
+  modelOrderPreferenceFromProviders,
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
@@ -119,6 +120,7 @@ import { useSlashCommands } from "@/lib/useSlashCommands";
 import { useVoiceInput } from "@/lib/use-voice-input";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import type { TaskSummary, Todo } from "@/lib/types";
+import type { ProviderModelsDto } from "@/lib/extensions";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
@@ -825,10 +827,11 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
+          timedFetch("/api/extensions/provider-models"),
         ]);
 
         const data = providerRes.ok
@@ -836,6 +839,9 @@ export function TaskView({ taskId }: { taskId: string }) {
           : null;
         const config = configRes.ok
           ? ((await configRes.json()) as { model?: string; agent?: unknown })
+          : null;
+        const providerModels = providerModelsRes.ok
+          ? ((await providerModelsRes.json()) as { providers?: ProviderModelsDto[] })
           : null;
 
         if (data) {
@@ -864,7 +870,12 @@ export function TaskView({ taskId }: { taskId: string }) {
               };
             }
           }
-          setModelOptions(sortModelOptions(options));
+          setModelOptions(
+            sortModelOptions(
+              options,
+              modelOrderPreferenceFromProviders(providerModels?.providers),
+            ),
+          );
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 

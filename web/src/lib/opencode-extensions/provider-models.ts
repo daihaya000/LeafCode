@@ -3,6 +3,7 @@ import { ocServer } from "../oc-server";
 import { formatModelLabel, sortModelOptions } from "../model-options";
 import {
   readProviderModelState,
+  setProviderModelOrder,
   setProviderModelDisabled,
 } from "../provider-model-state";
 
@@ -54,13 +55,15 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
       enabled: providerEnabled && !disabled[`${id}::${modelID}`],
     }));
 
-    // Sort models using the existing intelligence-based ordering.
+    // Sort models using saved order first, then existing intelligence ordering.
+    const savedModelOrder = state.modelOrder[id] ?? [];
     const sortedModels = sortModelOptions(
       models.map((m) => ({
         value: `${id}::${m.id}`,
         label: m.name,
         group: id,
       })),
+      { modelOrder: { [id]: savedModelOrder } },
     ).map((opt) => {
       const modelID = opt.value.slice(opt.value.indexOf("::") + 2);
       return models.find((m) => m.id === modelID) ?? {
@@ -78,8 +81,16 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
     });
   }
 
-  // Sort providers alphabetically by name.
-  providers.sort((a, b) => a.name.localeCompare(b.name));
+  // Sort providers using saved order first, then alphabetically by name.
+  const providerIndex = new Map(state.providerOrder.map((id, index) => [id, index]));
+  providers.sort((a, b) => {
+    const ai = providerIndex.get(a.id);
+    const bi = providerIndex.get(b.id);
+    if (ai !== undefined || bi !== undefined) {
+      return (ai ?? Number.MAX_SAFE_INTEGER) - (bi ?? Number.MAX_SAFE_INTEGER);
+    }
+    return a.name.localeCompare(b.name);
+  });
 
   return providers;
 }
@@ -94,4 +105,11 @@ export async function setProviderModelEnabled(
   enabled: boolean,
 ): Promise<void> {
   await setProviderModelDisabled(key, !enabled);
+}
+
+export async function saveProviderModelOrder(input: {
+  providerOrder?: string[];
+  modelOrder?: Record<string, string[]>;
+}): Promise<void> {
+  await setProviderModelOrder(input);
 }

@@ -33,6 +33,7 @@ import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import {
   formatModelLabel,
+  modelOrderPreferenceFromProviders,
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
@@ -49,6 +50,7 @@ import {
 } from "@/lib/slash-command";
 import { useSlashCommands } from "@/lib/useSlashCommands";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
+import type { ProviderModelsDto } from "@/lib/extensions";
 import type { ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
@@ -231,10 +233,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   useEffect(() => {
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
+          timedFetch("/api/extensions/provider-models"),
         ]);
 
         const data = providerRes.ok
@@ -242,6 +245,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : null;
         const config = configRes.ok
           ? ((await configRes.json()) as { model?: string; agent?: unknown })
+          : null;
+        const providerModels = providerModelsRes.ok
+          ? ((await providerModelsRes.json()) as { providers?: ProviderModelsDto[] })
           : null;
 
         if (data) {
@@ -269,7 +275,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               };
             }
           }
-          setModelOptions(sortModelOptions(options));
+          setModelOptions(
+            sortModelOptions(
+              options,
+              modelOrderPreferenceFromProviders(providerModels?.providers),
+            ),
+          );
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 

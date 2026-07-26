@@ -2,7 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { dataDir } from "./paths";
 
-type StateFile = { disabled: Record<string, true> };
+type StateFile = {
+  disabled: Record<string, true>;
+  providerOrder: string[];
+  modelOrder: Record<string, string[]>;
+};
+
+function emptyState(): StateFile {
+  return { disabled: {}, providerOrder: [], modelOrder: {} };
+}
 
 function statePath(): string {
   return path.join(dataDir(), "provider-model-state.json");
@@ -30,7 +38,7 @@ async function atomicWrite(filePath: string, content: string): Promise<void> {
 
 /**
  * Read the provider-model state file.
- * Returns `{ disabled: {} }` when the file does not exist or is malformed JSON.
+ * Returns an empty state when the file does not exist or is malformed JSON.
  */
 export function readProviderModelState(): StateFile {
   let raw: string;
@@ -43,37 +51,53 @@ export function readProviderModelState(): StateFile {
         err,
       );
     }
-    return { disabled: {} };
+    return emptyState();
   }
   try {
     const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed) &&
-      parsed.disabled &&
-      typeof parsed.disabled === "object" &&
-      !Array.isArray(parsed.disabled)
-    ) {
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       // Validate that all values are `true`.
       const disabled: Record<string, true> = {};
-      for (const [key, value] of Object.entries(parsed.disabled)) {
-        if (value === true) {
-          disabled[key] = true;
+      if (
+        parsed.disabled &&
+        typeof parsed.disabled === "object" &&
+        !Array.isArray(parsed.disabled)
+      ) {
+        for (const [key, value] of Object.entries(parsed.disabled)) {
+          if (value === true) disabled[key] = true;
         }
       }
-      return { disabled };
+      const providerOrder = Array.isArray(parsed.providerOrder)
+        ? (parsed.providerOrder as unknown[]).filter(
+            (id): id is string => typeof id === "string",
+          )
+        : [];
+      const modelOrder: Record<string, string[]> = {};
+      if (
+        parsed.modelOrder &&
+        typeof parsed.modelOrder === "object" &&
+        !Array.isArray(parsed.modelOrder)
+      ) {
+        for (const [providerID, order] of Object.entries(parsed.modelOrder)) {
+          if (Array.isArray(order)) {
+            modelOrder[providerID] = order.filter(
+              (id): id is string => typeof id === "string",
+            );
+          }
+        }
+      }
+      return { disabled, providerOrder, modelOrder };
     }
     console.warn(
       "[provider-model] 状態ファイルの形式が不正なため無視します",
     );
-    return { disabled: {} };
+    return emptyState();
   } catch (err) {
     console.warn(
       "[provider-model] 状態ファイルが壊れているため無視します",
       err,
     );
-    return { disabled: {} };
+    return emptyState();
   }
 }
 
@@ -124,6 +148,41 @@ export async function setProviderModelDisabled(
     state.disabled[key] = true;
   } else {
     delete state.disabled[key];
+  }
+  await writeProviderModelState(state);
+}
+
+function mergeKnownOrder(next: string[], existing: string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const id of next) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(id);
+  }
+  for (const id of existing) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(id);
+  }
+  return merged;
+}
+
+export async function setProviderModelOrder(input: {
+  providerOrder?: string[];
+  modelOrder?: Record<string, string[]>;
+}): Promise<void> {
+  const state = readProviderModelState();
+  if (input.providerOrder) {
+    state.providerOrder = mergeKnownOrder(input.providerOrder, state.providerOrder);
+  }
+  if (input.modelOrder) {
+    for (const [providerID, order] of Object.entries(input.modelOrder)) {
+      state.modelOrder[providerID] = mergeKnownOrder(
+        order,
+        state.modelOrder[providerID] ?? [],
+      );
+    }
   }
   await writeProviderModelState(state);
 }
