@@ -119,6 +119,26 @@ describe("HeaderKebabMenu", () => {
     expect(screen.getByRole("menu")).toBeTruthy();
   });
 
+  it("renders the popup in a portal so mobile toolbar overflow does not clip it", () => {
+    render(
+      <div style={{ overflowX: "auto", width: 40 }}>
+        <HeaderKebabMenu
+          groups={[
+            {
+              id: "actions",
+              items: [{ id: "action", label: "操作", onSelect: vi.fn() }],
+            },
+          ]}
+          triggerLabel="テストメニュー"
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "テストメニュー" }));
+
+    expect(screen.getByRole("menu").parentElement).toBe(document.body);
+  });
+
   it("closes on outside click and does not reopen via a stray pointerdown-only gesture", async () => {
     render(
       <>

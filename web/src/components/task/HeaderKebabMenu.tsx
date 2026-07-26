@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { MoreHorizontal } from "lucide-react";
 import { Button, Spinner, cx } from "@/components/ui";
 
@@ -32,14 +33,15 @@ export type KebabGroup = {
  * Self-contained kebab dropdown for the TaskView header toolbar.
  *
  * - trigger: ghost icon button with MoreHorizontal
- * - popup: absolute, bottom-right of trigger, shadow-lg, bg-surface border-border
+ * - popup: body portal, bottom-right of trigger, shadow-lg, bg-surface border-border
  * - keyboard: ArrowUp/Down to move (skip disabled), Enter/Space to run,
  *   Escape to close, and natural Tab traversal (leaving the popup closes it)
  * - outside click closes
  *
  * No new design tokens; only existing globals.css variables + Tailwind std classes.
  * z-30 keeps the popup above sticky headers (z-10) and the composer's slash
- * suggest (z-20) while staying below modals (z-40+).
+ * suggest (z-20) while staying below modals (z-40+). The portal avoids
+ * clipping when the header toolbar becomes horizontally scrollable on mobile.
  */
 export function HeaderKebabMenu({
   groups,
@@ -51,6 +53,10 @@ export function HeaderKebabMenu({
   triggerLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
@@ -80,6 +86,17 @@ export function HeaderKebabMenu({
     if (restoreFocus) triggerRef.current?.focus();
   }, []);
 
+  const updatePopupPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger || typeof window === "undefined") return;
+    const rect = trigger.getBoundingClientRect();
+    const menuWidth = 192; // min-w-[12rem]
+    setPopupPosition({
+      top: rect.bottom + 4,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+    });
+  }, []);
+
   // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
@@ -98,11 +115,20 @@ export function HeaderKebabMenu({
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", updatePopupPosition);
+    window.addEventListener("scroll", updatePopupPosition, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", updatePopupPosition);
+      window.removeEventListener("scroll", updatePopupPosition, true);
     };
-  }, [open, close]);
+  }, [open, close, updatePopupPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    updatePopupPosition();
+  }, [open, updatePopupPosition]);
 
   // When opening, focus the first focusable item.
   useEffect(() => {
@@ -152,12 +178,14 @@ export function HeaderKebabMenu({
         onClick={() => {
           const openBeforeGesture = pointerDownOpenRef.current;
           pointerDownOpenRef.current = null;
-          setOpen(!(openBeforeGesture ?? open));
+          const nextOpen = !(openBeforeGesture ?? open);
+          if (nextOpen) updatePopupPosition();
+          setOpen(nextOpen);
         }}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
-      {open && (
+      {open && popupPosition && createPortal(
         <div
           ref={popupRef}
           id={menuId}
@@ -171,7 +199,8 @@ export function HeaderKebabMenu({
             const next = event.relatedTarget as Node | null;
             if (!next || !popupRef.current?.contains(next)) close(false);
           }}
-          className="absolute right-0 top-full z-30 mt-1 min-w-[12rem] overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-lg"
+          className="fixed z-30 min-w-[12rem] overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-lg"
+          style={{ top: popupPosition.top, left: popupPosition.left }}
         >
           {visibleGroups.map((group, gi) => (
             <div
@@ -244,7 +273,8 @@ export function HeaderKebabMenu({
               })}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
