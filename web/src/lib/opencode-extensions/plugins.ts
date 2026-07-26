@@ -1,10 +1,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import type { PluginDto } from "../extensions";
 import {
+  applyEdits,
   atomicWriteFile,
+  detectFormatting,
   getPluginArray,
   insertPluginEntryInContent,
+  modify,
   readConfigContent,
   removePluginEntryInContent,
   withConfigLock,
@@ -201,6 +205,98 @@ export async function listPlugins(): Promise<PluginDto[]> {
   result.push(...(await scanLocalPlugins(pluginDir(), true)));
   result.push(...(await scanLocalPlugins(pluginDisabledDir(), false)));
   return result;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function validatePluginName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new ExtensionsError("invalid-name", "プラグイン名を入力してください");
+  return trimmed;
+}
+
+function validatePluginOptions(options: unknown): Record<string, unknown> | undefined {
+  if (options === undefined) return undefined;
+  if (!isRecord(options)) {
+    throw new ExtensionsError("invalid-name", "オプションはJSONオブジェクトで入力してください");
+  }
+  return options;
+}
+
+function ensureConfigFileExists(filePath: string): void {
+  if (fs.existsSync(filePath)) return;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  try {
+    fs.writeFileSync(
+      filePath,
+      '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
+      { encoding: "utf8", flag: "wx" },
+    );
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+}
+
+/**
+ * Append a new entry to `plugin` in `opencode.jsonc`: a plain npm spec (or
+ * local path) string, or a `[name, options]` tuple when options are given.
+ */
+export async function addConfiguredPlugin(input: {
+  name: string;
+  options?: unknown;
+}): Promise<void> {
+  const name = validatePluginName(input.name);
+  const options = validatePluginOptions(input.options);
+  const value = options !== undefined ? [name, options] : name;
+  const filePath = opencodeConfigFilePath();
+  ensureConfigFileExists(filePath);
+  await withConfigLock(async () => {
+    const content = readConfigContent(filePath);
+    const configured = getPluginArray(content) ?? [];
+    const next = insertPluginEntryInContent(content, configured.length, value);
+    await atomicWriteFile(filePath, next);
+  });
+}
+
+/**
+ * Replace a configured plugin's name/options in place (same array index).
+ * When `options` is omitted, the entry's existing options (if any) are kept
+ * unchanged — the client never receives them (they may hold credentials),
+ * so "leave the options field blank" means "don't touch them".
+ */
+export async function updateConfiguredPlugin(
+  id: string,
+  input: { name: string; options?: unknown },
+): Promise<void> {
+  const name = validatePluginName(input.name);
+  const options = validatePluginOptions(input.options);
+  const parsed = parseConfigPluginId(id);
+  if (!parsed) {
+    throw new ExtensionsError("invalid-name", "プラグインIDが不正です");
+  }
+  await withConfigLock(async () => {
+    const filePath = opencodeConfigFilePath();
+    const content = readConfigContent(filePath);
+    const configured = getPluginArray(content) ?? [];
+    const index =
+      parsed.index < configured.length &&
+      valueHash(configured[parsed.index]) === parsed.hash
+        ? parsed.index
+        : configured.findIndex((v) => valueHash(v) === parsed.hash);
+    if (index < 0) {
+      throw new ExtensionsError("not-found", "指定のプラグインが見つかりません");
+    }
+    const current = configured[index];
+    const keptOptions =
+      options ?? (Array.isArray(current) && isRecord(current[1]) ? current[1] : undefined);
+    const value = keptOptions !== undefined ? [name, keptOptions] : name;
+    const edits = modify(content, ["plugin", index], value, {
+      formattingOptions: detectFormatting(content),
+    });
+    await atomicWriteFile(filePath, applyEdits(content, edits));
+  });
 }
 
 async function setLocalPluginEnabled(id: string, enabled: boolean): Promise<void> {

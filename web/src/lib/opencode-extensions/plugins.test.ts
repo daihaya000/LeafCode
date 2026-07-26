@@ -35,7 +35,12 @@ vi.mock("./jsonc-edit", async (importOriginal) => {
   };
 });
 
-import { listPlugins, setPluginEnabled } from "./plugins";
+import {
+  addConfiguredPlugin,
+  listPlugins,
+  setPluginEnabled,
+  updateConfiguredPlugin,
+} from "./plugins";
 
 const CONFIG = `{
   // top comment
@@ -272,6 +277,136 @@ describe("configured plugin toggles", () => {
     await expect(
       setPluginEnabled("config:0000000000000000.0", true),
     ).rejects.toMatchObject({ code: "not-found" });
+  });
+});
+
+describe("addConfiguredPlugin", () => {
+  it("appends a plain string entry", async () => {
+    await addConfiguredPlugin({ name: "opencode-new-plugin@1.0.0" });
+    expect(readConfig().plugin).toEqual([
+      "opencode-claude-auth@latest",
+      ["opencode-bar", { token: "s3cret" }],
+      "@bybrawe/opencode-loop@latest",
+      "opencode-new-plugin@1.0.0",
+    ]);
+  });
+
+  it("appends a [name, options] tuple when options are given", async () => {
+    await addConfiguredPlugin({
+      name: "opencode-new-plugin",
+      options: { apiKey: "abc" },
+    });
+    expect(readConfig().plugin).toEqual([
+      "opencode-claude-auth@latest",
+      ["opencode-bar", { token: "s3cret" }],
+      "@bybrawe/opencode-loop@latest",
+      ["opencode-new-plugin", { apiKey: "abc" }],
+    ]);
+  });
+
+  it("creates opencode.json when no config file exists yet", async () => {
+    fs.rmSync(path.join(base, "opencode.jsonc"));
+    await addConfiguredPlugin({ name: "opencode-solo-plugin" });
+    const config = JSON.parse(
+      fs.readFileSync(path.join(base, "opencode.json"), "utf8"),
+    );
+    expect(config.plugin).toEqual(["opencode-solo-plugin"]);
+  });
+
+  it("rejects blank names", async () => {
+    await expect(addConfiguredPlugin({ name: "  " })).rejects.toMatchObject({
+      code: "invalid-name",
+    });
+  });
+
+  it("rejects non-object options", async () => {
+    await expect(
+      addConfiguredPlugin({ name: "x", options: ["not", "an", "object"] }),
+    ).rejects.toMatchObject({ code: "invalid-name" });
+    await expect(
+      addConfiguredPlugin({ name: "x", options: "nope" }),
+    ).rejects.toMatchObject({ code: "invalid-name" });
+  });
+});
+
+describe("updateConfiguredPlugin", () => {
+  it("renames a plain string entry in place", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
+
+    await updateConfiguredPlugin(target.id, { name: "opencode-claude-auth@2.0.0" });
+
+    expect(readConfig().plugin).toEqual([
+      "opencode-claude-auth@2.0.0",
+      ["opencode-bar", { token: "s3cret" }],
+      "@bybrawe/opencode-loop@latest",
+    ]);
+  });
+
+  it("keeps existing options when none are supplied", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-bar")!;
+
+    await updateConfiguredPlugin(target.id, { name: "opencode-bar-renamed" });
+
+    expect(readConfig().plugin).toEqual([
+      "opencode-claude-auth@latest",
+      ["opencode-bar-renamed", { token: "s3cret" }],
+      "@bybrawe/opencode-loop@latest",
+    ]);
+  });
+
+  it("replaces options when supplied", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-bar")!;
+
+    await updateConfiguredPlugin(target.id, {
+      name: "opencode-bar",
+      options: { token: "new-token" },
+    });
+
+    expect(readConfig().plugin).toEqual([
+      "opencode-claude-auth@latest",
+      ["opencode-bar", { token: "new-token" }],
+      "@bybrawe/opencode-loop@latest",
+    ]);
+    expect(JSON.stringify(await listPlugins())).not.toContain("new-token");
+  });
+
+  it("turns a plain string into a tuple when options are added", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "@bybrawe/opencode-loop@latest")!;
+
+    await updateConfiguredPlugin(target.id, {
+      name: "@bybrawe/opencode-loop@latest",
+      options: { scope: "team" },
+    });
+
+    expect(readConfig().plugin).toEqual([
+      "opencode-claude-auth@latest",
+      ["opencode-bar", { token: "s3cret" }],
+      ["@bybrawe/opencode-loop@latest", { scope: "team" }],
+    ]);
+  });
+
+  it("rejects blank names", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-bar")!;
+    await expect(
+      updateConfiguredPlugin(target.id, { name: "   " }),
+    ).rejects.toMatchObject({ code: "invalid-name" });
+  });
+
+  it("rejects unknown or malformed ids", async () => {
+    await expect(
+      updateConfiguredPlugin("config:0000000000000000.9", { name: "x" }),
+    ).rejects.toMatchObject({ code: "not-found" });
+    await expect(
+      updateConfiguredPlugin("local:foo.js", { name: "x" }),
+    ).rejects.toMatchObject({ code: "invalid-name" });
+    await expect(
+      updateConfiguredPlugin("config:zzz.0", { name: "x" }),
+    ).rejects.toMatchObject({ code: "invalid-name" });
   });
 });
 
