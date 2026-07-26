@@ -1727,6 +1727,24 @@ function removeControlFile() {
   }
 }
 
+function launchWindowsVoiceInput() {
+  if (process.platform !== 'win32') {
+    throw new Error('Windows voice input is only available on Windows');
+  }
+  const script = `
+$signature = '[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);'
+Add-Type -MemberDefinition $signature -Name Keyboard -Namespace Win32
+[Win32.Keyboard]::keybd_event(0x5B, 0, 0, [UIntPtr]::Zero)
+[Win32.Keyboard]::keybd_event(0x48, 0, 0, [UIntPtr]::Zero)
+[Win32.Keyboard]::keybd_event(0x48, 0, 2, [UIntPtr]::Zero)
+[Win32.Keyboard]::keybd_event(0x5B, 0, 2, [UIntPtr]::Zero)
+`;
+  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+}
+
 async function startControlServer() {
   if (controlServer) return;
   const server = createControlServer({
@@ -1734,6 +1752,7 @@ async function startControlServer() {
     onRestartOpencode: () => restartOpencode(),
     onRestartAll: () => restartServices(),
     onStopWebui: () => stopWebForBuild(),
+    onVoiceInput: () => launchWindowsVoiceInput(),
   });
   try {
     await listenControlServer(server, CONTROL_PORT);

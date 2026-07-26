@@ -18,10 +18,25 @@ function mockVoice(overrides: Partial<UseVoiceInputReturn> = {}): UseVoiceInputR
 }
 
 describe("VoiceInputButton", () => {
+  const originalUserAgent = window.navigator.userAgent;
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: originalUserAgent,
+      configurable: true,
+    });
+    delete (window.navigator as Navigator & { brave?: unknown }).brave;
   });
+
+  function mockUserAgent(userAgent: string) {
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: userAgent,
+      configurable: true,
+    });
+  }
 
   it("renders nothing when unsupported", () => {
     const voice = mockVoice({ supported: false });
@@ -155,5 +170,52 @@ describe("VoiceInputButton", () => {
     const voice = mockVoice({ listening: true });
     render(<VoiceInputButton voice={voice} onTranscript={vi.fn()} />);
     expect(screen.getByText("認識中")).toBeTruthy();
+  });
+
+  it("uses Windows voice input on Brave for Windows", async () => {
+    mockUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    );
+    Object.defineProperty(window.navigator, "brave", {
+      value: {},
+      configurable: true,
+    });
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ok: true }))));
+    vi.stubGlobal("fetch", fetchMock);
+    const onNativeVoiceStart = vi.fn();
+    const voice = mockVoice();
+
+    render(
+      <VoiceInputButton
+        voice={voice}
+        onTranscript={vi.fn()}
+        onNativeVoiceStart={onNativeVoiceStart}
+      />,
+    );
+
+    const button = await screen.findByRole("button", { name: "Windows 音声入力" });
+    fireEvent.click(button);
+
+    expect(onNativeVoiceStart).toHaveBeenCalledTimes(1);
+    expect(voice.start).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/host/voice-input", {
+        method: "POST",
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("keeps Web Speech mode on smartphones", async () => {
+    mockUserAgent(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.0.0 Mobile/15E148 Safari/604.1",
+    );
+    const voice = mockVoice();
+    render(<VoiceInputButton voice={voice} onTranscript={vi.fn()} />);
+
+    const button = await screen.findByRole("button", { name: "音声入力" });
+    fireEvent.click(button);
+
+    expect(voice.start).toHaveBeenCalledTimes(1);
   });
 });

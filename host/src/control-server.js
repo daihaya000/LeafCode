@@ -4,7 +4,7 @@ import http from 'http';
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | null}
  */
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -15,6 +15,7 @@ export function matchControlRoute(method, pathname) {
   if (path === '/restart/opencode') return 'opencode';
   if (path === '/restart/all') return 'all';
   if (path === '/stop/webui') return 'stop-webui';
+  if (path === '/voice-input') return 'voice-input';
   return null;
 }
 
@@ -28,6 +29,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  *   onRestartOpencode: () => Promise<void> | void,
  *   onRestartAll: () => Promise<void> | void,
  *   onStopWebui?: () => Promise<void> | void,
+ *   onVoiceInput?: () => Promise<void> | void,
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
@@ -81,6 +83,29 @@ export function createControlRequestHandler(handlers) {
       return;
     }
 
+    if (route === 'voice-input') {
+      if (typeof handlers.onVoiceInput !== 'function') {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'voice input is not supported by this host' }));
+        return;
+      }
+      try {
+        await handlers.onVoiceInput();
+      } catch (err) {
+        res.writeHead(500, JSON_HEADERS);
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        return;
+      }
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: true, target: 'voice-input', launched: true }));
+      return;
+    }
+
     // Acknowledge before killing WebUI so the caller can flush the response.
     res.writeHead(202, JSON_HEADERS);
     res.end(JSON.stringify({ ok: true, target: route, accepted: true }));
@@ -109,6 +134,7 @@ export function createControlRequestHandler(handlers) {
  *   onRestartOpencode: () => Promise<void> | void,
  *   onRestartAll: () => Promise<void> | void,
  *   onStopWebui?: () => Promise<void> | void,
+ *   onVoiceInput?: () => Promise<void> | void,
  * }} handlers
  */
 export function createControlServer(handlers) {

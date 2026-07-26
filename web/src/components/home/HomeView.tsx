@@ -820,6 +820,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   <VoiceInputButton
                     voice={voice}
                     onTranscript={onVoiceTranscript}
+                    onNativeVoiceStart={() => textareaRef.current?.focus()}
                     disabled={submitting}
                   />
                   <GhostSelect

@@ -1,27 +1,94 @@
-"use client";
-
 import { Mic, MicOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { UseVoiceInputReturn } from "@/lib/use-voice-input";
 
 interface VoiceInputButtonProps {
   voice: UseVoiceInputReturn;
   onTranscript: (text: string) => void;
+  onNativeVoiceStart?: () => void;
   disabled?: boolean;
+}
+
+type VoiceInputMode = "web-speech" | "windows-native";
+
+function detectVoiceInputMode(): VoiceInputMode {
+  if (typeof window === "undefined") return "web-speech";
+  const nav = window.navigator as Navigator & {
+    brave?: unknown;
+    userAgentData?: { brands?: Array<{ brand: string; version: string }> };
+  };
+  const ua = nav.userAgent || "";
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  if (isMobile) return "web-speech";
+
+  const isWindows = /Windows NT/i.test(ua);
+  if (!isWindows) return "web-speech";
+
+  const brands = nav.userAgentData?.brands?.map((b) => b.brand) ?? [];
+  const isEdge = /Edg\//i.test(ua) || brands.some((b) => /Microsoft Edge/i.test(b));
+  const isBrave = !!nav.brave;
+  const isChrome =
+    !isEdge &&
+    !isBrave &&
+    !/OPR\//i.test(ua) &&
+    !/Vivaldi/i.test(ua) &&
+    (/Chrome\//i.test(ua) || brands.some((b) => b === "Google Chrome"));
+
+  return isChrome || isEdge ? "web-speech" : "windows-native";
 }
 
 export function VoiceInputButton({
   voice,
   onTranscript,
+  onNativeVoiceStart,
   disabled = false,
 }: VoiceInputButtonProps) {
   const [stopping, setStopping] = useState(false);
-  const busy = voice.busy || stopping;
+  const [mode, setMode] = useState<VoiceInputMode>("web-speech");
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const [nativeError, setNativeError] = useState<string | null>(null);
 
-  if (!voice.supported) return null;
+  useEffect(() => {
+    setMode(detectVoiceInputMode());
+  }, []);
+
+  const isWindowsNative = mode === "windows-native";
+  const busy = isWindowsNative ? nativeBusy : voice.busy || stopping;
+
+  if (!isWindowsNative && !voice.supported) return null;
+
+  const handleWindowsVoiceInput = () => {
+    onNativeVoiceStart?.();
+    setNativeBusy(true);
+    setNativeError(null);
+    void (async () => {
+      try {
+        const res = await fetch("/api/host/voice-input", {
+          method: "POST",
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(data.error || `Windows 音声入力を起動できませんでした。(${res.status})`);
+        }
+      } catch (error) {
+        setNativeError(
+          error instanceof Error
+            ? error.message
+            : "Windows 音声入力を起動できませんでした。",
+        );
+      } finally {
+        setNativeBusy(false);
+      }
+    })();
+  };
 
   const handleClick = () => {
     if (disabled || busy) return;
+    if (isWindowsNative) {
+      handleWindowsVoiceInput();
+      return;
+    }
     if (voice.listening) {
       // stop() returns a Promise that resolves once the engine fires its
       // final `result` + `end` events, so the last utterance finalized by
@@ -41,24 +108,31 @@ export function VoiceInputButton({
     }
   };
 
+  const label = isWindowsNative
+    ? "Windows 音声入力"
+    : voice.listening
+      ? "音声入力を停止"
+      : "音声入力";
+  const error = isWindowsNative ? nativeError : voice.error;
+
   return (
     <div className="relative">
       <button
         type="button"
-        aria-label={voice.listening ? "音声入力を停止" : "音声入力"}
-        aria-pressed={voice.listening}
+        aria-label={label}
+        aria-pressed={!isWindowsNative && voice.listening}
         aria-busy={busy}
         disabled={disabled || busy}
         onClick={handleClick}
         className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
       >
-        {voice.listening ? (
+        {!isWindowsNative && voice.listening ? (
           <MicOff className="h-3.5 w-3.5" aria-hidden="true" />
         ) : (
           <Mic className="h-3.5 w-3.5" aria-hidden="true" />
         )}
       </button>
-      {voice.listening && (
+      {!isWindowsNative && voice.listening && (
         <span
           aria-live="polite"
           className="absolute -bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-danger"
@@ -66,9 +140,9 @@ export function VoiceInputButton({
           認識中
         </span>
       )}
-      {voice.error && (
+      {error && (
         <p role="alert" className="mt-1 text-xs text-danger">
-          {voice.error}
+          {error}
         </p>
       )}
     </div>

@@ -44,3 +44,7 @@ export function hostRestartPath(target: HostRestartTarget): string {
   if (target === "opencode") return "/restart/opencode";
   return "/restart/all";
 }
+
+export function hostVoiceInputPath(): string {
+  return "/voice-input";
+}

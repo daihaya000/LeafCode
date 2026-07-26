@@ -2392,7 +2392,12 @@ export function TaskView({ taskId }: { taskId: string }) {
                     >
                       <Paperclip className="h-3.5 w-3.5" />
                     </button>
-                    <VoiceInputButton voice={voice} onTranscript={onVoiceTranscript} disabled={voiceDisabled} />
+                    <VoiceInputButton
+                      voice={voice}
+                      onTranscript={onVoiceTranscript}
+                      onNativeVoiceStart={() => textareaRef.current?.focus()}
+                      disabled={voiceDisabled}
+                    />
                     {modelOptions.length > 0 && (
                       <ModelSelect
                         value={model}

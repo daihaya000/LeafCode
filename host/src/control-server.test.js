@@ -45,6 +45,12 @@ test('matchControlRoute maps the build stop endpoint', () => {
   assert.equal(matchControlRoute('POST', '/stop/opencode'), null);
 });
 
+test('matchControlRoute maps the voice input endpoint', () => {
+  assert.equal(matchControlRoute('POST', '/voice-input'), 'voice-input');
+  assert.equal(matchControlRoute('post', '/voice-input/'), 'voice-input');
+  assert.equal(matchControlRoute('GET', '/voice-input'), null);
+});
+
 test('POST /stop/webui answers only after the stop finished', async () => {
   const events = [];
   let release;
@@ -89,6 +95,29 @@ test('POST /stop/webui reports 501 when the host cannot stop the WebUI', async (
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
   await handle({ method: 'POST', url: '/stop/webui' }, res);
+  assert.equal(res.statusCode, 501);
+  assert.equal(res.body.ok, false);
+});
+
+test('POST /voice-input launches Windows voice input', async () => {
+  let launched = false;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    onVoiceInput: () => {
+      launched = true;
+    },
+  });
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/voice-input' }, res);
+  assert.equal(launched, true);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true, target: 'voice-input', launched: true });
+});
+
+test('POST /voice-input reports 501 when unsupported by host', async () => {
+  const handle = createControlRequestHandler(noopHandlers);
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/voice-input' }, res);
   assert.equal(res.statusCode, 501);
   assert.equal(res.body.ok, false);
 });
