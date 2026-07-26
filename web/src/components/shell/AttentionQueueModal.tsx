@@ -18,6 +18,7 @@ import {
   permissionAutoAction,
   readSubagentPermission,
 } from "@/lib/subagent-permission";
+import { readSkillPermission } from "@/lib/skill-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 
@@ -135,16 +136,18 @@ export function AttentionQueueModal() {
   );
 
   // R36#2: full-access へ切替時、キュー内の権限を自動処理。
-  // TaskView と同様、サブエージェント不許可 + task 権限は reject を優先する。
+  // TaskView と同様、サブエージェント / スキル不許可の対象権限は reject を優先する。
   const enableFullAccess = useCallback(async () => {
     writeAccessMode("full");
     const subagent = readSubagentPermission();
+    const skill = readSkillPermission();
     const permissionItems = items.filter((item) => item.kind === "permission");
     for (const item of permissionItems) {
       if (item.kind !== "permission") continue;
       const action = permissionAutoAction({
         permission: item.request.permission,
         subagent,
+        skill,
         fullAccess: true,
       });
       if (action === "manual") continue;

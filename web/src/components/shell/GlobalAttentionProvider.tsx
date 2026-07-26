@@ -29,13 +29,18 @@ import {
   SUBAGENT_PERMISSION_EVENT,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
+import {
+  readSkillPermission,
+  SKILL_PERMISSION_EVENT,
+  type SkillPermission,
+} from "@/lib/skill-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
 type GlobalAttentionContextValue = {
   items: AttentionItem[];
-  /** Badge / modal 用。自動 reject 中の task 権限は除く（失敗分は含む）。 */
+  /** Badge / modal 用。自動 reject 中の task / skill 権限は除く（失敗分は含む）。 */
   actionableItems: AttentionItem[];
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -151,13 +156,16 @@ export function GlobalAttentionProvider({
   }, []);
 
   // バックグラウンド権限も TaskView と同じ permissionAutoAction で自動処理。
-  // （サブエージェント不許可 → reject、フルアクセス → approve）
+  // （サブエージェント / スキル不許可 → reject、フルアクセス → approve）
   const autoReplyIdsRef = useRef(new Set<string>());
   const [autoReplyFailedIds, setAutoReplyFailedIds] = useState<Set<string>>(
     () => new Set(),
   );
   const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
     () => readSubagentPermission(),
+  );
+  const [skillPermission, setSkillPermission] = useState<SkillPermission>(
+    () => readSkillPermission(),
   );
   const [accessMode, setAccessMode] = useState<AccessMode>(() => readAccessMode());
   useEffect(() => {
@@ -169,10 +177,16 @@ export function GlobalAttentionProvider({
       const detail = (e as CustomEvent<AccessMode>).detail;
       if (detail === "ask" || detail === "full") setAccessMode(detail);
     };
+    const onSkill = (e: Event) => {
+      const detail = (e as CustomEvent<SkillPermission>).detail;
+      if (detail === "allow" || detail === "deny") setSkillPermission(detail);
+    };
     window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+    window.addEventListener(SKILL_PERMISSION_EVENT, onSkill);
     window.addEventListener("webui:access-mode", onAccess);
     return () => {
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+      window.removeEventListener(SKILL_PERMISSION_EVENT, onSkill);
       window.removeEventListener("webui:access-mode", onAccess);
     };
   }, []);
@@ -185,15 +199,20 @@ export function GlobalAttentionProvider({
       return isActionableAttentionPermission(
         item.request.permission,
         subagentPermission,
+        skillPermission,
         item.request.id,
         fullAccess,
         autoReplyFailedIds,
       );
     });
-  }, [items, subagentPermission, fullAccess, autoReplyFailedIds]);
+  }, [items, subagentPermission, skillPermission, fullAccess, autoReplyFailedIds]);
 
   useEffect(() => {
-    if (!fullAccess && subagentPermission !== "deny") {
+    if (
+      !fullAccess &&
+      subagentPermission !== "deny" &&
+      skillPermission !== "deny"
+    ) {
       autoReplyIdsRef.current.clear();
       setAutoReplyFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
@@ -205,6 +224,7 @@ export function GlobalAttentionProvider({
       const action = permissionAutoAction({
         permission: item.request.permission,
         subagent: subagentPermission,
+        skill: skillPermission,
         fullAccess,
       });
       if (action === "manual") continue;
@@ -243,6 +263,7 @@ export function GlobalAttentionProvider({
     items,
     remove,
     subagentPermission,
+    skillPermission,
   ]);
 
   const openNext = useCallback(() => {

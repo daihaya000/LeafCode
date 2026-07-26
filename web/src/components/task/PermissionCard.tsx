@@ -7,6 +7,7 @@ import {
   permissionAutoAction,
   readSubagentPermission,
 } from "@/lib/subagent-permission";
+import { readSkillPermission } from "@/lib/skill-permission";
 import type { PermissionRequest } from "@/lib/types";
 
 export function PermissionCard({
@@ -43,6 +44,7 @@ export function PermissionCard({
       const action = permissionAutoAction({
         permission: request.permission,
         subagent: readSubagentPermission(),
+        skill: readSkillPermission(),
         fullAccess: false,
       });
       await reply(action === "reject" ? "reject" : "always");
@@ -58,6 +60,7 @@ export function PermissionCard({
         const action = permissionAutoAction({
           permission: request.permission,
           subagent: readSubagentPermission(),
+          skill: readSkillPermission(),
           fullAccess: true,
         });
         await onReply(request, action === "reject" ? "reject" : "once");
@@ -96,6 +99,7 @@ export function PermissionCard({
             const action = permissionAutoAction({
               permission: request.permission,
               subagent: readSubagentPermission(),
+              skill: readSkillPermission(),
               fullAccess: false,
             });
             void reply(action === "reject" ? "reject" : "once");

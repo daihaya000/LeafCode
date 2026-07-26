@@ -4,6 +4,8 @@
  * デフォルトは「許可」。
  */
 
+import type { SkillPermission } from "./skill-permission";
+
 export type SubagentPermission = "allow" | "deny";
 
 const STORAGE_KEY = "webui:subagent-permission";
@@ -54,16 +56,19 @@ export type PermissionAutoAction = "approve" | "reject" | "manual";
 /**
  * 保留中の権限要求をどう自動処理するかの純粋判定。
  * - サブエージェント不許可 かつ `task` 権限 → "reject"（フルアクセスより優先）
+ * - スキル不許可 かつ `skill` 権限 → "reject"（フルアクセスより優先）
  * - フルアクセス（それ以外） → "approve"
  * - どちらでもない → "manual"（手動カードで応答）
- * これにより task 以外の権限はサブエージェント設定の影響を受けない。
+ * これにより task / skill 以外の権限は各設定の影響を受けない。
  */
 export function permissionAutoAction(args: {
   permission: string;
   subagent: SubagentPermission;
+  skill: SkillPermission;
   fullAccess: boolean;
 }): PermissionAutoAction {
   if (args.subagent === "deny" && args.permission === "task") return "reject";
+  if (args.skill === "deny" && args.permission === "skill") return "reject";
   if (args.fullAccess) return "approve";
   return "manual";
 }
@@ -75,6 +80,7 @@ export function permissionAutoAction(args: {
 export function isActionableAttentionPermission(
   permission: string,
   subagent: SubagentPermission,
+  skill: SkillPermission,
   requestId: string,
   fullAccess: boolean,
   failedAutoIds: ReadonlySet<string>,
@@ -82,6 +88,7 @@ export function isActionableAttentionPermission(
   const action = permissionAutoAction({
     permission,
     subagent,
+    skill,
     fullAccess,
   });
   if (action === "manual") return true;

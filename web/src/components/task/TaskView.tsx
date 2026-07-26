@@ -37,6 +37,7 @@ import {
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
+import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
@@ -62,6 +63,12 @@ import {
   SUBAGENT_PERMISSION_EVENT,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
+import {
+  readSkillPermission,
+  writeSkillPermission,
+  SKILL_PERMISSION_EVENT,
+  type SkillPermission,
+} from "@/lib/skill-permission";
 import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
@@ -437,6 +444,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     useState<SubagentPermission>("allow");
   const [subagentPermissionSaving, setSubagentPermissionSaving] =
     useState(false);
+  const [skillPermission, setSkillPermission] = useState<SkillPermission>("allow");
+  const [skillPermissionSaving, setSkillPermissionSaving] = useState(false);
   const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -618,6 +627,16 @@ export function TaskView({ taskId }: { taskId: string }) {
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
   }, []);
 
+  useEffect(() => {
+    setSkillPermission(readSkillPermission());
+    const onSkill = (e: Event) => {
+      const detail = (e as CustomEvent<SkillPermission>).detail;
+      if (detail === "allow" || detail === "deny") setSkillPermission(detail);
+    };
+    window.addEventListener(SKILL_PERMISSION_EVENT, onSkill);
+    return () => window.removeEventListener(SKILL_PERMISSION_EVENT, onSkill);
+  }, []);
+
   // DB → localStorage migration so the default model set on another
   // browser/origin is restored here. Non-fatal: when the server is
   // unreachable or has no value, the existing localStorage copy (if any)
@@ -649,6 +668,31 @@ export function TaskView({ taskId }: { taskId: string }) {
         err instanceof Error
           ? `サブエージェント権限を同期できませんでした: ${err.message}`
           : "サブエージェント権限を同期できませんでした。",
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id, task?.sessionId]);
+
+  // Apply localStorage のスキル権限を、タスクを開いた／セッションを切り替えた／
+  // 新規セッションを bind したタイミングで OpenCode 側へ同期する。
+  // トグル時だけ POST すると、既存セッションや SessionSwitcher 経由の新規作成で
+  // UI は「不許可」なのにエンジン側は許可のまま、という穴が残る。
+  useEffect(() => {
+    if (!task?.id || !task.sessionId) return;
+    const permission = readSkillPermission();
+    let cancelled = false;
+    void sendJson("POST", "/api/skill-permission", {
+      taskId: task.id,
+      sessionId: task.sessionId,
+      permission,
+    }).catch((err) => {
+      if (cancelled) return;
+      setSendError(
+        err instanceof Error
+          ? `スキル権限を同期できませんでした: ${err.message}`
+          : "スキル権限を同期できませんでした。",
       );
     });
     return () => {
@@ -704,6 +748,34 @@ export function TaskView({ taskId }: { taskId: string }) {
       }
     },
     [subagentPermission, subagentPermissionSaving, task?.id, task?.sessionId],
+  );
+
+  const changeSkillPermission = useCallback(
+    async (mode: SkillPermission) => {
+      if (mode === skillPermission || skillPermissionSaving || !task?.id) {
+        return;
+      }
+      setSkillPermissionSaving(true);
+      try {
+        await sendJson("POST", "/api/skill-permission", {
+          taskId: task.id,
+          ...(task.sessionId ? { sessionId: task.sessionId } : {}),
+          permission: mode,
+        });
+        setSkillPermission(mode);
+        writeSkillPermission(mode);
+        setSendError(null);
+      } catch (err) {
+        setSendError(
+          err instanceof Error
+            ? `スキル権限を適用できませんでした: ${err.message}`
+            : "スキル権限を適用できませんでした。",
+        );
+      } finally {
+        setSkillPermissionSaving(false);
+      }
+    },
+    [skillPermission, skillPermissionSaving, task?.id, task?.sessionId],
   );
 
   // Persist right-panel display state so it survives task/session switches.
@@ -778,11 +850,16 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // pending 権限を自動処理（失敗時は手動カードへフォールバック）:
   // - サブエージェント不許可 かつ task 権限 → 自動 reject（フルアクセスより優先）
+  // - スキル不許可 かつ skill 権限 → 自動 reject（フルアクセスより優先）
   // - フルアクセス → 自動 approve（once）
-  // task 以外の権限はサブエージェント設定の影響を受けない。
+  // task / skill 以外の権限は各設定の影響を受けない。
   useEffect(() => {
     const fullAccess = accessMode === "full";
-    if (!fullAccess && subagentPermission !== "deny") {
+    if (
+      !fullAccess &&
+      subagentPermission !== "deny" &&
+      skillPermission !== "deny"
+    ) {
       autoReplyIdsRef.current.clear();
       setAutoReplyFailedIds((prev) => (prev.size === 0 ? prev : new Set()));
       return;
@@ -793,6 +870,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const action = permissionAutoAction({
         permission: p.permission,
         subagent: subagentPermission,
+        skill: skillPermission,
         fullAccess,
       });
       if (action === "manual") continue;
@@ -819,6 +897,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [
     accessMode,
     subagentPermission,
+    skillPermission,
     autoReplyFailedIds,
     permissions,
     onReplyPermission,
@@ -2340,6 +2419,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       permissionAutoAction({
                         permission: p.permission,
                         subagent: subagentPermission,
+                        skill: skillPermission,
                         fullAccess: accessMode === "full",
                       }) === "manual",
                   )
@@ -2609,6 +2689,12 @@ export function TaskView({ taskId }: { taskId: string }) {
                       value={accessMode}
                       onChange={changeAccessMode}
                       disabled={!task.sessionId || subagentPermissionSaving}
+                      className="h-8 shrink-0"
+                    />
+                    <SkillPermissionSelect
+                      value={skillPermission}
+                      onChange={(mode) => void changeSkillPermission(mode)}
+                      disabled={!task.sessionId || skillPermissionSaving}
                       className="h-8 shrink-0"
                     />
                     <SubagentPermissionSelect

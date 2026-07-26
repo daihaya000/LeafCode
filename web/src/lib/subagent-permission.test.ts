@@ -50,6 +50,7 @@ describe("permissionAutoAction", () => {
       permissionAutoAction({
         permission: "task",
         subagent: "deny",
+        skill: "allow",
         fullAccess: false,
       }),
     ).toBe("reject");
@@ -57,6 +58,7 @@ describe("permissionAutoAction", () => {
       permissionAutoAction({
         permission: "task",
         subagent: "deny",
+        skill: "allow",
         fullAccess: true,
       }),
     ).toBe("reject");
@@ -67,6 +69,7 @@ describe("permissionAutoAction", () => {
       permissionAutoAction({
         permission: "edit",
         subagent: "deny",
+        skill: "allow",
         fullAccess: false,
       }),
     ).toBe("manual");
@@ -75,6 +78,7 @@ describe("permissionAutoAction", () => {
       permissionAutoAction({
         permission: "edit",
         subagent: "deny",
+        skill: "allow",
         fullAccess: true,
       }),
     ).toBe("approve");
@@ -85,6 +89,7 @@ describe("permissionAutoAction", () => {
       permissionAutoAction({
         permission: "task",
         subagent: "allow",
+        skill: "allow",
         fullAccess: false,
       }),
     ).toBe("manual");
@@ -92,9 +97,29 @@ describe("permissionAutoAction", () => {
       permissionAutoAction({
         permission: "task",
         subagent: "allow",
+        skill: "allow",
         fullAccess: true,
       }),
     ).toBe("approve");
+  });
+
+  it("rejects skill permission when skill use is denied (priority over full access)", () => {
+    expect(
+      permissionAutoAction({
+        permission: "skill",
+        subagent: "allow",
+        skill: "deny",
+        fullAccess: false,
+      }),
+    ).toBe("reject");
+    expect(
+      permissionAutoAction({
+        permission: "skill",
+        subagent: "allow",
+        skill: "deny",
+        fullAccess: true,
+      }),
+    ).toBe("reject");
   });
 });
 
@@ -102,23 +127,26 @@ describe("isActionableAttentionPermission", () => {
   it("hides auto-approve and auto-reject permissions unless they failed", () => {
     const failed = new Set<string>();
     expect(
-      isActionableAttentionPermission("bash", "allow", "p1", true, failed),
+      isActionableAttentionPermission("bash", "allow", "allow", "p1", true, failed),
     ).toBe(false);
     expect(
-      isActionableAttentionPermission("task", "deny", "p2", false, failed),
+      isActionableAttentionPermission("task", "deny", "allow", "p2", false, failed),
     ).toBe(false);
     expect(
-      isActionableAttentionPermission("bash", "allow", "p3", false, failed),
+      isActionableAttentionPermission("skill", "allow", "deny", "p_skill", false, failed),
+    ).toBe(false);
+    expect(
+      isActionableAttentionPermission("bash", "allow", "allow", "p3", false, failed),
     ).toBe(true);
   });
 
   it("keeps failed auto-replies actionable for manual fallback", () => {
     const failed = new Set(["p_fail"]);
     expect(
-      isActionableAttentionPermission("bash", "allow", "p_fail", true, failed),
+      isActionableAttentionPermission("bash", "allow", "allow", "p_fail", true, failed),
     ).toBe(true);
     expect(
-      isActionableAttentionPermission("task", "deny", "p_fail", true, failed),
+      isActionableAttentionPermission("task", "deny", "allow", "p_fail", true, failed),
     ).toBe(true);
   });
 });

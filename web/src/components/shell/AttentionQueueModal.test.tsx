@@ -314,6 +314,51 @@ describe("AttentionQueueModal", () => {
       localStorage.removeItem("webui:subagent-permission");
     });
 
+    it("フルアクセス切替時、スキル不許可なら残りの skill 権限を reject する", async () => {
+      localStorage.setItem("webui:skill-permission", "deny");
+      mockOcJson.mockResolvedValue({});
+      const bashPerm = permissionItem();
+      const skillPerm: AttentionItem = {
+        kind: "permission",
+        directory: "/repo",
+        request: {
+          id: "p_skill",
+          version: "v1",
+          sessionID: "ses_abc",
+          permission: "skill",
+          patterns: [],
+          receivedAt: 2,
+        },
+      };
+      attentionState.items = [bashPerm, skillPerm];
+      attentionState.actionableItems = [bashPerm];
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+
+      const select = screen.getByTitle("常に許可 / フルアクセス") as HTMLSelectElement;
+      await act(async () => {
+        select.value = "full";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      expect(mockOcJson).toHaveBeenCalledWith(
+        expect.stringContaining("/permissions/p1"),
+        "/repo",
+        expect.objectContaining({
+          body: { response: "once" },
+        }),
+      );
+      expect(mockOcJson).toHaveBeenCalledWith(
+        expect.stringContaining("/permissions/p_skill"),
+        "/repo",
+        expect.objectContaining({
+          body: { response: "reject" },
+        }),
+      );
+      localStorage.removeItem("webui:skill-permission");
+    });
+
     it("サブエージェント不許可の task 権限はモーダルに出さずレース承認を防ぐ", async () => {
       localStorage.setItem("webui:subagent-permission", "deny");
       const taskPerm: AttentionItem = {

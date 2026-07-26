@@ -94,6 +94,7 @@ vi.mock("@/components/shell/ShellContext", () => ({
 }));
 
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
+vi.mock("@/components/SkillPermissionSelect", () => ({ SkillPermissionSelect: () => null }));
 vi.mock("@/components/SubagentPermissionSelect", () => ({ SubagentPermissionSelect: () => null }));
 vi.mock("@/components/IntelligenceSelect", () => ({ IntelligenceSelect: () => null }));
 vi.mock("@/components/StatusBadge", () => ({ StatusBadge: () => null }));
@@ -435,6 +436,51 @@ describe("TaskView", () => {
       expect(calls.every((c) => c[1] === "reject")).toBe(true);
     } finally {
       localStorage.removeItem("webui:subagent-permission");
+    }
+  });
+
+  it("auto-rejects skill permission when skill use is denied, leaving others manual", async () => {
+    localStorage.setItem("webui:skill-permission", "deny");
+    try {
+      const replyPermission = vi.fn().mockResolvedValue(undefined);
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        permissions: [
+          {
+            id: "perm-skill",
+            version: "v2",
+            sessionID: "sess1",
+            permission: "skill",
+            patterns: [],
+            receivedAt: 1,
+          },
+          {
+            id: "perm-edit",
+            version: "v2",
+            sessionID: "sess1",
+            permission: "edit",
+            patterns: [],
+            receivedAt: 2,
+          },
+        ],
+        replyPermission,
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(replyPermission).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "perm-skill", permission: "skill" }),
+        "reject",
+      );
+      const calls = replyPermission.mock.calls;
+      expect(calls.every((c) => c[0]?.id === "perm-skill")).toBe(true);
+      expect(calls.every((c) => c[1] === "reject")).toBe(true);
+    } finally {
+      localStorage.removeItem("webui:skill-permission");
     }
   });
 
