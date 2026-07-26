@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check, Cpu } from "lucide-react";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { cx } from "@/components/ui";
@@ -50,7 +51,13 @@ export function ModelSelect({
   title?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    bottom: number;
+    left: number;
+    minWidth: number;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const selected = options.find((option) => option.value === value);
   const groupedOptions = useMemo(
     () =>
@@ -61,11 +68,30 @@ export function ModelSelect({
     [options],
   );
 
+  const updateMenuPosition = useCallback(() => {
+    const root = rootRef.current;
+    if (!root || typeof window === "undefined") return;
+    const rect = root.getBoundingClientRect();
+    const maxMenuWidth = Math.min(352, window.innerWidth - 32);
+    setMenuPosition({
+      bottom: window.innerHeight - rect.top + 4,
+      left: Math.max(16, Math.min(rect.right - maxMenuWidth, window.innerWidth - 16 - rect.width)),
+      minWidth: rect.width,
+    });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
+    updateMenuPosition();
 
     function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -74,11 +100,59 @@ export function ModelSelect({
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open]);
+  }, [open, updateMenuPosition]);
+
+  const menu = open && !disabled && menuPosition && (
+    <div
+      ref={menuRef}
+      role="listbox"
+      aria-label="モデル"
+      className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
+      style={{
+        bottom: menuPosition.bottom,
+        left: menuPosition.left,
+        minWidth: menuPosition.minWidth,
+      }}
+    >
+      {groupedOptions.map(({ group, options: groupOptions }) => (
+        <div key={group}>
+          <div className="px-2 py-1 text-[11px] font-semibold text-faint">
+            {group}
+          </div>
+          {groupOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={option.value === value}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              className={cx(
+                "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none",
+                option.value === value && "bg-surface-2 text-text",
+              )}
+            >
+              <ModelProviderIcon value={option.value} />
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              {option.value === value && (
+                <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div ref={rootRef} className={cx("relative inline-flex min-w-0", className)}>
@@ -100,43 +174,7 @@ export function ModelSelect({
         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-faint" />
       </button>
 
-      {open && !disabled && (
-        <div
-          role="listbox"
-          aria-label="モデル"
-          className="absolute right-0 bottom-full z-50 mb-1 max-h-80 w-max min-w-full max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
-        >
-          {groupedOptions.map(({ group, options: groupOptions }) => (
-            <div key={group}>
-              <div className="px-2 py-1 text-[11px] font-semibold text-faint">
-                {group}
-              </div>
-              {groupOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === value}
-                  onClick={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                  className={cx(
-                    "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none",
-                    option.value === value && "bg-surface-2 text-text",
-                  )}
-                >
-                  <ModelProviderIcon value={option.value} />
-                  <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                  {option.value === value && (
-                    <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+      {menu && createPortal(menu, document.body)}
     </div>
   );
 }

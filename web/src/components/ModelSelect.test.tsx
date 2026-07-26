@@ -1,0 +1,32 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ModelSelect } from "./ModelSelect";
+
+const options = [
+  { value: "openai::gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
+  { value: "anthropic::claude", label: "Claude", group: "Anthropic" },
+];
+
+describe("ModelSelect", () => {
+  afterEach(() => cleanup());
+
+  it("renders the dropdown in a portal so composer overflow does not clip it", () => {
+    const onChange = vi.fn();
+    render(
+      <div style={{ overflow: "hidden", width: 120, height: 40 }}>
+        <ModelSelect
+          value="openai::gpt-5.5"
+          options={options}
+          onChange={onChange}
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+
+    const listbox = screen.getByRole("listbox", { name: "モデル" });
+    expect(listbox.parentElement).toBe(document.body);
+    fireEvent.click(screen.getByRole("option", { name: /Claude/ }));
+    expect(onChange).toHaveBeenCalledWith("anthropic::claude");
+  });
+});
