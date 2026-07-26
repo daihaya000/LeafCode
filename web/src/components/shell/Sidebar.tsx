@@ -184,6 +184,9 @@ export function Sidebar({
   const [resizing, setResizing] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [destroyingGroupKey, setDestroyingGroupKey] = useState<string | null>(
+    null,
+  );
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -593,6 +596,33 @@ export function Sidebar({
           ? `${msg}\n\n設定 → 「orphan を掃除」で残件を削除できます。`
           : msg,
       );
+      notifyTasksChanged();
+      await refresh();
+    }
+  };
+
+  const destroyArchivedGroup = async (
+    group: { key: string; name: string; tasks: TaskSummary[] },
+    e: React.MouseEvent,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (group.tasks.length === 0) return;
+    const label = `「${group.name}」のアーカイブ済みタスクを${group.tasks.length}件すべて完全に削除しますか？ worktree/コピーも削除されます。`;
+    if (!window.confirm(label)) return;
+    setDestroyingGroupKey(group.key);
+    try {
+      const results = await Promise.allSettled(
+        group.tasks.map((task) => sendJson("DELETE", `/api/tasks/${task.id}`)),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed > 0) {
+        window.alert(
+          `${failed}/${group.tasks.length} 件の削除に失敗しました。設定 → 「orphan を掃除」で残件を削除できます。`,
+        );
+      }
+    } finally {
+      setDestroyingGroupKey(null);
       notifyTasksChanged();
       await refresh();
     }
@@ -1037,11 +1067,26 @@ export function Sidebar({
               ) : (
                 archivedGroups.map((group) => (
                   <li key={group.key} data-testid="archived-project-group">
-                    <div className="flex items-center justify-between px-2 py-1 text-[11px] font-medium text-muted">
-                      <span className="truncate">{group.name}</span>
+                    <div className="flex items-center justify-between gap-1 px-2 py-1 text-[11px] font-medium text-muted">
+                      <span className="min-w-0 flex-1 truncate">{group.name}</span>
                       <span className="tabular-nums text-[10px] text-muted">
                         {group.tasks.length}
                       </span>
+                      <button
+                        type="button"
+                        aria-label={`${group.name}のアーカイブを一括削除`}
+                        title="このプロジェクトのアーカイブを一括削除"
+                        aria-busy={destroyingGroupKey === group.key}
+                        disabled={destroyingGroupKey === group.key}
+                        onClick={(e) => void destroyArchivedGroup(group, e)}
+                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50"
+                      >
+                        {destroyingGroupKey === group.key ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3 w-3" />
+                        )}
+                      </button>
                     </div>
                     <ul className="space-y-0.5">
                       {group.tasks.map((task) => (

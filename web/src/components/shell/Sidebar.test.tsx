@@ -1343,6 +1343,48 @@ describe("Sidebar archived section", () => {
     });
     confirmSpy.mockRestore();
   });
+
+  it("bulk-destroys all archived tasks in a project group after confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            { id: "prj1", name: "Repo", rootPath: "/repo", favorite: false, lastOpenedAt: null },
+          ],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({ tasks: [], engineOk: true });
+      }
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [
+            { id: "task-a", projectId: "prj1", title: "Task A", updatedAt: "2026-07-18T01:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+            { id: "task-b", projectId: "prj1", title: "Task B", updatedAt: "2026-07-18T02:00:00Z", status: "merged", isolation: "current_folder", branch: null },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const archiveHeading = await screen.findByRole("button", {
+      name: "アーカイブを展開",
+    });
+    archiveHeading.click();
+
+    await screen.findByText("Task A");
+    screen.getByLabelText("Repoのアーカイブを一括削除").click();
+
+    await vi.waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/tasks/task-a");
+      expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/tasks/task-b");
+    });
+    confirmSpy.mockRestore();
+  });
 });
 
 describe("Sidebar engine health polling", () => {
