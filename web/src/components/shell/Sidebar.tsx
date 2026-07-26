@@ -859,7 +859,7 @@ export function Sidebar({
                                   onClick={() => nav(`/task/${task.id}`)}
                                   className="flex w-full min-w-0 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
-                                  <div className="flex items-center gap-1.5 pr-24 md:pr-14">
+                                  <div className="flex items-center gap-1.5 pr-24 md:pr-0">
                                     <span className="flex h-3 w-3 shrink-0 items-center justify-center">
                                       {!waitingForAttention &&
                                       task.status === "working" ? (
