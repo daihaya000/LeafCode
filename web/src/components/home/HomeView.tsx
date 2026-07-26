@@ -131,6 +131,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   );
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const attachmentsRef = useRef(attachments);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
@@ -614,13 +615,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       }
     }
 
-    let appended = 0;
-    setAttachments((current) => {
-      const room = Math.max(0, MAX_IMAGE_COUNT - current.length);
-      const take = candidates.slice(0, room);
-      appended = take.length;
-      return take.length > 0 ? [...current, ...take] : current;
-    });
+    const current = attachmentsRef.current;
+    const room = Math.max(0, MAX_IMAGE_COUNT - current.length);
+    const take = candidates.slice(0, room);
+    const appended = take.length;
+    const next = take.length > 0 ? [...current, ...take] : current;
+    attachmentsRef.current = next;
+    setAttachments(next);
 
     const skipped = rejected + (candidates.length - appended);
     if (skipped > 0) {
@@ -646,7 +647,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   );
 
   const removeAttachment = useCallback((index: number) => {
-    setAttachments((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    const next = attachmentsRef.current.filter(
+      (_, currentIndex) => currentIndex !== index,
+    );
+    attachmentsRef.current = next;
+    setAttachments(next);
   }, []);
 
   // Calculate intelligence variants based on the effective model (agent's model

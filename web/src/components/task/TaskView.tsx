@@ -1362,13 +1362,13 @@ export function TaskView({ taskId }: { taskId: string }) {
       }
     }
 
-    let appended = 0;
-    setAttachments((cur) => {
-      const room = Math.max(0, MAX_IMAGE_COUNT - cur.length);
-      const take = candidates.slice(0, room);
-      appended = take.length;
-      return take.length > 0 ? [...cur, ...take] : cur;
-    });
+    const current = attachmentsRef.current;
+    const room = Math.max(0, MAX_IMAGE_COUNT - current.length);
+    const take = candidates.slice(0, room);
+    const appended = take.length;
+    const next = take.length > 0 ? [...current, ...take] : current;
+    attachmentsRef.current = next;
+    setAttachments(next);
     if (appended > 0) stickRef.current = true;
 
     const skipped = rejected + (candidates.length - appended);
@@ -1380,7 +1380,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, []);
 
   const removeAttachment = useCallback((index: number) => {
-    setAttachments((cur) => cur.filter((_, i) => i !== index));
+    const next = attachmentsRef.current.filter((_, i) => i !== index);
+    attachmentsRef.current = next;
+    setAttachments(next);
   }, []);
 
   const onPaste = useCallback(
