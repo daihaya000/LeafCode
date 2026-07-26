@@ -163,6 +163,27 @@ describe("ExtensionsSettings", () => {
     expect(betaSwitch.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("shows Japanese display labels for known skills while keeping the original id", async () => {
+    mockGetJson({
+      extraSkills: [
+        {
+          id: "insane-search",
+          name: "insane-search",
+          description: "Adaptive blocked-site fetch",
+          enabled: true,
+          toggleable: true,
+        },
+      ],
+    });
+    render(<ExtensionsSettings activeSection="skills" />);
+
+    expect(await screen.findByText("遮断サイト適応アクセス")).toBeTruthy();
+    expect(screen.getByText("insane-search")).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "遮断サイト適応アクセス を無効化" }),
+    ).toBeTruthy();
+  });
+
   it("lists MCP servers with status text", async () => {
     render(<ExtensionsSettings activeSection="mcp" />);
 

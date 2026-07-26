@@ -8,6 +8,10 @@ import type {
   PluginDto,
   SkillDto,
 } from "@/lib/extensions";
+import {
+  skillDisplayLabel,
+  skillHasJapaneseLabel,
+} from "@/lib/skill-catalog-labels";
 import type { HealthDto } from "@/lib/types";
 
 type SectionStatus = "loading" | "ready" | "error";
@@ -76,7 +80,10 @@ function SkillRow({
   onToggle: () => void;
 }) {
   const displayName =
-    depth > 0 ? (item.id.split("/").pop() ?? item.name) : item.name;
+    depth > 0
+      ? skillDisplayLabel({ ...item, name: item.id.split("/").pop() ?? item.name })
+      : skillDisplayLabel(item);
+  const showOriginalName = skillHasJapaneseLabel(item) && displayName !== item.name;
   return (
     <li
       aria-busy={busy || undefined}
@@ -94,6 +101,9 @@ function SkillRow({
           </Badge>
           {!item.toggleable && <Badge tone="neutral">切替不可</Badge>}
         </div>
+        {showOriginalName && (
+          <p className="mt-0.5 font-mono text-[11px] text-faint">{item.id}</p>
+        )}
         {item.description && (
           <p className="mt-0.5 text-xs break-words text-faint">
             {item.description}
@@ -102,7 +112,7 @@ function SkillRow({
       </div>
       {item.toggleable && (
         <ExtensionSwitch
-          name={item.name}
+          name={displayName}
           enabled={item.enabled}
           busy={busy}
           onToggle={onToggle}
@@ -123,6 +133,9 @@ function SkillSubtree({
 }) {
   const isGroup = node.kind === "group";
   const item = node.item;
+  const displayName = isGroup ? node.name : skillDisplayLabel(item!);
+  const showOriginalName =
+    !isGroup && item !== undefined && skillHasJapaneseLabel(item) && displayName !== item.name;
   const isBusy = !isGroup && item !== undefined && busyId === item.id;
   const hasChildren = node.children.length > 0;
   const [expanded, setExpanded] = useState(false);
@@ -159,7 +172,7 @@ function SkillSubtree({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 truncate text-sm font-medium">
-              {isGroup ? node.name : item!.name}
+              {displayName}
             </p>
             {isGroup ? (
               <Badge tone="neutral">フォルダ</Badge>
@@ -172,6 +185,9 @@ function SkillSubtree({
               </>
             )}
           </div>
+          {showOriginalName && (
+            <p className="mt-0.5 font-mono text-[11px] text-faint">{item!.id}</p>
+          )}
           {!isGroup && item!.description && (
             <p className="mt-0.5 text-xs break-words text-faint">
               {item!.description}
@@ -180,7 +196,7 @@ function SkillSubtree({
         </div>
         {!isGroup && item!.toggleable && (
           <ExtensionSwitch
-            name={item!.name}
+            name={displayName}
             enabled={item!.enabled}
             busy={busyId === item!.id}
             onToggle={() => onToggle(item!, !item!.enabled)}
