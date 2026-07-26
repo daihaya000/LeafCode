@@ -124,6 +124,28 @@ describe("attentionQueueReducer", () => {
       syncStartedAt: 10,
     });
     expect(state.items).toHaveLength(1);
+    // Sync copy wins (parity with useSessionStream permissionsSynced).
+    expect(state.items[0]?.request.receivedAt).toBe(99);
+  });
+
+  it("keeps pending items for sessions whose v2 fetch failed", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, {
+      kind: "add",
+      item: permissionItem("/a", "s-fail", "p-local"),
+    });
+    state = attentionQueueReducer(state, {
+      kind: "reconcileDirectory",
+      directory: "/a",
+      questions: undefined,
+      permissions: [permissionItem("/a", "s-ok", "p-remote")],
+      syncStartedAt: 10,
+      keepPermissionSessionIds: ["s-fail"],
+    });
+    expect(state.items.map((i) => i.request.id).sort()).toEqual([
+      "p-local",
+      "p-remote",
+    ]);
   });
 
   it("keeps permissions in the target directory during reconcile", () => {

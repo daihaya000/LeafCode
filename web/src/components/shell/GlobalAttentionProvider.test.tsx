@@ -217,7 +217,14 @@ describe("GlobalAttentionProvider", () => {
 
   it("does not duplicate a question present from both SSE and REST", async () => {
     getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });
-    ocJsonMock.mockResolvedValue([{ id: "q1", sessionID: "s1", questions: [] }]);
+    ocJsonMock.mockImplementation(async (path: string) => {
+      if (path === "/question" || path.startsWith("/api/session/")) {
+        if (path.includes("/permission")) return [];
+        return [{ id: "q1", sessionID: "s1", questions: [] }];
+      }
+      if (path === "/permission") return [];
+      return [];
+    });
     let latest: AttentionItem[] = [];
     render(
       <GlobalAttentionProvider activeScope={null}>
@@ -228,6 +235,7 @@ describe("GlobalAttentionProvider", () => {
     openConnection();
     await waitFor(() => expect(latest).toHaveLength(1));
     expect(latest.map((i) => i.request.id)).toEqual(["q1"]);
+    expect(latest[0]?.kind).toBe("question");
   });
 
   it("removes a question resolved during disconnect", async () => {

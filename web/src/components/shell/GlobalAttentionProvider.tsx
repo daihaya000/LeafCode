@@ -271,8 +271,8 @@ export function GlobalAttentionProvider({
         ];
         const v2Permissions: AttentionItem[] = [];
         const v2Questions: AttentionItem[] = [];
-        let v2QuestionsFetched = false;
-        let v2PermissionsFetched = false;
+        const v2QuestionOkSessions = new Set<string>();
+        const v2PermissionOkSessions = new Set<string>();
         await Promise.allSettled(
           sessionIds.map(async (sessionID) => {
             const [pq, pp] = await Promise.all([
@@ -286,7 +286,7 @@ export function GlobalAttentionProvider({
               ).catch(() => null),
             ]);
             if (pq !== null) {
-              v2QuestionsFetched = true;
+              v2QuestionOkSessions.add(sessionID);
               for (const q of normalizeOcList<RestQuestion>(pq)) {
                 v2Questions.push(
                   toQuestionItem(
@@ -298,7 +298,7 @@ export function GlobalAttentionProvider({
               }
             }
             if (pp !== null) {
-              v2PermissionsFetched = true;
+              v2PermissionOkSessions.add(sessionID);
               for (const p of normalizeOcList<RestPermission>(pp)) {
                 v2Permissions.push(
                   toPermissionItem(
@@ -313,8 +313,12 @@ export function GlobalAttentionProvider({
         );
 
         // Merge v2 even when v1 failed (parity with useSessionStream).
-        const syncQuestions = questionsOk || v2QuestionsFetched;
-        const syncPermissions = permissionsOk || v2PermissionsFetched;
+        // Partial v2 success must NOT drop pending items for sessions that
+        // failed to fetch — keep those sessions' local SSE items.
+        const syncQuestions =
+          questionsOk || v2QuestionOkSessions.size > 0;
+        const syncPermissions =
+          permissionsOk || v2PermissionOkSessions.size > 0;
         if (!syncQuestions && !syncPermissions) return;
 
         const questionById = new Map<string, AttentionItem>();
@@ -335,11 +339,19 @@ export function GlobalAttentionProvider({
         }
         for (const p of v2Permissions) permissionById.set(p.request.id, p);
 
+        const keepQuestionSessionIds = questionsOk
+          ? []
+          : sessionIds.filter((id) => !v2QuestionOkSessions.has(id));
+        const keepPermissionSessionIds = permissionsOk
+          ? []
+          : sessionIds.filter((id) => !v2PermissionOkSessions.has(id));
+
         reconcileDirectory(
           directory,
           syncQuestions ? [...questionById.values()] : undefined,
           syncStartedAt,
           syncPermissions ? [...permissionById.values()] : undefined,
+          { keepQuestionSessionIds, keepPermissionSessionIds },
         );
       }),
     );

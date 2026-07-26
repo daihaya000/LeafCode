@@ -22,6 +22,9 @@ export type AttentionQueueAction =
       permissions?: AttentionItem[];
       syncStartedAt: number;
       activeScope?: AttentionScope | null;
+      /** Sessions whose v2 fetch failed — keep their local pending items. */
+      keepQuestionSessionIds?: string[];
+      keepPermissionSessionIds?: string[];
     };
 
 export function shouldQueueAttention(
@@ -88,27 +91,35 @@ export function attentionQueueReducer(
       const permissionIds = new Set(
         (action.permissions ?? []).map((p) => p.request.id),
       );
+      const keepQ = new Set(action.keepQuestionSessionIds ?? []);
+      const keepP = new Set(action.keepPermissionSessionIds ?? []);
       const kept = state.items.filter((item) => {
         if (item.directory !== action.directory) return true;
         if (item.kind === "question") {
           if (!syncQuestions) return true;
-          if (questionIds.has(item.request.id)) return true;
+          // Prefer the sync copy for the same id (v1→v2 upgrade, parity with
+          // useSessionStream permissionsSynced).
+          if (questionIds.has(item.request.id)) return false;
+          if (keepQ.has(item.request.sessionID)) return true;
           return item.request.receivedAt > action.syncStartedAt;
         }
         if (item.kind === "permission") {
           if (!syncPermissions) return true;
-          if (permissionIds.has(item.request.id)) return true;
+          if (permissionIds.has(item.request.id)) return false;
+          if (keepP.has(item.request.sessionID)) return true;
           return item.request.receivedAt > action.syncStartedAt;
         }
         return true;
       });
-      const keptIds = new Set(kept.map((i) => i.request.id));
+      const keptKeys = new Set(
+        kept.map((i) => `${i.kind}:${i.request.id}`),
+      );
       const additions = [
         ...(action.questions ?? []),
         ...(action.permissions ?? []),
       ].filter(
         (item) =>
-          !keptIds.has(item.request.id) &&
+          !keptKeys.has(`${item.kind}:${item.request.id}`) &&
           shouldQueueAttention(item, action.activeScope ?? null),
       );
       return { ...state, items: [...kept, ...additions] };
@@ -145,6 +156,10 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
       questions: AttentionItem[] | undefined,
       syncStartedAt: number,
       permissions?: AttentionItem[],
+      opts?: {
+        keepQuestionSessionIds?: string[];
+        keepPermissionSessionIds?: string[];
+      },
     ) => {
       const drop = (items: AttentionItem[] | undefined) => {
         if (!items) return items;
@@ -157,6 +172,8 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
         permissions: drop(permissions),
         syncStartedAt,
         activeScope: scopeRef.current,
+        keepQuestionSessionIds: opts?.keepQuestionSessionIds,
+        keepPermissionSessionIds: opts?.keepPermissionSessionIds,
       });
     },
     [],
