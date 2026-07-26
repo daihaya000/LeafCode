@@ -19,7 +19,7 @@ vi.mock("@/lib/client", () => ({
 }));
 
 vi.mock("@addons/codexbar", () => ({
-  providerIconSrcForOpencodeId: vi.fn(() => "/addons/codexbar/codex.png"),
+  providerIconSrcForOpencodeId: vi.fn(() => "/icons/codex.png"),
 }));
 
 const PROVIDERS = [

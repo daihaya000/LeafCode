@@ -8,14 +8,14 @@ describe("ProviderIcon", () => {
   it("renders the brand image for a known provider id", () => {
     render(<ProviderIcon providerID="anthropic" />);
     const img = screen.getByAltText("");
-    expect(img.getAttribute("src")).toBe("/addons/codexbar/claude.png");
+    expect(img.getAttribute("src")).toBe("/icons/claude.png");
     expect(img.className).toContain("rounded-[3px]");
   });
 
   it("aliases ollama-cloud to the ollama icon", () => {
     render(<ProviderIcon providerID="ollama-cloud" />);
     expect(screen.getByAltText("").getAttribute("src")).toBe(
-      "/addons/codexbar/ollama.png",
+      "/icons/ollama.png",
     );
   });
 

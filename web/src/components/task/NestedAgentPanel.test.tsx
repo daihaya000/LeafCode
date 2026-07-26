@@ -207,7 +207,7 @@ describe("NestedAgentPanel", () => {
     const img = header.querySelector("img");
     expect(img).not.toBeNull();
     expect(img?.getAttribute("alt")).toBe("");
-    expect(img?.getAttribute("src")).toContain("/addons/codexbar/claude.png");
+    expect(img?.getAttribute("src")).toContain("/icons/claude.png");
   });
 
   it("does not render an empty timeline placeholder when messages exist", async () => {

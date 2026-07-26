@@ -179,7 +179,7 @@ export function providerLabel(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
-/** Brand icons: source in `addons/codexbar/public`, served as `/addons/codexbar/…`. */
+/** Brand icons: tracked directly under `web/public/icons`, served as `/icons/…`. */
 const PROVIDER_ICONS: Record<string, string> = {
   codex: "codex.png",
   claude: "claude.png",
@@ -195,7 +195,7 @@ const PROVIDER_ICONS: Record<string, string> = {
 /** Public path of a provider's icon, or null when there is no bundled icon. */
 export function providerIconSrc(id: string): string | null {
   const file = PROVIDER_ICONS[id];
-  return file ? `/addons/codexbar/${file}` : null;
+  return file ? `/icons/${file}` : null;
 }
 
 /**

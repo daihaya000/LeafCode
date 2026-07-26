@@ -367,32 +367,32 @@ describe("providerLabel", () => {
 
 describe("providerIconSrc", () => {
   it("maps known providers to bundled icons and null otherwise", () => {
-    expect(providerIconSrc("codex")).toBe("/addons/codexbar/codex.png");
-    expect(providerIconSrc("opencode-go")).toBe("/addons/codexbar/opencode.png");
-    expect(providerIconSrc("cursor")).toBe("/addons/codexbar/cursor.png");
-    expect(providerIconSrc("synthetic")).toBe("/addons/codexbar/synthetic.png");
+    expect(providerIconSrc("codex")).toBe("/icons/codex.png");
+    expect(providerIconSrc("opencode-go")).toBe("/icons/opencode.png");
+    expect(providerIconSrc("cursor")).toBe("/icons/cursor.png");
+    expect(providerIconSrc("synthetic")).toBe("/icons/synthetic.png");
     expect(providerIconSrc("mystery")).toBeNull();
     expect(providerIconSrc("")).toBeNull();
   });
 
   it("maps Qwen Cloud brand keys to the bundled qwen.png icon", () => {
-    expect(providerIconSrc("qwen-cloud")).toBe("/addons/codexbar/qwen.png");
-    expect(providerIconSrc("qwen")).toBe("/addons/codexbar/qwen.png");
+    expect(providerIconSrc("qwen-cloud")).toBe("/icons/qwen.png");
+    expect(providerIconSrc("qwen")).toBe("/icons/qwen.png");
   });
 });
 
 describe("providerIconSrcForOpencodeId", () => {
   it("aliases OpenCode provider ids to bundled brand icons", () => {
-    expect(providerIconSrcForOpencodeId("openai")).toBe("/addons/codexbar/codex.png");
-    expect(providerIconSrcForOpencodeId("anthropic")).toBe("/addons/codexbar/claude.png");
-    expect(providerIconSrcForOpencodeId("cursor")).toBe("/addons/codexbar/cursor.png");
-    expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/addons/codexbar/cursor.png");
-    expect(providerIconSrcForOpencodeId("ollama")).toBe("/addons/codexbar/ollama.png");
-    expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/addons/codexbar/ollama.png");
-    expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/addons/codexbar/opencode.png");
-    expect(providerIconSrcForOpencodeId("synthetic")).toBe("/addons/codexbar/synthetic.png");
-    expect(providerIconSrcForOpencodeId("qwen-cloud")).toBe("/addons/codexbar/qwen.png");
-    expect(providerIconSrcForOpencodeId("qwen")).toBe("/addons/codexbar/qwen.png");
+    expect(providerIconSrcForOpencodeId("openai")).toBe("/icons/codex.png");
+    expect(providerIconSrcForOpencodeId("anthropic")).toBe("/icons/claude.png");
+    expect(providerIconSrcForOpencodeId("cursor")).toBe("/icons/cursor.png");
+    expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/icons/cursor.png");
+    expect(providerIconSrcForOpencodeId("ollama")).toBe("/icons/ollama.png");
+    expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/icons/ollama.png");
+    expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/icons/opencode.png");
+    expect(providerIconSrcForOpencodeId("synthetic")).toBe("/icons/synthetic.png");
+    expect(providerIconSrcForOpencodeId("qwen-cloud")).toBe("/icons/qwen.png");
+    expect(providerIconSrcForOpencodeId("qwen")).toBe("/icons/qwen.png");
     expect(providerIconSrcForOpencodeId("mystery")).toBeNull();
     expect(providerIconSrcForOpencodeId("")).toBeNull();
   });
