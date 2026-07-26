@@ -208,14 +208,20 @@ export function DiffPane({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRefs = useRef(new Map<string, HTMLDivElement>());
+  const reqIdRef = useRef(0);
+  const metaReqIdRef = useRef(0);
+  const directoryRef = useRef(directory);
+  directoryRef.current = directory;
 
   const load = useCallback(async () => {
+    const id = ++reqIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const query: Record<string, string> = { directory };
       if (baseCompare) query.base = baseCompare;
       const data = await getJson<DiffFilesPayload>("/api/diff/files", query);
+      if (id !== reqIdRef.current) return;
       setPayload(data);
       setExpanded((prev) => {
         // keep manual choices; default-expand when few files
@@ -226,19 +232,34 @@ export function DiffPane({
         return next;
       });
     } catch (err) {
+      if (id !== reqIdRef.current) return;
       setError(err instanceof Error ? err.message : "diff の取得に失敗しました");
     } finally {
-      setLoading(false);
+      if (id === reqIdRef.current) setLoading(false);
     }
   }, [directory, baseCompare]);
+
+  useEffect(() => {
+    // Drop in-flight diffs and clear the list so commit cannot target a stale
+    // workspace's paths after a directory switch (GraphPanel / FileTree pattern).
+    reqIdRef.current += 1;
+    setPayload(null);
+    setError(null);
+    setExpanded({});
+    setDeselected({});
+    setNotice(null);
+  }, [directory]);
 
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
 
   const loadMergeMeta = useCallback(async () => {
+    const id = ++metaReqIdRef.current;
+    const dir = directory;
     try {
-      const info = await getJson<BranchInfo>("/api/git/branches", { directory });
+      const info = await getJson<BranchInfo>("/api/git/branches", { directory: dir });
+      if (id !== metaReqIdRef.current || directoryRef.current !== dir) return;
       setBranches(info);
       setMergeTarget((cur) => cur || info.defaultTarget || "");
     } catch {
@@ -246,15 +267,20 @@ export function DiffPane({
     }
     try {
       const pr = await getJson<{ available: boolean }>("/api/git/pr", {
-        directory,
+        directory: dir,
       });
+      if (id !== metaReqIdRef.current || directoryRef.current !== dir) return;
       setPrAvailable(Boolean(pr.available));
     } catch {
+      if (id !== metaReqIdRef.current || directoryRef.current !== dir) return;
       setPrAvailable(false);
     }
   }, [directory]);
 
   useEffect(() => {
+    metaReqIdRef.current += 1;
+    setBranches(null);
+    setPrAvailable(null);
     void loadMergeMeta();
   }, [loadMergeMeta]);
 

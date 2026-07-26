@@ -98,7 +98,7 @@ export async function DELETE(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     id?: string;
-    status?: "active" | "merging" | "archived" | "orphaned";
+    status?: "active" | "merging" | "archived";
   } | null;
   if (!body?.id || !body.status) {
     return NextResponse.json(
@@ -106,7 +106,9 @@ export async function PATCH(req: NextRequest) {
       { status: 400 },
     );
   }
-  const VALID_STATUS = ["active", "merging", "archived", "orphaned"] as const;
+  // "orphaned" is reserved for scan/destroy failure paths. Allowing clients to
+  // mark a live worktree orphaned would let orphans cleanup force-delete it.
+  const VALID_STATUS = ["active", "merging", "archived"] as const;
   if (!VALID_STATUS.includes(body.status)) {
     return NextResponse.json({ error: "invalid status" }, { status: 400 });
   }
