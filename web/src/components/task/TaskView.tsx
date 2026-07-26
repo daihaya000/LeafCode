@@ -1342,13 +1342,21 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const approvePlan = useCallback(async () => {
     if (working) throw new Error(`セッションの完了を待ってください`);
+    const sessionId = taskRef.current?.sessionId;
+    const activityTaskId = taskRef.current?.id;
+    if (!sessionId || !activityTaskId) {
+      throw new Error(`セッションが見つかりません`);
+    }
     setSendError(null);
     setAgent(`build`);
     setIntelligence("");
     stickRef.current = true;
     try {
-      await touchActivity();
-      await stream.sendPrompt(PLAN_APPROVAL_PROMPT, { agent: `build` });
+      await touchActivity(sessionId, activityTaskId);
+      await stream.sendPrompt(PLAN_APPROVAL_PROMPT, {
+        agent: `build`,
+        sessionId,
+      });
     } finally {
       notifyTasksChanged();
     }

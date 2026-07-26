@@ -108,10 +108,14 @@ export function restoreProjectFromManifest(
     if (!manifest) return result;
     for (const ws of manifest.workspaces) {
       const isolation = isolations.has(ws.isolation)
-        ? (ws.isolation as "current_folder")
+        ? (ws.isolation as
+            | "current_folder"
+            | "git_worktree"
+            | "temporary_copy"
+            | "devcontainer")
         : "current_folder";
       const status = statuses.has(ws.status)
-        ? (ws.status as "active")
+        ? (ws.status as "active" | "merging" | "archived" | "orphaned")
         : "active";
       // A git worktree we provisioned lives either under the project root
       // (legacy <repoRoot>/.webui-worktrees/…) or under the machine-local
