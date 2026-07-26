@@ -103,6 +103,32 @@ describe("isBlockedOpencodeWrite", () => {
     ).toBe(false);
   });
 
+  it("blocks integration API-key connect and credential mutation", () => {
+    expect(
+      isBlockedOpencodeWrite("POST", "/api/integration/github/connect/key"),
+    ).toBe(true);
+    expect(isBlockedOpencodeWrite("DELETE", "/api/credential/cred1")).toBe(true);
+    expect(isBlockedOpencodeWrite("PATCH", "/api/credential/cred1")).toBe(true);
+    expect(isBlockedOpencodeWrite("GET", "/api/credential/cred1")).toBe(false);
+  });
+
+  it("blocks session shell (PTY-equivalent command execution)", () => {
+    expect(isBlockedOpencodeWrite("POST", "/session/ses_abc/shell")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/api/session/ses_abc/shell")).toBe(
+      true,
+    );
+    expect(isBlockedOpencodeWrite("GET", "/session/ses_abc/shell")).toBe(false);
+  });
+
+  it("blocks experimental project copy writes", () => {
+    expect(
+      isBlockedOpencodeWrite("POST", "/experimental/project/p1/copy"),
+    ).toBe(true);
+    expect(
+      isBlockedOpencodeWrite("DELETE", "/experimental/project/p1/copy"),
+    ).toBe(true);
+  });
+
   it("blocks PTY create/update/delete/connect-token", () => {
     expect(isBlockedOpencodeWrite("POST", "/pty")).toBe(true);
     expect(isBlockedOpencodeWrite("PUT", "/pty/abc123")).toBe(true);

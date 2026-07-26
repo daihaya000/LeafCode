@@ -20,14 +20,26 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (m === "DELETE" && (p === "/auth" || p.startsWith("/auth/"))) return true;
   if (m === "PUT" && p.startsWith("/auth/")) return true;
 
-  // Provider / integration OAuth — credential injection
+  // Provider / integration OAuth + API key — credential injection
   if (
     m === "POST" &&
     (/^\/provider\/[^/]+\/oauth\/(authorize|callback)$/.test(p) ||
-      /^\/api\/integration\/[^/]+\/connect\/oauth$/.test(p))
+      /^\/api\/integration\/[^/]+\/connect\/(oauth|key)$/.test(p))
   ) {
     return true;
   }
+
+  // Stored integration credentials — delete / relabel
+  if (
+    (m === "DELETE" || m === "PATCH") &&
+    /^\/api\/credential\/[^/]+$/.test(p)
+  ) {
+    return true;
+  }
+
+  // Session shell — arbitrary command execution (PTY-equivalent)
+  if (m === "POST" && /^\/session\/[^/]+\/shell$/.test(p)) return true;
+  if (m === "POST" && /^\/api\/session\/[^/]+\/shell$/.test(p)) return true;
 
   // PTY create/update/delete/connect-token — remote shell equivalent
   if (m === "POST" && p === "/pty") return true;
@@ -55,6 +67,14 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (m === "DELETE" && p.startsWith("/experimental/workspace/")) return true;
   if (m === "POST" && p === "/experimental/workspace/sync-list") return true;
   if (m === "POST" && p === "/experimental/workspace/warp") return true;
+
+  // Experimental project copy — unintended disk side effects
+  if (
+    (m === "POST" || m === "DELETE") &&
+    /^\/experimental\/project\/[^/]+\/copy$/.test(p)
+  ) {
+    return true;
+  }
 
   // Experimental control-plane / console
   if (m === "POST" && p === "/experimental/control-plane/move-session") return true;
