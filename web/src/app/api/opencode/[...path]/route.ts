@@ -37,6 +37,30 @@ function isLongRunningSyncMutation(method: string, pathname: string): boolean {
   );
 }
 
+/** Session create / update paths that accept a permission ruleset in the body. */
+function isSessionPermissionWrite(method: string, pathname: string): boolean {
+  const m = method.toUpperCase();
+  if (m === "POST") {
+    return pathname === "/session" || pathname === "/api/session";
+  }
+  if (m === "PATCH") {
+    return (
+      /^\/session\/[^/]+$/.test(pathname) ||
+      /^\/api\/session\/[^/]+$/.test(pathname)
+    );
+  }
+  return false;
+}
+
+function bodyHasPermissionField(body: unknown): boolean {
+  return (
+    !!body &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, "permission")
+  );
+}
+
 /** Session write paths that can carry image parts (R28 limits + capability). */
 function isImageGuardedWrite(pathname: string): boolean {
   return (
@@ -287,7 +311,7 @@ async function proxy(
   }
 
   const incoming = new URL(req.url);
-  const directory =
+  const rawDirectory =
     req.headers.get("x-opencode-directory") ??
     incoming.searchParams.get("directory");
 
@@ -297,12 +321,17 @@ async function proxy(
     pathname !== "/doc" &&
     pathname !== "/";
 
-  if (needsDirectory && directory) {
-    const check = assertAllowedDirectory(directory);
+  // Prefer the allowlist-resolved path for everything we forward upstream so a
+  // relative client value (e.g. ".") cannot resolve differently in OpenCode.
+  let directory: string | null = null;
+
+  if (needsDirectory && rawDirectory) {
+    const check = assertAllowedDirectory(rawDirectory);
     if (!check.ok) {
       return NextResponse.json({ error: check.error }, { status: check.status });
     }
-  } else if (needsDirectory && !directory) {
+    directory = check.path;
+  } else if (needsDirectory && !rawDirectory) {
     // OpenCode may still accept some calls; we require directory for safety
     // except for listing providers etc. — allow without directory for GET /provider,/config
     const allowWithoutDir =
@@ -325,14 +354,21 @@ async function proxy(
         { status: 400 },
       );
     }
+  } else if (rawDirectory) {
+    // Optional directory on global endpoints: still bind to the allowlist path.
+    const check = assertAllowedDirectory(rawDirectory);
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: check.status });
+    }
+    directory = check.path;
   }
 
   const target = new URL(pathname + incoming.search, OPENCODE_BASE_URL);
-  // Defense in depth: the allowlist check above validated `directory` (header
-  // preferred). Always set the validated `?directory=` on the upstream URL so
-  // a mismatched header/query pair cannot smuggle an unvalidated path through
-  // to OpenCode. The query is safe for non-Latin-1 paths (URLSearchParams
-  // percent-encodes), while the header below is omitted for unsafe values.
+  // Defense in depth: always set the validated `?directory=` on the upstream
+  // URL so a mismatched header/query pair cannot smuggle an unvalidated path
+  // through to OpenCode. The query is safe for non-Latin-1 paths
+  // (URLSearchParams percent-encodes), while the header below is omitted for
+  // unsafe values.
   if (directory) {
     withDirectoryQuery(target, directory);
   }
@@ -340,6 +376,8 @@ async function proxy(
   const headers = new Headers();
   req.headers.forEach((value, key) => {
     if (HOP_BY_HOP.has(key.toLowerCase())) return;
+    // Drop the client directory header; we re-attach the validated path below.
+    if (key.toLowerCase() === "x-opencode-directory") return;
     headers.set(key, value);
   });
   for (const [key, value] of Object.entries(directoryHeaders(directory))) {
@@ -351,6 +389,25 @@ async function proxy(
   try {
     if (req.method !== "GET" && req.method !== "HEAD") {
       requestBody = await req.arrayBuffer();
+      if (
+        isSessionPermissionWrite(req.method, pathname) ||
+        isSessionPermissionWrite(req.method, resolvedPathname)
+      ) {
+        try {
+          const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;
+          if (bodyHasPermissionField(body)) {
+            return NextResponse.json(
+              {
+                error:
+                  "session permission writes are disabled; use /api/subagent-permission",
+              },
+              { status: 403 },
+            );
+          }
+        } catch {
+          // Preserve the existing behavior for non-JSON or malformed bodies.
+        }
+      }
       if (req.method === "POST" && isImageGuardedWrite(pathname)) {
         try {
           const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;

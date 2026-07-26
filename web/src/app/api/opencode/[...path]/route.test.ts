@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/allowlist", () => ({
-  assertAllowedDirectory: vi.fn(() => ({ ok: true, path: "C:\\repo" })),
+  assertAllowedDirectory: vi.fn((directory: string) => ({
+    ok: true as const,
+    path: directory,
+  })),
 }));
 
 import { assertAllowedDirectory } from "@/lib/allowlist";
@@ -637,7 +640,83 @@ describe("directory requirement for /event", () => {
   });
 });
 
+describe("session permission writes", () => {
+  it("rejects session create bodies that include permission", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const response = await POST(
+      new NextRequest(
+        "http://localhost/api/opencode/session?directory=C%3A%5C%5Crepo",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: "x",
+            permission: [{ permission: "bash", pattern: "*", action: "allow" }],
+          }),
+        },
+      ),
+      { params: Promise.resolve({ path: ["session"] }) },
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: expect.stringContaining("subagent-permission"),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("rejects session PATCH bodies that include permission", async () => {
+    const { PATCH } = await import("./route");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const response = await PATCH(
+      new NextRequest(
+        "http://localhost/api/opencode/session/session-1?directory=C%3A%5C%5Crepo",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            permission: [{ permission: "edit", pattern: "*", action: "allow" }],
+          }),
+        },
+      ),
+      { params: Promise.resolve({ path: ["session", "session-1"] }) },
+    );
+    expect(response.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+});
+
 describe("non-Latin-1 directory handling", () => {
+  it("forwards allowlist-resolved path instead of a relative client directory", async () => {
+    vi.mocked(assertAllowedDirectory).mockReturnValueOnce({
+      ok: true,
+      path: "C:\\repo",
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ ok: true }));
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/session?directory=.",
+      ) as never,
+      { params: Promise.resolve({ path: ["session"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(assertAllowedDirectory).toHaveBeenCalledWith(".");
+    const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0] ?? [];
+    const url = new URL(String(upstreamUrl));
+    expect(url.searchParams.get("directory")).toBe("C:\\repo");
+    const headers = new Headers(
+      (upstreamInit as RequestInit | undefined)?.headers as HeadersInit | undefined,
+    );
+    expect(headers.get("x-opencode-directory")).toBe("C:\\repo");
+    fetchMock.mockRestore();
+    vi.mocked(assertAllowedDirectory).mockReset();
+  });
+
   it("forwards a Japanese directory via query and omits the header without throwing", async () => {
     const directory = "C:\\Users\\会議\\project";
     vi.mocked(assertAllowedDirectory).mockReturnValueOnce({
