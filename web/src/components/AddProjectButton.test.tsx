@@ -133,6 +133,37 @@ describe("AddProjectButton path sync (row click opens + syncs field)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("uses the native Windows folder picker from the icon button", async () => {
+    mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    const onAdded = vi.fn();
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/browse/folder") {
+        return Promise.resolve({ path: CHILD, cancelled: false });
+      }
+      if (method === "POST" && path === "/api/projects") {
+        return Promise.resolve({ project: { id: "p1", name: "OpenCode", rootPath: CHILD } });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${path}`));
+    });
+
+    render(<AddProjectButton variant="icon" onAdded={onAdded} />);
+    fireEvent.click(screen.getByRole("button", { name: "プロジェクトを追加" }));
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(2));
+    expect(sendJson).toHaveBeenNthCalledWith(
+      1,
+      "POST",
+      "/api/browse/folder",
+      { title: "プロジェクトフォルダを選択", initialPath: undefined },
+      undefined,
+      { timeoutMs: 300_000 },
+    );
+    expect(sendJson).toHaveBeenNthCalledWith(2, "POST", "/api/projects", {
+      rootPath: CHILD,
+    });
+    await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
+  });
+
   it("syncs the path field to the initial folder when the dialog opens", async () => {
     render(<AddProjectButton />);
     openDialog();

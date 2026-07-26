@@ -39,19 +39,128 @@ export async function POST(req: NextRequest) {
     initial = home;
   }
 
-  // STA is required for WinForms dialogs
+  // STA is required for the Windows shell dialog. Use IFileOpenDialog with
+  // FOS_PICKFOLDERS so the UI is the Explorer-style folder picker rather than
+  // the older tree-only FolderBrowserDialog.
   const script = `
-Add-Type -AssemblyName System.Windows.Forms | Out-Null
-[System.Windows.Forms.Application]::EnableVisualStyles()
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = '${title}'
-$dialog.SelectedPath = '${initial}'
-$dialog.ShowNewFolderButton = $true
-$result = $dialog.ShowDialog()
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-  Write-Output $dialog.SelectedPath
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$code = @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class ExplorerFolderPicker
+{
+  private const uint FOS_PICKFOLDERS = 0x00000020;
+  private const uint FOS_FORCEFILESYSTEM = 0x00000040;
+  private const uint FOS_PATHMUSTEXIST = 0x00000800;
+  private const uint FOS_FILEMUSTEXIST = 0x00001000;
+  private const uint SIGDN_FILESYSPATH = 0x80058000;
+  private const int ERROR_CANCELLED = unchecked((int)0x800704C7);
+
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  private static extern void SHCreateItemFromParsingName(
+    [MarshalAs(UnmanagedType.LPWStr)] string pszPath,
+    IntPtr pbc,
+    [MarshalAs(UnmanagedType.LPStruct)] Guid riid,
+    [MarshalAs(UnmanagedType.Interface)] out IShellItem ppv
+  );
+
+  public static string Pick(string title, string initialPath)
+  {
+    IFileOpenDialog dialog = (IFileOpenDialog)new FileOpenDialog();
+    uint options;
+    dialog.GetOptions(out options);
+    dialog.SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST);
+    dialog.SetTitle(title);
+    dialog.SetOkButtonLabel("フォルダーの選択");
+    dialog.SetFileNameLabel("フォルダー:");
+
+    if (!String.IsNullOrWhiteSpace(initialPath))
+    {
+      try
+      {
+        IShellItem folder;
+        Guid shellItemId = typeof(IShellItem).GUID;
+        SHCreateItemFromParsingName(initialPath, IntPtr.Zero, shellItemId, out folder);
+        dialog.SetFolder(folder);
+      }
+      catch
+      {
+        // Ignore invalid initial folders and let Windows choose the default.
+      }
+    }
+
+    int hr = dialog.Show(IntPtr.Zero);
+    if (hr == ERROR_CANCELLED) return null;
+    if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+
+    IShellItem item;
+    dialog.GetResult(out item);
+    IntPtr displayName;
+    item.GetDisplayName(SIGDN_FILESYSPATH, out displayName);
+    try
+    {
+      return Marshal.PtrToStringUni(displayName);
+    }
+    finally
+    {
+      Marshal.FreeCoTaskMem(displayName);
+    }
+  }
 }
+
+[ComImport]
+[Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+internal class FileOpenDialog { }
+
+[ComImport]
+[Guid("42F85136-DB7E-439C-85F1-E4075D135FC8")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IFileOpenDialog
+{
+  [PreserveSig] int Show(IntPtr parent);
+  void SetFileTypes(uint cFileTypes, IntPtr rgFilterSpec);
+  void SetFileTypeIndex(uint iFileType);
+  void GetFileTypeIndex(out uint piFileType);
+  void Advise(IntPtr pfde, out uint pdwCookie);
+  void Unadvise(uint dwCookie);
+  void SetOptions(uint fos);
+  void GetOptions(out uint pfos);
+  void SetDefaultFolder(IShellItem psi);
+  void SetFolder(IShellItem psi);
+  void GetFolder(out IShellItem ppsi);
+  void GetCurrentSelection(out IShellItem ppsi);
+  void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+  void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);
+  void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);
+  void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);
+  void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);
+  void GetResult(out IShellItem ppsi);
+  void AddPlace(IShellItem psi, int fdap);
+  void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string pszDefaultExtension);
+  void Close(int hr);
+  void SetClientGuid(ref Guid guid);
+  void ClearClientData();
+  void SetFilter(IntPtr pFilter);
+  void GetResults(out IntPtr ppenum);
+  void GetSelectedItems(out IntPtr ppsai);
+}
+
+[ComImport]
+[Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IShellItem
+{
+  void BindToHandler(IntPtr pbc, [MarshalAs(UnmanagedType.LPStruct)] Guid bhid, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IntPtr ppv);
+  void GetParent(out IShellItem ppsi);
+  void GetDisplayName(uint sigdnName, out IntPtr ppszName);
+  void GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+  void Compare(IShellItem psi, uint hint, out int piOrder);
+}
+"@
+Add-Type -TypeDefinition $code -Language CSharp
+$selected = [ExplorerFolderPicker]::Pick('${title}', '${initial}')
+if ($selected) { Write-Output $selected }
 `;
 
   try {
