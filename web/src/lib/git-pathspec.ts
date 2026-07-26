@@ -9,10 +9,10 @@ export function gitPathspecError(
   if (!p || typeof p !== "string") return "empty path";
   if (p.includes("\0")) return `unsafe path: ${p}`;
   if (p.includes("..") || p.startsWith("-")) return `unsafe path: ${p}`;
-  // Magic pathspecs / globs can expand to huge trees or climb via :( ).
+  // Any magic pathspec (:(glob), :!, :^, …) can reshape the tree; clients must
+  // use all:true (which applies WebUI excludes) instead of crafting these.
+  if (p.startsWith(":")) return `unsafe path: ${p}`;
   if (
-    p.startsWith(":(") ||
-    p.startsWith(":!") ||
     p === "." ||
     p === "*" ||
     p === "**" ||

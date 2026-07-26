@@ -40,6 +40,7 @@ describe("commitPathError", () => {
     expect(commitPathError("*")).toMatch(/unsafe/);
     expect(commitPathError("src/**")).toMatch(/unsafe/);
     expect(commitPathError(":(exclude)foo")).toMatch(/unsafe/);
+    expect(commitPathError(":^foo")).toMatch(/unsafe/);
   });
 
   it("rejects WebUI metadata paths", () => {

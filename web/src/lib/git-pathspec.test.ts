@@ -7,6 +7,8 @@ describe("gitPathspecError", () => {
     expect(gitPathspecError("*")).toMatch(/unsafe/);
     expect(gitPathspecError("src/**")).toMatch(/unsafe/);
     expect(gitPathspecError(":(glob)*")).toMatch(/unsafe/);
+    expect(gitPathspecError(":!")).toMatch(/unsafe/);
+    expect(gitPathspecError(":^secret.txt")).toMatch(/unsafe/);
     expect(gitPathspecError("a?b")).toMatch(/unsafe/);
   });
 
