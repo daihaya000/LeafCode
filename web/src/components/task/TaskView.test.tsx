@@ -23,6 +23,7 @@ const {
   copyText,
   diffPaneRefreshKeys,
   sessionActionsCompact,
+  playSessionCompleteSound,
 } = vi.hoisted(() => ({
   getJson: vi.fn(),
   notifyTasksChanged: vi.fn(),
@@ -34,6 +35,7 @@ const {
   copyText: vi.fn(),
   diffPaneRefreshKeys: [] as number[],
   sessionActionsCompact: vi.fn(),
+  playSessionCompleteSound: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -54,6 +56,8 @@ vi.mock("@/lib/client", () => ({
 vi.mock("@/lib/clipboard", () => ({ copyText }));
 
 vi.mock("@/lib/events", () => ({ notifyTasksChanged }));
+
+vi.mock("@/lib/session-complete-sound", () => ({ playSessionCompleteSound }));
 
 vi.mock("@/lib/currency", () => ({
   formatCost: (cost: number) => `cost $${cost.toFixed(4)}`,
@@ -876,6 +880,7 @@ describe("TaskView", () => {
       await Promise.resolve();
     });
 
+    expect(playSessionCompleteSound).toHaveBeenCalledTimes(1);
     // Initial load + one failed poll refresh while working.
     expect(taskCalls).toBe(2);
     await act(async () => {

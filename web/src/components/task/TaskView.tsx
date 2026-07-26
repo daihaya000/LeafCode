@@ -101,6 +101,7 @@ import {
   type ProviderModelMeta,
 } from "@/lib/model-variants";
 import { decideNotification, notificationText } from "@/lib/notify";
+import { playSessionCompleteSound } from "@/lib/session-complete-sound";
 import {
   extractPlanMarkdownPath,
   isPlanApproved,
@@ -1039,6 +1040,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     // Only treat explicit idle — null is the post-reset placeholder, not idle.
     const nowIdle = cur === "idle";
     if (wasBusy && nowIdle) {
+      playSessionCompleteSound();
       setDiffKey((k) => k + 1);
       void refreshTask();
       // The engine sometimes omits the final `todo.updated` SSE event when a
