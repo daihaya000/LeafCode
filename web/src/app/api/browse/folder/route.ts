@@ -3,16 +3,27 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { randomUUID } from "node:crypto";
+import { rejectUnlessLocal } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const TITLE_MAX_LEN = 200;
+const PARAMS_ENV = "WEBUI_FOLDER_PICKER_PARAMS";
+
 /**
  * Open a native folder picker on the host machine (Windows).
  * Intended for localhost use — the dialog appears on the server desktop.
+ *
+ * User-controlled title/initialPath are written to a temp JSON file and read
+ * by PowerShell via env — never interpolated into the script source (RCE).
  */
 export async function POST(req: NextRequest) {
+  const denied = rejectUnlessLocal(req);
+  if (denied) return denied;
+
   if (process.platform !== "win32") {
     return NextResponse.json(
       { error: "folder picker is only available on Windows" },
@@ -25,25 +36,47 @@ export async function POST(req: NextRequest) {
     initialPath?: string;
   } | null;
 
-  const title = (body?.title || "プロジェクトフォルダを選択").replace(
-    /'/g,
-    "''",
-  );
+  let title =
+    typeof body?.title === "string" && body.title.trim()
+      ? body.title.trim()
+      : "プロジェクトフォルダを選択";
+  if (title.length > TITLE_MAX_LEN) title = title.slice(0, TITLE_MAX_LEN);
+  // JSON + .NET string — strip NULs that can truncate Win32 APIs oddly.
+  title = title.replace(/\u0000/g, "");
+
   let initial = "";
   if (body?.initialPath && typeof body.initialPath === "string") {
     const resolved = path.resolve(body.initialPath);
-    if (fs.existsSync(resolved)) initial = resolved.replace(/'/g, "''");
+    if (fs.existsSync(resolved)) initial = resolved;
   }
   if (!initial) {
-    const home = os.homedir().replace(/'/g, "''");
-    initial = home;
+    initial = os.homedir();
   }
+
+  const paramsPath = path.join(
+    os.tmpdir(),
+    `webui-folder-picker-${randomUUID()}.json`,
+  );
+  fs.writeFileSync(
+    paramsPath,
+    JSON.stringify({ title, initial }),
+    { encoding: "utf8" },
+  );
 
   // STA is required for the Windows shell dialog. Use IFileOpenDialog with
   // FOS_PICKFOLDERS so the UI is the Explorer-style folder picker rather than
   // the older tree-only FolderBrowserDialog.
+  // Params come from $env:WEBUI_FOLDER_PICKER_PARAMS (path we create) — no
+  // user strings appear in this script text.
   const script = `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$paramsPath = $env:${PARAMS_ENV}
+if (-not $paramsPath -or -not (Test-Path -LiteralPath $paramsPath)) {
+  throw 'folder picker params missing'
+}
+$params = Get-Content -LiteralPath $paramsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$title = [string]$params.title
+$initial = [string]$params.initial
 $code = @"
 using System;
 using System.Runtime.InteropServices;
@@ -198,12 +231,14 @@ internal interface IShellItem
 }
 "@
 Add-Type -TypeDefinition $code -Language CSharp
-$selected = [ExplorerFolderPicker]::Pick('${title}', '${initial}')
+$selected = [ExplorerFolderPicker]::Pick($title, $initial)
 if ($selected) { Write-Output $selected }
 `;
 
   try {
-    const selected = await runPowerShellSta(script);
+    const selected = await runPowerShellSta(script, {
+      [PARAMS_ENV]: paramsPath,
+    });
     if (!selected) {
       return NextResponse.json({ cancelled: true });
     }
@@ -222,6 +257,12 @@ if ($selected) { Write-Output $selected }
       },
       { status: 500 },
     );
+  } finally {
+    try {
+      fs.unlinkSync(paramsPath);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -230,7 +271,10 @@ if ($selected) { Write-Output $selected }
 // route's maxDuration so we return a clean error before the platform kills us.
 const PICKER_TIMEOUT_MS = 290_000;
 
-function runPowerShellSta(script: string): Promise<string | null> {
+function runPowerShellSta(
+  script: string,
+  extraEnv: Record<string, string>,
+): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "powershell.exe",
@@ -238,6 +282,7 @@ function runPowerShellSta(script: string): Promise<string | null> {
       {
         windowsHide: false,
         shell: false,
+        env: { ...process.env, ...extraEnv },
       },
     );
     let stdout = "";

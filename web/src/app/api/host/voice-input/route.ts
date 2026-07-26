@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { hostVoiceInputPath, resolveHostControlUrl } from "@/lib/host-control";
+import { rejectUnlessLocal } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(req: Request) {
+  const denied = rejectUnlessLocal(req);
+  if (denied) return denied;
+
   const base = resolveHostControlUrl();
   try {
     const res = await fetch(`${base}${hostVoiceInputPath()}`, {

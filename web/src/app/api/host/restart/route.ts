@@ -4,6 +4,7 @@ import {
   resolveHostControlUrl,
   type HostRestartTarget,
 } from "@/lib/host-control";
+import { rejectUnlessLocal } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,9 @@ export const dynamic = "force-dynamic";
 const TARGETS = new Set<HostRestartTarget>(["webui", "opencode", "all"]);
 
 export async function POST(req: Request) {
+  const denied = rejectUnlessLocal(req);
+  if (denied) return denied;
+
   let target: HostRestartTarget | null = null;
   try {
     const body = (await req.json().catch(() => ({}))) as { target?: string };
