@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -485,7 +486,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     rememberComposerDraft(composerScopeKey, { input, attachments });
   }, [composerScopeKey, input, attachments]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prevScope = composerScopeRef.current;
     if (prevScope) {
       rememberComposerDraft(prevScope, {
