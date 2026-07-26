@@ -446,6 +446,28 @@ describe("useVoiceInput", () => {
     expect(result.current.transcript).toBe("first second");
   });
 
+  it("does not skip a result that changes from non-final to final at the same index", () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "draft" }, isFinal: false }],
+      }),
+    );
+    expect(result.current.transcript).toBe("");
+
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "final text" }, isFinal: true }],
+      }),
+    );
+
+    expect(result.current.transcript).toBe("final text");
+  });
+
   // Important 3 regression: a late result event arriving after the session
   // was interrupted by disabled must not revive the transcript.
   it("drops late result events after disabled-interrupt so transcript stays empty (Important 3)", () => {

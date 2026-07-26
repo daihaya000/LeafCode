@@ -200,21 +200,27 @@ export function useVoiceInput(
           ? e.resultIndex
           : processedResultIndexRef.current;
       const start = Math.max(eventResultIndex, processedResultIndexRef.current);
+      let processedUntil = processedResultIndexRef.current;
       for (let i = start; i < results.length; i++) {
         const result = results[i];
-        if (result.isFinal) {
-          const text = result[0]?.transcript ?? "";
-          if (text) {
-            transcriptRef.current = transcriptRef.current
-              ? `${transcriptRef.current} ${text}`
-              : text;
-            setTranscript(transcriptRef.current);
-          }
+        if (!result.isFinal) {
+          // Do not advance past a non-final slot. Some engines can surface a
+          // provisional result even when interimResults=false; if it later
+          // becomes final at the same index, advancing here would drop it.
+          break;
         }
+        const text = result[0]?.transcript ?? "";
+        if (text) {
+          transcriptRef.current = transcriptRef.current
+            ? `${transcriptRef.current} ${text}`
+            : text;
+          setTranscript(transcriptRef.current);
+        }
+        processedUntil = i + 1;
       }
       processedResultIndexRef.current = Math.max(
         processedResultIndexRef.current,
-        results.length,
+        processedUntil,
       );
     });
 
