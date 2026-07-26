@@ -34,7 +34,7 @@ function clampInt(n: number, min: number, max: number): number {
  * Normalize / reject key-specific payloads. Returns the string to store, or an
  * error message. Empty string means "unset" and is always allowed.
  */
-export function normalizeSettingValue(
+function normalizeSettingValue(
   key: string,
   value: string,
 ): { ok: true; value: string } | { ok: false; error: string } {
