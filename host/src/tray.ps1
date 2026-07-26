@@ -117,7 +117,9 @@ function Resolve-Url {
         if ($localUrl) { return $localUrl }
         return $publicUrl
     }
-    return "http://${bindHost}:${port}"
+    # The bind host may be 0.0.0.0 (or another listen address), but it is not
+    # a browser-routable address for the local fallback URL.
+    return "http://127.0.0.1:${port}"
 }
 
 function Test-ServerUp {
@@ -127,13 +129,26 @@ function Test-ServerUp {
     } catch { return $false }
 }
 
+function Wait-ForServer {
+    param([int]$TimeoutMs = 10000)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-ServerUp) { return $true }
+        if ($script:proc -and $script:proc.HasExited) { return $false }
+        Start-Sleep -Milliseconds 250
+    }
+    return (Test-ServerUp)
+}
+
 $script:proc = $null
 
 function Start-Host {
-    if ($script:proc -and -not $script:proc.HasExited) { return }
+    if ($script:proc -and -not $script:proc.HasExited) {
+        return (Wait-ForServer)
+    }
     if (Test-ServerUp) {
         # Already running under another tray; just attach.
-        return
+        return $true
     }
     if (-not (Test-Path $serverPath)) {
         [System.Windows.Forms.MessageBox]::Show("Host entry not found: $serverPath", 'OpenCode WebUI') | Out-Null
@@ -148,8 +163,16 @@ function Start-Host {
     $psi.WindowStyle     = 'Hidden'
     $psi.EnvironmentVariables['OPENCODE_WEBUI_NO_BROWSER'] = '1'
     $psi.EnvironmentVariables['AM_PARENT_PID'] = [System.Diagnostics.Process]::GetCurrentProcess().Id.ToString()
-    $script:proc = [System.Diagnostics.Process]::Start($psi)
-    Add-ToJob $script:proc
+    try {
+        $script:proc = [System.Diagnostics.Process]::Start($psi)
+        Add-ToJob $script:proc
+    } catch {
+        $script:proc = $null
+        return $false
+    }
+    if (Wait-ForServer) { return $true }
+    Stop-Host
+    return $false
 }
 
 function Stop-Host {
@@ -206,6 +229,7 @@ $jp = @{
     StatusStopped  = New-JpString @(12469,12540,12499,12458,58,32,20572,27490)
     Restarting     = New-JpString @(12469,12540,12499,12473,12434,20877,36215,21205,12375,12390,12356,12414,12377)
     Started        = New-JpString @(12469,12540,12499,12473,12434,36215,21205,12375,12414,12375,12383)
+    StartFailed    = New-JpString @(12469,12540,12499,12473,12398,36215,21205,12395,22833,25943,12375,12414,12375,12383,12290,20877,36215,21205,12391,20877,35430,12375,12390,12367,12384,12373,12356)
 }
 
 function Update-MenuState {
@@ -216,10 +240,11 @@ function Update-MenuState {
     if ($statusItem) {
         $statusItem.Text = if (Test-ServerUp) { $jp.StatusRunning } else { $jp.StatusStopped }
     }
-    if ($restartItem) { $restartItem.Enabled = Test-ServerUp }
+    # Keep retry available even when the host is stopped or failed to start.
+    if ($restartItem) { $restartItem.Enabled = $true }
 }
 
-Start-Host
+$script:startSucceeded = Start-Host
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Text = "$($jp.OpenCode)`n$controlUrl"
@@ -242,9 +267,13 @@ $restartItem.add_Click({
     $notify.ShowBalloonTip(1500, $jp.OpenCode, $jp.Restarting, [System.Windows.Forms.ToolTipIcon]::Info)
     Stop-Host
     Start-Sleep -Milliseconds 400
-    Start-Host
+    $started = Start-Host
     Update-MenuState $menu
-    $notify.ShowBalloonTip(1500, $jp.OpenCode, $jp.Started, [System.Windows.Forms.ToolTipIcon]::Info)
+    if ($started) {
+        $notify.ShowBalloonTip(1500, $jp.OpenCode, $jp.Started, [System.Windows.Forms.ToolTipIcon]::Info)
+    } else {
+        $notify.ShowBalloonTip(3000, $jp.OpenCode, $jp.StartFailed, [System.Windows.Forms.ToolTipIcon]::Error)
+    }
 })
 
 $menu.Items.Add('-') | Out-Null
@@ -263,7 +292,11 @@ $notify.ContextMenuStrip = $menu
 # Left double-click opens the WebUI via the Caddy-aware URL.
 $notify.add_MouseDoubleClick({ Start-Process (Resolve-Url) })
 
-$notify.ShowBalloonTip(1500, $jp.OpenCode, $jp.Started, [System.Windows.Forms.ToolTipIcon]::Info)
+if ($script:startSucceeded) {
+    $notify.ShowBalloonTip(1500, $jp.OpenCode, $jp.Started, [System.Windows.Forms.ToolTipIcon]::Info)
+} else {
+    $notify.ShowBalloonTip(3000, $jp.OpenCode, $jp.StartFailed, [System.Windows.Forms.ToolTipIcon]::Error)
+}
 
 $onExit = { Stop-Host }
 [System.Windows.Forms.Application]::add_ApplicationExit($onExit)
