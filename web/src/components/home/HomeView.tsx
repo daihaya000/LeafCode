@@ -693,7 +693,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
             何をつくりますか？
           </h1>
-          <div className="mx-auto mb-3 flex max-w-3xl items-center justify-center gap-2 overflow-x-auto px-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mx-auto mb-3 flex max-w-3xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <GhostSelect
               value={projectId}
               disabled={projects.length === 0 || submitting}

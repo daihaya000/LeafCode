@@ -36,10 +36,10 @@ export function GhostSelect({
   return (
     <span
       className={cx(
-        "group relative inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors focus-within:ring-2 focus-within:ring-primary/30",
+        "group relative inline-flex min-w-0 items-center gap-1.5 rounded-lg border bg-bg px-2 py-1.5 text-xs font-medium shadow-sm transition-colors focus-within:ring-2 focus-within:ring-primary/30",
         tone === "warning"
-          ? "text-warning hover:bg-warning-bg focus-within:bg-warning-bg"
-          : "text-muted hover:bg-surface-2 hover:text-text focus-within:bg-surface-2 focus-within:text-text",
+          ? "border-warning/40 text-warning hover:bg-warning-bg focus-within:bg-warning-bg"
+          : "border-border text-muted hover:bg-surface-2 hover:text-text focus-within:border-border-strong focus-within:bg-surface-2 focus-within:text-text",
         disabled && "cursor-not-allowed opacity-40",
         className,
       )}
