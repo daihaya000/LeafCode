@@ -22,6 +22,7 @@ import { ocServer } from "./oc-server";
 import { openCodeSessionPath } from "./opencode-id";
 import { dataDir, ensureDataDir } from "./paths";
 import { persistProjectSessions } from "./project-session-sync";
+import { deleteProjectManifest } from "./project-session-store";
 import { makeWorktreeBranchName } from "./workspace-branch";
 
 /**
@@ -343,6 +344,9 @@ export async function destroyProject(projectId: string): Promise<{
   const others = listProjects().filter((p) => p.root_path === project.root_path);
   if (others.length === 0) {
     removeAllowedRoot(project.root_path);
+    // Drop machine-local sessions so /api/projects/restore cannot resurrect
+    // the allowlist entry without an explicit POST /api/projects re-add.
+    deleteProjectManifest(project.root_path);
   }
 
   return { destroyed, orphaned, errors };

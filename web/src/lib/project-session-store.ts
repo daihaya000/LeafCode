@@ -226,3 +226,17 @@ export function writeProjectManifest(
   fs.writeFileSync(tmp, body, "utf8");
   fs.renameSync(tmp, file);
 }
+
+/**
+ * Remove the machine-local manifest directory for a project root.
+ * Best-effort: used after destroy so a deleted project cannot be re-adopted
+ * via /api/projects/restore without an explicit re-add.
+ */
+export function deleteProjectManifest(rootPath: string): void {
+  const dir = manifestDir(rootPath);
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
+}

@@ -18,6 +18,7 @@ import {
   removeWorkspaceFromManifest,
   upsertWorkspaceInManifest,
   writeProjectManifest,
+  deleteProjectManifest,
   type ManifestWorkspace,
 } from "./project-session-store";
 
@@ -153,5 +154,18 @@ describe("fs round trip", () => {
 
   it("returns null when no manifest exists", () => {
     expect(readProjectManifest(root)).toBeNull();
+  });
+
+  it("deleteProjectManifest removes the machine-local project dir", () => {
+    let m = emptyManifest({ name: "Demo", rootPath: root });
+    m = upsertWorkspaceInManifest(m, ws("a"));
+    writeProjectManifest(root, m);
+    expect(fs.existsSync(manifestPath(root))).toBe(true);
+
+    deleteProjectManifest(root);
+    expect(fs.existsSync(manifestPath(root))).toBe(false);
+    expect(fs.existsSync(path.join(h.dataDir, "projects", projectKey(root)))).toBe(
+      false,
+    );
   });
 });

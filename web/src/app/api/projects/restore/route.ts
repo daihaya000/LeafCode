@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "node:path";
-import { realPathOrResolved } from "@/lib/allowlist";
 import {
   adoptProjectFromManifest,
   restoreAllKnownProjects,
 } from "@/lib/project-session-sync";
+import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +15,8 @@ export const dynamic = "force-dynamic";
  * - No body: restore every project already known to the DB.
  * - `{ rootPath }`: register (upsert) that repository and restore its sessions
  *   from the machine-local manifest. A legacy in-repo manifest is still
- *   migrated if present.
+ *   migrated if present. `rootPath` must pass the same allowlist path
+ *   validation as POST /api/projects (protected paths, UNC, drive roots).
  */
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
@@ -24,7 +24,11 @@ export async function POST(req: NextRequest) {
   } | null;
 
   if (body?.rootPath && typeof body.rootPath === "string") {
-    const rootPath = realPathOrResolved(path.resolve(body.rootPath));
+    const validation = resolveValidatedAllowlistPath(body.rootPath);
+    if ("error" in validation) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    const rootPath = validation.canonicalPath;
     const result = adoptProjectFromManifest(rootPath);
     if (!result) {
       return NextResponse.json(

@@ -64,6 +64,10 @@ vi.mock("./project-session-sync", () => ({
   persistProjectSessions,
 }));
 
+vi.mock("./project-session-store", () => ({
+  deleteProjectManifest: vi.fn(),
+}));
+
 vi.mock("./oc-server", () => ({
   OcError: class OcError extends Error {
     status: number;
