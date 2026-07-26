@@ -63,7 +63,7 @@ let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
 const CONTROL_PORT = Number(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT) || 18765;
 let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
 
-/** True when the host should run without its own tray icon (external tray owns it). */
+/** True when the host should run without a tray icon. */
 export function isHeadless() {
   return (
     process.env.OPENCODE_HEADLESS === '1' ||
@@ -1379,11 +1379,8 @@ async function handleExistingInstance() {
     }
   }
 
-  // A real host is holding the lock. When the host is using its own systray2
-  // helper, check whether the helper is alive and take over if it died. With
-  // an external PowerShell/WinForms tray the child relationship looks different,
-  // so the tray-child test is not meaningful; just treat the existing host as
-  // healthy if it answers the control plane.
+  // A real host is holding the lock. If it has a tray icon, defer to it.
+  // Give a freshly started host a grace period to spawn its tray helper.
   const headless = isHeadless();
   if (!headless && hostIdentityVerified) {
     let tray = hasTrayChild(lockPid);
@@ -1420,8 +1417,13 @@ async function handleExistingInstance() {
     }
   }
 
-  // The external tray (or user) decides when to open the browser.
-  log(`Host already running (PID ${lockPid}).`);
+  if (process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+    const browserUrl = await resolveBrowserUrl();
+    log(`Host already running (PID ${lockPid}). Opening ${browserUrl}`);
+    openBrowser(browserUrl);
+  } else {
+    log(`Host already running (PID ${lockPid}).`);
+  }
   process.exit(0);
 }
 
@@ -2148,12 +2150,15 @@ async function main() {
     setInterval(() => {
       refreshStatusMenu().catch(() => {});
     }, 5000);
-    await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+    const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
       proc: () => webProc,
     });
     await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
       proc: () => opencodeProc,
     });
+    if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+      openBrowser(await resolveBrowserUrl());
+    }
     return;
   }
 
@@ -2170,12 +2175,15 @@ async function main() {
     refreshStatusMenu().catch(() => {});
   }, 5000);
   await refreshStatusMenu();
-  await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
+  const webReady = await waitUntilReady(WEBUI_URL, 'WebUI', 60, {
     proc: () => webProc,
   });
-  await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
-    proc: () => opencodeProc,
-  });
+await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
+      proc: () => opencodeProc,
+    });
+    if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+      openBrowser(await resolveBrowserUrl());
+    }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
