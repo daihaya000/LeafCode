@@ -39,6 +39,14 @@ type DragState =
   | { kind: "provider"; id: string }
   | { kind: "model"; providerId: string; id: string };
 
+type NewProviderForm = {
+  id: string;
+  name: string;
+  baseURL: string;
+  apiKeyEnv: string;
+  models: string;
+};
+
 function moveItem<T>(items: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0) return items;
   const next = [...items];
@@ -275,6 +283,16 @@ export function ProviderModelsSettings() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addMessage, setAddMessage] = useState<string | null>(null);
+  const [newProvider, setNewProvider] = useState<NewProviderForm>({
+    id: "",
+    name: "",
+    baseURL: "",
+    apiKeyEnv: "",
+    models: "",
+  });
 
   useEffect(() => {
     void (async () => {
@@ -435,6 +453,36 @@ export function ProviderModelsSettings() {
     [dragging, saveOrder],
   );
 
+  const addProvider = useCallback(async () => {
+    const models = newProvider.models
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [id, ...nameParts] = line.split("|");
+        return { id: id?.trim() ?? "", name: nameParts.join("|").trim() };
+      });
+    setAddBusy(true);
+    setActionError(null);
+    setAddMessage(null);
+    try {
+      await sendJson("POST", "/api/extensions/provider-models", {
+        id: newProvider.id,
+        name: newProvider.name,
+        baseURL: newProvider.baseURL,
+        apiKeyEnv: newProvider.apiKeyEnv || undefined,
+        models,
+      });
+      setAddMessage("登録しました。OpenCode の再起動後に利用できます。");
+      setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", models: "" });
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "登録に失敗しました");
+    } finally {
+      setAddBusy(false);
+    }
+  }, [load, newProvider]);
+
   return (
     <div className="space-y-8">
       <section aria-labelledby="default-model-heading">
@@ -515,8 +563,77 @@ export function ProviderModelsSettings() {
         </h2>
         <p className="mb-3 text-xs text-faint">
           利用可能な AI プロバイダーとモデルの表示を切り替えます。OpenCode
-          設定ファイルは変更しません。
+          設定ファイルに新規プロバイダーを追加できます。
         </p>
+        <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-muted">新規プロバイダー</h3>
+              <p className="mt-1 text-xs text-faint">
+                OpenAI 互換 API を opencode.jsonc の provider に追加します。APIキーは環境変数参照で保存します。
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => setAddOpen((v) => !v)}>
+              {addOpen ? "閉じる" : "登録"}
+            </Button>
+          </div>
+          {addOpen && (
+            <div className="mt-4 grid gap-3">
+              <label className="grid gap-1 text-xs text-faint">
+                プロバイダーID
+                <input
+                  value={newProvider.id}
+                  onChange={(e) => setNewProvider((v) => ({ ...v, id: e.target.value }))}
+                  placeholder="myprovider"
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-faint">
+                表示名
+                <input
+                  value={newProvider.name}
+                  onChange={(e) => setNewProvider((v) => ({ ...v, name: e.target.value }))}
+                  placeholder="My AI Provider"
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-faint">
+                Base URL
+                <input
+                  value={newProvider.baseURL}
+                  onChange={(e) => setNewProvider((v) => ({ ...v, baseURL: e.target.value }))}
+                  placeholder="https://api.example.com/v1"
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-faint">
+                APIキー環境変数（任意）
+                <input
+                  value={newProvider.apiKeyEnv}
+                  onChange={(e) => setNewProvider((v) => ({ ...v, apiKeyEnv: e.target.value }))}
+                  placeholder="MY_PROVIDER_API_KEY"
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-faint">
+                モデル（1行1件: model-id|表示名）
+                <textarea
+                  value={newProvider.models}
+                  onChange={(e) => setNewProvider((v) => ({ ...v, models: e.target.value }))}
+                  placeholder={"my-model|My Model"}
+                  rows={3}
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" disabled={addBusy} onClick={() => void addProvider()}>
+                  {addBusy ? "登録中…" : "プロバイダーを登録"}
+                </Button>
+                {addMessage && <p className="text-xs text-success">{addMessage}</p>}
+              </div>
+            </div>
+          )}
+        </div>
         {actionError && (
           <p role="alert" className="mb-2 text-xs text-danger">
             {actionError}

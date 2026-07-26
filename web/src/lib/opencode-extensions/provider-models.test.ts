@@ -25,6 +25,7 @@ vi.mock("@/lib/paths", () => ({
 }));
 
 import {
+  addCustomProvider,
   listProviderModels,
   saveProviderModelOrder,
   setProviderModelEnabled,
@@ -81,11 +82,14 @@ const MOCK_PROVIDER_RESPONSE = {
 beforeEach(() => {
   data = fs.mkdtempSync(path.join(os.tmpdir(), "provider-models-data-"));
   h.dataDir = data;
+  process.env.OPENCODE_CONFIG_DIR = data;
+  fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
   h.ocServer.mockReset();
   h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
 });
 
 afterEach(() => {
+  delete process.env.OPENCODE_CONFIG_DIR;
   fs.rmSync(data, { recursive: true, force: true });
 });
 
@@ -196,6 +200,28 @@ describe("listProviderModels", () => {
     expect(providers.every((p) => p.enabled)).toBe(true);
   });
 
+  it("includes configured providers that are not returned by the running server", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          custom: {
+            name: "Custom AI",
+            models: { "custom-model": { name: "Custom Model" } },
+          },
+        },
+      }),
+    );
+
+    const providers = await listProviderModels();
+    const custom = providers.find((provider) => provider.id === "custom");
+    expect(custom).toMatchObject({
+      name: "Custom AI",
+      models: [{ id: "custom-model", name: "Custom Model", enabled: true }],
+    });
+  });
+
   it("handles malformed state file gracefully", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -260,6 +286,52 @@ describe("setProviderModelEnabled", () => {
     await setProviderModelEnabled("openai", true);
     const state = readState();
     expect(state.disabled).toEqual({ "anthropic::claude-haiku-4-5": true });
+  });
+});
+
+describe("addCustomProvider", () => {
+  it("adds an OpenAI-compatible provider to opencode.jsonc", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
+    );
+
+    await addCustomProvider({
+      id: "myprovider",
+      name: "My Provider",
+      baseURL: "https://api.example.com/v1",
+      apiKeyEnv: "MY_PROVIDER_API_KEY",
+      models: [{ id: "my-model", name: "My Model" }],
+    });
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider.myprovider).toMatchObject({
+      npm: "@ai-sdk/openai-compatible",
+      name: "My Provider",
+      options: {
+        baseURL: "https://api.example.com/v1",
+        apiKey: "{env:MY_PROVIDER_API_KEY}",
+      },
+      models: { "my-model": { name: "My Model" } },
+    });
+  });
+
+  it("rejects duplicate provider ids", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({ provider: { myprovider: { name: "Existing" } } }),
+    );
+
+    await expect(
+      addCustomProvider({
+        id: "myprovider",
+        name: "My Provider",
+        baseURL: "https://api.example.com/v1",
+        models: [{ id: "my-model" }],
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
   });
 });
 

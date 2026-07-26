@@ -185,6 +185,42 @@ describe("ProviderModelsSettings", () => {
     );
   });
 
+  it("registers a new custom provider via POST", async () => {
+    render(<ProviderModelsSettings />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "登録" }));
+    fireEvent.change(screen.getByLabelText("プロバイダーID"), {
+      target: { value: "custom" },
+    });
+    fireEvent.change(screen.getByLabelText("表示名"), {
+      target: { value: "Custom AI" },
+    });
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "https://api.example.com/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("APIキー環境変数（任意）"), {
+      target: { value: "CUSTOM_API_KEY" },
+    });
+    fireEvent.change(screen.getByLabelText("モデル（1行1件: model-id|表示名）"), {
+      target: { value: "custom-model|Custom Model" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "プロバイダーを登録" }));
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "POST",
+      "/api/extensions/provider-models",
+      {
+        id: "custom",
+        name: "Custom AI",
+        baseURL: "https://api.example.com/v1",
+        apiKeyEnv: "CUSTOM_API_KEY",
+        models: [{ id: "custom-model", name: "Custom Model" }],
+      },
+    ));
+    expect(await screen.findByText(/OpenCode の再起動後/)).toBeTruthy();
+  });
+
   it("toggles a model via PATCH with provider::model key", async () => {
     render(<ProviderModelsSettings />);
 
