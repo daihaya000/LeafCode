@@ -1277,9 +1277,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         model?: { providerID: string; modelID: string };
         files?: { uri: string; mime: string; name?: string }[];
         variant?: IntelligenceVariant;
+        /** Pin the target session so an in-flight SessionSwitcher cannot redirect the POST. */
+        sessionId?: string;
       },
     ) => {
-      const sid = sessionRef.current;
+      const sid = opts?.sessionId ?? sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
       // Guard resync init for the whole POST window, not only after success.
       pendingMutationRef.current = true;
@@ -1338,9 +1340,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         model?: { providerID: string; modelID: string };
         files?: { uri: string; mime: string; name?: string }[];
         variant?: IntelligenceVariant;
+        sessionId?: string;
       },
     ) => {
-      const sid = sessionRef.current;
+      const sid = opts?.sessionId ?? sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
       pendingMutationRef.current = true;
       dispatch({ kind: "sessionError", message: null });

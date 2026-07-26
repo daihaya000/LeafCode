@@ -933,7 +933,10 @@ export function TaskView({ taskId }: { taskId: string }) {
     stream.permissions.length === 0 &&
     stream.questions.length === 0;
   const [sending, setSending] = useState(false);
-  const composerLocked = working || sending;
+  /** Scope that owns the in-flight send — other sessions must stay editable. */
+  const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
+  const composerLocked =
+    working || (sending && sendingScopeKey === composerScopeKey);
   const voiceDisabled = composerLocked || !task?.sessionId;
   const voice = useVoiceInput({ disabled: voiceDisabled });
   useEffect(() => {
@@ -1090,14 +1093,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     return null;
   }, [stream.visibleMessages]);
 
-  const touchActivity = useCallback(async () => {
-    const current = taskRef.current;
-    if (!current?.sessionId) return;
+  const touchActivity = useCallback(async (sessionId: string, taskId: string) => {
     try {
       // Activity ordering is best-effort; never block sending for more than 5s.
       await Promise.race([
-        sendJson("POST", `/api/tasks/${current.id}/activity`, {
-          sessionId: current.sessionId,
+        sendJson("POST", `/api/tasks/${taskId}/activity`, {
+          sessionId,
         }),
         new Promise<void>((resolve) => setTimeout(resolve, 5000)),
       ]);
@@ -1109,6 +1110,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || composerLocked) return;
+    const sendScopeKey = composerScopeKey;
+    const sendSessionId = taskRef.current?.sessionId;
+    const sendTaskId = taskRef.current?.id;
+    if (!sendSessionId || !sendTaskId || !sendScopeKey) return;
     // Block sending images to a model that cannot accept them. The effective
     // model (agent's configured model when an agent is selected, otherwise the
     // manual selector) is the one that actually serves the prompt, so check
@@ -1147,26 +1152,27 @@ export function TaskView({ taskId }: { taskId: string }) {
       mime: a.mime,
       ...(a.name ? { name: a.name } : {}),
     }));
-    if (composerScopeKey) {
-      composerDraftsRef.current.set(composerScopeKey, {
-        input: "",
-        attachments: [],
-      });
-    }
+    const snapshotAttachments = attachments;
+    composerDraftsRef.current.set(sendScopeKey, {
+      input: "",
+      attachments: [],
+    });
     setInput("");
     setAttachments([]);
     setSendError(null);
+    setSendingScopeKey(sendScopeKey);
     setSending(true);
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
-      await touchActivity();
+      await touchActivity(sendSessionId, sendTaskId);
       const [providerID, modelID] = model ? model.split("::") : [];
       const opts = {
         ...(agent ? { agent } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(files.length > 0 ? { files } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
+        sessionId: sendSessionId,
       };
       const parsed = parseCommandSubmit(text, slashCommands);
       if (parsed) {
@@ -1178,11 +1184,22 @@ export function TaskView({ taskId }: { taskId: string }) {
       // new session preselects it.
       writeLastUsedModel(sendingModelKey || null);
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "送信に失敗しました");
-      setInput(text);
-      setAttachments(attachments);
+      const message =
+        err instanceof Error ? err.message : "送信に失敗しました";
+      // Restore the draft onto the session that owned the send — never the
+      // session the user may have switched to mid-flight.
+      composerDraftsRef.current.set(sendScopeKey, {
+        input: text,
+        attachments: snapshotAttachments,
+      });
+      if (composerScopeRef.current === sendScopeKey) {
+        setSendError(message);
+        setInput(text);
+        setAttachments(snapshotAttachments);
+      }
     } finally {
       setSending(false);
+      setSendingScopeKey(null);
       notifyTasksChanged();
     }
   }, [
