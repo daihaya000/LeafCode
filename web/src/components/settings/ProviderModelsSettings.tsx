@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { Badge, Button, GhostSelect, cx } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import {
@@ -140,9 +140,11 @@ function DefaultModelIcon({ model }: { model: string }) {
 function ProviderGroup({
   provider,
   busyId,
+  deleting,
   onToggleProvider,
   onToggleModel,
   onEditProvider,
+  onDeleteProvider,
   onDragStartProvider,
   onDropProvider,
   onDragStartModel,
@@ -150,9 +152,11 @@ function ProviderGroup({
 }: {
   provider: ProviderDto;
   busyId: string | null;
+  deleting: boolean;
   onToggleProvider: (enabled: boolean) => void;
   onToggleModel: (model: ModelDto, enabled: boolean) => void;
   onEditProvider: () => void;
+  onDeleteProvider: () => void;
   onDragStartProvider: () => void;
   onDropProvider: () => void;
   onDragStartModel: (model: ModelDto) => void;
@@ -223,6 +227,18 @@ function ProviderGroup({
         <Button variant="ghost" size="sm" onClick={onEditProvider}>
           {provider.editable ? "編集" : "アイコン編集"}
         </Button>
+        {provider.editable && (
+          <button
+            type="button"
+            disabled={deleting}
+            aria-label={`${provider.name} を削除`}
+            aria-busy={deleting || undefined}
+            onClick={onDeleteProvider}
+            className="min-h-8 min-w-8 shrink-0 rounded-lg p-1.5 text-faint transition-colors hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
         <ExtensionSwitch
           name={provider.name}
           enabled={provider.enabled}
@@ -298,6 +314,7 @@ export function ProviderModelsSettings() {
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
+  const [deletingProviderId, setDeletingProviderId] = useState<string | null>(null);
   const [newProvider, setNewProvider] = useState<NewProviderForm>({
     id: "",
     name: "",
@@ -487,6 +504,33 @@ export function ProviderModelsSettings() {
         .join("\n"),
     });
   }, []);
+
+  const deleteProvider = useCallback(
+    async (provider: ProviderDto) => {
+      if (
+        !window.confirm(
+          `プロバイダー「${provider.name}」を削除しますか？\nopencode.jsonc から削除され、OpenCode の再起動後に反映されます。`,
+        )
+      ) {
+        return;
+      }
+      setDeletingProviderId(provider.id);
+      setActionError(null);
+      try {
+        await sendJson(
+          "DELETE",
+          `/api/extensions/provider-models/${encodeURIComponent(provider.id)}`,
+        );
+        setProviders((prev) => prev.filter((p) => p.id !== provider.id));
+        if (editingProviderId === provider.id) resetProviderForm();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "削除に失敗しました");
+      } finally {
+        setDeletingProviderId(null);
+      }
+    },
+    [editingProviderId, resetProviderForm],
+  );
 
   // Built-in providers (openai/anthropic/…) have no opencode.jsonc entry to
   // edit; when editing one of those, only the WebUI-local icon override can
@@ -798,6 +842,7 @@ export function ProviderModelsSettings() {
                   key={provider.id}
                   provider={provider}
                   busyId={busyId}
+                  deleting={deletingProviderId === provider.id}
                   onDragStartProvider={() =>
                     setDragging({ kind: "provider", id: provider.id })
                   }
@@ -814,6 +859,7 @@ export function ProviderModelsSettings() {
                     void toggle(provider.id, enabled)
                   }
                   onEditProvider={() => editProvider(provider)}
+                  onDeleteProvider={() => void deleteProvider(provider)}
                   onToggleModel={(model, enabled) =>
                     void toggle(`${provider.id}::${model.id}`, enabled)
                   }

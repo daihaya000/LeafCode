@@ -284,6 +284,117 @@ describe("ProviderModelsSettings", () => {
     ));
   });
 
+  it("shows a delete button only for editable (configured) providers", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "custom",
+              name: "Custom AI",
+              enabled: true,
+              editable: true,
+              models: [],
+            },
+            { id: "openai", name: "OpenAI", enabled: true, models: [] },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    render(<ProviderModelsSettings />);
+
+    await screen.findByRole("switch", { name: "OpenAI を無効化" });
+    expect(
+      screen.getByRole("button", { name: "Custom AI を削除" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "OpenAI を削除" })).toBeNull();
+  });
+
+  it("deletes a configured provider via DELETE after confirmation", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "custom",
+              name: "Custom AI",
+              enabled: true,
+              editable: true,
+              models: [],
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<ProviderModelsSettings />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Custom AI を削除" }),
+      );
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Custom AI"),
+      );
+      await waitFor(() =>
+        expect(sendJson).toHaveBeenCalledWith(
+          "DELETE",
+          "/api/extensions/provider-models/custom",
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.queryByText("Custom AI")).toBeNull(),
+      );
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("does not send DELETE when provider deletion is cancelled", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "custom",
+              name: "Custom AI",
+              enabled: true,
+              editable: true,
+              models: [],
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      render(<ProviderModelsSettings />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Custom AI を削除" }),
+      );
+
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(sendJson).not.toHaveBeenCalled();
+      expect(screen.getByText("Custom AI")).toBeTruthy();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("edits only the icon of a built-in provider via PATCH", async () => {
     render(<ProviderModelsSettings />);
 
