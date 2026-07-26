@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { invalidateDirStat } from "@/lib/dirstat";
 import { runGit } from "@/lib/git";
+import { commitPathError } from "./path-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,8 +57,9 @@ export async function POST(req: NextRequest) {
     }
   } else if (body.paths?.length) {
     for (const p of body.paths) {
-      if (p.includes("..") || p.startsWith("-")) {
-        return NextResponse.json({ error: `unsafe path: ${p}` }, { status: 400 });
+      const err = commitPathError(p);
+      if (err) {
+        return NextResponse.json({ error: err }, { status: 400 });
       }
     }
     const add = await runGit(check.path, ["add", "--", ...body.paths]);
