@@ -39,6 +39,15 @@ vi.mock("@/lib/paths", () => ({ dataDir: () => h.dataDir }));
 vi.mock("@/lib/project-session-sync", () => ({
   persistProjectSessions: () => undefined,
 }));
+vi.mock("@/lib/copy", () => ({
+  resolveTemporaryCopyPath: (p: string, id: string) => {
+    if (!String(p).replace(/\\/g, "/").endsWith(`/copies/${id}`)) {
+      throw new Error("refusing to delete path outside copies root");
+    }
+    return p;
+  },
+  removeTemporaryCopy: () => undefined,
+}));
 
 import { GET, POST } from "./route";
 

@@ -107,7 +107,16 @@ async function purgeGoneOrphans(): Promise<number> {
     // Release allowlist for temporary_copy orphans (the copy path was
     // allowlisted on provision; drop it now that the folder is gone).
     if (row.isolation === "temporary_copy" && row.worktree_path) {
-      removeAllowedRoot(row.worktree_path);
+      let trustedPath: string | null = null;
+      try {
+        const { resolveTemporaryCopyPath } = await import("@/lib/copy");
+        trustedPath = resolveTemporaryCopyPath(row.worktree_path, row.id);
+      } catch {
+        /* untrusted path — do not touch allowlist */
+      }
+      if (trustedPath) {
+        removeAllowedRoot(trustedPath);
+      }
     }
 
     deleteWorkspace(row.id);
@@ -307,13 +316,17 @@ export async function POST(req: NextRequest) {
     }
 
     if (row.isolation === "temporary_copy" && row.worktree_path) {
+      let trustedPath: string | null = null;
       try {
-        if (fs.existsSync(row.worktree_path)) {
-          const { removeTemporaryCopy } = await import("@/lib/copy");
-          removeTemporaryCopy(row.worktree_path, row.id);
+        const { removeTemporaryCopy, resolveTemporaryCopyPath } = await import(
+          "@/lib/copy"
+        );
+        trustedPath = resolveTemporaryCopyPath(row.worktree_path, row.id);
+        if (fs.existsSync(trustedPath)) {
+          removeTemporaryCopy(trustedPath, row.id);
         }
       } catch (err) {
-        if (fs.existsSync(row.worktree_path)) {
+        if (trustedPath && fs.existsSync(trustedPath)) {
           results.push({
             id: row.id,
             ok: false,
@@ -321,11 +334,15 @@ export async function POST(req: NextRequest) {
           });
           continue;
         }
+        // Untrusted or already-gone path: drop DB row without allowlist surgery.
+        trustedPath = null;
       }
       // The copy path was allow-listed on provision; drop it now that the
       // folder is gone, mirroring destroyWorkspace so allowed_roots doesn't
       // accumulate dead entries.
-      removeAllowedRoot(row.worktree_path);
+      if (trustedPath) {
+        removeAllowedRoot(trustedPath);
+      }
     }
 
     deleteWorkspace(row.id);

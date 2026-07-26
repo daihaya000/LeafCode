@@ -104,18 +104,17 @@ function isDescendantOrSame(root: string, candidate: string): boolean {
 }
 
 /**
- * Delete only the copy named by `expectedCopyId` directly below the copies
- * root. The path comes from persisted workspace metadata and is not trusted
- * to select a different copy after normalization.
+ * Resolve and validate that `copyPath` is exactly `copies/<expectedCopyId>`.
+ * Used by destroy/restore paths so a tampered worktree_path cannot drive
+ * allowlist removal or deletes outside the copies root.
  */
-export function removeTemporaryCopy(copyPath: string, expectedCopyId: string): void {
+export function resolveTemporaryCopyPath(
+  copyPath: string,
+  expectedCopyId: string,
+): string {
   const root = path.resolve(temporaryCopyRoot());
   const resolved = path.resolve(copyPath);
   const copyId = path.basename(resolved);
-  // Require an exact parent match, rather than a prefix/descendant check, so a
-  // cleanup request cannot delete the copies root or traverse into another
-  // copy's nested path. Compare the post-normalization basename to the
-  // workspace's expected ID so `copy-a/../copy-b` cannot target copy-b.
   if (
     path.dirname(resolved) !== root ||
     path.basename(expectedCopyId) !== expectedCopyId ||
@@ -123,5 +122,15 @@ export function removeTemporaryCopy(copyPath: string, expectedCopyId: string): v
   ) {
     throw new Error("refusing to delete path outside copies root");
   }
+  return resolved;
+}
+
+/**
+ * Delete only the copy named by `expectedCopyId` directly below the copies
+ * root. The path comes from persisted workspace metadata and is not trusted
+ * to select a different copy after normalization.
+ */
+export function removeTemporaryCopy(copyPath: string, expectedCopyId: string): void {
+  const resolved = resolveTemporaryCopyPath(copyPath, expectedCopyId);
   fs.rmSync(resolved, { recursive: true, force: true });
 }

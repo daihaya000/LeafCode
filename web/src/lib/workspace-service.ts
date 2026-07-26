@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { assertAllowedDirectory } from "./allowlist";
-import { createTemporaryCopy, removeTemporaryCopy } from "./copy";
+import { createTemporaryCopy, removeTemporaryCopy, resolveTemporaryCopyPath } from "./copy";
 import { detectDevcontainer } from "./devcontainer";
 import {
   WorkspaceRow,
@@ -270,11 +270,21 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   }
 
   if (row.isolation === "temporary_copy" && row.worktree_path) {
-    const wt = path.resolve(row.worktree_path);
+    let trustedPath: string;
     try {
-      removeTemporaryCopy(row.worktree_path, row.id);
+      trustedPath = resolveTemporaryCopyPath(row.worktree_path, row.id);
     } catch {
-      if (fs.existsSync(wt)) {
+      // Tampered / migrated path outside copies/<id>: drop the DB row only.
+      // Never call removeAllowedRoot on an untrusted path (could erase a real
+      // project root from the allowlist when the folder is already gone).
+      deleteWorkspace(id);
+      persistProjectSessions(row.project_id);
+      return row;
+    }
+    try {
+      removeTemporaryCopy(trustedPath, row.id);
+    } catch {
+      if (fs.existsSync(trustedPath)) {
         setWorkspaceStatus(id, "orphaned");
         throw new ServiceError(
           "temporary copy remove failed; marked orphaned",
@@ -284,7 +294,7 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
     }
     // The copy path was allow-listed when provisioned; drop it now that the
     // folder is gone so allowed_roots doesn't accumulate dead entries.
-    removeAllowedRoot(row.worktree_path);
+    removeAllowedRoot(trustedPath);
   }
 
   deleteWorkspace(id);

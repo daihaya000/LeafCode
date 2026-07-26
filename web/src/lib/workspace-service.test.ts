@@ -12,6 +12,7 @@ const {
   runGit,
   createTemporaryCopy,
   removeTemporaryCopy,
+  resolveTemporaryCopyPath,
   persistProjectSessions,
   ocServer,
   assertAllowedDirectory,
@@ -27,6 +28,7 @@ const {
   runGit: vi.fn(),
   createTemporaryCopy: vi.fn(),
   removeTemporaryCopy: vi.fn(),
+  resolveTemporaryCopyPath: vi.fn((p: string) => p),
   persistProjectSessions: vi.fn(),
   ocServer: vi.fn(),
   assertAllowedDirectory: vi.fn(),
@@ -55,6 +57,7 @@ vi.mock("./git", () => ({
 vi.mock("./copy", () => ({
   createTemporaryCopy,
   removeTemporaryCopy,
+  resolveTemporaryCopyPath,
 }));
 
 vi.mock("./project-session-sync", () => ({
@@ -227,6 +230,25 @@ describe("destroyWorkspace OpenCode session cleanup", () => {
       order.indexOf("removeTemporaryCopy"),
     );
     expect(removeAllowedRoot).toHaveBeenCalledWith(copyPath);
+  });
+
+  it("does not removeAllowedRoot for an untrusted temporary_copy path", async () => {
+    getWorkspace.mockReturnValue(
+      gitWorktreeRow({
+        isolation: "temporary_copy",
+        worktree_path: "C:\\repo",
+        absolute_path: "C:\\repo",
+      }),
+    );
+    resolveTemporaryCopyPath.mockImplementationOnce(() => {
+      throw new Error("refusing to delete path outside copies root");
+    });
+
+    await destroyWorkspace("ws1");
+
+    expect(removeTemporaryCopy).not.toHaveBeenCalled();
+    expect(removeAllowedRoot).not.toHaveBeenCalled();
+    expect(deleteWorkspace).toHaveBeenCalledWith("ws1");
   });
 });
 

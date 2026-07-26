@@ -58,6 +58,15 @@ export async function PUT(
     );
   }
 
+  // Cap payload size: this BFF is LAN-reachable without auth.
+  const MAX_SETTING_VALUE_CHARS = 32_768;
+  if (typeof value === "string" && value.length > MAX_SETTING_VALUE_CHARS) {
+    return NextResponse.json(
+      { error: `value exceeds ${MAX_SETTING_VALUE_CHARS} characters` },
+      { status: 400 },
+    );
+  }
+
   // Treat empty string as "unset" so readers can distinguish unset from set.
   const stored = typeof value === "string" && value.length > 0 ? value : "";
   setSetting(key, stored);

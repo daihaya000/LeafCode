@@ -121,6 +121,52 @@ describe("restoreProjectFromManifest worktree path guard", () => {
   });
 });
 
+describe("restoreProjectFromManifest temporary_copy path guard", () => {
+  it("imports a copy under <dataDir>/copies/<id>", () => {
+    const copyPath = path.join(h.dataDir, "copies", "ws1");
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: copyPath,
+          isolation: "temporary_copy",
+          baseBranch: null,
+          worktreePath: copyPath,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(1);
+  });
+
+  it("skips a temporary_copy whose path is an allowlisted project root", () => {
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: ROOT,
+          isolation: "temporary_copy",
+          baseBranch: null,
+          worktreePath: ROOT,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+});
+
 describe("restoreProjectFromManifest workspace id collision", () => {
   it("does not bind sessions when workspace id belongs to another project", () => {
     h.importReturns = false;

@@ -140,6 +140,28 @@ export function restoreProjectFromManifest(
         log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath escapes root`);
         continue;
       }
+      // temporary_copy paths must be exactly <dataDir>/copies/<workspaceId>.
+      // A crafted worktreePath pointing at an allowlisted project root would
+      // later drive removeAllowedRoot on destroy when the folder is missing.
+      const copiesBase = path.resolve(dataDir(), "copies");
+      if (ws.isolation === "temporary_copy") {
+        if (!ws.worktreePath) {
+          log(`restore ${rootPath}`, `skipped workspace ${ws.id}: missing temporary copy path`);
+          continue;
+        }
+        const resolvedCopy = path.resolve(ws.worktreePath);
+        if (
+          path.dirname(resolvedCopy) !== copiesBase ||
+          path.basename(resolvedCopy) !== ws.id ||
+          isSamePath(resolvedCopy, copiesBase)
+        ) {
+          log(
+            `restore ${rootPath}`,
+            `skipped workspace ${ws.id}: temporary copy path escapes copies root`,
+          );
+          continue;
+        }
+      }
       const inserted = importWorkspaceRow({
         id: ws.id,
         projectId,
