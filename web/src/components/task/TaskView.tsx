@@ -190,6 +190,55 @@ type AgentResponse = {
 
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
 
+type ComposerDraft = { input: string; attachments: Attachment[] };
+
+const TASK_CACHE_MAX = 24;
+const COMPOSER_DRAFT_CACHE_MAX = 48;
+const taskSummaryCache = new Map<string, TaskSummary>();
+const composerDraftCache = new Map<string, ComposerDraft>();
+
+function rememberTaskSummary(task: TaskSummary) {
+  taskSummaryCache.delete(task.id);
+  taskSummaryCache.set(task.id, task);
+  while (taskSummaryCache.size > TASK_CACHE_MAX) {
+    const oldest = taskSummaryCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    taskSummaryCache.delete(oldest);
+  }
+}
+
+function readCachedTaskSummary(taskId: string): TaskSummary | null {
+  const cached = taskSummaryCache.get(taskId);
+  if (!cached) return null;
+  taskSummaryCache.delete(taskId);
+  taskSummaryCache.set(taskId, cached);
+  return cached;
+}
+
+function rememberComposerDraft(scopeKey: string, draft: ComposerDraft) {
+  if (!scopeKey) return;
+  composerDraftCache.delete(scopeKey);
+  composerDraftCache.set(scopeKey, draft);
+  while (composerDraftCache.size > COMPOSER_DRAFT_CACHE_MAX) {
+    const oldest = composerDraftCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    composerDraftCache.delete(oldest);
+  }
+}
+
+function readComposerDraft(scopeKey: string): ComposerDraft | undefined {
+  const draft = composerDraftCache.get(scopeKey);
+  if (!draft) return undefined;
+  composerDraftCache.delete(scopeKey);
+  composerDraftCache.set(scopeKey, draft);
+  return draft;
+}
+
+export function __clearTaskViewCachesForTest() {
+  taskSummaryCache.clear();
+  composerDraftCache.clear();
+}
+
 const IMAGE_MIME_RE = /^image\//i;
 // Match POST /api/tasks R28 limits so follow-up attachments cannot bypass them.
 const MAX_IMAGE_COUNT = 10;
@@ -315,7 +364,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
-  const [task, setTask] = useState<TaskSummary | null>(null);
+  const [task, setTask] = useState<TaskSummary | null>(() =>
+    readCachedTaskSummary(taskId),
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -325,8 +376,15 @@ export function TaskView({ taskId }: { taskId: string }) {
   const refreshSequenceRef = useRef(0);
   if (taskIdRef.current !== taskId) {
     taskIdRef.current = taskId;
-    taskRef.current = null;
+    taskRef.current = readCachedTaskSummary(taskId);
   }
+
+  useEffect(() => {
+    const cached = readCachedTaskSummary(taskId);
+    taskRef.current = cached;
+    setTask(cached);
+    setLoadError(null);
+  }, [taskId]);
   const [tab, setTab] = useState<ChatTab>("chat");
   const [showDiff, setShowDiff] = useState(true);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("diff");
@@ -362,9 +420,6 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const composerDraftsRef = useRef(
-    new Map<string, { input: string; attachments: Attachment[] }>(),
-  );
   const inputRef = useRef(input);
   const attachmentsRef = useRef(attachments);
   const composerScopeRef = useRef("");
@@ -427,21 +482,19 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!composerScopeKey || composerScopeRef.current !== composerScopeKey) {
       return;
     }
-    composerDraftsRef.current.set(composerScopeKey, { input, attachments });
+    rememberComposerDraft(composerScopeKey, { input, attachments });
   }, [composerScopeKey, input, attachments]);
 
   useEffect(() => {
     const prevScope = composerScopeRef.current;
     if (prevScope) {
-      composerDraftsRef.current.set(prevScope, {
+      rememberComposerDraft(prevScope, {
         input: inputRef.current,
         attachments: attachmentsRef.current,
       });
     }
     composerScopeRef.current = composerScopeKey;
-    const draft = composerScopeKey
-      ? composerDraftsRef.current.get(composerScopeKey)
-      : undefined;
+    const draft = composerScopeKey ? readComposerDraft(composerScopeKey) : undefined;
     setInput(draft?.input ?? "");
     setAttachments(draft?.attachments ?? []);
     setCursor(0);
@@ -456,6 +509,17 @@ export function TaskView({ taskId }: { taskId: string }) {
       el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     });
   }, [composerScopeKey]);
+
+  useEffect(() => {
+    return () => {
+      const scope = composerScopeRef.current;
+      if (!scope) return;
+      rememberComposerDraft(scope, {
+        input: inputRef.current,
+        attachments: attachmentsRef.current,
+      });
+    };
+  }, []);
 
   useEffect(() => {
     // Fast path: hydrate from localStorage so the panel paints without
@@ -876,6 +940,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       ) {
         return;
       }
+      rememberTaskSummary(data.task);
       taskRef.current = data.task;
       setTask(data.task);
       setLoadError(null);
@@ -1153,10 +1218,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       ...(a.name ? { name: a.name } : {}),
     }));
     const snapshotAttachments = attachments;
-    composerDraftsRef.current.set(sendScopeKey, {
-      input: "",
-      attachments: [],
-    });
+    rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
     setInput("");
     setAttachments([]);
     setSendError(null);
@@ -1188,7 +1250,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         err instanceof Error ? err.message : "送信に失敗しました";
       // Restore the draft onto the session that owned the send — never the
       // session the user may have switched to mid-flight.
-      composerDraftsRef.current.set(sendScopeKey, {
+      rememberComposerDraft(sendScopeKey, {
         input: text,
         attachments: snapshotAttachments,
       });

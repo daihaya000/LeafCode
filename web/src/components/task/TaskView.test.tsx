@@ -10,7 +10,7 @@ import {
   within,
 } from "@testing-library/react";
 import type { TaskSummary } from "@/lib/types";
-import { TaskView } from "./TaskView";
+import { TaskView, __clearTaskViewCachesForTest } from "./TaskView";
 
 const {
   getJson,
@@ -128,10 +128,11 @@ vi.mock("./SessionSwitcher", () => ({
 let taskStatus: TaskSummary["status"];
 let taskResponseCosts: number[];
 let taskSessionId: string;
+let taskResponseId: string;
 
 function task(cost: number): TaskSummary {
   return {
-    id: "ws1",
+    id: taskResponseId,
     projectId: "prj1",
     projectName: "Repo",
     title: "Task title",
@@ -178,6 +179,8 @@ describe("TaskView", () => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
     taskSessionId = "sess1";
+    taskResponseId = "ws1";
+    __clearTaskViewCachesForTest();
     diffPaneRefreshKeys.length = 0;
     copyText.mockResolvedValue(true);
     slashCommands.length = 0;
@@ -232,6 +235,7 @@ describe("TaskView", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.clearAllMocks();
+    __clearTaskViewCachesForTest();
   });
 
   it("keeps a single mobile menu button while the task is loading", () => {
@@ -279,7 +283,7 @@ describe("TaskView", () => {
       status: { type: "idle" },
     });
 
-    const view = render(<TaskView taskId="ws1" />);
+    render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
     const textarea = screen.getByRole("combobox", {
@@ -289,16 +293,20 @@ describe("TaskView", () => {
     expect(textarea.value).toBe("draft for session 1");
 
     taskSessionId = "sess2";
-    view.rerender(<TaskView taskId="ws2" />);
-    await flushTaskLoad();
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "セッションを切り替え・追加" }));
+    fireEvent.click(screen.getByRole("button", { name: "新セッション" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(textarea.value).toBe("");
 
     fireEvent.change(textarea, { target: { value: "draft for session 2" } });
     expect(textarea.value).toBe("draft for session 2");
 
     taskSessionId = "sess1";
-    view.rerender(<TaskView taskId="ws1" />);
-    await flushTaskLoad();
+    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "セッションを切り替え・追加" }));
+    fireEvent.click(screen.getByRole("button", { name: "新セッション" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(textarea.value).toBe("draft for session 1");
   });
 
@@ -804,7 +812,7 @@ describe("TaskView", () => {
     expect(events).toEqual(["activity", "send"]);
     expect(sendPrompt).toHaveBeenCalledWith(
       expect.stringContaining("この計画を承認します"),
-      { agent: "build" },
+      { agent: "build", sessionId: "sess1" },
     );
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
   });
