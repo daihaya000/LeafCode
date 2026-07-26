@@ -164,6 +164,25 @@ describe("AddProjectButton path sync (row click opens + syncs field)", () => {
     await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
   });
 
+  it("shows clear busy feedback on the icon button while opening the native picker", async () => {
+    mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/browse/folder") {
+        return new Promise(() => undefined);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${path}`));
+    });
+
+    render(<AddProjectButton variant="icon" />);
+    fireEvent.click(screen.getByRole("button", { name: "プロジェクトを追加" }));
+
+    const busyButton = await screen.findByRole("button", {
+      name: "フォルダ選択を開いています",
+    });
+    expect(busyButton.getAttribute("aria-busy")).toBe("true");
+    expect((busyButton as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("syncs the path field to the initial folder when the dialog opens", async () => {
     render(<AddProjectButton />);
     openDialog();

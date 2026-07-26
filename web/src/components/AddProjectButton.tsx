@@ -254,16 +254,26 @@ export function AddProjectButton({
       {variant === "icon" ? (
         <button
           type="button"
-          title={label}
-          aria-label={label}
+          title={pickerBusy || busy ? "フォルダ選択を開いています" : label}
+          aria-label={pickerBusy || busy ? "フォルダ選択を開いています" : label}
+          aria-busy={pickerBusy || busy}
           onClick={openPicker}
           disabled={pickerBusy || busy}
           className={cx(
-            "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text",
+            "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-all hover:bg-surface-2 hover:text-text disabled:cursor-wait",
+            (pickerBusy || busy) &&
+              "bg-primary/15 text-primary ring-2 ring-primary/45 ring-offset-1 ring-offset-surface",
             className,
           )}
         >
-          <FolderPlus className="h-4 w-4" />
+          {pickerBusy || busy ? (
+            <Spinner className="h-4 w-4 text-primary" />
+          ) : (
+            <FolderPlus className="h-4 w-4" />
+          )}
+          <span className="sr-only">
+            {pickerBusy || busy ? "フォルダ選択を開いています" : label}
+          </span>
         </button>
       ) : (
         <div className={cx(className)}>
