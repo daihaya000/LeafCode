@@ -695,7 +695,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           </h1>
           <form
             aria-label="タスク作成"
-            className="relative mx-auto max-w-4xl rounded-2xl border border-border bg-surface shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            className="relative mx-auto max-w-3xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
@@ -708,6 +708,38 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 onHover={setSlashIndex}
                 onSelect={(cmd) => applySlash(cmd.name)}
               />
+            )}
+            {attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {attachments.map((attachment, index) => (
+                  <div
+                    key={`${attachment.name ?? attachment.uri}-${index}`}
+                    className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-surface"
+                  >
+                    {attachment.preview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={attachment.preview}
+                        alt={attachment.name ?? "添付画像"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-faint">
+                        <Paperclip className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(index)}
+                      disabled={submitting}
+                      aria-label={`${attachment.name ?? "添付画像"}を削除`}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
             <textarea
               ref={textareaRef}
@@ -773,142 +805,86 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 }
               }}
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
-              className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base outline-none placeholder:text-faint"
+              className="w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-faint"
             />
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-3 pb-2">
-                {attachments.map((attachment, index) => (
-                  <div
-                    key={`${attachment.name ?? attachment.uri}-${index}`}
-                    className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-surface"
-                  >
-                    {attachment.preview ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={attachment.preview}
-                        alt={attachment.name ?? "添付画像"}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-faint">
-                        <Paperclip className="h-4 w-4" aria-hidden="true" />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(index)}
-                      disabled={submitting}
-                      aria-label={`${attachment.name ?? "添付画像"}を削除`}
-                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
-                    >
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex min-w-0 flex-col gap-1.5 px-3 pb-3">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    disabled={submitting}
-                    aria-label="画像ファイルを選択"
-                    className="hidden"
-                    onChange={(event) => {
-                      if (event.target.files) void addImageFiles(event.target.files);
-                      event.target.value = "";
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={submitting}
-                    aria-label="画像を添付"
-                    title="画像を添付"
-                    className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
-                  >
-                    <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                  <VoiceInputButton
-                    voice={voice}
-                    onTranscript={onVoiceTranscript}
-                    onNativeVoiceStart={() => textareaRef.current?.focus()}
-                    disabled={submitting}
-                  />
-                  <GhostSelect
-                    value={projectId}
-                    disabled={projects.length === 0 || submitting}
-                    aria-label="プロジェクト"
-                    icon={<FolderGit2 className="h-3.5 w-3.5" />}
-                    valueLabel={
-                      selectedProject
-                        ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                        : "プロジェクトなし"
-                    }
-                    onChange={(e) => setProjectId(e.target.value)}
-                    className="min-w-0"
-                    title={
-                      selectedProject
-                        ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                        : "プロジェクトなし"
-                    }
-                  >
-                    {projects.length === 0 && (
-                      <option value="">プロジェクトなし</option>
-                    )}
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.favorite ? "★ " : ""}
-                        {p.name}
-                      </option>
-                    ))}
-                  </GhostSelect>
-                  <GhostSelect
-                    value={isolation}
-                    disabled={submitting}
-                    aria-label="作業場所"
-                    icon={<GitBranch className="h-3.5 w-3.5" />}
-                    valueLabel={
-                      isolation === "current_folder"
-                        ? defaultBranchLabel
-                        : "worktree"
-                    }
-                    onChange={(e) =>
-                      setIsolation(
-                        e.target.value as "current_folder" | "git_worktree",
-                      )
-                    }
-                    className="min-w-0"
-                    title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
-                  >
-                    <option value="current_folder">{defaultBranchLabel}</option>
-                    <option value="git_worktree">worktree</option>
-                  </GhostSelect>
-                </div>
-                <Button
-                  variant="primary"
-                  size="icon"
-                  type="submit"
-                  aria-label="タスク開始"
-                  className="shrink-0"
-                  busy={submitting}
-                  disabled={
-                    (!prompt.trim() && attachments.length === 0) ||
-                    !projectId ||
-                    submitting ||
-                    !engineOk ||
-                    (isolation === "git_worktree" &&
-                      branchProjectId !== projectId)
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={submitting}
+                  aria-label="画像ファイルを選択"
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files) void addImageFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={submitting}
+                  aria-label="画像を添付"
+                  title="画像を添付"
+                  className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
+                >
+                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+                <VoiceInputButton
+                  voice={voice}
+                  onTranscript={onVoiceTranscript}
+                  onNativeVoiceStart={() => textareaRef.current?.focus()}
+                  disabled={submitting}
+                />
+                <GhostSelect
+                  value={projectId}
+                  disabled={projects.length === 0 || submitting}
+                  aria-label="プロジェクト"
+                  icon={<FolderGit2 className="h-3.5 w-3.5" />}
+                  valueLabel={
+                    selectedProject
+                      ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                      : "プロジェクトなし"
+                  }
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className="max-w-[10rem] shrink-0 sm:max-w-48"
+                  title={
+                    selectedProject
+                      ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                      : "プロジェクトなし"
                   }
                 >
-                  {!submitting && <ArrowUp className="h-4.5 w-4.5" />}
-                </Button>
-              </div>
-              <div className="flex min-w-0 items-center gap-1.5">
+                  {projects.length === 0 && (
+                    <option value="">プロジェクトなし</option>
+                  )}
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.favorite ? "★ " : ""}
+                      {p.name}
+                    </option>
+                  ))}
+                </GhostSelect>
+                <GhostSelect
+                  value={isolation}
+                  disabled={submitting}
+                  aria-label="作業場所"
+                  icon={<GitBranch className="h-3.5 w-3.5" />}
+                  valueLabel={
+                    isolation === "current_folder" ? defaultBranchLabel : "worktree"
+                  }
+                  onChange={(e) =>
+                    setIsolation(
+                      e.target.value as "current_folder" | "git_worktree",
+                    )
+                  }
+                  className="max-w-[10rem] shrink-0 sm:max-w-40"
+                  title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
+                >
+                  <option value="current_folder">{defaultBranchLabel}</option>
+                  <option value="git_worktree">worktree</option>
+                </GhostSelect>
                 {modelOptions.length > 0 && (
                   <ModelSelect
                     value={model}
@@ -918,7 +894,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       setModel(value);
                       setIntelligence("");
                     }}
-                    className="min-w-0"
+                    className="max-w-[11rem] shrink-0 sm:max-w-48"
                     title={selectedModel?.label ?? "モデル"}
                   />
                 )}
@@ -943,7 +919,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       setAgent(e.target.value);
                       setIntelligence("");
                     }}
-                    className="min-w-0"
+                    className="max-w-[10rem] shrink-0 sm:max-w-40"
                     title={agent || "エージェント"}
                   >
                     {agents.map((a) => (
@@ -960,15 +936,33 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     setAccessMode(m);
                     writeAccessMode(m);
                   }}
-                  className="min-w-0 shrink"
+                  className="h-8 shrink-0"
                 />
                 <SubagentPermissionSelect
                   value={subagentPermission}
                   disabled={submitting}
                   onChange={(m) => changeSubagentPermission(m)}
-                  className="min-w-0 shrink"
+                  className="h-8 shrink-0"
                 />
               </div>
+              <Button
+                variant="primary"
+                size="icon"
+                type="submit"
+                aria-label="タスク開始"
+                className="shrink-0"
+                busy={submitting}
+                disabled={
+                  (!prompt.trim() && attachments.length === 0) ||
+                  !projectId ||
+                  submitting ||
+                  !engineOk ||
+                  (isolation === "git_worktree" &&
+                    branchProjectId !== projectId)
+                }
+              >
+                {!submitting && <ArrowUp className="h-4.5 w-4.5" />}
+              </Button>
             </div>
           </form>
 

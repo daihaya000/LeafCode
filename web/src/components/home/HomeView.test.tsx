@@ -354,41 +354,37 @@ describe("HomeView image attachments", () => {
     expect(screen.getByRole("img", { name: "failed.png" })).toBeTruthy();
   });
 
-  it("keeps the composer toolbar as two fixed rows (place + settings)", async () => {
+  it("matches the session composer toolbar layout", async () => {
     render(<HomeView />);
 
     const form = await screen.findByRole("form", { name: "タスク作成" });
-    const toolbar = form.querySelector(":scope > div.px-3.pb-3");
+    const toolbar = form.querySelector(":scope > div.pt-1");
     expect(toolbar).not.toBeNull();
     expect(toolbar?.className).toMatch(/\bflex\b/);
-    expect(toolbar?.className).toMatch(/\bflex-col\b/);
+    expect(toolbar?.className).toMatch(/\bitems-center\b/);
     expect(toolbar?.className).not.toMatch(/\bgrid\b/);
     expect(toolbar?.className).not.toContain("xl:grid-cols-");
     expect(toolbar?.className).not.toMatch(/\bflex-wrap\b/);
 
     const rows = toolbar?.querySelectorAll(":scope > div");
-    expect(rows?.length).toBe(2);
+    expect(rows?.length).toBe(1);
 
-    const row1 = rows![0];
-    const row2 = rows![1];
-    expect(row1.className).toMatch(/\bflex\b/);
-    expect(row1.className).toMatch(/justify-between/);
-    expect(row2.className).toMatch(/\bflex\b/);
+    const controlRow = rows![0];
+    expect(controlRow.className).toMatch(/\bflex\b/);
+    expect(controlRow.className).toMatch(/overflow-x-auto/);
 
-    // 1 段目: プロジェクト・作業場所・送信
-    expect(row1.contains(screen.getByLabelText("プロジェクト"))).toBe(true);
-    expect(row1.contains(screen.getByLabelText("作業場所"))).toBe(true);
-    expect(row1.contains(screen.getByRole("button", { name: "タスク開始" }))).toBe(
+    expect(controlRow.contains(screen.getByLabelText("プロジェクト"))).toBe(true);
+    expect(controlRow.contains(screen.getByLabelText("作業場所"))).toBe(true);
+    expect(controlRow.contains(screen.getByLabelText("アクセスモード"))).toBe(true);
+
+    expect(toolbar?.contains(screen.getByRole("button", { name: "タスク開始" }))).toBe(
       true,
     );
-
-    // 2 段目: アクセスモード（モデル/知性/エージェントはモック次第で非表示可）
-    expect(row2.contains(screen.getByLabelText("アクセスモード"))).toBe(true);
 
     const accessWrap = screen.getByLabelText("アクセスモード").closest("span");
     expect(accessWrap?.className).not.toContain("order-first");
     expect(accessWrap?.className).not.toContain("xl:order-none");
-    expect(accessWrap?.className).not.toMatch(/max-w-\[/);
+    expect(accessWrap?.className).toContain("shrink-0");
   });
 
   describe("HomeView voice input", () => {
