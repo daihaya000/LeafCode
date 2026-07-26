@@ -7,7 +7,7 @@ import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
-import { Badge, Button, GhostSelect, cx, timeAgo } from "@/components/ui";
+import { Badge, Button, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
@@ -20,46 +20,8 @@ import {
   type CostCurrency,
   type CostDisplayPrefs,
 } from "@/lib/currency";
-import {
-  readDefaultModel,
-  readDefaultModelFromServer,
-  writeDefaultModel,
-  writeDefaultModelToServer,
-} from "@/lib/default-model";
-import {
-  formatModelLabel,
-  sortModelOptions,
-  type ModelOption,
-} from "@/lib/model-options";
-import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import type { HealthDto, ProjectDto } from "@/lib/types";
-
-type ProviderResponse = {
-  all: { id: string; name: string; models: Record<string, { name?: string }> }[];
-  connected: string[];
-  default: Record<string, string>;
-};
-
-function DefaultModelIcon({ model }: { model: string }) {
-  const providerID = model ? model.split("::")[0] : "";
-  const src = providerIconSrcForOpencodeId(providerID);
-  const [broken, setBroken] = useState(false);
-  if (src && !broken) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        width={14}
-        height={14}
-        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-  return <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-faint" />;
-}
 
 type OrphanDto = {
   id: string;
@@ -129,55 +91,6 @@ export function SettingsView() {
     | { kind: "error" }
   >({ kind: "idle" });
   const autoRateRequestGeneration = useRef(0);
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const [defaultModel, setDefaultModel] = useState<string>("");
-  useEffect(() => {
-    void (async () => {
-      const serverValue = await readDefaultModelFromServer().catch(() => null);
-      const localValue = readDefaultModel();
-      // DB優先。DBにあればそれ、なければlocalStorage。
-      const resolved = serverValue ?? localValue ?? "";
-      setDefaultModel(resolved);
-      // DB値を localStorage へも反映（他画面/他ブラウザで開いた時の同期源）。
-      if (serverValue && serverValue !== localValue) {
-        writeDefaultModel(serverValue);
-      }
-      // DBに無くlocalStorageにある場合はDBへ保存（マイグレーション）。
-      if (serverValue == null && localValue) {
-        await writeDefaultModelToServer(localValue).catch(() => undefined);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await timedFetch("/api/opencode/provider");
-        if (!res.ok) return;
-        const data = (await res.json()) as ProviderResponse;
-        const connected = new Set(data.connected ?? []);
-        const options: ModelOption[] = [];
-        for (const p of data.all ?? []) {
-          if (connected.size > 0 && !connected.has(p.id)) continue;
-          for (const [mid, m] of Object.entries(p.models ?? {})) {
-            options.push({
-              value: `${p.id}::${mid}`,
-              label: formatModelLabel(m.name, mid),
-              group: p.name || p.id,
-            });
-          }
-        }
-        setModelOptions(sortModelOptions(options));
-        setDefaultModel((cur) => {
-          if (cur && options.some((o) => o.value === cur)) return cur;
-          return readDefaultModel() ?? cur ?? "";
-        });
-      } catch {
-        /* non-fatal */
-      }
-    })();
-  }, []);
-
   useEffect(() => {
     const prefs = readCostDisplayPrefs();
     setCostPrefs(prefs);
@@ -570,71 +483,6 @@ export function SettingsView() {
                     ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"
                     : "再起動には start-webui.bat（トレイホスト）経由の起動が必要です。"}
                 </p>
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted">
-                デフォルトモデル
-              </h2>
-              <p className="mb-3 text-xs text-faint">
-                新規タスク作成時の初期モデルです。各タスクで個別に上書きできます。
-              </p>
-              <div className="rounded-xl border border-border bg-surface px-4 py-3">
-                {modelOptions.length === 0 ? (
-                  <p className="text-sm text-faint">
-                    利用可能なモデルがありません。エンジン接続を確認してください。
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <GhostSelect
-                      value={defaultModel}
-                      aria-label="デフォルトモデル"
-                      icon={<DefaultModelIcon model={defaultModel} />}
-                      valueLabel={
-                        modelOptions.find((o) => o.value === defaultModel)?.label ??
-                        "選択してください"
-                      }
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setDefaultModel(v);
-                        writeDefaultModel(v || null);
-                        void writeDefaultModelToServer(v || null).catch(
-                          () => undefined,
-                        );
-                      }}
-                      className="min-w-56 flex-1"
-                    >
-                      {[...new Set(modelOptions.map((o) => o.group))].map((group) => (
-                        <optgroup key={group} label={group}>
-                          {modelOptions
-                            .filter((o) => o.group === group)
-                            .map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                        </optgroup>
-                      ))}
-                    </GhostSelect>
-                    {defaultModel && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="デフォルトをクリア"
-                        onClick={() => {
-                          setDefaultModel("");
-                          writeDefaultModel(null);
-                          void writeDefaultModelToServer(null).catch(
-                            () => undefined,
-                          );
-                        }}
-                      >
-                        クリア
-                      </Button>
-                    )}
-                  </div>
-                )}
               </div>
             </section>
 

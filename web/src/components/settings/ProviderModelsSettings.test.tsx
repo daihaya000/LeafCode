@@ -45,8 +45,12 @@ const PROVIDERS = [
 function mockGetJson(overrides?: {
   fail?: boolean;
   empty?: boolean;
+  defaultModel?: string | null;
 }) {
   getJson.mockImplementation((path: string) => {
+    if (path === "/api/settings/default-model") {
+      return Promise.resolve({ value: overrides?.defaultModel ?? null });
+    }
     if (path === "/api/extensions/provider-models") {
       if (overrides?.fail) {
         return Promise.reject(new Error("一覧を取得できません"));
@@ -61,6 +65,7 @@ function mockGetJson(overrides?: {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   getJson.mockReset();
   sendJson.mockReset();
   sendJson.mockResolvedValue({ ok: true });
@@ -94,6 +99,49 @@ describe("ProviderModelsSettings", () => {
     expect(anthropicSwitch.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("renders default model settings in provider/model tab content", async () => {
+    render(<ProviderModelsSettings />);
+
+    expect(
+      await screen.findByRole("heading", { name: "デフォルトモデル" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "デフォルトモデル" }),
+    ).toBeTruthy();
+  });
+
+  it("prefers the server-stored default model over localStorage on load", async () => {
+    localStorage.setItem("webui:default-model", "local::model");
+    mockGetJson({ defaultModel: "openai::gpt-5" });
+
+    render(<ProviderModelsSettings />);
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:default-model")).toBe("openai::gpt-5");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "デフォルトモデル" }),
+      ).toHaveProperty("value", "openai::gpt-5");
+    });
+  });
+
+  it("migrates a localStorage-only default model to the server on load", async () => {
+    localStorage.setItem("webui:default-model", "local::model");
+    sendJson.mockResolvedValue({ ok: true });
+
+    render(<ProviderModelsSettings />);
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/default-model",
+        { value: "local::model" },
+      );
+    });
+    expect(localStorage.getItem("webui:default-model")).toBe("local::model");
+  });
+
   it("expands a provider to show its models", async () => {
     render(<ProviderModelsSettings />);
 
@@ -106,7 +154,7 @@ describe("ProviderModelsSettings", () => {
     expect(expandBtn.getAttribute("aria-expanded")).toBe("true");
 
     // Models are now visible
-    expect(screen.getByText("GPT-5")).toBeTruthy();
+    expect(screen.getAllByText("GPT-5").length).toBeGreaterThan(0);
     expect(screen.getByText("GPT-4o")).toBeTruthy();
 
     // Model switches
@@ -253,7 +301,7 @@ describe("ProviderModelsSettings", () => {
       name: /OpenAI のモデルを展開/,
     });
     fireEvent.click(expandBtn);
-    await screen.findByText("GPT-5");
+    await waitFor(() => expect(screen.getAllByText("GPT-5").length).toBeGreaterThan(0));
 
     const openaiSwitch = screen.getByRole("switch", {
       name: "OpenAI を無効化",
@@ -263,7 +311,7 @@ describe("ProviderModelsSettings", () => {
     await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
 
     // The expanded models stay visible (no "読み込み中…" flash).
-    expect(screen.getByText("GPT-5")).toBeTruthy();
+    expect(screen.getAllByText("GPT-5").length).toBeGreaterThan(0);
     expect(screen.queryByText("読み込み中…")).toBeNull();
 
     // The provider switch flips optimistically.
@@ -298,7 +346,7 @@ describe("ProviderModelsSettings", () => {
       expect(gpt4oSwitch.getAttribute("aria-checked")).toBe("true"),
     );
     // Sibling model remains visible and unchanged.
-    expect(screen.getByText("GPT-5")).toBeTruthy();
+    expect(screen.getAllByText("GPT-5").length).toBeGreaterThan(0);
   });
 
   it("reorders providers and models with drag and drop", async () => {

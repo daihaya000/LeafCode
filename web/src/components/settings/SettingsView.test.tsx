@@ -72,6 +72,9 @@ function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
     if (path === "/api/extensions/agents") {
       return Promise.resolve({ agents: [AGENT_FIXTURE] });
     }
+    if (path === "/api/extensions/provider-models") {
+      return Promise.resolve({ providers: [] });
+    }
     if (path === "/api/workspaces/orphans") {
       return Promise.resolve(
         overrides?.orphans ?? { orphans: [], stray: [] },
@@ -137,6 +140,9 @@ function mockSettingsGetJson(roots: string[]) {
     if (path === "/api/roots") return Promise.resolve({ roots: [...roots] });
     if (path === "/api/extensions/agents") {
       return Promise.resolve({ agents: [AGENT_FIXTURE] });
+    }
+    if (path === "/api/extensions/provider-models") {
+      return Promise.resolve({ providers: [] });
     }
     if (path === "/api/workspaces/orphans") {
       return Promise.resolve({ orphans: [], stray: [] });
@@ -534,19 +540,11 @@ describe("SettingsView", () => {
     expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
   });
 
-  it("prefers the server-stored default model over localStorage on load", async () => {
+  it("loads default model settings only in the プロバイダー/モデル tab", async () => {
     localStorage.setItem("webui:default-model", "local::model");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/default-model") {
-        return Promise.resolve({ value: "server::model" });
-      }
-      return Promise.reject(new Error(`Unexpected: ${path}`));
-    });
-    // Re-apply the standard mock but override the default-model endpoint.
-    mockGetJson();
-    getJson.mockImplementation((path: string) => {
-      if (path === "/api/settings/default-model") {
-        return Promise.resolve({ value: "server::model" });
+        return Promise.resolve({ value: "openai::gpt-5" });
       }
       if (path === "/api/health") {
         return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
@@ -555,6 +553,18 @@ describe("SettingsView", () => {
       if (path === "/api/roots") return Promise.resolve({ roots: [] });
       if (path === "/api/extensions/agents") {
         return Promise.resolve({ agents: [AGENT_FIXTURE] });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              enabled: true,
+              models: [{ id: "gpt-5", name: "GPT-5", enabled: true }],
+            },
+          ],
+        });
       }
       if (path === "/api/workspaces/orphans") {
         return Promise.resolve({ orphans: [], stray: [] });
@@ -572,24 +582,17 @@ describe("SettingsView", () => {
     });
 
     render(<SettingsView />);
+    await screen.findByText("エンジン");
+    expect(screen.queryByRole("heading", { name: "デフォルトモデル" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "プロバイダー/モデル" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "デフォルトモデル" }),
+    ).toBeTruthy();
     await waitFor(() => {
-      expect(localStorage.getItem("webui:default-model")).toBe("server::model");
+      expect(localStorage.getItem("webui:default-model")).toBe("openai::gpt-5");
     });
   });
 
-  it("migrates a localStorage-only default model to the server on load", async () => {
-    localStorage.setItem("webui:default-model", "local::model");
-    mockGetJson(); // returns { value: null } for /api/settings/default-model
-    sendJson.mockResolvedValue({ ok: true });
-
-    render(<SettingsView />);
-    await waitFor(() => {
-      expect(sendJson).toHaveBeenCalledWith(
-        "PUT",
-        "/api/settings/default-model",
-        { value: "local::model" },
-      );
-    });
-    expect(localStorage.getItem("webui:default-model")).toBe("local::model");
-  });
 });
