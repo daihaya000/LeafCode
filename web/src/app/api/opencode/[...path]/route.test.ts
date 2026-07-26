@@ -44,6 +44,24 @@ function sessionPost(
   );
 }
 
+function sessionWritePost(
+  pathSegments: string[],
+  body: Record<string, unknown>,
+  directory = "C:\\\\repo",
+) {
+  return POST(
+    new NextRequest(
+      `http://localhost/api/opencode/${pathSegments.join("/")}?directory=${encodeURIComponent(directory)}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
+    { params: Promise.resolve({ path: pathSegments }) },
+  );
+}
+
 describe("POST /api/opencode/session/:id/prompt_async variant validation", () => {
   it("returns 400 without calling upstream for an invalid variant", async () => {
     const fetchMock = vi
@@ -196,6 +214,30 @@ describe("POST session image capability validation", () => {
     const response = await sessionPost("prompt_async", {
       model: { providerID: "openai", modelID: "vision" },
       parts,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid files" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it.each([
+    ["session/.../message", ["session", "session-1", "message"]],
+    ["session/.../prompt", ["session", "session-1", "prompt"]],
+    ["api/session/.../prompt", ["api", "session", "session-1", "prompt"]],
+  ])("rejects oversized images on %s before forwarding", async (_label, segments) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const hugeB64 = "A".repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3) + 4);
+    const response = await sessionWritePost(segments, {
+      model: { providerID: "openai", modelID: "vision" },
+      parts: [
+        {
+          type: "file",
+          mime: "image/png",
+          url: `data:image/png;base64,${hugeB64}`,
+        },
+      ],
     });
 
     expect(response.status).toBe(400);

@@ -31,7 +31,20 @@ function isLongRunningSyncMutation(method: string, pathname: string): boolean {
   if (method !== "POST") return false;
   return (
     /^\/session\/[^/]+\/command$/.test(pathname) ||
-    /^\/session\/[^/]+\/prompt$/.test(pathname)
+    /^\/session\/[^/]+\/prompt$/.test(pathname) ||
+    /^\/session\/[^/]+\/message$/.test(pathname) ||
+    /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
+  );
+}
+
+/** Session write paths that can carry image parts (R28 limits + capability). */
+function isImageGuardedWrite(pathname: string): boolean {
+  return (
+    /^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
+    /^\/session\/[^/]+\/command$/.test(pathname) ||
+    /^\/session\/[^/]+\/prompt$/.test(pathname) ||
+    /^\/session\/[^/]+\/message$/.test(pathname) ||
+    /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
   );
 }
 
@@ -94,7 +107,7 @@ function containsImagePart(body: unknown): boolean {
   );
 }
 
-// Match POST /api/tasks R28 limits so prompt_async / command cannot bypass them.
+// Match POST /api/tasks R28 limits so session write paths cannot bypass them.
 const MAX_IMAGE_COUNT = 10;
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -338,11 +351,7 @@ async function proxy(
   try {
     if (req.method !== "GET" && req.method !== "HEAD") {
       requestBody = await req.arrayBuffer();
-      if (
-        req.method === "POST" &&
-        (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
-          /^\/session\/[^/]+\/command$/.test(pathname))
-      ) {
+      if (req.method === "POST" && isImageGuardedWrite(pathname)) {
         try {
           const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;
           const variant =
@@ -358,11 +367,7 @@ async function proxy(
           ) {
             return NextResponse.json({ error: "invalid variant" }, { status: 400 });
           }
-          if (
-            (/^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
-              /^\/session\/[^/]+\/command$/.test(pathname)) &&
-            containsImagePart(body)
-          ) {
+          if (containsImagePart(body)) {
             if (!imagePartsWithinLimits(body)) {
               return NextResponse.json(
                 { error: "invalid files" },

@@ -35,6 +35,15 @@ function worktreeBase(): string {
 }
 
 /**
+ * Machine-local base for temporary_copy workspaces (`<dataDir>/copies/…`).
+ * Same rationale as worktreeBase: provisioned outside user roots, restored
+ * from manifests without re-calling addAllowedRoot.
+ */
+function copiesBase(): string {
+  return path.resolve(dataDir(), "copies");
+}
+
+/**
  * Phase 0: directory must be under an allowed root.
  * Symlinks: real path must also stay under an allowed root.
  */
@@ -64,9 +73,13 @@ export function assertAllowedDirectory(directory: string): {
     };
   }
 
-  // Provisioned git worktrees live under the machine-local data dir, outside
-  // every user-added root — accept that base implicitly (see worktreeBase).
-  const bases = [...roots, realPathOrResolved(worktreeBase())];
+  // Provisioned worktrees and temporary copies live under the machine-local
+  // data dir, outside every user-added root — accept those bases implicitly.
+  const bases = [
+    ...roots,
+    realPathOrResolved(worktreeBase()),
+    realPathOrResolved(copiesBase()),
+  ];
   const allowed = bases.some((root) => isUnder(root, resolved) && isUnder(root, real));
   if (!allowed) {
     return {

@@ -81,6 +81,23 @@ describe("assertAllowedDirectory", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("allows a temporary copy under <dataDir>/copies", () => {
+    const root = tempDir("allow-root-");
+    h.roots.push(root);
+    const copy = path.join(h.dataDir, "copies", "ws-copy-1");
+    fs.mkdirSync(copy, { recursive: true });
+    const res = assertAllowedDirectory(copy);
+    expect(res.ok).toBe(true);
+  });
+
+  it("still rejects temporary copy paths when no roots are configured", () => {
+    const copy = path.join(h.dataDir, "copies", "ws-copy-1");
+    fs.mkdirSync(copy, { recursive: true });
+    const res = assertAllowedDirectory(copy);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.status).toBe(403);
+  });
+
   it("still rejects worktree paths when no roots are configured", () => {
     const wt = path.join(h.dataDir, "worktrees", "proj-1", "wt");
     fs.mkdirSync(wt, { recursive: true });
@@ -89,7 +106,7 @@ describe("assertAllowedDirectory", () => {
     if (!res.ok) expect(res.status).toBe(403);
   });
 
-  it("rejects a dataDir path outside the worktrees base", () => {
+  it("rejects a dataDir path outside the worktrees and copies bases", () => {
     const root = tempDir("allow-root-");
     h.roots.push(root);
     const other = path.join(h.dataDir, "secrets");
