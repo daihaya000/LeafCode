@@ -527,17 +527,14 @@ describe("SettingsView", () => {
     expect(screen.queryByTestId("extensions-mcp")).toBeNull();
   });
 
-  it("routes the connectivity MCP section to the MCP tab", async () => {
+  it("does not duplicate MCP server settings in the connectivity tab", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
     fireEvent.click(screen.getByRole("button", { name: "接続" }));
-    expect(
-      await screen.findByText(/一覧と有効\/無効の切替は「MCP」タブ/),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "MCPタブを開く" }));
-    expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
+    await screen.findByText("スマホ / VPN アクセス");
+    expect(screen.queryByRole("heading", { name: "MCP サーバー" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "MCPタブを開く" })).toBeNull();
   });
 
   it("loads default model settings only in the プロバイダー/モデル tab", async () => {

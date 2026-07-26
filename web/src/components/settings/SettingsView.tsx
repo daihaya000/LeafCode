@@ -791,22 +791,6 @@ export function SettingsView() {
             </section>
 
             <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted">MCP サーバー</h2>
-              <div className="space-y-2 rounded-xl border border-border bg-surface px-4 py-3">
-                <p className="text-sm text-muted">
-                  MCP サーバーの一覧と有効/無効の切替は「MCP」タブで行えます。
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setActiveTab("mcp")}
-                >
-                  MCPタブを開く
-                </Button>
-              </div>
-            </section>
-
-            <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">Remote Workspace</h2>
               <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
                 未実装（501）。VPN + ローカルパスで代替してください。
