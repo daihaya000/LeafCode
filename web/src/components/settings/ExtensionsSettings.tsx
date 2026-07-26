@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { Badge, Button, cx } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
-import type {
-  McpDto,
-  PluginDto,
-  SkillDto,
-} from "@/lib/extensions";
+import type { McpDto, PluginDto, SkillDto } from "@/lib/extensions";
 import {
   skillDisplayLabel,
   skillHasJapaneseLabel,
@@ -81,9 +77,13 @@ function SkillRow({
 }) {
   const displayName =
     depth > 0
-      ? skillDisplayLabel({ ...item, name: item.id.split("/").pop() ?? item.name })
+      ? skillDisplayLabel({
+          ...item,
+          name: item.id.split("/").pop() ?? item.name,
+        })
       : skillDisplayLabel(item);
-  const showOriginalName = skillHasJapaneseLabel(item) && displayName !== item.name;
+  const showOriginalName =
+    skillHasJapaneseLabel(item) && displayName !== item.name;
   return (
     <li
       aria-busy={busy || undefined}
@@ -135,7 +135,10 @@ function SkillSubtree({
   const item = node.item;
   const displayName = isGroup ? node.name : skillDisplayLabel(item!);
   const showOriginalName =
-    !isGroup && item !== undefined && skillHasJapaneseLabel(item) && displayName !== item.name;
+    !isGroup &&
+    item !== undefined &&
+    skillHasJapaneseLabel(item) &&
+    displayName !== item.name;
   const isBusy = !isGroup && item !== undefined && busyId === item.id;
   const hasChildren = node.children.length > 0;
   const [expanded, setExpanded] = useState(false);
@@ -186,7 +189,9 @@ function SkillSubtree({
             )}
           </div>
           {showOriginalName && (
-            <p className="mt-0.5 font-mono text-[11px] text-faint">{item!.id}</p>
+            <p className="mt-0.5 font-mono text-[11px] text-faint">
+              {item!.id}
+            </p>
           )}
           {!isGroup && item!.description && (
             <p className="mt-0.5 text-xs break-words text-faint">
@@ -220,7 +225,10 @@ function SkillSubtree({
   );
 }
 
-function useExtensionSection<T extends { id: string }>(url: string, key: string) {
+function useExtensionSection<T extends { id: string }>(
+  url: string,
+  key: string,
+) {
   const [status, setStatus] = useState<SectionStatus>("loading");
   const [items, setItems] = useState<T[]>([]);
   const [truncated, setTruncated] = useState(false);
@@ -257,7 +265,9 @@ function useExtensionSection<T extends { id: string }>(url: string, key: string)
         await load();
         return true;
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "操作に失敗しました");
+        setActionError(
+          err instanceof Error ? err.message : "操作に失敗しました",
+        );
         return false;
       } finally {
         setBusyId(null);
@@ -396,7 +406,8 @@ function mcpStatusBadge(server: McpDto): {
   tone: "neutral" | "working" | "success" | "warning" | "danger";
   pulse?: boolean;
 } {
-  if (!server.engineAvailable) return { text: "エンジン停止中", tone: "neutral" };
+  if (!server.engineAvailable)
+    return { text: "エンジン停止中", tone: "neutral" };
   if (server.pendingRestart) return { text: "再起動で反映", tone: "warning" };
   switch (server.runtime) {
     case "connected":
@@ -422,7 +433,10 @@ export function ExtensionsSettings({
 }: {
   activeSection: ExtensionSection;
 }) {
-  const skills = useExtensionSection<SkillDto>("/api/extensions/skills", "skills");
+  const skills = useExtensionSection<SkillDto>(
+    "/api/extensions/skills",
+    "skills",
+  );
   const mcp = useExtensionSection<McpDto>("/api/extensions/mcp", "servers");
   const plugins = useExtensionSection<PluginDto>(
     "/api/extensions/plugins",
@@ -432,6 +446,21 @@ export function ExtensionsSettings({
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+
+  const [pluginFormOpen, setPluginFormOpen] = useState(false);
+  const [pluginFormBusy, setPluginFormBusy] = useState(false);
+  const [pluginFormMessage, setPluginFormMessage] = useState<string | null>(
+    null,
+  );
+  const [pluginFormError, setPluginFormError] = useState<string | null>(null);
+  const [editingPluginId, setEditingPluginId] = useState<string | null>(null);
+  const [newPlugin, setNewPlugin] = useState<{
+    name: string;
+    optionsJson: string;
+  }>({
+    name: "",
+    optionsJson: "",
+  });
 
   const loadSkills = skills.load;
   const loadMcp = mcp.load;
@@ -481,7 +510,9 @@ export function ExtensionsSettings({
       setRestartNeeded(false);
       await reloadAll();
     } catch (err) {
-      setRestartError(err instanceof Error ? err.message : "再起動に失敗しました");
+      setRestartError(
+        err instanceof Error ? err.message : "再起動に失敗しました",
+      );
     } finally {
       setRestarting(false);
     }
@@ -490,6 +521,65 @@ export function ExtensionsSettings({
   const onToggled = (ok: boolean) => {
     if (ok) setRestartNeeded(true);
   };
+
+  const resetPluginForm = useCallback(() => {
+    setEditingPluginId(null);
+    setNewPlugin({ name: "", optionsJson: "" });
+    setPluginFormError(null);
+  }, []);
+
+  const editPlugin = useCallback((p: PluginDto) => {
+    setPluginFormOpen(true);
+    setEditingPluginId(p.id);
+    setPluginFormMessage(null);
+    setPluginFormError(null);
+    // Options are never sent to the client (they may hold credentials); a
+    // blank field means "keep the existing value unchanged" on save.
+    setNewPlugin({ name: p.name, optionsJson: "" });
+  }, []);
+
+  const savePlugin = useCallback(async () => {
+    const name = newPlugin.name.trim();
+    const trimmedOptions = newPlugin.optionsJson.trim();
+    let options: unknown;
+    if (trimmedOptions) {
+      try {
+        options = JSON.parse(trimmedOptions);
+      } catch {
+        setPluginFormError("オプションはJSON形式で入力してください");
+        return;
+      }
+    }
+    setPluginFormBusy(true);
+    setPluginFormError(null);
+    setPluginFormMessage(null);
+    try {
+      const body = { name, options };
+      if (editingPluginId) {
+        await sendJson(
+          "PUT",
+          `/api/extensions/plugins/${encodeURIComponent(editingPluginId)}`,
+          body,
+        );
+      } else {
+        await sendJson("POST", "/api/extensions/plugins", body);
+      }
+      setPluginFormMessage(
+        editingPluginId
+          ? "更新しました。OpenCode の再起動後に反映されます。"
+          : "登録しました。OpenCode の再起動後に利用できます。",
+      );
+      resetPluginForm();
+      setRestartNeeded(true);
+      await loadPlugins();
+    } catch (err) {
+      setPluginFormError(
+        err instanceof Error ? err.message : "保存に失敗しました",
+      );
+    } finally {
+      setPluginFormBusy(false);
+    }
+  }, [editingPluginId, loadPlugins, newPlugin, resetPluginForm]);
 
   return (
     <div className="space-y-8">
@@ -570,7 +660,9 @@ export function ExtensionsSettings({
           error={mcp.error}
           actionError={mcp.actionError}
           onRetry={() => void mcp.load()}
-          emptyText={'MCP サーバーが設定されていません。~/.config/opencode/opencode.jsonc の "mcp" オブジェクトに追加してください。'}
+          emptyText={
+            'MCP サーバーが設定されていません。~/.config/opencode/opencode.jsonc の "mcp" オブジェクトに追加してください。'
+          }
           itemCount={mcp.items.length}
         >
           {mcp.items.map((server) => {
@@ -622,61 +714,160 @@ export function ExtensionsSettings({
       )}
 
       {activeSection === "plugins" && (
-        <SectionShell
-          headingId="extensions-plugins"
-          title="プラグイン"
-          hint="設定済みプラグイン（opencode.jsonc）とローカル自動読込（plugin/*.js|ts）を一覧しています。"
-          status={plugins.status}
-          error={plugins.error}
-          actionError={plugins.actionError}
-          onRetry={() => void plugins.load()}
-          emptyText="プラグインがありません。opencode.jsonc の plugin 配列、または ~/.config/opencode/plugin/ への .js/.ts 配置で追加できます。"
-          itemCount={plugins.items.length}
-        >
-          {plugins.items.map((p) => (
-            <li
-              key={p.id}
-              aria-busy={plugins.busyId === p.id || undefined}
-              className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="min-w-0 truncate font-mono text-sm font-medium">
-                    {p.name}
-                  </p>
-                  <Badge tone="neutral">
-                    {p.kind === "config" ? "設定済み" : "ローカル自動読込"}
-                  </Badge>
-                  <Badge tone={p.enabled ? "success" : "neutral"}>
-                    {p.enabled ? "有効" : "無効"}
-                  </Badge>
-                  {p.hasOptions && <Badge tone="neutral">オプション付き</Badge>}
-                  {p.managedByWebui && <Badge tone="warning">WebUI 管理</Badge>}
-                </div>
-                {p.managedByWebui && (
-                  <p className="mt-0.5 text-[11px] text-faint">
-                    無効状態は WebUI のローカル管理情報です。opencode.jsonc
-                    を手動で変更した場合は設定が優先されます。
+        <>
+          <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium text-muted">
+                  {editingPluginId ? "プラグイン編集" : "新規プラグイン登録"}
+                </h3>
+                <p className="mt-1 text-xs text-faint">
+                  {editingPluginId
+                    ? "オプションは機密情報を含む可能性があるため表示されません。空欄のままにすると既存の値を維持します。"
+                    : "opencode.jsonc の plugin 配列に npm パッケージ名を追加します。オプション（JSON）は任意です。"}
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (pluginFormOpen) resetPluginForm();
+                  setPluginFormOpen((v) => !v);
+                }}
+              >
+                {pluginFormOpen ? "閉じる" : "登録"}
+              </Button>
+            </div>
+            {pluginFormOpen && (
+              <div className="mt-4 grid gap-3">
+                <label className="grid gap-1 text-xs text-faint">
+                  プラグイン名 / npm指定
+                  <input
+                    value={newPlugin.name}
+                    onChange={(e) =>
+                      setNewPlugin((v) => ({ ...v, name: e.target.value }))
+                    }
+                    placeholder="opencode-my-plugin@latest"
+                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs text-faint">
+                  オプション（JSON、任意
+                  {editingPluginId ? "・空欄で既存値を維持" : ""}）
+                  <textarea
+                    value={newPlugin.optionsJson}
+                    onChange={(e) =>
+                      setNewPlugin((v) => ({
+                        ...v,
+                        optionsJson: e.target.value,
+                      }))
+                    }
+                    placeholder={'{ "apiKey": "..." }'}
+                    rows={3}
+                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 font-mono text-sm text-muted outline-none focus:border-primary"
+                  />
+                </label>
+                {pluginFormError && (
+                  <p role="alert" className="text-xs text-danger">
+                    {pluginFormError}
                   </p>
                 )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    disabled={pluginFormBusy}
+                    onClick={() => void savePlugin()}
+                  >
+                    {pluginFormBusy
+                      ? "保存中…"
+                      : editingPluginId
+                        ? "設定を保存"
+                        : "プラグインを登録"}
+                  </Button>
+                  {editingPluginId && (
+                    <Button variant="ghost" size="sm" onClick={resetPluginForm}>
+                      新規登録に戻す
+                    </Button>
+                  )}
+                  {pluginFormMessage && (
+                    <p className="text-xs text-success">{pluginFormMessage}</p>
+                  )}
+                </div>
               </div>
-              <ExtensionSwitch
-                name={p.name}
-                enabled={p.enabled}
-                busy={plugins.busyId === p.id}
-                onToggle={() =>
-                  void plugins
-                    .toggle(
-                      p,
-                      `/api/extensions/plugins/${encodeURIComponent(p.id)}`,
-                      !p.enabled,
-                    )
-                    .then(onToggled)
-                }
-              />
-            </li>
-          ))}
-        </SectionShell>
+            )}
+          </div>
+          <SectionShell
+            headingId="extensions-plugins"
+            title="プラグイン"
+            hint="設定済みプラグイン（opencode.jsonc）とローカル自動読込（plugin/*.js|ts）を一覧しています。"
+            status={plugins.status}
+            error={plugins.error}
+            actionError={plugins.actionError}
+            onRetry={() => void plugins.load()}
+            emptyText="プラグインがありません。opencode.jsonc の plugin 配列、または ~/.config/opencode/plugin/ への .js/.ts 配置で追加できます。"
+            itemCount={plugins.items.length}
+          >
+            {plugins.items.map((p) => {
+              const editable = p.kind === "config" && !p.managedByWebui;
+              return (
+                <li
+                  key={p.id}
+                  aria-busy={plugins.busyId === p.id || undefined}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 truncate font-mono text-sm font-medium">
+                        {p.name}
+                      </p>
+                      <Badge tone="neutral">
+                        {p.kind === "config" ? "設定済み" : "ローカル自動読込"}
+                      </Badge>
+                      <Badge tone={p.enabled ? "success" : "neutral"}>
+                        {p.enabled ? "有効" : "無効"}
+                      </Badge>
+                      {p.hasOptions && (
+                        <Badge tone="neutral">オプション付き</Badge>
+                      )}
+                      {p.managedByWebui && (
+                        <Badge tone="warning">WebUI 管理</Badge>
+                      )}
+                    </div>
+                    {p.managedByWebui && (
+                      <p className="mt-0.5 text-[11px] text-faint">
+                        無効状態は WebUI のローカル管理情報です。opencode.jsonc
+                        を手動で変更した場合は設定が優先されます。
+                      </p>
+                    )}
+                  </div>
+                  {editable && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => editPlugin(p)}
+                    >
+                      編集
+                    </Button>
+                  )}
+                  <ExtensionSwitch
+                    name={p.name}
+                    enabled={p.enabled}
+                    busy={plugins.busyId === p.id}
+                    onToggle={() =>
+                      void plugins
+                        .toggle(
+                          p,
+                          `/api/extensions/plugins/${encodeURIComponent(p.id)}`,
+                          !p.enabled,
+                        )
+                        .then(onToggled)
+                    }
+                  />
+                </li>
+              );
+            })}
+          </SectionShell>
+        </>
       )}
     </div>
   );

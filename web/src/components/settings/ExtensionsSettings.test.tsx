@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PluginDto } from "@/lib/extensions";
 import { ExtensionsSettings } from "./ExtensionsSettings";
 
 const { getJson, sendJson, timedFetch } = vi.hoisted(() => ({
@@ -51,7 +52,7 @@ const SERVERS = [
   },
 ];
 
-const PLUGINS = [
+const PLUGINS: PluginDto[] = [
   { id: "config:aaaaaaaaaaaaaaaa.0", name: "plug-a", kind: "config", enabled: true },
   { id: "local:x.js", name: "x.js", kind: "local", enabled: true },
 ];
@@ -60,6 +61,7 @@ function mockGetJson(overrides?: {
   skillsFail?: boolean;
   emptySkills?: boolean;
   skillsTruncated?: boolean;
+  plugins?: typeof PLUGINS;
   extraSkills?: {
     id: string;
     name: string;
@@ -86,7 +88,7 @@ function mockGetJson(overrides?: {
       return Promise.resolve({ servers: SERVERS });
     }
     if (path === "/api/extensions/plugins") {
-      return Promise.resolve({ plugins: PLUGINS });
+      return Promise.resolve({ plugins: overrides?.plugins ?? PLUGINS });
     }
     if (path === "/api/health") {
       return Promise.resolve({ opencode: { ok: true } });
@@ -200,6 +202,82 @@ describe("ExtensionsSettings", () => {
     expect(screen.getByRole("heading", { name: "プラグイン" })).toBeTruthy();
     expect(await screen.findByText("設定済み")).toBeTruthy();
     expect(screen.getByText("ローカル自動読込")).toBeTruthy();
+  });
+
+  it("registers a configured plugin with JSON options", async () => {
+    render(<ExtensionsSettings activeSection="plugins" />);
+    fireEvent.click(await screen.findByRole("button", { name: "登録" }));
+
+    fireEvent.change(screen.getByLabelText("プラグイン名 / npm指定"), {
+      target: { value: "opencode-new-plugin@latest" },
+    });
+    fireEvent.change(screen.getByLabelText(/オプション/), {
+      target: { value: '{ "scope": "team" }' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "プラグインを登録" }));
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/extensions/plugins", {
+      name: "opencode-new-plugin@latest",
+      options: { scope: "team" },
+    });
+    expect(
+      await screen.findByText("変更を反映するには OpenCode の再起動が必要です。"),
+    ).toBeTruthy();
+  });
+
+  it("shows a client-side error for invalid plugin options JSON", async () => {
+    render(<ExtensionsSettings activeSection="plugins" />);
+    fireEvent.click(await screen.findByRole("button", { name: "登録" }));
+    fireEvent.change(screen.getByLabelText("プラグイン名 / npm指定"), {
+      target: { value: "opencode-new-plugin@latest" },
+    });
+    fireEvent.change(screen.getByLabelText(/オプション/), {
+      target: { value: "{" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "プラグインを登録" }));
+
+    expect(await screen.findByText("オプションはJSON形式で入力してください")).toBeTruthy();
+    expect(sendJson).not.toHaveBeenCalled();
+  });
+
+  it("edits only active configured plugins and keeps options blank", async () => {
+    mockGetJson({
+      plugins: [
+        ...PLUGINS,
+        {
+          id: "config:bbbbbbbbbbbbbbbb.1",
+          name: "disabled-plug",
+          kind: "config",
+          enabled: false,
+          managedByWebui: true,
+        },
+      ],
+    });
+    render(<ExtensionsSettings activeSection="plugins" />);
+    const editButtons = await screen.findAllByRole("button", { name: "編集" });
+    expect(editButtons).toHaveLength(1);
+    fireEvent.click(editButtons[0]);
+
+    expect(screen.getByRole("heading", { name: "プラグイン編集" })).toBeTruthy();
+    expect(screen.getByLabelText("プラグイン名 / npm指定")).toHaveProperty(
+      "value",
+      "plug-a",
+    );
+    expect(screen.getByLabelText(/オプション/)).toHaveProperty("value", "");
+
+    fireEvent.change(screen.getByLabelText("プラグイン名 / npm指定"), {
+      target: { value: "plug-a-renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "設定を保存" }));
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+    expect(sendJson).toHaveBeenCalledWith(
+      "PUT",
+      "/api/extensions/plugins/config%3Aaaaaaaaaaaaaaaaa.0",
+      { name: "plug-a-renamed", options: undefined },
+    );
   });
 
   it("toggles a skill and shows a single restart banner", async () => {
