@@ -10,7 +10,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
-import { GET } from "./route";
+import { GET, POST } from "./route";
 
 let base: string;
 let data: string;
@@ -58,5 +58,56 @@ describe("GET /api/extensions/plugins", () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).not.toContain(base);
+  });
+});
+
+describe("POST /api/extensions/plugins", () => {
+  it("registers a plugin with options", async () => {
+    fs.writeFileSync(path.join(base, "opencode.jsonc"), "{}\n");
+
+    const res = await POST(
+      new Request("http://localhost/api/extensions/plugins", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "opencode-new-plugin",
+          options: { apiKey: "abc" },
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, requiresRestart: true });
+    const config = JSON.parse(
+      fs.readFileSync(path.join(base, "opencode.jsonc"), "utf8"),
+    );
+    expect(config.plugin).toEqual([["opencode-new-plugin", { apiKey: "abc" }]]);
+  });
+
+  it("rejects a non-string name with 400", async () => {
+    fs.writeFileSync(path.join(base, "opencode.jsonc"), "{}\n");
+
+    const res = await POST(
+      new Request("http://localhost/api/extensions/plugins", {
+        method: "POST",
+        body: JSON.stringify({ name: 123 }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns a safe error message for a blank name", async () => {
+    fs.writeFileSync(path.join(base, "opencode.jsonc"), "{}\n");
+
+    const res = await POST(
+      new Request("http://localhost/api/extensions/plugins", {
+        method: "POST",
+        body: JSON.stringify({ name: "   " }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("プラグイン名を入力してください");
   });
 });

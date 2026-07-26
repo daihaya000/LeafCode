@@ -41,6 +41,32 @@ export function parseIconBody(
   return { icon: typeof icon === "string" ? icon : undefined };
 }
 
+/**
+ * Parse a configured-plugin add/update request body:
+ * `{ name: string; options?: object }`. Further validation (blank name,
+ * non-object options) happens in the service layer, which returns
+ * user-facing errors via ExtensionsError.
+ */
+export function parsePluginBody(
+  body: unknown,
+): { name: string; options?: unknown } | { error: NextResponse } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return {
+      error: NextResponse.json({ error: "invalid body" }, { status: 400 }),
+    };
+  }
+  const { name, options } = body as { name?: unknown; options?: unknown };
+  if (typeof name !== "string") {
+    return {
+      error: NextResponse.json(
+        { error: "name は文字列で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  return { name, options };
+}
+
 /** Parse a toggle request body; the only accepted input shape. */
 export function parseEnabledBody(
   body: unknown,

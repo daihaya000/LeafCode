@@ -12,7 +12,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
-import { PATCH } from "./route";
+import { PATCH, PUT } from "./route";
 import { GET } from "../route";
 
 let base: string;
@@ -23,6 +23,16 @@ function patch(id: string, body: unknown): Promise<Response> {
     new NextRequest(
       `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
       { method: "PATCH", body: JSON.stringify(body) },
+    ),
+    { params: Promise.resolve({ id }) },
+  );
+}
+
+function put(id: string, body: unknown): Promise<Response> {
+  return PUT(
+    new NextRequest(
+      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
+      { method: "PUT", body: JSON.stringify(body) },
     ),
     { params: Promise.resolve({ id }) },
   );
@@ -110,5 +120,58 @@ describe("PATCH /api/extensions/plugins/[id]", () => {
 
     const res = await patch("local:x.js", { enabled: false });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("PUT /api/extensions/plugins/[id]", () => {
+  it("renames a configured plugin", async () => {
+    const initial = await listPluginIds();
+    const target = initial.find((p) => p.name === "plug-a")!;
+
+    const res = await put(target.id, { name: "plug-a-renamed" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, requiresRestart: true });
+
+    const config = parse(
+      fs.readFileSync(path.join(base, "opencode.jsonc"), "utf8"),
+    ) as { plugin: string[] };
+    expect(config.plugin).toEqual(["plug-a-renamed", "plug-b"]);
+  });
+
+  it("sets options via [name, options] tuple", async () => {
+    const initial = await listPluginIds();
+    const target = initial.find((p) => p.name === "plug-a")!;
+
+    const res = await put(target.id, {
+      name: "plug-a",
+      options: { token: "s3cret" },
+    });
+    expect(res.status).toBe(200);
+
+    const config = parse(
+      fs.readFileSync(path.join(base, "opencode.jsonc"), "utf8"),
+    ) as { plugin: unknown[] };
+    expect(config.plugin).toEqual([["plug-a", { token: "s3cret" }], "plug-b"]);
+  });
+
+  it("returns 400 for a non-string name", async () => {
+    const initial = await listPluginIds();
+    const target = initial.find((p) => p.name === "plug-a")!;
+    const res = await put(target.id, { name: 123 });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns a safe error message for a blank name", async () => {
+    const initial = await listPluginIds();
+    const target = initial.find((p) => p.name === "plug-a")!;
+    const res = await put(target.id, { name: "" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("プラグイン名を入力してください");
+  });
+
+  it("returns 404 for an unknown configured id", async () => {
+    const res = await put("config:0000000000000000.0", { name: "x" });
+    expect(res.status).toBe(404);
   });
 });

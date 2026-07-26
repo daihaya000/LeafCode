@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   extensionsErrorResponse,
   parseEnabledBody,
+  parsePluginBody,
 } from "@/lib/opencode-extensions/http";
-import { setPluginEnabled } from "@/lib/opencode-extensions/plugins";
+import {
+  setPluginEnabled,
+  updateConfiguredPlugin,
+} from "@/lib/opencode-extensions/plugins";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,5 +25,21 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (err) {
     return extensionsErrorResponse(err);
+  }
+}
+
+export async function PUT(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  const body = await req.json().catch(() => undefined);
+  const parsed = parsePluginBody(body);
+  if ("error" in parsed) return parsed.error;
+  try {
+    await updateConfiguredPlugin(id, parsed);
+    return NextResponse.json({ ok: true, requiresRestart: true });
+  } catch (err) {
+    return extensionsErrorResponse(err, "プラグインを更新できません");
   }
 }
