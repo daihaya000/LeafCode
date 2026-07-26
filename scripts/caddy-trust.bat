@@ -1,4 +1,6 @@
 @echo off
+rem KEEP THIS FILE ASCII-ONLY (bytes 0x00-0x7F, CRLF, no BOM).
+rem See docs\specs\bat-encoding-safety.md
 :: Install Caddy's local root CA into the Windows trust store (one-time).
 :: Run as Administrator so browsers stop warning about the local HTTPS cert.
 ::

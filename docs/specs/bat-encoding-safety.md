@@ -6,7 +6,7 @@
 
 原因は**`.bat` ファイル本体に非 ASCII バイト（日本語）が含まれていること**。cmd.exe はバッチファイルをコードページ変換しながら 1 行ずつ読み進めるが、読み取り位置の管理がバイト数と変換後の文字数でずれるため、**マルチバイト文字を含む行の直後から行の途中に飛び込んで実行する**。結果として意味のない断片がコマンドとして実行され、正しい行がスキップされる。
 
-現状のファイル状態（計測値）:
+事故当時のファイル状態（計測値・修正前）:
 
 | ファイル | 非 ASCII バイト数 | 備考 |
 | --- | ---: | --- |
@@ -14,6 +14,8 @@
 | `start-webui.bat` | 105 | `rem` コメント内のみ。`chcp` なし |
 | `build.bat` | 0 | 正常 |
 | `scripts/*.bat` | 0 | 正常 |
+
+**現状（修正後）:** 追跡対象の全 `*.bat` / `*.cmd` は非 ASCII 0・BOM なし・CRLF。日本語は `scripts/setup-messages/*.txt`。回帰は `host/src/bat-encoding.test.js` と `npm run test:encoding` が担保する。
 
 ### 実機再現結果
 
@@ -142,10 +144,13 @@ scripts/setup-messages/*.txt text eol=crlf
 
 `host` の `npm test`（`node --test src/*.test.js`）で検証する。
 
-1. `host/src/bat-encoding.test.js`（新規）
-   - `git ls-files` で列挙した全 `*.bat` / `*.cmd` が「非 ASCII バイト 0 件・BOM なし・LF 単独なし・末尾改行あり」を満たす
+1. `host/src/bat-encoding.test.js`
+   - tracked / on-disk の全 `*.bat` / `*.cmd` が「非 ASCII バイト 0 件・BOM なし・LF 単独なし・末尾 CRLF」を満たす
    - `scripts/setup-messages/*.txt` が「妥当な UTF-8・BOM なし・CRLF」を満たす
    - `setup.bat` の `call :say <key>` の全キーにファイルが存在し、逆に未参照のメッセージファイルが無い
+   - README / 本仕様の ` ```bat ` フェンスが ASCII のみ
+   - `git archive` 展開物でも bat / messages が同契約を満たす（GitHub ZIP 配布向け）
+   - `quickaccess.ts` が PowerShell に UTF-8 stdout を強制している
 2. `host/src/setup-bat.test.js`（既存を拡張）
    - サンドボックスへ `scripts/setup-messages/` をコピーする
    - `run()` に起動コードページ指定を追加し、**CP 932 / 437 / 65001 で成功パスを実行**して次を確認する

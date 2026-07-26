@@ -43,6 +43,10 @@ function pathsFromJumplist(filePath: string): string[] {
   return found;
 }
 
+const PS_UTF8 =
+  "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); " +
+  "$OutputEncoding = [Console]::OutputEncoding; ";
+
 function resolveLnkTargets(linksDir: string): QuickAccessEntry[] {
   if (!fs.existsSync(linksDir)) return [];
   // R33付記: WScript.Shell via PowerShell is the reliable way to resolve .lnk on Windows
@@ -52,6 +56,7 @@ function resolveLnkTargets(linksDir: string): QuickAccessEntry[] {
     if (files.length === 0) return [];
     
     const script = `
+${PS_UTF8}
 $sh = New-Object -ComObject WScript.Shell
 $out = @()
 Get-ChildItem -LiteralPath '${linksDir.replace(/'/g, "''")}' -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
@@ -134,6 +139,7 @@ function runPsJson(script: string): Promise<unknown> {
 async function listLinksFolder(): Promise<QuickAccessEntry[]> {
   const linksDir = path.join(os.homedir(), "Links").replace(/'/g, "''");
   const script = `
+${PS_UTF8}
 $out = @()
 $dir = '${linksDir}'
 if (Test-Path -LiteralPath $dir) {

@@ -10,7 +10,7 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ### 文字化け・エンコード
 
-`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`setup.bat` は英語の要約行（`[Setup] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `setup.bat` は完走します。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
+`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`setup.bat` は英語の要約行（`[Setup] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `setup.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
 
 ### production build
 
@@ -90,9 +90,11 @@ node src\index.js
 
 VPN 経由で公開する場合、トレイ常駐ホストが **Caddy 逆プロキシを管理**できます。
 
+任意で Caddyfile の場所を変える例（`.bat` 内は ASCII のみ。日本語は書かない）:
+
 ```bat
 set OPENCODE_WEBUI_CADDY=1
-rem 任意: Caddyfile の場所を変更
+rem optional: override Caddyfile path
 set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
 start-webui.bat
 ```
@@ -106,10 +108,11 @@ start-webui.bat
 
 `deploy/Caddyfile` は既定で **HTTPS(:8443)** を `tls internal`（Caddy のローカル CA・自己署名）で配信します。起動時に UAC が出ないよう `skip_install_trust` を付けているため、証明書の信頼登録は下記スクリプトで**手動 1 回だけ**行います。
 
+1) CA を Windows の信頼ストアへ登録（管理者で実行 / 1 回だけ）  
+2) スマホ / LAN からアクセスするならファイアウォールを開放（管理者）
+
 ```bat
-rem 1) CA を Windows の信頼ストアへ登録（管理者で実行 / 1回だけ）
 scripts\caddy-trust.bat
-rem 2) スマホ/LAN からアクセスするならファイアウォールを開放（管理者）
 scripts\allow-firewall-8443.bat
 ```
 
@@ -122,8 +125,9 @@ scripts\allow-firewall-8443.bat
 
 `tls internal` は **Caddy 自身のローカル CA** で署名するため、その CA を知らない端末では必ず証明書警告になります（設定ミスではありません）。端末側にルート CA を入れると解消します。Caddyfile の `:8080` ブロックがルート CA を配布します（公開鍵証明書のみ。秘密鍵 `root.key` は同じフォルダにありますが配信されません）。
 
+配布用ポートを開放（管理者 / 1 回だけ）:
+
 ```bat
-rem 配布用ポートを開放（管理者 / 1回だけ）
 scripts\allow-firewall-8080.bat
 ```
 

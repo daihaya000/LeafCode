@@ -1,4 +1,6 @@
 @echo off
+rem KEEP THIS FILE ASCII-ONLY (bytes 0x00-0x7F, CRLF, no BOM).
+rem See docs\specs\bat-encoding-safety.md
 :: Allow OpenCode WebUI via Caddy HTTPS (port 8443) through Windows Firewall.
 netsh advfirewall firewall delete rule name="OpenCode WebUI Caddy HTTPS" >nul 2>&1
 netsh advfirewall firewall add rule name="OpenCode WebUI Caddy HTTPS" dir=in action=allow protocol=TCP localport=8443 profile=any enable=yes

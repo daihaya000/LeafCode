@@ -1,0 +1,22 @@
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# cmd.exe misparses non-ASCII and LF-only batches. Keep these ASCII + CRLF.
+# See docs/specs/bat-encoding-safety.md and host/src/bat-encoding.test.js
+[*.{bat,cmd}]
+charset = utf-8
+end_of_line = crlf
+
+[*.{ps1,vbs}]
+charset = utf-8
+end_of_line = crlf
+
+[scripts/setup-messages/*.txt]
+charset = utf-8
+end_of_line = crlf

@@ -1,4 +1,6 @@
 @echo off
+rem KEEP THIS FILE ASCII-ONLY (bytes 0x00-0x7F, CRLF, no BOM).
+rem See docs\specs\bat-encoding-safety.md
 :: Fix LAN access for OpenCode WebUI (port 3000)
 :: Run as Administrator
 

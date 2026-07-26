@@ -9,9 +9,12 @@
 - トレイ host（`start-webui.bat`）が既に WebUI を起動している。エージェント側で追加起動しない
 - 検証は `tsc` / `eslint` / `vitest`、または既存 host（例: `http://127.0.0.1:3000`）への短いヘルスチェックに限定する
 
-## Windows バッチファイル
+## Windows バッチファイル / エンコード
 
 - `.bat` / `.cmd` に非 ASCII 文字（日本語・全角記号）を一切書かない（`rem` コメント内も禁止。cmd.exe が読み取り位置を誤って行の途中から実行するため）
+- README / docs の ` ```bat ` 例も同様に ASCII のみ（日本語説明はフェンス外へ）
 - ユーザー向け日本語は `scripts/setup-messages/*.txt` に置き `type` で出力する
-- 改行は CRLF、BOM なし
+- 改行は CRLF、BOM なし（`.gitattributes` + `.editorconfig`）
+- PowerShell から JSON/パスを読むときは stdout を UTF-8 にする（`[Console]::OutputEncoding`）。一時 `.ps1` を書く場合は UTF-8 **BOM 付き**
+- 配布前: `npm run test:encoding`（`host/src/bat-encoding.test.js`）を通す
 - `host/src/bat-encoding.test.js` がこれを検証する

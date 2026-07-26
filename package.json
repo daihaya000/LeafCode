@@ -6,6 +6,7 @@
     "build": "npm --prefix web run build",
     "start": "npm --prefix web run start -- --hostname 127.0.0.1 --port 3000",
     "host": "npm --prefix host start",
-    "smoke": "node scripts/smoke-api.mjs"
+    "smoke": "node scripts/smoke-api.mjs",
+    "test:encoding": "npm --prefix host run test:encoding"
   }
 }
