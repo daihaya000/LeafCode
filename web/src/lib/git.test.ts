@@ -7,7 +7,7 @@ vi.mock("./paths", () => ({
   dataDir: () => h.dataDir,
 }));
 
-import { assertSafeBranchName, gitWorktreeAdminDir, removeWorktree, runGit } from "./git";
+import { assertSafeBranchName, gitWorktreeAdminDir, gitCommitFileDiff, removeWorktree, runGit } from "./git";
 
 describe("assertSafeBranchName", () => {
   it("accepts ordinary local and remote branch names", () => {
@@ -69,6 +69,20 @@ describe("removeWorktree path guard", () => {
         worktreePath: worktreeBase,
       }),
     ).rejects.toThrow("protected root");
+  });
+});
+
+describe("gitCommitFileDiff pathspec guard", () => {
+  it("rejects magic glob pathspecs", async () => {
+    await expect(
+      gitCommitFileDiff("C:\\repo", "abc1234", ":(glob)*"),
+    ).rejects.toThrow("invalid file path");
+  });
+
+  it("rejects wildcard file paths", async () => {
+    await expect(
+      gitCommitFileDiff("C:\\repo", "abc1234", "src/**"),
+    ).rejects.toThrow("invalid file path");
   });
 });
 

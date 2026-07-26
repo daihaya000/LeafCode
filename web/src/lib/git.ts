@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { gitPathspecError } from "./git-pathspec";
 import { dataDir } from "./paths";
 
 /**
@@ -441,10 +442,8 @@ export async function gitCommitFileDiff(
   assertSafeCommitHash(hash);
   const normalized = filePath.replace(/\\/g, "/");
   if (
-    !normalized ||
-    normalized.includes("\0") ||
     normalized.startsWith("/") ||
-    normalized.includes("..")
+    gitPathspecError(normalized) !== null
   ) {
     throw new Error("invalid file path");
   }

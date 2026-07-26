@@ -75,7 +75,6 @@ export async function provisionWorkspace(input: {
   isolation: Isolation;
   baseBranch?: string;
   branch?: string;
-  absolutePath?: string;
 }): Promise<{ workspace: WorkspaceRow; note?: string }> {
   const project = getDb()
     .prepare("SELECT * FROM projects WHERE id = ?")
@@ -98,9 +97,10 @@ export async function provisionWorkspace(input: {
           ? "Dev Container (host)"
           : path.basename(project.root_path));
 
-  let absolutePath = input.absolutePath
-    ? path.resolve(input.absolutePath)
-    : path.resolve(project.root_path);
+  // Never trust a client-supplied absolutePath. current_folder / devcontainer
+  // bind to the project root; git_worktree / temporary_copy set their own
+  // provisioned paths below (mirrors restoreProjectFromManifest).
+  let absolutePath = path.resolve(project.root_path);
   let worktreePath: string | undefined;
   const workspaceId = crypto.randomUUID();
   let note: string | undefined;
@@ -108,7 +108,6 @@ export async function provisionWorkspace(input: {
   if (isolation === "devcontainer") {
     const info = detectDevcontainer(project.root_path);
     if (!info.present) throw new ServiceError(info.message, 400);
-    absolutePath = path.resolve(project.root_path);
     note = info.message;
   }
 

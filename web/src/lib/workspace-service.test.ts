@@ -8,6 +8,7 @@ const {
   setWorkspaceStatus,
   removeAllowedRoot,
   addAllowedRoot,
+  createWorkspace,
   removeWorktree,
   runGit,
   createTemporaryCopy,
@@ -24,6 +25,7 @@ const {
   setWorkspaceStatus: vi.fn(),
   removeAllowedRoot: vi.fn(),
   addAllowedRoot: vi.fn(),
+  createWorkspace: vi.fn(),
   removeWorktree: vi.fn(),
   runGit: vi.fn(),
   createTemporaryCopy: vi.fn(),
@@ -42,7 +44,7 @@ vi.mock("./db", () => ({
   setWorkspaceStatus,
   removeAllowedRoot,
   addAllowedRoot,
-  createWorkspace: vi.fn(),
+  createWorkspace,
   deleteProject: vi.fn(),
   listProjects: vi.fn(),
   listWorkspaces: vi.fn(),
@@ -135,6 +137,36 @@ beforeEach(() => {
   runGit.mockResolvedValue({ stdout: "", stderr: "" });
   ocServer.mockResolvedValue({});
   assertAllowedDirectory.mockReturnValue({ ok: true });
+});
+
+describe("provisionWorkspace current_folder path binding", () => {
+  it("binds absolutePath to the project root and ignores client paths", async () => {
+    createWorkspace.mockImplementation((row: { absolutePath: string }) => ({
+      id: "ws-new",
+      project_id: "p1",
+      display_name: "task",
+      absolute_path: row.absolutePath,
+      isolation: "current_folder",
+      base_branch: null,
+      worktree_path: null,
+      status: "active",
+      created_at: "2026-07-26T00:00:00Z",
+    }));
+
+    const { workspace } = await provisionWorkspace({
+      projectId: "p1",
+      isolation: "current_folder",
+      displayName: "task",
+    });
+
+    expect(createWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        absolutePath: "C:\\repo",
+        isolation: "current_folder",
+      }),
+    );
+    expect(workspace.absolute_path).toBe("C:\\repo");
+  });
 });
 
 describe("provisionWorkspace temporary_copy rollback", () => {

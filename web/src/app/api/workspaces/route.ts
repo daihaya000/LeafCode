@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     projectId?: string;
     displayName?: string;
-    absolutePath?: string;
     isolation?: string;
     baseBranch?: string;
     branch?: string;
@@ -51,7 +50,6 @@ export async function POST(req: NextRequest) {
       isolation,
       baseBranch: body.baseBranch,
       branch: body.branch,
-      absolutePath: body.absolutePath,
     });
     return NextResponse.json({
       workspace: {
