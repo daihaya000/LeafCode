@@ -103,6 +103,18 @@ describe("isBlockedOpencodeWrite", () => {
     ).toBe(false);
   });
 
+  it("blocks integration OAuth complete / attempt cancel", () => {
+    expect(
+      isBlockedOpencodeWrite(
+        "POST",
+        "/api/integration/attempt/att_1/complete",
+      ),
+    ).toBe(true);
+    expect(
+      isBlockedOpencodeWrite("DELETE", "/api/integration/attempt/att_1"),
+    ).toBe(true);
+  });
+
   it("blocks integration API-key connect and credential mutation", () => {
     expect(
       isBlockedOpencodeWrite("POST", "/api/integration/github/connect/key"),
@@ -126,6 +138,9 @@ describe("isBlockedOpencodeWrite", () => {
     ).toBe(true);
     expect(
       isBlockedOpencodeWrite("DELETE", "/experimental/project/p1/copy"),
+    ).toBe(true);
+    expect(
+      isBlockedOpencodeWrite("POST", "/experimental/project/p1/copy/refresh"),
     ).toBe(true);
   });
 

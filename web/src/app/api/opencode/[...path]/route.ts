@@ -297,7 +297,9 @@ async function proxy(
       (pathname === "/config" ||
         pathname === "/config/providers" ||
         pathname.startsWith("/provider") ||
+        pathname.startsWith("/api/provider") ||
         pathname.startsWith("/mcp") ||
+        pathname.startsWith("/api/mcp") ||
         pathname === "/path" ||
         pathname === "/agent" ||
         pathname === "/command" ||
@@ -385,12 +387,20 @@ async function proxy(
       ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
       : UPSTREAM_TIMEOUT_MS;
     // SSE: follow the client disconnect (req.signal) with no idle timeout.
-    // Other calls: timeout + client abort via AbortSignal.any when available.
-    const signal = wantsSse
-      ? req.signal
-      : typeof AbortSignal.any === "function"
-        ? AbortSignal.any([AbortSignal.timeout(upstreamTimeoutMs), req.signal])
-        : AbortSignal.timeout(upstreamTimeoutMs);
+    // Other calls: timeout, optionally combined with client abort.
+    const clientSignal =
+      req.signal && typeof req.signal.aborted === "boolean" ? req.signal : null;
+    let signal: AbortSignal;
+    if (wantsSse) {
+      signal = clientSignal ?? AbortSignal.timeout(2_147_483_647);
+    } else if (clientSignal && typeof AbortSignal.any === "function") {
+      signal = AbortSignal.any([
+        AbortSignal.timeout(upstreamTimeoutMs),
+        clientSignal,
+      ]);
+    } else {
+      signal = AbortSignal.timeout(upstreamTimeoutMs);
+    }
     const init: RequestInit = {
       method: req.method,
       headers,
@@ -451,11 +461,14 @@ async function proxy(
 
   // Mask secrets on config/provider GET JSON responses (exact + prefix).
   // Exact-only matching left `/provider/<id>` unmasked (R52).
+  // v2 paths under `/api/provider` must be covered too.
   const shouldMaskSecrets =
     pathname === "/config" ||
     pathname === "/global/config" ||
     pathname.startsWith("/provider") ||
-    pathname.startsWith("/config/");
+    pathname.startsWith("/api/provider") ||
+    pathname.startsWith("/config/") ||
+    pathname.startsWith("/api/config/");
   if (
     req.method === "GET" &&
     shouldMaskSecrets &&

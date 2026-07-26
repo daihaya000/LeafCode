@@ -458,6 +458,13 @@ describe("GET provider/config responses", () => {
       "sk-s…********",
     ],
     [
+      "/api/provider",
+      ["api", "provider"],
+      { all: [{ id: "openai", key: "sk-secret123" }] },
+      ["all", 0, "key"],
+      "sk-s…********",
+    ],
+    [
       "/config/providers",
       ["config", "providers"],
       { providers: [{ id: "openai", key: "sk-leaked" }] },

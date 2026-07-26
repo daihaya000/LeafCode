@@ -24,8 +24,13 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (
     m === "POST" &&
     (/^\/provider\/[^/]+\/oauth\/(authorize|callback)$/.test(p) ||
-      /^\/api\/integration\/[^/]+\/connect\/(oauth|key)$/.test(p))
+      /^\/api\/integration\/[^/]+\/connect\/(oauth|key)$/.test(p) ||
+      /^\/api\/integration\/attempt\/[^/]+\/complete$/.test(p))
   ) {
+    return true;
+  }
+  // Cancel an in-flight OAuth attempt
+  if (m === "DELETE" && /^\/api\/integration\/attempt\/[^/]+$/.test(p)) {
     return true;
   }
 
@@ -72,6 +77,12 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (
     (m === "POST" || m === "DELETE") &&
     /^\/experimental\/project\/[^/]+\/copy$/.test(p)
+  ) {
+    return true;
+  }
+  if (
+    m === "POST" &&
+    /^\/experimental\/project\/[^/]+\/copy\/refresh$/.test(p)
   ) {
     return true;
   }

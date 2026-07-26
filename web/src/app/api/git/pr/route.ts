@@ -6,6 +6,8 @@ import { assertSafeBranchName, runGit } from "@/lib/git";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const GH_TIMEOUT_MS = 60_000;
+
 function runGh(
   cwd: string,
   args: string[],
@@ -18,6 +20,18 @@ function runGh(
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+      reject(new Error(`gh timed out after ${GH_TIMEOUT_MS}ms`));
+    }, GH_TIMEOUT_MS);
+    if (typeof timer.unref === "function") timer.unref();
     child.stdout.on("data", (c) => {
       stdout += String(c);
     });
@@ -25,9 +39,15 @@ function runGh(
       stderr += String(c);
     });
     child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       reject(err);
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       resolve({ code: code ?? 1, stdout, stderr });
     });
   });
