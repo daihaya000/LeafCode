@@ -16,7 +16,6 @@ import {
   ChevronRight,
   CircleAlert,
   Copy,
-  Cpu,
   FolderTree,
   GitBranch,
   GitGraph,
@@ -36,6 +35,7 @@ import {
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
+import { ModelSelect } from "@/components/ModelSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
@@ -68,7 +68,7 @@ import {
   writeDefaultModel,
   writeLastUsedModel,
 } from "@/lib/default-model";
-import { formatTokens, providerIconSrcForOpencodeId } from "@addons/codexbar";
+import { formatTokens } from "@addons/codexbar";
 import { computeContextUsage } from "@/lib/context-usage";
 import {
   readChatTab,
@@ -200,26 +200,6 @@ function estimateDataUrlBytes(uri: string): number {
   if (comma < 0) return Number.POSITIVE_INFINITY;
   const b64 = uri.slice(comma + 1);
   return Math.floor((b64.length * 3) / 4);
-}
-
-function ModelSelectIcon({ model }: { model: string }) {
-  const providerID = model ? model.split("::")[0] : "";
-  const src = providerIconSrcForOpencodeId(providerID);
-  const [broken, setBroken] = useState(false);
-  if (src && !broken) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        width={14}
-        height={14}
-        className="h-3.5 w-3.5 shrink-0 rounded-[3px] object-contain"
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-  return <Cpu className="h-3.5 w-3.5" />;
 }
 
 function normalizedPlanPath(value: string | undefined) {
@@ -2414,10 +2394,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                     </button>
                     <VoiceInputButton voice={voice} onTranscript={onVoiceTranscript} disabled={voiceDisabled} />
                     {modelOptions.length > 0 && (
-                      <GhostSelect
+                      <ModelSelect
                         value={model}
-                        onChange={(e) => {
-                          setModel(e.target.value);
+                        options={modelOptions}
+                        onChange={(value) => {
+                          setModel(value);
                           setIntelligence("");
                           // The user explicitly picked a model; suppress the
                           // auto-seed effect so later assistant turns can't
@@ -2425,28 +2406,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                           seededModelRef.current = true;
                         }}
                         disabled={!task.sessionId}
-                        aria-label="モデル"
-                        icon={<ModelSelectIcon model={model} />}
-                        valueLabel={
-                          modelOptions.find((o) => o.value === model)?.label ??
-                          "モデル"
-                        }
                         className="max-w-[11rem] shrink-0 sm:max-w-48"
-                      >
-                        {[...new Set(modelOptions.map((o) => o.group))].map(
-                          (group) => (
-                            <optgroup key={group} label={group}>
-                              {modelOptions
-                                .filter((o) => o.group === group)
-                                .map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          ),
-                        )}
-                      </GhostSelect>
+                      />
                     )}
                     {intelligenceVariants.length > 0 && (
                       <IntelligenceSelect
