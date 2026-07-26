@@ -848,7 +848,7 @@ export function Sidebar({
                             <li key={task.id}>
                               <div
                                 className={cx(
-                                  "flex items-start gap-0.5 rounded-lg",
+                                  "relative rounded-lg",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
@@ -857,7 +857,7 @@ export function Sidebar({
                                 <button
                                   type="button"
                                   onClick={() => nav(`/task/${task.id}`)}
-                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                  className="flex w-full min-w-0 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
                                   <div className="flex items-center gap-1.5">
                                     <span className="flex h-3 w-3 shrink-0 items-center justify-center">
@@ -901,12 +901,9 @@ export function Sidebar({
                                     <span className="min-w-0 flex-1 truncate text-xs font-medium">
                                       {task.title}
                                     </span>
-                                    <span className="shrink-0 text-[10px] text-muted">
-                                      {timeAgo(task.updatedAt)}
-                                    </span>
                                   </div>
                                   <div
-                                    className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted"
+                                    className="flex min-w-0 items-center gap-1 pl-3 pr-24 text-[10px] text-muted md:pr-14"
                                     title={
                                       task.branch
                                         ? `${task.isolation}: ${task.branch}`
@@ -917,9 +914,12 @@ export function Sidebar({
                                     <span className="min-w-0 truncate font-mono">
                                       {sidebarBranchLabel(task)}
                                     </span>
+                                    <span className="ml-auto shrink-0 text-[10px] text-muted">
+                                      {timeAgo(task.updatedAt)}
+                                    </span>
                                     {task.providerID && (
                                       <span
-                                        className="ml-auto flex shrink-0 items-center"
+                                        className="flex shrink-0 items-center"
                                         title={
                                           task.agent
                                             ? `エージェント: ${task.agent}`
@@ -937,7 +937,6 @@ export function Sidebar({
                                         <span
                                           className={cx(
                                             "shrink-0 text-right tabular-nums whitespace-nowrap text-faint",
-                                            !task.providerID && "ml-auto",
                                           )}
                                           style={{
                                             minWidth: `${costColumnCh}ch`,
@@ -959,7 +958,7 @@ export function Sidebar({
                                       ))}
                                   </div>
                                 </button>
-                                <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
+                                <div className="absolute right-0.5 bottom-1 flex shrink-0 items-center">
                                   {task.sessionId && (
                                     <button
                                       type="button"

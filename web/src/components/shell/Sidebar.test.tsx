@@ -169,10 +169,18 @@ describe("Sidebar", () => {
     expect(row).toBeTruthy();
     const text = row!.textContent ?? "";
     const provider = screen.getByTestId("sidebar-provider-icon");
+    const providerWrap = provider.closest("span")!;
+    const time = providerWrap.previousElementSibling as HTMLElement | null;
+    expect(time?.textContent).toMatch(/前$/);
     // Cost is after the provider icon (row ends with cost).
     expect(
-      Array.from(row!.children).indexOf(provider.closest("span")!),
+      Array.from(row!.children).indexOf(providerWrap),
     ).toBeLessThan(Array.from(row!.children).indexOf(cost));
+    // Time sits immediately to the left of the provider icon so the title row
+    // keeps as much horizontal room as possible.
+    expect(Array.from(row!.children).indexOf(time!)).toBeLessThan(
+      Array.from(row!.children).indexOf(providerWrap),
+    );
     expect(text.indexOf("main")).toBeLessThan(text.indexOf("¥18.5"));
     // Right-aligned cost column sized to the longest label in the group keeps
     // the provider icon aligned across rows with different cost lengths.
@@ -281,10 +289,10 @@ describe("Sidebar", () => {
 
     await screen.findByText("Task title");
     expect(screen.queryByTitle("このセッションの累計コスト")).toBeNull();
-    // No task in the group has a cost, so no column is reserved at all and the
-    // branch row ends with the branch label.
+    // No task in the group has a cost, so no cost column is reserved; only the
+    // always-visible timestamp follows the branch label.
     const row = screen.getByText("main").parentElement!;
-    expect(row.children[row.children.length - 1].textContent).toBe("main");
+    expect(row.children[row.children.length - 1].textContent).toMatch(/前$/);
   });
 
   it("reserves the same cost column on rows without a cost so icons align", async () => {
