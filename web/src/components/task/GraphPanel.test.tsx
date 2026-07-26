@@ -112,4 +112,41 @@ describe("GraphPanel", () => {
     });
     expect(getJson).toHaveBeenCalledTimes(callsAfterMount);
   });
+
+  it("drops a stale log response after the directory changes", async () => {
+    let resolveOld: (value: GraphLogPayload) => void = () => undefined;
+    const oldPending = new Promise<GraphLogPayload>((resolve) => {
+      resolveOld = resolve;
+    });
+    getJson.mockImplementationOnce(() => oldPending);
+    getJson.mockResolvedValueOnce(payloadWith(1));
+
+    const { rerender } = render(<GraphPanel directory="/repo-a" />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    rerender(<GraphPanel directory="/repo-b" />);
+    await screen.findByText("commit 0");
+
+    await act(async () => {
+      resolveOld({
+        ...payloadWith(1),
+        commits: [
+          {
+            hash: "stale",
+            shortHash: "stale",
+            parents: [],
+            subject: "stale commit",
+            author: "tester",
+            date: "2026-07-18T00:00:00Z",
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("stale commit")).toBeNull();
+    expect(screen.getByText("commit 0")).toBeTruthy();
+  });
 });

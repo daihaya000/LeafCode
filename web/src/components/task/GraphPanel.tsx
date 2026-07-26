@@ -179,11 +179,15 @@ export function GraphPanel({
   const [fileBusy, setFileBusy] = useState(false);
   const commitCountRef = useRef(0);
   const busyRef = useRef(false);
+  const reqIdRef = useRef(0);
+  const directoryRef = useRef(directory);
+  directoryRef.current = directory;
 
   const load = useCallback(
     async (opts?: { append?: boolean; limit?: number; silent?: boolean }) => {
       const append = Boolean(opts?.append);
       const silent = Boolean(opts?.silent);
+      const id = ++reqIdRef.current;
       busyRef.current = true;
       if (!silent) {
         if (append) setLoadingMore(true);
@@ -198,6 +202,7 @@ export function GraphPanel({
           limit: String(limit),
           skip: String(skipCount),
         });
+        if (id !== reqIdRef.current) return;
         setPayload((prev) => {
           const next =
             append && prev
@@ -211,14 +216,17 @@ export function GraphPanel({
           return next;
         });
       } catch (err) {
+        if (id !== reqIdRef.current) return;
         if (!silent) {
           setError(err instanceof Error ? err.message : "ログの取得に失敗しました");
         }
       } finally {
-        busyRef.current = false;
-        if (!silent) {
-          setLoading(false);
-          setLoadingMore(false);
+        if (id === reqIdRef.current) {
+          busyRef.current = false;
+          if (!silent) {
+            setLoading(false);
+            setLoadingMore(false);
+          }
         }
       }
     },
@@ -234,6 +242,9 @@ export function GraphPanel({
   }, [load]);
 
   useEffect(() => {
+    // Invalidate in-flight log/show requests from the previous directory.
+    reqIdRef.current += 1;
+    busyRef.current = false;
     setPayload(null);
     setExpanded(null);
     setFilesByCommit({});
@@ -309,16 +320,19 @@ export function GraphPanel({
     setExpanded(hash);
     setFileDiff(null);
     if (filesByCommit[hash]) return;
+    const dir = directory;
     try {
       const data = await getJson<GraphShowPayload>("/api/git/show", {
-        directory,
+        directory: dir,
         commit: hash,
       });
+      if (directoryRef.current !== dir) return;
       setFilesByCommit((prev) => ({
         ...prev,
         [hash]: data.files ?? [],
       }));
     } catch (err) {
+      if (directoryRef.current !== dir) return;
       setError(err instanceof Error ? err.message : "コミット詳細の取得に失敗");
     }
   };
@@ -328,18 +342,21 @@ export function GraphPanel({
       setFileDiff(null);
       return;
     }
+    const dir = directory;
     setFileBusy(true);
     try {
       const data = await getJson<GraphShowPayload>("/api/git/show", {
-        directory,
+        directory: dir,
         commit,
         file: path,
       });
+      if (directoryRef.current !== dir) return;
       setFileDiff({ commit, path, text: data.diff ?? "" });
     } catch (err) {
+      if (directoryRef.current !== dir) return;
       setError(err instanceof Error ? err.message : "diff の取得に失敗");
     } finally {
-      setFileBusy(false);
+      if (directoryRef.current === dir) setFileBusy(false);
     }
   };
 

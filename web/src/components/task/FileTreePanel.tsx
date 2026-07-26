@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, File, Folder } from "lucide-react";
 import { cx, Spinner } from "@/components/ui";
 import { getJson } from "@/lib/client";
@@ -18,8 +18,10 @@ export function FileTreePanel({
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reqIdRef = useRef(0);
 
   const load = useCallback(async (path: string) => {
+    const id = ++reqIdRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -27,6 +29,7 @@ export function FileTreePanel({
         entries?: { name: string; path: string; kind?: string }[];
         dirs?: { name: string; path: string }[];
       }>("/api/browse/dirs", { path, files: "1" });
+      if (id !== reqIdRef.current) return;
       const dirs = (data.dirs ?? data.entries ?? []).map((e) => ({
         name: e.name,
         path: e.path,
@@ -35,13 +38,18 @@ export function FileTreePanel({
       setEntries(dirs);
       setCwd(path);
     } catch (err) {
+      if (id !== reqIdRef.current) return;
       setError(err instanceof Error ? err.message : "読み込み失敗");
     } finally {
-      setLoading(false);
+      if (id === reqIdRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    reqIdRef.current += 1;
+    setEntries([]);
+    setError(null);
+    setCwd(root);
     void load(root);
   }, [root, load]);
 

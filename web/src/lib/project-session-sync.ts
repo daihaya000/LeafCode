@@ -123,7 +123,7 @@ export function restoreProjectFromManifest(
       // outside the repo.
       const worktreeBase = path.resolve(dataDir(), "worktrees");
       if (
-        ws.isolation === "git_worktree" &&
+        isolation === "git_worktree" &&
         ws.worktreePath &&
         (isSamePath(ws.worktreePath, rootPath) ||
           isSamePath(ws.worktreePath, worktreeBase))
@@ -132,7 +132,7 @@ export function restoreProjectFromManifest(
         continue;
       }
       if (
-        ws.isolation === "git_worktree" &&
+        isolation === "git_worktree" &&
         ws.worktreePath &&
         !isInside(rootPath, ws.worktreePath) &&
         !isInside(worktreeBase, ws.worktreePath)
@@ -144,7 +144,7 @@ export function restoreProjectFromManifest(
       // A crafted worktreePath pointing at an allowlisted project root would
       // later drive removeAllowedRoot on destroy when the folder is missing.
       const copiesBase = path.resolve(dataDir(), "copies");
-      if (ws.isolation === "temporary_copy") {
+      if (isolation === "temporary_copy") {
         if (!ws.worktreePath) {
           log(`restore ${rootPath}`, `skipped workspace ${ws.id}: missing temporary copy path`);
           continue;
@@ -162,11 +162,35 @@ export function restoreProjectFromManifest(
           continue;
         }
       }
+      // absolutePath is what ocServer / task-service hand to the engine with no
+      // further allowlist. Bind it to the isolation's trusted directory so a
+      // tampered manifest cannot point the engine at an arbitrary path while
+      // only worktreePath was guarded.
+      let trustedAbsolute: string;
+      if (isolation === "git_worktree") {
+        if (!ws.worktreePath) {
+          log(`restore ${rootPath}`, `skipped workspace ${ws.id}: missing worktree path`);
+          continue;
+        }
+        trustedAbsolute = path.resolve(ws.worktreePath);
+      } else if (isolation === "temporary_copy") {
+        trustedAbsolute = path.resolve(ws.worktreePath!);
+      } else {
+        // current_folder and unknown/devcontainer fall back to the project root.
+        trustedAbsolute = path.resolve(rootPath);
+      }
+      if (!ws.absolutePath || !isSamePath(ws.absolutePath, trustedAbsolute)) {
+        log(
+          `restore ${rootPath}`,
+          `skipped workspace ${ws.id}: absolutePath does not match isolation root`,
+        );
+        continue;
+      }
       const inserted = importWorkspaceRow({
         id: ws.id,
         projectId,
         displayName: ws.displayName,
-        absolutePath: ws.absolutePath,
+        absolutePath: trustedAbsolute,
         isolation,
         baseBranch: ws.baseBranch,
         worktreePath: ws.worktreePath,

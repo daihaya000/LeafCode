@@ -167,6 +167,97 @@ describe("restoreProjectFromManifest temporary_copy path guard", () => {
   });
 });
 
+describe("restoreProjectFromManifest absolutePath guard", () => {
+  it("skips current_folder when absolutePath escapes the project root", () => {
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: path.join(os.tmpdir(), "elsewhere"),
+          isolation: "current_folder",
+          baseBranch: null,
+          worktreePath: null,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+
+  it("skips git_worktree when absolutePath disagrees with a valid worktreePath", () => {
+    const wt = path.join(ROOT, ".webui-worktrees", "wt1");
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: path.join(os.tmpdir(), "evil"),
+          isolation: "git_worktree",
+          baseBranch: "main",
+          worktreePath: wt,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+
+  it("skips git_worktree when worktreePath is missing even if absolutePath looks nested", () => {
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: path.join(ROOT, ".webui-worktrees", "wt1"),
+          isolation: "git_worktree",
+          baseBranch: "main",
+          worktreePath: null,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(0);
+    expect(h.imported).toHaveLength(0);
+  });
+
+  it("imports current_folder bound to the project root", () => {
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: ROOT,
+          isolation: "current_folder",
+          baseBranch: null,
+          worktreePath: null,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(1);
+    expect(h.imported).toHaveLength(1);
+  });
+});
+
 describe("restoreProjectFromManifest workspace id collision", () => {
   it("does not bind sessions when workspace id belongs to another project", () => {
     h.importReturns = false;
