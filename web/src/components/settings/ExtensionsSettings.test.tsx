@@ -149,7 +149,7 @@ describe("ExtensionsSettings", () => {
   it("lists skills with accessible switches", async () => {
     render(<ExtensionsSettings activeSection="skills" />);
 
-    expect(await screen.findByRole("heading", { name: "Skills" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "スキル" })).toBeTruthy();
 
     const alphaSwitch = await screen.findByRole("switch", {
       name: "alpha を無効化",
@@ -213,7 +213,7 @@ describe("ExtensionsSettings", () => {
     ).toBeTruthy();
     // …and the MCP section is shown in place of the skills section.
     expect(screen.getByRole("heading", { name: "MCP サーバー" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Skills" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "スキル" })).toBeNull();
   });
 
   it("marks only the toggled row as busy", async () => {

@@ -512,7 +512,7 @@ export function ExtensionsSettings({
       {activeSection === "skills" && (
         <SectionShell
           headingId="extensions-skills"
-          title="Skills"
+          title="スキル"
           hint="グローバル設定（~/.config/opencode）のスキルを一覧しています。"
           notice={
             skills.truncated

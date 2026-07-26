@@ -459,12 +459,12 @@ export function SettingsView() {
       badge: requiresAttention > 0 ? requiresAttention : undefined,
     },
     { key: "connectivity", label: "接続" },
-    { key: "skills", label: "Skills" },
+    { key: "providers", label: "プロバイダー/モデル" },
+    { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
     { key: "plugins", label: "プラグイン" },
     { key: "addons", label: "アドオン" },
     { key: "agents", label: "エージェント" },
-    { key: "providers", label: "プロバイダー/モデル" },
   ];
 
   return (

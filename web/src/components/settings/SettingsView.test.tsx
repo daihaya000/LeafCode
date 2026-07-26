@@ -210,6 +210,51 @@ describe("SettingsView", () => {
     expect(screen.queryByText("エンジン")).toBeNull();
   });
 
+  it("orders the settings tabs by category", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    expect(
+      screen.getAllByRole("button").map((button) => button.textContent),
+    ).toEqual(
+      expect.arrayContaining([
+        "全般",
+        "プロジェクト",
+        "接続",
+        "プロバイダー/モデル",
+        "スキル",
+        "MCP",
+        "プラグイン",
+        "アドオン",
+      ]),
+    );
+    const tabLabels = screen
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "")
+      .filter((label) =>
+        [
+          "全般",
+          "プロジェクト",
+          "接続",
+          "プロバイダー/モデル",
+          "スキル",
+          "MCP",
+          "プラグイン",
+          "アドオン",
+        ].includes(label),
+      );
+    expect(tabLabels).toEqual([
+      "全般",
+      "プロジェクト",
+      "接続",
+      "プロバイダー/モデル",
+      "スキル",
+      "MCP",
+      "プラグイン",
+      "アドオン",
+    ]);
+  });
+
   it("shows an attention badge on the プロジェクト tab when orphans exist", async () => {
     mockGetJson({
       orphans: {
@@ -456,11 +501,11 @@ describe("SettingsView", () => {
     expect(screen.getByText("C:\\repo1")).toBeTruthy();
   });
 
-  it("shows the Skills, MCP and プラグイン tabs and renders the matching section", async () => {
+  it("shows the スキル, MCP and プラグイン tabs and renders the matching section", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "Skills" }));
+    fireEvent.click(screen.getByRole("button", { name: "スキル" }));
     expect(await screen.findByTestId("extensions-skills")).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
 
