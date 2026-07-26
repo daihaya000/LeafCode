@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check, Cpu } from "lucide-react";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
@@ -52,7 +59,7 @@ export function ModelSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{
-    bottom: number;
+    top: number;
     left: number;
     minWidth: number;
   } | null>(null);
@@ -72,13 +79,40 @@ export function ModelSelect({
     const root = rootRef.current;
     if (!root || typeof window === "undefined") return;
     const rect = root.getBoundingClientRect();
-    const maxMenuWidth = Math.min(352, window.innerWidth - 32);
+    const menuRect = menuRef.current?.getBoundingClientRect();
+    const viewportPadding = 16;
+    const gap = 4;
+    const menuWidth = Math.min(
+      menuRect?.width || Math.max(rect.width, 224),
+      window.innerWidth - viewportPadding * 2,
+    );
+    const menuHeight = Math.min(
+      menuRect?.height || 320,
+      window.innerHeight - viewportPadding * 2,
+    );
+    const topAbove = rect.top - menuHeight - gap;
+    const topBelow = rect.bottom + gap;
+    const top =
+      topAbove >= viewportPadding
+        ? topAbove
+        : Math.min(topBelow, window.innerHeight - viewportPadding - menuHeight);
     setMenuPosition({
-      bottom: window.innerHeight - rect.top + 4,
-      left: Math.max(16, Math.min(rect.right - maxMenuWidth, window.innerWidth - 16 - rect.width)),
+      top: Math.max(viewportPadding, top),
+      left: Math.max(
+        viewportPadding,
+        Math.min(
+          rect.right - menuWidth,
+          window.innerWidth - viewportPadding - menuWidth,
+        ),
+      ),
       minWidth: rect.width,
     });
   }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+  }, [open, groupedOptions, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) return;
@@ -110,16 +144,17 @@ export function ModelSelect({
     };
   }, [open, updateMenuPosition]);
 
-  const menu = open && !disabled && menuPosition && (
+  const menu = open && !disabled && (
     <div
       ref={menuRef}
       role="listbox"
       aria-label="モデル"
       className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
       style={{
-        bottom: menuPosition.bottom,
-        left: menuPosition.left,
-        minWidth: menuPosition.minWidth,
+        top: menuPosition?.top ?? 0,
+        left: menuPosition?.left ?? 0,
+        minWidth: menuPosition?.minWidth,
+        visibility: menuPosition ? undefined : "hidden",
       }}
     >
       {groupedOptions.map(({ group, options: groupOptions }) => (

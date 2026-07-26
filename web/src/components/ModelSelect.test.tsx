@@ -29,4 +29,32 @@ describe("ModelSelect", () => {
     fireEvent.click(screen.getByRole("option", { name: /Claude/ }));
     expect(onChange).toHaveBeenCalledWith("anthropic::claude");
   });
+
+  it("right-aligns the dropdown to the trigger instead of the viewport edge", () => {
+    render(
+      <ModelSelect
+        value="openai::gpt-5.5"
+        options={options}
+        onChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "モデル" });
+    trigger.parentElement!.getBoundingClientRect = vi.fn(() => ({
+      x: 400,
+      y: 500,
+      top: 500,
+      right: 520,
+      bottom: 532,
+      left: 400,
+      width: 120,
+      height: 32,
+      toJSON: () => ({}),
+    }));
+
+    fireEvent.click(trigger);
+
+    const listbox = screen.getByRole("listbox", { name: "モデル" });
+    expect(listbox.style.left).toBe("296px");
+    expect(listbox.style.top).toBe("176px");
+  });
 });
