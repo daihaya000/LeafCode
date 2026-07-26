@@ -373,8 +373,14 @@ describe("HomeView image attachments", () => {
     expect(controlRow.className).toMatch(/\bflex\b/);
     expect(controlRow.className).toMatch(/overflow-x-auto/);
 
-    expect(controlRow.contains(screen.getByLabelText("プロジェクト"))).toBe(true);
-    expect(controlRow.contains(screen.getByLabelText("作業場所"))).toBe(true);
+    const projectSelect = screen.getByLabelText("プロジェクト");
+    const branchSelect = screen.getByLabelText("作業場所");
+    expect(form.contains(projectSelect)).toBe(false);
+    expect(form.contains(branchSelect)).toBe(false);
+    expect(projectSelect.closest("div")?.className).toMatch(/\bmb-3\b/);
+    expect(branchSelect.closest("div")?.className).toMatch(/\bmb-3\b/);
+    expect(controlRow.contains(projectSelect)).toBe(false);
+    expect(controlRow.contains(branchSelect)).toBe(false);
     expect(controlRow.contains(screen.getByLabelText("アクセスモード"))).toBe(true);
 
     expect(toolbar?.contains(screen.getByRole("button", { name: "タスク開始" }))).toBe(

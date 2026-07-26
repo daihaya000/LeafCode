@@ -693,6 +693,53 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
             何をつくりますか？
           </h1>
+          <div className="mx-auto mb-3 flex max-w-3xl items-center justify-center gap-2 overflow-x-auto px-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <GhostSelect
+              value={projectId}
+              disabled={projects.length === 0 || submitting}
+              aria-label="プロジェクト"
+              icon={<FolderGit2 className="h-3.5 w-3.5" />}
+              valueLabel={
+                selectedProject
+                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                  : "プロジェクトなし"
+              }
+              onChange={(e) => setProjectId(e.target.value)}
+              className="max-w-[12rem] shrink-0 sm:max-w-56"
+              title={
+                selectedProject
+                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                  : "プロジェクトなし"
+              }
+            >
+              {projects.length === 0 && <option value="">プロジェクトなし</option>}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.favorite ? "★ " : ""}
+                  {p.name}
+                </option>
+              ))}
+            </GhostSelect>
+            <GhostSelect
+              value={isolation}
+              disabled={submitting}
+              aria-label="作業場所"
+              icon={<GitBranch className="h-3.5 w-3.5" />}
+              valueLabel={
+                isolation === "current_folder" ? defaultBranchLabel : "worktree"
+              }
+              onChange={(e) =>
+                setIsolation(
+                  e.target.value as "current_folder" | "git_worktree",
+                )
+              }
+              className="max-w-[10rem] shrink-0 sm:max-w-40"
+              title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
+            >
+              <option value="current_folder">{defaultBranchLabel}</option>
+              <option value="git_worktree">worktree</option>
+            </GhostSelect>
+          </div>
           <form
             aria-label="タスク作成"
             className="relative mx-auto max-w-3xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
@@ -838,53 +885,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   onNativeVoiceStart={() => textareaRef.current?.focus()}
                   disabled={submitting}
                 />
-                <GhostSelect
-                  value={projectId}
-                  disabled={projects.length === 0 || submitting}
-                  aria-label="プロジェクト"
-                  icon={<FolderGit2 className="h-3.5 w-3.5" />}
-                  valueLabel={
-                    selectedProject
-                      ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                      : "プロジェクトなし"
-                  }
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="max-w-[10rem] shrink-0 sm:max-w-48"
-                  title={
-                    selectedProject
-                      ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                      : "プロジェクトなし"
-                  }
-                >
-                  {projects.length === 0 && (
-                    <option value="">プロジェクトなし</option>
-                  )}
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.favorite ? "★ " : ""}
-                      {p.name}
-                    </option>
-                  ))}
-                </GhostSelect>
-                <GhostSelect
-                  value={isolation}
-                  disabled={submitting}
-                  aria-label="作業場所"
-                  icon={<GitBranch className="h-3.5 w-3.5" />}
-                  valueLabel={
-                    isolation === "current_folder" ? defaultBranchLabel : "worktree"
-                  }
-                  onChange={(e) =>
-                    setIsolation(
-                      e.target.value as "current_folder" | "git_worktree",
-                    )
-                  }
-                  className="max-w-[10rem] shrink-0 sm:max-w-40"
-                  title="master: 現在ブランチで作業 / worktree: 分離ブランチ"
-                >
-                  <option value="current_folder">{defaultBranchLabel}</option>
-                  <option value="git_worktree">worktree</option>
-                </GhostSelect>
                 {modelOptions.length > 0 && (
                   <ModelSelect
                     value={model}
