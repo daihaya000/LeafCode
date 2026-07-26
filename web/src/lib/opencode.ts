@@ -103,6 +103,10 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   // Project git init — mutates working tree
   if (m === "POST" && p === "/project/git/init") return true;
 
+  // Session init — writes AGENTS.md / project scaffolding into the workspace
+  if (m === "POST" && /^\/session\/[^/]+\/init$/.test(p)) return true;
+  if (m === "POST" && /^\/api\/session\/[^/]+\/init$/.test(p)) return true;
+
   // Project update — renames/reconfigures a project
   if (m === "PATCH" && /^\/project\/[^/]+$/.test(p)) return true;
 

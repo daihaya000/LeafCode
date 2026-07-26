@@ -248,6 +248,11 @@ export function DiffPane({
     setExpanded({});
     setDeselected({});
     setNotice(null);
+    setCommitMsg("");
+    setPrTitle("");
+    setBaseCompare("");
+    setMergeTarget("");
+    setPanel(null);
   }, [directory]);
 
   useEffect(() => {
@@ -339,6 +344,12 @@ export function DiffPane({
 
   const commit = () =>
     run(async () => {
+      // Guard against directory-switch races: payload null makes
+      // `selectedPaths.length === (payload?.files.length ?? 0)` true as 0===0
+      // and would send all:true against the new directory.
+      if (!payload || selectedPaths.length === 0) {
+        throw new Error("コミットする変更がありません");
+      }
       const body: Record<string, unknown> = {
         directory,
         message: commitMsg.trim(),
@@ -346,7 +357,7 @@ export function DiffPane({
       // Only "commit everything" (git add -A) when the entire UNFILTERED set is
       // selected. `files` is filter-scoped, so comparing against it would let a
       // full selection of a filtered view stage files hidden by the filter.
-      if (selectedPaths.length === (payload?.files.length ?? 0)) body.all = true;
+      if (selectedPaths.length === payload.files.length) body.all = true;
       else body.paths = selectedPaths;
       const res = await sendJson<{ summary?: string }>(
         "POST",
@@ -524,7 +535,14 @@ export function DiffPane({
             placeholder="コミットメッセージ"
             className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && commitMsg.trim()) void commit();
+              if (
+                e.key === "Enter" &&
+                commitMsg.trim() &&
+                selectedPaths.length > 0 &&
+                payload
+              ) {
+                void commit();
+              }
             }}
           />
           <Button

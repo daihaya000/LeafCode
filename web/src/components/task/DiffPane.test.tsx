@@ -1,16 +1,16 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiffPane } from "./DiffPane";
 import type { DiffFilesPayload } from "@/lib/types";
 
-const { getJson, postJson } = vi.hoisted(() => ({
+const { getJson, sendJson } = vi.hoisted(() => ({
   getJson: vi.fn(),
-  postJson: vi.fn(),
+  sendJson: vi.fn(),
 }));
 
 vi.mock("@/lib/client", () => ({
   getJson,
-  postJson,
+  sendJson,
 }));
 
 function payload(label: string): DiffFilesPayload {
@@ -32,10 +32,29 @@ function payload(label: string): DiffFilesPayload {
   };
 }
 
+function mockMetaApis() {
+  getJson.mockImplementation((url: string) => {
+    if (String(url).includes("/api/diff/files")) {
+      return Promise.resolve(payload("file"));
+    }
+    if (String(url).includes("/api/git/branches")) {
+      return Promise.resolve({
+        branches: [],
+        current: "main",
+        defaultTarget: "main",
+      });
+    }
+    if (String(url).includes("/api/git/pr")) {
+      return Promise.resolve({ available: false });
+    }
+    return Promise.resolve({});
+  });
+}
+
 describe("DiffPane directory race", () => {
   beforeEach(() => {
     getJson.mockReset();
-    postJson.mockReset();
+    sendJson.mockReset();
   });
 
   afterEach(() => {
@@ -84,5 +103,24 @@ describe("DiffPane directory race", () => {
 
     expect(screen.queryByText("stale.ts")).toBeNull();
     expect(screen.getByText("new.ts")).toBeTruthy();
+  });
+
+  it("does not commit via Enter when no paths are selected", async () => {
+    mockMetaApis();
+    render(<DiffPane directory="/repo-a" refreshKey={0} />);
+    await screen.findByText("file.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: /Commit/i }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /file\.ts をコミット対象にする/ }),
+    );
+    const input = screen.getByPlaceholderText(/コミットメッセージ/);
+    fireEvent.change(input, { target: { value: "msg" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sendJson).not.toHaveBeenCalled();
   });
 });

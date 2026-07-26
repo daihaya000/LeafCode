@@ -197,6 +197,14 @@ describe("isBlockedOpencodeWrite", () => {
     expect(isBlockedOpencodeWrite("GET", "/project/proj123")).toBe(false);
   });
 
+  it("blocks session init scaffolding writes", () => {
+    expect(isBlockedOpencodeWrite("POST", "/session/ses_abc/init")).toBe(true);
+    expect(isBlockedOpencodeWrite("POST", "/api/session/ses_abc/init")).toBe(
+      true,
+    );
+    expect(isBlockedOpencodeWrite("GET", "/session/ses_abc/init")).toBe(false);
+  });
+
   it("blocks session share create/revoke", () => {
     expect(isBlockedOpencodeWrite("POST", "/session/ses_abc/share")).toBe(true);
     expect(isBlockedOpencodeWrite("DELETE", "/session/ses_abc/share")).toBe(true);
