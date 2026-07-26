@@ -351,6 +351,20 @@ export async function updateCustomProvider(
   await setProviderIcon(id, validateIcon(input.icon));
 }
 
+/**
+ * Set or clear a WebUI-local icon override for any provider (built-in or
+ * custom). Unlike `updateCustomProvider`, this does not touch
+ * `opencode.jsonc` and works even for providers that are not defined in the
+ * config (e.g. built-in `openai`/`anthropic`).
+ */
+export async function setProviderIconOverride(
+  providerID: string,
+  icon: string | null | undefined,
+): Promise<void> {
+  const id = validateIdentifier(providerID, "プロバイダーID");
+  await setProviderIcon(id, validateIcon(icon ?? undefined));
+}
+
 export async function saveProviderModelOrder(input: {
   providerOrder?: string[];
   modelOrder?: Record<string, string[]>;

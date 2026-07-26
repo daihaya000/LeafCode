@@ -169,6 +169,34 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
     expect(state.disabled).toEqual({ "openai::gpt-5-mini": true });
   });
 
+  it("sets an icon override for a built-in provider via { icon }", async () => {
+    const res = await patch("openai", { icon: "/icons/custom.png" });
+    expect(res.status).toBe(200);
+    expect((await res.json())).toEqual({ ok: true });
+
+    const state = readState() as { providerIcons?: Record<string, string> };
+    expect(state.providerIcons).toEqual({ openai: "/icons/custom.png" });
+  });
+
+  it("clears an icon override when icon is null", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({ disabled: {}, providerIcons: { openai: "/icons/old.png" } }),
+    );
+
+    const res = await patch("openai", { icon: null });
+    expect(res.status).toBe(200);
+
+    const state = readState() as { providerIcons?: Record<string, string> };
+    expect(state.providerIcons).toEqual({});
+  });
+
+  it("returns 400 for an invalid icon value", async () => {
+    const res = await patch("openai", { icon: "not-a-valid-icon" });
+    expect(res.status).toBe(400);
+  });
+
   it("updates a configured provider", async () => {
     fs.writeFileSync(
       path.join(data, "opencode.jsonc"),

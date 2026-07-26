@@ -28,6 +28,7 @@ import {
   addCustomProvider,
   listProviderModels,
   saveProviderModelOrder,
+  setProviderIconOverride,
   setProviderModelEnabled,
   updateCustomProvider,
 } from "./provider-models";
@@ -288,6 +289,46 @@ describe("setProviderModelEnabled", () => {
     await setProviderModelEnabled("openai", true);
     const state = readState();
     expect(state.disabled).toEqual({ "anthropic::claude-haiku-4-5": true });
+  });
+});
+
+describe("setProviderIconOverride", () => {
+  it("sets an icon override for a built-in provider not present in config", async () => {
+    await setProviderIconOverride("openai", "/icons/custom-openai.png");
+    const state = readState();
+    expect(state.providerIcons).toEqual({ openai: "/icons/custom-openai.png" });
+  });
+
+  it("accepts an http(s) URL", async () => {
+    await setProviderIconOverride("anthropic", "https://example.com/icon.png");
+    const state = readState();
+    expect(state.providerIcons).toEqual({
+      anthropic: "https://example.com/icon.png",
+    });
+  });
+
+  it("clears the override when icon is null", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({ disabled: {}, providerIcons: { openai: "/icons/old.png" } }),
+    );
+
+    await setProviderIconOverride("openai", null);
+    const state = readState();
+    expect(state.providerIcons).toEqual({});
+  });
+
+  it("rejects an icon that is neither an http(s) URL nor a leading-slash path", async () => {
+    await expect(
+      setProviderIconOverride("openai", "not-a-valid-icon"),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a provider id containing invalid characters", async () => {
+    await expect(
+      setProviderIconOverride("openai::gpt-5", "/icons/x.png"),
+    ).rejects.toThrow();
   });
 });
 

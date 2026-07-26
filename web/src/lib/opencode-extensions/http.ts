@@ -19,6 +19,28 @@ export function extensionsErrorResponse(
   return NextResponse.json({ error: fallback }, { status: 500 });
 }
 
+/**
+ * Parse an icon-override request body: `{ icon: string | null }`.
+ * `null`/omitted clears the override.
+ */
+export function parseIconBody(
+  body: unknown,
+): { icon: string | undefined } | { error: NextResponse } {
+  const icon =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { icon?: unknown }).icon
+      : undefined;
+  if (icon !== undefined && icon !== null && typeof icon !== "string") {
+    return {
+      error: NextResponse.json(
+        { error: "アイコンは文字列で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  return { icon: typeof icon === "string" ? icon : undefined };
+}
+
 /** Parse a toggle request body; the only accepted input shape. */
 export function parseEnabledBody(
   body: unknown,

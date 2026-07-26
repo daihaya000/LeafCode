@@ -2,19 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   extensionsErrorResponse,
   parseEnabledBody,
+  parseIconBody,
 } from "@/lib/opencode-extensions/http";
 import { setProviderModelEnabled } from "@/lib/opencode-extensions/provider-models";
 import { updateCustomProvider } from "@/lib/opencode-extensions/provider-models";
+import { setProviderIconOverride } from "@/lib/opencode-extensions/provider-models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isIconBody(body: unknown): boolean {
+  return (
+    !!body && typeof body === "object" && !Array.isArray(body) && "icon" in body
+  );
+}
+
+/**
+ * `{ icon }` sets a WebUI-local icon override for any provider (built-in or
+ * custom), without touching `opencode.jsonc`. `{ enabled }` keeps the
+ * existing enable/disable toggle behavior.
+ */
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ key: string }> },
 ) {
   const { key } = await context.params;
   const body = await req.json().catch(() => undefined);
+
+  if (isIconBody(body)) {
+    const parsed = parseIconBody(body);
+    if ("error" in parsed) return parsed.error;
+    try {
+      await setProviderIconOverride(decodeURIComponent(key), parsed.icon);
+      return NextResponse.json({ ok: true });
+    } catch (err) {
+      return extensionsErrorResponse(err, "アイコンを更新できません");
+    }
+  }
+
   const parsed = parseEnabledBody(body);
   if ("error" in parsed) return parsed.error;
   try {
