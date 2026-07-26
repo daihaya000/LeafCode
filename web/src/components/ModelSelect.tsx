@@ -91,7 +91,7 @@ export function ModelSelect({
         title={title ?? selected?.label ?? "モデル"}
         onClick={() => setOpen((current) => !current)}
         className={cx(
-          "group inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted transition-colors focus:ring-2 focus:ring-primary/30 hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text",
+          "group inline-flex min-w-0 appearance-none items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 py-1.5 text-xs font-medium text-muted transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text",
           disabled && "cursor-not-allowed opacity-40",
         )}
       >
@@ -122,7 +122,7 @@ export function ModelSelect({
                     setOpen(false);
                   }}
                   className={cx(
-                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text",
+                    "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none",
                     option.value === value && "bg-surface-2 text-text",
                   )}
                 >
