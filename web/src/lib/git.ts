@@ -144,6 +144,25 @@ function isSamePath(left: string, right: string): boolean {
   return path.relative(path.resolve(left), path.resolve(right)) === "";
 }
 
+/**
+ * Resolve the git admin metadata dir for a worktree
+ * (`<repo>/.git/worktrees/<basename>`). Returns null when the basename is
+ * unsafe (e.g. raw `..` before resolve) or the result would not be a direct
+ * child of `.git/worktrees` — callers must not rmSync a null result.
+ */
+export function gitWorktreeAdminDir(
+  repoRoot: string,
+  worktreePath: string,
+): string | null {
+  const absWorktree = path.resolve(worktreePath);
+  const name = path.basename(absWorktree);
+  if (!name || name === "." || name === "..") return null;
+  const worktreesDir = path.resolve(repoRoot, ".git", "worktrees");
+  const admin = path.resolve(worktreesDir, name);
+  if (path.dirname(admin) !== worktreesDir) return null;
+  return admin;
+}
+
 function rmDirBestEffort(target: string): void {
   if (!fs.existsSync(target)) return;
   try {
@@ -207,14 +226,9 @@ export async function removeWorktree(input: {
   if (!fs.existsSync(absWorktree)) {
     await runGit(repoRoot, ["worktree", "prune", "--expire", "now"]);
     // Stale admin dir under .git/worktrees/<basename>
-    const adminGone = path.join(
-      repoRoot,
-      ".git",
-      "worktrees",
-      path.basename(absWorktree),
-    );
+    const adminGone = gitWorktreeAdminDir(repoRoot, absWorktree);
     try {
-      rmDirBestEffort(adminGone);
+      if (adminGone) rmDirBestEffort(adminGone);
     } catch {
       /* best effort */
     }
@@ -255,9 +269,9 @@ export async function removeWorktree(input: {
   }
 
   // Stale admin dir under .git/worktrees/<basename>
-  const admin = path.join(repoRoot, ".git", "worktrees", path.basename(absWorktree));
+  const admin = gitWorktreeAdminDir(repoRoot, absWorktree);
   try {
-    rmDirBestEffort(admin);
+    if (admin) rmDirBestEffort(admin);
   } catch {
     /* best effort */
   }

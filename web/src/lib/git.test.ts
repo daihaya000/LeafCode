@@ -7,7 +7,7 @@ vi.mock("./paths", () => ({
   dataDir: () => h.dataDir,
 }));
 
-import { assertSafeBranchName, removeWorktree, runGit } from "./git";
+import { assertSafeBranchName, gitWorktreeAdminDir, removeWorktree, runGit } from "./git";
 
 describe("assertSafeBranchName", () => {
   it("accepts ordinary local and remote branch names", () => {
@@ -22,6 +22,27 @@ describe("assertSafeBranchName", () => {
       "invalid branch name",
     );
     expect(() => assertSafeBranchName("a b")).toThrow("invalid branch name");
+  });
+});
+
+describe("gitWorktreeAdminDir", () => {
+  it("resolves a normal worktree to .git/worktrees/<basename>", () => {
+    const repo = path.join("C:\\repo");
+    const wt = path.join(repo, ".webui-worktrees", "task-abc");
+    expect(gitWorktreeAdminDir(repo, wt)).toBe(
+      path.join(repo, ".git", "worktrees", "task-abc"),
+    );
+  });
+
+  it("does not resolve a path ending in .. to repo/.git", () => {
+    const repo = path.join("C:\\repo");
+    const crafted = path.join(repo, ".webui-worktrees", "missing", "foo", "..");
+    const admin = gitWorktreeAdminDir(repo, crafted);
+    expect(admin).not.toBeNull();
+    expect(path.resolve(admin!)).not.toBe(path.resolve(repo, ".git"));
+    expect(path.dirname(path.resolve(admin!))).toBe(
+      path.resolve(repo, ".git", "worktrees"),
+    );
   });
 });
 

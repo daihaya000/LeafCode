@@ -8,7 +8,7 @@ import {
   removeAllowedRoot,
   setWorkspaceStatus,
 } from "@/lib/db";
-import { listGitWorktrees, removeWorktree, runGit } from "@/lib/git";
+import { listGitWorktrees, removeWorktree, runGit, gitWorktreeAdminDir } from "@/lib/git";
 import { dataDir } from "@/lib/paths";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 
@@ -88,14 +88,11 @@ async function purgeGoneOrphans(): Promise<number> {
         "now",
       ]).catch(() => undefined);
       if (row.worktree_path) {
-        const admin = path.join(
-          project.root_path,
-          ".git",
-          "worktrees",
-          path.basename(row.worktree_path),
-        );
+        // Resolve before basename so a crafted path ending in `..` cannot
+        // make admin resolve to `<repo>/.git` (raw basename("..") join).
+        const admin = gitWorktreeAdminDir(project.root_path, row.worktree_path);
         try {
-          if (fs.existsSync(admin)) {
+          if (admin && fs.existsSync(admin)) {
             fs.rmSync(admin, { recursive: true, force: true, maxRetries: 3 });
           }
         } catch {

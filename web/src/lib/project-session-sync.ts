@@ -122,38 +122,50 @@ export function restoreProjectFromManifest(
       // be imported, since destroying it would drive a recursive delete
       // outside the repo.
       const worktreeBase = path.resolve(dataDir(), "worktrees");
+      const resolvedWorktree = ws.worktreePath
+        ? path.resolve(ws.worktreePath)
+        : null;
       if (
         isolation === "git_worktree" &&
-        ws.worktreePath &&
-        (isSamePath(ws.worktreePath, rootPath) ||
-          isSamePath(ws.worktreePath, worktreeBase))
+        resolvedWorktree &&
+        (isSamePath(resolvedWorktree, rootPath) ||
+          isSamePath(resolvedWorktree, worktreeBase))
       ) {
         log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath is a protected root`);
         continue;
       }
       if (
         isolation === "git_worktree" &&
-        ws.worktreePath &&
-        !isInside(rootPath, ws.worktreePath) &&
-        !isInside(worktreeBase, ws.worktreePath)
+        resolvedWorktree &&
+        !isInside(rootPath, resolvedWorktree) &&
+        !isInside(worktreeBase, resolvedWorktree)
       ) {
         log(`restore ${rootPath}`, `skipped workspace ${ws.id}: worktreePath escapes root`);
         continue;
+      }
+      if (isolation === "git_worktree" && resolvedWorktree) {
+        const base = path.basename(resolvedWorktree);
+        if (!base || base === "." || base === "..") {
+          log(
+            `restore ${rootPath}`,
+            `skipped workspace ${ws.id}: worktreePath has unsafe basename`,
+          );
+          continue;
+        }
       }
       // temporary_copy paths must be exactly <dataDir>/copies/<workspaceId>.
       // A crafted worktreePath pointing at an allowlisted project root would
       // later drive removeAllowedRoot on destroy when the folder is missing.
       const copiesBase = path.resolve(dataDir(), "copies");
       if (isolation === "temporary_copy") {
-        if (!ws.worktreePath) {
+        if (!resolvedWorktree) {
           log(`restore ${rootPath}`, `skipped workspace ${ws.id}: missing temporary copy path`);
           continue;
         }
-        const resolvedCopy = path.resolve(ws.worktreePath);
         if (
-          path.dirname(resolvedCopy) !== copiesBase ||
-          path.basename(resolvedCopy) !== ws.id ||
-          isSamePath(resolvedCopy, copiesBase)
+          path.dirname(resolvedWorktree) !== copiesBase ||
+          path.basename(resolvedWorktree) !== ws.id ||
+          isSamePath(resolvedWorktree, copiesBase)
         ) {
           log(
             `restore ${rootPath}`,
@@ -167,17 +179,19 @@ export function restoreProjectFromManifest(
       // tampered manifest cannot point the engine at an arbitrary path while
       // only worktreePath was guarded.
       let trustedAbsolute: string;
+      let trustedWorktree: string | null = resolvedWorktree;
       if (isolation === "git_worktree") {
-        if (!ws.worktreePath) {
+        if (!resolvedWorktree) {
           log(`restore ${rootPath}`, `skipped workspace ${ws.id}: missing worktree path`);
           continue;
         }
-        trustedAbsolute = path.resolve(ws.worktreePath);
+        trustedAbsolute = resolvedWorktree;
       } else if (isolation === "temporary_copy") {
-        trustedAbsolute = path.resolve(ws.worktreePath!);
+        trustedAbsolute = resolvedWorktree!;
       } else {
         // current_folder and unknown/devcontainer fall back to the project root.
         trustedAbsolute = path.resolve(rootPath);
+        trustedWorktree = null;
       }
       if (!ws.absolutePath || !isSamePath(ws.absolutePath, trustedAbsolute)) {
         log(
@@ -193,7 +207,7 @@ export function restoreProjectFromManifest(
         absolutePath: trustedAbsolute,
         isolation,
         baseBranch: ws.baseBranch,
-        worktreePath: ws.worktreePath,
+        worktreePath: trustedWorktree,
         status,
         createdAt: ws.createdAt,
       });

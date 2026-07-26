@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   dataDir: "",
   manifest: null as unknown,
-  imported: [] as { id: string }[],
+  imported: [] as { id: string; worktreePath?: string | null }[],
   bound: [] as { workspaceId: string; sessionId: string }[],
   existingWorkspace: null as { id: string; project_id: string } | null,
   importReturns: true as boolean,
@@ -255,6 +255,32 @@ describe("restoreProjectFromManifest absolutePath guard", () => {
     const res = restoreProjectFromManifest(ROOT, "p1");
     expect(res.workspaces).toBe(1);
     expect(h.imported).toHaveLength(1);
+  });
+
+  it("stores a resolved worktreePath rather than a trailing .. form", () => {
+    const wt = path.join(ROOT, ".webui-worktrees", "wt1", "x", "..");
+    h.manifest = {
+      project: { name: "p", rootPath: ROOT },
+      workspaces: [
+        {
+          id: "ws1",
+          displayName: "task",
+          absolutePath: path.resolve(wt),
+          isolation: "git_worktree",
+          baseBranch: "main",
+          worktreePath: wt,
+          status: "active",
+          createdAt: "2026-07-18T00:00:00Z",
+          sessions: [],
+        },
+      ],
+    };
+    const res = restoreProjectFromManifest(ROOT, "p1");
+    expect(res.workspaces).toBe(1);
+    expect(h.imported[0]).toMatchObject({
+      worktreePath: path.resolve(wt),
+    });
+    expect(String(h.imported[0]?.worktreePath)).not.toMatch(/[/\\]\.\.$/);
   });
 });
 

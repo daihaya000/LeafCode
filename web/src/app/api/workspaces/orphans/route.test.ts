@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 const h = vi.hoisted(() => ({
   projects: [] as { id: string; root_path: string; name: string }[],
@@ -9,6 +12,7 @@ const h = vi.hoisted(() => ({
   removeAllowedRoot: vi.fn(),
   deleteWorkspace: vi.fn(),
   dataDir: "C:\\data",
+  projectRoot: "C:\\repo",
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -19,7 +23,7 @@ vi.mock("@/lib/db", () => ({
         if (sql.includes("FROM workspaces")) return h.workspaces;
         return [];
       },
-      get: () => ({ root_path: "C:\\repo" }),
+      get: () => ({ root_path: h.projectRoot }),
       run: () => undefined,
     }),
   }),
@@ -29,11 +33,15 @@ vi.mock("@/lib/db", () => ({
   deleteWorkspace: h.deleteWorkspace,
 }));
 
-vi.mock("@/lib/git", () => ({
-  listGitWorktrees: async (repoRoot: string) => h.gitWorktrees[repoRoot] ?? [],
-  removeWorktree: (arg: unknown) => h.removeWorktree(arg),
-  runGit: async () => ({ code: 0, stdout: "", stderr: "" }),
-}));
+vi.mock("@/lib/git", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/git")>("@/lib/git");
+  return {
+    listGitWorktrees: async (repoRoot: string) => h.gitWorktrees[repoRoot] ?? [],
+    removeWorktree: (arg: unknown) => h.removeWorktree(arg),
+    runGit: async () => ({ code: 0, stdout: "", stderr: "" }),
+    gitWorktreeAdminDir: actual.gitWorktreeAdminDir,
+  };
+});
 
 vi.mock("@/lib/paths", () => ({ dataDir: () => h.dataDir }));
 vi.mock("@/lib/project-session-sync", () => ({
@@ -67,6 +75,7 @@ const KNOWN_PATH = "C:\\data\\worktrees\\proj1\\webui__main__known-def";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.projectRoot = "C:\\repo";
   h.projects = [{ id: "proj1", root_path: "C:\\repo", name: "Repo" }];
   h.workspaces = [{ absolute_path: KNOWN_PATH, worktree_path: KNOWN_PATH }];
   h.orphanedRows = [];
@@ -133,6 +142,41 @@ describe("GET /api/workspaces/orphans", () => {
       GET(getReq("http://x/api/workspaces/orphans?scan=1")),
     ).rejects.toThrow("allowlist locked");
     expect(h.deleteWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("does not rmSync repo/.git when a gone worktree path ends with ..", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "orphan-git-"));
+    const gitDir = path.resolve(repo, ".git");
+    const marker = path.join(gitDir, "KEEP_ME");
+    fs.mkdirSync(gitDir, { recursive: true });
+    fs.writeFileSync(marker, "safe");
+    h.projectRoot = repo;
+    h.projects = [{ id: "proj1", root_path: repo, name: "Repo" }];
+
+    const crafted = path.join(repo, ".webui-worktrees", "missing", "foo", "..");
+    h.orphanedRows = [
+      {
+        id: "ws-evil",
+        project_id: "proj1",
+        absolute_path: path.resolve(crafted),
+        worktree_path: crafted,
+        isolation: "git_worktree",
+        status: "orphaned",
+      },
+    ];
+
+    const rmSpy = vi.spyOn(fs, "rmSync");
+    try {
+      await GET(getReq("http://x/api/workspaces/orphans?scan=1"));
+      expect(fs.existsSync(marker)).toBe(true);
+      for (const call of rmSpy.mock.calls) {
+        expect(path.resolve(String(call[0]))).not.toBe(gitDir);
+      }
+      expect(h.deleteWorkspace).toHaveBeenCalledWith("ws-evil");
+    } finally {
+      rmSpy.mockRestore();
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 
