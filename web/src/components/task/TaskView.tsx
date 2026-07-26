@@ -2588,8 +2588,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                     {agents.length > 0 && (
                       <GhostSelect
                         value={agent}
-                        onChange={(e) => {
-                          setAgent(e.target.value);
+                        onChange={(value) => {
+                          setAgent(value);
                           setIntelligence("");
                         }}
                         disabled={!task.sessionId}

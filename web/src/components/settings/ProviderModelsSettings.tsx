@@ -634,8 +634,7 @@ export function ProviderModelsSettings() {
                   modelOptions.find((o) => o.value === defaultModel)?.label ??
                   "選択してください"
                 }
-                onChange={(e) => {
-                  const v = e.target.value;
+                onChange={(v) => {
                   setDefaultModel(v);
                   writeDefaultModel(v || null);
                   void writeDefaultModelToServer(v || null).catch(

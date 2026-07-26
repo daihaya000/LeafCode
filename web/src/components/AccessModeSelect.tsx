@@ -31,7 +31,7 @@ export function AccessModeSelect({
       }
       valueLabel={current?.label ?? value}
       tone={value === "full" ? "warning" : "default"}
-      onChange={(e) => onChange(e.target.value as AccessMode)}
+      onChange={(value) => onChange(value as AccessMode)}
       className={className}
     >
       {ACCESS_MODE_OPTIONS.map((o) => (

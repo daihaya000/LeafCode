@@ -105,9 +105,13 @@ describe("ProviderModelsSettings", () => {
     expect(
       await screen.findByRole("heading", { name: "デフォルトモデル" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("combobox", { name: "デフォルトモデル" }),
-    ).toBeTruthy();
+    const trigger = screen.getByRole("button", { name: "デフォルトモデル" });
+    fireEvent.click(trigger);
+    const listbox = screen.getByRole("listbox", { name: "デフォルトモデル" });
+    expect(listbox.parentElement).toBe(document.body);
+    expect(listbox.textContent).toContain("OpenAI");
+    fireEvent.click(screen.getByRole("option", { name: "GPT-5" }));
+    expect(localStorage.getItem("webui:default-model")).toBe("openai::gpt-5");
   });
 
   it("prefers the server-stored default model over localStorage on load", async () => {
@@ -121,7 +125,7 @@ describe("ProviderModelsSettings", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "デフォルトモデル" }),
+        screen.getByRole("button", { name: "デフォルトモデル" }),
       ).toHaveProperty("value", "openai::gpt-5");
     });
   });

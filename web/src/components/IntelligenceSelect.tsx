@@ -30,7 +30,7 @@ export function IntelligenceSelect({
       aria-label="インテリジェンス"
       icon={<Cpu className="h-3.5 w-3.5" />}
       valueLabel={value || "デフォルト"}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
       className="min-w-0"
     >
       <option value="">デフォルト</option>

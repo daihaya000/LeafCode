@@ -704,7 +704,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
                   : "プロジェクトなし"
               }
-              onChange={(e) => setProjectId(e.target.value)}
+              onChange={setProjectId}
               className="max-w-[12rem] shrink-0 sm:max-w-56"
               title={
                 selectedProject
@@ -728,9 +728,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               valueLabel={
                 isolation === "current_folder" ? defaultBranchLabel : "worktree"
               }
-              onChange={(e) =>
+              onChange={(value) =>
                 setIsolation(
-                  e.target.value as "current_folder" | "git_worktree",
+                  value as "current_folder" | "git_worktree",
                 )
               }
               className="max-w-[10rem] shrink-0 sm:max-w-40"
@@ -915,8 +915,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     aria-label="エージェント"
                     icon={<Bot className="h-3.5 w-3.5" />}
                     valueLabel={agent || "エージェント"}
-                    onChange={(e) => {
-                      setAgent(e.target.value);
+                    onChange={(value) => {
+                      setAgent(value);
                       setIntelligence("");
                     }}
                     className="max-w-[10rem] shrink-0 sm:max-w-40"

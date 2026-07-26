@@ -1,11 +1,14 @@
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GhostSelect } from "./ui";
 
 describe("GhostSelect", () => {
-  it("keeps a native select with its accessible name and option groups", () => {
-    const markup = renderToStaticMarkup(
+  afterEach(() => cleanup());
+
+  it("renders its listbox in a portal and reports the selected option", () => {
+    const onChange = vi.fn();
+    render(
       createElement(
         GhostSelect,
         {
@@ -13,20 +16,52 @@ describe("GhostSelect", () => {
           icon: createElement("span", null, "CPU"),
           valueLabel: "GPT-5",
           value: "gpt-5",
-          onChange: () => {},
+          onChange,
         },
+        createElement("option", { value: "gpt-5" }, "GPT-5"),
+        createElement("option", { value: "gpt-4.1" }, "GPT-4.1"),
+      ),
+    );
+
+    const trigger = screen.getByRole("button", { name: "モデル" });
+    expect(trigger).toHaveProperty("value", "gpt-5");
+    fireEvent.click(trigger);
+
+    const listbox = screen.getByRole("listbox", { name: "モデル" });
+    expect(listbox.parentElement).toBe(document.body);
+    fireEvent.click(screen.getByRole("option", { name: "GPT-4.1" }));
+    expect(onChange).toHaveBeenCalledWith("gpt-4.1");
+  });
+
+  it("renders optgroup labels and preserves option metadata", () => {
+    render(
+      createElement(
+        GhostSelect,
+        {
+          "aria-label": "デフォルトモデル",
+          icon: createElement("span", null, "CPU"),
+          valueLabel: "GPT-5",
+          value: "gpt-5",
+          onChange: vi.fn(),
+        },
+        createElement("option", { value: "" }, "選択してください"),
         createElement(
           "optgroup",
           { label: "OpenAI" },
-          createElement("option", { value: "gpt-5" }, "GPT-5"),
+          createElement("option", { value: "gpt-5", title: "GPT-5 の説明" }, "GPT-5"),
+          createElement("option", { value: "gpt-4.1", disabled: true }, "GPT-4.1"),
         ),
       ),
     );
 
-    expect(markup).toContain('<select aria-label="モデル"');
-    expect(markup).toContain('<optgroup label="OpenAI">');
-    expect(markup).toContain('<option value="gpt-5" selected="">GPT-5</option>');
-    expect(markup).toContain("absolute inset-0 h-full w-full");
-    expect(markup).toContain("appearance-none opacity-0");
+    fireEvent.click(screen.getByRole("button", { name: "デフォルトモデル" }));
+
+    expect(screen.getByText("OpenAI")).toBeTruthy();
+    expect(screen.getByRole("option", { name: "GPT-5" }).getAttribute("title")).toBe(
+      "GPT-5 の説明",
+    );
+    expect((screen.getByRole("option", { name: "GPT-4.1" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 });

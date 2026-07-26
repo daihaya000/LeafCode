@@ -34,7 +34,7 @@ export function SubagentPermissionSelect({
       }
       valueLabel={current?.label ?? value}
       tone={value === "deny" ? "warning" : "default"}
-      onChange={(e) => onChange(e.target.value as SubagentPermission)}
+      onChange={(value) => onChange(value as SubagentPermission)}
       className={className}
     >
       {SUBAGENT_PERMISSION_OPTIONS.map((o) => (

@@ -1,100 +1,81 @@
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntelligenceSelect } from "./IntelligenceSelect";
 
+function renderSelect(
+  variants: Parameters<typeof IntelligenceSelect>[0]["variants"],
+  value = "",
+  disabled = false,
+  onChange = vi.fn(),
+) {
+  render(
+    createElement(IntelligenceSelect, { variants, value, onChange, disabled }),
+  );
+  return onChange;
+}
+
 describe("IntelligenceSelect", () => {
+  afterEach(() => cleanup());
+
   it("renders デフォルト + high when only high is available", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["high"],
-        value: "",
-        onChange: () => {},
-        disabled: false,
-      }),
-    );
-    expect(markup).toContain('aria-label="インテリジェンス"');
-    expect(markup).toContain(">デフォルト<");
-    expect(markup).toContain(">high<");
-    expect(markup).not.toContain('value="low"');
+    const onChange = renderSelect(["high"]);
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+
+    expect(screen.getByRole("option", { name: "デフォルト" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: "high" }));
+    expect(onChange).toHaveBeenCalledWith("high");
+    expect(screen.queryByRole("option", { name: "low" })).toBeNull();
   });
 
   it("renders デフォルト + low when only low is available", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["low"],
-        value: "",
-        onChange: () => {},
-        disabled: false,
-      }),
-    );
-    expect(markup).toContain(">デフォルト<");
-    expect(markup).toContain(">low<");
-    expect(markup).not.toContain('value="high"');
+    renderSelect(["low"]);
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+
+    expect(screen.getByRole("option", { name: "デフォルト" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "low" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "high" })).toBeNull();
   });
 
   it("renders all supplied variants in order", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["none", "low", "medium", "high", "xhigh"],
-        value: "",
-        onChange: () => {},
-        disabled: false,
-      }),
-    );
-    expect(markup).toContain(">デフォルト<");
-    expect(markup).toContain(">none<");
-    expect(markup).toContain(">low<");
-    expect(markup).toContain(">medium<");
-    expect(markup).toContain(">high<");
-    expect(markup).toContain(">xhigh<");
+    renderSelect(["none", "low", "medium", "high", "xhigh"]);
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["デフォルト", "none", "low", "medium", "high", "xhigh"]);
   });
 
   it("marks the selected value", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["high", "low"],
-        value: "high",
-        onChange: () => {},
-        disabled: false,
-      }),
+    renderSelect(["high", "low"], "high");
+    fireEvent.click(screen.getByRole("button", { name: "インテリジェンス" }));
+
+    expect(screen.getByRole("option", { name: "high" }).getAttribute("aria-selected")).toBe(
+      "true",
     );
-    expect(markup).toContain('<option value="high" selected="">');
   });
 
-  it("passes disabled to the native select", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["high"],
-        value: "",
-        onChange: () => {},
-        disabled: true,
-      }),
+  it("passes disabled to the trigger", () => {
+    renderSelect(["high"], "", true);
+
+    expect((screen.getByRole("button", { name: "インテリジェンス" }) as HTMLButtonElement).disabled).toBe(
+      true,
     );
-    expect(markup).toContain('disabled=""');
   });
 
   it("uses デフォルト as the visible label when value is empty", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["high"],
-        value: "",
-        onChange: () => {},
-        disabled: false,
-      }),
+    renderSelect(["high"]);
+
+    expect(screen.getByRole("button", { name: "インテリジェンス" }).textContent).toContain(
+      "デフォルト",
     );
-    expect(markup).toContain("デフォルト");
   });
 
   it("uses the selected variant as the visible label when set", () => {
-    const markup = renderToStaticMarkup(
-      createElement(IntelligenceSelect, {
-        variants: ["medium", "high"],
-        value: "medium",
-        onChange: () => {},
-        disabled: false,
-      }),
+    renderSelect(["medium", "high"], "medium");
+
+    expect(screen.getByRole("button", { name: "インテリジェンス" }).textContent).toContain(
+      "medium",
     );
-    expect(markup).toContain(">medium<");
   });
 });

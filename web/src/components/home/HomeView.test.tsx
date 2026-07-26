@@ -377,8 +377,8 @@ describe("HomeView image attachments", () => {
     const branchSelect = screen.getByLabelText("作業場所");
     expect(form.contains(projectSelect)).toBe(false);
     expect(form.contains(branchSelect)).toBe(false);
-    expect(projectSelect.closest("div")?.className).toMatch(/\bmb-3\b/);
-    expect(branchSelect.closest("div")?.className).toMatch(/\bmb-3\b/);
+    expect(projectSelect.parentElement?.parentElement?.className).toMatch(/\bmb-3\b/);
+    expect(branchSelect.parentElement?.parentElement?.className).toMatch(/\bmb-3\b/);
     expect(controlRow.contains(projectSelect)).toBe(false);
     expect(controlRow.contains(branchSelect)).toBe(false);
     expect(controlRow.contains(screen.getByLabelText("アクセスモード"))).toBe(true);
@@ -387,7 +387,8 @@ describe("HomeView image attachments", () => {
       true,
     );
 
-    const accessWrap = screen.getByLabelText("アクセスモード").closest("span");
+    const accessTrigger = screen.getByLabelText("アクセスモード");
+    const accessWrap = accessTrigger.parentElement;
     expect(accessWrap?.className).not.toContain("order-first");
     expect(accessWrap?.className).not.toContain("xl:order-none");
     expect(accessWrap?.className).toContain("shrink-0");
@@ -587,10 +588,11 @@ describe("HomeView subagent permission", () => {
     await screen.findByLabelText("エージェント");
     const select = (await screen.findByLabelText(
       "サブエージェント",
-    )) as HTMLSelectElement;
+    )) as HTMLButtonElement;
     expect(select.value).toBe("allow");
 
-    fireEvent.change(select, { target: { value: "deny" } });
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole("option", { name: "不許可" }));
 
     await waitFor(() =>
       expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),

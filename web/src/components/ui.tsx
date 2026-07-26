@@ -2,12 +2,19 @@
 
 import React, {
   ButtonHTMLAttributes,
+  Children,
   ReactNode,
   SelectHTMLAttributes,
   forwardRef,
+  isValidElement,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTheme } from "next-themes";
-import { ChevronDown, Loader2, Moon, Sun } from "lucide-react";
+import { Check, ChevronDown, Loader2, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 function cx(...parts: (string | false | null | undefined)[]): string {
@@ -21,49 +28,226 @@ export function GhostSelect({
   valueLabel,
   tone = "default",
   className,
-  selectClassName,
   disabled,
   children,
-  ...selectProps
-}: Omit<SelectHTMLAttributes<HTMLSelectElement>, "className" | "disabled"> & {
+  value,
+  onChange,
+  title,
+  "aria-label": ariaLabel,
+}: Omit<
+  SelectHTMLAttributes<HTMLSelectElement>,
+  "className" | "disabled" | "onChange"
+> & {
   icon: ReactNode;
   valueLabel: ReactNode;
   tone?: "default" | "warning";
   className?: string;
-  selectClassName?: string;
   disabled?: boolean;
+  value: string;
+  onChange: (value: string) => void;
 }) {
-  return (
-    <span
-      className={cx(
-        "group relative inline-flex min-w-0 items-center gap-1.5 rounded-lg border bg-bg px-2 py-1.5 text-xs font-medium shadow-sm transition-colors focus-within:ring-2 focus-within:ring-primary/30",
-        tone === "warning"
-          ? "border-warning/40 text-warning hover:bg-warning-bg focus-within:bg-warning-bg"
-          : "border-border text-muted hover:bg-surface-2 hover:text-text focus-within:border-border-strong focus-within:bg-surface-2 focus-within:text-text",
-        disabled && "cursor-not-allowed opacity-40",
-        className,
-      )}
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+    minWidth: number;
+  } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const groupedOptions = useMemo(() => {
+    const groups: {
+      label?: ReactNode;
+      options: { value: string; label: ReactNode; disabled: boolean; title?: string }[];
+    }[] = [];
+
+    const readOption = (child: React.ReactElement) => {
+      const props = child.props as {
+        value?: string;
+        children?: ReactNode;
+        disabled?: boolean;
+        title?: string;
+      };
+      return {
+        value: props.value ?? "",
+        label: props.children,
+        disabled: props.disabled === true,
+        title: props.title,
+      };
+    };
+
+    Children.forEach(children, (child) => {
+      if (!isValidElement(child)) return;
+      if (child.type === "option") {
+        groups.push({ options: [readOption(child)] });
+        return;
+      }
+      if (child.type !== "optgroup") return;
+
+      const props = child.props as { label?: ReactNode; children?: ReactNode };
+      const options = Children.toArray(props.children).flatMap((option) =>
+        isValidElement(option) && option.type === "option" ? [readOption(option)] : [],
+      );
+      groups.push({ label: props.label, options });
+    });
+
+    return groups;
+  }, [children]);
+
+  const updateMenuPosition = useCallback(() => {
+    const root = rootRef.current;
+    if (!root || typeof window === "undefined") return;
+    const rect = root.getBoundingClientRect();
+    const menuRect = menuRef.current?.getBoundingClientRect();
+    const viewportPadding = 16;
+    const gap = 4;
+    const menuWidth = Math.min(
+      menuRect?.width || Math.max(rect.width, 224),
+      window.innerWidth - viewportPadding * 2,
+    );
+    const menuHeight = Math.min(
+      menuRect?.height || 320,
+      window.innerHeight - viewportPadding * 2,
+    );
+    const topAbove = rect.top - menuHeight - gap;
+    const topBelow = rect.bottom + gap;
+    const top =
+      topAbove >= viewportPadding
+        ? topAbove
+        : Math.min(topBelow, window.innerHeight - viewportPadding - menuHeight);
+    setMenuPosition({
+      top: Math.max(viewportPadding, top),
+      left: Math.max(
+        viewportPadding,
+        Math.min(
+          rect.right - menuWidth,
+          window.innerWidth - viewportPadding - menuWidth,
+        ),
+      ),
+      minWidth: rect.width,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+  }, [open, groupedOptions, updateMenuPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open, updateMenuPosition]);
+
+  const menu = open && !disabled && (
+    <div
+      ref={menuRef}
+      role="listbox"
+      aria-label={ariaLabel}
+      className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
+      style={{
+        top: menuPosition?.top ?? 0,
+        left: menuPosition?.left ?? 0,
+        minWidth: menuPosition?.minWidth,
+        visibility: menuPosition ? undefined : "hidden",
+      }}
     >
-      <span aria-hidden="true" className="shrink-0">
-        {icon}
-      </span>
-      <span aria-hidden="true" className="min-w-0 truncate">
-        {valueLabel}
-      </span>
-      <span aria-hidden="true" className="shrink-0 text-faint">
-        <ChevronDown className="h-3.5 w-3.5" />
-      </span>
-      <select
-        {...selectProps}
+      {groupedOptions.map((group, groupIndex) => (
+        <div key={groupIndex}>
+          {group.label && (
+            <div className="px-2 py-1 text-[11px] font-semibold text-faint">
+              {group.label}
+            </div>
+          )}
+          {group.options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={option.value === value}
+              disabled={option.disabled}
+              title={option.title}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              className={cx(
+                "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                option.value === value && "bg-surface-2 text-text",
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              {option.value === value && (
+                <Check
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5 shrink-0 text-primary"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div
+      ref={rootRef}
+      className={cx("relative inline-flex min-w-0", className)}
+    >
+      <button
+        type="button"
+        value={value}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        title={title}
+        onClick={() => setOpen((current) => !current)}
         className={cx(
-          "absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 disabled:cursor-not-allowed",
-          selectClassName,
+          "group inline-flex h-full w-full min-w-0 items-center gap-1.5 rounded-lg border bg-bg px-2 py-1.5 text-xs font-medium shadow-sm transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none",
+          tone === "warning"
+            ? "border-warning/40 text-warning hover:bg-warning-bg focus:bg-warning-bg"
+            : "border-border text-muted hover:bg-surface-2 hover:text-text focus:border-border-strong focus:bg-surface-2 focus:text-text",
+          disabled && "cursor-not-allowed opacity-40",
         )}
       >
-        {children}
-      </select>
-    </span>
+        <span aria-hidden="true" className="shrink-0">
+          {icon}
+        </span>
+        <span aria-hidden="true" className="min-w-0 truncate">
+          {valueLabel}
+        </span>
+        <span aria-hidden="true" className="shrink-0 text-faint">
+          <ChevronDown className="h-3.5 w-3.5" />
+        </span>
+      </button>
+
+      {menu && createPortal(menu, document.body)}
+    </div>
   );
 }
 
