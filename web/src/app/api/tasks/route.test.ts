@@ -112,7 +112,17 @@ describe("POST /api/tasks variant validation", () => {
     );
   });
 
-  it("returns 400 when subagentPermission is specified but agent is undefined", async () => {
+  it("applies the session task ruleset even when no agent is selected", async () => {
+    // Regression: subagentPermission is session-scoped, not agent-scoped, so
+    // it must take effect without an execution agent. Requiring `agent` here
+    // previously made HomeView drop subagentPermission from the request
+    // whenever the user hadn't picked an agent, silently leaving "不許可"
+    // without effect on the new session's first prompt.
+    const { setSessionTaskPermission } = await import(
+      "@/lib/opencode-task-permission"
+    );
+    (setSessionTaskPermission as ReturnType<typeof vi.fn>).mockClear();
+
     const res = await post({
       projectId: "project-1",
       prompt: "hello",
@@ -120,12 +130,15 @@ describe("POST /api/tasks variant validation", () => {
       subagentPermission: "deny",
     });
 
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/execution agent|required/i);
+    expect(res.status).toBe(200);
+    expect(setSessionTaskPermission).toHaveBeenCalledWith(
+      "C:\\repo",
+      "session-1",
+      "deny",
+    );
   });
 
-  it("returns 400 when subagentPermission is specified but agent is not a string", async () => {
+  it("returns 400 when agent is provided but not a string, regardless of subagentPermission", async () => {
     const res = await post({
       projectId: "project-1",
       prompt: "hello",
@@ -136,10 +149,10 @@ describe("POST /api/tasks variant validation", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/execution agent|required/i);
+    expect(body.error).toMatch(/agent/i);
   });
 
-  it("returns 400 when subagentPermission is specified but agent is only whitespace", async () => {
+  it("returns 400 when agent is only whitespace, regardless of subagentPermission", async () => {
     const res = await post({
       projectId: "project-1",
       prompt: "hello",
@@ -150,7 +163,7 @@ describe("POST /api/tasks variant validation", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/execution agent|required/i);
+    expect(body.error).toMatch(/agent/i);
   });
 
   it("accepts request without variant", async () => {

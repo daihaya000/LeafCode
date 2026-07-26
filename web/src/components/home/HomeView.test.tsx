@@ -606,6 +606,45 @@ describe("HomeView subagent permission", () => {
       expect.anything(),
     );
   });
+
+  it("sends subagentPermission on submit even when no agent is selected", async () => {
+    // Regression: /api/opencode/agent returns no agents here (default mock:
+    // `{ ok: false }`), so the agent selector never renders and `agent` stays
+    // "". subagentPermission is session-scoped, not agent-scoped, so it must
+    // still reach POST /api/tasks — otherwise "不許可" has no effect on the
+    // new session's first prompt.
+    render(<HomeView />);
+    const select = (await screen.findByLabelText(
+      "サブエージェント",
+    )) as HTMLButtonElement;
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole("option", { name: "不許可" }));
+    await waitFor(() =>
+      expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),
+    );
+
+    const prompt = screen.getByPlaceholderText(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    fireEvent.change(prompt, { target: { value: "hello" } });
+    const submit = screen.getByRole("button", {
+      name: "タスク開始",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks",
+        expect.objectContaining({ subagentPermission: "deny" }),
+      ),
+    );
+    const [, , sentBody] = sendJson.mock.calls.find(
+      ([, path]) => path === "/api/tasks",
+    )!;
+    expect(sentBody.agent).toBeUndefined();
+  });
 });
 
 describe("HomeView last-used model", () => {

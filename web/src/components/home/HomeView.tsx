@@ -549,7 +549,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : {}),
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-        ...(agent ? { agent, subagentPermission } : {}),
+        // subagentPermission must be sent even when no agent is selected:
+        // enforcement is session-scoped (not agent-scoped), so omitting it
+        // whenever `agent` is empty left "不許可" without effect on the new
+        // session's first prompt.
+        subagentPermission,
+        ...(agent ? { agent } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
       });
       // Remember the model actually applied to this submission so the next

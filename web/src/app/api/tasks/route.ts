@@ -150,14 +150,19 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "invalid task permission" }, { status: 400 });
   }
+  // subagentPermission does NOT require `agent`: setSessionTaskPermission is
+  // session-scoped (PATCH /session/:id), not agent-scoped, so it applies
+  // regardless of whether an execution agent was picked on Home. A prior
+  // presence check here forced the client to drop subagentPermission from
+  // the request whenever no agent was selected, silently leaving "不許可"
+  // without effect on the new session's first prompt. `agent`, when it *is*
+  // provided (for prompt/model routing below), still needs to be a valid
+  // non-empty string regardless of any permission flag.
   if (
-    body?.subagentPermission !== undefined &&
+    body?.agent !== undefined &&
     (typeof body.agent !== "string" || !body.agent.trim())
   ) {
-    return NextResponse.json(
-      { error: "execution agent is required for task permission" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid agent" }, { status: 400 });
   }
   const files = parseImageFiles(body?.files);
   if (files === null) {
