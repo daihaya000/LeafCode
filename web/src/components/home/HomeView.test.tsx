@@ -389,9 +389,19 @@ describe("HomeView image attachments", () => {
 
     const accessTrigger = screen.getByLabelText("アクセスモード");
     const accessWrap = accessTrigger.parentElement;
+    const skillTrigger = screen.getByLabelText("スキル");
+    const skillWrap = skillTrigger.parentElement;
+    const subagentTrigger = screen.getByLabelText("サブエージェント");
+    const subagentWrap = subagentTrigger.parentElement;
     expect(accessWrap?.className).not.toContain("order-first");
     expect(accessWrap?.className).not.toContain("xl:order-none");
     expect(accessWrap?.className).toContain("shrink-0");
+    expect(accessWrap?.compareDocumentPosition(skillWrap!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(skillWrap?.compareDocumentPosition(subagentWrap!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   describe("HomeView voice input", () => {
@@ -603,6 +613,20 @@ describe("HomeView subagent permission", () => {
     expect(sendJson).not.toHaveBeenCalledWith(
       "POST",
       "/api/subagent-permission",
+      expect.anything(),
+    );
+
+    const skillSelect = screen.getByLabelText("スキル") as HTMLButtonElement;
+    expect(skillSelect.value).toBe("allow");
+    fireEvent.click(skillSelect);
+    fireEvent.click(screen.getByRole("option", { name: "不許可" }));
+    await waitFor(() =>
+      expect(localStorage.getItem("webui:skill-permission")).toBe("deny"),
+    );
+    expect(skillSelect.value).toBe("deny");
+    expect(sendJson).not.toHaveBeenCalledWith(
+      "POST",
+      "/api/skill-permission",
       expect.anything(),
     );
   });

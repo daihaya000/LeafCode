@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Bot, FolderGit2, GitBranch, Paperclip, X } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
@@ -22,6 +23,11 @@ import {
   writeSubagentPermission,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
+import {
+  readSkillPermission,
+  writeSkillPermission,
+  type SkillPermission,
+} from "@/lib/skill-permission";
 import {
   readDefaultModel,
   readDefaultModelFromServer,
@@ -151,6 +157,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
   const [subagentPermission, setSubagentPermission] =
     useState<SubagentPermission>("allow");
+  const [skillPermission, setSkillPermission] = useState<SkillPermission>("allow");
   const [baseBranch, setBaseBranch] = useState("");
   const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
@@ -185,6 +192,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   useEffect(() => {
     setAccessMode(readAccessMode());
     setSubagentPermission(readSubagentPermission());
+    setSkillPermission(readSkillPermission());
   }, []);
 
   // DB → localStorage migration so the default model set on another
@@ -554,6 +562,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         // whenever `agent` is empty left "不許可" without effect on the new
         // session's first prompt.
         subagentPermission,
+        skillPermission,
         ...(agent ? { agent } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
       });
@@ -579,6 +588,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     agentModels,
     intelligence,
     subagentPermission,
+    skillPermission,
     submitting,
     engineOk,
     router,
@@ -590,6 +600,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const changeSubagentPermission = useCallback((mode: SubagentPermission) => {
     setSubagentPermission(mode);
     writeSubagentPermission(mode);
+  }, []);
+
+  const changeSkillPermission = useCallback((mode: SkillPermission) => {
+    setSkillPermission(mode);
+    writeSkillPermission(mode);
   }, []);
 
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
@@ -941,6 +956,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     setAccessMode(m);
                     writeAccessMode(m);
                   }}
+                  className="h-8 shrink-0"
+                />
+                <SkillPermissionSelect
+                  value={skillPermission}
+                  disabled={submitting}
+                  onChange={(m) => changeSkillPermission(m)}
                   className="h-8 shrink-0"
                 />
                 <SubagentPermissionSelect

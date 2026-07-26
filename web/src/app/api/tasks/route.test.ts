@@ -61,6 +61,9 @@ vi.mock("@/lib/task-service", () => ({
 vi.mock("@/lib/opencode-task-permission", () => ({
   setSessionTaskPermission: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/lib/opencode-skill-permission", () => ({
+  setSessionSkillPermission: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { POST } from "./route";
 
@@ -164,6 +167,76 @@ describe("POST /api/tasks variant validation", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/agent/i);
+  });
+
+  it("applies the session skill ruleset before the first prompt", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    const { setSessionSkillPermission } = await import(
+      "@/lib/opencode-skill-permission"
+    );
+    (ocServer as ReturnType<typeof vi.fn>).mockClear();
+    (setSessionSkillPermission as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      agent: "build",
+      skillPermission: "deny",
+    });
+
+    expect(res.status).toBe(200);
+    expect(setSessionSkillPermission).toHaveBeenCalledWith(
+      "C:\\repo",
+      "session-1",
+      "deny",
+    );
+    const promptIndex = (ocServer as ReturnType<typeof vi.fn>).mock.calls.findIndex(
+      (call) => String(call[1]).includes("/prompt_async"),
+    );
+    expect(promptIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      (setSessionSkillPermission as ReturnType<typeof vi.fn>).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      (ocServer as ReturnType<typeof vi.fn>).mock.invocationCallOrder[promptIndex],
+    );
+  });
+
+  it("returns 400 for an invalid skillPermission", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      agent: "build",
+      skillPermission: "invalid",
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/invalid skill permission/i);
+  });
+
+  it("applies the session skill ruleset even when no agent is selected", async () => {
+    // Regression: skillPermission is session-scoped, not agent-scoped, so it
+    // must take effect without an execution agent (mirrors subagentPermission).
+    const { setSessionSkillPermission } = await import(
+      "@/lib/opencode-skill-permission"
+    );
+    (setSessionSkillPermission as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      skillPermission: "deny",
+    });
+
+    expect(res.status).toBe(200);
+    expect(setSessionSkillPermission).toHaveBeenCalledWith(
+      "C:\\repo",
+      "session-1",
+      "deny",
+    );
   });
 
   it("accepts request without variant", async () => {

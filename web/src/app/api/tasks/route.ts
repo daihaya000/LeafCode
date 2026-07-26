@@ -6,6 +6,8 @@ import {
   setSessionTaskPermission,
   type TaskPermission,
 } from "@/lib/opencode-task-permission";
+import { setSessionSkillPermission } from "@/lib/opencode-skill-permission";
+import type { SkillPermission } from "@/lib/skill-permission";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import {
   normalizeCommands,
@@ -45,6 +47,10 @@ type AgentResponse = {
 }[];
 
 function isTaskPermission(value: unknown): value is TaskPermission {
+  return value === "allow" || value === "deny";
+}
+
+function isSkillPermission(value: unknown): value is SkillPermission {
   return value === "allow" || value === "deny";
 }
 
@@ -139,6 +145,7 @@ export async function POST(req: NextRequest) {
     model?: { providerID?: string; modelID?: string };
     agent?: string;
     subagentPermission?: unknown;
+    skillPermission?: unknown;
     variant?: unknown;
     files?: unknown;
   } | null;
@@ -150,14 +157,21 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "invalid task permission" }, { status: 400 });
   }
-  // subagentPermission does NOT require `agent`: setSessionTaskPermission is
-  // session-scoped (PATCH /session/:id), not agent-scoped, so it applies
-  // regardless of whether an execution agent was picked on Home. A prior
-  // presence check here forced the client to drop subagentPermission from
-  // the request whenever no agent was selected, silently leaving "不許可"
-  // without effect on the new session's first prompt. `agent`, when it *is*
-  // provided (for prompt/model routing below), still needs to be a valid
-  // non-empty string regardless of any permission flag.
+  if (
+    body?.skillPermission !== undefined &&
+    !isSkillPermission(body.skillPermission)
+  ) {
+    return NextResponse.json({ error: "invalid skill permission" }, { status: 400 });
+  }
+  // Neither subagentPermission nor skillPermission requires `agent`:
+  // setSessionTaskPermission / setSessionSkillPermission are session-scoped
+  // (PATCH /session/:id), not agent-scoped, so they apply regardless of
+  // whether an execution agent was picked on Home. A prior presence check
+  // here forced the client to drop these permissions from the request
+  // whenever no agent was selected, silently leaving "不許可" without effect
+  // on the new session's first prompt. `agent`, when it *is* provided (for
+  // prompt/model routing below), still needs to be a valid non-empty string
+  // regardless of any permission flag.
   if (
     body?.agent !== undefined &&
     (typeof body.agent !== "string" || !body.agent.trim())
@@ -255,6 +269,13 @@ export async function POST(req: NextRequest) {
         workspace.absolute_path,
         session.id,
         body.subagentPermission,
+      );
+    }
+    if (body?.skillPermission !== undefined) {
+      await setSessionSkillPermission(
+        workspace.absolute_path,
+        session.id,
+        body.skillPermission,
       );
     }
 
