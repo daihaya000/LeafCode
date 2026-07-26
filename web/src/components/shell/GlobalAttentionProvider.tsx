@@ -72,6 +72,10 @@ type RestPermission = {
   resources?: string[];
 };
 
+type RestChildSession = {
+  id?: string;
+};
+
 function toQuestionItem(
   directory: string,
   q: RestQuestion,
@@ -107,6 +111,23 @@ function toPermissionItem(
       receivedAt: Date.now(),
     },
   };
+}
+
+async function childSessionIdsFor(
+  directory: string,
+  parentSessionID: string,
+): Promise<string[]> {
+  try {
+    const list = await ocJson<unknown>(
+      `/session/${parentSessionID}/children`,
+      directory,
+    );
+    return normalizeOcList<RestChildSession>(list)
+      .map((child) => child.id)
+      .filter((id): id is string => Boolean(id));
+  } catch {
+    return [];
+  }
 }
 
 export function GlobalAttentionProvider({
@@ -262,13 +283,21 @@ export function GlobalAttentionProvider({
           /* leave permissions unsynced for this directory */
         }
 
-        const sessionIds = [
+        const rootSessionIds = [
           ...new Set(
             tasks
               .filter((t) => t.directory === directory && t.sessionId)
               .map((t) => t.sessionId as string),
           ),
         ];
+        const childSessionIds = (
+          await Promise.all(
+            rootSessionIds.map((sessionID) =>
+              childSessionIdsFor(directory, sessionID),
+            ),
+          )
+        ).flat();
+        const sessionIds = [...new Set([...rootSessionIds, ...childSessionIds])];
         const v2Permissions: AttentionItem[] = [];
         const v2Questions: AttentionItem[] = [];
         const v2QuestionOkSessions = new Set<string>();
