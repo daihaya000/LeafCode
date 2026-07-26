@@ -58,14 +58,14 @@ rem stays on 127.0.0.1. To keep the WebUI local only, set the variable yourself:
 rem   set OPENCODE_WEBUI_HOST=127.0.0.1
 if not defined OPENCODE_WEBUI_HOST set OPENCODE_WEBUI_HOST=0.0.0.0
 cd host
-node src\index.js
+rem The tray icon lives in a PowerShell/WinForms launcher. The Node host runs
+rem headless so it never opens the browser on its own; double-click the tray
+rem icon to open the Caddy URL.
+powershell -NoProfile -ExecutionPolicy Bypass -File "src\tray.ps1"
 set ERR=%ERRORLEVEL%
 if not "%ERR%"=="0" (
-  echo [OpenCode WebUI] Host exited with code %ERR%
+  echo [OpenCode WebUI] Tray exited with code %ERR%
   pause
   exit /b %ERR%
 )
-rem Keep the window briefly so "already running" style messages are readable.
-rem ping is used instead of timeout because timeout errors when stdin is redirected.
-%SystemRoot%\System32\ping.exe -n 4 127.0.0.1 >nul
 endlocal
