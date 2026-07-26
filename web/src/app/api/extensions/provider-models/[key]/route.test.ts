@@ -25,7 +25,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
-import { PATCH } from "./route";
+import { PATCH, PUT } from "./route";
 import { GET } from "../route";
 
 let data: string;
@@ -52,6 +52,16 @@ function patch(key: string, body: unknown): Promise<Response> {
   );
 }
 
+function put(key: string, body: unknown): Promise<Response> {
+  return PUT(
+    new NextRequest(
+      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+    { params: Promise.resolve({ key }) },
+  );
+}
+
 const MOCK_PROVIDER_RESPONSE = {
   all: [
     {
@@ -70,11 +80,13 @@ const MOCK_PROVIDER_RESPONSE = {
 beforeEach(() => {
   data = fs.mkdtempSync(path.join(os.tmpdir(), "api-provider-models-patch-"));
   h.dataDir = data;
+  process.env.OPENCODE_CONFIG_DIR = data;
   h.ocServer.mockReset();
   h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
 });
 
 afterEach(() => {
+  delete process.env.OPENCODE_CONFIG_DIR;
   fs.rmSync(data, { recursive: true, force: true });
 });
 
@@ -155,5 +167,42 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
 
     const state = readState();
     expect(state.disabled).toEqual({ "openai::gpt-5-mini": true });
+  });
+
+  it("updates a configured provider", async () => {
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          custom: {
+            name: "Old",
+            options: { baseURL: "https://old.example.com/v1" },
+            models: { old: { name: "Old Model" } },
+          },
+        },
+      }),
+    );
+
+    const res = await put("custom", {
+      name: "New",
+      baseURL: "https://new.example.com/v1",
+      apiKeyEnv: "CUSTOM_KEY",
+      icon: "/icons/custom.png",
+      models: [{ id: "new", name: "New Model" }],
+    });
+
+    expect(res.status).toBe(200);
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider.custom).toMatchObject({
+      name: "New",
+      options: {
+        baseURL: "https://new.example.com/v1",
+        apiKey: "{env:CUSTOM_KEY}",
+      },
+      models: { new: { name: "New Model" } },
+    });
+    expect(readState()).toMatchObject({
+      providerIcons: { custom: "/icons/custom.png" },
+    });
   });
 });

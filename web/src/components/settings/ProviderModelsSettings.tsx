@@ -27,6 +27,11 @@ type ProviderDto = {
   id: string;
   name: string;
   enabled: boolean;
+  editable?: boolean;
+  icon?: string;
+  baseURL?: string;
+  apiKeyEnv?: string;
+  npm?: string;
   models: ModelDto[];
 };
 
@@ -44,6 +49,7 @@ type NewProviderForm = {
   name: string;
   baseURL: string;
   apiKeyEnv: string;
+  icon: string;
   models: string;
 };
 
@@ -90,8 +96,8 @@ function ExtensionSwitch({
   );
 }
 
-function ProviderIcon({ providerId }: { providerId: string }) {
-  const src = providerIconSrcForOpencodeId(providerId);
+function ProviderIcon({ provider }: { provider: ProviderDto }) {
+  const src = provider.icon || providerIconSrcForOpencodeId(provider.id);
   const [broken, setBroken] = useState(false);
   if (src && !broken) {
     return (
@@ -136,6 +142,7 @@ function ProviderGroup({
   busyId,
   onToggleProvider,
   onToggleModel,
+  onEditProvider,
   onDragStartProvider,
   onDropProvider,
   onDragStartModel,
@@ -145,6 +152,7 @@ function ProviderGroup({
   busyId: string | null;
   onToggleProvider: (enabled: boolean) => void;
   onToggleModel: (model: ModelDto, enabled: boolean) => void;
+  onEditProvider: () => void;
   onDragStartProvider: () => void;
   onDropProvider: () => void;
   onDragStartModel: (model: ModelDto) => void;
@@ -201,7 +209,7 @@ function ProviderGroup({
             </svg>
           </button>
         )}
-        <ProviderIcon providerId={provider.id} />
+        <ProviderIcon provider={provider} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 truncate text-sm font-medium">
@@ -212,6 +220,11 @@ function ProviderGroup({
             </Badge>
           </div>
         </div>
+        {provider.editable && (
+          <Button variant="ghost" size="sm" onClick={onEditProvider}>
+            編集
+          </Button>
+        )}
         <ExtensionSwitch
           name={provider.name}
           enabled={provider.enabled}
@@ -286,11 +299,13 @@ export function ProviderModelsSettings() {
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [newProvider, setNewProvider] = useState<NewProviderForm>({
     id: "",
     name: "",
     baseURL: "",
     apiKeyEnv: "",
+    icon: "",
     models: "",
   });
 
@@ -453,7 +468,29 @@ export function ProviderModelsSettings() {
     [dragging, saveOrder],
   );
 
-  const addProvider = useCallback(async () => {
+  const resetProviderForm = useCallback(() => {
+    setEditingProviderId(null);
+    setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", icon: "", models: "" });
+  }, []);
+
+  const editProvider = useCallback((provider: ProviderDto) => {
+    setAddOpen(true);
+    setEditingProviderId(provider.id);
+    setAddMessage(null);
+    setActionError(null);
+    setNewProvider({
+      id: provider.id,
+      name: provider.name,
+      baseURL: provider.baseURL ?? "",
+      apiKeyEnv: provider.apiKeyEnv ?? "",
+      icon: provider.icon ?? "",
+      models: provider.models
+        .map((model) => `${model.id}|${model.name}`)
+        .join("\n"),
+    });
+  }, []);
+
+  const saveProvider = useCallback(async () => {
     const models = newProvider.models
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -466,22 +503,36 @@ export function ProviderModelsSettings() {
     setActionError(null);
     setAddMessage(null);
     try {
-      await sendJson("POST", "/api/extensions/provider-models", {
+      const body = {
         id: newProvider.id,
         name: newProvider.name,
         baseURL: newProvider.baseURL,
         apiKeyEnv: newProvider.apiKeyEnv || undefined,
+        icon: newProvider.icon || undefined,
         models,
-      });
-      setAddMessage("登録しました。OpenCode の再起動後に利用できます。");
-      setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", models: "" });
+      };
+      if (editingProviderId) {
+        await sendJson(
+          "PUT",
+          `/api/extensions/provider-models/${encodeURIComponent(editingProviderId)}`,
+          body,
+        );
+      } else {
+        await sendJson("POST", "/api/extensions/provider-models", body);
+      }
+      setAddMessage(
+        editingProviderId
+          ? "更新しました。OpenCode の再起動後に反映されます。"
+          : "登録しました。OpenCode の再起動後に利用できます。",
+      );
+      resetProviderForm();
       await load();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "登録に失敗しました");
+      setActionError(err instanceof Error ? err.message : "保存に失敗しました");
     } finally {
       setAddBusy(false);
     }
-  }, [load, newProvider]);
+  }, [editingProviderId, load, newProvider, resetProviderForm]);
 
   return (
     <div className="space-y-8">
@@ -568,12 +619,21 @@ export function ProviderModelsSettings() {
         <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-medium text-muted">新規プロバイダー</h3>
+              <h3 className="text-sm font-medium text-muted">
+                {editingProviderId ? "プロバイダー設定編集" : "新規プロバイダー"}
+              </h3>
               <p className="mt-1 text-xs text-faint">
                 OpenAI 互換 API を opencode.jsonc の provider に追加します。APIキーは環境変数参照で保存します。
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={() => setAddOpen((v) => !v)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (addOpen) resetProviderForm();
+                setAddOpen((v) => !v);
+              }}
+            >
               {addOpen ? "閉じる" : "登録"}
             </Button>
           </div>
@@ -583,6 +643,7 @@ export function ProviderModelsSettings() {
                 プロバイダーID
                 <input
                   value={newProvider.id}
+                  disabled={!!editingProviderId}
                   onChange={(e) => setNewProvider((v) => ({ ...v, id: e.target.value }))}
                   placeholder="myprovider"
                   className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
@@ -616,6 +677,15 @@ export function ProviderModelsSettings() {
                 />
               </label>
               <label className="grid gap-1 text-xs text-faint">
+                アイコンURL/パス（任意）
+                <input
+                  value={newProvider.icon}
+                  onChange={(e) => setNewProvider((v) => ({ ...v, icon: e.target.value }))}
+                  placeholder="https://example.com/icon.png または /icons/myprovider.png"
+                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-faint">
                 モデル（1行1件: model-id|表示名）
                 <textarea
                   value={newProvider.models}
@@ -626,9 +696,18 @@ export function ProviderModelsSettings() {
                 />
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" disabled={addBusy} onClick={() => void addProvider()}>
-                  {addBusy ? "登録中…" : "プロバイダーを登録"}
+                <Button size="sm" disabled={addBusy} onClick={() => void saveProvider()}>
+                  {addBusy
+                    ? "保存中…"
+                    : editingProviderId
+                      ? "設定を保存"
+                      : "プロバイダーを登録"}
                 </Button>
+                {editingProviderId && (
+                  <Button variant="ghost" size="sm" onClick={resetProviderForm}>
+                    新規登録に戻す
+                  </Button>
+                )}
                 {addMessage && <p className="text-xs text-success">{addMessage}</p>}
               </div>
             </div>
@@ -685,6 +764,7 @@ export function ProviderModelsSettings() {
                   onToggleProvider={(enabled) =>
                     void toggle(provider.id, enabled)
                   }
+                  onEditProvider={() => editProvider(provider)}
                   onToggleModel={(model, enabled) =>
                     void toggle(`${provider.id}::${model.id}`, enabled)
                   }

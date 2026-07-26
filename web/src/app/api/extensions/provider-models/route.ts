@@ -26,6 +26,7 @@ type CustomProviderBody = {
   name?: unknown;
   baseURL?: unknown;
   apiKeyEnv?: unknown;
+  icon?: unknown;
   npm?: unknown;
   models?: unknown;
 };
@@ -47,6 +48,7 @@ function parseCustomProviderBody(body: CustomProviderBody) {
     name: typeof body.name === "string" ? body.name : "",
     baseURL: typeof body.baseURL === "string" ? body.baseURL : "",
     apiKeyEnv: typeof body.apiKeyEnv === "string" ? body.apiKeyEnv : undefined,
+    icon: typeof body.icon === "string" ? body.icon : undefined,
     npm: typeof body.npm === "string" ? body.npm : undefined,
     models,
   };

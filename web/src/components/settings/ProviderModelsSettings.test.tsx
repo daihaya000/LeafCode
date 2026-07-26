@@ -201,6 +201,9 @@ describe("ProviderModelsSettings", () => {
     fireEvent.change(screen.getByLabelText("APIキー環境変数（任意）"), {
       target: { value: "CUSTOM_API_KEY" },
     });
+    fireEvent.change(screen.getByLabelText("アイコンURL/パス（任意）"), {
+      target: { value: "https://example.com/icon.png" },
+    });
     fireEvent.change(screen.getByLabelText("モデル（1行1件: model-id|表示名）"), {
       target: { value: "custom-model|Custom Model" },
     });
@@ -215,10 +218,70 @@ describe("ProviderModelsSettings", () => {
         name: "Custom AI",
         baseURL: "https://api.example.com/v1",
         apiKeyEnv: "CUSTOM_API_KEY",
+        icon: "https://example.com/icon.png",
         models: [{ id: "custom-model", name: "Custom Model" }],
       },
     ));
     expect(await screen.findByText(/OpenCode の再起動後/)).toBeTruthy();
+  });
+
+  it("edits an existing configured provider via PUT", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "custom",
+              name: "Custom AI",
+              enabled: true,
+              editable: true,
+              baseURL: "https://old.example.com/v1",
+              apiKeyEnv: "OLD_KEY",
+              icon: "/icons/old.png",
+              models: [{ id: "old-model", name: "Old Model", enabled: true }],
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    render(<ProviderModelsSettings />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "編集" }));
+    expect(screen.getByLabelText("プロバイダーID")).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("表示名"), {
+      target: { value: "Custom AI Updated" },
+    });
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "https://new.example.com/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("APIキー環境変数（任意）"), {
+      target: { value: "NEW_KEY" },
+    });
+    fireEvent.change(screen.getByLabelText("アイコンURL/パス（任意）"), {
+      target: { value: "/icons/new.png" },
+    });
+    fireEvent.change(screen.getByLabelText("モデル（1行1件: model-id|表示名）"), {
+      target: { value: "new-model|New Model" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "設定を保存" }));
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "PUT",
+      "/api/extensions/provider-models/custom",
+      {
+        id: "custom",
+        name: "Custom AI Updated",
+        baseURL: "https://new.example.com/v1",
+        apiKeyEnv: "NEW_KEY",
+        icon: "/icons/new.png",
+        models: [{ id: "new-model", name: "New Model" }],
+      },
+    ));
   });
 
   it("toggles a model via PATCH with provider::model key", async () => {

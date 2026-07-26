@@ -29,6 +29,7 @@ import {
   listProviderModels,
   saveProviderModelOrder,
   setProviderModelEnabled,
+  updateCustomProvider,
 } from "./provider-models";
 
 let data: string;
@@ -41,6 +42,7 @@ function readState(): {
   disabled: Record<string, true>;
   providerOrder?: string[];
   modelOrder?: Record<string, string[]>;
+  providerIcons?: Record<string, string>;
 } {
   try {
     return JSON.parse(fs.readFileSync(statePath(), "utf8"));
@@ -302,6 +304,7 @@ describe("addCustomProvider", () => {
       name: "My Provider",
       baseURL: "https://api.example.com/v1",
       apiKeyEnv: "MY_PROVIDER_API_KEY",
+      icon: "/icons/myprovider.png",
       models: [{ id: "my-model", name: "My Model" }],
     });
 
@@ -314,6 +317,46 @@ describe("addCustomProvider", () => {
         apiKey: "{env:MY_PROVIDER_API_KEY}",
       },
       models: { "my-model": { name: "My Model" } },
+    });
+    expect(readState().providerIcons).toEqual({ myprovider: "/icons/myprovider.png" });
+  });
+
+  it("updates an existing configured provider and its icon", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          myprovider: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Old Provider",
+            options: { baseURL: "https://old.example.com/v1" },
+            models: { old: { name: "Old" } },
+          },
+        },
+      }),
+    );
+
+    await updateCustomProvider("myprovider", {
+      id: "ignored",
+      name: "New Provider",
+      baseURL: "https://new.example.com/v1",
+      apiKeyEnv: "NEW_KEY",
+      icon: "https://example.com/icon.png",
+      models: [{ id: "new", name: "New" }],
+    });
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider.myprovider).toMatchObject({
+      name: "New Provider",
+      options: {
+        baseURL: "https://new.example.com/v1",
+        apiKey: "{env:NEW_KEY}",
+      },
+      models: { new: { name: "New" } },
+    });
+    expect(readState().providerIcons).toEqual({
+      myprovider: "https://example.com/icon.png",
     });
   });
 

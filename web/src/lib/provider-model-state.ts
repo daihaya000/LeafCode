@@ -6,10 +6,11 @@ type StateFile = {
   disabled: Record<string, true>;
   providerOrder: string[];
   modelOrder: Record<string, string[]>;
+  providerIcons: Record<string, string>;
 };
 
 function emptyState(): StateFile {
-  return { disabled: {}, providerOrder: [], modelOrder: {} };
+  return { disabled: {}, providerOrder: [], modelOrder: {}, providerIcons: {} };
 }
 
 function statePath(): string {
@@ -86,7 +87,17 @@ export function readProviderModelState(): StateFile {
           }
         }
       }
-      return { disabled, providerOrder, modelOrder };
+      const providerIcons: Record<string, string> = {};
+      if (
+        parsed.providerIcons &&
+        typeof parsed.providerIcons === "object" &&
+        !Array.isArray(parsed.providerIcons)
+      ) {
+        for (const [providerID, icon] of Object.entries(parsed.providerIcons)) {
+          if (typeof icon === "string" && icon) providerIcons[providerID] = icon;
+        }
+      }
+      return { disabled, providerOrder, modelOrder, providerIcons };
     }
     console.warn(
       "[provider-model] 状態ファイルの形式が不正なため無視します",
@@ -184,5 +195,16 @@ export async function setProviderModelOrder(input: {
       );
     }
   }
+  await writeProviderModelState(state);
+}
+
+export async function setProviderIcon(
+  providerID: string,
+  icon: string | undefined,
+): Promise<void> {
+  const state = readProviderModelState();
+  const trimmed = icon?.trim();
+  if (trimmed) state.providerIcons[providerID] = trimmed;
+  else delete state.providerIcons[providerID];
   await writeProviderModelState(state);
 }

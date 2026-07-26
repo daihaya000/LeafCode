@@ -17,6 +17,7 @@ import {
   readProviderModelState,
   setProviderModelOrder,
   setProviderModelDisabled,
+  setProviderIcon,
 } from "../provider-model-state";
 
 /**
@@ -30,6 +31,8 @@ type ProviderConfigModel = {
 
 type ProviderConfigEntry = {
   name?: string;
+  npm?: string;
+  options?: { baseURL?: string; apiKey?: string };
   models?: Record<string, ProviderConfigModel>;
 };
 
@@ -38,6 +41,7 @@ type CustomProviderInput = {
   name: string;
   baseURL: string;
   apiKeyEnv?: string;
+  icon?: string;
   npm?: string;
   models: { id: string; name?: string }[];
 };
@@ -67,6 +71,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
   const configured = configuredProvidersFromContent(
     readConfigContentForProviders(),
     disabled,
+    state.providerIcons,
   );
 
   // Determine which providers to include.
@@ -111,6 +116,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
       id,
       name: p.name || id,
       enabled: providerEnabled,
+      icon: state.providerIcons[id],
       models: sortedModels,
     });
   }
@@ -158,6 +164,7 @@ function readConfigContentForProviders(): string {
 function configuredProvidersFromContent(
   content: string,
   disabled: Record<string, true>,
+  providerIcons: Record<string, string>,
 ): ProviderModelsDto[] {
   const root = parseJsoncConfig(content);
   if (root.provider === undefined) return [];
@@ -185,19 +192,48 @@ function configuredProvidersFromContent(
         id,
         name: typeof entry.name === "string" && entry.name ? entry.name : id,
         enabled: providerEnabled,
+        editable: true,
+        icon: providerIcons[id],
+        baseURL:
+          isRecord(entry.options) && typeof entry.options.baseURL === "string"
+            ? entry.options.baseURL
+            : undefined,
+        apiKeyEnv:
+          isRecord(entry.options) && typeof entry.options.apiKey === "string"
+            ? envNameFromRef(entry.options.apiKey)
+            : undefined,
+        npm: typeof entry.npm === "string" ? entry.npm : undefined,
         models,
       },
     ];
   });
 }
 
+function envNameFromRef(value: string): string | undefined {
+  const match = value.match(/^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/);
+  return match?.[1];
+}
+
 function mergeConfiguredProviders(
   providers: ProviderModelsDto[],
   configured: ProviderModelsDto[],
 ): ProviderModelsDto[] {
-  const existing = new Set(providers.map((provider) => provider.id));
+  const configuredById = new Map(configured.map((provider) => [provider.id, provider]));
+  const merged = providers.map((provider) => {
+    const config = configuredById.get(provider.id);
+    if (!config) return provider;
+    return {
+      ...provider,
+      editable: true,
+      icon: config.icon,
+      baseURL: config.baseURL,
+      apiKeyEnv: config.apiKeyEnv,
+      npm: config.npm,
+    };
+  });
+  const existing = new Set(merged.map((provider) => provider.id));
   const missing = configured.filter((provider) => !existing.has(provider.id));
-  return missing.length === 0 ? providers : [...providers, ...missing];
+  return missing.length === 0 ? merged : [...merged, ...missing];
 }
 
 function validateIdentifier(value: string, label: string): string {
@@ -216,6 +252,13 @@ function validateEnvName(value: string | undefined): string | undefined {
     throw new ExtensionsError("invalid-name", "APIキー環境変数名が不正です");
   }
   return trimmed;
+}
+
+function validateIcon(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//.test(trimmed) || trimmed.startsWith("/")) return trimmed;
+  throw new ExtensionsError("invalid-name", "アイコンは http(s) URL または / から始まるパスで入力してください");
 }
 
 function providerConfigFromInput(input: CustomProviderInput): {
@@ -244,6 +287,7 @@ function providerConfigFromInput(input: CustomProviderInput): {
   const options: Record<string, unknown> = { baseURL };
   const apiKeyEnv = validateEnvName(input.apiKeyEnv);
   if (apiKeyEnv) options.apiKey = `{env:${apiKeyEnv}}`;
+  validateIcon(input.icon);
 
   return {
     id,
@@ -284,6 +328,27 @@ export async function addCustomProvider(input: CustomProviderInput): Promise<voi
     });
     return applyEdits(content, edits);
   });
+  await setProviderIcon(id, validateIcon(input.icon));
+}
+
+export async function updateCustomProvider(
+  providerID: string,
+  input: CustomProviderInput,
+): Promise<void> {
+  const id = validateIdentifier(providerID, "プロバイダーID");
+  const parsed = providerConfigFromInput({ ...input, id });
+  const filePath = opencodeConfigFilePath();
+  await updateConfigFile(filePath, (content) => {
+    const root = parseJsoncConfig(content);
+    if (!isRecord(root.provider) || !isRecord(root.provider[id])) {
+      throw new ExtensionsError("not-found", "編集できるプロバイダー設定が見つかりません");
+    }
+    const edits = modify(content, ["provider", id], parsed.config, {
+      formattingOptions: detectFormatting(content),
+    });
+    return applyEdits(content, edits);
+  });
+  await setProviderIcon(id, validateIcon(input.icon));
 }
 
 export async function saveProviderModelOrder(input: {

@@ -72,6 +72,11 @@ export type ProviderModelsDto = {
   id: string;
   name: string;
   enabled: boolean;
+  editable?: boolean;
+  icon?: string;
+  baseURL?: string;
+  apiKeyEnv?: string;
+  npm?: string;
   models: ProviderModelDto[];
 };
 
