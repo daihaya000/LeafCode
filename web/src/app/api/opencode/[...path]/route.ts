@@ -114,21 +114,48 @@ type AgentResponse = {
 const cachedProvidersByDir = new Map<string, ProviderResponse>();
 const cachedAgentsByDir = new Map<string, AgentResponse>();
 
+type ImageAttachment = { mime: string; dataUrl: string };
+
+/** Collect image attachments from v1 `parts` and v2 `prompt.files` shapes. */
+function collectImageAttachments(body: unknown): ImageAttachment[] {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
+  const record = body as Record<string, unknown>;
+  const out: ImageAttachment[] = [];
+
+  const pushImage = (mime: unknown, dataUrl: unknown) => {
+    if (typeof mime !== "string" || !/^image\//i.test(mime)) return;
+    out.push({
+      mime,
+      dataUrl: typeof dataUrl === "string" ? dataUrl : "",
+    });
+  };
+
+  if (Array.isArray(record.parts)) {
+    for (const part of record.parts) {
+      if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+      const p = part as Record<string, unknown>;
+      if (p.type !== "file") continue;
+      pushImage(p.mime, typeof p.url === "string" ? p.url : p.uri);
+    }
+  }
+
+  const prompt = record.prompt;
+  if (prompt && typeof prompt === "object" && !Array.isArray(prompt)) {
+    const files = (prompt as { files?: unknown }).files;
+    if (Array.isArray(files)) {
+      for (const file of files) {
+        if (!file || typeof file !== "object" || Array.isArray(file)) continue;
+        const f = file as Record<string, unknown>;
+        pushImage(f.mime, typeof f.uri === "string" ? f.uri : f.url);
+      }
+    }
+  }
+
+  return out;
+}
+
 function containsImagePart(body: unknown): boolean {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
-  const { parts } = body as { parts?: unknown };
-  return (
-    Array.isArray(parts) &&
-    parts.some(
-      (part) =>
-        part &&
-        typeof part === "object" &&
-        !Array.isArray(part) &&
-        (part as { type?: unknown }).type === "file" &&
-        typeof (part as { mime?: unknown }).mime === "string" &&
-        /^image\//i.test((part as { mime: string }).mime),
-    )
-  );
+  return collectImageAttachments(body).length > 0;
 }
 
 // Match POST /api/tasks R28 limits so session write paths cannot bypass them.
@@ -144,22 +171,12 @@ function estimateDataUrlBytes(uri: string): number {
 
 /** Returns false when image parts exceed count or per-image size limits. */
 function imagePartsWithinLimits(body: unknown): boolean {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return true;
-  const { parts } = body as { parts?: unknown };
-  if (!Array.isArray(parts)) return true;
-  const images = parts.filter(
-    (part) =>
-      part &&
-      typeof part === "object" &&
-      !Array.isArray(part) &&
-      (part as { type?: unknown }).type === "file" &&
-      typeof (part as { mime?: unknown }).mime === "string" &&
-      /^image\//i.test((part as { mime: string }).mime),
-  );
+  const images = collectImageAttachments(body);
+  if (images.length === 0) return true;
   if (images.length > MAX_IMAGE_COUNT) return false;
-  for (const part of images) {
-    const url = (part as { url?: unknown }).url;
-    if (typeof url === "string" && estimateDataUrlBytes(url) > MAX_IMAGE_SIZE_BYTES) {
+  for (const image of images) {
+    // Missing / non-data URLs cannot be size-checked — fail closed.
+    if (!image.dataUrl || estimateDataUrlBytes(image.dataUrl) > MAX_IMAGE_SIZE_BYTES) {
       return false;
     }
   }

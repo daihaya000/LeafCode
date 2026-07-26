@@ -249,6 +249,67 @@ describe("POST session image capability validation", () => {
     fetchMock.mockRestore();
   });
 
+  it("rejects oversized v2 prompt.files images on api/session/.../prompt", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const hugeB64 = "A".repeat(Math.ceil((10 * 1024 * 1024 * 4) / 3) + 4);
+    const response = await sessionWritePost(
+      ["api", "session", "session-1", "prompt"],
+      {
+        model: { providerID: "openai", modelID: "vision" },
+        prompt: {
+          text: "look",
+          files: [
+            {
+              mime: "image/png",
+              uri: `data:image/png;base64,${hugeB64}`,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid files" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("rejects unsupported models for v2 prompt.files images", async () => {
+    const directory = "C:\\\\repo\\\\v2-files";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse({
+          all: [{ id: "openai", models: {} }],
+          connected: ["openai"],
+        }),
+      );
+
+    const response = await sessionWritePost(
+      ["api", "session", "session-1", "prompt"],
+      {
+        model: { providerID: "openai", modelID: "text-only" },
+        prompt: {
+          text: "look",
+          files: [
+            {
+              mime: "image/png",
+              uri: "data:image/png;base64,AA==",
+            },
+          ],
+        },
+      },
+      directory,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "image input is not supported by the selected model",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
   it("forwards image parts after the provider cache confirms capability", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
