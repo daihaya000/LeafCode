@@ -50,6 +50,7 @@ using System.Runtime.InteropServices;
 
 public static class ExplorerFolderPicker
 {
+  private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
   private const uint FOS_PICKFOLDERS = 0x00000020;
   private const uint FOS_FORCEFILESYSTEM = 0x00000040;
   private const uint FOS_PATHMUSTEXIST = 0x00000800;
@@ -65,8 +66,46 @@ public static class ExplorerFolderPicker
     [MarshalAs(UnmanagedType.Interface)] out IShellItem ppv
   );
 
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern bool SetProcessDPIAware();
+
+  private static void EnableDpiAwareness()
+  {
+    try
+    {
+      SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+    catch
+    {
+      try
+      {
+        SetProcessDPIAware();
+      }
+      catch
+      {
+        // Best effort only. If DPI APIs are unavailable, show the dialog anyway.
+      }
+    }
+
+    try
+    {
+      SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+    catch
+    {
+      // Best effort only. The process-level setting above is usually enough.
+    }
+  }
+
   public static string Pick(string title, string initialPath)
   {
+    EnableDpiAwareness();
     IFileOpenDialog dialog = (IFileOpenDialog)new FileOpenDialog();
     uint options;
     dialog.GetOptions(out options);
