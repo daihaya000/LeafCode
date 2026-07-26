@@ -18,6 +18,7 @@ import {
   setProviderModelOrder,
   setProviderModelDisabled,
   setProviderIcon,
+  removeProviderState,
 } from "../provider-model-state";
 
 /**
@@ -349,6 +350,29 @@ export async function updateCustomProvider(
     return applyEdits(content, edits);
   });
   await setProviderIcon(id, validateIcon(input.icon));
+}
+
+/**
+ * Remove a provider's `provider.<id>` entry from `opencode.jsonc` (custom
+ * providers, or config overrides of a built-in provider) and clean up its
+ * WebUI-local state (disabled flags, order, icon override). Built-in
+ * providers with no config entry cannot be deleted this way — they keep
+ * coming from OpenCode's `/provider` endpoint regardless.
+ */
+export async function deleteCustomProvider(providerID: string): Promise<void> {
+  const id = validateIdentifier(providerID, "プロバイダーID");
+  const filePath = opencodeConfigFilePath();
+  await updateConfigFile(filePath, (content) => {
+    const root = parseJsoncConfig(content);
+    if (!isRecord(root.provider) || root.provider[id] === undefined) {
+      throw new ExtensionsError("not-found", "削除できるプロバイダー設定が見つかりません");
+    }
+    const edits = modify(content, ["provider", id], undefined, {
+      formattingOptions: detectFormatting(content),
+    });
+    return applyEdits(content, edits);
+  });
+  await removeProviderState(id);
 }
 
 /**

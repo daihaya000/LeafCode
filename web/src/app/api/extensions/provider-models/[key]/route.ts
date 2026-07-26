@@ -7,6 +7,7 @@ import {
 import { setProviderModelEnabled } from "@/lib/opencode-extensions/provider-models";
 import { updateCustomProvider } from "@/lib/opencode-extensions/provider-models";
 import { setProviderIconOverride } from "@/lib/opencode-extensions/provider-models";
+import { deleteCustomProvider } from "@/lib/opencode-extensions/provider-models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,5 +102,23 @@ export async function PUT(
     return NextResponse.json({ ok: true, requiresRestart: true });
   } catch (err) {
     return extensionsErrorResponse(err, "プロバイダー設定を更新できません");
+  }
+}
+
+/**
+ * Remove a configured provider's `provider.<id>` entry from
+ * `opencode.jsonc` and its WebUI-local state. Only providers that exist in
+ * the config can be deleted; built-in providers return `not-found`.
+ */
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ key: string }> },
+) {
+  const { key } = await context.params;
+  try {
+    await deleteCustomProvider(decodeURIComponent(key));
+    return NextResponse.json({ ok: true, requiresRestart: true });
+  } catch (err) {
+    return extensionsErrorResponse(err, "プロバイダーを削除できません");
   }
 }

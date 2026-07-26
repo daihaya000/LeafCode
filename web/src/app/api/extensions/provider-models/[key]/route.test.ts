@@ -25,7 +25,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
-import { PATCH, PUT } from "./route";
+import { DELETE, PATCH, PUT } from "./route";
 import { GET } from "../route";
 
 let data: string;
@@ -57,6 +57,16 @@ function put(key: string, body: unknown): Promise<Response> {
     new NextRequest(
       `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
       { method: "PUT", body: JSON.stringify(body) },
+    ),
+    { params: Promise.resolve({ key }) },
+  );
+}
+
+function del(key: string): Promise<Response> {
+  return DELETE(
+    new NextRequest(
+      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
+      { method: "DELETE" },
     ),
     { params: Promise.resolve({ key }) },
   );
@@ -232,5 +242,30 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
     expect(readState()).toMatchObject({
       providerIcons: { custom: "/icons/custom.png" },
     });
+  });
+});
+
+describe("DELETE /api/extensions/provider-models/[key]", () => {
+  it("removes a configured provider from opencode.jsonc", async () => {
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: { custom: { name: "Custom", models: { m: { name: "M" } } } },
+      }),
+    );
+
+    const res = await del("custom");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, requiresRestart: true });
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider?.custom).toBeUndefined();
+  });
+
+  it("returns 404 (not-found) for a built-in provider with no config entry", async () => {
+    fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
+
+    const res = await del("openai");
+    expect(res.status).toBe(404);
   });
 });

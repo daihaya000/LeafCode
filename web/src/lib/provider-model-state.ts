@@ -208,3 +208,22 @@ export async function setProviderIcon(
   else delete state.providerIcons[providerID];
   await writeProviderModelState(state);
 }
+
+/**
+ * Drop every WebUI-local trace of a provider that was removed from
+ * `opencode.jsonc`: its own disabled flag, all `providerID::modelID`
+ * disabled flags, its saved model order, its position in providerOrder,
+ * and its icon override.
+ */
+export async function removeProviderState(providerID: string): Promise<void> {
+  const state = readProviderModelState();
+  delete state.disabled[providerID];
+  const prefix = `${providerID}::`;
+  for (const key of Object.keys(state.disabled)) {
+    if (key.startsWith(prefix)) delete state.disabled[key];
+  }
+  state.providerOrder = state.providerOrder.filter((id) => id !== providerID);
+  delete state.modelOrder[providerID];
+  delete state.providerIcons[providerID];
+  await writeProviderModelState(state);
+}

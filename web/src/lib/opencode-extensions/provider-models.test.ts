@@ -26,6 +26,7 @@ vi.mock("@/lib/paths", () => ({
 
 import {
   addCustomProvider,
+  deleteCustomProvider,
   listProviderModels,
   saveProviderModelOrder,
   setProviderIconOverride,
@@ -416,6 +417,67 @@ describe("addCustomProvider", () => {
         models: [{ id: "my-model" }],
       }),
     ).rejects.toMatchObject({ code: "conflict" });
+  });
+});
+
+describe("deleteCustomProvider", () => {
+  it("removes a configured provider entry from opencode.jsonc", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          myprovider: { name: "My Provider", models: { m: { name: "M" } } },
+          other: { name: "Other", models: {} },
+        },
+      }),
+    );
+
+    await deleteCustomProvider("myprovider");
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider.myprovider).toBeUndefined();
+    expect(config.provider.other).toBeDefined();
+  });
+
+  it("cleans up local state (disabled/order/icon) for the deleted provider", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: { myprovider: { name: "My Provider", models: { m: { name: "M" } } } },
+      }),
+    );
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({
+        disabled: { myprovider: true, "myprovider::m": true, openai: true },
+        providerOrder: ["myprovider", "openai"],
+        modelOrder: { myprovider: ["m"] },
+        providerIcons: { myprovider: "/icons/myprovider.png", openai: "/icons/x.png" },
+      }),
+    );
+
+    await deleteCustomProvider("myprovider");
+
+    const state = readState();
+    expect(state.disabled).toEqual({ openai: true });
+    expect(state.providerOrder).toEqual(["openai"]);
+    expect(state.modelOrder?.myprovider).toBeUndefined();
+    expect(state.providerIcons).toEqual({ openai: "/icons/x.png" });
+  });
+
+  it("rejects deleting a built-in provider with no config entry", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
+
+    await expect(deleteCustomProvider("openai")).rejects.toMatchObject({
+      code: "not-found",
+    });
+  });
+
+  it("rejects a provider id containing invalid characters", async () => {
+    await expect(deleteCustomProvider("openai::gpt-5")).rejects.toThrow();
   });
 });
 
