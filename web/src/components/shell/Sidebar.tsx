@@ -860,7 +860,17 @@ export function Sidebar({
                     </div>
                   </div>
                   {open && (
-                    <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
+                    <ul
+                      data-testid={`project-tasks-${p.id}`}
+                      className={cx(
+                        "mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5",
+                        // 5件以上あるプロジェクトはサイドバー全体ではなく
+                        // プロジェクトごとにスクロールさせ、他プロジェクトが
+                        // 画面外へ押し出されないようにする。
+                        children.length >= 5 &&
+                          "max-h-72 overflow-y-auto overscroll-contain",
+                      )}
+                    >
                       {children.length === 0 ? (
                         <li className="px-2 py-1.5 text-[11px] text-muted">
                           タスクなし

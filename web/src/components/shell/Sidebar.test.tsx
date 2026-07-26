@@ -1133,6 +1133,97 @@ describe("Sidebar", () => {
       expect(btns[1]).toHaveProperty("disabled", false);
     });
   });
+
+  it("scrolls a project's task list independently once it has 5 or more sessions", async () => {
+    localStorage.clear();
+    const base = {
+      projectId: "prj1",
+      projectName: "Repo",
+      directory: "/repo",
+      isolation: "current_folder" as const,
+      status: "idle" as const,
+      branch: "main",
+      additions: 0,
+      deletions: 0,
+      filesChanged: 0,
+      createdAt: "2026-07-18T00:00:00Z",
+      updatedAt: "2026-07-18T00:00:00Z",
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{ id: "prj1", name: "Repo", rootPath: "/repo", favorite: false, lastOpenedAt: null }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: Array.from({ length: 5 }, (_, i) => ({
+            ...base,
+            id: `ws${i}`,
+            title: `Task ${i}`,
+            sessionId: `sess${i}`,
+          })),
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const expandBtn = await screen.findByLabelText("Repoを展開");
+    fireEvent.click(expandBtn);
+    await screen.findByText("Task 0");
+
+    const list = screen.getByTestId("project-tasks-prj1");
+    expect(list.className).toContain("overflow-y-auto");
+    expect(list.className).toContain("max-h-72");
+  });
+
+  it("does not make a project's task list scrollable with fewer than 5 sessions", async () => {
+    localStorage.clear();
+    const base = {
+      projectId: "prj1",
+      projectName: "Repo",
+      directory: "/repo",
+      isolation: "current_folder" as const,
+      status: "idle" as const,
+      branch: "main",
+      additions: 0,
+      deletions: 0,
+      filesChanged: 0,
+      createdAt: "2026-07-18T00:00:00Z",
+      updatedAt: "2026-07-18T00:00:00Z",
+    };
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{ id: "prj1", name: "Repo", rootPath: "/repo", favorite: false, lastOpenedAt: null }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: Array.from({ length: 4 }, (_, i) => ({
+            ...base,
+            id: `ws${i}`,
+            title: `Task ${i}`,
+            sessionId: `sess${i}`,
+          })),
+          engineOk: true,
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+
+    const expandBtn = await screen.findByLabelText("Repoを展開");
+    fireEvent.click(expandBtn);
+    await screen.findByText("Task 0");
+
+    const list = screen.getByTestId("project-tasks-prj1");
+    expect(list.className).not.toContain("overflow-y-auto");
+  });
 });
 
 describe("Sidebar archived section", () => {
