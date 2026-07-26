@@ -22,6 +22,7 @@ type DirList = {
   entries: DirEntry[];
   error?: string;
 };
+type NativeFolderPickerResult = { path?: string; cancelled?: boolean };
 
 type Props = {
   onAdded?: (project: ProjectDto) => void;
@@ -50,6 +51,19 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function isWindowsClient(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const candidates = [
+    nav.userAgentData?.platform,
+    navigator.platform,
+    navigator.userAgent,
+  ].filter((v): v is string => typeof v === "string");
+  return candidates.some((v) => /win/i.test(v));
+}
+
 export function AddProjectButton({
   onAdded,
   variant = "button",
@@ -59,6 +73,7 @@ export function AddProjectButton({
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cwd, setCwd] = useState<string | null>(null);
@@ -197,11 +212,38 @@ export function AddProjectButton({
     [busy, onAdded],
   );
 
-  const openPicker = () => {
-    if (attentionOpen) return;
+  const openPicker = useCallback(async () => {
+    if (attentionOpen || pickerBusy || busy) return;
     setError(null);
-    setOpen(true);
-  };
+
+    if (!isWindowsClient()) {
+      setOpen(true);
+      return;
+    }
+
+    setPickerBusy(true);
+    try {
+      const selected = await sendJson<NativeFolderPickerResult>(
+        "POST",
+        "/api/browse/folder",
+        {
+          title: "プロジェクトフォルダを選択",
+          initialPath: manualPath.trim() || cwd || undefined,
+        },
+        undefined,
+        { timeoutMs: 300_000 },
+      );
+      if (selected.cancelled || !selected.path) return;
+      await confirm(selected.path);
+    } catch (err) {
+      // If the host cannot show the native dialog, keep the project add flow
+      // usable by falling back to the cross-platform in-app picker.
+      setError(apiErrorMessage(err, "フォルダ選択に失敗しました"));
+      setOpen(true);
+    } finally {
+      setPickerBusy(false);
+    }
+  }, [attentionOpen, busy, confirm, cwd, manualPath, pickerBusy]);
 
   // The add target: the path field (synced to the current folder on every
   // navigation), falling back to the current directory.
@@ -215,6 +257,7 @@ export function AddProjectButton({
           title={label}
           aria-label={label}
           onClick={openPicker}
+          disabled={pickerBusy || busy}
           className={cx(
             "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text",
             className,
@@ -224,7 +267,7 @@ export function AddProjectButton({
         </button>
       ) : (
         <div className={cx(className)}>
-          <Button onClick={openPicker}>
+          <Button onClick={openPicker} busy={pickerBusy || busy}>
             <FolderPlus className="h-4 w-4" />
             {label}
           </Button>

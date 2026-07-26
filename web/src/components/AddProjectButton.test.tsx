@@ -63,7 +63,13 @@ function mockBrowseNavigation() {
   });
 }
 
+function mockClientPlatform(platform: string, userAgent: string) {
+  vi.spyOn(window.navigator, "platform", "get").mockReturnValue(platform);
+  vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(userAgent);
+}
+
 beforeEach(() => {
+  mockClientPlatform("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
   getJson.mockReset();
   sendJson.mockReset();
   sendJson.mockResolvedValue({ project: { id: "p1", name: "OpenCode", rootPath: CHILD } });
@@ -72,7 +78,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 function getInput() {
@@ -97,6 +103,36 @@ async function findEntryButton(name: string): Promise<HTMLElement> {
 }
 
 describe("AddProjectButton path sync (row click opens + syncs field)", () => {
+  it("uses the native Windows folder picker and adds the selected folder", async () => {
+    mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/browse/folder") {
+        return Promise.resolve({ path: CHILD, cancelled: false });
+      }
+      if (method === "POST" && path === "/api/projects") {
+        return Promise.resolve({ project: { id: "p1", name: "OpenCode", rootPath: CHILD } });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${path}`));
+    });
+
+    render(<AddProjectButton />);
+    openDialog();
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(2));
+    expect(sendJson).toHaveBeenNthCalledWith(
+      1,
+      "POST",
+      "/api/browse/folder",
+      { title: "プロジェクトフォルダを選択", initialPath: undefined },
+      undefined,
+      { timeoutMs: 300_000 },
+    );
+    expect(sendJson).toHaveBeenNthCalledWith(2, "POST", "/api/projects", {
+      rootPath: CHILD,
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("syncs the path field to the initial folder when the dialog opens", async () => {
     render(<AddProjectButton />);
     openDialog();
