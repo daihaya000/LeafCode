@@ -238,6 +238,34 @@ describe("useVoiceInput", () => {
     );
   });
 
+  it("sets a specific message for network errors", () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() =>
+      mockRecognition._dispatch("error", { error: "network" }),
+    );
+    expect(result.current.error).toBe(
+      "音声認識サービスに接続できません。インターネット接続、ブラウザの音声認識設定、またはファイアウォールを確認してください。",
+    );
+  });
+
+  it("includes the native error code for unknown errors", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() =>
+      mockRecognition._dispatch("error", { error: "unknown-code" }),
+    );
+
+    expect(result.current.error).toBe(
+      "音声認識でエラーが発生しました。（unknown-code）",
+    );
+    expect(warnSpy).toHaveBeenCalledWith("Speech recognition error", {
+      code: "unknown-code",
+    });
+    warnSpy.mockRestore();
+  });
+
   it("does not show error for no-speech or aborted", () => {
     const { result } = renderHook(() => useVoiceInput());
     act(() => result.current.start());

@@ -85,6 +85,10 @@ const ERROR_MESSAGES: Record<string, string> = {
     "この言語は音声認識に対応していません。",
   "service-not-allowed":
     "音声認識サービスが利用できません。",
+  network:
+    "音声認識サービスに接続できません。インターネット接続、ブラウザの音声認識設定、またはファイアウォールを確認してください。",
+  "bad-grammar":
+    "音声認識の文法設定でエラーが発生しました。",
 };
 
 const SILENT_ERRORS = new Set(["no-speech", "aborted"]);
@@ -245,7 +249,13 @@ export function useVoiceInput(
         setError(null);
         return;
       }
-      setError(ERROR_MESSAGES[code] ?? "音声認識でエラーが発生しました。");
+      const message = ERROR_MESSAGES[code];
+      if (!message) {
+        console.warn("Speech recognition error", { code });
+      }
+      setError(
+        message ?? `音声認識でエラーが発生しました。（${code || "unknown"}）`,
+      );
     });
 
     recognitionRef.current = recognition;
