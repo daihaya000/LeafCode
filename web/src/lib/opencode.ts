@@ -20,6 +20,15 @@ export function isBlockedOpencodeWrite(method: string, pathname: string): boolea
   if (m === "DELETE" && (p === "/auth" || p.startsWith("/auth/"))) return true;
   if (m === "PUT" && p.startsWith("/auth/")) return true;
 
+  // Provider / integration OAuth — credential injection
+  if (
+    m === "POST" &&
+    (/^\/provider\/[^/]+\/oauth\/(authorize|callback)$/.test(p) ||
+      /^\/api\/integration\/[^/]+\/connect\/oauth$/.test(p))
+  ) {
+    return true;
+  }
+
   // PTY create/update/delete/connect-token — remote shell equivalent
   if (m === "POST" && p === "/pty") return true;
   if (m === "PUT" && p.startsWith("/pty/")) return true;

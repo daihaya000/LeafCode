@@ -118,6 +118,24 @@ describe("/api/settings/[key]", () => {
       expect(setSetting).toHaveBeenCalledWith("sidepanel-width", "520");
     });
 
+    it("clamps an oversized sidepanel-width", async () => {
+      const res = await PUT(putReq({ value: "9999" }, "sidepanel-width") as never, ctx("sidepanel-width"));
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("sidepanel-width", "900");
+    });
+
+    it("rejects malformed default-model", async () => {
+      const res = await PUT(putReq({ value: "not-a-model" }) as never, ctx("default-model"));
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+
+    it("rejects malformed sidebar JSON", async () => {
+      const res = await PUT(putReq({ value: "{not-json" }, "sidebar") as never, ctx("sidebar"));
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+
     it("rejects a non-string value with 400", async () => {
       const res = await PUT(putReq({ value: 123 }) as never, ctx("default-model"));
       expect(res.status).toBe(400);

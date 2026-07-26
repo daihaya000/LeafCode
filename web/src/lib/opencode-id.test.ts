@@ -85,6 +85,24 @@ describe("isBlockedOpencodeWrite", () => {
     expect(isBlockedOpencodeWrite("DELETE", "/auth/openai")).toBe(true);
   });
 
+  it("blocks provider and integration OAuth writes", () => {
+    expect(
+      isBlockedOpencodeWrite("POST", "/provider/openai/oauth/authorize"),
+    ).toBe(true);
+    expect(
+      isBlockedOpencodeWrite("POST", "/provider/openai/oauth/callback"),
+    ).toBe(true);
+    expect(
+      isBlockedOpencodeWrite(
+        "POST",
+        "/api/integration/github/connect/oauth",
+      ),
+    ).toBe(true);
+    expect(
+      isBlockedOpencodeWrite("GET", "/provider/openai/oauth/authorize"),
+    ).toBe(false);
+  });
+
   it("blocks PTY create/update/delete/connect-token", () => {
     expect(isBlockedOpencodeWrite("POST", "/pty")).toBe(true);
     expect(isBlockedOpencodeWrite("PUT", "/pty/abc123")).toBe(true);

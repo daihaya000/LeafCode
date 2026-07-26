@@ -15,8 +15,85 @@ const ALLOWED_KEYS = new Set<string>([
   "sidepanel-width",
 ]);
 
+const MAX_SETTING_VALUE_CHARS = 32_768;
+const SIDEBAR_MIN_WIDTH = 180;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEPANEL_MIN_WIDTH = 280;
+const SIDEPANEL_MAX_WIDTH = 900;
+const DEFAULT_MODEL_MAX_CHARS = 512;
+
 function isAllowedKey(key: string): key is string {
   return ALLOWED_KEYS.has(key);
+}
+
+function clampInt(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+/**
+ * Normalize / reject key-specific payloads. Returns the string to store, or an
+ * error message. Empty string means "unset" and is always allowed.
+ */
+export function normalizeSettingValue(
+  key: string,
+  value: string,
+): { ok: true; value: string } | { ok: false; error: string } {
+  if (value.length === 0) return { ok: true, value: "" };
+
+  if (key === "default-model") {
+    if (value.length > DEFAULT_MODEL_MAX_CHARS) {
+      return { ok: false, error: "default-model is too long" };
+    }
+    // provider::model — reject whitespace / empty segments
+    if (!/^[^:\s]+::\S+$/.test(value)) {
+      return {
+        ok: false,
+        error: "default-model must be provider::model",
+      };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === "sidepanel-width") {
+    const n = Number(value);
+    if (!Number.isFinite(n)) {
+      return { ok: false, error: "sidepanel-width must be a number" };
+    }
+    return {
+      ok: true,
+      value: String(clampInt(n, SIDEPANEL_MIN_WIDTH, SIDEPANEL_MAX_WIDTH)),
+    };
+  }
+
+  if (key === "sidebar") {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return { ok: false, error: "sidebar must be JSON" };
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: "sidebar must be an object" };
+    }
+    const obj = parsed as Record<string, unknown>;
+    if (!Array.isArray(obj.expanded) || !obj.expanded.every((id) => typeof id === "string")) {
+      return { ok: false, error: "sidebar.expanded must be a string array" };
+    }
+    if (typeof obj.width !== "number" || !Number.isFinite(obj.width)) {
+      return { ok: false, error: "sidebar.width must be a number" };
+    }
+    if (typeof obj.archivedExpanded !== "boolean") {
+      return { ok: false, error: "sidebar.archivedExpanded must be a boolean" };
+    }
+    const normalized = {
+      expanded: obj.expanded.map(String).slice(0, 500),
+      width: clampInt(obj.width, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH),
+      archivedExpanded: obj.archivedExpanded,
+    };
+    return { ok: true, value: JSON.stringify(normalized) };
+  }
+
+  return { ok: true, value };
 }
 
 export async function GET(
@@ -59,7 +136,6 @@ export async function PUT(
   }
 
   // Cap payload size: this BFF is LAN-reachable without auth.
-  const MAX_SETTING_VALUE_CHARS = 32_768;
   if (typeof value === "string" && value.length > MAX_SETTING_VALUE_CHARS) {
     return NextResponse.json(
       { error: `value exceeds ${MAX_SETTING_VALUE_CHARS} characters` },
@@ -67,8 +143,13 @@ export async function PUT(
     );
   }
 
-  // Treat empty string as "unset" so readers can distinguish unset from set.
-  const stored = typeof value === "string" && value.length > 0 ? value : "";
-  setSetting(key, stored);
+  // Treat empty string / null as "unset".
+  const raw = typeof value === "string" && value.length > 0 ? value : "";
+  const normalized = normalizeSettingValue(key, raw);
+  if (!normalized.ok) {
+    return NextResponse.json({ error: normalized.error }, { status: 400 });
+  }
+
+  setSetting(key, normalized.value);
   return NextResponse.json({ ok: true });
 }

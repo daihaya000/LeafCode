@@ -551,6 +551,43 @@ describe("upstream timeout handling", () => {
   });
 });
 
+describe("directory requirement for /event", () => {
+  it("rejects GET /event without directory", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const response = await GET(
+      new NextRequest("http://localhost/api/opencode/event") as never,
+      { params: Promise.resolve({ path: ["event"] }) },
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/directory/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("forwards GET /event with directory and client abort signal", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response("data: hi\n\n", {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/event?directory=C%3A%5C%5Crepo",
+      ) as never,
+      { params: Promise.resolve({ path: ["event"] }) },
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal);
+    fetchMock.mockRestore();
+  });
+});
+
 describe("non-Latin-1 directory handling", () => {
   it("forwards a Japanese directory via query and omits the header without throwing", async () => {
     const directory = "C:\\Users\\会議\\project";

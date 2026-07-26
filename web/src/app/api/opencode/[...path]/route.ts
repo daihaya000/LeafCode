@@ -301,8 +301,9 @@ async function proxy(
         pathname === "/path" ||
         pathname === "/agent" ||
         pathname === "/command" ||
-        pathname === "/skill" ||
-        pathname.startsWith("/event"));
+        pathname === "/skill");
+    // /event requires directory + allowlist (useSessionStream always sends it).
+    // /global/event is under /global/ and skips needsDirectory intentionally.
     if (!allowWithoutDir) {
       return NextResponse.json(
         { error: "x-opencode-directory (or ?directory=) is required" },
@@ -383,13 +384,19 @@ async function proxy(
     const upstreamTimeoutMs = isLongRunningSyncMutation(req.method, pathname)
       ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
       : UPSTREAM_TIMEOUT_MS;
+    // SSE: follow the client disconnect (req.signal) with no idle timeout.
+    // Other calls: timeout + client abort via AbortSignal.any when available.
+    const signal = wantsSse
+      ? req.signal
+      : typeof AbortSignal.any === "function"
+        ? AbortSignal.any([AbortSignal.timeout(upstreamTimeoutMs), req.signal])
+        : AbortSignal.timeout(upstreamTimeoutMs);
     const init: RequestInit = {
       method: req.method,
       headers,
       redirect: "manual",
       cache: "no-store",
-      // Long-lived SSE must not inherit a request timeout.
-      ...(wantsSse ? {} : { signal: AbortSignal.timeout(upstreamTimeoutMs) }),
+      signal,
     };
     if (req.method !== "GET" && req.method !== "HEAD") {
       init.body = requestBody;
@@ -485,6 +492,11 @@ async function proxy(
           // client or upstream closed
         } finally {
           clearInterval(heartbeat);
+          try {
+            await reader.cancel();
+          } catch {
+            /* ignore */
+          }
           try {
             controller.close();
           } catch {
