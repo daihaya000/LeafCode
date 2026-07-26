@@ -127,6 +127,7 @@ vi.mock("./SessionSwitcher", () => ({
 
 let taskStatus: TaskSummary["status"];
 let taskResponseCosts: number[];
+let taskSessionId: string;
 
 function task(cost: number): TaskSummary {
   return {
@@ -137,7 +138,7 @@ function task(cost: number): TaskSummary {
     directory: "/repo",
     isolation: "current_folder",
     status: taskStatus,
-    sessionId: "sess1",
+    sessionId: taskSessionId,
     branch: "main",
     additions: 0,
     deletions: 0,
@@ -176,6 +177,7 @@ describe("TaskView", () => {
   beforeEach(() => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
+    taskSessionId = "sess1";
     diffPaneRefreshKeys.length = 0;
     copyText.mockResolvedValue(true);
     slashCommands.length = 0;
@@ -268,6 +270,36 @@ describe("TaskView", () => {
     const [menu] = menus;
     expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
     expect(menu.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps unsent composer drafts per switched session", async () => {
+    taskStatus = "idle";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+    });
+
+    const view = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const textarea = screen.getByRole("combobox", {
+      name: "フォローアップを送信",
+    }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "draft for session 1" } });
+    expect(textarea.value).toBe("draft for session 1");
+
+    taskSessionId = "sess2";
+    view.rerender(<TaskView taskId="ws2" />);
+    await flushTaskLoad();
+    expect(textarea.value).toBe("");
+
+    fireEvent.change(textarea, { target: { value: "draft for session 2" } });
+    expect(textarea.value).toBe("draft for session 2");
+
+    taskSessionId = "sess1";
+    view.rerender(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    expect(textarea.value).toBe("draft for session 1");
   });
 
   it("keeps a newly created todo plan collapsed while working on mobile", async () => {

@@ -137,6 +137,30 @@ describe("session stream scope changes", () => {
     expect(reset.status).toBeNull();
     expect(reset.loaded).toBe(false);
   });
+
+  it("can restore cached state for a previously opened session", () => {
+    let cached = createInitialStreamState("C:/repo\u0000session-a");
+    cached = sessionStreamReducer(cached, {
+      kind: "init",
+      messages: [{ info: { id: "message-a", role: "user" }, parts: [] }],
+    });
+    cached = sessionStreamReducer(cached, {
+      kind: "status",
+      status: { type: "idle" },
+    });
+
+    const restored = sessionStreamReducer(createInitialStreamState("other"), {
+      kind: "reset",
+      scopeKey: "C:/repo\u0000session-a",
+      cached: { ...cached, connection: "live", sessionError: "old error" },
+    });
+
+    expect(restored.scopeKey).toBe("C:/repo\u0000session-a");
+    expect(restored.messages.map((m) => m.info.id)).toEqual(["message-a"]);
+    expect(restored.loaded).toBe(true);
+    expect(restored.connection).toBe("connecting");
+    expect(restored.sessionError).toBeNull();
+  });
 });
 
 describe("session stream message/part removal", () => {

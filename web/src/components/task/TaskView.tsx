@@ -362,6 +362,12 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const composerDraftsRef = useRef(
+    new Map<string, { input: string; attachments: Attachment[] }>(),
+  );
+  const inputRef = useRef(input);
+  const attachmentsRef = useRef(attachments);
+  const composerScopeRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
   const [providerModelsMap, setProviderModelsMap] = useState<
@@ -405,6 +411,51 @@ export function TaskView({ taskId }: { taskId: string }) {
     task?.directory ?? null,
     task?.sessionId ?? null,
   );
+  const composerScopeKey = task?.directory && task.sessionId
+    ? `${task.directory}\u0000${task.sessionId}`
+    : "";
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
+    if (!composerScopeKey || composerScopeRef.current !== composerScopeKey) {
+      return;
+    }
+    composerDraftsRef.current.set(composerScopeKey, { input, attachments });
+  }, [composerScopeKey, input, attachments]);
+
+  useEffect(() => {
+    const prevScope = composerScopeRef.current;
+    if (prevScope) {
+      composerDraftsRef.current.set(prevScope, {
+        input: inputRef.current,
+        attachments: attachmentsRef.current,
+      });
+    }
+    composerScopeRef.current = composerScopeKey;
+    const draft = composerScopeKey
+      ? composerDraftsRef.current.get(composerScopeKey)
+      : undefined;
+    setInput(draft?.input ?? "");
+    setAttachments(draft?.attachments ?? []);
+    setCursor(0);
+    const raf =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame
+        : (cb: FrameRequestCallback) => window.setTimeout(cb, 0);
+    raf(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    });
+  }, [composerScopeKey]);
 
   useEffect(() => {
     // Fast path: hydrate from localStorage so the panel paints without
@@ -1096,6 +1147,12 @@ export function TaskView({ taskId }: { taskId: string }) {
       mime: a.mime,
       ...(a.name ? { name: a.name } : {}),
     }));
+    if (composerScopeKey) {
+      composerDraftsRef.current.set(composerScopeKey, {
+        input: "",
+        attachments: [],
+      });
+    }
     setInput("");
     setAttachments([]);
     setSendError(null);
@@ -1140,6 +1197,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     intelligence,
     slashCommands,
     touchActivity,
+    composerScopeKey,
   ]);
 
   const syncCursor = useCallback(() => {

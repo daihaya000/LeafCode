@@ -33,7 +33,7 @@ export type StreamState = {
 };
 
 export type StreamAction =
-  | { kind: "reset"; scopeKey: string }
+  | { kind: "reset"; scopeKey: string; cached?: StreamState }
   | { kind: "init"; messages: MessageWithParts[] }
   | { kind: "messageUpdated"; info: MessageInfo }
   | { kind: "messageRemoved"; messageID: string }
@@ -156,6 +156,28 @@ export function createInitialStreamState(scopeKey = ""): StreamState {
   };
 }
 
+const SESSION_STATE_CACHE_MAX = 12;
+const sessionStateCache = new Map<string, StreamState>();
+
+function rememberSessionState(state: StreamState) {
+  if (!state.scopeKey) return;
+  sessionStateCache.delete(state.scopeKey);
+  sessionStateCache.set(state.scopeKey, state);
+  while (sessionStateCache.size > SESSION_STATE_CACHE_MAX) {
+    const oldest = sessionStateCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    sessionStateCache.delete(oldest);
+  }
+}
+
+function readCachedSessionState(scopeKey: string): StreamState | undefined {
+  const cached = sessionStateCache.get(scopeKey);
+  if (!cached) return undefined;
+  sessionStateCache.delete(scopeKey);
+  sessionStateCache.set(scopeKey, cached);
+  return cached;
+}
+
 /** Hide soft-reverted messages the way OpenCode Desktop does. */
 export function filterRevertedMessages(
   messages: MessageWithParts[],
@@ -230,6 +252,14 @@ export function sessionStreamReducer(
 ): StreamState {
   switch (action.kind) {
     case "reset":
+      if (action.cached) {
+        return {
+          ...action.cached,
+          scopeKey: action.scopeKey,
+          connection: "connecting",
+          sessionError: null,
+        };
+      }
       return createInitialStreamState(action.scopeKey);
     case "init":
       return {
@@ -395,7 +425,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const [state, dispatch] = useReducer(
     sessionStreamReducer,
     scopeKey,
-    createInitialStreamState,
+    (key) => readCachedSessionState(key) ?? createInitialStreamState(key),
   );
   const sessionRef = useRef(sessionId);
   const scopeRef = useRef(scopeKey);
@@ -416,7 +446,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   messageCountRef.current = state.messages.length;
 
   useEffect(() => {
-    dispatch({ kind: "reset", scopeKey });
+    dispatch({ kind: "reset", scopeKey, cached: readCachedSessionState(scopeKey) });
     pendingMutationRef.current = false;
     preferRestStatusRef.current = false;
     // Clear safety net timer on session change to prevent cross-session resync
@@ -425,6 +455,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       safetyNetTimerRef.current = null;
     }
   }, [scopeKey]);
+
+  useEffect(() => {
+    rememberSessionState(state);
+  }, [state]);
 
   // Cleanup safety net timer on unmount
   useEffect(() => {
