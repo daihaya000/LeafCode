@@ -18,23 +18,39 @@ export function isLoopbackAddress(value: string): boolean {
 }
 
 /**
+ * Extract hostname from a Host header, including bracketed IPv6 (`[::1]:3000`).
+ */
+export function hostHeaderName(hostHeader: string): string {
+  const raw = hostHeader.trim().toLowerCase();
+  if (!raw) return "";
+  if (raw.startsWith("[")) {
+    const end = raw.indexOf("]");
+    if (end !== -1) return raw.slice(0, end + 1);
+  }
+  // IPv4 or hostname — strip :port (not IPv6 without brackets).
+  const colon = raw.indexOf(":");
+  return colon === -1 ? raw : raw.slice(0, colon);
+}
+
+/**
  * Best-effort check that the caller is on the host machine.
- * Prefers X-Forwarded-For (Caddy) so LAN clients behind the proxy are rejected;
- * without a proxy header, requires Host to be loopback (blocks direct LAN hits).
+ * Requires Host to be loopback. When X-Forwarded-For is present (Caddy), the
+ * client hop must also be loopback — so LAN phones are rejected and a spoofed
+ * XFF alone cannot authorize a request whose Host is a LAN address.
  *
- * Note: Host can be spoofed on direct :3000 access; combine with input hardening
- * on dangerous endpoints. Access via the machine's LAN hostname from the same PC
- * is intentionally rejected — use http://127.0.0.1:3000 or https://localhost:8443.
+ * Open the UI via http://127.0.0.1:3000 or https://localhost:8443 /
+ * https://127.0.0.1:8443 for host-only APIs.
  */
 export function isLocalHostRequest(req: Request): boolean {
+  const hostHeader = req.headers.get("host") ?? "";
+  if (!isLoopbackAddress(hostHeaderName(hostHeader))) return false;
+
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     const client = forwarded.split(",")[0]?.trim() ?? "";
     return isLoopbackAddress(client);
   }
-  const hostHeader = req.headers.get("host") ?? "";
-  const host = hostHeader.split(":")[0]?.trim() ?? "";
-  return isLoopbackAddress(host);
+  return true;
 }
 
 export function rejectUnlessLocal(req: Request): NextResponse | null {

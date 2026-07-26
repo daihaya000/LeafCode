@@ -95,16 +95,15 @@ const CADDYFILE =
   process.env.OPENCODE_WEBUI_CADDYFILE || join(REPO_ROOT, 'deploy', 'Caddyfile');
 const CADDYFILE_EXAMPLE = join(REPO_ROOT, 'deploy', 'Caddyfile.example');
 
+const CADDY_LOOPBACK_URL_RE = /\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/i;
+
 /**
- * Extract the public HTTPS origin from Caddyfile text (pure, testable).
- *
- * Scans top-level site-address blocks (a line ending in `{` outside any nested
- * directive block) and returns the first `https://host[:port]` token. A
- * LAN/VPN address is preferred over localhost so phones get a reachable URL.
- * Returns null when no HTTPS site address is found.
+ * Collect HTTPS site origins from a Caddyfile (top-level site blocks only).
+ * @param {string} text
+ * @returns {string[]}
  */
-export function parseCaddyPublicUrl(text) {
-  if (typeof text !== 'string') return null;
+export function parseCaddySiteUrls(text) {
+  if (typeof text !== 'string') return [];
   const candidates = [];
   let depth = 0;
   for (const rawLine of text.split(/\r?\n/)) {
@@ -139,12 +138,31 @@ export function parseCaddyPublicUrl(text) {
       else if (ch === '}') depth = Math.max(0, depth - 1);
     }
   }
+  return candidates;
+}
+
+/**
+ * Extract the public HTTPS origin from Caddyfile text (pure, testable).
+ *
+ * A LAN/VPN address is preferred over localhost so phones get a reachable URL
+ * (used by /api/access). Returns null when no HTTPS site address is found.
+ */
+export function parseCaddyPublicUrl(text) {
+  const candidates = parseCaddySiteUrls(text);
   if (candidates.length === 0) return null;
-  // Prefer a routable LAN/VPN address over loopback for phone access.
-  const routable = candidates.find(
-    (u) => !/\/\/(localhost|127\.0\.0\.1)(:|$)/i.test(u),
-  );
+  const routable = candidates.find((u) => !CADDY_LOOPBACK_URL_RE.test(u));
   return routable || candidates[0];
+}
+
+/**
+ * Loopback HTTPS origin from the Caddyfile for opening the browser on the host.
+ * Prefer 127.0.0.1, then localhost / [::1]. Returns null when none are listed.
+ */
+export function parseCaddyLoopbackUrl(text) {
+  const candidates = parseCaddySiteUrls(text);
+  const preferred = candidates.find((u) => /\/\/127\.0\.0\.1(:|$)/i.test(u));
+  if (preferred) return preferred;
+  return candidates.find((u) => CADDY_LOOPBACK_URL_RE.test(u)) || null;
 }
 
 /**
@@ -161,26 +179,47 @@ function detectCaddyPublicUrl() {
   }
 }
 
+function detectCaddyLoopbackUrl() {
+  if (!CADDY_ENABLED) return null;
+  try {
+    return parseCaddyLoopbackUrl(readFileSync(CADDYFILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Pure decision for {@link resolveBrowserUrl}: pick the Caddy HTTPS origin
- * when it is enabled and reachable, otherwise the local WebUI URL. Exposed
- * for unit testing so the I/O (fetch) can be injected.
+ * Pure decision for {@link resolveBrowserUrl}: prefer a loopback Caddy HTTPS
+ * origin for the host browser (so host-only APIs keep working), then the
+ * public Caddy URL, otherwise the local WebUI URL.
  */
-export function pickBrowserUrl({ caddyUrl, webuiUrl, caddyUp }) {
-  if (caddyUrl && caddyUp) return caddyUrl;
+export function pickBrowserUrl({ caddyLocalUrl, caddyUrl, webuiUrl, caddyUp }) {
+  if (caddyUp) {
+    if (caddyLocalUrl) return caddyLocalUrl;
+    if (caddyUrl) return caddyUrl;
+  }
   return webuiUrl;
 }
 
 /**
- * Decide which URL to open in the browser on startup. Prefers the public
- * Caddy HTTPS origin when Caddy is enabled and reachable; otherwise falls
- * back to the local WebUI URL (http://127.0.0.1:WEBUI_PORT). The reachability
- * probe avoids opening a dead https://... tab when Caddy failed to start.
+ * Decide which URL to open in the browser on startup. Prefers loopback Caddy
+ * HTTPS so folder picker / voice / restart stay reachable; LAN URL remains in
+ * /api/access for phones. Falls back to http://127.0.0.1:WEBUI_PORT.
  */
 async function resolveBrowserUrl() {
+  const caddyLocalUrl = detectCaddyLoopbackUrl();
   const caddyUrl = detectCaddyPublicUrl();
-  const caddyUp = caddyUrl ? await isHttpUp(caddyUrl) : false;
-  return pickBrowserUrl({ caddyUrl, webuiUrl: WEBUI_URL, caddyUp });
+  const probeUrl = caddyLocalUrl || caddyUrl;
+  // Caddy can still be finishing TLS / listener startup when the WebUI is
+  // already ready. Give it a short grace period so startup opens the intended
+  // HTTPS proxy URL instead of racing and falling back to http://127.0.0.1:3000.
+  const caddyUp = probeUrl ? await waitForHttpUp(probeUrl, 12, 500) : false;
+  return pickBrowserUrl({
+    caddyLocalUrl,
+    caddyUrl,
+    webuiUrl: WEBUI_URL,
+    caddyUp,
+  });
 }
 
 const iconData = JSON.parse(readFileSync(join(__dirname, 'icon.json'), 'utf8'));
@@ -1394,6 +1433,14 @@ async function isHttpUp(url) {
   } catch {
     return false;
   }
+}
+
+async function waitForHttpUp(url, attempts = 1, delayMs = 1000) {
+  for (let i = 0; i < attempts; i += 1) {
+    if (await isHttpUp(url)) return true;
+    if (i < attempts - 1) await sleep(delayMs);
+  }
+  return false;
 }
 
 async function waitUntilReady(url, label, attempts = 60, { proc } = {}) {

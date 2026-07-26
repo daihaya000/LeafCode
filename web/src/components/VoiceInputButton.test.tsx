@@ -196,7 +196,7 @@ describe("VoiceInputButton", () => {
     const button = await screen.findByRole("button", { name: "Windows 音声入力" });
     fireEvent.click(button);
 
-    expect(onNativeVoiceStart).toHaveBeenCalledTimes(1);
+    expect(onNativeVoiceStart).toHaveBeenCalled();
     expect(voice.start).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/host/voice-input", {
@@ -204,6 +204,7 @@ describe("VoiceInputButton", () => {
         cache: "no-store",
       }),
     );
+    expect(onNativeVoiceStart).toHaveBeenCalledTimes(2);
   });
 
   it("keeps Web Speech mode on smartphones", async () => {

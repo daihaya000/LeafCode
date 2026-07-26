@@ -228,6 +228,15 @@ https://localhost:8443, https://127.0.0.1:8443, https://192.168.0.102:8443 {
   assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://192.168.0.102:8443');
 });
 
+test('parseCaddyLoopbackUrl prefers 127.0.0.1 over localhost', () => {
+  const caddyfile = `https://localhost:8443, https://127.0.0.1:8443, https://192.168.0.102:8443 {
+	tls internal
+	reverse_proxy 127.0.0.1:3000
+}
+`;
+  assert.equal(host.parseCaddyLoopbackUrl(caddyfile), 'https://127.0.0.1:8443');
+});
+
 test('parseCaddyPublicUrl falls back to localhost when only loopback is present', () => {
   const caddyfile = `https://localhost:8443 {
 	tls internal
@@ -255,9 +264,22 @@ test('parseCaddyPublicUrl treats a bare domain as auto-HTTPS', () => {
   assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://webui.example.com');
 });
 
-test('pickBrowserUrl prefers a reachable Caddy URL', () => {
+test('pickBrowserUrl prefers loopback Caddy over LAN Caddy', () => {
   assert.equal(
     pickBrowserUrl({
+      caddyLocalUrl: 'https://127.0.0.1:8443',
+      caddyUrl: 'https://192.168.0.102:8443',
+      webuiUrl: 'http://127.0.0.1:3000',
+      caddyUp: true,
+    }),
+    'https://127.0.0.1:8443',
+  );
+});
+
+test('pickBrowserUrl falls back to public Caddy when no loopback site', () => {
+  assert.equal(
+    pickBrowserUrl({
+      caddyLocalUrl: null,
       caddyUrl: 'https://192.168.0.102:8443',
       webuiUrl: 'http://127.0.0.1:3000',
       caddyUp: true,
@@ -269,6 +291,7 @@ test('pickBrowserUrl prefers a reachable Caddy URL', () => {
 test('pickBrowserUrl falls back to WebUI URL when Caddy is down', () => {
   assert.equal(
     pickBrowserUrl({
+      caddyLocalUrl: 'https://127.0.0.1:8443',
       caddyUrl: 'https://192.168.0.102:8443',
       webuiUrl: 'http://127.0.0.1:3000',
       caddyUp: false,
@@ -280,6 +303,7 @@ test('pickBrowserUrl falls back to WebUI URL when Caddy is down', () => {
 test('pickBrowserUrl falls back to WebUI URL when Caddy is disabled (null)', () => {
   assert.equal(
     pickBrowserUrl({
+      caddyLocalUrl: null,
       caddyUrl: null,
       webuiUrl: 'http://127.0.0.1:3000',
       caddyUp: false,

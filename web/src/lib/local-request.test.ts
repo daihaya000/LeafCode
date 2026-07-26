@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hostHeaderName,
   isLocalHostRequest,
   isLoopbackAddress,
   rejectUnlessLocal,
@@ -22,25 +23,56 @@ describe("isLoopbackAddress", () => {
   });
 });
 
+describe("hostHeaderName", () => {
+  it("parses IPv4, hostname, and bracketed IPv6", () => {
+    expect(hostHeaderName("127.0.0.1:3000")).toBe("127.0.0.1");
+    expect(hostHeaderName("localhost:8443")).toBe("localhost");
+    expect(hostHeaderName("[::1]:3000")).toBe("[::1]");
+    expect(hostHeaderName("[::1]")).toBe("[::1]");
+  });
+});
+
 describe("isLocalHostRequest", () => {
-  it("uses the leftmost X-Forwarded-For hop when present", () => {
+  it("requires Host to be loopback even when X-Forwarded-For is spoofed", () => {
     expect(
       isLocalHostRequest(
-        new Request("http://127.0.0.1:3000/x", {
-          headers: { "x-forwarded-for": "127.0.0.1, 10.0.0.1" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      isLocalHostRequest(
-        new Request("http://127.0.0.1:3000/x", {
-          headers: { "x-forwarded-for": "192.168.0.50" },
+        new Request("http://192.168.0.102:3000/x", {
+          headers: {
+            host: "192.168.0.102:3000",
+            "x-forwarded-for": "127.0.0.1",
+          },
         }),
       ),
     ).toBe(false);
   });
 
-  it("falls back to Host when no proxy header", () => {
+  it("accepts loopback Host with loopback X-Forwarded-For (Caddy)", () => {
+    expect(
+      isLocalHostRequest(
+        new Request("http://127.0.0.1:3000/x", {
+          headers: {
+            host: "127.0.0.1:8443",
+            "x-forwarded-for": "127.0.0.1, 10.0.0.1",
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects loopback Host with LAN X-Forwarded-For", () => {
+    expect(
+      isLocalHostRequest(
+        new Request("http://127.0.0.1:3000/x", {
+          headers: {
+            host: "localhost:8443",
+            "x-forwarded-for": "192.168.0.50",
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts direct loopback Host without proxy headers", () => {
     expect(
       isLocalHostRequest(
         new Request("http://127.0.0.1:3000/x", {
@@ -48,6 +80,19 @@ describe("isLocalHostRequest", () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  it("accepts bracketed IPv6 Host", () => {
+    expect(
+      isLocalHostRequest(
+        new Request("http://[::1]:3000/x", {
+          headers: { host: "[::1]:3000" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects direct LAN Host", () => {
     expect(
       isLocalHostRequest(
         new Request("http://192.168.0.102:3000/x", {

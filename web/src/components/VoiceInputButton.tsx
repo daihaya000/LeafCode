@@ -58,11 +58,15 @@ export function VoiceInputButton({
   if (!isWindowsNative && !voice.supported) return null;
 
   const handleWindowsVoiceInput = () => {
-    onNativeVoiceStart?.();
     setNativeBusy(true);
     setNativeError(null);
     void (async () => {
       try {
+        // Focus the composer before the host injects Win+H; a short settle
+        // reduces races where another window still owns focus.
+        onNativeVoiceStart?.();
+        await new Promise((r) => setTimeout(r, 50));
+        onNativeVoiceStart?.();
         const res = await fetch("/api/host/voice-input", {
           method: "POST",
           cache: "no-store",
