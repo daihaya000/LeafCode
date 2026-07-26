@@ -35,6 +35,19 @@ describe("PartView file attachments", () => {
     expect(screen.queryByText("image.png")).toBeNull();
   });
 
+  it("right-aligns sent image thumbnails", () => {
+    const part = filePart({
+      filename: "sent.png",
+      mime: "image/png",
+      url: "data:image/png;base64,iVBORw0KGgo=",
+    });
+    render(<PartView part={part} role="user" />);
+
+    expect(screen.getByLabelText("sent.png を拡大表示").className).toContain(
+      "ml-auto",
+    );
+  });
+
   it("expands the image into a lightbox on click and closes on Escape", () => {
     const part = filePart({
       filename: "photo.jpg",

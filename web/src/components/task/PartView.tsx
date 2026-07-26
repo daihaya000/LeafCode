@@ -392,7 +392,15 @@ const ReasoningView = memo(function ReasoningView({ text }: { text: string }) {
 const IMAGE_MIME_RE = /^image\//i;
 
 /** Thumbnail for a sent/received image attachment, with a click-to-expand lightbox. */
-function FileImagePreview({ url, name }: { url: string; name: string }) {
+function FileImagePreview({
+  url,
+  name,
+  className,
+}: {
+  url: string;
+  name: string;
+  className?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -413,7 +421,10 @@ function FileImagePreview({ url, name }: { url: string; name: string }) {
         type="button"
         onClick={() => setExpanded(true)}
         aria-label={`${name} を拡大表示`}
-        className="block h-28 w-28 cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface-2"
+        className={cx(
+          "block h-28 w-28 cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface-2",
+          className,
+        )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt={name} className="h-full w-full object-cover" />
@@ -497,7 +508,13 @@ export const PartView = memo(function PartView({
     case "file": {
       const name = part.filename ?? "file";
       if (part.url && IMAGE_MIME_RE.test(part.mime ?? "")) {
-        return <FileImagePreview url={part.url} name={name} />;
+        return (
+          <FileImagePreview
+            url={part.url}
+            name={name}
+            className={role === "user" ? "ml-auto" : undefined}
+          />
+        );
       }
       return (
         <button
