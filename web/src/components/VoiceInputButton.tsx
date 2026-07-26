@@ -128,7 +128,7 @@ export function VoiceInputButton({
         aria-busy={busy}
         disabled={disabled || busy}
         onClick={handleClick}
-        className="flex h-8 shrink-0 items-center justify-center rounded-lg px-2 text-muted transition-colors hover:bg-accent hover:text-fg disabled:opacity-40"
+        className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted shadow-sm transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
       >
         {!isWindowsNative && voice.listening ? (
           <MicOff className="h-3.5 w-3.5" aria-hidden="true" />
