@@ -460,11 +460,11 @@ export function SettingsView() {
     },
     { key: "connectivity", label: "接続" },
     { key: "providers", label: "プロバイダー/モデル" },
+    { key: "agents", label: "エージェント" },
     { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
     { key: "plugins", label: "プラグイン" },
     { key: "addons", label: "アドオン" },
-    { key: "agents", label: "エージェント" },
   ];
 
   return (
