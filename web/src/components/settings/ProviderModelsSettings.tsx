@@ -220,11 +220,9 @@ function ProviderGroup({
             </Badge>
           </div>
         </div>
-        {provider.editable && (
-          <Button variant="ghost" size="sm" onClick={onEditProvider}>
-            編集
-          </Button>
-        )}
+        <Button variant="ghost" size="sm" onClick={onEditProvider}>
+          {provider.editable ? "編集" : "アイコン編集"}
+        </Button>
         <ExtensionSwitch
           name={provider.name}
           enabled={provider.enabled}
@@ -490,7 +488,36 @@ export function ProviderModelsSettings() {
     });
   }, []);
 
+  // Built-in providers (openai/anthropic/…) have no opencode.jsonc entry to
+  // edit; when editing one of those, only the WebUI-local icon override can
+  // be changed here.
+  const editingProvider = editingProviderId
+    ? providers.find((p) => p.id === editingProviderId) ?? null
+    : null;
+  const iconOnlyEdit = editingProvider !== null && !editingProvider.editable;
+
   const saveProvider = useCallback(async () => {
+    if (editingProviderId && iconOnlyEdit) {
+      setAddBusy(true);
+      setActionError(null);
+      setAddMessage(null);
+      try {
+        await sendJson(
+          "PATCH",
+          `/api/extensions/provider-models/${encodeURIComponent(editingProviderId)}`,
+          { icon: newProvider.icon.trim() || null },
+        );
+        setAddMessage("アイコンを更新しました。");
+        resetProviderForm();
+        await load();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "保存に失敗しました");
+      } finally {
+        setAddBusy(false);
+      }
+      return;
+    }
+
     const models = newProvider.models
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -532,7 +559,7 @@ export function ProviderModelsSettings() {
     } finally {
       setAddBusy(false);
     }
-  }, [editingProviderId, load, newProvider, resetProviderForm]);
+  }, [editingProviderId, iconOnlyEdit, load, newProvider, resetProviderForm]);
 
   return (
     <div className="space-y-8">
@@ -620,10 +647,16 @@ export function ProviderModelsSettings() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium text-muted">
-                {editingProviderId ? "プロバイダー設定編集" : "新規プロバイダー"}
+                {editingProviderId
+                  ? iconOnlyEdit
+                    ? "アイコン編集"
+                    : "プロバイダー設定編集"
+                  : "新規プロバイダー"}
               </h3>
               <p className="mt-1 text-xs text-faint">
-                OpenAI 互換 API を opencode.jsonc の provider に追加します。APIキーは環境変数参照で保存します。
+                {iconOnlyEdit
+                  ? "組み込みプロバイダーは名前やモデルを変更できませんが、アイコンだけはこの画面から上書きできます。"
+                  : "OpenAI 互換 API を opencode.jsonc の provider に追加します。APIキーは環境変数参照で保存します。"}
               </p>
             </div>
             <Button
@@ -639,43 +672,55 @@ export function ProviderModelsSettings() {
           </div>
           {addOpen && (
             <div className="mt-4 grid gap-3">
-              <label className="grid gap-1 text-xs text-faint">
-                プロバイダーID
-                <input
-                  value={newProvider.id}
-                  disabled={!!editingProviderId}
-                  onChange={(e) => setNewProvider((v) => ({ ...v, id: e.target.value }))}
-                  placeholder="myprovider"
-                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
-                />
-              </label>
-              <label className="grid gap-1 text-xs text-faint">
-                表示名
-                <input
-                  value={newProvider.name}
-                  onChange={(e) => setNewProvider((v) => ({ ...v, name: e.target.value }))}
-                  placeholder="My AI Provider"
-                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
-                />
-              </label>
-              <label className="grid gap-1 text-xs text-faint">
-                Base URL
-                <input
-                  value={newProvider.baseURL}
-                  onChange={(e) => setNewProvider((v) => ({ ...v, baseURL: e.target.value }))}
-                  placeholder="https://api.example.com/v1"
-                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
-                />
-              </label>
-              <label className="grid gap-1 text-xs text-faint">
-                APIキー環境変数（任意）
-                <input
-                  value={newProvider.apiKeyEnv}
-                  onChange={(e) => setNewProvider((v) => ({ ...v, apiKeyEnv: e.target.value }))}
-                  placeholder="MY_PROVIDER_API_KEY"
-                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
-                />
-              </label>
+              {iconOnlyEdit && editingProvider && (
+                <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-faint">
+                  <span className="font-medium text-muted">
+                    {editingProvider.name}
+                  </span>{" "}
+                  <span>({editingProvider.id})</span>
+                </div>
+              )}
+              {!iconOnlyEdit && (
+                <>
+                  <label className="grid gap-1 text-xs text-faint">
+                    プロバイダーID
+                    <input
+                      value={newProvider.id}
+                      disabled={!!editingProviderId}
+                      onChange={(e) => setNewProvider((v) => ({ ...v, id: e.target.value }))}
+                      placeholder="myprovider"
+                      className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs text-faint">
+                    表示名
+                    <input
+                      value={newProvider.name}
+                      onChange={(e) => setNewProvider((v) => ({ ...v, name: e.target.value }))}
+                      placeholder="My AI Provider"
+                      className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs text-faint">
+                    Base URL
+                    <input
+                      value={newProvider.baseURL}
+                      onChange={(e) => setNewProvider((v) => ({ ...v, baseURL: e.target.value }))}
+                      placeholder="https://api.example.com/v1"
+                      className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs text-faint">
+                    APIキー環境変数（任意）
+                    <input
+                      value={newProvider.apiKeyEnv}
+                      onChange={(e) => setNewProvider((v) => ({ ...v, apiKeyEnv: e.target.value }))}
+                      placeholder="MY_PROVIDER_API_KEY"
+                      className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                    />
+                  </label>
+                </>
+              )}
               <label className="grid gap-1 text-xs text-faint">
                 アイコンURL/パス（任意）
                 <input
@@ -685,23 +730,27 @@ export function ProviderModelsSettings() {
                   className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
                 />
               </label>
-              <label className="grid gap-1 text-xs text-faint">
-                モデル（1行1件: model-id|表示名）
-                <textarea
-                  value={newProvider.models}
-                  onChange={(e) => setNewProvider((v) => ({ ...v, models: e.target.value }))}
-                  placeholder={"my-model|My Model"}
-                  rows={3}
-                  className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
-                />
-              </label>
+              {!iconOnlyEdit && (
+                <label className="grid gap-1 text-xs text-faint">
+                  モデル（1行1件: model-id|表示名）
+                  <textarea
+                    value={newProvider.models}
+                    onChange={(e) => setNewProvider((v) => ({ ...v, models: e.target.value }))}
+                    placeholder={"my-model|My Model"}
+                    rows={3}
+                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted outline-none focus:border-primary"
+                  />
+                </label>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" disabled={addBusy} onClick={() => void saveProvider()}>
                   {addBusy
                     ? "保存中…"
-                    : editingProviderId
-                      ? "設定を保存"
-                      : "プロバイダーを登録"}
+                    : iconOnlyEdit
+                      ? "アイコンを保存"
+                      : editingProviderId
+                        ? "設定を保存"
+                        : "プロバイダーを登録"}
                 </Button>
                 {editingProviderId && (
                   <Button variant="ghost" size="sm" onClick={resetProviderForm}>

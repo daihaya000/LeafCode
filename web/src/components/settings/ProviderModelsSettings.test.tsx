@@ -284,6 +284,37 @@ describe("ProviderModelsSettings", () => {
     ));
   });
 
+  it("edits only the icon of a built-in provider via PATCH", async () => {
+    render(<ProviderModelsSettings />);
+
+    await screen.findByRole("switch", { name: "OpenAI を無効化" });
+    const iconEditButtons = screen.getAllByRole("button", {
+      name: "アイコン編集",
+    });
+    // OpenAI is the first provider in the mocked list.
+    fireEvent.click(iconEditButtons[0]);
+
+    // Built-in providers show a reduced form: no id/name/baseURL/models
+    // fields, only the icon input.
+    expect(screen.queryByLabelText("プロバイダーID")).toBeNull();
+    expect(screen.queryByLabelText("Base URL")).toBeNull();
+    expect(
+      screen.queryByLabelText("モデル（1行1件: model-id|表示名）"),
+    ).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("アイコンURL/パス（任意）"), {
+      target: { value: "/icons/custom-openai.png" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "アイコンを保存" }));
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "PATCH",
+      "/api/extensions/provider-models/openai",
+      { icon: "/icons/custom-openai.png" },
+    ));
+    expect(await screen.findByText("アイコンを更新しました。")).toBeTruthy();
+  });
+
   it("toggles a model via PATCH with provider::model key", async () => {
     render(<ProviderModelsSettings />);
 
