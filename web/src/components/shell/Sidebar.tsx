@@ -42,6 +42,8 @@ const DEFAULT_WIDTH = 240;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const ACTIVE_TASK_POLL_MS = 3000;
+const ENGINE_STARTUP_RETRY_MS = 1000;
+const ENGINE_UNAVAILABLE_CONFIRMATIONS = 2;
 
 /**
  * Shared geometry for the per-task row action buttons (refresh title / archive /
@@ -174,6 +176,7 @@ export function Sidebar({
   const [archivedTasks, setArchivedTasks] = useState<TaskSummary[]>([]);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [engineOk, setEngineOk] = useState(true);
+  const [engineUnavailableCount, setEngineUnavailableCount] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -268,6 +271,13 @@ export function Sidebar({
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen, onClose]);
 
+  const updateEngineHealth = useCallback((ok: boolean) => {
+    setEngineOk(ok);
+    setEngineUnavailableCount((count) =>
+      ok ? 0 : Math.min(count + 1, ENGINE_UNAVAILABLE_CONFIRMATIONS),
+    );
+  }, []);
+
   const refresh = useCallback(async () => {
     const [projectsResult, tasksResult, archivedResult] =
       await Promise.allSettled([
@@ -284,12 +294,12 @@ export function Sidebar({
     }
     if (tasksResult.status === "fulfilled") {
       setTasks(tasksResult.value.tasks ?? []);
-      setEngineOk(tasksResult.value.engineOk);
+      updateEngineHealth(tasksResult.value.engineOk);
     }
     if (archivedResult.status === "fulfilled") {
       setArchivedTasks(archivedResult.value.tasks ?? []);
     }
-  }, []);
+  }, [updateEngineHealth]);
 
   useEffect(() => {
     // Fast path: hydrate from localStorage so the sidebar paints without
@@ -390,9 +400,14 @@ export function Sidebar({
   // change already triggers refresh on focus.
   useEffect(() => {
     if (!pageVisible || engineOk) return;
-    const poll = setInterval(() => void refresh(), ACTIVE_TASK_POLL_MS);
+    const poll = setInterval(
+      () => void refresh(),
+      engineUnavailableCount < ENGINE_UNAVAILABLE_CONFIRMATIONS
+        ? ENGINE_STARTUP_RETRY_MS
+        : ACTIVE_TASK_POLL_MS,
+    );
     return () => clearInterval(poll);
-  }, [engineOk, pageVisible, refresh]);
+  }, [engineOk, engineUnavailableCount, pageVisible, refresh]);
 
   // Ensure the project owning the active task is expanded
   useEffect(() => {
@@ -698,8 +713,17 @@ export function Sidebar({
       </div>
 
       {!engineOk && (
-        <div className="shrink-0 border-b border-warning/30 bg-warning-bg px-3 py-2 text-[11px] leading-snug text-warning">
-          エンジン未接続。設定またはトレイから OpenCode を再起動してください。
+        <div
+          className={cx(
+            "shrink-0 border-b px-3 py-2 text-[11px] leading-snug",
+            engineUnavailableCount < ENGINE_UNAVAILABLE_CONFIRMATIONS
+              ? "border-border bg-surface-2 text-muted"
+              : "border-warning/30 bg-warning-bg text-warning",
+          )}
+        >
+          {engineUnavailableCount < ENGINE_UNAVAILABLE_CONFIRMATIONS
+            ? "エンジン接続を確認中です。起動直後のため自動で再試行しています。"
+            : "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから OpenCode を再起動してください。"}
         </div>
       )}
 

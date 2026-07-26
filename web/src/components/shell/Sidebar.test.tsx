@@ -1360,19 +1360,35 @@ describe("Sidebar engine health polling", () => {
     vi.clearAllMocks();
   });
 
-  it("shows the engine-not-connected banner and self-clears once engineOk flips to true", async () => {
+  it("starts with a retrying notice before showing the engine-not-connected banner and self-clears", async () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
-    const banner = await screen.findByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。");
+    expect(
+      await screen.findByText(
+        "エンジン接続を確認中です。起動直後のため自動で再試行しています。",
+      ),
+    ).toBeTruthy();
+
+    const banner = await screen.findByText(
+      "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから OpenCode を再起動してください。",
+    );
     expect(banner).toBeTruthy();
 
     // Engine becomes reachable; next 3s poll tick should clear the banner.
     engineOk = true;
     await waitFor(
-      () =>
+      () => {
         expect(
-          screen.queryByText("エンジン未接続。設定またはトレイから OpenCode を再起動してください。"),
-        ).toBeNull(),
+          screen.queryByText(
+            "エンジン未接続。自動で再確認中です。続く場合は設定またはトレイから OpenCode を再起動してください。",
+          ),
+        ).toBeNull();
+        expect(
+          screen.queryByText(
+            "エンジン接続を確認中です。起動直後のため自動で再試行しています。",
+          ),
+        ).toBeNull();
+      },
       { timeout: 8000 },
     );
   }, 15000);
