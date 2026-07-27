@@ -1272,6 +1272,155 @@ describe("TaskView", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: "ターミナル" }));
     expect(screen.getByTestId("pty-panel")).toBeTruthy();
   });
+
+  describe("Goalループ composer", () => {
+    const TOGGLE = "Goalループで継続実行";
+
+    /**
+     * Idle session with an optional loop attached to the task response.
+     * `stream` is passed in by the caller: `useSessionStream` may only be
+     * invoked from the anonymous test callback (react-hooks/rules-of-hooks).
+     */
+    function setupIdle(
+      stream: { status: { type: string } },
+      loop: unknown = undefined,
+    ) {
+      taskStatus = "idle";
+      stream.status = { type: "idle" };
+      getJson.mockImplementation((path: string) => {
+        if (path === "/api/settings/sidepanel-width") {
+          return Promise.resolve({ value: null });
+        }
+        if (path === "/api/tasks/ws1") {
+          return Promise.resolve({
+            task: task(0.1),
+            ...(loop === undefined ? {} : { goalLoop: loop }),
+          });
+        }
+        return Promise.resolve({ task: task(0.1) });
+      });
+    }
+
+    it("keeps the transcript free of a standing start form and offers a composer toggle", async () => {
+      setupIdle(useSessionStream());
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      // The old always-on card used these two fields at the top of the scroller.
+      expect(screen.queryByText("Goalループを開始")).toBeNull();
+      expect(screen.queryByLabelText("承認条件")).toBeNull();
+      expect(screen.getByRole("button", { name: TOGGLE })).toBeTruthy();
+    });
+
+    it("reveals acceptance/maxTurns only after the toggle is pressed", async () => {
+      setupIdle(useSessionStream());
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+      expect(screen.getByLabelText("承認条件")).toBeTruthy();
+      expect(screen.getByLabelText("最大ターン数")).toBeTruthy();
+      expect(
+        (screen.getByRole("combobox", { name: "フォローアップを送信" }) as HTMLTextAreaElement)
+          .placeholder,
+      ).toContain("達成したい目標");
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+      expect(screen.queryByLabelText("承認条件")).toBeNull();
+    });
+
+    it("starts the loop with the composer text as the goal instead of sending a prompt", async () => {
+      const streamMock = useSessionStream();
+      setupIdle(streamMock);
+      const loop = {
+        id: "loop1",
+        status: "running",
+        goal: "ship the loop UI",
+        turnCount: 0,
+        maxTurns: 10,
+        progress: [],
+      };
+      sendJson.mockImplementation((method: string, path: string) => {
+        if (path === "/api/tasks/ws1/goal-loop") return Promise.resolve({ loop });
+        return Promise.resolve(undefined);
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+      fireEvent.change(screen.getByLabelText("承認条件"), {
+        target: { value: " tests pass \n\n lint clean " },
+      });
+      const textarea = screen.getByRole("combobox", {
+        name: "フォローアップを送信",
+      }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "ship the loop UI" } });
+      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks/ws1/goal-loop",
+        expect.objectContaining({
+          sessionId: "sess1",
+          goal: "ship the loop UI",
+          acceptance: ["tests pass", "lint clean"],
+          maxTurns: 10,
+        }),
+      );
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+      expect(textarea.value).toBe("");
+      // Live loop => the panel owns the controls, so the pill disappears.
+      expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
+    });
+
+    it("restores the draft and surfaces the error when the loop cannot start", async () => {
+      setupIdle(useSessionStream());
+      sendJson.mockImplementation((method: string, path: string) => {
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return Promise.reject(new Error("loop rejected"));
+        }
+        return Promise.resolve(undefined);
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+      const textarea = screen.getByRole("combobox", {
+        name: "フォローアップを送信",
+      }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "ship the loop UI" } });
+      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText("loop rejected")).toBeTruthy();
+      expect(textarea.value).toBe("ship the loop UI");
+      // Still in goal mode so the user can retry without re-toggling.
+      expect(screen.getByLabelText("承認条件")).toBeTruthy();
+    });
+
+    it("hides the composer toggle while a loop is already live", async () => {
+      setupIdle(useSessionStream(), {
+        id: "loop1",
+        status: "paused",
+        goal: "g",
+        turnCount: 1,
+        maxTurns: 10,
+        progress: [],
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
+      expect(screen.getByRole("region", { name: "Goalループ" })).toBeTruthy();
+    });
+  });
 });
 
 describe("TaskView voice input", () => {
