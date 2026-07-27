@@ -127,6 +127,7 @@ import { useSessionStream } from "@/lib/useSessionStream";
 import { useSlashCommands } from "@/lib/useSlashCommands";
 import { useVoiceInput } from "@/lib/use-voice-input";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
+import type { GoalLoopDto } from "@/lib/goal-loop";
 import type { TaskSummary, Todo } from "@/lib/types";
 import type { ProviderModelsDto } from "@/lib/extensions";
 import { DiffPane } from "./DiffPane";
@@ -338,6 +339,95 @@ function TodoPanel({
   );
 }
 
+function GoalLoopPanel({
+  loop,
+  busy,
+  onAction,
+}: {
+  loop: GoalLoopDto | null;
+  busy: boolean;
+  onAction: (action: "pause" | "resume" | "stop") => void;
+}) {
+  if (!loop) return null;
+  const latest = loop.progress[loop.progress.length - 1];
+  const running = loop.status === "queued" || loop.status === "running";
+  const statusLabel: Record<GoalLoopDto["status"], string> = {
+    queued: "待機中",
+    running: "実行中",
+    paused: "一時停止",
+    completed: "完了",
+    blocked: "ブロック",
+    stopped: "停止",
+    error: "エラー",
+  };
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-medium text-text">
+            <ListTodo className="h-4 w-4 text-primary" />
+            Goalループ
+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted">
+              {statusLabel[loop.status]} {loop.turnCount}/{loop.maxTurns}
+            </span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs text-muted">{loop.goal}</p>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          {running ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => onAction("pause")}
+            >
+              一時停止
+            </Button>
+          ) : loop.status === "paused" || loop.status === "error" ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => onAction("resume")}
+            >
+              再開
+            </Button>
+          ) : null}
+          {loop.status !== "completed" &&
+            loop.status !== "blocked" &&
+            loop.status !== "stopped" && (
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={busy}
+                onClick={() => onAction("stop")}
+              >
+                停止
+              </Button>
+            )}
+        </div>
+      </div>
+      {latest && (
+        <div className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+          <div className="font-medium text-text">{latest.summary}</div>
+          {latest.next && <div className="mt-1">次: {latest.next}</div>}
+          {latest.evidence && <div className="mt-1">証跡: {latest.evidence}</div>}
+        </div>
+      )}
+      {loop.error && (
+        <div className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning">
+          {loop.error}
+        </div>
+      )}
+      {loop.blockedReason && (
+        <div className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-xs text-danger">
+          {loop.blockedReason}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SIDE_WIDTH_KEY = "webui.sidepanel.width";
 const SIDE_DEFAULT = 520;
 const SIDE_MIN = 280;
@@ -379,6 +469,12 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [task, setTask] = useState<TaskSummary | null>(() =>
     readCachedTaskSummary(taskId),
   );
+  const [goalLoop, setGoalLoop] = useState<GoalLoopDto | null>(null);
+  const [goalLoopGoal, setGoalLoopGoal] = useState("");
+  const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
+  const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
+  const [goalLoopBusy, setGoalLoopBusy] = useState(false);
+  const [goalLoopError, setGoalLoopError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -1050,6 +1146,76 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
+  const refreshGoalLoop = useCallback(async () => {
+    try {
+      const data = await getJson<{ loop: GoalLoopDto | null }>(
+        `/api/tasks/${taskId}/goal-loop`,
+      );
+      if (taskIdRef.current !== taskId) return;
+      setGoalLoop(data.loop ?? null);
+      setGoalLoopError(null);
+    } catch (err) {
+      setGoalLoopError(
+        err instanceof Error ? err.message : "Goalループを読み込めません",
+      );
+    }
+  }, [taskId]);
+
+  const startGoalLoop = useCallback(async () => {
+    const sessionId = taskRef.current?.sessionId;
+    if (!sessionId || !goalLoopGoal.trim()) return;
+    setGoalLoopBusy(true);
+    setGoalLoopError(null);
+    try {
+      const [providerID, modelID] = model ? model.split("::") : [];
+      const data = await sendJson<{ loop: GoalLoopDto }>(
+        "POST",
+        `/api/tasks/${taskId}/goal-loop`,
+        {
+          sessionId,
+          goal: goalLoopGoal,
+          acceptance: goalLoopAcceptance
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean),
+          maxTurns: goalLoopMaxTurns,
+          ...(agent ? { agent } : {}),
+          ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+          ...(intelligence ? { variant: intelligence } : {}),
+        },
+      );
+      setGoalLoop(data.loop);
+      setGoalLoopGoal("");
+      setGoalLoopAcceptance("");
+      notifyTasksChanged();
+    } catch (err) {
+      setGoalLoopError(err instanceof Error ? err.message : "Goalループの開始に失敗しました");
+    } finally {
+      setGoalLoopBusy(false);
+    }
+  }, [agent, goalLoopAcceptance, goalLoopGoal, goalLoopMaxTurns, intelligence, model, taskId]);
+
+  const changeGoalLoopState = useCallback(
+    async (action: "pause" | "resume" | "stop") => {
+      setGoalLoopBusy(true);
+      setGoalLoopError(null);
+      try {
+        const data = await sendJson<{ loop: GoalLoopDto }>(
+          "PATCH",
+          `/api/tasks/${taskId}/goal-loop`,
+          { action },
+        );
+        setGoalLoop(data.loop);
+        notifyTasksChanged();
+      } catch (err) {
+        setGoalLoopError(err instanceof Error ? err.message : "Goalループ操作に失敗しました");
+      } finally {
+        setGoalLoopBusy(false);
+      }
+    },
+    [taskId],
+  );
+
   const closeSessionDialog = useCallback(() => {
     setSessionDialogOpen(false);
     window.setTimeout(() => {
@@ -1067,6 +1233,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     void refreshTask();
   }, [refreshTask]);
+
+  useEffect(() => {
+    void refreshGoalLoop();
+  }, [refreshGoalLoop]);
 
   const streamStatusType = stream.status?.type;
   const streamActive =
@@ -1114,6 +1284,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     return () => clearInterval(poll);
   }, [hasActiveTask, pageVisible, refreshTask]);
 
+  useEffect(() => {
+    const activeLoop =
+      goalLoop?.status === "queued" || goalLoop?.status === "running";
+    if (!pageVisible || !activeLoop) return;
+    const poll = setInterval(() => void refreshGoalLoop(), ACTIVE_TASK_POLL_MS);
+    return () => clearInterval(poll);
+  }, [goalLoop?.status, pageVisible, refreshGoalLoop]);
+
   // busy → idle transition: refresh diff + task stats + full message resync
   const prevStatusRef = useRef<string | null | undefined>(null);
   const streamScopeKey = `${task?.directory ?? ""}\u0000${task?.sessionId ?? ""}`;
@@ -1141,9 +1319,10 @@ export function TaskView({ taskId }: { taskId: string }) {
       void refreshTodos();
       // R3 skips message init while busy; reconcile the final REST snapshot now.
       void resync();
+      void refreshGoalLoop();
     }
     prevStatusRef.current = cur;
-  }, [refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType]);
+  }, [refreshGoalLoop, refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType]);
 
   const prevNotifiedStatusRef = useRef<string | null | undefined>(null);
   useEffect(() => {
@@ -1324,6 +1503,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
+      if (goalLoop?.status === "queued" || goalLoop?.status === "running") {
+        const paused = await sendJson<{ loop: GoalLoopDto }>(
+          "PATCH",
+          `/api/tasks/${sendTaskId}/goal-loop`,
+          { action: "pause" },
+        ).catch(() => null);
+        if (paused?.loop) setGoalLoop(paused.loop);
+      }
       await touchActivity(sendSessionId, sendTaskId);
       const [providerID, modelID] = model ? model.split("::") : [];
       const opts = {
@@ -1374,6 +1561,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     slashCommands,
     touchActivity,
     composerScopeKey,
+    goalLoop?.status,
   ]);
 
   const syncCursor = useCallback(() => {
@@ -2348,6 +2536,67 @@ export function TaskView({ taskId }: { taskId: string }) {
                 </Button>
               )}
               <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
+                <GoalLoopPanel
+                  loop={goalLoop}
+                  busy={goalLoopBusy}
+                  onAction={(action) => void changeGoalLoopState(action)}
+                />
+                {task.sessionId &&
+                  (!goalLoop ||
+                    goalLoop.status === "completed" ||
+                    goalLoop.status === "blocked" ||
+                    goalLoop.status === "stopped") && (
+                    <div className="rounded-xl border border-border bg-surface p-3 text-sm">
+                      <div className="flex items-center gap-2 font-medium text-text">
+                        <ListTodo className="h-4 w-4 text-primary" />
+                        Goalループを開始
+                      </div>
+                      <textarea
+                        value={goalLoopGoal}
+                        onChange={(e) => setGoalLoopGoal(e.target.value)}
+                        rows={2}
+                        placeholder="達成したい目標を入力…"
+                        className="mt-2 w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                      <textarea
+                        value={goalLoopAcceptance}
+                        onChange={(e) => setGoalLoopAcceptance(e.target.value)}
+                        rows={2}
+                        placeholder="承認条件（任意・1行に1つ）"
+                        className="mt-2 w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <label className="flex items-center gap-2 text-xs text-muted">
+                          最大ターン
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={goalLoopMaxTurns}
+                            onChange={(e) =>
+                              setGoalLoopMaxTurns(
+                                Math.min(100, Math.max(1, Number(e.target.value) || 1)),
+                              )
+                            }
+                            className="h-8 w-20 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
+                          />
+                        </label>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          disabled={goalLoopBusy || !goalLoopGoal.trim() || working}
+                          onClick={() => void startGoalLoop()}
+                        >
+                          開始
+                        </Button>
+                      </div>
+                      {goalLoopError && (
+                        <div className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-xs text-danger">
+                          {goalLoopError}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 {!stream.loaded && stream.messages.length === 0 && (
                   <div className="flex justify-center py-10">
                     <Spinner />

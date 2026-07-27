@@ -136,6 +136,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     "current_folder",
   );
   const [prompt, setPrompt] = useState("");
+  const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
+  const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
+  const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const attachmentsRef = useRef(attachments);
   const [submitting, setSubmitting] = useState(false);
@@ -542,7 +545,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     setError(null);
     try {
       const [providerID, modelID] = model ? model.split("::") : [];
-      const data = await sendJson<{ taskId: string }>("POST", "/api/tasks", {
+      const data = await sendJson<{ taskId: string; sessionId: string }>("POST", "/api/tasks", {
         projectId,
         prompt: text,
         isolation,
@@ -566,6 +569,20 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         ...(agent ? { agent } : {}),
         ...(intelligence ? { variant: intelligence } : {}),
       });
+      if (goalLoopEnabled) {
+        await sendJson("POST", `/api/tasks/${data.taskId}/goal-loop`, {
+          sessionId: data.sessionId,
+          goal: text,
+          acceptance: goalLoopAcceptance
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean),
+          maxTurns: goalLoopMaxTurns,
+          ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+          ...(agent ? { agent } : {}),
+          ...(intelligence ? { variant: intelligence } : {}),
+        });
+      }
       // Remember the model actually applied to this submission so the next
       // new session preselects it.
       writeLastUsedModel(sendingModelKey || null);
@@ -587,6 +604,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     agent,
     agentModels,
     intelligence,
+    goalLoopEnabled,
+    goalLoopAcceptance,
+    goalLoopMaxTurns,
     subagentPermission,
     skillPermission,
     submitting,
@@ -874,6 +894,46 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
               className="w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-faint"
             />
+            <div className="rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-text">
+                <input
+                  type="checkbox"
+                  checked={goalLoopEnabled}
+                  disabled={submitting}
+                  onChange={(e) => setGoalLoopEnabled(e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                Goalループで継続実行
+              </label>
+              {goalLoopEnabled && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <textarea
+                    value={goalLoopAcceptance}
+                    disabled={submitting}
+                    onChange={(e) => setGoalLoopAcceptance(e.target.value)}
+                    rows={2}
+                    placeholder="承認条件（任意・1行に1つ）"
+                    className="min-w-0 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                  <label className="flex items-center gap-2 text-xs text-muted sm:flex-col sm:items-start">
+                    最大ターン
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={goalLoopMaxTurns}
+                      disabled={submitting}
+                      onChange={(e) =>
+                        setGoalLoopMaxTurns(
+                          Math.min(100, Math.max(1, Number(e.target.value) || 1)),
+                        )
+                      }
+                      className="h-9 w-24 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2 pt-1">
               <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <input
