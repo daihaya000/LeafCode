@@ -2335,7 +2335,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   size="icon"
                   aria-label="最新のメッセージへ"
                   title="最新のメッセージへ"
-                  className="absolute right-4 bottom-20 z-10 rounded-full shadow-md"
+                  className="absolute right-4 bottom-28 z-50 h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
                   onClick={() => {
                     const el = scrollRef.current;
                     if (!el) return;
