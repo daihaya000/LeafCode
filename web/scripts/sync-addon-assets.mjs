@@ -50,12 +50,15 @@ if (!existsSync(addonsRoot)) {
 
 mkdirSync(outRoot, { recursive: true });
 
+const activeAddonNames = new Set();
+
 for (const name of readdirSync(addonsRoot)) {
   if (name.startsWith(".")) continue;
   const addonDir = path.join(addonsRoot, name);
   if (!statSync(addonDir).isDirectory()) continue;
   const src = path.join(addonDir, "public");
   if (!existsSync(src) || !statSync(src).isDirectory()) continue;
+  activeAddonNames.add(name);
   const dest = path.join(outRoot, name);
   if (destinationIsCurrent(src, dest)) {
     console.log(`[sync-addon-assets] ${name}: unchanged; skip`);
@@ -65,4 +68,13 @@ for (const name of readdirSync(addonsRoot)) {
   mkdirSync(path.dirname(dest), { recursive: true });
   cpSync(src, dest, { recursive: true });
   console.log(`[sync-addon-assets] ${name}: ${src} -> ${dest}`);
+}
+
+for (const name of readdirSync(outRoot)) {
+  if (name.startsWith(".")) continue;
+  if (activeAddonNames.has(name)) continue;
+  const dest = path.join(outRoot, name);
+  if (!statSync(dest).isDirectory()) continue;
+  rmSync(dest, { recursive: true, force: true });
+  console.log(`[sync-addon-assets] ${name}: removed stale output`);
 }
