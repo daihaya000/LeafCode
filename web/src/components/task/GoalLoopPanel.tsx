@@ -70,6 +70,10 @@ export function GoalLoopPanel({
   if (!loop) return null;
 
   const running = loop.status === "queued" || loop.status === "running";
+  // ループが生きている間（実行中・一時停止）は、下までスクロールしても
+  // 状態確認と一時停止/停止操作ができるよう上部に追従させる。
+  // 終了状態では開始フォームが下に出るため通常フローに戻す。
+  const live = running || loop.status === "paused";
   const canStop =
     loop.status !== "completed" &&
     loop.status !== "blocked" &&
@@ -108,7 +112,13 @@ export function GoalLoopPanel({
     <div
       role="region"
       aria-label="Goalループ"
-      className="rounded-xl border border-border bg-surface p-3 text-sm"
+      data-live={live ? "true" : undefined}
+      className={cx(
+        "rounded-xl border border-border bg-surface p-3 text-sm",
+        live &&
+          // 追従時は背景を不透明のまま、履歴が伸びても画面を占有しないよう高さを制限する
+          "sticky top-0 z-10 max-h-[45dvh] overflow-y-auto shadow-md",
+      )}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">

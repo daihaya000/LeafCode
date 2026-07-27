@@ -266,4 +266,39 @@ describe("GoalLoopPanel", () => {
     expect(screen.getByText("爆発した")).toBeTruthy();
     expect(screen.getByText("理由")).toBeTruthy();
   });
+
+  it.each(["queued", "running", "paused"] as const)(
+    "sticks to the top while loop is live (%s)",
+    (status) => {
+      render(
+        <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
+      );
+      const region = screen.getByRole("region", { name: "Goalループ" });
+      expect(region.getAttribute("data-live")).toBe("true");
+      expect(region.className).toContain("sticky");
+      expect(region.className).toContain("top-0");
+      // 履歴が伸びても画面を占有しないよう高さを制限する
+      expect(region.className).toContain("max-h-[45dvh]");
+      expect(region.className).toContain("overflow-y-auto");
+    },
+  );
+
+  it.each(["completed", "blocked", "stopped", "error"] as const)(
+    "does not stick when loop is finished (%s)",
+    (status) => {
+      render(
+        <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
+      );
+      const region = screen.getByRole("region", { name: "Goalループ" });
+      expect(region.getAttribute("data-live")).toBeNull();
+      expect(region.className).not.toContain("sticky");
+    },
+  );
+
+  it("keeps the scroll-to-bottom button above the sticky panel", () => {
+    render(<GoalLoopPanel loop={baseLoop()} busy={false} onAction={vi.fn()} />);
+    // TaskView の「最新のメッセージへ」ボタンは z-50。パネルはその下に潜る必要がある
+    const region = screen.getByRole("region", { name: "Goalループ" });
+    expect(region.className).toContain("z-10");
+  });
 });
