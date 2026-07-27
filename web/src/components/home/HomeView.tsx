@@ -7,7 +7,6 @@ import {
   Bot,
   FolderGit2,
   GitBranch,
-  ListTodo,
   Paperclip,
   X,
 } from "lucide-react";
@@ -15,6 +14,7 @@ import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
+import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
@@ -905,34 +905,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             />
             {/* Goalループの詳細設定は ON のときだけ出す（OFF 時に場所を取らない） */}
             {goalLoopEnabled && (
-              <div className="mt-1 flex flex-wrap items-start gap-2">
-                <textarea
-                  value={goalLoopAcceptance}
-                  disabled={submitting}
-                  onChange={(e) => setGoalLoopAcceptance(e.target.value)}
-                  rows={2}
-                  placeholder="承認条件（任意・1行に1つ）"
-                  aria-label="承認条件"
-                  className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-1.5 text-sm outline-none focus:border-primary"
-                />
-                <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
-                  最大ターン
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={goalLoopMaxTurns}
-                    disabled={submitting}
-                    aria-label="最大ターン数"
-                    onChange={(e) =>
-                      setGoalLoopMaxTurns(
-                        Math.min(100, Math.max(1, Number(e.target.value) || 1)),
-                      )
-                    }
-                    className="h-8 w-16 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
-                  />
-                </label>
-              </div>
+              <GoalLoopOptions
+                acceptance={goalLoopAcceptance}
+                maxTurns={goalLoopMaxTurns}
+                disabled={submitting}
+                onAcceptanceChange={setGoalLoopAcceptance}
+                onMaxTurnsChange={setGoalLoopMaxTurns}
+              />
             )}
             <div className="flex items-center gap-2 pt-1">
               <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1030,23 +1009,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   onChange={(m) => changeSubagentPermission(m)}
                   className="h-8 shrink-0"
                 />
-                <button
-                  type="button"
-                  aria-pressed={goalLoopEnabled}
-                  aria-label="Goalループで継続実行"
-                  title="Goalループで継続実行"
+                <GoalLoopToggle
+                  enabled={goalLoopEnabled}
                   disabled={submitting}
-                  onClick={() => setGoalLoopEnabled((v) => !v)}
-                  className={cx(
-                    "flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-xs transition-colors disabled:opacity-40",
-                    goalLoopEnabled
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border bg-bg text-muted hover:bg-surface-2 hover:text-text",
-                  )}
-                >
-                  <ListTodo className="h-3.5 w-3.5" aria-hidden="true" />
-                  Goalループ
-                </button>
+                  onToggle={() => setGoalLoopEnabled((v) => !v)}
+                />
               </div>
               <Button
                 variant="primary"

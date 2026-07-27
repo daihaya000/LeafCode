@@ -36,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
 import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
@@ -382,7 +383,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     readCachedTaskSummary(taskId),
   );
   const [goalLoop, setGoalLoop] = useState<GoalLoopDto | null>(null);
-  const [goalLoopGoal, setGoalLoopGoal] = useState("");
+  /**
+   * Composer-level Goal loop switch. The composer textarea carries the goal
+   * text (same as the top page), so there is no separate goal field and the
+   * form costs zero vertical space while OFF.
+   */
+  const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
   const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
   const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
   const [goalLoopBusy, setGoalLoopBusy] = useState(false);
@@ -1078,39 +1084,47 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
-  const startGoalLoop = useCallback(async () => {
-    const sessionId = taskRef.current?.sessionId;
-    if (!sessionId || !goalLoopGoal.trim()) return;
-    setGoalLoopBusy(true);
-    setGoalLoopError(null);
-    try {
-      const [providerID, modelID] = model ? model.split("::") : [];
-      const data = await sendJson<{ loop: GoalLoopDto }>(
-        "POST",
-        `/api/tasks/${taskId}/goal-loop`,
-        {
-          sessionId,
-          goal: goalLoopGoal,
-          acceptance: goalLoopAcceptance
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean),
-          maxTurns: goalLoopMaxTurns,
-          ...(agent ? { agent } : {}),
-          ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-          ...(intelligence ? { variant: intelligence } : {}),
-        },
-      );
-      setGoalLoop(data.loop);
-      setGoalLoopGoal("");
-      setGoalLoopAcceptance("");
-      notifyTasksChanged();
-    } catch (err) {
-      setGoalLoopError(err instanceof Error ? err.message : "Goalループの開始に失敗しました");
-    } finally {
-      setGoalLoopBusy(false);
-    }
-  }, [agent, goalLoopAcceptance, goalLoopGoal, goalLoopMaxTurns, intelligence, model, taskId]);
+  /** Start a loop with `goal`. Returns true when the loop was created. */
+  const startGoalLoop = useCallback(
+    async (goal: string): Promise<boolean> => {
+      const sessionId = taskRef.current?.sessionId;
+      if (!sessionId || !goal.trim()) return false;
+      setGoalLoopBusy(true);
+      setGoalLoopError(null);
+      try {
+        const [providerID, modelID] = model ? model.split("::") : [];
+        const data = await sendJson<{ loop: GoalLoopDto }>(
+          "POST",
+          `/api/tasks/${taskId}/goal-loop`,
+          {
+            sessionId,
+            goal,
+            acceptance: goalLoopAcceptance
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter(Boolean),
+            maxTurns: goalLoopMaxTurns,
+            ...(agent ? { agent } : {}),
+            ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+            ...(intelligence ? { variant: intelligence } : {}),
+          },
+        );
+        setGoalLoop(data.loop);
+        setGoalLoopAcceptance("");
+        setGoalLoopEnabled(false);
+        notifyTasksChanged();
+        return true;
+      } catch (err) {
+        setGoalLoopError(
+          err instanceof Error ? err.message : "Goalループの開始に失敗しました",
+        );
+        return false;
+      } finally {
+        setGoalLoopBusy(false);
+      }
+    },
+    [agent, goalLoopAcceptance, goalLoopMaxTurns, intelligence, model, taskId],
+  );
 
   const changeGoalLoopState = useCallback(
     async (action: "pause" | "resume" | "stop") => {
@@ -1182,6 +1196,18 @@ export function TaskView({ taskId }: { taskId: string }) {
     streamActive || (streamStatusType === undefined && task?.status === "working");
   // Block composer while the task is known-busy even before stream.status loads.
   const working = hasActiveTask;
+  /**
+   * A loop that is still owned by the scheduler. While live, GoalLoopPanel owns
+   * the loop UI, so the composer toggle is hidden to avoid two competing
+   * entry points.
+   */
+  const goalLoopLive =
+    goalLoop?.status === "queued" ||
+    goalLoop?.status === "running" ||
+    goalLoop?.status === "verifying_completed" ||
+    goalLoop?.status === "paused";
+  /** Composer is waiting for POST /goal-loop to answer. */
+  const goalLoopStarting = goalLoopEnabled && !goalLoopLive && goalLoopBusy;
   // NextAction invalidation key: changes when conversation content, revert
   // position, or task changes — so stale suggestions are discarded.
   const nextActionInvalidateKey = useMemo(() => {
@@ -1425,6 +1451,22 @@ export function TaskView({ taskId }: { taskId: string }) {
     const sendSessionId = taskRef.current?.sessionId;
     const sendTaskId = taskRef.current?.id;
     if (!sendSessionId || !sendTaskId || !sendScopeKey) return;
+    // Goal loop mode: the composer text is the goal, not a chat turn. Hand it
+    // to the loop API and restore the draft when the API rejects it.
+    if (goalLoopEnabled && !goalLoopLive) {
+      if (!text) return;
+      rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
+      setInput("");
+      setSendError(null);
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      stickRef.current = true;
+      const ok = await startGoalLoop(text);
+      if (!ok) {
+        rememberComposerDraft(sendScopeKey, { input: text, attachments });
+        if (composerScopeRef.current === sendScopeKey) setInput(text);
+      }
+      return;
+    }
     // Block sending images to a model that cannot accept them. The effective
     // model (agent's configured model when an agent is selected, otherwise the
     // manual selector) is the one that actually serves the prompt, so check
@@ -1532,6 +1574,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     touchActivity,
     composerScopeKey,
     goalLoop?.status,
+    goalLoopEnabled,
+    goalLoopLive,
+    startGoalLoop,
   ]);
 
   const syncCursor = useCallback(() => {
@@ -2500,63 +2545,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                   onAction={(action) => void changeGoalLoopState(action)}
                   onUpdateMaxTurns={(n) => void updateGoalLoopMaxTurns(n)}
                 />
-                {task.sessionId &&
-                  (!goalLoop ||
-                    goalLoop.status === "completed" ||
-                    goalLoop.status === "blocked" ||
-                    goalLoop.status === "stopped" ||
-                    goalLoop.status === "error") && (
-                    <div className="rounded-xl border border-border bg-surface p-3 text-sm">
-                      <div className="flex items-center gap-2 font-medium text-text">
-                        <ListTodo className="h-4 w-4 text-primary" />
-                        Goalループを開始
-                      </div>
-                      <textarea
-                        value={goalLoopGoal}
-                        onChange={(e) => setGoalLoopGoal(e.target.value)}
-                        rows={2}
-                        placeholder="達成したい目標を入力…"
-                        className="mt-2 w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-                      />
-                      <textarea
-                        value={goalLoopAcceptance}
-                        onChange={(e) => setGoalLoopAcceptance(e.target.value)}
-                        rows={2}
-                        placeholder="承認条件（任意・1行に1つ）"
-                        className="mt-2 w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-                      />
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 text-xs text-muted">
-                          最大ターン
-                          <input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={goalLoopMaxTurns}
-                            onChange={(e) =>
-                              setGoalLoopMaxTurns(
-                                Math.min(100, Math.max(1, Number(e.target.value) || 1)),
-                              )
-                            }
-                            className="h-8 w-20 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
-                          />
-                        </label>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          disabled={goalLoopBusy || !goalLoopGoal.trim() || working}
-                          onClick={() => void startGoalLoop()}
-                        >
-                          開始
-                        </Button>
-                      </div>
-                      {goalLoopError && (
-                        <div className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-xs text-danger">
-                          {goalLoopError}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 {!stream.loaded && stream.messages.length === 0 && (
                   <div className="flex justify-center py-10">
                     <Spinner />
@@ -2739,6 +2727,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                   {sendError}
                 </p>
               )}
+              {goalLoopError && !goalLoopLive && (
+                <p
+                  role="alert"
+                  className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
+                >
+                  {goalLoopError}
+                </p>
+              )}
               {showImageWarning && (
                 <p
                   role="alert"
@@ -2859,9 +2855,23 @@ export function TaskView({ taskId }: { taskId: string }) {
                       void send();
                     }
                   }}
-                  placeholder="フォローアップを送信…"
+                  placeholder={
+                    goalLoopEnabled && !goalLoopLive
+                      ? "達成したい目標を入力…（Enter で開始）"
+                      : "フォローアップを送信…"
+                  }
                   className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
                 />
+                {/* Goalループの詳細設定は ON のときだけ出す（OFF 時に場所を取らない） */}
+                {goalLoopEnabled && !goalLoopLive && (
+                  <GoalLoopOptions
+                    acceptance={goalLoopAcceptance}
+                    maxTurns={goalLoopMaxTurns}
+                    disabled={goalLoopBusy}
+                    onAcceptanceChange={setGoalLoopAcceptance}
+                    onMaxTurnsChange={setGoalLoopMaxTurns}
+                  />
+                )}
                 <div className="flex items-center gap-2 pt-1">
                   <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <input
@@ -2955,6 +2965,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                       disabled={!task.sessionId || subagentPermissionSaving}
                       className="h-8 shrink-0"
                     />
+                    {/* 実行中ループの操作は GoalLoopPanel が担うので、その間は隠す */}
+                    {!goalLoopLive && (
+                      <GoalLoopToggle
+                        enabled={goalLoopEnabled}
+                        disabled={!task.sessionId || goalLoopBusy || working}
+                        onToggle={() => setGoalLoopEnabled((v) => !v)}
+                      />
+                    )}
                   </div>
                   {working ? (
                     <Button
@@ -2971,14 +2989,21 @@ export function TaskView({ taskId }: { taskId: string }) {
                       variant="primary"
                       size="icon"
                       className="shrink-0"
-                      aria-label="送信"
+                      aria-label={
+                        goalLoopEnabled && !goalLoopLive
+                          ? "Goalループを開始"
+                          : "送信"
+                      }
+                      busy={goalLoopStarting}
                       disabled={
-                        (!input.trim() && attachments.length === 0) ||
-                        !task.sessionId
+                        goalLoopEnabled && !goalLoopLive
+                          ? !input.trim() || !task.sessionId || goalLoopBusy
+                          : (!input.trim() && attachments.length === 0) ||
+                            !task.sessionId
                       }
                       onClick={() => void send()}
                     >
-                      <ArrowUp className="h-4.5 w-4.5" />
+                      {!goalLoopStarting && <ArrowUp className="h-4.5 w-4.5" />}
                     </Button>
                   )}
                 </div>
