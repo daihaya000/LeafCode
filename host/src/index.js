@@ -1598,7 +1598,7 @@ async function stopChildren() {
   });
   for (const pid of opencodePids) expectedOpencodeExitPids.add(pid);
   opencodeProc = null;
-  await stopOpencodeProcessTree(opencodePids);
+  const opencodeStop = stopOpencodeProcessTree(opencodePids);
 
   // WebUI: union of the owned child and identified port listeners. The owned
   // PID covers listeners still in its tree; identified listeners cover a
@@ -1623,9 +1623,15 @@ async function stopChildren() {
   webBuildProc = null;
   caddyProc = null;
 
-  // Wait for ports to be released before returning, so restart can rebind.
-  await waitForPortFree(WEBUI_PORT);
-  await waitForPortFree(OPENCODE_PORT);
+  // Stop independent services and wait for their ports concurrently. Normal
+  // quit does not need OpenCode to finish before the WebUI/Caddy trees begin
+  // stopping, and parallel waiting avoids paying both port-release windows in
+  // sequence.
+  await Promise.all([
+    opencodeStop,
+    waitForPortFree(WEBUI_PORT),
+    waitForPortFree(OPENCODE_PORT),
+  ]);
 }
 
 function formatStatus(name, proc, httpUp) {
