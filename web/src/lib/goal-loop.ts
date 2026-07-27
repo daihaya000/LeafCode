@@ -338,6 +338,35 @@ export async function updateGoalLoopStatus(
   return getGoalLoop(workspaceId);
 }
 
+/**
+ * Update `maxTurns` on a goal loop. Only allowed while `paused` — the
+ * scheduler treats `queued`/`running` loops as actively in-flight and changing
+ * their cap mid-turn would race the tick. Returns the updated loop, or `null`
+ * if no loop exists. Throws `OcError(409)` when the loop is not paused.
+ */
+export function updateGoalLoopMaxTurns(
+  workspaceId: string,
+  maxTurns: unknown,
+): GoalLoopDto | null {
+  const loop = getGoalLoop(workspaceId);
+  if (!loop) return null;
+  if (loop.status !== "paused") {
+    throw new OcError("goal loop is not paused", 409);
+  }
+  const raw = Number(maxTurns);
+  if (!Number.isFinite(raw)) {
+    throw new OcError("invalid maxTurns", 400);
+  }
+  const clamped = Math.min(100, Math.max(1, Math.trunc(raw)));
+  const now = new Date().toISOString();
+  getDb()
+    .prepare(
+      `UPDATE goal_loops SET max_turns = ?, updated_at = ? WHERE id = ?`,
+    )
+    .run(clamped, now, loop.id);
+  return getGoalLoop(workspaceId);
+}
+
 export function pauseGoalLoopForManualSend(workspaceId: string, sessionId: string): void {
   const now = new Date().toISOString();
   getDb()

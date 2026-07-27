@@ -901,6 +901,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   checked={goalLoopEnabled}
                   disabled={submitting}
                   onChange={(e) => setGoalLoopEnabled(e.target.checked)}
+                  aria-label="Goalループで継続実行"
                   className="h-4 w-4 accent-primary"
                 />
                 Goalループで継続実行
@@ -913,6 +914,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     onChange={(e) => setGoalLoopAcceptance(e.target.value)}
                     rows={2}
                     placeholder="承認条件（任意・1行に1つ）"
+                    aria-label="承認条件"
                     className="min-w-0 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                   <label className="flex items-center gap-2 text-xs text-muted sm:flex-col sm:items-start">
@@ -923,6 +925,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                       max={100}
                       value={goalLoopMaxTurns}
                       disabled={submitting}
+                      aria-label="最大ターン数"
                       onChange={(e) =>
                         setGoalLoopMaxTurns(
                           Math.min(100, Math.max(1, Number(e.target.value) || 1)),

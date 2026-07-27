@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   classifyToolFailureStatus,
   createInitialStreamState,
+  filterGoalLoopMessages,
   resolveResyncStatus,
   sessionStreamReducer,
   SESSION_COMMAND_TIMEOUT_MS,
   SESSION_MUTATION_TIMEOUT_MS,
+  stripGoalLoopJsonBlock,
 } from "./useSessionStream";
+import type { MessageWithParts } from "./types";
 
 describe("SESSION_COMMAND_TIMEOUT_MS", () => {
   it("stays above the BFF's 290s long-running upstream timeout", () => {
@@ -385,5 +388,85 @@ describe("session stream session.next text deltas", () => {
       status: { type: "idle" },
     });
     expect(state.status?.type).toBe("idle");
+  });
+});
+
+describe("filterGoalLoopMessages", () => {
+  function userMsg(id: string, text: string): MessageWithParts {
+    return {
+      info: { id, role: "user" },
+      parts: [{ id: `${id}-p1`, messageID: id, type: "text", text }],
+    };
+  }
+  function assistantMsg(id: string, text: string): MessageWithParts {
+    return {
+      info: { id, role: "assistant" },
+      parts: [{ id: `${id}-p1`, messageID: id, type: "text", text }],
+    };
+  }
+
+  it("drops user messages whose first text part starts with the marker", () => {
+    const msgs: MessageWithParts[] = [
+      userMsg("u1", "<!-- webui-goal-loop-prompt -->\n\nYou are running..."),
+      userMsg("u2", "普通のユーザー発言"),
+      assistantMsg("a1", "返答"),
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out.map((m) => m.info.id)).toEqual(["u2", "a1"]);
+  });
+
+  it("keeps user messages without the marker", () => {
+    const msgs: MessageWithParts[] = [
+      userMsg("u1", "こんにちは"),
+      userMsg("u2", "<!-- webui-goal-loop-prompt -->\n\n..."),
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out.map((m) => m.info.id)).toEqual(["u1"]);
+  });
+
+  it("keeps assistant messages even if they start with the marker", () => {
+    const msgs: MessageWithParts[] = [
+      assistantMsg("a1", "<!-- webui-goal-loop-prompt --> assistant copy"),
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out.map((m) => m.info.id)).toEqual(["a1"]);
+  });
+
+  it("keeps user messages with no text part", () => {
+    const msgs: MessageWithParts[] = [
+      { info: { id: "u1", role: "user" }, parts: [] },
+    ];
+    const out = filterGoalLoopMessages(msgs);
+    expect(out.map((m) => m.info.id)).toEqual(["u1"]);
+  });
+});
+
+describe("stripGoalLoopJsonBlock", () => {
+  it("strips a trailing goal-result json block", () => {
+    const text =
+      "作業を完了しました。\n\n```json\n{\"status\":\"completed\",\"summary\":\"done\",\"next\":\"\",\"evidence\":\"tests pass\"}\n```";
+    const out = stripGoalLoopJsonBlock(text);
+    expect(out).toBe("作業を完了しました。");
+  });
+
+  it("strips a progress-status block", () => {
+    const text =
+      "進捗あり。\n```json\n{\"status\":\"progress\",\"summary\":\"wip\",\"next\":\"next step\",\"evidence\":\"\"}\n```";
+    expect(stripGoalLoopJsonBlock(text)).toBe("進捗あり。");
+  });
+
+  it("does not strip a generic trailing json block", () => {
+    const text = "メモ。\n```json\n{\"foo\":1,\"bar\":2}\n```";
+    expect(stripGoalLoopJsonBlock(text)).toBe(text);
+  });
+
+  it("does not strip when json is broken", () => {
+    const text = "メモ。\n```json\n{not valid json}\n```";
+    expect(stripGoalLoopJsonBlock(text)).toBe(text);
+  });
+
+  it("leaves text without a trailing json block untouched", () => {
+    const text = "プレーンテキスト";
+    expect(stripGoalLoopJsonBlock(text)).toBe(text);
   });
 });

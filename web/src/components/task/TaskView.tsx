@@ -132,6 +132,7 @@ import type { TaskSummary, Todo } from "@/lib/types";
 import type { ProviderModelsDto } from "@/lib/extensions";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
+import { GoalLoopPanel } from "./GoalLoopPanel";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { GraphPanel } from "./GraphPanel";
 import { MessageMetaHeader } from "./MessageMetaHeader";
@@ -334,95 +335,6 @@ function TodoPanel({
             </li>
           ))}
         </ul>
-      )}
-    </div>
-  );
-}
-
-function GoalLoopPanel({
-  loop,
-  busy,
-  onAction,
-}: {
-  loop: GoalLoopDto | null;
-  busy: boolean;
-  onAction: (action: "pause" | "resume" | "stop") => void;
-}) {
-  if (!loop) return null;
-  const latest = loop.progress[loop.progress.length - 1];
-  const running = loop.status === "queued" || loop.status === "running";
-  const statusLabel: Record<GoalLoopDto["status"], string> = {
-    queued: "待機中",
-    running: "実行中",
-    paused: "一時停止",
-    completed: "完了",
-    blocked: "ブロック",
-    stopped: "停止",
-    error: "エラー",
-  };
-  return (
-    <div className="rounded-xl border border-border bg-surface p-3 text-sm">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 font-medium text-text">
-            <ListTodo className="h-4 w-4 text-primary" />
-            Goalループ
-            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted">
-              {statusLabel[loop.status]} {loop.turnCount}/{loop.maxTurns}
-            </span>
-          </div>
-          <p className="mt-1 line-clamp-2 text-xs text-muted">{loop.goal}</p>
-        </div>
-        <div className="flex shrink-0 gap-1">
-          {running ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={() => onAction("pause")}
-            >
-              一時停止
-            </Button>
-          ) : loop.status === "paused" || loop.status === "error" ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={() => onAction("resume")}
-            >
-              再開
-            </Button>
-          ) : null}
-          {loop.status !== "completed" &&
-            loop.status !== "blocked" &&
-            loop.status !== "stopped" && (
-              <Button
-                variant="danger"
-                size="sm"
-                disabled={busy}
-                onClick={() => onAction("stop")}
-              >
-                停止
-              </Button>
-            )}
-        </div>
-      </div>
-      {latest && (
-        <div className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
-          <div className="font-medium text-text">{latest.summary}</div>
-          {latest.next && <div className="mt-1">次: {latest.next}</div>}
-          {latest.evidence && <div className="mt-1">証跡: {latest.evidence}</div>}
-        </div>
-      )}
-      {loop.error && (
-        <div className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning">
-          {loop.error}
-        </div>
-      )}
-      {loop.blockedReason && (
-        <div className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-xs text-danger">
-          {loop.blockedReason}
-        </div>
       )}
     </div>
   );
@@ -1210,9 +1122,33 @@ export function TaskView({ taskId }: { taskId: string }) {
           { action },
         );
         setGoalLoop(data.loop);
+        if (action === "resume") setGoalLoopError(null);
         notifyTasksChanged();
       } catch (err) {
         setGoalLoopError(err instanceof Error ? err.message : "Goalループ操作に失敗しました");
+      } finally {
+        setGoalLoopBusy(false);
+      }
+    },
+    [taskId],
+  );
+
+  const updateGoalLoopMaxTurns = useCallback(
+    async (maxTurns: number) => {
+      setGoalLoopBusy(true);
+      setGoalLoopError(null);
+      try {
+        const data = await sendJson<{ loop: GoalLoopDto }>(
+          "PATCH",
+          `/api/tasks/${taskId}/goal-loop`,
+          { action: "updateMaxTurns", maxTurns },
+        );
+        setGoalLoop(data.loop);
+        notifyTasksChanged();
+      } catch (err) {
+        setGoalLoopError(
+          err instanceof Error ? err.message : "最大ターン数の更新に失敗しました",
+        );
       } finally {
         setGoalLoopBusy(false);
       }
@@ -2540,12 +2476,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                   loop={goalLoop}
                   busy={goalLoopBusy}
                   onAction={(action) => void changeGoalLoopState(action)}
+                  onUpdateMaxTurns={(n) => void updateGoalLoopMaxTurns(n)}
                 />
                 {task.sessionId &&
                   (!goalLoop ||
                     goalLoop.status === "completed" ||
                     goalLoop.status === "blocked" ||
-                    goalLoop.status === "stopped") && (
+                    goalLoop.status === "stopped" ||
+                    goalLoop.status === "error") && (
                     <div className="rounded-xl border border-border bg-surface p-3 text-sm">
                       <div className="flex items-center gap-2 font-medium text-text">
                         <ListTodo className="h-4 w-4 text-primary" />

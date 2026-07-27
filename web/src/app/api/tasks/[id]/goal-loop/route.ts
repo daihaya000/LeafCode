@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createGoalLoop,
   getGoalLoop,
+  updateGoalLoopMaxTurns,
   updateGoalLoopStatus,
 } from "@/lib/goal-loop";
 import { OcError } from "@/lib/oc-server";
@@ -51,8 +52,24 @@ export async function POST(req: NextRequest, context: Ctx) {
 
 export async function PATCH(req: NextRequest, context: Ctx) {
   const { id } = await context.params;
-  const body = (await req.json().catch(() => null)) as { action?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as
+    | { action?: unknown; maxTurns?: unknown }
+    | null;
   const action = body?.action;
+  if (action === "updateMaxTurns") {
+    try {
+      const loop = updateGoalLoopMaxTurns(id, body?.maxTurns);
+      if (!loop) {
+        return NextResponse.json({ error: "goal loop not found" }, { status: 404 });
+      }
+      return NextResponse.json({ loop });
+    } catch (err) {
+      if (err instanceof OcError) {
+        return NextResponse.json({ error: err.message }, { status: err.status });
+      }
+      throw err;
+    }
+  }
   if (action !== "pause" && action !== "resume" && action !== "stop") {
     return NextResponse.json({ error: "invalid action" }, { status: 400 });
   }
