@@ -947,6 +947,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                 value,
                 label: formatModelLabel(m.name, mid),
                 group: p.name || p.id,
+                image: m.capabilities?.input?.image === true,
               });
               caps[value] = {
                 attachment: m.capabilities?.attachment === true,

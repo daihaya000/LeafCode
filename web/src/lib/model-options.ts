@@ -5,7 +5,13 @@
  * Within a provider, models are ordered smartest-first via name heuristics.
  */
 
-export type ModelOption = { value: string; label: string; group: string };
+export type ModelOption = {
+  value: string;
+  label: string;
+  group: string;
+  /** True when the model accepts image inputs (capabilities.input.image). */
+  image?: boolean;
+};
 export type ModelOrderPreference = {
   providerOrder?: string[];
   modelOrder?: Record<string, string[]>;

@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Check, Cpu } from "lucide-react";
+import { ChevronDown, Check, Cpu, ImageIcon } from "lucide-react";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { cx } from "@/components/ui";
 import type { ModelOption } from "@/lib/model-options";
@@ -179,6 +179,12 @@ export function ModelSelect({
             >
               <ModelProviderIcon value={option.value} />
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              {option.image && (
+                <ImageIcon
+                  aria-label="画像入力対応"
+                  className="h-3.5 w-3.5 shrink-0 text-primary"
+                />
+              )}
               {option.value === value && (
                 <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
               )}
