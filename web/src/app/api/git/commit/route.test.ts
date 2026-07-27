@@ -2,9 +2,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const h = vi.hoisted(() => ({
-  runGit: vi.fn(),
-  assertAllowedDirectory: vi.fn(() => ({ ok: true as const, path: "C:\\repo" })),
-  invalidateDirStat: vi.fn(),
+  runGit: vi.fn(async (..._args: unknown[]) => ({ code: 0, stdout: "", stderr: "" })),
+  assertAllowedDirectory: vi.fn((..._args: unknown[]) => ({ ok: true as const, path: "C:\\repo" })),
+  invalidateDirStat: vi.fn((..._args: unknown[]) => undefined),
 }));
 
 vi.mock("@/lib/git", () => ({ runGit: (...a: unknown[]) => h.runGit(...a) }));
