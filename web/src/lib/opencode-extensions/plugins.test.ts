@@ -48,7 +48,7 @@ const CONFIG = `{
     // NOTE: local plugins load from ./plugin/*.js
     "opencode-claude-auth@latest",
     ["opencode-bar", { "token": "s3cret" }],
-    "@bybrawe/opencode-loop@latest"
+    "opencode-qux@latest"
   ],
   "mcp": {}
 }
@@ -95,7 +95,7 @@ describe("listPlugins", () => {
     expect(configured.map((p) => p.name)).toEqual([
       "opencode-claude-auth@latest",
       "opencode-bar",
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
     expect(configured.every((p) => p.enabled)).toBe(true);
     expect(configured[1].hasOptions).toBe(true);
@@ -157,7 +157,7 @@ describe("configured plugin toggles", () => {
 
     expect(readConfig().plugin).toEqual([
       ["opencode-bar", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
     // Comments survive the removal.
     const raw = fs.readFileSync(path.join(base, "opencode.jsonc"), "utf8");
@@ -172,13 +172,13 @@ describe("configured plugin toggles", () => {
 
   it("re-enables at the original position", async () => {
     const plugins = await listPlugins();
-    const target = plugins.find((p) => p.name === "@bybrawe/opencode-loop@latest")!;
+    const target = plugins.find((p) => p.name === "opencode-qux@latest")!;
     await setPluginEnabled(target.id, false);
     expect(readConfig().plugin).toHaveLength(2);
 
     const afterDisable = await listPlugins();
     const disabled = afterDisable.find(
-      (p) => p.name === "@bybrawe/opencode-loop@latest",
+      (p) => p.name === "opencode-qux@latest",
     )!;
     expect(disabled.enabled).toBe(false);
 
@@ -187,7 +187,7 @@ describe("configured plugin toggles", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
     expect(readState().disabledPlugins).toHaveLength(0);
   });
@@ -204,13 +204,13 @@ describe("configured plugin toggles", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
   });
 
   it("clamps the restore index when the array shrank", async () => {
     const plugins = await listPlugins();
-    const target = plugins.find((p) => p.name === "@bybrawe/opencode-loop@latest")!;
+    const target = plugins.find((p) => p.name === "opencode-qux@latest")!;
     await setPluginEnabled(target.id, false);
 
     // Manually remove another entry → array is now shorter than the saved index.
@@ -223,13 +223,13 @@ describe("configured plugin toggles", () => {
 
     const afterDisable = await listPlugins();
     const disabled = afterDisable.find(
-      (p) => p.name === "@bybrawe/opencode-loop@latest",
+      (p) => p.name === "opencode-qux@latest",
     )!;
     await setPluginEnabled(disabled.id, true);
 
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
   });
 
@@ -286,7 +286,7 @@ describe("addConfiguredPlugin", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
       "opencode-new-plugin@1.0.0",
     ]);
   });
@@ -299,7 +299,7 @@ describe("addConfiguredPlugin", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
       ["opencode-new-plugin", { apiKey: "abc" }],
     ]);
   });
@@ -339,7 +339,7 @@ describe("updateConfiguredPlugin", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@2.0.0",
       ["opencode-bar", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
   });
 
@@ -352,7 +352,7 @@ describe("updateConfiguredPlugin", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar-renamed", { token: "s3cret" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
   });
 
@@ -368,24 +368,24 @@ describe("updateConfiguredPlugin", () => {
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar", { token: "new-token" }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
     expect(JSON.stringify(await listPlugins())).not.toContain("new-token");
   });
 
   it("turns a plain string into a tuple when options are added", async () => {
     const plugins = await listPlugins();
-    const target = plugins.find((p) => p.name === "@bybrawe/opencode-loop@latest")!;
+    const target = plugins.find((p) => p.name === "opencode-qux@latest")!;
 
     await updateConfiguredPlugin(target.id, {
-      name: "@bybrawe/opencode-loop@latest",
+      name: "opencode-qux@latest",
       options: { scope: "team" },
     });
 
     expect(readConfig().plugin).toEqual([
       "opencode-claude-auth@latest",
       ["opencode-bar", { token: "s3cret" }],
-      ["@bybrawe/opencode-loop@latest", { scope: "team" }],
+      ["opencode-qux@latest", { scope: "team" }],
     ]);
   });
 
@@ -413,8 +413,8 @@ describe("updateConfiguredPlugin", () => {
 describe("concurrent operations", () => {
   it("serializes concurrent disables of different plugins without losing either", async () => {
     const plugins = await listPlugins();
-    const a = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
-    const b = plugins.find((p) => p.name === "@bybrawe/opencode-loop@latest")!;
+      const a = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
+      const b = plugins.find((p) => p.name === "opencode-qux@latest")!;
 
     await Promise.all([
       setPluginEnabled(a.id, false),
@@ -423,8 +423,8 @@ describe("concurrent operations", () => {
 
     expect(readConfig().plugin).toEqual([["opencode-bar", { token: "s3cret" }]]);
     expect(readState().disabledPlugins.map((e) => e.value).sort()).toEqual([
-      "@bybrawe/opencode-loop@latest",
       "opencode-claude-auth@latest",
+      "opencode-qux@latest",
     ]);
   });
 

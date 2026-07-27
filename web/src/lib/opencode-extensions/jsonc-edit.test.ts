@@ -23,7 +23,7 @@ const SAMPLE = `{
   "plugin": [
     // NOTE: local plugins are auto-loaded from ./plugin/*.js instead.
     "opencode-claude-auth@latest",
-    "@bybrawe/opencode-loop@latest"
+    "opencode-qux@latest"
   ],
   "mcp": {
     // Requires uvx on PATH.
@@ -98,7 +98,7 @@ describe("plugin array edits", () => {
   it("removes an entry and preserves comments", () => {
     const { content, removed } = removePluginEntryInContent(SAMPLE, 0);
     expect(removed).toBe("opencode-claude-auth@latest");
-    expect(getPluginArray(content)).toEqual(["@bybrawe/opencode-loop@latest"]);
+    expect(getPluginArray(content)).toEqual(["opencode-qux@latest"]);
     expect(content).toContain("// NOTE: local plugins are auto-loaded");
     expect(content).toContain('"$schema"');
   });
@@ -120,7 +120,7 @@ describe("plugin array edits", () => {
     expect(getPluginArray(out)).toEqual([
       "new-plugin",
       "opencode-claude-auth@latest",
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
     expect(out).toContain("// NOTE: local plugins are auto-loaded");
   });
@@ -130,7 +130,7 @@ describe("plugin array edits", () => {
     expect(getPluginArray(out)).toEqual([
       "opencode-claude-auth@latest",
       ["tuple-plugin", { a: 1 }],
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
   });
 
@@ -138,7 +138,7 @@ describe("plugin array edits", () => {
     const out = insertPluginEntryInContent(SAMPLE, 99, "tail");
     expect(getPluginArray(out)).toEqual([
       "opencode-claude-auth@latest",
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
       "tail",
     ]);
   });
@@ -167,7 +167,7 @@ describe("plugin array edits", () => {
     const restored = insertPluginEntryInContent(content, 1, removed);
     expect(getPluginArray(restored)).toEqual([
       "opencode-claude-auth@latest",
-      "@bybrawe/opencode-loop@latest",
+      "opencode-qux@latest",
     ]);
   });
 });
