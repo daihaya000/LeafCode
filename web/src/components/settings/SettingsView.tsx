@@ -74,6 +74,9 @@ export function SettingsView() {
   const [restarting, setRestarting] = useState<"webui" | "opencode" | "all" | null>(
     null,
   );
+  const [pendingRestart, setPendingRestart] = useState<"webui" | "opencode" | "all" | null>(
+    null,
+  );
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [roots, setRoots] = useState<string[]>([]);
@@ -195,9 +198,13 @@ export function SettingsView() {
     void refresh();
   }, [refresh]);
 
+  const requestRestart = (target: "webui" | "opencode" | "all") => {
+    setError(null);
+    setPendingRestart(target);
+  };
+
   const restartService = async (target: "webui" | "opencode" | "all") => {
-    const ok = window.confirm(`${RESTART_LABELS[target]}を再起動しますか？`);
-    if (!ok) return;
+    setPendingRestart(null);
     setRestarting(target);
     setError(null);
     try {
@@ -460,7 +467,7 @@ export function SettingsView() {
                     variant="secondary"
                     busy={restarting === "webui"}
                     disabled={hostOk !== true || restarting !== null}
-                    onClick={() => void restartService("webui")}
+                    onClick={() => requestRestart("webui")}
                   >
                     WebUI を再起動
                   </Button>
@@ -470,7 +477,7 @@ export function SettingsView() {
                     variant="secondary"
                     busy={restarting === "opencode"}
                     disabled={hostOk !== true || restarting !== null}
-                    onClick={() => void restartService("opencode")}
+                    onClick={() => requestRestart("opencode")}
                   >
                     OpenCode を再起動
                   </Button>
@@ -480,11 +487,41 @@ export function SettingsView() {
                     variant="secondary"
                     busy={restarting === "all"}
                     disabled={hostOk !== true || restarting !== null}
-                    onClick={() => void restartService("all")}
+                    onClick={() => requestRestart("all")}
                   >
                     すべて再起動
                   </Button>
                 </div>
+                {pendingRestart && !restarting && (
+                  <div
+                    role="dialog"
+                    aria-live="polite"
+                    aria-label="再起動の確認"
+                    className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning"
+                  >
+                    <p className="font-medium">
+                      {RESTART_LABELS[pendingRestart]}を再起動しますか？
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="primary"
+                        onClick={() => void restartService(pendingRestart)}
+                      >
+                        再起動する
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setPendingRestart(null)}
+                      >
+                        キャンセル
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <p className="min-h-5 text-xs text-muted" role="status" aria-live="polite">
                   {restarting
                     ? `${RESTART_LABELS[restarting]}を再起動しています…`

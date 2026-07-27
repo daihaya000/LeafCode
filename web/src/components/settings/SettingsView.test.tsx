@@ -366,9 +366,7 @@ describe("SettingsView", () => {
     expect(screen.getByText("本日 157.5円（2026-07-19）")).toBeTruthy();
   });
 
-  it("posts an OpenCode restart request and announces progress after confirmation", async () => {
-    const confirm = vi.fn(() => true);
-    vi.stubGlobal("confirm", confirm);
+  it("posts an OpenCode restart request and announces progress after inline confirmation", async () => {
     const restartRequests: { input: RequestInfo | URL; init?: RequestInit }[] = [];
     mockFetch((input, init) => {
       if (String(input).includes("/api/host/restart")) {
@@ -382,12 +380,14 @@ describe("SettingsView", () => {
 
     await screen.findByText("ホスト接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
+    expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
+    expect(
+      screen.getByText("OpenCode（バックエンド）を再起動しますか？"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
 
     await waitFor(() => expect(restartRequests).toHaveLength(1));
     const [restartRequest] = restartRequests;
-    expect(confirm).toHaveBeenCalledWith(
-      "OpenCode（バックエンド）を再起動しますか？",
-    );
     expect(restartRequest.input).toBe("/api/host/restart");
     expect(restartRequest.init?.method).toBe("POST");
     expect(JSON.parse(String(restartRequest.init?.body))).toEqual({
@@ -396,6 +396,30 @@ describe("SettingsView", () => {
     expect(screen.getByRole("status").textContent).toContain(
       "OpenCode（バックエンド）を再起動しています…",
     );
+  });
+
+  it("shows a visible inline confirmation before restarting WebUI", async () => {
+    const restartRequests: { input: RequestInfo | URL; init?: RequestInit }[] = [];
+    mockFetch((input, init) => {
+      if (String(input).includes("/api/host/restart")) {
+        restartRequests.push({ input, init });
+        return new Response(JSON.stringify({ ok: true }), { status: 202 });
+      }
+      return undefined;
+    });
+
+    render(<SettingsView />);
+
+    await screen.findByText("ホスト接続中");
+    fireEvent.click(screen.getByRole("button", { name: "WebUI を再起動" }));
+    expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
+    expect(
+      screen.getByText("WebUI（フロントエンド）を再起動しますか？"),
+    ).toBeTruthy();
+    expect(restartRequests).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    expect(screen.queryByRole("dialog", { name: "再起動の確認" })).toBeNull();
   });
 
   it("treats opencode target success as opencode.ok === true", async () => {
@@ -426,6 +450,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("ホスト接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
+    fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
 
     await waitFor(() => {
       expect(screen.queryByRole("status")?.textContent).not.toContain(
