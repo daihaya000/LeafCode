@@ -57,15 +57,17 @@ test("desktop composer keeps selection labels readable", async ({ page }) => {
 
   await page.goto("/");
   const form = page.getByRole("form", { name: "タスク作成" });
+  // GhostSelect and ModelSelect both render their truncating value label as
+  // the sole `.truncate` span inside the trigger button (icon/chevron spans
+  // never carry that class), so this works across both trigger variants.
   const displayLabel = (name: string) =>
-    page
-      .getByRole("combobox", { name })
-      .locator("..")
-      .locator('span[aria-hidden="true"]')
-      .nth(1);
+    page.getByRole("button", { name, exact: true }).locator("span.truncate");
   await expect(displayLabel("モデル")).toHaveText("GPT-5.6 Sol");
   await expect(displayLabel("エージェント")).toHaveText("build");
-  expect((await form.boundingBox())?.width).toBeGreaterThanOrEqual(850);
+  // The composer form is capped at Tailwind's max-w-3xl (768px) since the
+  // "プロジェクトとブランチ選択を枠外へ移動" redesign; assert a comfortably
+  // narrower floor so this still catches an accidental further narrowing.
+  expect((await form.boundingBox())?.width).toBeGreaterThanOrEqual(700);
 
   const selectionNames = [
     "プロジェクト",
@@ -116,6 +118,9 @@ test("has the expected document title", async ({ page }) => {
 test("settings page renders its sections", async ({ page }) => {
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "設定", exact: true })).toBeVisible();
+  // "Remote Workspace" lives under the 接続 (connectivity) tab; the default
+  // tab on load is 全般 (general).
+  await page.getByRole("button", { name: "接続", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Remote Workspace" }),
   ).toBeVisible();
@@ -142,6 +147,9 @@ test("CodexBar addon starts compact and can be expanded", async ({ page }) => {
 
 test("settings exposes the addon toggle", async ({ page }) => {
   await page.goto("/settings");
+  // The addon toggle lives under the アドオン tab; the default tab on load
+  // is 全般 (general).
+  await page.getByRole("button", { name: "アドオン", exact: true }).click();
   await expect(page.getByRole("heading", { name: "アドオン" })).toBeVisible();
   await expect(
     page.getByTitle("このウィジェットを閉じる（設定から再表示できます）"),
