@@ -418,14 +418,22 @@ function applyAssistantResult(loop: GoalLoopDto, assistant: MessageWithParts) {
       now,
       loop.id,
     );
-  if (!terminal && loop.turnCount >= loop.maxTurns) {
-    getDb()
-      .prepare(
-        `UPDATE goal_loops
-         SET status = 'paused', error = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .run("最大ターン数に到達したため一時停止しました。", now, loop.id);
+  // Re-read turn_count from the DB so we don't act on the stale DTO snapshot
+  // (processLoop already incremented it for this turn). Without this, the
+  // maxTurns guard below would fire one turn late and oversend.
+  if (!terminal) {
+    const fresh = getDb()
+      .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
+      .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
+    if (fresh && fresh.turn_count >= fresh.max_turns) {
+      getDb()
+        .prepare(
+          `UPDATE goal_loops
+           SET status = 'paused', error = ?, updated_at = ?
+           WHERE id = ? AND status NOT IN ('completed', 'blocked', 'stopped')`,
+        )
+        .run("最大ターン数に到達したため一時停止しました。", now, loop.id);
+    }
   }
 }
 
@@ -451,7 +459,16 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   }
 
   if (loop.status !== "queued") return;
-  if (loop.turnCount >= loop.maxTurns) {
+  // Re-read turn_count from the DB: processLoop may have incremented it on a
+  // previous tick before the assistant reply landed, and the DTO snapshot we
+  // received can lag behind. Checking the stale value lets one extra prompt
+  // slip through and breaks the maxTurns contract.
+  const freshCounts = getDb()
+    .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
+    .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
+  const turnCount = freshCounts?.turn_count ?? loop.turnCount;
+  const maxTurns = freshCounts?.max_turns ?? loop.maxTurns;
+  if (turnCount >= maxTurns) {
     getDb()
       .prepare(
         `UPDATE goal_loops SET status = 'paused', error = ?, updated_at = ? WHERE id = ?`,
