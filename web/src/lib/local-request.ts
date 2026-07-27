@@ -35,14 +35,18 @@ export function hostHeaderName(hostHeader: string): string {
 /**
  * Best-effort check that the caller is on the host machine.
  *
- * Allows two trusted paths:
+ * Allows three trusted paths:
  * 1. Direct loopback access (Host is 127.0.0.1/localhost/::1).
- * 2. A trusted local reverse proxy on the same machine (e.g. Caddy). In that
- *    case the browser may use a LAN hostname/IP, but the immediate client hop
- *    seen by the proxy (and reflected in X-Forwarded-For) is loopback.
+ * 2. A trusted local reverse proxy (e.g. Caddy) where the browser uses a LAN
+ *    hostname, but the immediate client hop seen by the proxy is loopback.
+ * 3. A trusted local reverse proxy that rewrites the Host header to loopback
+ *    for host-only API paths. In that case X-Forwarded-For may show the PC's
+ *    own LAN IP because the browser connected via that interface.
  *
- * Any claim of a remote client IP is rejected, so LAN phones or external
- * spoofed X-Forwarded-For cannot authorize host-only APIs.
+ * Remote clients (phones, other PCs, spoofed X-Forwarded-For) are rejected.
+ *
+ * When using Caddy with a LAN hostname, configure Caddy to send a loopback
+ * Host header for host-only API paths (see deploy/Caddyfile.example).
  *
  * Open the UI via http://127.0.0.1:3000, http://localhost:3000, or the Caddy
  * reverse proxy (https://localhost:8443, https://<LAN-IP>:8443) for host-only
@@ -62,8 +66,33 @@ export function isLocalHostRequest(req: Request): boolean {
 
   // Trusted local reverse proxy (Caddy on the same machine). The browser may
   // show a LAN hostname, but the immediate client hop is loopback.
-  if (forwardedIsLoopback) return true;
+  if (hostIsLoopback && forwardedIsLoopback) return true;
 
+  // Caddy-style Host rewrite: the reverse proxy rewrites Host to 127.0.0.1:3000
+  // for host-only API paths, but X-Forwarded-For can legitimately show the
+  // PC's own LAN IP because the browser reached the proxy through the LAN
+  // interface. Accept private-IP XFF only when Host is loopback, so random
+  // LAN clients cannot spoof their way in with a non-loopback Host.
+  if (hostIsLoopback && forwardedClient && isPrivateAddress(forwardedClient)) {
+    return true;
+  }
+
+  return false;
+}
+
+/** True when `value` is an IPv4/IPv6 private address (RFC 1918 / RFC 4193). */
+function isPrivateAddress(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  if (!v) return false;
+  if (isLoopbackAddress(v)) return true;
+  // IPv4 RFC 1918.
+  if (/^10\./.test(v)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(v)) return true;
+  if (/^192\.168\./.test(v)) return true;
+  // IPv6 unique local (fc00::/7).
+  if (/^fc/.test(v) || /^fd/.test(v)) return true;
+  // IPv4 link-local.
+  if (/^169\.254\./.test(v)) return true;
   return false;
 }
 

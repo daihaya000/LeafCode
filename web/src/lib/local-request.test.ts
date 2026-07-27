@@ -33,11 +33,21 @@ describe("hostHeaderName", () => {
 });
 
 describe("isLocalHostRequest", () => {
-  it("rejects LAN Host without X-Forwarded-For", () => {
+  it("rejects LAN Host without proxy headers (not via trusted Caddy)", () => {
     expect(
       isLocalHostRequest(
         new Request("http://192.168.0.102:3000/x", {
           headers: { host: "192.168.0.102:3000" },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a public hostname as Host", () => {
+    expect(
+      isLocalHostRequest(
+        new Request("http://example.com:3000/x", {
+          headers: { host: "example.com:3000" },
         }),
       ),
     ).toBe(false);
@@ -56,13 +66,13 @@ describe("isLocalHostRequest", () => {
     ).toBe(true);
   });
 
-  it("rejects loopback Host with LAN X-Forwarded-For", () => {
+  it("rejects loopback Host with public X-Forwarded-For", () => {
     expect(
       isLocalHostRequest(
         new Request("http://127.0.0.1:3000/x", {
           headers: {
             host: "localhost:8443",
-            "x-forwarded-for": "192.168.0.50",
+            "x-forwarded-for": "203.0.113.50",
           },
         }),
       ),
@@ -89,17 +99,9 @@ describe("isLocalHostRequest", () => {
     ).toBe(true);
   });
 
-  it("rejects direct LAN Host", () => {
-    expect(
-      isLocalHostRequest(
-        new Request("http://192.168.0.102:3000/x", {
-          headers: { host: "192.168.0.102:3000" },
-        }),
-      ),
-    ).toBe(false);
-  });
-
-  it("accepts LAN Host with loopback X-Forwarded-For (trusted local reverse proxy)", () => {
+  it("rejects LAN Host with loopback X-Forwarded-For without Caddy rewriting Host", () => {
+    // Caddy should rewrite the Host header to 127.0.0.1:3000 for host-only API
+    // paths. If it does not, the request is rejected.
     expect(
       isLocalHostRequest(
         new Request("http://192.168.0.102:8443/x", {
@@ -109,28 +111,30 @@ describe("isLocalHostRequest", () => {
           },
         }),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("rejects LAN Host with remote X-Forwarded-For (reverse proxy from another device)", () => {
+  it("accepts loopback Host with private X-Forwarded-For (Caddy LAN hostname + Host rewrite)", () => {
+    // With Caddy rewriting Host to 127.0.0.1:3000, X-Forwarded-For may still
+    // show the PC's LAN IP because the browser connected via that interface.
     expect(
       isLocalHostRequest(
-        new Request("http://192.168.0.102:8443/x", {
+        new Request("http://127.0.0.1:3000/x", {
           headers: {
-            host: "192.168.0.102:8443",
-            "x-forwarded-for": "192.168.0.50",
+            host: "127.0.0.1:3000",
+            "x-forwarded-for": "192.168.0.102",
           },
         }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
 describe("rejectUnlessLocal", () => {
   it("returns 403 for non-local callers", async () => {
     const res = rejectUnlessLocal(
-      new Request("http://192.168.0.1:3000/x", {
-        headers: { host: "192.168.0.1:3000" },
+      new Request("http://example.com:3000/x", {
+        headers: { host: "example.com:3000" },
       }),
     );
     expect(res).not.toBeNull();
