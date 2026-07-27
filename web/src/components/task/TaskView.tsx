@@ -2477,6 +2477,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   agent={agent || undefined}
                   onApply={restoreToComposer}
                   invalidateKey={nextActionInvalidateKey}
+                  isMd={isMd}
                 />
               )}
               {sendError && (

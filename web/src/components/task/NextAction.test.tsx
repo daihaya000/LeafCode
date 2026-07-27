@@ -360,4 +360,179 @@ describe("NextAction", () => {
     const second = sendJsonMock.mock.calls[1]?.[2] as Record<string, unknown>;
     expect(second).not.toHaveProperty("previousSuggestions");
   });
+
+  describe("mobile collapse (isMd=false)", () => {
+    it("does not render a collapse toggle on desktop (isMd omitted)", async () => {
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+      render(
+        <NextAction taskId="task-1" sessionId="ses-1" onApply={vi.fn()} />,
+      );
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("テスト")).toBeTruthy();
+      });
+      // No disclosure toggle on desktop.
+      expect(screen.queryByLabelText("次の指示を折りたたむ")).toBeNull();
+      expect(screen.queryByLabelText("次の指示を展開")).toBeNull();
+      // Suggestions list and regenerate button are present.
+      expect(screen.getByRole("list")).toBeTruthy();
+      expect(screen.getByLabelText("再生成")).toBeTruthy();
+    });
+
+    it("renders a collapse toggle on mobile and starts expanded", async () => {
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+      render(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          isMd={false}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("テスト")).toBeTruthy();
+      });
+      const toggle = screen.getByLabelText("次の指示を折りたたむ");
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      // aria-controls points to the panel that is currently in the DOM.
+      const panelId = toggle.getAttribute("aria-controls");
+      expect(panelId).toBeTruthy();
+      const panel = document.getElementById(panelId!);
+      expect(panel).toBeTruthy();
+      expect(panel?.getAttribute("role")).toBeNull(); // panel itself has no role
+      expect(panel?.querySelector('[role="list"]')).toBeTruthy();
+    });
+
+    it("collapses the suggestions list and removes it from the DOM", async () => {
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+      render(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          isMd={false}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("テスト")).toBeTruthy();
+      });
+      // Collapse.
+      fireEvent.click(screen.getByLabelText("次の指示を折りたたむ"));
+      // Toggle label flips and aria-expanded becomes false.
+      const toggle = screen.getByLabelText("次の指示を展開");
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      // The suggestions list and regenerate button are removed from the DOM.
+      expect(screen.queryByRole("list")).toBeNull();
+      expect(screen.queryByLabelText("再生成")).toBeNull();
+      expect(screen.queryByText("テスト")).toBeNull();
+      // The CountSelect remains (it lives in the header, outside the panel).
+      expect(screen.getByLabelText("提案の件数")).toBeTruthy();
+    });
+
+    it("expands again when the toggle is clicked a second time", async () => {
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+      render(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          isMd={false}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("テスト")).toBeTruthy();
+      });
+      fireEvent.click(screen.getByLabelText("次の指示を折りたたむ"));
+      expect(screen.queryByRole("list")).toBeNull();
+      // Expand again.
+      fireEvent.click(screen.getByLabelText("次の指示を展開"));
+      expect(screen.getByRole("list")).toBeTruthy();
+      expect(screen.getByLabelText("再生成")).toBeTruthy();
+    });
+
+    it("always expands on a fresh successful generation", async () => {
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "提案A" });
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "提案B" });
+      render(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          isMd={false}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("提案A")).toBeTruthy();
+      });
+      // Collapse, then regenerate — the new result must be expanded.
+      fireEvent.click(screen.getByLabelText("次の指示を折りたたむ"));
+      expect(screen.queryByRole("list")).toBeNull();
+      // The regenerate button is inside the collapsed panel, so we cannot
+      // click it. Instead, re-trigger generation via the idle button by
+      // first invalidating. Simpler: expand, regenerate, then verify.
+      fireEvent.click(screen.getByLabelText("次の指示を展開"));
+      fireEvent.click(screen.getByLabelText("再生成"));
+      await waitFor(() => {
+        expect(screen.getByText("提案B")).toBeTruthy();
+      });
+      // After regeneration the panel is expanded.
+      expect(screen.getByLabelText("次の指示を折りたたむ").getAttribute("aria-expanded")).toBe("true");
+    });
+
+    it("collapses again when invalidateKey changes back to idle on mobile", async () => {
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
+      const { rerender } = render(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          invalidateKey="v1"
+          isMd={false}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("テスト")).toBeTruthy();
+      });
+      // Generation always expands.
+      expect(screen.getByLabelText("次の指示を折りたたむ").getAttribute("aria-expanded")).toBe("true");
+      // Invalidate → back to idle, and the panel collapses for next time.
+      rerender(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          invalidateKey="v2"
+          isMd={false}
+        />,
+      );
+      expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
+      // Generate again — should start expanded despite the stored collapsed state.
+      sendJsonMock.mockResolvedValueOnce({ suggestion: "次の提案" });
+      fireEvent.click(screen.getByLabelText("次の指示を提案"));
+      await waitFor(() => {
+        expect(screen.getByText("次の提案")).toBeTruthy();
+      });
+      expect(screen.getByLabelText("次の指示を折りたたむ").getAttribute("aria-expanded")).toBe("true");
+    });
+
+    it("keeps idle/loading/error states unchanged on mobile", () => {
+      // idle: no toggle, just the generate button + count select.
+      render(
+        <NextAction
+          taskId="task-1"
+          sessionId="ses-1"
+          onApply={vi.fn()}
+          isMd={false}
+        />,
+      );
+      expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
+      expect(screen.queryByLabelText("次の指示を折りたたむ")).toBeNull();
+      expect(screen.queryByLabelText("次の指示を展開")).toBeNull();
+    });
+  });
 });

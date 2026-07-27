@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Sparkles, Loader2, RefreshCw, ArrowDownToLine } from "lucide-react";
+import { useCallback, useId, useState } from "react";
+import {
+  Sparkles,
+  Loader2,
+  RefreshCw,
+  ArrowDownToLine,
+  ChevronDown,
+} from "lucide-react";
 import { Button } from "@/components/ui";
 import { sendJson } from "@/lib/client";
 import {
@@ -28,6 +34,13 @@ export type NextActionProps = {
   onApply: (suggestion: string) => void;
   /** Optional invalidation key — when it changes, reset to idle. */
   invalidateKey?: string | number;
+  /**
+   * Whether the viewport is at least `md`. When true (default) the component
+   * behaves as before: the success state is always expanded and no collapse
+   * toggle is rendered. When false (mobile) the success state can be
+   * collapsed to save space.
+   */
+  isMd?: boolean;
 };
 
 /** Parse the API response, preferring `suggestions` and falling back to the legacy `suggestion` field. */
@@ -102,6 +115,7 @@ export function NextAction({
   agent,
   onApply,
   invalidateKey,
+  isMd = true,
 }: NextActionProps) {
   const [state, setState] = useState<NextActionState>({ kind: "idle" });
   const [lastInvalidateKey, setLastInvalidateKey] = useState(invalidateKey);
@@ -111,10 +125,15 @@ export function NextAction({
   // Suggestions already shown for the current conversation state. Sent back
   // on regeneration so the API can tell the model to avoid repeating them.
   const [previousSuggestions, setPreviousSuggestions] = useState<string[]>([]);
+  // Mobile-only collapse for the success state. Desktop (isMd=true) always
+  // renders the suggestions expanded and never shows the toggle.
+  const [collapsed, setCollapsed] = useState(false);
+  const panelId = useId();
 
   // Reset to idle when the invalidation key changes (conversation updated,
   // revert, or task switch). Previously shown suggestions belong to the old
-  // conversation state, so drop them too.
+  // conversation state, so drop them too. On mobile the success panel is
+  // collapsed again so the next generation starts fresh.
   if (invalidateKey !== lastInvalidateKey) {
     setLastInvalidateKey(invalidateKey);
     if (previousSuggestions.length > 0) {
@@ -122,6 +141,9 @@ export function NextAction({
     }
     if (state.kind !== "idle" && state.kind !== "loading") {
       setState({ kind: "idle" });
+    }
+    if (!isMd) {
+      setCollapsed(true);
     }
   }
 
@@ -160,6 +182,8 @@ export function NextAction({
           ? next.slice(next.length - NEXT_ACTION_PREVIOUS_MAX_COUNT)
           : next;
       });
+      // A fresh generation is always shown expanded, even on mobile.
+      setCollapsed(false);
       setState({ kind: "success", suggestions });
     } catch (err) {
       console.warn("[NextAction] generate failed", err);
@@ -226,56 +250,82 @@ export function NextAction({
 
   // success
   const multiple = state.suggestions.length > 1;
+  // Desktop keeps the legacy layout: always expanded, no toggle. Mobile
+  // (isMd=false) renders a disclosure header so the suggestions list and
+  // regenerate button can be collapsed out of the DOM to save space.
+  const collapsible = !isMd;
+  const isCollapsed = collapsible && collapsed;
   return (
     <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted">次の指示</p>
+        {collapsible ? (
+          <button
+            type="button"
+            aria-expanded={!isCollapsed}
+            aria-controls={panelId}
+            aria-label={isCollapsed ? "次の指示を展開" : "次の指示を折りたたむ"}
+            onClick={() => setCollapsed((value) => !value)}
+            className="flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-lg text-left text-xs font-medium text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <ChevronDown
+              aria-hidden="true"
+              className={`h-3.5 w-3.5 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+            />
+            <span className="min-w-0 flex-1 truncate">次の指示</span>
+          </button>
+        ) : (
+          <p className="text-xs font-medium text-muted">次の指示</p>
+        )}
         <CountSelect value={count} onChange={setCount} />
       </div>
-      <div
-        role="list"
-        aria-label="次の指示の提案一覧"
-        className="mt-1 flex flex-col gap-2"
-      >
-        {state.suggestions.map((suggestion, i) => (
+      {!isCollapsed && (
+        <div id={panelId} aria-live="polite" className="mt-1">
           <div
-            key={`${i}-${suggestion}`}
-            role="listitem"
-            className="rounded-lg border border-border bg-surface-2 px-2.5 py-2"
+            role="list"
+            aria-label="次の指示の提案一覧"
+            className="flex flex-col gap-2"
           >
-            {multiple && (
-              <p className="text-[10px] font-medium text-faint">
-                提案 {i + 1}
-              </p>
-            )}
-            <p className="whitespace-pre-wrap text-sm text-text">
-              {suggestion}
-            </p>
-            <div className="mt-1.5">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => onApply(suggestion)}
-                aria-label={multiple ? `入力欄に入れる ${i + 1}` : "入力欄に入れる"}
+            {state.suggestions.map((suggestion, i) => (
+              <div
+                key={`${i}-${suggestion}`}
+                role="listitem"
+                className="rounded-lg border border-border bg-surface-2 px-2.5 py-2"
               >
-                <ArrowDownToLine className="mr-1.5 h-3.5 w-3.5" />
-                入力欄に入れる
-              </Button>
-            </div>
+                {multiple && (
+                  <p className="text-[10px] font-medium text-faint">
+                    提案 {i + 1}
+                  </p>
+                )}
+                <p className="whitespace-pre-wrap text-sm text-text">
+                  {suggestion}
+                </p>
+                <div className="mt-1.5">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => onApply(suggestion)}
+                    aria-label={multiple ? `入力欄に入れる ${i + 1}` : "入力欄に入れる"}
+                  >
+                    <ArrowDownToLine className="mr-1.5 h-3.5 w-3.5" />
+                    入力欄に入れる
+                  </Button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={generate}
-          aria-label="再生成"
-        >
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          再生成
-        </Button>
-      </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={generate}
+              aria-label="再生成"
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              再生成
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
