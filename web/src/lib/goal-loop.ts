@@ -371,24 +371,18 @@ Rules:
 Goal:
 ${loop.goal}${acceptance}${recent}
 
-At the end of this turn, return structured status:
+The very last thing you output this turn must be a single fenced JSON block:
+
+\`\`\`json
+{"status":"progress","summary":"what changed this turn","next":"the next step","evidence":"commands run, files touched, results"}
+\`\`\`
+
+- status must be exactly one of: progress, completed, blocked.
 - progress: meaningful progress was made but the goal is not complete.
 - completed: the goal is complete with concrete evidence.
-- blocked: user input or manual intervention is required.`;
+- blocked: user input or manual intervention is required (put the reason in blockedReason).
+- summary is required. Write nothing after the closing fence.`;
 }
-
-const GOAL_RESULT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["status", "summary"],
-  properties: {
-    status: { type: "string", enum: ["progress", "completed", "blocked"] },
-    summary: { type: "string" },
-    next: { type: "string" },
-    evidence: { type: "string" },
-    blockedReason: { type: "string" },
-  },
-};
 
 type StructuredGoalResult = {
   status?: unknown;
@@ -419,8 +413,75 @@ function normalizeStructured(value: unknown): GoalLoopProgress | null {
   };
 }
 
-function applyAssistantResult(loop: GoalLoopDto, assistant: MessageWithParts) {
-  const result = normalizeStructured(assistant.info.structured);
+/** Top-level `{...}` spans in `text`, ignoring braces inside JSON strings. */
+function jsonObjectCandidates(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        out.push(text.slice(start, i + 1));
+        start = -1;
+      } else if (depth < 0) {
+        depth = 0;
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+function assistantText(message: MessageWithParts): string {
+  return message.parts
+    .filter((p) => p.type === "text" && typeof p.text === "string")
+    .map((p) => p.text as string)
+    .join("\n");
+}
+
+/**
+ * Read the turn result. `info.structured` is preferred but this OpenCode build
+ * cannot round-trip it (see the prompt body: we must not send `format`), so the
+ * fenced JSON block the prompt asks for is the working path. Scan from the end
+ * because the block is the last thing the model writes.
+ */
+function extractGoalResult(assistant: MessageWithParts): GoalLoopProgress | null {
+  const direct = normalizeStructured(assistant.info.structured);
+  if (direct) return direct;
+  const candidates = jsonObjectCandidates(assistantText(assistant));
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidates[i]);
+    } catch {
+      continue;
+    }
+    const normalized = normalizeStructured(parsed);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function applyAssistantResult(
+  loop: GoalLoopDto,
+  assistant: MessageWithParts,
+  result: GoalLoopProgress | null,
+) {
   const now = new Date().toISOString();
   if (!result) {
     getDb()
@@ -429,7 +490,7 @@ function applyAssistantResult(loop: GoalLoopDto, assistant: MessageWithParts) {
          SET status = 'paused', last_message_id = ?, error = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .run(assistant.info.id, "Goalループの構造化結果を読めなかったため一時停止しました。", now, loop.id);
+      .run(assistant.info.id, "Goalループの結果JSONを読めなかったため一時停止しました。", now, loop.id);
     return;
   }
   const progress = [...loop.progress, result].slice(-50);
@@ -512,15 +573,16 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
 
   if (loop.status === "running") {
     const assistant = finalAssistantAfter(messages, loop.lastMessageId);
-    if (assistant && normalizeStructured(assistant.info.structured)) {
-      applyAssistantResult(loop, assistant);
+    const result = assistant ? extractGoalResult(assistant) : null;
+    if (assistant && result) {
+      applyAssistantResult(loop, assistant, result);
       return;
     }
-    // No structured payload yet: the turn may still be emitting steps. Only
-    // give up once the transcript has been quiet long enough to prove the turn
-    // really ended without one.
+    // No result payload yet: the turn may still be emitting steps. Only give up
+    // once the transcript has been quiet long enough to prove the turn really
+    // ended without one.
     if (assistant && transcriptIdleFor(messages, STRUCTURED_GRACE_MS)) {
-      applyAssistantResult(loop, assistant);
+      applyAssistantResult(loop, assistant, null);
       return;
     }
     expireStalledTurn(loop);
@@ -563,9 +625,13 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     .run(latestMessageId(messages), now, now, loop.id);
   // Another writer (pause/stop/manual send) won the race: do not send.
   if (claimed.changes === 0) return;
+  // Do NOT send `format` (OutputFormatJsonSchema). This OpenCode build stores
+  // the decoded class instance as a plain object and then fails to re-encode it
+  // on read, so GET /session/{id}/message returns 400 for the whole session
+  // ("Expected OutputFormatJsonSchema, got {...}") — one loop turn permanently
+  // bricks the transcript. The prompt asks for a fenced JSON block instead.
   const body: Record<string, unknown> = {
     parts: [{ type: "text", text: buildGoalPrompt(loop) }],
-    format: { type: "json_schema", schema: GOAL_RESULT_SCHEMA, retryCount: 2 },
   };
   if (loop.agent) body.agent = loop.agent;
   if (loop.providerID && loop.modelID) {
@@ -623,4 +689,5 @@ export const goalLoopTestSeams = {
   latestMessageId,
   finalAssistantAfter,
   transcriptIdleFor,
+  extractGoalResult,
 };

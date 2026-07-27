@@ -110,6 +110,80 @@ describe("goalLoopTestSeams", () => {
     expect(goalLoopTestSeams.finalAssistantAfter([], null)).toBeNull();
   });
 
+  describe("extractGoalResult", () => {
+    function assistant(text: string, structured?: unknown): MessageWithParts {
+      const m = msg("a1", "assistant", structured);
+      m.parts = [{ id: "p1", messageID: "a1", type: "text", text }];
+      return m;
+    }
+
+    it("prefers info.structured when the engine round-trips it", () => {
+      const m = assistant("noise", { status: "completed", summary: "from structured" });
+      expect(goalLoopTestSeams.extractGoalResult(m)?.summary).toBe("from structured");
+    });
+
+    it("reads the fenced JSON block the prompt asks for", () => {
+      // `format` (json_schema) cannot be sent to this OpenCode build, so the
+      // fenced block is the real transport for the turn result.
+      const m = assistant(
+        'Did the work.\n\n```json\n{"status":"progress","summary":"edited files","next":"run tests"}\n```',
+      );
+      expect(goalLoopTestSeams.extractGoalResult(m)).toMatchObject({
+        status: "progress",
+        summary: "edited files",
+        next: "run tests",
+      });
+    });
+
+    it("takes the last valid block and ignores earlier example JSON", () => {
+      const m = assistant(
+        'Example: {"status":"blocked","summary":"not the answer"}\n' +
+          '```json\n{"status":"completed","summary":"real result"}\n```',
+      );
+      expect(goalLoopTestSeams.extractGoalResult(m)).toMatchObject({
+        status: "completed",
+        summary: "real result",
+      });
+    });
+
+    it("skips trailing prose and nested braces inside strings", () => {
+      const m = assistant(
+        '```json\n{"status":"progress","summary":"handled {braces} and \\"quotes\\"","evidence":"tsc ok"}\n```\nDone.',
+      );
+      expect(goalLoopTestSeams.extractGoalResult(m)).toMatchObject({
+        status: "progress",
+        summary: 'handled {braces} and "quotes"',
+        evidence: "tsc ok",
+      });
+    });
+
+    it("accepts a bare JSON object without a fence", () => {
+      const m = assistant('{"status":"completed","summary":"no fence"}');
+      expect(goalLoopTestSeams.extractGoalResult(m)?.status).toBe("completed");
+    });
+
+    it("returns null when the turn produced no readable result", () => {
+      expect(goalLoopTestSeams.extractGoalResult(assistant("just prose"))).toBeNull();
+      expect(
+        goalLoopTestSeams.extractGoalResult(assistant('```json\n{"status":"nope"}\n```')),
+      ).toBeNull();
+      expect(goalLoopTestSeams.extractGoalResult(assistant("{ broken json"))).toBeNull();
+    });
+  });
+
+  describe("buildGoalPrompt", () => {
+    it("asks for the fenced JSON block instead of relying on json_schema", () => {
+      const prompt = goalLoopTestSeams.buildGoalPrompt({
+        goal: "ship it",
+        acceptance: ["tests pass"],
+        progress: [],
+      } as never);
+      expect(prompt).toContain("```json");
+      expect(prompt).toContain("tests pass");
+      expect(prompt).toContain("progress, completed, blocked");
+    });
+  });
+
   describe("transcriptIdleFor", () => {
     const quiet = 5_000;
 
