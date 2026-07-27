@@ -1549,4 +1549,54 @@ describe("TaskView voice input", () => {
 
     expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
   });
+
+  it("shows a scroll-to-bottom button when scrolled up and scrolls to bottom on click", async () => {
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      loaded: true,
+      messages: [
+        {
+          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+      ],
+      visibleMessages: [],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
+
+    // At bottom: no button
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 520 });
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+
+    // Scrolled up: button appears
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 100, writable: true });
+    fireEvent.scroll(scroller);
+    const button = screen.getByLabelText("最新のメッセージへ");
+    expect(button).not.toBeNull();
+
+    // Click scrolls to bottom
+    fireEvent.click(button);
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 1000,
+      behavior: "smooth",
+    });
+
+    // After scroll to bottom, button is hidden
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 520 });
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+  });
 });

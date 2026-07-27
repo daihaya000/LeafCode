@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDown,
   ArrowUp,
   Bot,
   Check,
@@ -449,6 +450,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
@@ -1202,7 +1204,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    stickRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
+    stickRef.current = atBottom;
+    setShowScrollButton(!atBottom);
   }, []);
 
   const currentTool = useMemo(() => {
@@ -2321,9 +2325,28 @@ export function TaskView({ taskId }: { taskId: string }) {
               )}
             <div
               ref={scrollRef}
+              data-testid="message-scroller"
               onScroll={onScroll}
-              className="flex-1 overflow-y-auto overscroll-contain"
+              className="relative flex-1 overflow-y-auto overscroll-contain"
             >
+              {showScrollButton && stream.messages.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="最新のメッセージへ"
+                  title="最新のメッセージへ"
+                  className="absolute right-4 bottom-20 z-10 rounded-full shadow-md"
+                  onClick={() => {
+                    const el = scrollRef.current;
+                    if (!el) return;
+                    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+                    stickRef.current = true;
+                    setShowScrollButton(false);
+                  }}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+              )}
               <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
                 {!stream.loaded && stream.messages.length === 0 && (
                   <div className="flex justify-center py-10">
