@@ -1595,6 +1595,14 @@ describe("TaskView voice input", () => {
     const button = screen.getByLabelText("最新のメッセージへ");
     expect(button).not.toBeNull();
 
+    // The button must live outside the scroller. An absolutely positioned child
+    // of an overflow container is laid out against the scrolled content box, so
+    // it would drift with the content instead of staying pinned to the viewport.
+    expect(scroller.contains(button)).toBe(false);
+    const anchor = button.parentElement as HTMLElement;
+    expect(anchor.className).toContain("relative");
+    expect(anchor.contains(scroller)).toBe(true);
+
     // Click scrolls to bottom
     fireEvent.click(button);
     expect(scroller.scrollTo).toHaveBeenLastCalledWith({

@@ -2480,30 +2480,18 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </Button>
                 </div>
               )}
+            {/* Scroll viewport wrapper. The jump-to-latest button must be a
+                sibling of the scroller, not a child: an absolutely positioned
+                child of an overflow container is laid out against the scrolled
+                content box, so it drifts with the content instead of staying
+                pinned to the visible viewport. */}
+            <div className="relative flex min-h-0 flex-1 flex-col">
             <div
               ref={scrollRef}
               data-testid="message-scroller"
               onScroll={onScroll}
-              className="relative flex-1 overflow-y-auto overscroll-contain"
+              className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
-              {showScrollButton && stream.messages.length > 0 && (
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  aria-label="最新のメッセージへ"
-                  title="最新のメッセージへ"
-                  className="absolute right-4 bottom-28 z-50 h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                  onClick={() => {
-                    const el = scrollRef.current;
-                    if (!el) return;
-                    scrollToBottom(el, "smooth");
-                    stickRef.current = true;
-                    setShowScrollButton(false);
-                  }}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-              )}
               <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
                 <GoalLoopPanel
                   loop={goalLoop}
@@ -2704,6 +2692,25 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </div>
                 )}
               </div>
+            </div>
+            {showScrollButton && stream.messages.length > 0 && (
+              <Button
+                variant="secondary"
+                size="icon"
+                aria-label="最新のメッセージへ"
+                title="最新のメッセージへ"
+                className="absolute right-4 bottom-4 z-50 h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                onClick={() => {
+                  const el = scrollRef.current;
+                  if (!el) return;
+                  scrollToBottom(el, "smooth");
+                  stickRef.current = true;
+                  setShowScrollButton(false);
+                }}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            )}
             </div>
             </>
           )}
