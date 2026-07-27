@@ -33,14 +33,11 @@ describe("hostHeaderName", () => {
 });
 
 describe("isLocalHostRequest", () => {
-  it("requires Host to be loopback even when X-Forwarded-For is spoofed", () => {
+  it("rejects LAN Host without X-Forwarded-For", () => {
     expect(
       isLocalHostRequest(
         new Request("http://192.168.0.102:3000/x", {
-          headers: {
-            host: "192.168.0.102:3000",
-            "x-forwarded-for": "127.0.0.1",
-          },
+          headers: { host: "192.168.0.102:3000" },
         }),
       ),
     ).toBe(false);
@@ -97,6 +94,32 @@ describe("isLocalHostRequest", () => {
       isLocalHostRequest(
         new Request("http://192.168.0.102:3000/x", {
           headers: { host: "192.168.0.102:3000" },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts LAN Host with loopback X-Forwarded-For (trusted local reverse proxy)", () => {
+    expect(
+      isLocalHostRequest(
+        new Request("http://192.168.0.102:8443/x", {
+          headers: {
+            host: "192.168.0.102:8443",
+            "x-forwarded-for": "127.0.0.1",
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects LAN Host with remote X-Forwarded-For (reverse proxy from another device)", () => {
+    expect(
+      isLocalHostRequest(
+        new Request("http://192.168.0.102:8443/x", {
+          headers: {
+            host: "192.168.0.102:8443",
+            "x-forwarded-for": "192.168.0.50",
+          },
         }),
       ),
     ).toBe(false);

@@ -34,23 +34,37 @@ export function hostHeaderName(hostHeader: string): string {
 
 /**
  * Best-effort check that the caller is on the host machine.
- * Requires Host to be loopback. When X-Forwarded-For is present (Caddy), the
- * client hop must also be loopback — so LAN phones are rejected and a spoofed
- * XFF alone cannot authorize a request whose Host is a LAN address.
  *
- * Open the UI via http://127.0.0.1:3000 or https://localhost:8443 /
- * https://127.0.0.1:8443 for host-only APIs.
+ * Allows two trusted paths:
+ * 1. Direct loopback access (Host is 127.0.0.1/localhost/::1).
+ * 2. A trusted local reverse proxy on the same machine (e.g. Caddy). In that
+ *    case the browser may use a LAN hostname/IP, but the immediate client hop
+ *    seen by the proxy (and reflected in X-Forwarded-For) is loopback.
+ *
+ * Any claim of a remote client IP is rejected, so LAN phones or external
+ * spoofed X-Forwarded-For cannot authorize host-only APIs.
+ *
+ * Open the UI via http://127.0.0.1:3000, http://localhost:3000, or the Caddy
+ * reverse proxy (https://localhost:8443, https://<LAN-IP>:8443) for host-only
+ * APIs.
  */
 export function isLocalHostRequest(req: Request): boolean {
   const hostHeader = req.headers.get("host") ?? "";
-  if (!isLoopbackAddress(hostHeaderName(hostHeader))) return false;
+  const hostIsLoopback = isLoopbackAddress(hostHeaderName(hostHeader));
 
   const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const client = forwarded.split(",")[0]?.trim() ?? "";
-    return isLoopbackAddress(client);
-  }
-  return true;
+  const forwardedClient = forwarded?.split(",")[0]?.trim() ?? "";
+  const forwardedIsLoopback =
+    forwardedClient && isLoopbackAddress(forwardedClient);
+
+  // Direct loopback access, no proxy involved.
+  if (hostIsLoopback && !forwarded) return true;
+
+  // Trusted local reverse proxy (Caddy on the same machine). The browser may
+  // show a LAN hostname, but the immediate client hop is loopback.
+  if (forwardedIsLoopback) return true;
+
+  return false;
 }
 
 export function rejectUnlessLocal(req: Request): NextResponse | null {

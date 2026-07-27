@@ -53,18 +53,6 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-/** True when the page is served from a loopback origin (127.0.0.1/localhost etc.). */
-function isLoopbackOrigin(): boolean {
-  if (typeof window === "undefined") return false;
-  const host = window.location.host.split(":")[0]?.toLowerCase() ?? "";
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "0:0:0:0:0:0:0:1"
-  );
-}
-
 function isWindowsClient(): boolean {
   if (typeof navigator === "undefined") return false;
   const nav = navigator as Navigator & {
@@ -238,19 +226,10 @@ export function AddProjectButton({
       return;
     }
 
-    // The native folder picker is a host-only API: it can only be triggered
-    // when the WebUI itself was loaded from the same machine (loopback). When
-    // the user opened the UI via a LAN IP or hostname, fall back to the in-app
-    // picker immediately instead of hitting a 403 and silently rolling back UX.
-    // The reason is shown as a persistent banner at the top of the in-app picker.
-    if (!isLoopbackOrigin()) {
-      setNotice(
-        "Windows のネイティブフォルダ選択を使うには、127.0.0.1 または localhost で WebUI を開いてください",
-      );
-      setOpen(true);
-      return;
-    }
-
+    // The native folder picker is a host-only API. The backend decides whether
+    // the request comes from the same machine (direct loopback, or a trusted
+    // local reverse proxy such as Caddy). When denied, fall back to the
+    // cross-platform in-app picker and show the reason in a banner.
     setPickerBusy(true);
     try {
       const selected = await sendJson<NativeFolderPickerResult>(
@@ -268,7 +247,14 @@ export function AddProjectButton({
     } catch (err) {
       // If the host cannot show the native dialog, keep the project add flow
       // usable by falling back to the cross-platform in-app picker.
-      setError(apiErrorMessage(err, "フォルダ選択に失敗しました"));
+      const message = apiErrorMessage(err, "フォルダ選択に失敗しました");
+      // 403 is an authorization problem (not this folder), so show it as a
+      // persistent banner that survives navigation inside the in-app picker.
+      if (err instanceof Error && "status" in err && err.status === 403) {
+        setNotice(message);
+      } else {
+        setError(message);
+      }
       setOpen(true);
     } finally {
       setPickerBusy(false);

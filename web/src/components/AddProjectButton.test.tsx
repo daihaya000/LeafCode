@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AddProjectButton } from "./AddProjectButton";
+import { ApiError } from "@/lib/client";
 
 const { getJson, sendJson } = vi.hoisted(() => ({
   getJson: vi.fn(),
@@ -17,6 +18,13 @@ const { getJson, sendJson } = vi.hoisted(() => ({
 vi.mock("@/lib/client", () => ({
   getJson,
   sendJson,
+  ApiError: class extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
 }));
 
 vi.mock("@/lib/events", () => ({
@@ -134,32 +142,35 @@ describe("AddProjectButton path sync (row click opens + syncs field)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("falls back to the in-app picker on Windows when not served from localhost", async () => {
+  it("falls back to the in-app picker when the host-only API denies the request", async () => {
     mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-    vi.stubGlobal("location", {
-      ...window.location,
-      origin: "http://192.168.1.100:3000",
-      host: "192.168.1.100:3000",
-      hostname: "192.168.1.100",
-      href: "http://192.168.1.100:3000/",
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/browse/folder") {
+        return Promise.reject(
+          new ApiError(
+            "this endpoint is only available from the host machine",
+            403,
+          ),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${path}`));
     });
 
     render(<AddProjectButton />);
     openDialog();
 
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
-    // The host-only native picker API must not be called from a LAN origin.
-    expect(sendJson).not.toHaveBeenCalledWith(
+    expect(sendJson).toHaveBeenCalledWith(
       "POST",
       "/api/browse/folder",
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
+      { title: "プロジェクトフォルダを選択", initialPath: undefined },
+      undefined,
+      { timeoutMs: 300_000 },
     );
     expect(
       screen.getByText((content) =>
         content.includes(
-          "Windows のネイティブフォルダ選択を使うには、127.0.0.1 または localhost で WebUI を開いてください",
+          "ネイティブフォルダ選択は 127.0.0.1/localhost で開いたときのみ使えます",
         ),
       ),
     ).toBeTruthy();
