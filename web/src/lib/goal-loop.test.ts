@@ -2,15 +2,26 @@ import { describe, expect, it } from "vitest";
 import { goalLoopTestSeams } from "./goal-loop";
 import type { MessageWithParts } from "./types";
 
-function msg(id: string, role: "user" | "assistant", structured?: unknown): MessageWithParts {
+function msg(
+  id: string,
+  role: "user" | "assistant",
+  structured?: unknown,
+  time: { created?: number; completed?: number } = { created: 1, completed: 2 },
+): MessageWithParts {
   return {
     info: {
       id,
       role,
       structured,
+      time,
     },
     parts: [],
   };
+}
+
+/** Assistant step that is still streaming (no `completed` timestamp). */
+function running(id: string): MessageWithParts {
+  return msg(id, "assistant", undefined, { created: 1 });
 }
 
 describe("goalLoopTestSeams", () => {
@@ -37,7 +48,7 @@ describe("goalLoopTestSeams", () => {
     expect(goalLoopTestSeams.normalizeStructured(null)).toBeNull();
   });
 
-  it("finds the next assistant message after the loop boundary", () => {
+  it("finds the final assistant message after the loop boundary", () => {
     const messages = [
       msg("u1", "user"),
       msg("a1", "assistant"),
@@ -46,16 +57,38 @@ describe("goalLoopTestSeams", () => {
     ];
 
     expect(goalLoopTestSeams.latestMessageId(messages)).toBe("a2");
-    expect(goalLoopTestSeams.nextAssistantAfter(messages, "a1")?.info.id).toBe("a2");
-    expect(goalLoopTestSeams.nextAssistantAfter(messages, "a2")).toBeNull();
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "a1")?.info.id).toBe("a2");
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "a2")).toBeNull();
+  });
+
+  it("skips intermediate step messages and returns the structured tail", () => {
+    // OpenCode emits one assistant message per step; only the last carries
+    // `structured`. Taking the first one paused every loop on turn 1.
+    const messages = [
+      msg("u1", "user"),
+      msg("a1", "assistant"),
+      msg("a2", "assistant"),
+      msg("a3", "assistant", { status: "progress", summary: "done step" }),
+    ];
+    const found = goalLoopTestSeams.finalAssistantAfter(messages, "u1");
+    expect(found?.info.id).toBe("a3");
+    expect(goalLoopTestSeams.normalizeStructured(found?.info.structured)).toMatchObject({
+      status: "progress",
+    });
+  });
+
+  it("ignores assistant messages that are still streaming", () => {
+    const messages = [msg("u1", "user"), msg("a1", "assistant"), running("a2")];
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "u1")?.info.id).toBe("a1");
+    expect(goalLoopTestSeams.finalAssistantAfter([running("a1")], null)).toBeNull();
   });
 
   it("treats a missing lastMessageId as scanning from the start", () => {
     const messages = [msg("u1", "user"), msg("a1", "assistant", { status: "progress", summary: "x" })];
-    expect(goalLoopTestSeams.nextAssistantAfter(messages, null)?.info.id).toBe("a1");
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, null)?.info.id).toBe("a1");
   });
 
-  it("skips user messages between the boundary and the next assistant", () => {
+  it("skips user messages between the boundary and the assistant tail", () => {
     const messages = [
       msg("u1", "user"),
       msg("a1", "assistant", { status: "progress", summary: "step" }),
@@ -63,18 +96,42 @@ describe("goalLoopTestSeams", () => {
       msg("u3", "user"),
       msg("a2", "assistant", { status: "progress", summary: "next" }),
     ];
-    expect(goalLoopTestSeams.nextAssistantAfter(messages, "a1")?.info.id).toBe("a2");
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "a1")?.info.id).toBe("a2");
   });
 
   it("handles a stale lastMessageId that no longer exists in the snapshot", () => {
     const messages = [msg("a1", "assistant", { status: "progress", summary: "x" })];
     // findIndex returns -1, Math.max(0, -1 + 1) = 0 -> scans from start
-    expect(goalLoopTestSeams.nextAssistantAfter(messages, "ghost")?.info.id).toBe("a1");
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "ghost")?.info.id).toBe("a1");
   });
 
   it("returns null for an empty message list", () => {
     expect(goalLoopTestSeams.latestMessageId([])).toBeNull();
-    expect(goalLoopTestSeams.nextAssistantAfter([], null)).toBeNull();
+    expect(goalLoopTestSeams.finalAssistantAfter([], null)).toBeNull();
+  });
+
+  describe("transcriptIdleFor", () => {
+    const quiet = 5_000;
+
+    it("treats an empty transcript as idle", () => {
+      expect(goalLoopTestSeams.transcriptIdleFor([], quiet, 10_000)).toBe(true);
+    });
+
+    it("is busy while the tail is a user message awaiting a reply", () => {
+      expect(
+        goalLoopTestSeams.transcriptIdleFor([msg("a1", "assistant"), msg("u1", "user")], quiet, 10_000),
+      ).toBe(false);
+    });
+
+    it("is busy while the tail assistant is still streaming", () => {
+      expect(goalLoopTestSeams.transcriptIdleFor([running("a1")], quiet, 10_000)).toBe(false);
+    });
+
+    it("is busy until the quiet period elapses (multi-step turns)", () => {
+      const messages = [msg("a1", "assistant", undefined, { created: 1, completed: 10_000 })];
+      expect(goalLoopTestSeams.transcriptIdleFor(messages, quiet, 12_000)).toBe(false);
+      expect(goalLoopTestSeams.transcriptIdleFor(messages, quiet, 15_000)).toBe(true);
+    });
   });
 
   it("clamps oversized structured fields to the documented limits", () => {

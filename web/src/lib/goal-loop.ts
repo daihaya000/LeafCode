@@ -76,6 +76,12 @@ const SCHEDULER_INTERVAL_MS = 2_500;
 const PROMPT_TIMEOUT_MS = 60_000;
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
+/** Transcript silence that proves a multi-step turn ended (steps are ms apart). */
+const TURN_QUIET_MS = 5_000;
+/** Longer silence before declaring a finished turn had no structured result. */
+const STRUCTURED_GRACE_MS = 60_000;
+/** A `running` turn with no readable reply after this long is paused. */
+const TURN_TIMEOUT_MS = 30 * 60_000;
 const MAX_ACCEPTANCE_ITEMS = 10;
 const MAX_GOAL_CHARS = 12_000;
 const MAX_ACCEPTANCE_CHARS = 2_000;
@@ -141,18 +147,47 @@ function latestMessageId(messages: MessageWithParts[]): string | null {
   return null;
 }
 
-function nextAssistantAfter(
+/**
+ * OpenCode splits one turn into many assistant messages (one per step), and
+ * only the last one carries the `structured` payload we asked for. Picking the
+ * *first* assistant after the boundary therefore grabbed an intermediate step
+ * and paused the loop with "structured result unreadable" on turn 1, so scan
+ * backwards for the newest completed assistant instead.
+ */
+function finalAssistantAfter(
   messages: MessageWithParts[],
   lastMessageId: string | null,
 ): MessageWithParts | null {
   const start = lastMessageId
     ? Math.max(0, messages.findIndex((m) => m.info.id === lastMessageId) + 1)
     : 0;
-  for (let i = start; i < messages.length; i += 1) {
+  for (let i = messages.length - 1; i >= start; i -= 1) {
     const m = messages[i];
-    if (m?.info.role === "assistant") return m;
+    if (m?.info.role === "assistant" && typeof m.info.time?.completed === "number") {
+      return m;
+    }
   }
   return null;
+}
+
+/**
+ * `/session/status` omits sessions the engine is not actively tracking, so it
+ * cannot prove a turn ended. Fall back to the transcript: the last message must
+ * be a completed assistant that has stayed quiet for `quietMs`. Consecutive
+ * step messages are created within milliseconds of each other, so any real gap
+ * means the turn is over.
+ */
+function transcriptIdleFor(
+  messages: MessageWithParts[],
+  quietMs: number,
+  now: number = Date.now(),
+): boolean {
+  const last = messages[messages.length - 1];
+  if (!last) return true;
+  if (last.info.role !== "assistant") return false;
+  const completed = last.info.time?.completed;
+  if (typeof completed !== "number") return false;
+  return now - completed >= quietMs;
 }
 
 export function getGoalLoop(workspaceId: string): GoalLoopDto | null {
@@ -437,6 +472,25 @@ function applyAssistantResult(loop: GoalLoopDto, assistant: MessageWithParts) {
   }
 }
 
+/**
+ * A prompt we sent produced no usable reply (aborted turn, dropped request).
+ * Without this the loop would sit in `running` forever, showing no progress.
+ */
+function expireStalledTurn(loop: GoalLoopDto): void {
+  const started = loop.lastPromptAt ? Date.parse(loop.lastPromptAt) : NaN;
+  if (!Number.isFinite(started) || Date.now() - started < TURN_TIMEOUT_MS) return;
+  getDb()
+    .prepare(
+      `UPDATE goal_loops SET status = 'paused', error = ?, updated_at = ?
+       WHERE id = ? AND status = 'running'`,
+    )
+    .run(
+      "応答が確認できないまま時間切れになったため一時停止しました。",
+      new Date().toISOString(),
+      loop.id,
+    );
+}
+
 async function processLoop(loop: GoalLoopDto): Promise<void> {
   if (TERMINAL_STATUSES.includes(loop.status)) return;
   const ws = getWorkspace(loop.workspaceId);
@@ -445,20 +499,38 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     timeoutMs: STATUS_TIMEOUT_MS,
   });
   const status = statuses[loop.sessionId];
-  if (status?.type !== "idle") return;
+  // A missing entry means "not tracked / not running" (same convention as
+  // task-service), not "unknown". Requiring an explicit idle entry stalled
+  // every loop at 0 turns because the engine omits idle sessions entirely.
+  if (status && status.type !== "idle") return;
 
   const messages = await ocServer<MessageWithParts[]>(
     ws.absolute_path,
     `/session/${loop.sessionId}/message`,
     { timeoutMs: MESSAGE_TIMEOUT_MS },
   ).catch(() => []);
-  const assistant = nextAssistantAfter(messages, loop.lastMessageId);
-  if (assistant) {
-    applyAssistantResult(loop, assistant);
+
+  if (loop.status === "running") {
+    const assistant = finalAssistantAfter(messages, loop.lastMessageId);
+    if (assistant && normalizeStructured(assistant.info.structured)) {
+      applyAssistantResult(loop, assistant);
+      return;
+    }
+    // No structured payload yet: the turn may still be emitting steps. Only
+    // give up once the transcript has been quiet long enough to prove the turn
+    // really ended without one.
+    if (assistant && transcriptIdleFor(messages, STRUCTURED_GRACE_MS)) {
+      applyAssistantResult(loop, assistant);
+      return;
+    }
+    expireStalledTurn(loop);
     return;
   }
 
   if (loop.status !== "queued") return;
+  // Never prompt on top of an in-flight turn (the task's initial prompt, or a
+  // manual send that has not been observed yet).
+  if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
   // Re-read turn_count from the DB: processLoop may have incremented it on a
   // previous tick before the assistant reply landed, and the DTO snapshot we
   // received can lag behind. Checking the stale value lets one extra prompt
@@ -478,13 +550,19 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   }
 
   const now = new Date().toISOString();
-  getDb()
+  // Re-anchor the boundary on the current transcript tail so the reply to *this*
+  // prompt is what we read back. The id captured at creation time points into
+  // the middle of the task's initial turn.
+  const claimed = getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = 'running', turn_count = turn_count + 1, last_prompt_at = ?, updated_at = ?
+       SET status = 'running', turn_count = turn_count + 1, last_message_id = ?,
+           last_prompt_at = ?, updated_at = ?
        WHERE id = ? AND status = 'queued'`,
     )
-    .run(now, now, loop.id);
+    .run(latestMessageId(messages), now, now, loop.id);
+  // Another writer (pause/stop/manual send) won the race: do not send.
+  if (claimed.changes === 0) return;
   const body: Record<string, unknown> = {
     parts: [{ type: "text", text: buildGoalPrompt(loop) }],
     format: { type: "json_schema", schema: GOAL_RESULT_SCHEMA, retryCount: 2 },
@@ -543,5 +621,6 @@ export const goalLoopTestSeams = {
   buildGoalPrompt,
   normalizeStructured,
   latestMessageId,
-  nextAssistantAfter,
+  finalAssistantAfter,
+  transcriptIdleFor,
 };
