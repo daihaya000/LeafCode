@@ -74,7 +74,14 @@ type StatusMap = Record<string, SessionStatus>;
 
 const TERMINAL_STATUSES: GoalLoopStatus[] = ["completed", "blocked", "stopped", "error"];
 const SCHEDULER_INTERVAL_MS = 2_500;
-const PROMPT_TIMEOUT_MS = 60_000;
+/**
+ * `prompt_async` normally returns 202 immediately, but under engine load the
+ * prompt construction can take longer. 60s was too tight and surfaced raw
+ * "The operation was aborted due to timeout" errors on busy loops; give room
+ * up to the BFF's long-running mutation ceiling (290s) so a legitimate prompt
+ * is not aborted mid-send.
+ */
+const PROMPT_TIMEOUT_MS = 120_000;
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
 /** Transcript silence that proves a multi-step turn ended (steps are ms apart). */

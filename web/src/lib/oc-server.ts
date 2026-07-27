@@ -55,8 +55,20 @@ export async function ocServer<T>(
       signal: AbortSignal.timeout(init?.timeoutMs ?? 10_000),
     });
   } catch (err) {
+    // `AbortSignal.timeout` rejects with a DOMException whose raw message is
+    // "The operation was aborted due to timeout" — unhelpful when surfaced to
+    // the caller (e.g. the goal loop writes it verbatim into the `error`
+    // column). Convert it to a clear 408 with the actual duration, mirroring
+    // the BFF proxy in route.ts.
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      const seconds = Math.round((init?.timeoutMs ?? 10_000) / 1000);
+      throw new OcError(
+        `OpenCode engine が${seconds}秒でタイムアウトしました (${path})`,
+        408,
+      );
+    }
     throw new OcError(
-      err instanceof Error ? err.message : "OpenCode engine unavailable",
+      err instanceof Error ? err.message : "OpenCode engine unreachable",
       503,
     );
   }
