@@ -21,6 +21,7 @@ import { AddonHost } from "@/components/addons/AddonHost";
 import { ThemeToggle, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import { useMobileScrollTarget } from "./MobileScrollTargetContext";
 import {
   getActiveSessionAttention,
   type ActiveSessionAttention,
@@ -702,6 +703,8 @@ export function Sidebar({
     [refreshingId],
   );
 
+  const setScrollTarget = useMobileScrollTarget();
+
   const body = (includeAddons: boolean) => (
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
@@ -762,7 +765,10 @@ export function Sidebar({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-2">
+      <div
+        ref={setScrollTarget}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-2"
+      >
         {!projectsLoaded ? (
           <div className="flex min-h-24 items-center justify-center px-2 py-4">
             <div

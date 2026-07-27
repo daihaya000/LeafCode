@@ -22,6 +22,7 @@ import {
   type CostDisplayPrefs,
 } from "@/lib/currency";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
+import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type OrphanDto = {
@@ -384,6 +385,8 @@ export function SettingsView() {
           : "その他";
 
   const requiresAttention = orphans.length + stray.length;
+  const setScrollTarget = useMobileScrollTarget();
+
   const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
     { key: "general", label: "全般" },
     {
@@ -403,7 +406,10 @@ export function SettingsView() {
   return (
     <div className="flex h-full flex-col">
       <MobileMenuHeader />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={setScrollTarget}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto max-w-3xl px-4">
           <div className="flex h-14 items-center">

@@ -64,6 +64,7 @@ import {
 } from "@/lib/slash-command";
 import { useSlashCommands } from "@/lib/useSlashCommands";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
+import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { ProviderModelsDto } from "@/lib/extensions";
 import type { ProjectDto } from "@/lib/types";
 
@@ -728,10 +729,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     }
   }, [intelligence, intelligenceVariants]);
 
+  const setScrollTarget = useMobileScrollTarget();
+
   return (
     <div className="flex h-full flex-col">
       <MobileMenuHeader />
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-clip">
+      <div
+        ref={setScrollTarget}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-clip"
+      >
       <main
         className={cx(
           "mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]",

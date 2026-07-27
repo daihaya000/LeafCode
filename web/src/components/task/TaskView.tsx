@@ -50,6 +50,7 @@ import {
 } from "@/components/shell/ShellContext";
 import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionProvider";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
+import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import { MobileMenuButton } from "@/components/shell/MobileMenuButton";
 import { AttentionBadge } from "@/components/shell/AttentionBadge";
 import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
@@ -2212,6 +2213,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     return ids;
   }, [planPaths, stream.visibleMessages]);
 
+  const setScrollTarget = useMobileScrollTarget();
+
   if (loadError) {
     return (
       <div className="flex h-full flex-col">
@@ -2533,7 +2536,10 @@ export function TaskView({ taskId }: { taskId: string }) {
                 pinned to the visible viewport. */}
             <div className="relative flex min-h-0 flex-1 flex-col">
             <div
-              ref={scrollRef}
+              ref={(el) => {
+                scrollRef.current = el;
+                setScrollTarget(el);
+              }}
               data-testid="message-scroller"
               onScroll={onScroll}
               className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
