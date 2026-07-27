@@ -149,7 +149,10 @@ export function QuestionCard({
     request.questions.some((q) => q.multiple || q.custom);
 
   return (
-    <div className="rounded-xl border border-accent/40 bg-surface p-4 shadow-sm">
+    <div
+      className="rounded-xl border border-accent/40 bg-surface p-4 shadow-sm"
+      aria-label="確認が必要です"
+    >
       <div className="mb-3 flex items-center gap-2 text-sm font-medium text-accent">
         <HelpCircle className="h-4 w-4" />
         確認が必要です

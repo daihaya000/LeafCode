@@ -285,13 +285,14 @@ test("follow-up composer cannot submit while the task is busy", async ({ page })
 
   await page.goto("/task/task-1");
   const composer = page.getByPlaceholder("フォローアップを送信…");
-  await expect(composer).toBeEditable();
-  await composer.fill("draft while running");
+  // task.status is "working" from the very first paint (before the
+  // session/status poll resolves), so the anti-double-submit guard locks
+  // the composer immediately — no editable window exists (commit 7fc7532).
   await expect(composer).toHaveAttribute("readonly", "");
+  await expect(composer).not.toBeEditable();
 
   await composer.press("Enter");
   await expect.poll(() => promptPosts).toBe(0);
-  await expect(composer).toHaveValue("draft while running");
 });
 
 test("renders Plan Markdown and submits one Build approval for the latest Plan", async ({ page }) => {
@@ -328,7 +329,9 @@ test("renders Plan Markdown and submits one Build approval for the latest Plan",
     parts: [{ type: "text", text: planPrompt }],
   });
   await expect(page.getByRole("button", { name: "実装を開始しました" })).toBeDisabled();
-  await expect(page.getByLabel("エージェント")).toHaveValue("build");
+  await expect(
+    page.getByLabel("エージェント", { exact: true }),
+  ).toHaveAttribute("value", "build");
 });
 
 test("retries a failed Plan document request without exposing its path", async ({ page }) => {
@@ -575,13 +578,17 @@ async function mockIdleVariantTask(
       },
     }),
   );
+  // This is the "idle" variant fixture: the composer must be editable, so
+  // the served task must not report status "working" (the shared `task`
+  // fixture is written for mockBusyTask's busy scenario).
+  const idleTask = { ...task, status: "idle" as const };
   await page.route("**/api/tasks**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/tasks/task-1") {
-      await route.fulfill({ json: { task } });
+      await route.fulfill({ json: { task: idleTask } });
       return;
     }
-    await route.fulfill({ json: { tasks: [task], engineOk: true } });
+    await route.fulfill({ json: { tasks: [idleTask], engineOk: true } });
   });
   await page.route("**/api/diff/files**", (route) =>
     route.fulfill({
@@ -678,11 +685,13 @@ test("follow-up composer sends variant when non-default is selected", async ({
   });
 
   await page.goto("/task/task-1");
-  const intelligence = page.getByRole("combobox", {
+  const intelligence = page.getByRole("button", {
     name: "インテリジェンス",
+    exact: true,
   });
   await expect(intelligence).toBeVisible();
-  await intelligence.selectOption("low");
+  await intelligence.click();
+  await page.getByRole("option", { name: "low", exact: true }).click();
 
   const composer = page.getByPlaceholder("フォローアップを送信…");
   await expect(composer).toBeEditable();
@@ -703,10 +712,10 @@ test("follow-up composer omits variant when default is selected", async ({
   });
 
   await page.goto("/task/task-1");
-  const composer = page.getByPlaceholder("繝輔か繝ｭ繝ｼ繧｢繝・・繧帝∽ｿ｡窶ｦ");
+  const composer = page.getByPlaceholder("フォローアップを送信…");
   await expect(composer).toBeEditable();
   await composer.fill("follow up with default intelligence");
-  await page.getByRole("button", { name: "騾∽ｿ｡" }).click();
+  await page.getByRole("button", { name: "送信" }).click();
   await expect.poll(() => promptBody).not.toBeNull();
   expect(promptBody).not.toHaveProperty("variant");
 });
@@ -715,7 +724,7 @@ test("follow-up composer omits variant when default is selected", async ({
 // which is a horizontally-scrollable, scrollbar-hidden region on small
 // screens. It must stay fully visible (not clipped out of view) on mobile,
 // tablet, and desktop widths.
-const REVERT_TITLE = "直前の入力を下の欄に戻して巻き戻す";
+const REVERT_TITLE = "このコメントを入力欄に戻して巻き戻す";
 
 async function mockTaskWithUserMessage(page: Page) {
   await mockPlanTask(page, {
