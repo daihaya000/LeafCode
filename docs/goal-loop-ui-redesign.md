@@ -56,18 +56,29 @@
 - 進捗履歴: ヘッダ下、最新3件、展開可
 - error/blockedReason: 既存の警告/危険バンド（維持）
 
-## 3. 開始フォーム
+## 3. 開始フォーム（composer トグル方式）
 
-### TaskView の「Goalループを開始」フォーム
-- 終了状態（completed/blocked/stopped/error）の後に表示（既存条件に `error` を追加）
-- goal / acceptance / maxTurns 入力（既存維持）
-- 開始ボタンの disabled 条件: `goalLoopBusy || !goalLoopGoal.trim() || working`（既存維持）
-- aria-label 追加
+TaskView / HomeView の Goal 開始 UI は `components/GoalLoopComposer.tsx` の
+`GoalLoopToggle` / `GoalLoopOptions` を共有する。
 
-### HomeView の Goal UI
-- チェックボックス + acceptance + maxTurns（既存維持）
-- aria-label / aria-describedby 追加
-- チェックボックス展開時のアニメーションは既存のまま
+- **goal はコンポーザーの本文**。専用の goal 入力欄は持たない
+- **トグル**: コンポーザー下部ツールバーのピル（`aria-pressed` / `aria-label="Goalループで継続実行"`）。
+  OFF の間は縦方向の場所を取らない
+- **詳細設定**: トグル ON のときだけ acceptance（`aria-label="承認条件"`）と
+  maxTurns（`aria-label="最大ターン数"`、1..100 にクランプ）を本文欄の下に出す
+
+### TaskView（セッション側）
+- 会話ペイン先頭の常設「Goalループを開始」カードは廃止（ループ未使用のセッションで
+  冒頭を占有していたため）
+- ON のとき送信ボタンは `aria-label="Goalループを開始"` になり、`send()` は
+  プロンプト送信ではなく `POST /api/tasks/:id/goal-loop` を呼ぶ。失敗時は下書きを復元して
+  トグル ON のまま保つ
+- 稼働中ループ（queued / running / verifying_completed / paused）の間はトグルを隠す。
+  操作は GoalLoopPanel が担う
+- 開始失敗のエラーはコンポーザー上部に `role="alert"` で出す
+
+### HomeView（Top）
+- 既存のトグル + acceptance + maxTurns を共有コンポーネント化（見た目・aria は不変）
 
 ## 4. 停止確認ダイアログ
 
@@ -95,7 +106,8 @@
 - ステータスバッジ: `aria-label` で状態をフルテキスト
 - 操作ボタン: 既存の `aria-label` または可視テキスト
 - 進捗履歴リスト: `role="list"`、各項目 `role="listitem"`
-- 開始フォーム: `aria-label="Goalループを開始"`
+- 開始トグル: `aria-pressed` + `aria-label="Goalループで継続実行"`、ON 時の送信ボタンは
+  `aria-label="Goalループを開始"`
 
 ## 8. テスト計画
 
@@ -104,9 +116,10 @@
 - 停止確認ダイアログの表示・キャンセル・実行
 - maxTurns 編集（paused 時のみ）
 - TaskView.test.tsx に GoalLoop シナリオを追加（モック fetch で loop を返す）
+- GoalLoopComposer.test.tsx（トグルの pressed 状態・disabled、maxTurns のクランプ）
+- TaskView.test.tsx の「Goalループ composer」（常設フォーム不在・トグル開閉・
+  goal として送信・失敗時の下書き復元・稼働中はトグル非表示）
 
 ## 9. 非対象
-
-- HomeView の Goal UI レイアウト大幅変更（整合性・aria のみ）
 - ループの新機能（並列実行・スケジュール等）
 - サーバー側ロジック（goal-loop.ts）の変更は maxTurns 更定のみ
