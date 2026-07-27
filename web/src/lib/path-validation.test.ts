@@ -59,19 +59,22 @@ describe("resolveValidatedAllowlistPath", () => {
     fs.rmSync(protectedPath, { recursive: true, force: true });
   });
 
-  it("rejects other profiles and the profile parent, but allows USERPROFILE itself", () => {
+  it("rejects profile roots, but allows explicit descendants of USERPROFILE", () => {
     const profileParent = fs.mkdtempSync(path.join(os.tmpdir(), "profiles-"));
     const currentProfile = path.join(profileParent, "current-user");
+    const currentProfileWorkspace = path.join(currentProfile, "workspace");
     const otherProfile = path.join(profileParent, "other-user");
     fs.mkdirSync(currentProfile);
+    fs.mkdirSync(currentProfileWorkspace);
     fs.mkdirSync(otherProfile);
     vi.stubEnv("USERPROFILE", currentProfile);
 
     try {
       expect(resolveValidatedAllowlistPath(otherProfile)).toHaveProperty("error");
       expect(resolveValidatedAllowlistPath(profileParent)).toHaveProperty("error");
-      expect(resolveValidatedAllowlistPath(currentProfile)).toEqual({
-        canonicalPath: fs.realpathSync.native(currentProfile),
+      expect(resolveValidatedAllowlistPath(currentProfile)).toHaveProperty("error");
+      expect(resolveValidatedAllowlistPath(currentProfileWorkspace)).toEqual({
+        canonicalPath: fs.realpathSync.native(currentProfileWorkspace),
       });
     } finally {
       fs.rmSync(profileParent, { recursive: true, force: true });
