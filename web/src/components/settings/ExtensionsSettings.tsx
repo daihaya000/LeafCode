@@ -76,14 +76,18 @@ function SkillRow({
   onToggle: () => void;
 }) {
   const displayName =
-    depth > 0
+    item.title_ja ??
+    (depth > 0
       ? skillDisplayLabel({
           ...item,
           name: item.id.split("/").pop() ?? item.name,
         })
-      : skillDisplayLabel(item);
+      : skillDisplayLabel(item));
   const showOriginalName =
-    skillHasJapaneseLabel(item) && displayName !== item.name;
+    item.title_ja
+      ? item.title_ja !== item.name
+      : skillHasJapaneseLabel(item) && displayName !== item.name;
+  const description = item.description_ja ?? item.description;
   return (
     <li
       aria-busy={busy || undefined}
@@ -104,9 +108,9 @@ function SkillRow({
         {showOriginalName && (
           <p className="mt-0.5 font-mono text-[11px] text-faint">{item.id}</p>
         )}
-        {item.description && (
+        {description && (
           <p className="mt-0.5 text-xs break-words text-faint">
-            {item.description}
+            {description}
           </p>
         )}
       </div>
@@ -133,12 +137,16 @@ function SkillSubtree({
 }) {
   const isGroup = node.kind === "group";
   const item = node.item;
-  const displayName = isGroup ? node.name : skillDisplayLabel(item!);
+  const displayName = isGroup
+    ? node.name
+    : (item!.title_ja ?? skillDisplayLabel(item!));
   const showOriginalName =
     !isGroup &&
     item !== undefined &&
-    skillHasJapaneseLabel(item) &&
-    displayName !== item.name;
+    (item.title_ja
+      ? item.title_ja !== item.name
+      : skillHasJapaneseLabel(item) && displayName !== item.name);
+  const description = !isGroup && item ? (item.description_ja ?? item.description) : undefined;
   const isBusy = !isGroup && item !== undefined && busyId === item.id;
   const hasChildren = node.children.length > 0;
   const [expanded, setExpanded] = useState(false);
@@ -193,9 +201,9 @@ function SkillSubtree({
               {item!.id}
             </p>
           )}
-          {!isGroup && item!.description && (
+          {!isGroup && description && (
             <p className="mt-0.5 text-xs break-words text-faint">
-              {item!.description}
+              {description}
             </p>
           )}
         </div>

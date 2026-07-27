@@ -20,6 +20,7 @@ import {
   DEFAULT_SKILL_SCAN_LIMITS,
   listSkills,
   parseFrontmatterDescription,
+  parseFrontmatterFields,
   setSkillEnabled,
 } from "./skills";
 
@@ -84,6 +85,57 @@ describe("parseFrontmatterDescription", () => {
   });
 });
 
+describe("parseFrontmatterFields", () => {
+  it("reads description, title_ja, and description_ja in one pass", () => {
+    const md = [
+      "---",
+      "name: my-skill",
+      "title_ja: マイスキル",
+      "description: Does things",
+      "description_ja: いろいろやります",
+      "---",
+      "",
+    ].join("\n");
+    expect(parseFrontmatterFields(md)).toEqual({
+      description: "Does things",
+      title_ja: "マイスキル",
+      description_ja: "いろいろやります",
+    });
+  });
+
+  it("returns empty object when no frontmatter", () => {
+    expect(parseFrontmatterFields("# no frontmatter")).toEqual({});
+  });
+
+  it("returns only present fields", () => {
+    const md = "---\ntitle_ja: テスト\n---\n";
+    expect(parseFrontmatterFields(md)).toEqual({
+      title_ja: "テスト",
+    });
+  });
+
+  it("truncates long description_ja", () => {
+    const md = `---\ndescription_ja: ${"あ".repeat(400)}\n---\n`;
+    const out = parseFrontmatterFields(md);
+    expect(out.description_ja?.length).toBe(301);
+    expect(out.description_ja?.endsWith("…")).toBe(true);
+  });
+
+  it("handles block scalar for title_ja", () => {
+    const md = [
+      "---",
+      "title_ja: >",
+      "  長いタイトル",
+      "  の続き",
+      "---",
+      "",
+    ].join("\n");
+    expect(parseFrontmatterFields(md)).toEqual({
+      title_ja: "長いタイトル の続き",
+    });
+  });
+});
+
 describe("listSkills", () => {
   it("lists enabled and disabled skills with frontmatter descriptions", async () => {
     makeSkill("skills", "alpha", "---\ndescription: Alpha skill\n---\n");
@@ -96,6 +148,8 @@ describe("listSkills", () => {
         id: "alpha",
         name: "alpha",
         description: "Alpha skill",
+        title_ja: undefined,
+        description_ja: undefined,
         enabled: true,
         toggleable: true,
       },
@@ -103,6 +157,8 @@ describe("listSkills", () => {
         id: "beta",
         name: "beta",
         description: "Beta skill",
+        title_ja: undefined,
+        description_ja: undefined,
         enabled: false,
         toggleable: true,
       },
@@ -150,6 +206,33 @@ describe("listSkills", () => {
     makeSkill("skills", "alpha", "---\ndescription: From file\n---\n");
     const { skills } = await listSkills();
     expect(skills[0].description).toBe("From file");
+  });
+
+  it("reads title_ja and description_ja from frontmatter", async () => {
+    makeSkill(
+      "skills",
+      "alpha",
+      [
+        "---",
+        "name: alpha",
+        "title_ja: アルファ",
+        "description: Alpha skill",
+        "description_ja: アルファスキルです",
+        "---",
+        "",
+      ].join("\n"),
+    );
+
+    const { skills } = await listSkills();
+    expect(skills[0]).toMatchObject({
+      id: "alpha",
+      name: "alpha",
+      description: "Alpha skill",
+      title_ja: "アルファ",
+      description_ja: "アルファスキルです",
+      enabled: true,
+      toggleable: true,
+    });
   });
 });
 

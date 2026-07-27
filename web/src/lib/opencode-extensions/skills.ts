@@ -40,57 +40,104 @@ export type SkillListResult = {
 };
 
 /**
- * Extract `description` from SKILL.md frontmatter. Handles plain values,
+ * Extract a single frontmatter field value. Handles plain values,
  * quoted values, and block scalars (`>`, `|` and their chomping variants).
  * Not a full YAML parser — just enough for skill metadata.
+ */
+function parseFrontmatterField(
+  lines: string[],
+  startIndex: number,
+  fieldName: string,
+): { value: string | undefined; nextIndex: number } {
+  const kv = new RegExp(`^${fieldName}\\s*:\\s*(.*)$`).exec(lines[startIndex]);
+  if (!kv) return { value: undefined, nextIndex: startIndex };
+  let value = kv[1].trim();
+  if (/^[>|][+-]?$/.test(value)) {
+    // Block scalar: consume following indented (or blank) lines.
+    const parts: string[] = [];
+    let j = startIndex + 1;
+    for (; j < lines.length; j += 1) {
+      if (/^\s/.test(lines[j]) || lines[j].trim() === "") {
+        parts.push(lines[j].trim());
+      } else {
+        break;
+      }
+    }
+    value = parts.filter(Boolean).join(" ");
+    return { value: value || undefined, nextIndex: j };
+  }
+  value = value.replace(/^["']|["']$/g, "").trim();
+  return { value: value || undefined, nextIndex: startIndex + 1 };
+}
+
+function truncateDescription(value: string): string {
+  return value.length > DESCRIPTION_MAX
+    ? `${value.slice(0, DESCRIPTION_MAX)}…`
+    : value;
+}
+
+/** Parsed Japanese-localized fields from SKILL.md frontmatter. */
+export type SkillFrontmatterJa = {
+  title_ja?: string;
+  description_ja?: string;
+};
+
+/**
+ * Extract `description`, `title_ja`, and `description_ja` from SKILL.md
+ * frontmatter in a single pass.
+ */
+export function parseFrontmatterFields(
+  markdown: string,
+): { description?: string } & SkillFrontmatterJa {
+  const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(markdown);
+  if (!block) return {};
+  const lines = block[1].split(/\r?\n/);
+  let description: string | undefined;
+  let title_ja: string | undefined;
+  let description_ja: string | undefined;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^description\s*:/.test(line)) {
+      const r = parseFrontmatterField(lines, i, "description");
+      if (r.value) description = truncateDescription(r.value);
+      i = r.nextIndex - 1; // loop increment will advance
+    } else if (/^title_ja\s*:/.test(line)) {
+      const r = parseFrontmatterField(lines, i, "title_ja");
+      if (r.value) title_ja = r.value;
+      i = r.nextIndex - 1;
+    } else if (/^description_ja\s*:/.test(line)) {
+      const r = parseFrontmatterField(lines, i, "description_ja");
+      if (r.value) description_ja = truncateDescription(r.value);
+      i = r.nextIndex - 1;
+    }
+  }
+  return { description, title_ja, description_ja };
+}
+
+/**
+ * Extract `description` from SKILL.md frontmatter.
+ * @deprecated Use {@link parseFrontmatterFields} for multi-field extraction.
  */
 export function parseFrontmatterDescription(
   markdown: string,
 ): string | undefined {
-  const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(markdown);
-  if (!block) return undefined;
-  const lines = block[1].split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const kv = /^description\s*:\s*(.*)$/.exec(lines[i]);
-    if (!kv) continue;
-    let value = kv[1].trim();
-    if (/^[>|][+-]?$/.test(value)) {
-      // Block scalar: consume following indented (or blank) lines.
-      const parts: string[] = [];
-      for (let j = i + 1; j < lines.length; j += 1) {
-        if (/^\s/.test(lines[j]) || lines[j].trim() === "") {
-          parts.push(lines[j].trim());
-        } else {
-          break;
-        }
-      }
-      value = parts.filter(Boolean).join(" ");
-    } else {
-      value = value.replace(/^["']|["']$/g, "");
-    }
-    value = value.trim();
-    if (!value) return undefined;
-    return value.length > DESCRIPTION_MAX
-      ? `${value.slice(0, DESCRIPTION_MAX)}…`
-      : value;
-  }
-  return undefined;
+  return parseFrontmatterFields(markdown).description;
 }
 
-async function readSkillDescription(
+async function readSkillFrontmatter(
   skillMdPath: string,
-): Promise<string | undefined> {
+): Promise<{ description?: string; title_ja?: string; description_ja?: string }> {
   try {
     const handle = await fs.promises.open(skillMdPath, "r");
     try {
       const buf = Buffer.alloc(FRONTMATTER_READ_BYTES);
       const { bytesRead } = await handle.read(buf, 0, FRONTMATTER_READ_BYTES, 0);
-      return parseFrontmatterDescription(buf.toString("utf8", 0, bytesRead));
+      return parseFrontmatterFields(buf.toString("utf8", 0, bytesRead));
     } finally {
       await handle.close();
     }
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -139,10 +186,13 @@ async function walkForSkills(
       // Only direct children of the root can be moved safely; nested skills
       // are view-only (their id is the relative path).
       const direct = path.dirname(dirPath) === root;
+      const fm = await readSkillFrontmatter(path.join(dirPath, "SKILL.md"));
       out.push({
         id: direct ? entry.name : path.relative(root, dirPath).split(path.sep).join("/"),
         name: entry.name,
-        description: await readSkillDescription(path.join(dirPath, "SKILL.md")),
+        description: fm.description,
+        title_ja: fm.title_ja,
+        description_ja: fm.description_ja,
         enabled,
         toggleable: direct,
       });

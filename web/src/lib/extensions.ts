@@ -10,6 +10,10 @@ export type SkillDto = {
   id: string;
   name: string;
   description?: string;
+  /** Japanese title from SKILL.md frontmatter `title_ja`. */
+  title_ja?: string;
+  /** Japanese description from SKILL.md frontmatter `description_ja`. */
+  description_ja?: string;
   enabled: boolean;
   /** False for nested/project/bundled skills that cannot be moved safely. */
   toggleable: boolean;
