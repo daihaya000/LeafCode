@@ -90,7 +90,9 @@ test("keeps enabled addons in the mobile sidebar drawer", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "メニュー" }).click();
 
-  const sidebar = page.getByRole("complementary");
+  // The mobile drawer is a modal overlay (role="dialog", aria-modal="true"),
+  // not a "complementary" landmark like the desktop <aside>.
+  const sidebar = page.getByRole("dialog", { name: "ナビゲーション" });
   const addProject = sidebar
     .locator("button")
     .filter({ hasText: "プロジェクトを追加" });
@@ -164,9 +166,9 @@ test("opens task creation with the selected project", async ({ page }) => {
     .getByRole("button", { name: "Project Bに新規タスクを作成" })
     .click();
   await expect(page).toHaveURL(/\?projectId=project-b$/);
-  await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
-    "project-b",
-  );
+  await expect(
+    page.getByRole("button", { name: "プロジェクト", exact: true }),
+  ).toHaveAttribute("value", "project-b");
 });
 
 test("selects the project for task creation when the engine is unavailable", async ({
@@ -180,7 +182,7 @@ test("selects the project for task creation when the engine is unavailable", asy
     .getByRole("button", { name: "Project Bに新規タスクを作成" })
     .click();
   await expect(page).toHaveURL(/\?projectId=project-b$/);
-  await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
-    "project-b",
-  );
+  await expect(
+    page.getByRole("button", { name: "プロジェクト", exact: true }),
+  ).toHaveAttribute("value", "project-b");
 });
