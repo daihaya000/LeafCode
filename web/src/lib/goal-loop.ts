@@ -71,7 +71,6 @@ type GoalLoopRow = {
 
 type StatusMap = Record<string, SessionStatus>;
 
-const ACTIVE_STATUSES: GoalLoopStatus[] = ["queued", "running"];
 const TERMINAL_STATUSES: GoalLoopStatus[] = ["completed", "blocked", "stopped", "error"];
 const SCHEDULER_INTERVAL_MS = 2_500;
 const PROMPT_TIMEOUT_MS = 60_000;
