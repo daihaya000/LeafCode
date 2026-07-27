@@ -31,7 +31,7 @@ export function IntelligenceSelect({
       icon={<Cpu className="h-3.5 w-3.5" />}
       valueLabel={value || "デフォルト"}
       onChange={onChange}
-      className="min-w-0"
+      className="h-8 min-w-[7.25rem] shrink-0"
     >
       <option value="">デフォルト</option>
       {variants.map((variant) => (
