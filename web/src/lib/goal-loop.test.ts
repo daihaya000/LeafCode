@@ -186,11 +186,15 @@ describe("goalLoopTestSeams", () => {
 
   describe("buildGoalPrompt", () => {
     it("asks for the fenced JSON block instead of relying on json_schema", () => {
-      const prompt = goalLoopTestSeams.buildGoalPrompt({
-        goal: "ship it",
-        acceptance: ["tests pass"],
-        progress: [],
-      } as never);
+      const prompt = goalLoopTestSeams.buildGoalPrompt(
+        {
+          goal: "ship it",
+          acceptance: ["tests pass"],
+          progress: [],
+        } as never,
+        1,
+        10,
+      );
       expect(prompt).toContain("<!-- webui-goal-loop-prompt -->");
       expect(prompt).toContain("```json");
       expect(prompt).toContain("tests pass");
@@ -198,30 +202,70 @@ describe("goalLoopTestSeams", () => {
     });
 
     it("warns that a completed claim will be independently verified", () => {
-      const prompt = goalLoopTestSeams.buildGoalPrompt({
-        goal: "ship it",
-        acceptance: [],
-        progress: [],
-      } as never);
+      const prompt = goalLoopTestSeams.buildGoalPrompt(
+        {
+          goal: "ship it",
+          acceptance: [],
+          progress: [],
+        } as never,
+        1,
+        10,
+      );
       expect(prompt).toContain("independently verified");
+    });
+
+    it("states the current turn number so the agent runs one iteration only", () => {
+      const prompt = goalLoopTestSeams.buildGoalPrompt(
+        {
+          goal: "ship it",
+          acceptance: [],
+          progress: [],
+        } as never,
+        3,
+        10,
+      );
+      expect(prompt).toContain("This is turn 3 of at most 10.");
+      expect(prompt).toContain("2 loop turn(s) have completed before this one");
+      expect(prompt).toContain("One turn = one iteration");
+      expect(prompt).toContain("Never simulate");
     });
   });
 
   describe("buildVerificationPrompt", () => {
     it("asks the agent to verify the previous completed claim", () => {
-      const prompt = goalLoopTestSeams.buildVerificationPrompt({
-        goal: "ship it",
-        acceptance: ["tests pass"],
-        progress: [
-          { time: "2026-01-01T00:00:00.000Z", status: "completed", summary: "done", evidence: "tsc ok" },
-        ],
-      } as never);
+      const prompt = goalLoopTestSeams.buildVerificationPrompt(
+        {
+          goal: "ship it",
+          acceptance: ["tests pass"],
+          progress: [
+            { time: "2026-01-01T00:00:00.000Z", status: "completed", summary: "done", evidence: "tsc ok" },
+          ],
+        } as never,
+        1,
+        10,
+      );
       expect(prompt).toContain("<!-- webui-goal-loop-prompt -->");
       expect(prompt).toContain("independently verify");
       expect(prompt).toContain("tests pass");
       expect(prompt).toContain("verified_completed");
       expect(prompt).toContain("done");
       expect(prompt).toContain("tsc ok");
+    });
+
+    it("tells the verifier how many turns actually ran so inflated claims fail", () => {
+      const prompt = goalLoopTestSeams.buildVerificationPrompt(
+        {
+          goal: "ship it",
+          acceptance: [],
+          progress: [
+            { time: "2026-01-01T00:00:00.000Z", status: "completed", summary: "3 loops done" },
+          ],
+        } as never,
+        1,
+        10,
+      );
+      expect(prompt).toContain("Only 1 loop turn(s) of at most 10 have actually been executed");
+      expect(prompt).toContain("reports more turns, iterations, or work than the 1 executed turn(s)");
     });
   });
 

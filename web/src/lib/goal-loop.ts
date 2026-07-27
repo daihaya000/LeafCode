@@ -409,7 +409,13 @@ export async function pauseGoalLoopForManualSend(
     .run(tailMessageId, now, workspaceId, sessionId);
 }
 
-function buildGoalPrompt(loop: GoalLoopDto): string {
+/**
+ * One prompt = one loop turn. The agent cannot see the loop counter from
+ * inside the session, so without it being stated explicitly agents compress
+ * every remaining step into a single turn (and even narrate turns that never
+ * ran) instead of letting the WebUI drive the next iteration.
+ */
+function buildGoalPrompt(loop: GoalLoopDto, turnNumber: number, maxTurns: number): string {
   const acceptance = loop.acceptance.length
     ? `\n\nAcceptance criteria:\n${loop.acceptance.map((a, i) => `${i + 1}. ${a}`).join("\n")}`
     : "";
@@ -423,7 +429,11 @@ function buildGoalPrompt(loop: GoalLoopDto): string {
 
 You are running a WebUI native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
 
+This is turn ${turnNumber} of at most ${maxTurns}. ${turnNumber - 1} loop turn(s) have completed before this one. The WebUI sends the next prompt automatically after this turn ends.
+
 Rules:
+- One turn = one iteration. Do the smallest useful increment, then end this turn and let the WebUI prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
+- Report only work you actually performed in this turn. Never simulate, narrate, or count future turns as if they already happened.
 - Continue autonomously until the goal is completed, blocked, paused, or stopped by the WebUI.
 - Do not ask the user questions unless truly blocked.
 - Do not claim completion unless the goal and acceptance criteria are satisfied. A completed claim will be independently verified before the loop ends.
@@ -446,7 +456,11 @@ The very last thing you output this turn must be a single fenced JSON block:
 - summary is required. Write nothing after the closing fence.`;
 }
 
-function buildVerificationPrompt(loop: GoalLoopDto): string {
+function buildVerificationPrompt(
+  loop: GoalLoopDto,
+  turnsExecuted: number,
+  maxTurns: number,
+): string {
   const claim = loop.progress.at(-1);
   const acceptance = loop.acceptance.length
     ? `\n\nAcceptance criteria to verify:\n${loop.acceptance.map((a, i) => `${i + 1}. ${a}`).join("\n")}`
@@ -455,8 +469,11 @@ function buildVerificationPrompt(loop: GoalLoopDto): string {
 
 The previous turn claimed the goal was completed. Your job this turn is to independently verify that claim. Do not do new work unless necessary to verify; focus on inspection, tests, or checks.
 
+Only ${turnsExecuted} loop turn(s) of at most ${maxTurns} have actually been executed so far. Treat that count as ground truth when judging the claim.
+
 Rules:
 - Verify each acceptance criterion above and report whether the claim is actually true.
+- Check the claim against the real transcript and repository state, not against the claim's own narration. Reject it (return progress) if it reports more turns, iterations, or work than the ${turnsExecuted} executed turn(s) could contain, or if the evidence is simulated rather than observable.
 - If the claim is fully verified, return verified_completed.
 - If the claim is not fully verified or more work is needed, return progress.
 - If you are blocked from verifying, return blocked.
@@ -728,8 +745,22 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       )
       .run(anchor, now, now, loop.id);
     if (claimed.changes === 0) return;
+    // Verification does not consume a turn slot, so `turn_count` is the number
+    // of goal turns actually executed before this check.
+    const verifyCounts = getDb()
+      .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
+      .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
     const body: Record<string, unknown> = {
-      parts: [{ type: "text", text: buildVerificationPrompt(loop) }],
+      parts: [
+        {
+          type: "text",
+          text: buildVerificationPrompt(
+            loop,
+            verifyCounts?.turn_count ?? loop.turnCount,
+            verifyCounts?.max_turns ?? loop.maxTurns,
+          ),
+        },
+      ],
     };
     if (loop.agent) body.agent = loop.agent;
     if (loop.providerID && loop.modelID) {
@@ -790,8 +821,10 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // on read, so GET /session/{id}/message returns 400 for the whole session
   // ("Expected OutputFormatJsonSchema, got {...}") — one loop turn permanently
   // bricks the transcript. The prompt asks for a fenced JSON block instead.
+  // `loop` is the pre-increment snapshot; the UPDATE above claimed turn
+  // `turnCount + 1`, which is the turn this prompt actually runs.
   const body: Record<string, unknown> = {
-    parts: [{ type: "text", text: buildGoalPrompt(loop) }],
+    parts: [{ type: "text", text: buildGoalPrompt(loop, turnCount + 1, maxTurns) }],
   };
   if (loop.agent) body.agent = loop.agent;
   if (loop.providerID && loop.modelID) {
