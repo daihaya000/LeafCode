@@ -947,3 +947,130 @@ describe("HomeView engine health polling", () => {
     expect(tasksCallsAfterVisible).toBeGreaterThan(tasksCallsWhileHidden);
   });
 });
+
+describe("HomeView goal loop toggle", () => {
+  beforeEach(() => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "project-1",
+              name: "Project",
+              rootPath: "/repo",
+              favorite: false,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({ taskId: "task-1", sessionId: "ses-1" });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("keeps the goal loop control as a compact toolbar pill, not a standalone card", async () => {
+    render(<HomeView />);
+
+    const toggle = await screen.findByRole("button", {
+      name: "Goalループで継続実行",
+    });
+    // The pill lives in the scrolling control row next to the other selects.
+    const controlRow = screen
+      .getByLabelText("アクセスモード")
+      .closest("div.overflow-x-auto");
+    expect(controlRow?.contains(toggle)).toBe(true);
+    expect(toggle.className).toContain("h-8");
+    expect(toggle.className).toContain("shrink-0");
+    // No checkbox card taking a full row while the loop is off.
+    expect(
+      screen.queryByRole("checkbox", { name: "Goalループで継続実行" }),
+    ).toBeNull();
+  });
+
+  it("reveals goal loop settings only after the pill is turned on", async () => {
+    render(<HomeView />);
+
+    const toggle = await screen.findByRole("button", {
+      name: "Goalループで継続実行",
+    });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByLabelText("承認条件")).toBeNull();
+    expect(screen.queryByLabelText("最大ターン数")).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("承認条件")).toBeTruthy();
+    expect(screen.getByLabelText("最大ターン数")).toBeTruthy();
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByLabelText("承認条件")).toBeNull();
+  });
+
+  it("starts a goal loop with the entered acceptance and max turns", async () => {
+    render(<HomeView />);
+
+    const toggle = await screen.findByRole("button", {
+      name: "Goalループで継続実行",
+    });
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText("承認条件"), {
+      target: { value: "テストが通る\n\nlint が通る" },
+    });
+    fireEvent.change(screen.getByLabelText("最大ターン数"), {
+      target: { value: "4" },
+    });
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "バグを直す" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() =>
+      expect(
+        sendJson.mock.calls.some(([, p]) => p === "/api/tasks/task-1/goal-loop"),
+      ).toBe(true),
+    );
+    const call = sendJson.mock.calls.find(
+      ([, p]) => p === "/api/tasks/task-1/goal-loop",
+    );
+    expect(call?.[2]).toMatchObject({
+      goal: "バグを直す",
+      acceptance: ["テストが通る", "lint が通る"],
+      maxTurns: 4,
+    });
+  });
+
+  it("does not start a goal loop when the pill is off", async () => {
+    render(<HomeView />);
+
+    await screen.findByRole("button", { name: "Goalループで継続実行" });
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "バグを直す" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(
+      sendJson.mock.calls.some(([, p]) => String(p).endsWith("/goal-loop")),
+    ).toBe(false);
+  });
+});
