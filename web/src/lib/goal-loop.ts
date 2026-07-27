@@ -8,6 +8,7 @@ export type GoalLoopStatus =
   | "queued"
   | "running"
   | "paused"
+  | "verifying_completed"
   | "completed"
   | "blocked"
   | "stopped"
@@ -15,7 +16,7 @@ export type GoalLoopStatus =
 
 export type GoalLoopProgress = {
   time: string;
-  status: "progress" | "completed" | "blocked";
+  status: "progress" | "completed" | "verifying_completed" | "verified_completed" | "blocked";
   summary: string;
   next?: string;
   evidence?: string;
@@ -206,7 +207,7 @@ export function listRunnableGoalLoops(): GoalLoopDto[] {
   const rows = getDb()
     .prepare(
       `SELECT * FROM goal_loops
-       WHERE status IN ('queued', 'running')
+       WHERE status IN ('queued', 'running', 'verifying_completed')
        ORDER BY updated_at ASC`,
     )
     .all() as GoalLoopRow[];
@@ -266,7 +267,7 @@ export async function createGoalLoop(input: {
       .prepare(
         `UPDATE goal_loops
          SET status = 'stopped', updated_at = ?
-         WHERE workspace_id = ? AND status IN ('queued', 'running', 'paused')`,
+         WHERE workspace_id = ? AND status IN ('queued', 'running', 'paused', 'verifying_completed')`,
       )
       .run(now, input.workspaceId);
     getDb()
@@ -403,7 +404,7 @@ export async function pauseGoalLoopForManualSend(
       `UPDATE goal_loops
        SET status = 'paused', error = '手動送信が行われたため一時停止しました。',
            last_message_id = ?, updated_at = ?
-       WHERE workspace_id = ? AND opencode_session_id = ? AND status IN ('queued', 'running')`,
+       WHERE workspace_id = ? AND opencode_session_id = ? AND status IN ('queued', 'running', 'verifying_completed')`,
     )
     .run(tailMessageId, now, workspaceId, sessionId);
 }
@@ -425,7 +426,7 @@ You are running a WebUI native persistent goal loop. Work on the next smallest u
 Rules:
 - Continue autonomously until the goal is completed, blocked, paused, or stopped by the WebUI.
 - Do not ask the user questions unless truly blocked.
-- Do not claim completion unless the goal and acceptance criteria are satisfied.
+- Do not claim completion unless the goal and acceptance criteria are satisfied. A completed claim will be independently verified before the loop ends.
 - Keep changes incremental and reviewable.
 - Follow repository safety instructions and avoid destructive operations.
 
@@ -445,6 +446,37 @@ The very last thing you output this turn must be a single fenced JSON block:
 - summary is required. Write nothing after the closing fence.`;
 }
 
+function buildVerificationPrompt(loop: GoalLoopDto): string {
+  const claim = loop.progress.at(-1);
+  const acceptance = loop.acceptance.length
+    ? `\n\nAcceptance criteria to verify:\n${loop.acceptance.map((a, i) => `${i + 1}. ${a}`).join("\n")}`
+    : "";
+  return `<!-- webui-goal-loop-prompt -->
+
+The previous turn claimed the goal was completed. Your job this turn is to independently verify that claim. Do not do new work unless necessary to verify; focus on inspection, tests, or checks.
+
+Rules:
+- Verify each acceptance criterion above and report whether the claim is actually true.
+- If the claim is fully verified, return verified_completed.
+- If the claim is not fully verified or more work is needed, return progress.
+- If you are blocked from verifying, return blocked.
+
+Claimed completion:
+${claim ? `summary: ${claim.summary}\nevidence: ${claim.evidence ?? "(none)"}` : "(no claim recorded)"}${acceptance}
+
+The very last thing you output this turn must be a single fenced JSON block:
+
+\`\`\`json
+{"status":"verified_completed","summary":"verification result","evidence":"checks performed and their results"}
+\`\`\`
+
+- status must be exactly one of: verified_completed, progress, blocked.
+- verified_completed: the completed claim is true and all acceptance criteria are satisfied.
+- progress: the claim is not fully verified or additional work is required.
+- blocked: verification cannot proceed without user input.
+- summary is required. Write nothing after the closing fence.`;
+}
+
 type StructuredGoalResult = {
   status?: unknown;
   summary?: unknown;
@@ -457,7 +489,12 @@ function normalizeStructured(value: unknown): GoalLoopProgress | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as StructuredGoalResult;
   const status = raw.status;
-  if (status !== "progress" && status !== "completed" && status !== "blocked") {
+  if (
+    status !== "progress" &&
+    status !== "completed" &&
+    status !== "blocked" &&
+    status !== "verified_completed"
+  ) {
     return null;
   }
   const summary = typeof raw.summary === "string" ? raw.summary.trim() : "";
@@ -555,9 +592,38 @@ function applyAssistantResult(
     return;
   }
   const progress = [...loop.progress, result].slice(-50);
-  const terminal = result.status === "completed" || result.status === "blocked";
-  const nextStatus: GoalLoopStatus =
-    result.status === "completed" ? "completed" : result.status === "blocked" ? "blocked" : "queued";
+
+  // Detect whether this reply is the verification turn for a previous completed claim.
+  const lastProgress = loop.progress.at(-1);
+  const freshStatus = (
+    getDb().prepare("SELECT status FROM goal_loops WHERE id = ?").get(loop.id) as
+      | { status: GoalLoopStatus }
+      | undefined
+  )?.status;
+  const isVerificationReply =
+    freshStatus === "running" && lastProgress?.status === "completed";
+  let nextStatus: GoalLoopStatus;
+  if (isVerificationReply) {
+    if (result.status === "verified_completed") {
+      nextStatus = "completed";
+    } else if (result.status === "blocked") {
+      nextStatus = "blocked";
+    } else {
+      // Verification rejected the claim or returned an unexpected status.
+      // Go back to queued so the loop can do more real work.
+      nextStatus = "queued";
+    }
+  } else {
+    if (result.status === "completed") {
+      // A completion claim must pass an independent verification turn.
+      nextStatus = "verifying_completed";
+    } else if (result.status === "blocked") {
+      nextStatus = "blocked";
+    } else {
+      nextStatus = "queued";
+    }
+  }
+
   getDb()
     .prepare(
       `UPDATE goal_loops
@@ -575,24 +641,24 @@ function applyAssistantResult(
       now,
       loop.id,
     );
-  // Re-read turn_count from the DB so we don't act on the stale DTO snapshot
-  // (processLoop already incremented it for this turn). Without this, the
-  // maxTurns guard below would fire one turn late and oversend.
-  if (!terminal) {
-    const fresh = getDb()
-      .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
-      .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
-    if (fresh && fresh.turn_count >= fresh.max_turns) {
-      getDb()
-        .prepare(
-          `UPDATE goal_loops
+    // Re-read turn_count from the DB so we don't act on the stale DTO snapshot
+    // (processLoop already incremented it for this turn). Without this, the
+    // maxTurns guard below would fire one turn late and oversend.
+    if (!TERMINAL_STATUSES.includes(nextStatus)) {
+      const fresh = getDb()
+        .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
+        .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
+      if (fresh && fresh.turn_count >= fresh.max_turns) {
+        getDb()
+          .prepare(
+            `UPDATE goal_loops
            SET status = 'paused', error = ?, updated_at = ?
-           WHERE id = ? AND status NOT IN ('completed', 'blocked', 'stopped')`,
-        )
-        .run("最大ターン数に到達したため一時停止しました。", now, loop.id);
+           WHERE id = ? AND status NOT IN ('completed', 'blocked', 'stopped', 'verifying_completed')`,
+          )
+          .run("最大ターン数に到達したため一時停止しました。", now, loop.id);
+      }
     }
   }
-}
 
 /**
  * A prompt we sent produced no usable reply (aborted turn, dropped request).
@@ -650,23 +716,56 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     return;
   }
 
+  if (loop.status === "verifying_completed") {
+    if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
+    const anchor = latestMessageId(messages);
+    const now = new Date().toISOString();
+    const claimed = getDb()
+      .prepare(
+        `UPDATE goal_loops
+         SET status = 'running', last_message_id = ?, last_prompt_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'verifying_completed'`,
+      )
+      .run(anchor, now, now, loop.id);
+    if (claimed.changes === 0) return;
+    const body: Record<string, unknown> = {
+      parts: [{ type: "text", text: buildVerificationPrompt(loop) }],
+    };
+    if (loop.agent) body.agent = loop.agent;
+    if (loop.providerID && loop.modelID) {
+      body.model = { providerID: loop.providerID, modelID: loop.modelID };
+    }
+    if (loop.variant) body.variant = loop.variant;
+    await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+      method: "POST",
+      body,
+      timeoutMs: PROMPT_TIMEOUT_MS,
+    });
+    touchSessionActivity(loop.workspaceId, loop.sessionId, now);
+    return;
+  }
+
   if (loop.status !== "queued") return;
   // Never prompt on top of an in-flight turn (the task's initial prompt, or a
   // manual send that has not been observed yet).
   if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
-  // Re-read turn_count from the DB: processLoop may have incremented it on a
+  // Re-read fresh state: processLoop may have incremented turn_count on a
   // previous tick before the assistant reply landed, and the DTO snapshot we
   // received can lag behind. Checking the stale value lets one extra prompt
   // slip through and breaks the maxTurns contract.
-  const freshCounts = getDb()
-    .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
-    .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
-  const turnCount = freshCounts?.turn_count ?? loop.turnCount;
-  const maxTurns = freshCounts?.max_turns ?? loop.maxTurns;
-  if (turnCount >= maxTurns) {
+  const fresh = getDb()
+    .prepare("SELECT status, turn_count, max_turns FROM goal_loops WHERE id = ?")
+    .get(loop.id) as { status: GoalLoopStatus; turn_count: number; max_turns: number } | undefined;
+  const turnCount = fresh?.turn_count ?? loop.turnCount;
+  const maxTurns = fresh?.max_turns ?? loop.maxTurns;
+  // If we are genuinely out of turns with no turn in flight, pause. If a turn
+  // is in flight (running or verifying_completed) let it finish; another tick
+  // will handle the result. This also prevents a racing second tick from pausing
+  // the loop right after the first tick claimed the last allowed turn.
+  if (fresh?.status === "queued" && turnCount >= maxTurns) {
     getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'paused', error = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE goal_loops SET status = 'paused', error = ?, updated_at = ? WHERE id = ? AND status = 'queued'`,
       )
       .run("最大ターン数に到達したため一時停止しました。", new Date().toISOString(), loop.id);
     return;
@@ -681,7 +780,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       `UPDATE goal_loops
        SET status = 'running', turn_count = turn_count + 1, last_message_id = ?,
            last_prompt_at = ?, updated_at = ?
-       WHERE id = ? AND status = 'queued'`,
+       WHERE id = ? AND status = 'queued' AND turn_count < max_turns`,
     )
     .run(latestMessageId(messages), now, now, loop.id);
   // Another writer (pause/stop/manual send) won the race: do not send.
@@ -751,10 +850,12 @@ export function stopGoalLoopSchedulerForTest(): void {
 
 export const goalLoopTestSeams = {
   buildGoalPrompt,
+  buildVerificationPrompt,
   normalizeStructured,
   latestMessageId,
   finalAssistantAfter,
   transcriptIdleFor,
   extractGoalResult,
   processLoop,
+  applyAssistantResult,
 };

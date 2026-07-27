@@ -56,6 +56,7 @@ describe("GoalLoopPanel", () => {
     ["queued", "実行中"],
     ["running", "実行中"],
     ["paused", "一時停止"],
+    ["verifying_completed", "完了検証中"],
     ["completed", "完了"],
     ["blocked", "ブロック"],
     ["stopped", "停止"],
@@ -267,7 +268,35 @@ describe("GoalLoopPanel", () => {
     expect(screen.getByText("理由")).toBeTruthy();
   });
 
-  it.each(["queued", "running", "paused"] as const)(
+  it("renders verified_completed history entry with a check icon", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({
+          status: "completed",
+          progress: [
+            {
+              time: "2026-01-01T00:00:00.000Z",
+              status: "completed",
+              summary: "claim",
+              evidence: "evidence",
+            },
+            {
+              time: "2026-01-01T00:01:00.000Z",
+              status: "verified_completed",
+              summary: "verified",
+              evidence: "checks passed",
+            },
+          ],
+        })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("verified")).toBeTruthy();
+    expect(screen.getByText("claim")).toBeTruthy();
+  });
+
+  it.each(["queued", "running", "paused", "verifying_completed"] as const)(
     "sticks to the top while loop is live (%s)",
     (status) => {
       render(

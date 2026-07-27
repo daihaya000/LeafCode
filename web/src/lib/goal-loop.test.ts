@@ -48,6 +48,19 @@ describe("goalLoopTestSeams", () => {
     expect(goalLoopTestSeams.normalizeStructured(null)).toBeNull();
   });
 
+  it("accepts verified_completed as a verification turn status", () => {
+    const result = goalLoopTestSeams.normalizeStructured({
+      status: "verified_completed",
+      summary: "claim verified",
+      evidence: "checks passed",
+    });
+    expect(result).toMatchObject({
+      status: "verified_completed",
+      summary: "claim verified",
+      evidence: "checks passed",
+    });
+  });
+
   it("finds the final assistant message after the loop boundary", () => {
     const messages = [
       msg("u1", "user"),
@@ -178,9 +191,37 @@ describe("goalLoopTestSeams", () => {
         acceptance: ["tests pass"],
         progress: [],
       } as never);
+      expect(prompt).toContain("<!-- webui-goal-loop-prompt -->");
       expect(prompt).toContain("```json");
       expect(prompt).toContain("tests pass");
       expect(prompt).toContain("progress, completed, blocked");
+    });
+
+    it("warns that a completed claim will be independently verified", () => {
+      const prompt = goalLoopTestSeams.buildGoalPrompt({
+        goal: "ship it",
+        acceptance: [],
+        progress: [],
+      } as never);
+      expect(prompt).toContain("independently verified");
+    });
+  });
+
+  describe("buildVerificationPrompt", () => {
+    it("asks the agent to verify the previous completed claim", () => {
+      const prompt = goalLoopTestSeams.buildVerificationPrompt({
+        goal: "ship it",
+        acceptance: ["tests pass"],
+        progress: [
+          { time: "2026-01-01T00:00:00.000Z", status: "completed", summary: "done", evidence: "tsc ok" },
+        ],
+      } as never);
+      expect(prompt).toContain("<!-- webui-goal-loop-prompt -->");
+      expect(prompt).toContain("independently verify");
+      expect(prompt).toContain("tests pass");
+      expect(prompt).toContain("verified_completed");
+      expect(prompt).toContain("done");
+      expect(prompt).toContain("tsc ok");
     });
   });
 

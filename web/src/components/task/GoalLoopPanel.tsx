@@ -15,6 +15,7 @@ const STATUS_LABEL: Record<GoalLoopDto["status"], string> = {
   queued: "実行中",
   running: "実行中",
   paused: "一時停止",
+  verifying_completed: "完了検証中",
   completed: "完了",
   blocked: "ブロック",
   stopped: "停止",
@@ -27,6 +28,8 @@ function statusBadgeClass(status: GoalLoopDto["status"]): string {
     case "queued":
     case "running":
       return "bg-working/15 text-working";
+    case "verifying_completed":
+      return "bg-primary/15 text-primary";
     case "paused":
       return "bg-surface-2 text-muted";
     case "completed":
@@ -43,7 +46,7 @@ function statusBadgeClass(status: GoalLoopDto["status"]): string {
 }
 
 function progressIcon(p: GoalLoopProgress) {
-  if (p.status === "completed")
+  if (p.status === "completed" || p.status === "verified_completed")
     return <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />;
   if (p.status === "blocked")
     return <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />;
@@ -70,10 +73,11 @@ export function GoalLoopPanel({
   if (!loop) return null;
 
   const running = loop.status === "queued" || loop.status === "running";
-  // ループが生きている間（実行中・一時停止）は、下までスクロールしても
+  // ループが生きている間（実行中・完了検証中・一時停止）は、下までスクロールしても
   // 状態確認と一時停止/停止操作ができるよう上部に追従させる。
   // 終了状態では開始フォームが下に出るため通常フローに戻す。
-  const live = running || loop.status === "paused";
+  const live =
+    running || loop.status === "verifying_completed" || loop.status === "paused";
   const canStop =
     loop.status !== "completed" &&
     loop.status !== "blocked" &&

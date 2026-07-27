@@ -253,3 +253,121 @@ describe("goal loop integration", () => {
     expect(loop?.lastMessageId).toBe("manual-reply");
   });
 });
+
+describe("goal loop verification turn", () => {
+  it("turns a completed claim into verifying_completed and then verified_completed", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+      maxTurns: 5,
+    });
+
+    // First tick sends the loop prompt and marks it running.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    // Second tick reads the agent's completed claim.
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    let loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("verifying_completed");
+    expect(loop.turnCount).toBe(1);
+    expect(loop.progress.at(-1)?.status).toBe("completed");
+
+    // Third tick sends the verification prompt.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    const verificationPromptCall = h.ocCalls.find((c) =>
+      c.body &&
+      typeof c.body === "object" &&
+      Array.isArray((c.body as { parts?: unknown[] }).parts) &&
+      JSON.stringify(c.body).includes("independently verify"),
+    );
+    expect(verificationPromptCall).toBeTruthy();
+
+    // Fourth tick reads the verification result.
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", { status: "verified_completed", summary: "verified", evidence: "tests green" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("completed");
+    expect(loop.turnCount).toBe(1);
+    expect(loop.progress.some((p) => p.status === "verified_completed")).toBe(true);
+  });
+
+  it("rejects a completed claim and returns to queued when verification says progress", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+      maxTurns: 5,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", { status: "progress", summary: "not done", evidence: "tests fail" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("queued");
+    expect(loop.turnCount).toBe(1);
+    expect(loop.progress.some((p) => p.summary === "not done")).toBe(true);
+  });
+
+  it("does not count the verification turn toward maxTurns", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: [],
+      maxTurns: 1,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", { status: "progress", summary: "still work", evidence: "need fix" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.error).toContain("最大ターン数");
+    expect(loop.turnCount).toBe(1);
+  });
+});
