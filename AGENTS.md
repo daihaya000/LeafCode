@@ -18,3 +18,10 @@
 - PowerShell から JSON/パスを読むときは stdout を UTF-8 にする（`[Console]::OutputEncoding`）。一時 `.ps1` を書く場合は UTF-8 **BOM 付き**
 - 配布前: `npm run test:encoding`（`host/src/bat-encoding.test.js`）を通す
 - `host/src/bat-encoding.test.js` がこれを検証する
+
+## ツール引数スキーマ
+
+- tool call は実行前に required key を自己点検し、省略形・推測フィールド名・配列要素の必須キー欠落を出さない
+- `question` tool は `questions` 配列の各要素に `question` / `header` / `options` / `multiple` を必ず入れる。`options` の各要素は `label` / `description` を必ず入れる
+- `todowrite` tool は `todos` 配列の各要素に `content` / `status` / `priority` を必ず入れる。`status` は `pending` / `in_progress` / `completed` / `cancelled`、`priority` は `high` / `medium` / `low` のいずれか
+- SchemaError / invalid arguments が出たら、エラーパスにある required key を補って再実行する
