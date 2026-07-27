@@ -1123,7 +1123,10 @@ export function TaskView({ taskId }: { taskId: string }) {
     const sequence = ++refreshSequenceRef.current;
     const requestedTaskId = taskId;
     try {
-      const data = await getJson<{ task: TaskSummary }>(`/api/tasks/${taskId}`);
+      const data = await getJson<{
+        task: TaskSummary;
+        goalLoop?: GoalLoopDto | null;
+      }>(`/api/tasks/${taskId}`);
       if (
         sequence !== refreshSequenceRef.current ||
         taskIdRef.current !== requestedTaskId
@@ -1133,6 +1136,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       rememberTaskSummary(data.task);
       taskRef.current = data.task;
       setTask(data.task);
+      if ("goalLoop" in data) setGoalLoop(data.goalLoop ?? null);
       setLoadError(null);
     } catch (err) {
       if (
@@ -1234,10 +1238,6 @@ export function TaskView({ taskId }: { taskId: string }) {
     void refreshTask();
   }, [refreshTask]);
 
-  useEffect(() => {
-    void refreshGoalLoop();
-  }, [refreshGoalLoop]);
-
   const streamStatusType = stream.status?.type;
   const streamActive =
     streamStatusType === "busy" || streamStatusType === "retry";
@@ -1319,10 +1319,10 @@ export function TaskView({ taskId }: { taskId: string }) {
       void refreshTodos();
       // R3 skips message init while busy; reconcile the final REST snapshot now.
       void resync();
-      void refreshGoalLoop();
+      if (goalLoop) void refreshGoalLoop();
     }
     prevStatusRef.current = cur;
-  }, [refreshGoalLoop, refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType]);
+  }, [goalLoop, refreshGoalLoop, refreshTask, refreshTodos, resync, streamScopeKey, streamStatusType]);
 
   const prevNotifiedStatusRef = useRef<string | null | undefined>(null);
   useEffect(() => {

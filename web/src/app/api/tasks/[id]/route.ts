@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getGoalLoop } from "@/lib/goal-loop";
 import { getTask } from "@/lib/task-service";
 import { ServiceError, destroyWorkspace } from "@/lib/workspace-service";
 
@@ -14,7 +15,7 @@ export async function GET(
   if (!task) {
     return NextResponse.json({ error: "task not found" }, { status: 404 });
   }
-  return NextResponse.json({ task });
+  return NextResponse.json({ task, goalLoop: getGoalLoop(id) });
 }
 
 /** Cleanup: remove worktree/copy + metadata (Codex's archive equivalent). */
