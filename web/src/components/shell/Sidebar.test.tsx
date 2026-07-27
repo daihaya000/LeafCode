@@ -182,9 +182,9 @@ describe("Sidebar", () => {
       Array.from(row!.children).indexOf(providerWrap),
     );
     expect(text.indexOf("main")).toBeLessThan(text.indexOf("¥18.5"));
-    // Right-aligned cost column sized to the longest label in the group keeps
-    // the provider icon aligned across rows with different cost lengths.
-    expect(cost.className).toContain("text-right");
+    // Left-aligned cost column sized to the longest label keeps prices readable
+    // while preserving the reserved column width across rows.
+    expect(cost.className).toContain("text-left");
     expect((cost as HTMLElement).style.minWidth).toBe("5ch"); // "¥18.5"
   });
 

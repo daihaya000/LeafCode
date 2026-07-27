@@ -976,7 +976,7 @@ export function Sidebar({
                                       ((task.cost ?? 0) > 0 ? (
                                         <span
                                           className={cx(
-                                            "shrink-0 text-right tabular-nums whitespace-nowrap text-faint",
+                                            "shrink-0 text-left tabular-nums whitespace-nowrap text-faint",
                                           )}
                                           style={{
                                             minWidth: `${costColumnCh}ch`,
