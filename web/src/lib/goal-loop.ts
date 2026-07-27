@@ -313,12 +313,26 @@ export async function updateGoalLoopStatus(
       )
       .run(now, loop.id);
   } else if (action === "resume") {
+    // Re-anchor the read boundary to the current transcript tail so any
+    // messages that arrived while paused (e.g. a manual user send) are not
+    // mistaken for the loop's own turn result on the next tick.
+    const ws = getWorkspace(workspaceId);
+    const tailMessageId = ws
+      ? await ocServer<MessageWithParts[]>(
+          ws.absolute_path,
+          `/session/${loop.sessionId}/message`,
+          { timeoutMs: MESSAGE_TIMEOUT_MS },
+        )
+          .then((messages) => latestMessageId(messages))
+          .catch(() => loop.lastMessageId)
+      : loop.lastMessageId;
     getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'queued', error = '', updated_at = ?
+        `UPDATE goal_loops
+         SET status = 'queued', error = '', last_message_id = ?, updated_at = ?
          WHERE id = ? AND status IN ('paused', 'error')`,
       )
-      .run(now, loop.id);
+      .run(tailMessageId, now, loop.id);
     void runGoalLoopSchedulerTick();
   } else {
     getDb()
@@ -367,15 +381,31 @@ export function updateGoalLoopMaxTurns(
   return getGoalLoop(workspaceId);
 }
 
-export function pauseGoalLoopForManualSend(workspaceId: string, sessionId: string): void {
+export async function pauseGoalLoopForManualSend(
+  workspaceId: string,
+  sessionId: string,
+): Promise<void> {
+  const loop = getGoalLoop(workspaceId);
+  if (!loop || loop.sessionId !== sessionId) return;
+  const ws = getWorkspace(workspaceId);
+  const tailMessageId = ws
+    ? await ocServer<MessageWithParts[]>(
+        ws.absolute_path,
+        `/session/${loop.sessionId}/message`,
+        { timeoutMs: MESSAGE_TIMEOUT_MS },
+      )
+        .then((messages) => latestMessageId(messages))
+        .catch(() => loop.lastMessageId)
+    : loop.lastMessageId;
   const now = new Date().toISOString();
   getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = 'paused', error = '手動送信が行われたため一時停止しました。', updated_at = ?
+       SET status = 'paused', error = '手動送信が行われたため一時停止しました。',
+           last_message_id = ?, updated_at = ?
        WHERE workspace_id = ? AND opencode_session_id = ? AND status IN ('queued', 'running')`,
     )
-    .run(now, workspaceId, sessionId);
+    .run(tailMessageId, now, workspaceId, sessionId);
 }
 
 function buildGoalPrompt(loop: GoalLoopDto): string {
@@ -699,6 +729,11 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
   }
 }
 
+/** Exported for tests only. Resets the scheduler lock without clearing the timer. */
+export function resetSchedulerTickingForTest(): void {
+  schedulerTicking = false;
+}
+
 export function startGoalLoopScheduler(): void {
   if (schedulerStarted) return;
   schedulerStarted = true;
@@ -721,4 +756,5 @@ export const goalLoopTestSeams = {
   finalAssistantAfter,
   transcriptIdleFor,
   extractGoalResult,
+  processLoop,
 };
