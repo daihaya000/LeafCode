@@ -39,6 +39,12 @@ async function mockShell(page: Page) {
   await page.route("**/api/opencode/**", (route) =>
     route.fulfill({ json: {} }),
   );
+  // Must be mocked: the real endpoint reads/writes the shared production
+  // webui.db (no test-DB override), and its async "DB wins" hydration can
+  // clobber a just-clicked expand state with unrelated real persisted data.
+  await page.route("**/api/settings/sidebar", (route) =>
+    route.fulfill({ json: { value: null } }),
+  );
 }
 
 test.describe("sidebar session title refresh", () => {
@@ -69,6 +75,9 @@ test.describe("sidebar session title refresh", () => {
     });
     await page.route("**/api/opencode/**", (route) =>
       route.fulfill({ json: {} }),
+    );
+    await page.route("**/api/settings/sidebar", (route) =>
+      route.fulfill({ json: { value: null } }),
     );
     await page.route(
       "**/api/workspaces/task-1/sessions/session-1/refresh-title",
