@@ -33,8 +33,9 @@ function canonicalizeExistingPath(configuredPath: string | undefined): string | 
 }
 
 /**
- * Resolve protected OS locations and the roots of other local user profiles.
- * The current user's own profile root (USERPROFILE) stays allowed on purpose.
+ * Resolve protected OS locations and local user profile roots.
+ * The current user's own profile root is protected, while descendants can still
+ * be added explicitly so normal workspace directories under the profile work.
  */
 function getProtectedPaths(): ProtectedPath[] {
   const configuredPaths = [
@@ -59,6 +60,9 @@ function getProtectedPaths(): ProtectedPath[] {
 
   if (!profileParent) return protectedPaths;
   protectedPaths.push({ path: profileParent, includesDescendants: false });
+  if (ownProfile) {
+    protectedPaths.push({ path: ownProfile, includesDescendants: false });
+  }
   try {
     for (const entry of fs.readdirSync(profileParent, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
