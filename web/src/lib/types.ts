@@ -58,6 +58,8 @@ export type MessageInfo = {
     reasoning: number;
     cache?: { read: number; write: number };
   };
+  /** Structured output payload when a prompt requested an OutputFormatJsonSchema. */
+  structured?: unknown;
   modelID?: string;
   providerID?: string;
 };

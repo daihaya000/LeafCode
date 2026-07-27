@@ -73,7 +73,32 @@ export function getDb(): Database.Database {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (workspace_id, opencode_session_id)
     );
+    CREATE TABLE IF NOT EXISTS goal_loops (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      opencode_session_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      goal TEXT NOT NULL,
+      acceptance TEXT NOT NULL DEFAULT '[]',
+      max_turns INTEGER NOT NULL DEFAULT 10,
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      last_message_id TEXT,
+      last_prompt_at TEXT,
+      agent TEXT,
+      provider_id TEXT,
+      model_id TEXT,
+      variant TEXT,
+      progress TEXT NOT NULL DEFAULT '[]',
+      summary TEXT NOT NULL DEFAULT '',
+      evidence TEXT NOT NULL DEFAULT '',
+      blocked_reason TEXT NOT NULL DEFAULT '',
+      error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
+    CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
   `);
   return db;
 }
