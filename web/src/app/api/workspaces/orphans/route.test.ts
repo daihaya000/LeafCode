@@ -8,7 +8,9 @@ const h = vi.hoisted(() => ({
   workspaces: [] as { absolute_path: string; worktree_path: string | null }[],
   orphanedRows: [] as unknown[],
   gitWorktrees: {} as Record<string, { path: string; bare: boolean }[]>,
-  removeWorktree: vi.fn(async (_arg: unknown) => undefined),
+  removeWorktree: vi.fn(async (arg: unknown) => {
+    void arg;
+  }),
   removeAllowedRoot: vi.fn(),
   deleteWorkspace: vi.fn(),
   dataDir: "C:\\data",

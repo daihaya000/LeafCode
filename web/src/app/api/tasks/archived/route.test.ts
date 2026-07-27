@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
-
 const { listArchivedTasksMock } = vi.hoisted(() => ({
   listArchivedTasksMock: vi.fn(),
 }));
@@ -37,9 +35,7 @@ describe("GET /api/tasks/archived", () => {
     ];
     listArchivedTasksMock.mockResolvedValue(fakeTasks);
 
-    const response = await GET(
-      new NextRequest("http://localhost/api/tasks/archived"),
-    );
+    const response = await GET();
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -49,9 +45,7 @@ describe("GET /api/tasks/archived", () => {
   it("returns empty array when no archived tasks exist", async () => {
     listArchivedTasksMock.mockResolvedValue([]);
 
-    const response = await GET(
-      new NextRequest("http://localhost/api/tasks/archived"),
-    );
+    const response = await GET();
 
     expect(response.status).toBe(200);
     const body = await response.json();
