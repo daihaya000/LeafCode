@@ -8,6 +8,7 @@ import React, {
   forwardRef,
   isValidElement,
   useCallback,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -54,6 +55,7 @@ export function GhostSelect({
   } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
   const groupedOptions = useMemo(() => {
     const groups: {
       label?: ReactNode;
@@ -165,6 +167,7 @@ export function GhostSelect({
   const menu = open && !disabled && (
     <div
       ref={menuRef}
+      id={listboxId}
       role="listbox"
       aria-label={ariaLabel}
       className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
@@ -224,6 +227,7 @@ export function GhostSelect({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
         title={title}
         onClick={() => setOpen((current) => !current)}
