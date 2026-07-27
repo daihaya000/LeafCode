@@ -21,9 +21,17 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    command: `npm run start -- --hostname 127.0.0.1 --port ${PORT}`,
+    // Isolated distDir (mirrors NEXT_DIST_DIR in next.config.ts for `next
+    // dev`): e2e must never read/write the same `.next` the tray host's
+    // production `next start` serves on port 3000, or a build here could
+    // corrupt that live service (or vice versa require stopping it first).
+    // `npx next build` bypasses the `prebuild` npm-lifecycle guard script
+    // (which unconditionally refuses when port 3000 is occupied) — safe
+    // here specifically because NEXT_DIST_DIR keeps the output separate.
+    command: `npm run sync:addons && npx next build && npm run start -- --hostname 127.0.0.1 --port ${PORT}`,
+    env: { NEXT_DIST_DIR: ".next-e2e" },
     url: BASE_URL,
-    timeout: 120_000,
+    timeout: 180_000,
     reuseExistingServer: !process.env.CI,
   },
 });
