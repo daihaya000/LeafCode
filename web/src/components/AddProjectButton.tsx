@@ -43,12 +43,26 @@ function isValidPathShape(p: string): boolean {
 function apiErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === "object" && "status" in err) {
     const status = (err as { status?: number }).status;
+    if (status === 403)
+      return "ネイティブフォルダ選択は 127.0.0.1/localhost で開いたときのみ使えます";
     if (status === 404) return "フォルダが見つかりません";
     if (status === 400) return "このフォルダは追加できません（許可されていません）";
     if (status === 408) return "通信がタイムアウトしました";
   }
   if (err instanceof Error && err.message) return err.message;
   return fallback;
+}
+
+/** True when the page is served from a loopback origin (127.0.0.1/localhost etc.). */
+function isLoopbackOrigin(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.host.split(":")[0]?.toLowerCase() ?? "";
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "0:0:0:0:0:0:0:1"
+  );
 }
 
 function isWindowsClient(): boolean {
@@ -76,6 +90,7 @@ export function AddProjectButton({
   const [pickerBusy, setPickerBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [cwd, setCwd] = useState<string | null>(null);
   const [parent, setParent] = useState<string | null>(null);
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -180,6 +195,7 @@ export function AddProjectButton({
     setQuickAccess([]);
     setManualPath("");
     setError(null);
+    setNotice(null);
   }, [open]);
 
   const confirm = useCallback(
@@ -215,8 +231,22 @@ export function AddProjectButton({
   const openPicker = useCallback(async () => {
     if (attentionOpen || pickerBusy || busy) return;
     setError(null);
+    setNotice(null);
 
     if (!isWindowsClient()) {
+      setOpen(true);
+      return;
+    }
+
+    // The native folder picker is a host-only API: it can only be triggered
+    // when the WebUI itself was loaded from the same machine (loopback). When
+    // the user opened the UI via a LAN IP or hostname, fall back to the in-app
+    // picker immediately instead of hitting a 403 and silently rolling back UX.
+    // The reason is shown as a persistent banner at the top of the in-app picker.
+    if (!isLoopbackOrigin()) {
+      setNotice(
+        "Windows のネイティブフォルダ選択を使うには、127.0.0.1 または localhost で WebUI を開いてください",
+      );
       setOpen(true);
       return;
     }
@@ -332,6 +362,11 @@ export function AddProjectButton({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {notice && (
+                <div className="border-b border-warning/30 bg-warning-bg px-3 py-2">
+                  <p className="text-xs text-warning">{notice}</p>
+                </div>
+              )}
               {loading ? (
                 <div className="flex justify-center py-12">
                   <Spinner />

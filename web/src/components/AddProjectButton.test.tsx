@@ -79,6 +79,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function getInput() {
@@ -131,6 +132,37 @@ describe("AddProjectButton path sync (row click opens + syncs field)", () => {
       rootPath: CHILD,
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("falls back to the in-app picker on Windows when not served from localhost", async () => {
+    mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    vi.stubGlobal("location", {
+      ...window.location,
+      origin: "http://192.168.1.100:3000",
+      host: "192.168.1.100:3000",
+      hostname: "192.168.1.100",
+      href: "http://192.168.1.100:3000/",
+    });
+
+    render(<AddProjectButton />);
+    openDialog();
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
+    // The host-only native picker API must not be called from a LAN origin.
+    expect(sendJson).not.toHaveBeenCalledWith(
+      "POST",
+      "/api/browse/folder",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(
+      screen.getByText((content) =>
+        content.includes(
+          "Windows のネイティブフォルダ選択を使うには、127.0.0.1 または localhost で WebUI を開いてください",
+        ),
+      ),
+    ).toBeTruthy();
   });
 
   it("uses the native Windows folder picker from the icon button", async () => {
