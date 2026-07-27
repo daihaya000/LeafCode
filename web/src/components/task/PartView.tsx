@@ -25,6 +25,7 @@ import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
+import { stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
 import { ProviderIcon } from "./ProviderIcon";
@@ -481,7 +482,11 @@ export const PartView = memo(function PartView({
 }) {
   switch (part.type) {
     case "text": {
-      const text = part.text ?? "";
+      const raw = part.text ?? "";
+      // The goal loop asks the model to emit a trailing ```json result block;
+      // it is internal bookkeeping, not chat content. Only strips a trailing
+      // block whose parsed object looks like a goal result.
+      const text = role === "assistant" ? stripGoalLoopJsonBlock(raw) : raw;
       if (!text.trim()) return null;
       if (role === "user") {
         return (

@@ -359,7 +359,9 @@ function buildGoalPrompt(loop: GoalLoopDto): string {
         .map((p) => `- ${p.time}: ${p.summary}${p.next ? ` / next: ${p.next}` : ""}`)
         .join("\n")}`
     : "";
-  return `You are running a WebUI native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
+  return `<!-- webui-goal-loop-prompt -->
+
+You are running a WebUI native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
 
 Rules:
 - Continue autonomously until the goal is completed, blocked, paused, or stopped by the WebUI.

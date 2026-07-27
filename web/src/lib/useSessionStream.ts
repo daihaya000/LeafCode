@@ -200,6 +200,60 @@ export function filterRevertedMessages(
   return out;
 }
 
+/**
+ * Marker prepended to every goal-loop prompt (see `buildGoalPrompt`).
+ * User messages starting with this are WebUI-internal system prompts and must
+ * never appear in the chat timeline.
+ */
+export const GOAL_LOOP_PROMPT_MARKER = "<!-- webui-goal-loop-prompt -->";
+
+/**
+ * Drop goal-loop system-prompt user messages from the timeline. The loop
+ * prompts the engine with a long instruction block that should not surface as
+ * a normal user turn. Identified by the `GOAL_LOOP_PROMPT_MARKER` prefix on the
+ * first text part.
+ */
+export function filterGoalLoopMessages(
+  messages: MessageWithParts[],
+): MessageWithParts[] {
+  return messages.filter((m) => {
+    if (m.info.role !== "user") return true;
+    const first = m.parts.find((p) => p.type === "text");
+    if (!first || first.type !== "text") return true;
+    return !(first.text ?? "").startsWith(GOAL_LOOP_PROMPT_MARKER);
+  });
+}
+
+/**
+ * Strip the trailing fenced JSON block the goal loop asks the model to emit.
+ * The block carries the structured turn result
+ * (`{"status","summary","next","evidence"}`) and is noise in a normal chat.
+ * Only removes a trailing block whose parsed object looks like a goal result;
+ * a generic trailing ```json block is left untouched.
+ */
+export function stripGoalLoopJsonBlock(text: string): string {
+  const match = text.match(/\n*```json\s*([\s\S]*?)```\s*$/);
+  if (!match) return text;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[1].trim());
+  } catch {
+    return text;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return text;
+  }
+  const r = parsed as Record<string, unknown>;
+  if (
+    r.status === "progress" ||
+    r.status === "completed" ||
+    r.status === "blocked"
+  ) {
+    return text.slice(0, match.index).replace(/\n+$/, "");
+  }
+  return text;
+}
+
 function upsertPart(parts: Part[], part: Part): Part[] {
   const idx = parts.findIndex((p) => p.id === part.id);
   if (idx === -1) return [...parts, part];
@@ -1540,7 +1594,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const visibleState =
     state.scopeKey === scopeKey ? state : createInitialStreamState(scopeKey);
   const visibleMessages = useMemo(
-    () => filterRevertedMessages(visibleState.messages, visibleState.revert),
+    () =>
+      filterGoalLoopMessages(
+        filterRevertedMessages(visibleState.messages, visibleState.revert),
+      ),
     [visibleState.messages, visibleState.revert],
   );
 
