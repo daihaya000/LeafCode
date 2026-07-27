@@ -1300,6 +1300,25 @@ export function TaskView({ taskId }: { taskId: string }) {
     prevPatchRef.current = patchSignature;
   }, [patchSignature]);
 
+  const isAtBottom = useCallback((el: HTMLElement) => {
+    return el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
+  }, []);
+
+  const scrollToBottom = useCallback(
+    (el: HTMLElement, behavior: ScrollBehavior = "auto") => {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    },
+    [],
+  );
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = isAtBottom(el);
+    stickRef.current = atBottom;
+    setShowScrollButton(!atBottom);
+  }, [isAtBottom]);
+
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
   // the effect when the stream changes keeps the conversation pinned without
@@ -1308,21 +1327,35 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (!stickRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    scrollToBottom(el, "auto");
   }, [
+    scrollToBottom,
     stream.messages,
     stream.permissions,
     stream.questions,
     stream.status,
   ]);
 
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
-    stickRef.current = atBottom;
-    setShowScrollButton(!atBottom);
-  }, []);
+  // Re-pin when the content height changes asynchronously (images, Markdown,
+  // code blocks, tool output). A ResizeObserver on the content wrapper catches
+  // layout shifts that the stream-deps effect alone misses.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const pinned = () => {
+      if (!stickRef.current) return;
+      if (isAtBottom(scroller)) return;
+      scrollToBottom(scroller, "auto");
+    };
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(pinned);
+      ro.observe(scroller);
+      return () => ro.disconnect();
+    }
+    // Fallback for test/legacy environments without ResizeObserver.
+    const id = setInterval(pinned, 200);
+    return () => clearInterval(id);
+  }, [isAtBottom, scrollToBottom]);
 
   const currentTool = useMemo(() => {
     for (let i = stream.messages.length - 1; i >= 0; i--) {
@@ -2463,7 +2496,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   onClick={() => {
                     const el = scrollRef.current;
                     if (!el) return;
-                    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+                    scrollToBottom(el, "smooth");
                     stickRef.current = true;
                     setShowScrollButton(false);
                   }}

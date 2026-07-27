@@ -195,6 +195,14 @@ describe("TaskView", () => {
       value: vi.fn(),
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    vi.stubGlobal(
+      "ResizeObserver",
+      vi.fn(() => ({
+        observe: vi.fn(),
+        unobserve: vi.fn(),
+        disconnect: vi.fn(),
+      })),
+    );
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: vi.fn(() => ({
