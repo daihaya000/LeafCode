@@ -1,6 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // Engine-independent regression coverage for the redesigned home composer.
+//
+// The project/workspace/access-mode/intelligence/model pickers are custom
+// GhostSelect / ModelSelect widgets (trigger button with
+// aria-haspopup="listbox" + a portal-rendered role="listbox" menu), not
+// native <select> elements. Interact with them via click + role="option",
+// and read the current value via the trigger's `value` attribute (mirrored
+// from the underlying business value even though it is a <button>).
+
+async function pickOption(page: Page, optionName: string) {
+  await page.getByRole("option", { name: optionName, exact: true }).click();
+}
 
 test.describe("home composer", () => {
   test.beforeEach(async ({ page }) => {
@@ -8,55 +19,61 @@ test.describe("home composer", () => {
     await expect(page.getByRole("heading", { name: "何をつくりますか？" })).toBeVisible();
   });
 
-  test("exposes engine-independent settings as native comboboxes", async ({ page }) => {
-    const project = page.getByRole("combobox", { name: "プロジェクト" });
-    const workspace = page.getByRole("combobox", { name: "作業場所" });
-    const accessMode = page.getByRole("combobox", { name: "アクセスモード" });
+  test("exposes engine-independent settings as accessible triggers", async ({ page }) => {
+    const project = page.getByRole("button", { name: "プロジェクト", exact: true });
+    const workspace = page.getByRole("button", { name: "作業場所" });
+    const accessMode = page.getByRole("button", { name: "アクセスモード" });
 
     await expect(project).toBeAttached();
     await expect(workspace).toBeVisible();
     await expect(accessMode).toBeVisible();
 
     await expect(workspace).toBeEnabled();
-    await workspace.selectOption("current_folder");
-    await expect(workspace).toHaveValue("current_folder");
-    await workspace.selectOption("git_worktree");
-    await expect(workspace).toHaveValue("git_worktree");
+    await workspace.click();
+    await pickOption(page, "worktree");
+    await expect(workspace).toHaveAttribute("value", "git_worktree");
+    await workspace.click();
+    await pickOption(page, "master");
+    await expect(workspace).toHaveAttribute("value", "current_folder");
 
     await expect(accessMode).toBeEnabled();
-    await accessMode.selectOption("full");
-    await expect(accessMode).toHaveValue("full");
-    await accessMode.selectOption("ask");
-    await expect(accessMode).toHaveValue("ask");
+    await accessMode.click();
+    await pickOption(page, "フルアクセス");
+    await expect(accessMode).toHaveAttribute("value", "full");
+    await accessMode.click();
+    await pickOption(page, "確認する");
+    await expect(accessMode).toHaveAttribute("value", "ask");
 
     // Project data can be empty without a live engine/repository setup. If a
-    // project is available, verify the native select remains operable too.
+    // project is available, verify the trigger remains operable too.
     if (await project.isEnabled()) {
-      const value = await project.inputValue();
-      await project.selectOption(value);
-      await expect(project).toHaveValue(value);
+      const value = await project.getAttribute("value");
+      await project.click();
+      await expect(page.getByRole("listbox", { name: "プロジェクト" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(project).toHaveAttribute("value", value ?? "");
     } else {
-      await expect(project).toHaveValue("");
+      await expect(project).toHaveAttribute("value", "");
     }
   });
 
-  test("native selects are keyboard focus targets", async ({ page }) => {
-    const focusableSelects = [
-      page.getByRole("combobox", { name: "作業場所" }),
-      page.getByRole("combobox", { name: "アクセスモード" }),
+  test("settings triggers are keyboard focus targets", async ({ page }) => {
+    const focusableTriggers = [
+      page.getByRole("button", { name: "作業場所" }),
+      page.getByRole("button", { name: "アクセスモード" }),
     ];
 
-    const project = page.getByRole("combobox", { name: "プロジェクト" });
+    const project = page.getByRole("button", { name: "プロジェクト", exact: true });
     if (await project.isEnabled()) {
-      focusableSelects.unshift(project);
+      focusableTriggers.unshift(project);
     }
 
-    for (const select of focusableSelects) {
-      await select.focus();
-      await expect(select).toBeFocused();
+    for (const trigger of focusableTriggers) {
+      await trigger.focus();
+      await expect(trigger).toBeFocused();
       await expect
         .poll(async () =>
-          select.evaluate((element) => document.activeElement === element),
+          trigger.evaluate((element) => document.activeElement === element),
         )
         .toBe(true);
     }
@@ -139,17 +156,19 @@ test.describe("home composer", () => {
     });
 
     await page.goto("/");
-    const project = page.getByRole("combobox", { name: "プロジェクト" });
-    const workspace = page.getByRole("combobox", { name: "作業場所" });
+    const project = page.getByRole("button", { name: "プロジェクト", exact: true });
+    const workspace = page.getByRole("button", { name: "作業場所" });
     const submit = page.getByRole("button", { name: "タスク開始" });
     const prompt = page.getByPlaceholder(
       "タスクを説明してください…（Ctrl+Enter で開始）",
     );
-    await expect(project).toHaveValue("project-a");
-    await project.selectOption("project-b");
+    await expect(project).toHaveAttribute("value", "project-a");
+    await project.click();
+    await pickOption(page, "Project B");
     // The default isolation is now current_folder; explicitly opt into a
     // worktree so the base-branch wait still gates submission.
-    await workspace.selectOption("git_worktree");
+    await workspace.click();
+    await pickOption(page, "worktree");
     await prompt.fill("branch race regression");
 
     await expect(submit).toBeDisabled();
@@ -181,12 +200,14 @@ test.describe("home composer", () => {
     );
 
     await page.goto("/?projectId=project-b");
-    await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
+    await expect(page.getByRole("button", { name: "プロジェクト", exact: true })).toHaveAttribute(
+      "value",
       "project-b",
     );
 
     await page.goto("/?projectId=missing");
-    await expect(page.getByRole("combobox", { name: "プロジェクト" })).toHaveValue(
+    await expect(page.getByRole("button", { name: "プロジェクト", exact: true })).toHaveAttribute(
+      "value",
       "project-a",
     );
   });
@@ -217,11 +238,11 @@ test.describe("home composer", () => {
     );
 
     await page.goto("/");
-    const workspace = page.getByRole("combobox", { name: "作業場所" });
-    await expect(workspace).toHaveValue("current_folder");
+    const workspace = page.getByRole("button", { name: "作業場所" });
+    await expect(workspace).toHaveAttribute("value", "current_folder");
   });
 
-  async function mockVariantProvider(page: import("@playwright/test").Page) {
+  async function mockVariantProvider(page: Page) {
     await page.route("**/api/opencode/provider", (route) =>
       route.fulfill({
         json: {
@@ -281,12 +302,16 @@ test.describe("home composer", () => {
     await mockVariantProvider(page);
 
     await page.goto("/");
-    const intelligence = page.getByRole("combobox", {
+    const intelligence = page.getByRole("button", {
       name: "インテリジェンス",
     });
     await expect(intelligence).toBeVisible();
-    await expect(intelligence).toHaveValue("");
-    const options = await intelligence.locator("option").allTextContents();
+    await expect(intelligence).toHaveAttribute("value", "");
+    await intelligence.click();
+    const options = await page
+      .getByRole("listbox", { name: "インテリジェンス" })
+      .getByRole("option")
+      .allTextContents();
     expect(options).toEqual(["デフォルト", "low", "high"]);
   });
 
@@ -340,7 +365,7 @@ test.describe("home composer", () => {
 
     await page.goto("/");
     await expect(
-      page.getByRole("combobox", { name: "インテリジェンス" }),
+      page.getByRole("button", { name: "インテリジェンス" }),
     ).toHaveCount(0);
   });
 
@@ -401,16 +426,18 @@ test.describe("home composer", () => {
     );
 
     await page.goto("/");
-    const intelligence = page.getByRole("combobox", {
+    const intelligence = page.getByRole("button", {
       name: "インテリジェンス",
     });
     await expect(intelligence).toBeVisible();
-    await intelligence.selectOption("high");
-    await expect(intelligence).toHaveValue("high");
+    await intelligence.click();
+    await pickOption(page, "high");
+    await expect(intelligence).toHaveAttribute("value", "high");
 
     // Switch to a model without variants — selector disappears, state resets
-    const model = page.getByRole("combobox", { name: "モデル" });
-    await model.selectOption("openai::gpt-4");
+    const model = page.getByRole("button", { name: "モデル" });
+    await model.click();
+    await pickOption(page, "GPT-4");
     await expect(intelligence).toHaveCount(0);
   });
 
@@ -433,10 +460,11 @@ test.describe("home composer", () => {
       "タスクを説明してください…（Ctrl+Enter で開始）",
     );
     await prompt.fill("build a feature");
-    const intelligence = page.getByRole("combobox", {
+    const intelligence = page.getByRole("button", {
       name: "インテリジェンス",
     });
-    await intelligence.selectOption("high");
+    await intelligence.click();
+    await pickOption(page, "high");
     await page.getByRole("button", { name: "タスク開始" }).click();
     await expect.poll(() => postedBody).not.toBeNull();
     expect(postedBody).toMatchObject({
