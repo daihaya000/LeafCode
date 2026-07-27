@@ -247,7 +247,8 @@ export function stripGoalLoopJsonBlock(text: string): string {
   if (
     r.status === "progress" ||
     r.status === "completed" ||
-    r.status === "blocked"
+    r.status === "blocked" ||
+    r.status === "verified_completed"
   ) {
     return text.slice(0, match.index).replace(/\n+$/, "");
   }

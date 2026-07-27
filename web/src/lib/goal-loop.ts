@@ -92,6 +92,13 @@ const STRUCTURED_GRACE_MS = 60_000;
 const TURN_TIMEOUT_MS = 30 * 60_000;
 const MAX_ACCEPTANCE_ITEMS = 10;
 const MAX_GOAL_CHARS = 12_000;
+/**
+ * How many times an agent may claim `completed` and have the independent
+ * verification turn reject it before we pause the loop. Without this cap the
+ * agent can alternate claim→reject until maxTurns is exhausted, spending the
+ * whole budget on verification round-trips instead of real work.
+ */
+const MAX_REJECTED_CLAIMS = 2;
 const MAX_ACCEPTANCE_CHARS = 2_000;
 
 let schedulerStarted = false;
@@ -249,9 +256,11 @@ export async function createGoalLoop(input: {
   }
   const acceptance = normalizeAcceptance(input.acceptance);
   if (acceptance === null) throw new OcError("invalid acceptance", 400);
+  // `updateGoalLoopMaxTurns` truncates non-integers; do the same here so the
+  // create and update paths agree instead of silently falling back to 10.
   const maxTurnsRaw = Number(input.maxTurns ?? 10);
-  const maxTurns = Number.isInteger(maxTurnsRaw)
-    ? Math.min(Math.max(maxTurnsRaw, 1), 100)
+  const maxTurns = Number.isFinite(maxTurnsRaw)
+    ? Math.min(Math.max(Math.trunc(maxTurnsRaw), 1), 100)
     : 10;
   const agent = typeof input.agent === "string" && input.agent.trim() ? input.agent.trim() : null;
   const model =
@@ -317,7 +326,7 @@ export async function updateGoalLoopStatus(
     getDb()
       .prepare(
         `UPDATE goal_loops SET status = 'paused', updated_at = ?
-         WHERE id = ? AND status IN ('queued', 'running')`,
+         WHERE id = ? AND status IN ('queued', 'running', 'verifying_completed')`,
       )
       .run(now, loop.id);
   } else if (action === "resume") {
@@ -436,7 +445,7 @@ function buildGoalPrompt(loop: GoalLoopDto, turnNumber: number, maxTurns: number
 
 You are running a WebUI native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
 
-This is turn ${turnNumber} of at most ${maxTurns}. ${turnNumber - 1} loop turn(s) have completed before this one. The WebUI sends the next prompt automatically after this turn ends.
+This is turn ${turnNumber} of at most ${maxTurns}. ${turnNumber - 1} loop turn(s) completed before this one. The WebUI sends the next prompt automatically after this turn ends.
 
 Rules:
 - One turn = one iteration. Do the smallest useful increment, then end this turn and let the WebUI prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
@@ -599,6 +608,30 @@ function extractGoalResult(assistant: MessageWithParts): GoalLoopProgress | null
   return null;
 }
 
+/**
+ * Count consecutive "agent claimed completed → verification rejected" pairs at
+ * the tail of the progress log. Each pair is a `completed` entry immediately
+ * followed by a non-`verified_completed` verification entry. Stops at the
+ * first gap (e.g. a `progress` entry that reset the cycle).
+ */
+function countRecentRejectedClaims(progress: GoalLoopProgress[]): number {
+  let count = 0;
+  for (let i = progress.length - 1; i >= 1; i -= 2) {
+    const claim = progress[i - 1];
+    const verify = progress[i];
+    if (
+      claim?.status === "completed" &&
+      verify &&
+      verify.status !== "verified_completed"
+    ) {
+      count += 1;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
 function applyAssistantResult(
   loop: GoalLoopDto,
   assistant: MessageWithParts,
@@ -634,8 +667,16 @@ function applyAssistantResult(
       nextStatus = "blocked";
     } else {
       // Verification rejected the claim or returned an unexpected status.
-      // Go back to queued so the loop can do more real work.
-      nextStatus = "queued";
+      // Go back to queued so the loop can do more real work — unless the agent
+      // has repeatedly claimed completion and been rejected, in which case we
+      // pause to avoid burning the rest of the turn budget on a verify loop.
+      // `progress` includes the just-rejected result so the count reflects it.
+      const rejectedPairs = countRecentRejectedClaims(progress);
+      if (rejectedPairs >= MAX_REJECTED_CLAIMS) {
+        nextStatus = "paused";
+      } else {
+        nextStatus = "queued";
+      }
     }
   } else {
     if (result.status === "completed") {
@@ -648,11 +689,16 @@ function applyAssistantResult(
     }
   }
 
+  const verificationRejectedPause =
+    isVerificationReply &&
+    result.status !== "verified_completed" &&
+    result.status !== "blocked" &&
+    countRecentRejectedClaims(progress) >= MAX_REJECTED_CLAIMS;
   getDb()
     .prepare(
       `UPDATE goal_loops
        SET status = ?, last_message_id = ?, progress = ?, summary = ?, evidence = ?,
-           blocked_reason = ?, error = '', updated_at = ?
+           blocked_reason = ?, error = ?, updated_at = ?
        WHERE id = ?`,
     )
     .run(
@@ -662,6 +708,9 @@ function applyAssistantResult(
       result.summary,
       result.evidence ?? "",
       result.status === "blocked" ? result.evidence ?? result.summary : "",
+      verificationRejectedPause
+        ? "完了宣言が検証で複数回拒否されたため一時停止しました。ゴールか acceptance を見直してください。"
+        : "",
       now,
       loop.id,
     );
@@ -838,11 +887,26 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     body.model = { providerID: loop.providerID, modelID: loop.modelID };
   }
   if (loop.variant) body.variant = loop.variant;
-  await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
-    method: "POST",
-    body,
-    timeoutMs: PROMPT_TIMEOUT_MS,
-  });
+  try {
+    await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+      method: "POST",
+      body,
+      timeoutMs: PROMPT_TIMEOUT_MS,
+    });
+  } catch (err) {
+    // Roll back the optimistic turn_count++ so a transient engine failure
+    // (timeout/network) does not burn a turn slot and exhaust maxTurns without
+    // any work done. Re-queue so the next tick retries; status stays 'running'
+    // only if the prompt actually landed.
+    getDb()
+      .prepare(
+        `UPDATE goal_loops
+         SET status = 'queued', turn_count = turn_count - 1, updated_at = ?
+         WHERE id = ? AND status = 'running'`,
+      )
+      .run(new Date().toISOString(), loop.id);
+    throw err;
+  }
   touchSessionActivity(loop.workspaceId, loop.sessionId, now);
 }
 
@@ -860,7 +924,9 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
           .prepare(
             `UPDATE goal_loops SET status = 'error', error = ?, updated_at = ? WHERE id = ?`,
           )
-          .run(message.slice(0, 4000), new Date().toISOString(), loop.id);
+          // Slice on grapheme clusters so a 4000-char cut does not split a
+          // surrogate pair (emoji/CJK) and garble the error string.
+          .run(Array.from(message).slice(0, 4000).join(""), new Date().toISOString(), loop.id);
       }
     }
   } finally {
@@ -898,4 +964,5 @@ export const goalLoopTestSeams = {
   extractGoalResult,
   processLoop,
   applyAssistantResult,
+  countRecentRejectedClaims,
 };

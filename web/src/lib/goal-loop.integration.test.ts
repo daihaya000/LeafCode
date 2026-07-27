@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   messageResponse: [] as MessageWithParts[],
   promptAsyncDelayMs: 0,
   promptAsyncCount: 0,
+  promptAsyncRejectOnce: false,
 }));
 
 vi.mock("./oc-server", () => ({
@@ -24,6 +25,10 @@ vi.mock("./oc-server", () => ({
     if (path.endsWith("/message")) return h.messageResponse;
     if (path.endsWith("/prompt_async")) {
       h.promptAsyncCount += 1;
+      if (h.promptAsyncRejectOnce) {
+        h.promptAsyncRejectOnce = false;
+        throw new (class extends Error {})("OpenCode engine が120秒でタイムアウトしました (/session/sess-1/prompt_async)");
+      }
       if (h.promptAsyncDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, h.promptAsyncDelayMs));
       }
@@ -156,6 +161,7 @@ beforeEach(() => {
   h.messageResponse = [msg("m0", "assistant")];
   h.promptAsyncDelayMs = 0;
   h.promptAsyncCount = 0;
+  h.promptAsyncRejectOnce = false;
 });
 
 describe("goal loop integration", () => {
@@ -369,5 +375,126 @@ describe("goal loop verification turn", () => {
     expect(loop.status).toBe("paused");
     expect(loop.error).toContain("最大ターン数");
     expect(loop.turnCount).toBe(1);
+  });
+});
+
+describe("goal loop failure recovery", () => {
+  it("rolls back turn_count when prompt_async fails so the budget is not burned", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 3,
+    });
+
+    // createGoalLoop fires a background scheduler tick (void, not awaited) that
+    // may consume the first prompt_async. Drain it, then arm the reject flag
+    // for the next processLoop call.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.promptAsyncCount = 0;
+    h.promptAsyncRejectOnce = true;
+    // Reset to queued so processLoop will try to send again.
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+
+    await expect(
+      goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!),
+    ).rejects.toThrow();
+    const after = getGoalLoop("ws-1")!;
+    expect(after.turnCount).toBe(0);
+    expect(after.status).toBe("queued");
+  });
+
+  it("pauses after the agent repeatedly claims completed and verification rejects", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+      maxTurns: 10,
+    });
+
+    // Cycle 1: claim -> verify -> reject.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", { status: "progress", summary: "reject1", evidence: "no" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+
+    // Cycle 2: claim -> verify -> reject again. After the second rejection the
+    // loop must pause instead of allowing a third claim/reject round-trip.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", { status: "progress", summary: "reject1", evidence: "no" }),
+      msg("loop-prompt-2", "user"),
+      msg("loop-reply-2", "assistant", { status: "completed", summary: "claim2", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
+      msg("verify-prompt", "user"),
+      msg("verify-reply", "assistant", { status: "progress", summary: "reject1", evidence: "no" }),
+      msg("loop-prompt-2", "user"),
+      msg("loop-reply-2", "assistant", { status: "completed", summary: "claim2", evidence: "ok" }),
+      msg("verify-prompt-2", "user"),
+      msg("verify-reply-2", "assistant", { status: "progress", summary: "reject2", evidence: "no" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.error).toContain("検証で複数回拒否");
+  });
+
+  it("allows pausing a verifying_completed loop via updateGoalLoopStatus", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+      maxTurns: 5,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+
+    const paused = await updateGoalLoopStatus("ws-1", "pause");
+    expect(paused?.status).toBe("paused");
+  });
+
+  it("truncates a fractional maxTurns at create time (consistent with update)", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    const loop = await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5.9,
+    });
+    expect(loop.maxTurns).toBe(5);
   });
 });

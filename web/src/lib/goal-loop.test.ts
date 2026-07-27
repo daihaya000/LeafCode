@@ -225,7 +225,7 @@ describe("goalLoopTestSeams", () => {
         10,
       );
       expect(prompt).toContain("This is turn 3 of at most 10.");
-      expect(prompt).toContain("2 loop turn(s) have completed before this one");
+      expect(prompt).toContain("2 loop turn(s) completed before this one");
       expect(prompt).toContain("One turn = one iteration");
       expect(prompt).toContain("Never simulate");
     });
@@ -266,6 +266,59 @@ describe("goalLoopTestSeams", () => {
       );
       expect(prompt).toContain("Only 1 loop turn(s) of at most 10 have actually been executed");
       expect(prompt).toContain("reports more turns, iterations, or work than the 1 executed turn(s)");
+    });
+  });
+
+  describe("countRecentRejectedClaims", () => {
+    const t = "2026-01-01T00:00:00.000Z";
+    it("returns zero when no claims exist", () => {
+      expect(goalLoopTestSeams.countRecentRejectedClaims([])).toBe(0);
+      expect(
+        goalLoopTestSeams.countRecentRejectedClaims([
+          { time: t, status: "progress", summary: "wip" },
+        ]),
+      ).toBe(0);
+    });
+
+    it("counts a single completed-then-rejected pair", () => {
+      expect(
+        goalLoopTestSeams.countRecentRejectedClaims([
+          { time: t, status: "completed", summary: "claim" },
+          { time: t, status: "progress", summary: "verify rejected" },
+        ]),
+      ).toBe(1);
+    });
+
+    it("counts two consecutive rejected pairs", () => {
+      expect(
+        goalLoopTestSeams.countRecentRejectedClaims([
+          { time: t, status: "completed", summary: "claim1" },
+          { time: t, status: "progress", summary: "reject1" },
+          { time: t, status: "completed", summary: "claim2" },
+          { time: t, status: "progress", summary: "reject2" },
+        ]),
+      ).toBe(2);
+    });
+
+    it("stops at a verified pair", () => {
+      expect(
+        goalLoopTestSeams.countRecentRejectedClaims([
+          { time: t, status: "completed", summary: "ok" },
+          { time: t, status: "verified_completed", summary: "verified" },
+          { time: t, status: "completed", summary: "claim" },
+          { time: t, status: "progress", summary: "reject" },
+        ]),
+      ).toBe(1);
+    });
+
+    it("stops at a progress reset before the claim", () => {
+      expect(
+        goalLoopTestSeams.countRecentRejectedClaims([
+          { time: t, status: "progress", summary: "real work" },
+          { time: t, status: "completed", summary: "claim" },
+          { time: t, status: "progress", summary: "reject" },
+        ]),
+      ).toBe(1);
     });
   });
 
