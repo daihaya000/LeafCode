@@ -13,6 +13,13 @@ type NetAddr = {
   name: string;
   address: string;
   url: string;
+  kind: "caddy" | "vpn" | "lan" | "other";
+};
+
+type CertificateAddr = {
+  name: string;
+  address: string;
+  url: string;
   kind: "vpn" | "lan" | "other";
 };
 
@@ -46,33 +53,7 @@ function publicUrl(): string | null {
   }
 }
 
-/** Addresses the phone can use (VPN / LAN). OpenCode stays on localhost. */
-export async function GET() {
-  const host =
-    process.env.OPENCODE_WEBUI_HOST ||
-    process.env.HOSTNAME_BIND ||
-    "0.0.0.0";
-
-  const publicOrigin = publicUrl();
-  if (publicOrigin) {
-    // Caddy HTTPS mode: advertise the public origin, not the internal port.
-    return NextResponse.json({
-      bind: host,
-      port: PORT,
-      publicUrl: publicOrigin,
-      localUrl: `http://127.0.0.1:${PORT}`,
-      addresses: [
-        {
-          name: "Caddy (HTTPS)",
-          address: publicOrigin,
-          url: publicOrigin,
-          kind: "other" as const,
-        },
-      ],
-      hint: "Caddy 経由の HTTPS で公開中です。スマホからは下の URL を開いてください。",
-    });
-  }
-
+function networkAddresses(port: number): NetAddr[] {
   const addresses: NetAddr[] = [];
 
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
@@ -84,16 +65,61 @@ export async function GET() {
       addresses.push({
         name,
         address: info.address,
-        url: `http://${info.address}:${PORT}`,
+        url: `http://${info.address}:${port}`,
         kind: classify(name),
       });
     }
   }
 
   addresses.sort((a, b) => {
-    const rank = { vpn: 0, lan: 1, other: 2 } as const;
+    const rank = { caddy: 0, vpn: 1, lan: 2, other: 3 } as const;
     return rank[a.kind] - rank[b.kind] || a.name.localeCompare(b.name);
   });
+
+  return addresses;
+}
+
+function certificateUrls(addresses: NetAddr[]): CertificateAddr[] {
+  return addresses.map((a) => ({
+    name: a.name,
+    address: a.address,
+    url: `http://${a.address}:8080/caddy-root.crt`,
+    kind: a.kind === "caddy" ? "other" : a.kind,
+  }));
+}
+
+/** Addresses the phone can use (VPN / LAN). OpenCode stays on localhost. */
+export async function GET() {
+  const host =
+    process.env.OPENCODE_WEBUI_HOST ||
+    process.env.HOSTNAME_BIND ||
+    "0.0.0.0";
+
+  const publicOrigin = publicUrl();
+  if (publicOrigin) {
+    // Caddy HTTPS mode: keep the public origin first, but still expose the raw
+    // WebUI URLs for users who intentionally bypass Caddy on trusted networks.
+    const rawAddresses = networkAddresses(PORT);
+    return NextResponse.json({
+      bind: host,
+      port: PORT,
+      publicUrl: publicOrigin,
+      localUrl: `http://127.0.0.1:${PORT}`,
+      addresses: [
+        {
+          name: "Caddy (HTTPS)",
+          address: publicOrigin,
+          url: publicOrigin,
+          kind: "caddy" as const,
+        },
+        ...rawAddresses,
+      ],
+      certificateUrls: certificateUrls(rawAddresses),
+      hint: "Caddy 経由の HTTPS で公開中です。スマホからは下の URL を開いてください。",
+    });
+  }
+
+  const addresses = networkAddresses(PORT);
 
   return NextResponse.json({
     bind: host,

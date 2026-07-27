@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Plus, Star, Trash2 } from "lucide-react";
+import { Check, Copy, Download, Plus, Star, Trash2 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
@@ -37,6 +37,12 @@ type AccessInfo = {
   localUrl: string;
   hint: string;
   addresses: {
+    name: string;
+    address: string;
+    url: string;
+    kind: "caddy" | "vpn" | "lan" | "other";
+  }[];
+  certificateUrls?: {
     name: string;
     address: string;
     url: string;
@@ -361,7 +367,13 @@ export function SettingsView() {
   };
 
   const kindLabel = (kind: string) =>
-    kind === "vpn" ? "VPN" : kind === "lan" ? "LAN" : "その他";
+    kind === "caddy"
+      ? "Caddy"
+      : kind === "vpn"
+        ? "VPN"
+        : kind === "lan"
+          ? "LAN"
+          : "その他";
 
   const requiresAttention = orphans.length + stray.length;
   const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
@@ -747,7 +759,15 @@ export function SettingsView() {
                     key={`${a.name}-${a.address}`}
                     className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-nowrap"
                   >
-                    <Badge tone={a.kind === "vpn" ? "success" : "neutral"}>
+                    <Badge
+                      tone={
+                        a.kind === "caddy"
+                          ? "warning"
+                          : a.kind === "vpn"
+                            ? "success"
+                            : "neutral"
+                      }
+                    >
                       {kindLabel(a.kind)}
                     </Badge>
                     <div className="min-w-0 flex-1">
@@ -774,6 +794,34 @@ export function SettingsView() {
                   </li>
                 )}
               </ul>
+              {(access?.certificateUrls?.length ?? 0) > 0 && (
+                <div className="mt-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-muted">
+                        信頼証明書
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-faint">
+                        Caddy の HTTPS 証明書警告を消すため、端末にルート CA
+                        をインストールしてください。
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {access?.certificateUrls?.map((cert) => (
+                        <a
+                          key={`${cert.name}-${cert.address}`}
+                          href={cert.url}
+                          download="caddy-root.crt"
+                          className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-text transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                        >
+                          <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                          {kindLabel(cert.kind)} 証明書DL
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <p className="mt-2 text-[11px] text-faint">
                 同一ネットワークでも開けない場合は Windows ファイアウォールが原因です。
                 管理者で{" "}

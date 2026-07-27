@@ -62,7 +62,28 @@ const AGENT_FIXTURE = {
   toggleable: true,
 };
 
-function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
+type AccessPayload = {
+  bind: string;
+  port: number;
+  localUrl: string;
+  hint: string;
+  addresses: {
+    name: string;
+    address: string;
+    url: string;
+    kind: "caddy" | "vpn" | "lan" | "other";
+  }[];
+  certificateUrls?: {
+    name: string;
+    address: string;
+    url: string;
+    kind: "vpn" | "lan" | "other";
+  }[];
+};
+
+function mockGetJson(
+  overrides?: Partial<{ orphans: OrphansPayload; access: AccessPayload }>,
+) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/health") {
       return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
@@ -81,13 +102,15 @@ function mockGetJson(overrides?: Partial<{ orphans: OrphansPayload }>) {
       );
     }
     if (path === "/api/access") {
-      return Promise.resolve({
-        bind: "0.0.0.0",
-        port: 3000,
-        localUrl: "http://localhost:3000",
-        hint: "",
-        addresses: [],
-      });
+      return Promise.resolve(
+        overrides?.access ?? {
+          bind: "0.0.0.0",
+          port: 3000,
+          localUrl: "http://localhost:3000",
+          hint: "",
+          addresses: [],
+        },
+      );
     }
     if (path === "/api/settings/default-model") {
       return Promise.resolve({ value: null });
@@ -535,6 +558,51 @@ describe("SettingsView", () => {
     await screen.findByText("スマホ / VPN アクセス");
     expect(screen.queryByRole("heading", { name: "MCP サーバー" })).toBeNull();
     expect(screen.queryByRole("button", { name: "MCPタブを開く" })).toBeNull();
+  });
+
+  it("shows Caddy, direct URLs, and trust certificate downloads", async () => {
+    mockGetJson({
+      access: {
+        bind: "0.0.0.0",
+        port: 3000,
+        localUrl: "http://localhost:3000",
+        hint: "Caddy 経由の HTTPS で公開中です。",
+        addresses: [
+          {
+            name: "Caddy (HTTPS)",
+            address: "https://webui.example.com",
+            url: "https://webui.example.com",
+            kind: "caddy",
+          },
+          {
+            name: "Wi-Fi",
+            address: "192.168.1.100",
+            url: "http://192.168.1.100:3000",
+            kind: "lan",
+          },
+        ],
+        certificateUrls: [
+          {
+            name: "Wi-Fi",
+            address: "192.168.1.100",
+            url: "http://192.168.1.100:8080/caddy-root.crt",
+            kind: "lan",
+          },
+        ],
+      },
+    });
+
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+
+    expect(await screen.findByText("https://webui.example.com")).toBeTruthy();
+    expect(screen.getByText("http://192.168.1.100:3000")).toBeTruthy();
+    const dl = screen.getByRole("link", { name: "LAN 証明書DL" });
+    expect(dl.getAttribute("href")).toBe(
+      "http://192.168.1.100:8080/caddy-root.crt",
+    );
+    expect(dl.getAttribute("download")).toBe("caddy-root.crt");
   });
 
   it("loads default model settings only in the プロバイダー/モデル tab", async () => {
