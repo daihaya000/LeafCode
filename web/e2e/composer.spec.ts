@@ -16,7 +16,9 @@ async function pickOption(page: Page, optionName: string) {
 test.describe("home composer", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "何をつくりますか？" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "OpenCodeWebUI" }),
+    ).toBeVisible();
   });
 
   test("exposes engine-independent settings as accessible triggers", async ({ page }) => {
@@ -82,7 +84,9 @@ test.describe("home composer", () => {
   test("does not create page-level horizontal scroll at 375px", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 700 });
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "何をつくりますか？" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "OpenCodeWebUI" }),
+    ).toBeVisible();
 
     await expect
       .poll(async () =>
