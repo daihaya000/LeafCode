@@ -745,10 +745,18 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         )}
       >
         <section>
-          <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
-            何をつくりますか？
+          <h1 className="mb-6 flex items-center justify-center gap-2 text-center text-2xl font-semibold tracking-tight sm:text-3xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icon-192.png"
+              alt=""
+              width={28}
+              height={28}
+              className="h-7 w-7 shrink-0 rounded-[6px] object-contain sm:h-8 sm:w-8"
+            />
+            <span>OpenCodeWebUI</span>
           </h1>
-          <div className="mx-auto mb-3 flex max-w-3xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mx-auto mb-3 flex max-w-4xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <GhostSelect
               value={projectId}
               disabled={projects.length === 0 || submitting}
@@ -797,7 +805,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           </div>
           <form
             aria-label="タスク作成"
-            className="relative mx-auto max-w-3xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            className="relative mx-auto max-w-4xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();

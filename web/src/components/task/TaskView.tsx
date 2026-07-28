@@ -2544,7 +2544,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               onScroll={onScroll}
               className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
-              <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
+              <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6">
                 <GoalLoopPanel
                   loop={goalLoop}
                   busy={goalLoopBusy}
@@ -2712,7 +2712,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
           {/* Composer */}
           <div className="shrink-0 border-t border-border bg-surface px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto max-w-3xl">
+            <div className="mx-auto max-w-4xl">
               <TodoPanel todos={stream.todos} forceOpen={working && isMd} />
               {showNextAction && (
                 <NextAction
