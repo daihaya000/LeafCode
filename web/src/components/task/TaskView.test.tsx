@@ -1748,7 +1748,7 @@ describe("TaskView voice input", () => {
     // of an overflow container is laid out against the scrolled content box, so
     // it would drift with the content instead of staying pinned to the viewport.
     expect(scroller.contains(button)).toBe(false);
-    const anchor = button.parentElement as HTMLElement;
+    const anchor = button.parentElement?.parentElement as HTMLElement;
     expect(anchor.className).toContain("relative");
     expect(anchor.contains(scroller)).toBe(true);
 
@@ -1763,5 +1763,50 @@ describe("TaskView voice input", () => {
     Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 520 });
     fireEvent.scroll(scroller);
     expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+  });
+
+  it("shows a scroll-to-first-message button when scrolled down and scrolls to top on click", async () => {
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      loaded: true,
+      messages: [
+        {
+          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+      ],
+      visibleMessages: [],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
+
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 500 });
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0, writable: true });
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最初のメッセージへ")).toBeNull();
+
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 200, writable: true });
+    fireEvent.scroll(scroller);
+    const button = screen.getByLabelText("最初のメッセージへ");
+    expect(button).not.toBeNull();
+    expect(scroller.contains(button)).toBe(false);
+
+    fireEvent.click(button);
+    expect(scroller.scrollTo).toHaveBeenLastCalledWith({
+      top: 0,
+      behavior: "smooth",
+    });
+
+    expect(screen.queryByLabelText("最初のメッセージへ")).toBeNull();
   });
 });

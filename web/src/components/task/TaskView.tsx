@@ -467,6 +467,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const autoReplyIdsRef = useRef<Set<string>>(new Set());
@@ -1333,9 +1334,20 @@ export function TaskView({ taskId }: { taskId: string }) {
     return el.scrollTop + el.clientHeight >= el.scrollHeight - 80;
   }, []);
 
+  const isAtTop = useCallback((el: HTMLElement) => {
+    return el.scrollTop <= 80;
+  }, []);
+
   const scrollToBottom = useCallback(
     (el: HTMLElement, behavior: ScrollBehavior = "auto") => {
       el.scrollTo({ top: el.scrollHeight, behavior });
+    },
+    [],
+  );
+
+  const scrollToTop = useCallback(
+    (el: HTMLElement, behavior: ScrollBehavior = "auto") => {
+      el.scrollTo({ top: 0, behavior });
     },
     [],
   );
@@ -1346,7 +1358,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     const atBottom = isAtBottom(el);
     stickRef.current = atBottom;
     setShowScrollButton(!atBottom);
-  }, [isAtBottom]);
+    setShowScrollTopButton(!isAtTop(el));
+  }, [isAtBottom, isAtTop]);
 
   // Auto-stick scroll to bottom. We intentionally avoid rAF timeouts because
   // mobile Safari can ignore scrollTo during inertial scrolling; re-running
@@ -2734,23 +2747,45 @@ export function TaskView({ taskId }: { taskId: string }) {
                 )}
               </div>
             </div>
-            {showScrollButton && stream.messages.length > 0 && (
-              <Button
-                variant="secondary"
-                size="icon"
-                aria-label="最新のメッセージへ"
-                title="最新のメッセージへ"
-                className="absolute right-4 bottom-4 z-50 h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
-                onClick={() => {
-                  const el = scrollRef.current;
-                  if (!el) return;
-                  scrollToBottom(el, "smooth");
-                  stickRef.current = true;
-                  setShowScrollButton(false);
-                }}
-              >
-                <ArrowDown className="h-4 w-4" />
-              </Button>
+            {(showScrollTopButton || showScrollButton) && stream.messages.length > 0 && (
+              <div className="absolute right-4 bottom-4 z-50 flex flex-col gap-2">
+                {showScrollTopButton && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="最初のメッセージへ"
+                    title="最初のメッセージへ"
+                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                    onClick={() => {
+                      const el = scrollRef.current;
+                      if (!el) return;
+                      scrollToTop(el, "smooth");
+                      stickRef.current = false;
+                      setShowScrollTopButton(false);
+                    }}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                )}
+                {showScrollButton && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    aria-label="最新のメッセージへ"
+                    title="最新のメッセージへ"
+                    className="h-10 w-10 rounded-full border border-border-strong bg-surface shadow-lg ring-1 ring-border"
+                    onClick={() => {
+                      const el = scrollRef.current;
+                      if (!el) return;
+                      scrollToBottom(el, "smooth");
+                      stickRef.current = true;
+                      setShowScrollButton(false);
+                    }}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             )}
             </div>
             </>
