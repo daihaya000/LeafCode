@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   hostHeaderName,
+  isLocalOrPrivateNetworkRequest,
   isLocalHostRequest,
   isLoopbackAddress,
+  isPrivateAddress,
   rejectUnlessLocal,
+  rejectUnlessLocalOrPrivateNetwork,
 } from "./local-request";
 
 describe("isLoopbackAddress", () => {
@@ -130,6 +133,52 @@ describe("isLocalHostRequest", () => {
   });
 });
 
+describe("isPrivateAddress", () => {
+  it("accepts private LAN ranges and rejects public hosts", () => {
+    expect(isPrivateAddress("192.168.0.102")).toBe(true);
+    expect(isPrivateAddress("10.0.0.5")).toBe(true);
+    expect(isPrivateAddress("172.16.0.5")).toBe(true);
+    expect(isPrivateAddress("fd00::1")).toBe(true);
+    expect(isPrivateAddress("203.0.113.50")).toBe(false);
+    expect(isPrivateAddress("example.com")).toBe(false);
+  });
+});
+
+describe("isLocalOrPrivateNetworkRequest", () => {
+  it("accepts direct LAN access for restart from a phone", () => {
+    expect(
+      isLocalOrPrivateNetworkRequest(
+        new Request("http://192.168.0.102:3000/x", {
+          headers: { host: "192.168.0.102:3000" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts LAN access through a proxy that preserves the LAN Host", () => {
+    expect(
+      isLocalOrPrivateNetworkRequest(
+        new Request("http://192.168.0.102:8443/x", {
+          headers: {
+            host: "192.168.0.102:8443",
+            "x-forwarded-for": "192.168.0.55",
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects public hosts for restart", () => {
+    expect(
+      isLocalOrPrivateNetworkRequest(
+        new Request("http://example.com:3000/x", {
+          headers: { host: "example.com:3000" },
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("rejectUnlessLocal", () => {
   it("returns 403 for non-local callers", async () => {
     const res = rejectUnlessLocal(
@@ -149,6 +198,18 @@ describe("rejectUnlessLocal", () => {
       rejectUnlessLocal(
         new Request("http://localhost:3000/x", {
           headers: { host: "localhost:3000" },
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("rejectUnlessLocalOrPrivateNetwork", () => {
+  it("returns null for LAN callers", () => {
+    expect(
+      rejectUnlessLocalOrPrivateNetwork(
+        new Request("http://192.168.0.102:3000/x", {
+          headers: { host: "192.168.0.102:3000" },
         }),
       ),
     ).toBeNull();

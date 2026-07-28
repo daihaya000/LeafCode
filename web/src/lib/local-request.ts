@@ -80,8 +80,35 @@ export function isLocalHostRequest(req: Request): boolean {
   return false;
 }
 
+/**
+ * Best-effort check for restart requests initiated from the host or its LAN.
+ *
+ * Restart is intentionally less strict than folder picker / logs / voice input:
+ * mobile devices on the same private network may need to restart OpenCode or
+ * the WebUI while using the LAN URL. Public hosts remain rejected.
+ */
+export function isLocalOrPrivateNetworkRequest(req: Request): boolean {
+  if (isLocalHostRequest(req)) return true;
+
+  const hostHeader = req.headers.get("host") ?? "";
+  const hostIsPrivate = isPrivateAddress(hostHeaderName(hostHeader));
+
+  const forwarded = req.headers.get("x-forwarded-for");
+  const forwardedClient = forwarded?.split(",")[0]?.trim() ?? "";
+  const forwardedIsPrivate =
+    forwardedClient && isPrivateAddress(forwardedClient);
+
+  // Direct LAN access to Next.js, e.g. http://192.168.x.x:3000 from a phone.
+  if (hostIsPrivate && !forwarded) return true;
+
+  // LAN access through a same-machine reverse proxy that preserves the LAN Host.
+  if (hostIsPrivate && forwardedIsPrivate) return true;
+
+  return false;
+}
+
 /** True when `value` is an IPv4/IPv6 private address (RFC 1918 / RFC 4193). */
-function isPrivateAddress(value: string): boolean {
+export function isPrivateAddress(value: string): boolean {
   const v = value.trim().toLowerCase();
   if (!v) return false;
   if (isLoopbackAddress(v)) return true;
@@ -100,6 +127,16 @@ export function rejectUnlessLocal(req: Request): NextResponse | null {
   if (isLocalHostRequest(req)) return null;
   return NextResponse.json(
     { error: "this endpoint is only available from the host machine" },
+    { status: 403 },
+  );
+}
+
+export function rejectUnlessLocalOrPrivateNetwork(
+  req: Request,
+): NextResponse | null {
+  if (isLocalOrPrivateNetworkRequest(req)) return null;
+  return NextResponse.json(
+    { error: "this endpoint is only available from the host machine or private network" },
     { status: 403 },
   );
 }
