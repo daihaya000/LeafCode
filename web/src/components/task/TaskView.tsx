@@ -1468,6 +1468,18 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, []);
 
+  const refreshSessionTitle = useCallback(async (taskId: string, sessionId: string) => {
+    try {
+      await sendJson(
+        "POST",
+        `/api/workspaces/${taskId}/sessions/${sessionId}/refresh-title`,
+      );
+      notifyTasksChanged();
+    } catch {
+      // Title regeneration is best-effort and must not block the prompt.
+    }
+  }, []);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || composerLocked) return;
@@ -1562,6 +1574,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       } else {
         await stream.sendPrompt(text, opts);
       }
+      void refreshSessionTitle(sendTaskId, sendSessionId);
       // Remember the model actually applied to this submission so the next
       // new session preselects it.
       writeLastUsedModel(sendingModelKey || null);
@@ -1596,6 +1609,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     intelligence,
     slashCommands,
     touchActivity,
+    refreshSessionTitle,
     composerScopeKey,
     goalLoop?.status,
     goalLoopEnabled,
@@ -1751,10 +1765,11 @@ export function TaskView({ taskId }: { taskId: string }) {
         agent: `build`,
         sessionId,
       });
+      void refreshSessionTitle(activityTaskId, sessionId);
     } finally {
       notifyTasksChanged();
     }
-  }, [working, stream, touchActivity]);
+  }, [working, stream, touchActivity, refreshSessionTitle]);
 
   const intelligenceVariants = useMemo(() => {
     if (!effectiveModelKey) return [];

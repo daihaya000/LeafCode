@@ -616,11 +616,15 @@ describe("TaskView", () => {
     await flushTaskLoad();
     notifyTasksChanged.mockClear();
     const activity = deferred<void>();
-    sendJson.mockImplementation(() =>
-      activity.promise.then(() => {
+    sendJson.mockImplementation((_method: string, url: string) => {
+      if (url.endsWith("/refresh-title")) {
+        events.push("title");
+        return Promise.resolve(undefined);
+      }
+      return activity.promise.then(() => {
         events.push("activity");
-      }),
-    );
+      });
+    });
     events.length = 0;
 
     fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
@@ -642,7 +646,11 @@ describe("TaskView", () => {
     expect(sendJson).toHaveBeenCalledWith("POST", "/api/tasks/ws1/activity", {
       sessionId: "sess1",
     });
-    expect(events).toEqual(["activity", "send"]);
+    expect(sendJson).toHaveBeenCalledWith(
+      "POST",
+      "/api/workspaces/ws1/sessions/sess1/refresh-title",
+    );
+    expect(events).toEqual(["activity", "send", "title"]);
     expect(streamMock[method]).toHaveBeenCalledTimes(1);
     if (method === "sendCommand") {
       expect(streamMock.sendCommand).toHaveBeenCalledWith(
@@ -658,7 +666,7 @@ describe("TaskView", () => {
       );
       expect(streamMock.sendCommand).not.toHaveBeenCalled();
     }
-    expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(2);
   });
 
   it("continues sending when the activity request fails", async () => {
@@ -879,11 +887,15 @@ describe("TaskView", () => {
     await flushTaskLoad();
     notifyTasksChanged.mockClear();
     const activity = deferred<void>();
-    sendJson.mockImplementation(() =>
-      activity.promise.then(() => {
+    sendJson.mockImplementation((_method: string, url: string) => {
+      if (url.endsWith("/refresh-title")) {
+        events.push("title");
+        return Promise.resolve(undefined);
+      }
+      return activity.promise.then(() => {
         events.push("activity");
-      }),
-    );
+      });
+    });
     events.length = 0;
 
     const planCard = await screen.findByRole("region", { name: "計画書: plan.md" });
@@ -899,12 +911,12 @@ describe("TaskView", () => {
       await Promise.resolve();
     });
 
-    expect(events).toEqual(["activity", "send"]);
+    expect(events).toEqual(["activity", "send", "title"]);
     expect(sendPrompt).toHaveBeenCalledWith(
       expect.stringContaining("この計画を承認します"),
       { agent: "build", sessionId: "sess1" },
     );
-    expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
+    expect(notifyTasksChanged).toHaveBeenCalledTimes(2);
   });
 
   it("shows the plan card expanded with its document on desktop", async () => {
