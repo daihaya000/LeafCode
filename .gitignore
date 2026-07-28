@@ -22,6 +22,13 @@ deploy/.caddy/
 # Synced from repo-root addons/*/public (npm run sync:addons)
 web/public/addons/
 
+# Native launcher build output (scripts/build-launcher.bat regenerates these
+# from scripts/launcher/Launcher.cs + host/src/icon.json; not shipped in git)
+scripts/launcher/*.exe
+scripts/launcher/*.ico
+scripts/launcher/*.obj
+scripts/launcher/*.pdb
+
 web/playwright-report/
 web/.playwright/
 

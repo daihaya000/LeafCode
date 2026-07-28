@@ -10,9 +10,10 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ### タスクバーへのピン留め
 
-`scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカット（`start-webui.bat` を指す）を作成します。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
+1. （任意・推奨）`scripts/build-launcher.bat` を実行します。`.NET Framework` 同梱の `csc.exe` で `scripts/launcher/Launcher.cs` をコンパイルし、アイコン埋め込み済みのネイティブ `scripts/launcher/OpenCodeWebUI.exe` を生成します（`start-webui.bat` を同じコンソールで実行するだけの薄いラッパー）。ショートカットの対象を `.bat` ではなく実在の `.exe` にすることで、Explorerの「タスクバーにピン留めする」がより確実に提供されます。ビルド結果は `.gitignore` 済みの生成物で、リポジトリには含まれません。
+2. `scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカットを作成します。手順1で `OpenCodeWebUI.exe` を作成済みならそちらを、未作成なら `start-webui.bat` を対象にします。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
 
-Windows 10 1809 以降はショートカットをスクリプトから自動でタスクバーへピン留めする手段が提供されていないため、ピン留め自体は手動です。作成された `OpenCode WebUI.lnk` を右クリックし「タスクバーにピン留めする」を選択してください（Windowsのビルドによっては、スクリプト対象のショートカットに対しこの項目が「スタートにピン留めする」のみになる場合があります）。
+Windows 10 1809 以降はショートカットをスクリプトから自動でタスクバーへピン留めする手段が提供されていないため、ピン留め自体は手動です。作成された `OpenCode WebUI.lnk` を右クリックし「タスクバーにピン留めする」を選択してください。
 
 ### 文字化け・エンコード
 
