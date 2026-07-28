@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Sidebar } from "./Sidebar";
+import { formatHeaderDate, Sidebar } from "./Sidebar";
 
 const { getJson, sendJson, timedFetch, attentionState } = vi.hoisted(() => ({
   getJson: vi.fn(),
@@ -65,6 +65,13 @@ vi.mock("./GlobalAttentionProvider", () => ({
 }));
 
 describe("Sidebar", () => {
+  it("formats the header build commit date", () => {
+    expect(formatHeaderDate("2026-07-18T00:00:00Z")).toMatch(
+      /\d{2}\/\d{2} \d{2}:\d{2}/,
+    );
+    expect(formatHeaderDate("not-a-date")).toBe("");
+  });
+
   beforeEach(() => {
     attentionState.items = [];
     attentionState.actionableItems = [];
