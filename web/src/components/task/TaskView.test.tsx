@@ -710,7 +710,7 @@ describe("TaskView", () => {
     expect(streamMock.sendPrompt).toHaveBeenCalledWith("hello", expect.any(Object));
   });
 
-  it("hides image attachment controls when the selected model lacks image capability", async () => {
+  it("disables image attachment controls when the selected model lacks image capability", async () => {
     taskStatus = "idle";
     vi.stubGlobal(
       "fetch",
@@ -746,11 +746,17 @@ describe("TaskView", () => {
     const view = render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    expect(screen.queryByRole("button", { name: "画像を添付" })).toBeNull();
-    expect(view.container.querySelector('input[type="file"]')).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "画像を添付" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (view.container.querySelector('input[type="file"]') as HTMLInputElement | null)
+        ?.disabled,
+    ).toBe(true);
   });
 
-  it("hides image attachment controls after switching to a text-only model", async () => {
+  it("disables image attachment controls after switching to a text-only model", async () => {
     taskStatus = "idle";
     vi.stubGlobal(
       "fetch",
@@ -791,7 +797,10 @@ describe("TaskView", () => {
     fireEvent.click(screen.getByRole("button", { name: "モデル" }));
     fireEvent.click(await screen.findByRole("option", { name: /Text/ }));
 
-    expect(screen.queryByRole("button", { name: "画像を添付" })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "画像を添付" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it("sends an image follow-up to a model with explicit image capability", async () => {
