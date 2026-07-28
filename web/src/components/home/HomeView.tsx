@@ -502,6 +502,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
+  const selectedModelSupportsImage = model
+    ? selectedModel?.image === true || modelCapabilities[model]?.attachment === true
+    : false;
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
@@ -940,29 +943,33 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             )}
             <div className="flex items-center gap-2 pt-1">
               <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={submitting}
-                  aria-label="画像ファイルを選択"
-                  className="hidden"
-                  onChange={(event) => {
-                    if (event.target.files) void addImageFiles(event.target.files);
-                    event.target.value = "";
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={submitting}
-                  aria-label="画像を添付"
-                  title="画像を添付"
-                  className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
-                >
-                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+                {selectedModelSupportsImage && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={submitting}
+                      aria-label="画像ファイルを選択"
+                      className="hidden"
+                      onChange={(event) => {
+                        if (event.target.files) void addImageFiles(event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={submitting}
+                      aria-label="画像を添付"
+                      title="画像を添付"
+                      className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
                 <VoiceInputButton
                   voice={voice}
                   onTranscript={onVoiceTranscript}

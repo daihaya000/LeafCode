@@ -213,6 +213,12 @@ export function ModelSelect({
       >
         <ModelProviderIcon value={value} />
         <span className="min-w-0 truncate">{selected?.label ?? "モデル"}</span>
+        {selected?.image && (
+          <ImageIcon
+            aria-label="画像入力対応"
+            className="h-3.5 w-3.5 shrink-0 text-primary"
+          />
+        )}
         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-faint" />
       </button>
 
