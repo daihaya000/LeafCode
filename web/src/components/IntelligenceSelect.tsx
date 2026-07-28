@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu } from "lucide-react";
+import { Brain } from "lucide-react";
 import { GhostSelect } from "@/components/ui";
 import type { IntelligenceVariant } from "@/lib/model-variants";
 
@@ -28,7 +28,7 @@ export function IntelligenceSelect({
       value={value}
       disabled={disabled}
       aria-label="インテリジェンス"
-      icon={<Cpu className="h-3.5 w-3.5" />}
+      icon={<Brain className="h-3.5 w-3.5" />}
       valueLabel={value || "デフォルト"}
       onChange={onChange}
       className="h-8 shrink-0"
