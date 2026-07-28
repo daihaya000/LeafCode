@@ -1107,3 +1107,351 @@ describe("HomeView goal loop toggle", () => {
     ).toBe(false);
   });
 });
+
+describe("HomeView auto model", () => {
+  const decision = {
+    providerID: "anthropic",
+    modelID: "claude-haiku-4-5",
+    variant: "minimal" as const,
+    tier: "light" as const,
+    reason: "短い質問タスクのため低コストモデルを選択しました",
+    escalation: {
+      providerID: "anthropic",
+      modelID: "claude-opus-5",
+      variant: "high" as const,
+    },
+  };
+
+  /** Provider payload with one image-capable and one text-only model. */
+  function providerPayload(imageCapable = true) {
+    return {
+      ok: true,
+      json: async () => ({
+        all: [
+          {
+            id: "anthropic",
+            name: "Anthropic",
+            models: {
+              "claude-haiku-4-5": {
+                name: "Haiku",
+                variants: { minimal: {}, low: {}, high: {} },
+                capabilities: { input: { image: imageCapable } },
+              },
+              "claude-opus-5": {
+                name: "Opus",
+                variants: { medium: {}, high: {} },
+                capabilities: { input: { image: false } },
+              },
+            },
+          },
+        ],
+        connected: ["anthropic"],
+        default: { anthropic: "claude-opus-5" },
+      }),
+    };
+  }
+
+  function mockProvider(imageCapable = true, agents?: unknown) {
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider")) {
+        return Promise.resolve(providerPayload(imageCapable));
+      }
+      if (input.endsWith("/agent") && agents) {
+        return Promise.resolve({ ok: true, json: async () => agents });
+      }
+      return Promise.resolve({ ok: false });
+    });
+  }
+
+  /** Open the model menu and pick the Auto entry. */
+  async function selectAuto() {
+    const trigger = await screen.findByLabelText("モデル");
+    fireEvent.click(trigger);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /Auto（コスト最適）/ }),
+    );
+    await waitFor(() =>
+      expect((trigger as HTMLButtonElement).value).toBe("auto"),
+    );
+  }
+
+  function taskBody() {
+    const call = sendJson.mock.calls.find(([, path]) => path === "/api/tasks");
+    return call?.[2] as Record<string, unknown> | undefined;
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            { id: "project-1", name: "Project", rootPath: "/repo", favorite: false },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({
+      taskId: "task-1",
+      sessionId: "ses-1",
+      autoDecision: decision,
+    });
+    timedFetch.mockReset();
+    timedFetch.mockResolvedValue({ ok: false });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it("puts the Auto entry at the very top of the model menu", async () => {
+    mockProvider();
+    render(<HomeView />);
+
+    const trigger = await screen.findByLabelText("モデル");
+    await waitFor(() =>
+      expect((trigger as HTMLButtonElement).value).toBe("anthropic::claude-opus-5"),
+    );
+    fireEvent.click(trigger);
+
+    const options = await screen.findAllByRole("option");
+    expect(options[0].textContent).toContain("Auto（コスト最適）");
+    // Group headings are plain divs; the Auto group must precede the provider.
+    const listbox = screen.getByRole("listbox", { name: "モデル" });
+    const headings = Array.from(
+      listbox.querySelectorAll("div.font-semibold"),
+    ).map((node) => node.textContent);
+    expect(headings[0]).toBe("Auto");
+    expect(headings).toContain("Anthropic");
+  });
+
+  it("hides the intelligence selector while Auto is selected", async () => {
+    mockProvider();
+    render(<HomeView />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("インテリジェンス")).toBeTruthy(),
+    );
+    await selectAuto();
+    expect(screen.queryByLabelText("インテリジェンス")).toBeNull();
+  });
+
+  it("sends auto: true without model or variant", async () => {
+    mockProvider();
+    render(<HomeView />);
+    await selectAuto();
+
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "この関数は何が問題なの" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(taskBody()).toBeDefined());
+    const body = taskBody()!;
+    expect(body.auto).toBe(true);
+    expect(body).not.toHaveProperty("model");
+    expect(body).not.toHaveProperty("variant");
+  });
+
+  it("keeps sending the manual model when Auto is not selected", async () => {
+    mockProvider();
+    render(<HomeView />);
+    await waitFor(() =>
+      expect((screen.getByLabelText("モデル") as HTMLButtonElement).value).toBe(
+        "anthropic::claude-opus-5",
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(taskBody()).toBeDefined());
+    const body = taskBody()!;
+    expect(body).not.toHaveProperty("auto");
+    expect(body.model).toEqual({
+      providerID: "anthropic",
+      modelID: "claude-opus-5",
+    });
+  });
+
+  it("allows an image submission under Auto when any model supports images", async () => {
+    mockProvider(true);
+    render(<HomeView />);
+    await selectAuto();
+
+    const input = screen.getByLabelText("画像ファイルを選択");
+    fireEvent.change(input, {
+      target: { files: [new File(["i"], "shot.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(taskBody()).toBeDefined());
+    expect(taskBody()!.auto).toBe(true);
+  });
+
+  it("blocks an image submission under Auto when no model supports images", async () => {
+    mockProvider(false);
+    render(<HomeView />);
+    await selectAuto();
+
+    const input = screen.getByLabelText("画像ファイルを選択");
+    fireEvent.change(input, {
+      target: { files: [new File(["i"], "shot.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "画像入力に対応していない",
+    );
+    expect(sendJson).not.toHaveBeenCalled();
+  });
+
+  it("stores 'auto' as last-used and hands the decision to the task view", async () => {
+    mockProvider(true, [{ name: "build" }]);
+    render(<HomeView />);
+    await screen.findByLabelText("エージェント");
+    await selectAuto();
+
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "この関数は何が問題なの" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/task/task-1"));
+    expect(localStorage.getItem("webui:last-used-model")).toBe("auto");
+    const stored = JSON.parse(
+      sessionStorage.getItem("webui:auto-task:task-1") ?? "null",
+    );
+    expect(stored).toEqual({
+      decision,
+      prompt: "この関数は何が問題なの",
+      agent: "build",
+    });
+  });
+
+  it("omits the retry prompt when an image is attached", async () => {
+    mockProvider(true);
+    render(<HomeView />);
+    await selectAuto();
+
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "これは何" },
+    });
+    const input = screen.getByLabelText("画像ファイルを選択");
+    fireEvent.change(input, {
+      target: { files: [new File(["i"], "shot.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    const stored = JSON.parse(
+      sessionStorage.getItem("webui:auto-task:task-1") ?? "null",
+    );
+    expect(stored).toEqual({ decision });
+  });
+
+  it("stores nothing when the response carries no decision", async () => {
+    sendJson.mockResolvedValue({ taskId: "task-1", sessionId: "ses-1" });
+    mockProvider();
+    render(<HomeView />);
+    await selectAuto();
+
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "これは何" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(sessionStorage.getItem("webui:auto-task:task-1")).toBeNull();
+  });
+
+  it("restores Auto as the initial selection from last-used", async () => {
+    localStorage.setItem("webui:last-used-model", "auto");
+    mockProvider();
+    render(<HomeView />);
+
+    const trigger = await screen.findByLabelText("モデル");
+    await waitFor(() =>
+      expect((trigger as HTMLButtonElement).value).toBe("auto"),
+    );
+    expect(trigger.textContent).toContain("Auto（コスト最適）");
+  });
+
+  it("passes the resolved model and variant to the goal loop", async () => {
+    mockProvider();
+    render(<HomeView />);
+    await selectAuto();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Goalループで継続実行" }),
+    );
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "この関数は何が問題なの" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() =>
+      expect(
+        sendJson.mock.calls.some(
+          ([, path]) => path === "/api/tasks/task-1/goal-loop",
+        ),
+      ).toBe(true),
+    );
+    const loopBody = sendJson.mock.calls.find(
+      ([, path]) => path === "/api/tasks/task-1/goal-loop",
+    )?.[2] as Record<string, unknown>;
+    expect(loopBody.model).toEqual({
+      providerID: "anthropic",
+      modelID: "claude-haiku-4-5",
+    });
+    expect(loopBody.variant).toBe("minimal");
+  });
+
+  it("omits the goal loop model when Auto produced no decision", async () => {
+    sendJson.mockResolvedValue({ taskId: "task-1", sessionId: "ses-1" });
+    mockProvider();
+    render(<HomeView />);
+    await selectAuto();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Goalループで継続実行" }),
+    );
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "これは何" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() =>
+      expect(
+        sendJson.mock.calls.some(
+          ([, path]) => path === "/api/tasks/task-1/goal-loop",
+        ),
+      ).toBe(true),
+    );
+    const loopBody = sendJson.mock.calls.find(
+      ([, path]) => path === "/api/tasks/task-1/goal-loop",
+    )?.[2] as Record<string, unknown>;
+    expect(loopBody).not.toHaveProperty("model");
+    expect(loopBody).not.toHaveProperty("variant");
+  });
+});

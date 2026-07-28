@@ -45,6 +45,12 @@ import {
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
+import { AUTO_MODEL_VALUE, type AutoDecision } from "@/lib/auto-model";
+import {
+  AUTO_TASK_PROMPT_MAX,
+  writeAutoTaskRecord,
+  type AutoTaskRecord,
+} from "@/lib/auto-task-record";
 import {
   filterEnabledModelOptions,
   formatModelLabel,
@@ -117,6 +123,17 @@ type AgentResponse = {
 }[];
 
 type Attachment = { uri: string; mime: string; name?: string; preview?: string };
+
+/**
+ * Cost-optimized automatic selection. The server resolves the concrete
+ * `{ providerID, modelID, variant }` from the prompt, so this option carries
+ * no provider of its own.
+ */
+const AUTO_OPTION: ModelOption = {
+  value: AUTO_MODEL_VALUE,
+  label: "Auto（コスト最適）",
+  group: "Auto",
+};
 
 const IMAGE_MIME_RE = /^image\//i;
 // Match POST /api/tasks R28 / TaskView limits.
@@ -302,28 +319,35 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             options,
             providerModels?.providers,
           );
-          setModelOptions(
-            sortModelOptions(
+          // Auto is inserted *after* filter/sort on purpose: providerSortKey
+          // ("auto") is the unknown-provider tail value, so sorting would sink
+          // it to the bottom. Prepending keeps the "Auto" group first in the
+          // menu (groupedOptions preserves insertion order).
+          const selectableOptions = [
+            AUTO_OPTION,
+            ...sortModelOptions(
               enabledOptions,
               modelOrderPreferenceFromProviders(providerModels?.providers),
             ),
-          );
+          ];
+          setModelOptions(selectableOptions);
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 
           // Prefer the last actually-used model, then the user-configured
           // default model, then OpenCode config.model (provider/modelID),
-          // then provider defaults.
+          // then provider defaults. `"auto"` is part of selectableOptions, so
+          // a stored last-used Auto restores through the same check.
           let initial = "";
           const lastUsed = readLastUsedModel();
-          if (lastUsed && enabledOptions.some((o) => o.value === lastUsed)) {
+          if (lastUsed && selectableOptions.some((o) => o.value === lastUsed)) {
             initial = lastUsed;
           }
           if (!initial) {
             const savedDefault = readDefaultModel();
             if (
               savedDefault &&
-              enabledOptions.some((o) => o.value === savedDefault)
+              selectableOptions.some((o) => o.value === savedDefault)
             ) {
               initial = savedDefault;
             }
@@ -334,7 +358,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               const slash = cfg.indexOf("/");
               if (slash > 0) {
                 const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-                if (enabledOptions.some((o) => o.value === value)) initial = value;
+                if (selectableOptions.some((o) => o.value === value)) initial = value;
               }
             }
           }
@@ -343,12 +367,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               const mid = data.default?.[pid];
               if (!mid) continue;
               const value = `${pid}::${mid}`;
-              if (enabledOptions.some((o) => o.value === value)) {
+              if (selectableOptions.some((o) => o.value === value)) {
                 initial = value;
                 break;
               }
             }
           }
+          // Never fall back to Auto: it stays an explicit manual choice.
           if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
           setModel((cur) => cur || initial);
         }
@@ -531,10 +556,19 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     const sendingModelKey = agentModel
       ? `${agentModel.providerID}::${agentModel.modelID}`
       : model || "";
-    const sendingImageSupported = sendingModelKey
-      ? modelCapabilities[sendingModelKey]?.image === true ||
-        modelCapabilities[sendingModelKey]?.attachment === true
-      : false;
+    const sendingImageSupported =
+      sendingModelKey === AUTO_MODEL_VALUE
+        ? // Auto has no capabilities of its own: pass when at least one
+          // connected model could take the image and let the server make the
+          // final call (it selects only from image-capable candidates).
+          Object.values(modelCapabilities).some(
+            (capability) =>
+              capability.image === true || capability.attachment === true,
+          )
+        : sendingModelKey
+          ? modelCapabilities[sendingModelKey]?.image === true ||
+            modelCapabilities[sendingModelKey]?.attachment === true
+          : false;
     const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
     const sendingImageBlocked = hasImage && !sendingImageSupported;
     if (sendingImageBlocked) {
@@ -562,8 +596,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     setSubmitting(true);
     setError(null);
     try {
+      // `"auto".split("::")` yields `["auto"]`, so modelID stays undefined and
+      // the `model` field below is omitted for Auto without a special case.
       const [providerID, modelID] = model ? model.split("::") : [];
-      const data = await sendJson<{ taskId: string; sessionId: string }>("POST", "/api/tasks", {
+      const isAuto = model === AUTO_MODEL_VALUE;
+      const data = await sendJson<{
+        taskId: string;
+        sessionId: string;
+        autoDecision?: AutoDecision;
+      }>("POST", "/api/tasks", {
         projectId,
         prompt: text,
         isolation,
@@ -578,6 +619,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : {}),
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+        ...(isAuto ? { auto: true } : {}),
         // subagentPermission must be sent even when no agent is selected:
         // enforcement is session-scoped (not agent-scoped), so omitting it
         // whenever `agent` is empty left "禁止" without effect on the new
@@ -585,9 +627,25 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         subagentPermission,
         skillPermission,
         ...(agent ? { agent } : {}),
-        ...(intelligence ? { variant: intelligence } : {}),
+        // Auto decides the effort server-side and the API rejects both being
+        // set. `intelligence` is normally "" for Auto, but an agent-scoped
+        // variant can survive, so drop it explicitly.
+        ...(intelligence && !isAuto ? { variant: intelligence } : {}),
       });
+      const decision = data.autoDecision;
       if (goalLoopEnabled) {
+        // The loop runs server-side later, so it needs the resolved model
+        // rather than the literal "auto" sentinel.
+        const loopModel = decision
+          ? { providerID: decision.providerID, modelID: decision.modelID }
+          : providerID && modelID
+            ? { providerID, modelID }
+            : undefined;
+        const loopVariant = decision
+          ? decision.variant
+          : isAuto
+            ? ""
+            : intelligence;
         await sendJson("POST", `/api/tasks/${data.taskId}/goal-loop`, {
           sessionId: data.sessionId,
           goal: text,
@@ -596,10 +654,24 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             .map((line) => line.trim())
             .filter(Boolean),
           maxTurns: goalLoopMaxTurns,
-          ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+          ...(loopModel ? { model: loopModel } : {}),
           ...(agent ? { agent } : {}),
-          ...(intelligence ? { variant: intelligence } : {}),
+          ...(loopVariant ? { variant: loopVariant } : {}),
         });
+      }
+      // Hand the decision to TaskView for the chip and the one-shot retry.
+      // The prompt is omitted (retry disabled) for oversized prompts and for
+      // image submissions, which cannot be replayed faithfully.
+      if (decision) {
+        const record: AutoTaskRecord = {
+          decision,
+          ...(text && text.length <= AUTO_TASK_PROMPT_MAX && attachments.length === 0
+            ? { prompt: text }
+            : {}),
+          ...(agent ? { agent } : {}),
+        };
+        // Failure only costs the chip / retry, never the submission itself.
+        writeAutoTaskRecord(data.taskId, record);
       }
       // Remember the model actually applied to this submission so the next
       // new session preselects it.
