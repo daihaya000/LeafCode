@@ -46,6 +46,18 @@ function statusTone(s: GraphFileChange["status"]): string {
   return "bg-surface-3 text-muted";
 }
 
+function formatCommitDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function GraphCell({ row }: { row: GraphRow }) {
   const svgRef = useRef<SVGSVGElement>(null);
   // Actual row height measured from the parent button via ResizeObserver.
@@ -411,6 +423,7 @@ export function GraphPanel({
           );
           const open = expanded === row.commit.hash;
           const files = filesByCommit[row.commit.hash];
+          const commitDate = formatCommitDate(row.commit.date);
           return (
             <div
               key={row.commit.hash}
@@ -447,6 +460,14 @@ export function GraphPanel({
                     </div>
                     <div className="truncate text-[10px] text-faint">
                       {row.commit.author}
+                      {commitDate && (
+                        <>
+                          <span className="mx-1">·</span>
+                          <time dateTime={row.commit.date} title={row.commit.date}>
+                            {commitDate}
+                          </time>
+                        </>
+                      )}
                     </div>
                     <div className="mt-1 flex max-w-full flex-wrap items-center gap-1">
                       {shown.map((name) => (

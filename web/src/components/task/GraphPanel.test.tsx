@@ -66,6 +66,14 @@ describe("GraphPanel", () => {
     expect(commitLabel.classList.contains("font-mono")).toBe(true);
   });
 
+  it("shows the commit date in the metadata line", async () => {
+    render(<GraphPanel directory="/repo" />);
+
+    const commitDate = await screen.findByTitle("2026-07-18T00:00:00Z");
+    expect(commitDate.tagName).toBe("TIME");
+    expect(commitDate.textContent).toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);
+  });
+
   it("refetches immediately when refreshKey changes, without touching the visible spinner state", async () => {
     const { rerender } = render(
       <GraphPanel directory="/repo" refreshKey={0} />,
