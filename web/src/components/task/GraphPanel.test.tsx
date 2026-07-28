@@ -56,6 +56,16 @@ describe("GraphPanel", () => {
     );
   });
 
+  it("shows the commit ID as a graph label", async () => {
+    render(<GraphPanel directory="/repo" />);
+
+    const commitLabel = await screen.findByTitle("hash0");
+    expect(commitLabel.textContent).toBe("h0");
+    expect(commitLabel.classList.contains("rounded-md")).toBe(true);
+    expect(commitLabel.classList.contains("border")).toBe(true);
+    expect(commitLabel.classList.contains("font-mono")).toBe(true);
+  });
+
   it("refetches immediately when refreshKey changes, without touching the visible spinner state", async () => {
     const { rerender } = render(
       <GraphPanel directory="/repo" refreshKey={0} />,

@@ -439,34 +439,38 @@ export function GraphPanel({
                     </div>
                     <div className="truncate text-[10px] text-faint">
                       {row.commit.author}
-                      <span className="mx-1">·</span>
-                      <span className="font-mono">{row.commit.shortHash}</span>
                     </div>
                   </div>
                   <div className="flex max-w-full flex-wrap items-center gap-1">
-                  {shown.map((name) => (
                     <span
-                      key={name}
-                      title={name}
-                      className={cx(
-                        "inline-flex max-w-[7rem] shrink-0 items-center gap-0.5 truncate rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
-                        name === payload?.currentBranch
-                          ? "border-accent/50 bg-accent/15 text-accent"
-                          : "border-border bg-surface-2 text-muted",
-                      )}
+                      title={row.commit.hash}
+                      className="inline-flex shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
                     >
-                      <GitBranch className="h-2.5 w-2.5 shrink-0" />
-                      <span className="truncate">{name}</span>
+                      {row.commit.shortHash}
                     </span>
-                  ))}
-                  {more > 0 && (
-                    <span
-                      title={refs.join(", ")}
-                      className="shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
-                    >
-                      +{more}
-                    </span>
-                  )}
+                    {shown.map((name) => (
+                      <span
+                        key={name}
+                        title={name}
+                        className={cx(
+                          "inline-flex max-w-[7rem] shrink-0 items-center gap-0.5 truncate rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+                          name === payload?.currentBranch
+                            ? "border-accent/50 bg-accent/15 text-accent"
+                            : "border-border bg-surface-2 text-muted",
+                        )}
+                      >
+                        <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{name}</span>
+                      </span>
+                    ))}
+                    {more > 0 && (
+                      <span
+                        title={refs.join(", ")}
+                        className="shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
+                      >
+                        +{more}
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
