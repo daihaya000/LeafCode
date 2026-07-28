@@ -56,7 +56,10 @@ describe("isLocalHostRequest", () => {
     ).toBe(false);
   });
 
-  it("accepts loopback Host with loopback X-Forwarded-For (Caddy)", () => {
+  it("accepts loopback Host with loopback X-Forwarded-For (Caddy on the same PC)", () => {
+    // Browser on the host PC reaches Caddy via a loopback hostname, so the
+    // immediate client hop in X-Forwarded-For is loopback. A later hop
+    // (10.0.0.1) is ignored — only the first, proxy-adjacent entry matters.
     expect(
       isLocalHostRequest(
         new Request("http://127.0.0.1:3000/x", {
@@ -102,9 +105,8 @@ describe("isLocalHostRequest", () => {
     ).toBe(true);
   });
 
-  it("rejects LAN Host with loopback X-Forwarded-For without Caddy rewriting Host", () => {
-    // Caddy should rewrite the Host header to 127.0.0.1:3000 for host-only API
-    // paths. If it does not, the request is rejected.
+  it("rejects LAN Host with loopback X-Forwarded-For (Host not rewritten to loopback)", () => {
+    // A non-loopback Host can never be a host-only request, regardless of XFF.
     expect(
       isLocalHostRequest(
         new Request("http://192.168.0.102:8443/x", {
@@ -117,9 +119,10 @@ describe("isLocalHostRequest", () => {
     ).toBe(false);
   });
 
-  it("accepts loopback Host with private X-Forwarded-For (Caddy LAN hostname + Host rewrite)", () => {
-    // With Caddy rewriting Host to 127.0.0.1:3000, X-Forwarded-For may still
-    // show the PC's LAN IP because the browser connected via that interface.
+  it("rejects loopback Host with private X-Forwarded-For (Caddy-proxied LAN client)", () => {
+    // Even when Caddy rewrites Host to 127.0.0.1:3000, a LAN/VPN client whose
+    // immediate hop is a private IP must not reach host-only APIs without auth.
+    // The previous design accepted this; the fail-safe design rejects it.
     expect(
       isLocalHostRequest(
         new Request("http://127.0.0.1:3000/x", {
@@ -129,7 +132,24 @@ describe("isLocalHostRequest", () => {
           },
         }),
       ),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("rejects a spoofed private X-Forwarded-For with a loopback Host (CSRF spoof regression)", () => {
+    // An attacker on the LAN (or anywhere the BFF port is reachable) can send
+    // an arbitrary X-Forwarded-For. The fail-safe design must not grant
+    // host-only access based on a spoofable private value, even when the Host
+    // header is loopback (which Caddy may rewrite for host-only paths).
+    expect(
+      isLocalHostRequest(
+        new Request("http://127.0.0.1:3000/api/browse/folder", {
+          headers: {
+            host: "127.0.0.1:3000",
+            "x-forwarded-for": "10.0.0.99",
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

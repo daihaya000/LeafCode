@@ -33,51 +33,36 @@ export function hostHeaderName(hostHeader: string): string {
 }
 
 /**
- * Best-effort check that the caller is on the host machine.
+ * Best-effort check that the caller is on the host machine (fail-safe).
  *
- * Allows three trusted paths:
- * 1. Direct loopback access (Host is 127.0.0.1/localhost/::1).
- * 2. A trusted local reverse proxy (e.g. Caddy) where the browser uses a LAN
- *    hostname, but the immediate client hop seen by the proxy is loopback.
- * 3. A trusted local reverse proxy that rewrites the Host header to loopback
- *    for host-only API paths. In that case X-Forwarded-For may show the PC's
- *    own LAN IP because the browser connected via that interface.
+ * Only direct loopback access is trusted:
+ * 1. Direct loopback access with no proxy involved (Host is loopback and
+ *    there is no X-Forwarded-For header).
+ * 2. A same-machine reverse proxy (e.g. Caddy) where the browser is on the
+ *    host PC and reaches the proxy via a loopback hostname, so the immediate
+ *    client hop recorded in X-Forwarded-For is loopback.
  *
- * Remote clients (phones, other PCs, spoofed X-Forwarded-For) are rejected.
- *
- * When using Caddy with a LAN hostname, configure Caddy to send a loopback
- * Host header for host-only API paths (see deploy/Caddyfile.example).
- *
- * Open the UI via http://127.0.0.1:3000, http://localhost:3000, or the Caddy
- * reverse proxy (https://localhost:8443, https://<LAN-IP>:8443) for host-only
- * APIs.
+ * Private X-Forwarded-For values are NOT trusted. A LAN attacker can spoof
+ * that header, and a Caddy-proxied LAN/remote client must not reach host-only
+ * APIs without authentication even when Caddy rewrites the Host header to
+ * loopback. Open host-only URLs on the host PC via a loopback hostname
+ * (http://127.0.0.1:3000, http://localhost:3000, https://localhost:8443).
  */
 export function isLocalHostRequest(req: Request): boolean {
   const hostHeader = req.headers.get("host") ?? "";
   const hostIsLoopback = isLoopbackAddress(hostHeaderName(hostHeader));
+  if (!hostIsLoopback) return false;
 
   const forwarded = req.headers.get("x-forwarded-for");
-  const forwardedClient = forwarded?.split(",")[0]?.trim() ?? "";
-  const forwardedIsLoopback =
-    forwardedClient && isLoopbackAddress(forwardedClient);
+  // No proxy header: direct loopback access to the BFF.
+  if (!forwarded) return true;
 
-  // Direct loopback access, no proxy involved.
-  if (hostIsLoopback && !forwarded) return true;
-
-  // Trusted local reverse proxy (Caddy on the same machine). The browser may
-  // show a LAN hostname, but the immediate client hop is loopback.
-  if (hostIsLoopback && forwardedIsLoopback) return true;
-
-  // Caddy-style Host rewrite: the reverse proxy rewrites Host to 127.0.0.1:3000
-  // for host-only API paths, but X-Forwarded-For can legitimately show the
-  // PC's own LAN IP because the browser reached the proxy through the LAN
-  // interface. Accept private-IP XFF only when Host is loopback, so random
-  // LAN clients cannot spoof their way in with a non-loopback Host.
-  if (hostIsLoopback && forwardedClient && isPrivateAddress(forwardedClient)) {
-    return true;
-  }
-
-  return false;
+  const forwardedClient = forwarded.split(",")[0]?.trim() ?? "";
+  // A proxy is involved: only trust it when the immediate client hop is
+  // loopback (browser on the same PC reaching the proxy via loopback).
+  // Reject private/non-loopback XFF so spoofed headers and Caddy-proxied LAN
+  // clients cannot reach host-only APIs without auth.
+  return forwardedClient !== "" && isLoopbackAddress(forwardedClient);
 }
 
 /**

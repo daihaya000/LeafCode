@@ -19,15 +19,32 @@ type EntryBody = {
   entries: { name: string; path: string; kind?: string }[];
 };
 
+/** Build a NextRequest that looks like a direct loopback call (host-only). */
+function localRequest(url: string): NextRequest {
+  return new NextRequest(url, { headers: { host: "localhost:3000" } });
+}
+
+/** Build a NextRequest that looks like a LAN client (non-loopback Host). */
+function lanRequest(url: string): NextRequest {
+  return new NextRequest(url, { headers: { host: "192.168.0.55:3000" } });
+}
+
 describe("GET /api/browse/dirs", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
+  it("rejects non-loopback callers (local-only guard)", async () => {
+    const response = await GET(lanRequest("http://localhost/api/browse/dirs"));
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("host machine");
+  });
+
   it("returns the folder listing when Quick Access never resolves", async () => {
     vi.useFakeTimers();
     const responsePromise = GET(
-      new NextRequest("http://localhost/api/browse/dirs"),
+      localRequest("http://localhost/api/browse/dirs"),
     );
 
     await vi.advanceTimersByTimeAsync(751);
@@ -51,7 +68,7 @@ describe("GET /api/browse/dirs", () => {
     try {
       const dirsOnly = (await (
         await GET(
-          new NextRequest(
+          localRequest(
             `http://localhost/api/browse/dirs?path=${encodeURIComponent(base)}`,
           ),
         )
@@ -61,7 +78,7 @@ describe("GET /api/browse/dirs", () => {
 
       const withFiles = (await (
         await GET(
-          new NextRequest(
+          localRequest(
             `http://localhost/api/browse/dirs?path=${encodeURIComponent(base)}&files=1`,
           ),
         )
@@ -84,7 +101,7 @@ describe("GET /api/browse/dirs", () => {
     });
 
     const response = await GET(
-      new NextRequest(
+      localRequest(
         `http://localhost/api/browse/dirs?path=${encodeURIComponent("/etc")}&files=1`,
       ),
     );
