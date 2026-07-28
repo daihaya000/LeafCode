@@ -8,6 +8,12 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 `setup.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `setup.bat` を再実行してください。
 
+### タスクバーへのピン留め
+
+`scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカット（`start-webui.bat` を指す）を作成します。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
+
+Windows 10 1809 以降はショートカットをスクリプトから自動でタスクバーへピン留めする手段が提供されていないため、ピン留め自体は手動です。作成された `OpenCode WebUI.lnk` を右クリックし「タスクバーにピン留めする」を選択してください（Windowsのビルドによっては、スクリプト対象のショートカットに対しこの項目が「スタートにピン留めする」のみになる場合があります）。
+
 ### 文字化け・エンコード
 
 `.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`setup.bat` は英語の要約行（`[Setup] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `setup.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。

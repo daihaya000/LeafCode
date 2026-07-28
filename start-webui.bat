@@ -5,6 +5,11 @@ rem See docs\specs\bat-encoding-safety.md
 setlocal
 cd /d "%~dp0"
 
+rem Give the console window a stable, app-like title so Alt-Tab and a taskbar
+rem pin (see scripts\create-shortcut.bat) show "OpenCode WebUI" instead of the
+rem generic "Command Prompt" title. Node does not touch this on Windows.
+title OpenCode WebUI
+
 echo [OpenCode WebUI] Starting...
 
 if not exist "web\node_modules\" (

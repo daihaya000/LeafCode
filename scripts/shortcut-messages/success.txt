@@ -1,0 +1,4 @@
+[OpenCode WebUI] デスクトップに「OpenCode WebUI」ショートカットを作成しました。
+[OpenCode WebUI] タスクバーへピン留めするには、そのショートカットを右クリックして
+[OpenCode WebUI] 「タスクバーにピン留めする」を選択してください（Windowsの仕様上、自動ピン留めはできません）。
+[OpenCode WebUI] 起動中のウィンドウは "OpenCode WebUI" というタイトルで表示されます。
