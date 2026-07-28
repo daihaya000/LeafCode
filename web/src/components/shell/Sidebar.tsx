@@ -45,6 +45,8 @@ const MAX_WIDTH = 480;
 const ACTIVE_TASK_POLL_MS = 3000;
 const ENGINE_STARTUP_RETRY_MS = 1000;
 const ENGINE_UNAVAILABLE_CONFIRMATIONS = 2;
+const BUILD_COMMIT = process.env.NEXT_PUBLIC_BUILD_COMMIT?.trim() || "";
+const BUILD_COMMIT_LABEL = BUILD_COMMIT ? BUILD_COMMIT.slice(0, 7) : "";
 
 /**
  * Shared geometry for the per-task row action buttons (refresh title / archive /
@@ -722,6 +724,15 @@ export function Sidebar({
             className="h-4.5 w-4.5 shrink-0 rounded-[3px] object-contain"
           />
           <span className="truncate">OpenCodeWebUI</span>
+          {BUILD_COMMIT_LABEL && (
+            <span
+              className="shrink-0 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
+              title={`Build commit: ${BUILD_COMMIT}`}
+              aria-label={`Build commit ${BUILD_COMMIT}`}
+            >
+              {BUILD_COMMIT_LABEL}
+            </span>
+          )}
         </Link>
         <Link
           href="/"
