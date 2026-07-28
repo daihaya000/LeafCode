@@ -535,11 +535,11 @@ export function SettingsView() {
         className="min-h-0 flex-1 overflow-y-auto"
       >
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
-        <div className="mx-auto max-w-3xl px-4">
+        <div className="mx-auto max-w-6xl px-4">
           <div className="flex h-14 items-center">
             <h1 className="text-sm font-semibold">設定</h1>
           </div>
-          <div className="flex gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex flex-wrap gap-x-2 gap-y-1">
             {tabs.map((t) => (
               <button
                 key={t.key}
@@ -564,7 +564,7 @@ export function SettingsView() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]">
+      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]">
         {error && (
           <p
             className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-diff-del-text"
