@@ -954,7 +954,7 @@ export function Sidebar({
                                     </span>
                                   </div>
                                   <div
-                                    className="flex min-w-0 items-center gap-1 pl-3 pr-8 text-[10px] text-muted"
+                                    className="flex min-w-0 items-center gap-1 pl-3 pr-4 text-[10px] text-muted"
                                     title={
                                       task.branch
                                         ? `${task.isolation}: ${task.branch}`
