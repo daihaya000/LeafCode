@@ -14,5 +14,5 @@ jobs:
           node-version: "20"
       - name: Encoding / batch safety tests
         run: npm run test:encoding
-      - name: Host tests (includes setup.bat code-page matrix)
+      - name: Host tests (includes start-webui.bat code-page matrix)
         run: npm --prefix host test

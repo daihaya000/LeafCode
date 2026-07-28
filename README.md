@@ -2,11 +2,10 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ## 起動（Windows）
 
-1. **初回のみ**、リポジトリルートの `setup.bat` をダブルクリックします。`winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、完了後にWebUIを起動します。
-2. **2回目以降**は `start-webui.bat` をダブルクリックします。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
-3. トレイ常駐後、`http://127.0.0.1:3000` を開きます。
+1. リポジトリルートの `start-webui.bat` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `.next/BUILD_ID` の有無で判定する冪等な処理です）。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
+2. トレイ常駐後、`http://127.0.0.1:3000` を開きます。
 
-`setup.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `setup.bat` を再実行してください。
+`start-webui.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `start-webui.bat` を再実行してください。
 
 ### タスクバーへのピン留め
 
@@ -17,11 +16,11 @@ Windows 10 1809 以降はショートカットをスクリプトから自動で�
 
 ### 文字化け・エンコード
 
-`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`setup.bat` は英語の要約行（`[Setup] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `setup.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
+`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`start-webui.bat` は英語の要約行（`[OpenCode WebUI] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `start-webui.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
 
 ### production build
 
-稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` と `setup.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `start-webui.bat` からの起動を案内します）。
+稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` と `start-webui.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `start-webui.bat` からの起動を案内します）。
 
 停止できない場合はビルドを中止します。
 
@@ -31,7 +30,7 @@ Windows 10 1809 以降はショートカットをスクリプトから自動で�
 
 `npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
 
-`setup.bat` は各エラーを `[Setup] ERROR <code>: <english summary>` の英語行として表示します。下記のコード表と対応します。
+`start-webui.bat` は各エラーを `[OpenCode WebUI] ERROR <code>: <english summary>` の英語行として表示します。下記のコード表と対応します。
 
 セットアップの終了コード:
 

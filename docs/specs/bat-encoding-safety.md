@@ -1,5 +1,10 @@
 # setup.bat が文字化け／エンコードで実行できない問題の恒久対策
 
+> **追記（統合後）**: 本ファイルが対象としていた `setup.bat` は、`docs/specs/setup-start-webui-merge.md` に基づき
+> `start-webui.bat` へ統合されて削除されました。本文中の `setup.bat` への言及は当時の事故記録・調査ログとして
+> そのまま残しています。現在のASCII/CRLF制約や日本語メッセージ分離の方針は `start-webui.bat` にも同様に適用されており、
+> 回帰は引き続き `host/src/bat-encoding.test.js` と `npm run test:encoding` が担保します。
+
 ## 背景・問題
 
 `setup.bat` をダブルクリックしても正常に完走せず、「文字化けした行が `'...' は、内部コマンドまたは外部コマンド...として認識されていません。` と表示される」「メッセージが出ない」という報告が多発している。
