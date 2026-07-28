@@ -426,51 +426,53 @@ export function GraphPanel({
                 style={{ minHeight: ROW_H }}
               >
                 <GraphCell row={row} />
-                <div className="flex min-w-0 flex-1 flex-col gap-1 py-1.5 pr-2 sm:flex-row sm:items-center sm:gap-2">
+                <div className="flex min-w-0 flex-1 items-start gap-1 py-1.5 pr-2">
                   <ChevronRight
                     className={cx(
-                      "mt-0.5 h-3 w-3 shrink-0 text-faint transition-transform sm:mt-0",
+                      "mt-0.5 h-3 w-3 shrink-0 text-faint transition-transform",
                       open && "rotate-90",
                     )}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs text-text">
-                      {row.commit.subject || "(no subject)"}
+                    <div className="flex min-w-0 items-center gap-1">
+                      <div className="min-w-0 flex-1 truncate text-xs text-text">
+                        {row.commit.subject || "(no subject)"}
+                      </div>
+                      <span
+                        title={row.commit.hash}
+                        className="inline-flex shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
+                      >
+                        {row.commit.shortHash}
+                      </span>
                     </div>
                     <div className="truncate text-[10px] text-faint">
                       {row.commit.author}
                     </div>
-                  </div>
-                  <div className="flex max-w-full flex-wrap items-center gap-1">
-                    <span
-                      title={row.commit.hash}
-                      className="inline-flex shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
-                    >
-                      {row.commit.shortHash}
-                    </span>
-                    {shown.map((name) => (
-                      <span
-                        key={name}
-                        title={name}
-                        className={cx(
-                          "inline-flex max-w-[7rem] shrink-0 items-center gap-0.5 truncate rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
-                          name === payload?.currentBranch
-                            ? "border-accent/50 bg-accent/15 text-accent"
-                            : "border-border bg-surface-2 text-muted",
-                        )}
-                      >
-                        <GitBranch className="h-2.5 w-2.5 shrink-0" />
-                        <span className="truncate">{name}</span>
-                      </span>
-                    ))}
-                    {more > 0 && (
-                      <span
-                        title={refs.join(", ")}
-                        className="shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
-                      >
-                        +{more}
-                      </span>
-                    )}
+                    <div className="mt-1 flex max-w-full flex-wrap items-center gap-1">
+                      {shown.map((name) => (
+                        <span
+                          key={name}
+                          title={name}
+                          className={cx(
+                            "inline-flex max-w-[7rem] shrink-0 items-center gap-0.5 truncate rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+                            name === payload?.currentBranch
+                              ? "border-accent/50 bg-accent/15 text-accent"
+                              : "border-border bg-surface-2 text-muted",
+                          )}
+                        >
+                          <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{name}</span>
+                        </span>
+                      ))}
+                      {more > 0 && (
+                        <span
+                          title={refs.join(", ")}
+                          className="shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
+                        >
+                          +{more}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </button>
