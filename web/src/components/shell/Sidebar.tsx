@@ -11,7 +11,6 @@ import {
   GitBranch,
   Loader2,
   Plus,
-  RefreshCw,
   Settings,
   Star,
   Trash2,
@@ -200,8 +199,6 @@ export function Sidebar({
   const canPersistRef = useRef(false);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [resizing, setResizing] = useState(false);
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [destroyingGroupKey, setDestroyingGroupKey] = useState<string | null>(
     null,
   );
@@ -689,37 +686,6 @@ export function Sidebar({
     router.push(href);
   };
 
-  const refreshTitle = useCallback(
-    async (task: TaskSummary, e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!task.sessionId || refreshingId === task.id) return;
-      setRefreshingId(task.id);
-      setRefreshError(null);
-      try {
-        const { title } = await sendJson<{ title: string }>(
-          "POST",
-          `/api/workspaces/${task.id}/sessions/${task.sessionId}/refresh-title`,
-        );
-        setTasks((prev) =>
-          prev.map((t) => (t.id === task.id ? { ...t, title } : t)),
-        );
-        notifyTasksChanged();
-      } catch (err) {
-        setRefreshError(
-          err instanceof Error ? err.message : "タイトルの更新に失敗しました",
-        );
-      } finally {
-        // Functional update: only clear when this task still owns the refresh
-        // slot. Two near-simultaneous refreshes used to overwrite refreshingId
-        // with B, then A's finally wiped the slot to null mid-flight, dropping
-        // B's spinner.
-        setRefreshingId((cur) => (cur === task.id ? null : cur));
-      }
-    },
-    [refreshingId],
-  );
-
   const setScrollTarget = useMobileScrollTarget();
 
   const body = (includeAddons: boolean) => (
@@ -1044,28 +1010,6 @@ export function Sidebar({
                                   </div>
                                 </button>
                                 <div className="absolute right-0.5 bottom-1 flex shrink-0 items-center">
-                                  {task.sessionId && (
-                                    <button
-                                      type="button"
-                                      aria-label="会話からタイトルを再生成"
-                                      title="会話からタイトルを再生成"
-                                      aria-busy={refreshingId === task.id}
-                                      disabled={refreshingId === task.id}
-                                      onClick={(e) => void refreshTitle(task, e)}
-                                      className={cx(
-                                        TASK_ROW_ACTION_BTN,
-                                        "text-faint hover:bg-surface-2 hover:text-text disabled:opacity-50",
-                                      )}
-                                    >
-                                      <RefreshCw
-                                        className={cx(
-                                          "h-3 w-3",
-                                          refreshingId === task.id &&
-                                            "motion-safe:animate-spin",
-                                        )}
-                                      />
-                                    </button>
-                                  )}
                                   <button
                                     type="button"
                                     aria-label="タスクをアーカイブ"
@@ -1218,15 +1162,6 @@ export function Sidebar({
           >
             要復旧 {orphanCount} 件 → 設定
           </Link>
-        )}
-
-        {refreshError && (
-          <div
-            role="status"
-            className="mt-2 rounded-lg bg-danger-bg px-2 py-1.5 text-[11px] text-danger"
-          >
-            {refreshError}
-          </div>
         )}
 
         {projects.length > 0 && (
