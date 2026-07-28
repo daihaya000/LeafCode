@@ -464,6 +464,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [skillPermissionSaving, setSkillPermissionSaving] = useState(false);
   const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const composingRef = useRef(false);
@@ -1366,10 +1367,14 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // Re-pin when the content height changes asynchronously (images, Markdown,
   // code blocks, tool output). A ResizeObserver on the content wrapper catches
-  // layout shifts that the stream-deps effect alone misses.
+  // layout shifts that the stream-deps effect alone misses. We must observe
+  // the content wrapper (contentRef), not the scroller itself: the scroller
+  // has a fixed flex height with overflow-y-auto, so its own border-box never
+  // changes size when its children grow, and ResizeObserver would never fire.
   useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller) return;
+    const content = contentRef.current;
+    if (!scroller || !content) return;
     const pinned = () => {
       if (!stickRef.current) return;
       if (isAtBottom(scroller)) return;
@@ -1377,7 +1382,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     };
     if (typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver(pinned);
-      ro.observe(scroller);
+      ro.observe(content);
       return () => ro.disconnect();
     }
     // Fallback for test/legacy environments without ResizeObserver.
@@ -2574,7 +2579,10 @@ export function TaskView({ taskId }: { taskId: string }) {
               onScroll={onScroll}
               className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
-              <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6">
+              <div
+                ref={contentRef}
+                className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6"
+              >
                 <GoalLoopPanel
                   loop={goalLoop}
                   busy={goalLoopBusy}
