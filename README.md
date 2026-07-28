@@ -124,6 +124,7 @@ scripts\allow-firewall-8443.bat
 
 - アクセス URL: `https://localhost:8443` / `https://<LAN もしくは VPN の IP>:8443`
 - **アクセスする名前/IP は `deploy/Caddyfile` の site 行に列挙**してください（列挙した名前にだけ証明書が発行されます）。既定は `localhost, 127.0.0.1` に加えて、ご自身の環境のLAN IP（例: `192.168.1.100`）を追記します。LAN IP が変わる場合は DHCP 予約推奨。
+- `this endpoint is only available from the host machine` がホストPC上の Caddy 経由アクセスで出る場合は、既存の `deploy/Caddyfile` の host-only API `handle` に `deploy/Caddyfile.example` と同じ `/api/host/logs*` と `/api/updates/*` を追加して Caddy を再起動してください。
 - 公開ドメインがある場合は Caddyfile の Let's Encrypt ブロック（コメント）を使うと、CA 導入不要で全端末が警告なしの正規 TLS になります（80/443 到達性 + DNS 必須）。
 - HTTP で WebUI 自体を配信したい場合は Caddyfile の `:8080` ブロックの `handle`（リダイレクト）を、コメントで示した `reverse_proxy` 版に差し替えてください。
 
