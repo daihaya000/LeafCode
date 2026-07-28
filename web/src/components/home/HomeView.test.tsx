@@ -172,6 +172,39 @@ describe("HomeView image attachments", () => {
     });
   });
 
+  it("keeps the image attachment button visible but disabled for image-unsupported models", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  text: { name: "Text", capabilities: { input: { image: false } } },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "text" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    expect(attach).toBeTruthy();
+    expect((attach as HTMLButtonElement).disabled).toBe(true);
+    expect(attach.getAttribute("title")).toBe(
+      "選択中のモデルは画像入力に対応していません",
+    );
+  });
+
   it("blocks image submission when the selected agent model lacks image capability", async () => {
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider") {
