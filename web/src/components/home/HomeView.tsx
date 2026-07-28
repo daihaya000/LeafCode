@@ -580,7 +580,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         // subagentPermission must be sent even when no agent is selected:
         // enforcement is session-scoped (not agent-scoped), so omitting it
-        // whenever `agent` is empty left "不許可" without effect on the new
+        // whenever `agent` is empty left "禁止" without effect on the new
         // session's first prompt.
         subagentPermission,
         skillPermission,

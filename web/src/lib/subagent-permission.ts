@@ -1,5 +1,5 @@
 /**
- * サブエージェント起動（task 権限）の許可 / 不許可設定。
+ * サブエージェント起動（task 権限）の許可 / 禁止設定。
  * `lib/access-mode.ts` の localStorage + CustomEvent 設計を踏襲する。
  * デフォルトは「許可」。
  */
@@ -24,7 +24,7 @@ export const SUBAGENT_PERMISSION_OPTIONS: {
   },
   {
     value: "deny",
-    label: "不許可",
+    label: "禁止",
     title: "サブエージェントの起動（task 権限）を自動で拒否します",
   },
 ];
@@ -55,8 +55,8 @@ export type PermissionAutoAction = "approve" | "reject" | "manual";
 
 /**
  * 保留中の権限要求をどう自動処理するかの純粋判定。
- * - サブエージェント不許可 かつ `task` 権限 → "reject"（フルアクセスより優先）
- * - スキル不許可 かつ `skill` 権限 → "reject"（フルアクセスより優先）
+ * - サブエージェント禁止 かつ `task` 権限 → "reject"（フルアクセスより優先）
+ * - スキル禁止 かつ `skill` 権限 → "reject"（フルアクセスより優先）
  * - フルアクセス（それ以外） → "approve"
  * - どちらでもない → "manual"（手動カードで応答）
  * これにより task / skill 以外の権限は各設定の影響を受けない。

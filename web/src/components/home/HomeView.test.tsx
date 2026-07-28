@@ -584,7 +584,7 @@ describe("HomeView subagent permission", () => {
     localStorage.clear();
   });
 
-  it("persists 不許可 locally without a config write (applied at task creation)", async () => {
+  it("persists 禁止 locally without a config write (applied at task creation)", async () => {
     timedFetch.mockImplementation((input: string) => {
       if (input.endsWith("/agent")) {
         return Promise.resolve({
@@ -602,7 +602,7 @@ describe("HomeView subagent permission", () => {
     expect(select.value).toBe("allow");
 
     fireEvent.click(select);
-    fireEvent.click(screen.getByRole("option", { name: "不許可" }));
+    fireEvent.click(screen.getByRole("option", { name: "禁止" }));
 
     await waitFor(() =>
       expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),
@@ -619,7 +619,7 @@ describe("HomeView subagent permission", () => {
     const skillSelect = screen.getByLabelText("スキル") as HTMLButtonElement;
     expect(skillSelect.value).toBe("allow");
     fireEvent.click(skillSelect);
-    fireEvent.click(screen.getByRole("option", { name: "不許可" }));
+    fireEvent.click(screen.getByRole("option", { name: "禁止" }));
     await waitFor(() =>
       expect(localStorage.getItem("webui:skill-permission")).toBe("deny"),
     );
@@ -635,14 +635,14 @@ describe("HomeView subagent permission", () => {
     // Regression: /api/opencode/agent returns no agents here (default mock:
     // `{ ok: false }`), so the agent selector never renders and `agent` stays
     // "". subagentPermission is session-scoped, not agent-scoped, so it must
-    // still reach POST /api/tasks — otherwise "不許可" has no effect on the
+    // still reach POST /api/tasks — otherwise "禁止" has no effect on the
     // new session's first prompt.
     render(<HomeView />);
     const select = (await screen.findByLabelText(
       "サブエージェント",
     )) as HTMLButtonElement;
     fireEvent.click(select);
-    fireEvent.click(screen.getByRole("option", { name: "不許可" }));
+    fireEvent.click(screen.getByRole("option", { name: "禁止" }));
     await waitFor(() =>
       expect(localStorage.getItem("webui:subagent-permission")).toBe("deny"),
     );

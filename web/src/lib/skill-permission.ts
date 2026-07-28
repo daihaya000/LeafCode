@@ -1,5 +1,5 @@
 /**
- * スキル呼び出し（skill 権限）の許可 / 不許可設定。
+ * スキル呼び出し（skill 権限）の許可 / 禁止設定。
  * `lib/access-mode.ts` の localStorage + CustomEvent 設計を踏襲する。
  * デフォルトは「許可」。
  */
@@ -22,7 +22,7 @@ export const SKILL_PERMISSION_OPTIONS: {
   },
   {
     value: "deny",
-    label: "不許可",
+    label: "禁止",
     title: "スキルの使用を自動で拒否します",
   },
 ];
