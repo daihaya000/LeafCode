@@ -710,7 +710,7 @@ describe("TaskView", () => {
     expect(streamMock.sendPrompt).toHaveBeenCalledWith("hello", expect.any(Object));
   });
 
-  it("blocks image submission to an unknown model in TaskView (capability undefined)", async () => {
+  it("hides image attachment controls when the selected model lacks image capability", async () => {
     taskStatus = "idle";
     vi.stubGlobal(
       "fetch",
@@ -742,33 +742,56 @@ describe("TaskView", () => {
     );
     const streamMock = useSessionStream();
     streamMock.status = { type: "idle" };
-    useSessionStream.mockReturnValue({
-      ...streamMock,
-      visibleMessages: [],
-    });
 
     const view = render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
-    sendJson.mockClear();
 
-    const modelSelect = await screen.findByLabelText("モデル");
-    fireEvent.change(modelSelect, {
-      target: { value: "openai::unknown-vision" },
-    });
+    expect(screen.queryByRole("button", { name: "画像を添付" })).toBeNull();
+    expect(view.container.querySelector('input[type="file"]')).toBeNull();
+  });
 
-    const image = new File(["img"], "unknown-task.png", { type: "image/png" });
-    const input = view.container.querySelector('input[type="file"]');
-    expect(input).not.toBeNull();
-    fireEvent.change(input as HTMLInputElement, { target: { files: [image] } });
-    expect(await screen.findByRole("img", { name: "unknown-task.png" })).toBeTruthy();
+  it("hides image attachment controls after switching to a text-only model", async () => {
+    taskStatus = "idle";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes("/api/opencode/provider")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              all: [{
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: {
+                    name: "Vision",
+                    capabilities: { input: { image: true }, attachment: false },
+                  },
+                  text: {
+                    name: "Text",
+                    capabilities: { input: { image: false }, attachment: false },
+                  },
+                },
+              }],
+              connected: ["openai"],
+              default: { openai: "vision" },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
 
-    const submit = screen.getByRole("button", { name: "送信" });
-    fireEvent.click(submit);
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
 
-    await waitFor(() => {
-      expect(sendJson).not.toHaveBeenCalled();
-      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
-    });
+    expect(await screen.findByRole("button", { name: "画像を添付" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+    fireEvent.click(await screen.findByRole("option", { name: /Text/ }));
+
+    expect(screen.queryByRole("button", { name: "画像を添付" })).toBeNull();
   });
 
   it("sends an image follow-up to a model with explicit image capability", async () => {

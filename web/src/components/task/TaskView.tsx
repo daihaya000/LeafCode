@@ -1650,6 +1650,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     });
 
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
+    if (!imageSupported) {
+      setSendError(
+        "選択中のエージェント/モデルは画像入力に対応していないか、画像対応を確認できません。画像対応モデルを選んでください。",
+      );
+      return;
+    }
     const list = Array.from(files).filter((f) => IMAGE_MIME_RE.test(f.type));
     if (list.length === 0) return;
 
@@ -1687,7 +1693,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         `一部の画像をスキップしました（上限 ${MAX_IMAGE_COUNT} 枚 / ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB）。`,
       );
     }
-  }, []);
+  }, [imageSupported]);
 
   const removeAttachment = useCallback((index: number) => {
     const next = attachmentsRef.current.filter((_, i) => i !== index);
@@ -2966,27 +2972,31 @@ export function TaskView({ taskId }: { taskId: string }) {
                 )}
                 <div className="flex items-center gap-2 pt-1">
                   <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files) void addImageFiles(e.target.files);
-                        e.target.value = "";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={!task.sessionId || working}
-                      aria-label="画像を添付"
-                      title="画像を添付"
-                      className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" />
-                    </button>
+                    {imageSupported && (
+                      <>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) void addImageFiles(e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={!task.sessionId || working}
+                          aria-label="画像を添付"
+                          title="画像を添付"
+                          className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
                     <VoiceInputButton
                       voice={voice}
                       onTranscript={onVoiceTranscript}
