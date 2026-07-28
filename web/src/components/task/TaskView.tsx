@@ -2258,31 +2258,20 @@ export function TaskView({ taskId }: { taskId: string }) {
             <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">
               {task.title}
             </h1>
-            <StatusBadge status={working ? "working" : task.status} />
-            {working && currentTool && (
-              <span className="hidden max-w-[12rem] truncate text-xs text-working sm:inline">
-                {currentTool}
-              </span>
-            )}
-            {todoBadge && (
-              <span className="hidden items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted sm:inline-flex">
-                <ListTodo className="h-3 w-3" />
-                {todoBadge}
-              </span>
-            )}
-            {stream.connection === "reconnecting" && (
-              <span className="text-xs text-warning">再接続中…</span>
-            )}
-            {stream.connection === "down" && (
-              <span className="text-xs text-danger">切断（再試行中）</span>
-            )}
           </div>
           {/* Mobile-only compact context usage row: the sm:flex meta row
               below carries branch/project/cost too, but that whole row is
               hidden below sm, so phones would otherwise show no context
               indicator at all. */}
-          {contextUsage && (
-            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint sm:hidden">
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] text-faint sm:hidden">
+            <StatusBadge status={working ? "working" : task.status} />
+            {stream.connection === "reconnecting" && (
+              <span className="shrink-0 text-warning">再接続中…</span>
+            )}
+            {stream.connection === "down" && (
+              <span className="shrink-0 text-danger">切断（再試行中）</span>
+            )}
+            {contextUsage && (
               <span
                 className="flex min-w-0 shrink-0 items-center gap-1.5"
                 title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
@@ -2305,58 +2294,77 @@ export function TaskView({ taskId }: { taskId: string }) {
                   {formatTokens(contextUsage.limit)} ({contextUsage.pct}%)
                 </span>
               </span>
-            </div>
-          )}
-          {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
-            <div className="mt-0.5 hidden items-center gap-1 text-xs text-faint sm:flex">
-              {task.branch && (
-                <>
-                  <GitBranch className="h-3 w-3" />
-                  <span className="truncate font-mono">{task.branch}</span>
-                  <span className="mx-1">·</span>
-                </>
-              )}
-              <span className="truncate">{task.projectName}</span>
-              {contextUsage && (
-                <>
-                  <span className="mx-1">·</span>
-                  <span
-                    className="flex shrink-0 items-center gap-1.5"
-                    title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
-                  >
-                    <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-2">
-                      <span
-                        className={cx(
-                          "block h-full rounded-full",
-                          contextUsage.pct >= 90
-                            ? "bg-danger"
-                            : contextUsage.pct >= 70
-                              ? "bg-warning"
-                              : "bg-accent",
-                        )}
-                        style={{ width: `${contextUsage.pct}%` }}
-                      />
-                    </span>
-                    <span className="font-mono">
-                      {formatTokens(contextUsage.used)}/
-                      {formatTokens(contextUsage.limit)} ({contextUsage.pct}%)
-                    </span>
+            )}
+          </div>
+          <div className="mt-0.5 hidden min-w-0 items-center gap-1 text-xs text-faint sm:flex">
+            <StatusBadge status={working ? "working" : task.status} />
+            {working && currentTool && (
+              <span className="max-w-[12rem] truncate text-working">
+                {currentTool}
+              </span>
+            )}
+            {todoBadge && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">
+                <ListTodo className="h-3 w-3" />
+                {todoBadge}
+              </span>
+            )}
+            {stream.connection === "reconnecting" && (
+              <span className="shrink-0 text-warning">再接続中…</span>
+            )}
+            {stream.connection === "down" && (
+              <span className="shrink-0 text-danger">切断（再試行中）</span>
+            )}
+            {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
+              <span className="mx-1 shrink-0">·</span>
+            )}
+            {task.branch && (
+              <>
+                <GitBranch className="h-3 w-3" />
+                <span className="truncate font-mono">{task.branch}</span>
+                <span className="mx-1">·</span>
+              </>
+            )}
+            <span className="truncate">{task.projectName}</span>
+            {contextUsage && (
+              <>
+                <span className="mx-1">·</span>
+                <span
+                  className="flex shrink-0 items-center gap-1.5"
+                  title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
+                >
+                  <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-2">
+                    <span
+                      className={cx(
+                        "block h-full rounded-full",
+                        contextUsage.pct >= 90
+                          ? "bg-danger"
+                          : contextUsage.pct >= 70
+                            ? "bg-warning"
+                            : "bg-accent",
+                      )}
+                      style={{ width: `${contextUsage.pct}%` }}
+                    />
                   </span>
-                </>
-              )}
-              {(task.cost ?? 0) > 0 && (
-                <>
-                  <span className="mx-1">·</span>
-                  <span
-                    className="shrink-0"
-                    title="このセッションの累計コスト"
-                  >
-                    累計 {formatCostValue(task.cost!, costPrefs)}
+                  <span className="font-mono">
+                    {formatTokens(contextUsage.used)}/
+                    {formatTokens(contextUsage.limit)} ({contextUsage.pct}%)
                   </span>
-                </>
-              )}
-            </div>
-          )}
+                </span>
+              </>
+            )}
+            {(task.cost ?? 0) > 0 && (
+              <>
+                <span className="mx-1">·</span>
+                <span
+                  className="shrink-0"
+                  title="このセッションの累計コスト"
+                >
+                  累計 {formatCostValue(task.cost!, costPrefs)}
+                </span>
+              </>
+            )}
+          </div>
         </div>
         {/* Mobile-only global attention entry (desktop shows it in sidebar). */}
         <span className="md:hidden">
