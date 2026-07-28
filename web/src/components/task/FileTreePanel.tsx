@@ -59,7 +59,7 @@ export function FileTreePanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col border-border bg-surface lg:border-l">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col border-border bg-surface lg:border-l">
       <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
         <button
           type="button"
