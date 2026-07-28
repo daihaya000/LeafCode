@@ -89,6 +89,34 @@ const RESTART_LABELS = {
   opencode: "OpenCode（バックエンド）",
   all: "すべて",
 } as const;
+const RESTART_HEALTH_MAX_ATTEMPTS = 180;
+const RESTART_HEALTH_INTERVAL_MS = 1000;
+const RESTART_HEALTH_TIMEOUT_MS = 2500;
+
+function restartHealthReady(
+  target: "webui" | "opencode" | "all",
+  health: HealthDto,
+) {
+  if (target === "webui") return health.webui?.ok === true;
+  if (target === "opencode") return health.opencode?.ok === true;
+  return health.webui?.ok === true && health.opencode?.ok === true;
+}
+
+function restartHealthTimeoutMessage(
+  target: "webui" | "opencode" | "all",
+  lastHealth: HealthDto | null,
+) {
+  if (target === "all" && lastHealth?.webui?.ok === true) {
+    return "WebUI は復帰しましたが、OpenCode の起動確認が完了しませんでした。設定の接続状態またはトレイログを確認してください。";
+  }
+  if (target === "webui") {
+    return "WebUI の再起動要求は受理されましたが、3分以内にヘルスチェックへ復帰しませんでした。ページを再読み込みし、続く場合はトレイログを確認してください。";
+  }
+  if (target === "opencode") {
+    return "OpenCode の再起動要求は受理されましたが、3分以内に起動確認が完了しませんでした。トレイログを確認してください。";
+  }
+  return "再起動要求は受理されましたが、3分以内にヘルスチェックへ復帰しませんでした。ページを再読み込みし、続く場合はトレイログを確認してください。";
+}
 
 function ThemeSettings() {
   const { theme, resolvedTheme, setTheme } = useTheme();
@@ -307,55 +335,27 @@ export function SettingsView() {
             "再起動に失敗しました",
         );
       }
-      if (target === "webui" || target === "all") {
-        // WebUI process will die; poll until it comes back.
-        let success = false;
-        for (let i = 0; i < 60; i += 1) {
-          await new Promise((r) => setTimeout(r, 1000));
-          try {
-            const h = await timedFetch("/api/health", { timeoutMs: 1500 });
-            if (!h.ok) continue;
-            const body = (await h.json().catch(() => ({}))) as HealthDto;
-            if (target === "webui") {
-              // webui target: HTTP 200 + webui.ok === true
-              if (body.webui?.ok === true) {
-                success = true;
-                break;
-              }
-            } else {
-              // all target: webui.ok === true + opencode.ok === true
-              if (body.webui?.ok === true && body.opencode?.ok === true) {
-                success = true;
-                break;
-              }
-            }
-          } catch {
-            // still down
+      let success = false;
+      let lastHealth: HealthDto | null = null;
+      for (let i = 0; i < RESTART_HEALTH_MAX_ATTEMPTS; i += 1) {
+        await new Promise((r) => setTimeout(r, RESTART_HEALTH_INTERVAL_MS));
+        try {
+          const h = await timedFetch(`/api/health?restart=${Date.now()}`, {
+            timeoutMs: RESTART_HEALTH_TIMEOUT_MS,
+          });
+          if (!h.ok) continue;
+          const body = (await h.json().catch(() => ({}))) as HealthDto;
+          lastHealth = body;
+          if (restartHealthReady(target, body)) {
+            success = true;
+            break;
           }
+        } catch {
+          // The target may still be shutting down or starting up.
         }
-        if (!success) {
-          throw new Error("再起動後のヘルスチェックが60回連続で失敗しました");
-        }
-      } else {
-        // opencode target: poll until opencode.ok === true
-        let success = false;
-        for (let i = 0; i < 60; i += 1) {
-          await new Promise((r) => setTimeout(r, 1000));
-          try {
-            const h = await timedFetch("/api/health", { timeoutMs: 1500 });
-            if (!h.ok) continue;
-            const body = (await h.json().catch(() => ({}))) as HealthDto;
-            if (body.opencode?.ok === true) {
-              success = true;
-              break;
-            }
-          } catch {
-            // still down
-          }
-        }
-        if (!success) {
-          throw new Error("OpenCode の再起動が60回連続で確認できませんでした");
-        }
+      }
+      if (!success) {
+        throw new Error(restartHealthTimeoutMessage(target, lastHealth));
       }
       await refresh();
     } catch (err) {
