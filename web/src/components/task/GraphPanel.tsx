@@ -447,13 +447,13 @@ export function GraphPanel({
                     )}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-1">
-                      <div className="min-w-0 flex-1 truncate text-xs text-text">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1">
+                      <div className="min-w-0 flex-[1_1_8rem] truncate text-xs text-text">
                         {row.commit.subject || "(no subject)"}
                       </div>
                       <span
                         title={row.commit.hash}
-                        className="inline-flex shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
+                        className="ml-auto inline-flex shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
                       >
                         {row.commit.shortHash}
                       </span>

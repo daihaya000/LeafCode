@@ -97,7 +97,7 @@ export function FileTreePanel({
               ) : (
                 <Folder className="h-3.5 w-3.5 shrink-0" />
               )}
-              <span className="truncate">{e.name}</span>
+              <span className="min-w-0 flex-1 truncate">{e.name}</span>
               {e.type !== "file" && (
                 <ChevronRight className="ml-auto h-3 w-3 text-faint" />
               )}
