@@ -51,6 +51,12 @@ test('matchControlRoute maps the voice input endpoint', () => {
   assert.equal(matchControlRoute('GET', '/voice-input'), null);
 });
 
+test('matchControlRoute maps the logs endpoint (GET only)', () => {
+  assert.equal(matchControlRoute('GET', '/logs'), 'logs');
+  assert.equal(matchControlRoute('get', '/logs/'), 'logs');
+  assert.equal(matchControlRoute('POST', '/logs'), null);
+});
+
 test('POST /stop/webui answers only after the stop finished', async () => {
   const events = [];
   let release;
@@ -137,6 +143,47 @@ test('restart routes keep answering 202 before the work runs', async () => {
   assert.equal(restarted, false, 'restart is scheduled after the response');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(restarted, true);
+});
+
+test('GET /logs returns entries and nextSeq from the handler', async () => {
+  let receivedSince = 'not-called';
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    onGetLogs: (since) => {
+      receivedSince = since;
+      return { entries: [{ seq: 1, ts: 1, source: 'host', level: 'log', text: 'hi' }], nextSeq: 1 };
+    },
+  });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/logs?since=5' }, res);
+  assert.equal(receivedSince, 5);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, {
+    entries: [{ seq: 1, ts: 1, source: 'host', level: 'log', text: 'hi' }],
+    nextSeq: 1,
+  });
+});
+
+test('GET /logs with no since query passes null to the handler', async () => {
+  let receivedSince = 'not-called';
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    onGetLogs: (since) => {
+      receivedSince = since;
+      return { entries: [], nextSeq: 0 };
+    },
+  });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/logs' }, res);
+  assert.equal(receivedSince, null);
+});
+
+test('GET /logs reports 501 when unsupported by host', async () => {
+  const handle = createControlRequestHandler(noopHandlers);
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/logs' }, res);
+  assert.equal(res.statusCode, 501);
+  assert.equal(res.body.ok, false);
 });
 
 test('health and unknown routes are unchanged', async () => {

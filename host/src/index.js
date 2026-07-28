@@ -23,6 +23,7 @@ import {
   listenControlServer,
 } from './control-server.js';
 import { resolveKillPids, resolveWebKillPids } from './restart-targets.js';
+import { getLogEntries, pushLogEntry } from './log-buffer.js';
 import {
   disposeOpencodeServer,
   hardKillTree,
@@ -360,10 +361,12 @@ const statusCaddyItem = {
 
 function log(message) {
   console.log(`[opencode-webui-host] ${message}`);
+  pushLogEntry('host', 'log', message);
 }
 
 function error(message) {
   console.error(`[opencode-webui-host] ${message}`);
+  pushLogEntry('host', 'error', message);
 }
 
 function isProcessAlive(pid) {
@@ -808,9 +811,11 @@ function spawnOpencode(opencodePath) {
 
   child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[opencode] ${chunk}`);
+    pushLogEntry('opencode', 'log', chunk.toString());
   });
   child.stderr?.on('data', (chunk) => {
     process.stderr.write(`[opencode] ${chunk}`);
+    pushLogEntry('opencode', 'error', chunk.toString());
   });
   child.on('exit', (code, signal) => {
     const exitedPid = child.pid;
@@ -944,9 +949,11 @@ function spawnCaddy() {
   });
   caddyProc.stdout?.on('data', (chunk) => {
     process.stdout.write(`[caddy] ${chunk}`);
+    pushLogEntry('caddy', 'log', chunk.toString());
   });
   caddyProc.stderr?.on('data', (chunk) => {
     process.stderr.write(`[caddy] ${chunk}`);
+    pushLogEntry('caddy', 'error', chunk.toString());
   });
   caddyProc.on('exit', (code, signal) => {
     const abnormal = !quitting && code !== 0 && code !== null;
@@ -1121,9 +1128,11 @@ function buildWebProduction(reason = 'missing') {
     };
     child.stdout?.on('data', (chunk) => {
       process.stdout.write(`[web-build] ${chunk}`);
+      pushLogEntry('web-build', 'log', chunk.toString());
     });
     child.stderr?.on('data', (chunk) => {
       process.stderr.write(`[web-build] ${chunk}`);
+      pushLogEntry('web-build', 'error', chunk.toString());
     });
     child.on('error', (err) => finish(err));
     child.on('close', (code) => {
@@ -1197,9 +1206,11 @@ async function spawnWeb() {
 
   child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[webui] ${chunk}`);
+    pushLogEntry('webui', 'log', chunk.toString());
   });
   child.stderr?.on('data', (chunk) => {
     process.stderr.write(`[webui] ${chunk}`);
+    pushLogEntry('webui', 'error', chunk.toString());
   });
   child.on('close', (code, signal) => {
     const expected = child.pid ? expectedWebExitPids.delete(child.pid) : false;
@@ -1853,6 +1864,7 @@ async function startControlServer() {
     onRestartAll: () => restartServices(),
     onStopWebui: () => stopWebForBuild(),
     onVoiceInput: () => launchWindowsVoiceInput(),
+    onGetLogs: (since) => getLogEntries(since),
   });
   try {
     await listenControlServer(server, CONTROL_PORT);

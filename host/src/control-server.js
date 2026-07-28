@@ -4,12 +4,13 @@ import http from 'http';
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | null}
  */
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
   const m = method.toUpperCase();
   if (m === 'GET' && path === '/health') return 'health';
+  if (m === 'GET' && path === '/logs') return 'logs';
   if (m !== 'POST') return null;
   if (path === '/restart/webui') return 'webui';
   if (path === '/restart/opencode') return 'opencode';
@@ -30,6 +31,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  *   onRestartAll: () => Promise<void> | void,
  *   onStopWebui?: () => Promise<void> | void,
  *   onVoiceInput?: () => Promise<void> | void,
+ *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
@@ -80,6 +82,26 @@ export function createControlRequestHandler(handlers) {
       }
       res.writeHead(200, JSON_HEADERS);
       res.end(JSON.stringify({ ok: true, target: 'webui', stopped: true }));
+      return;
+    }
+
+    if (route === 'logs') {
+      if (typeof handlers.onGetLogs !== 'function') {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'logs are not supported by this host' }));
+        return;
+      }
+      let since = null;
+      const rawSince = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get(
+        'since',
+      );
+      if (rawSince !== null) {
+        const n = Number(rawSince);
+        if (Number.isFinite(n)) since = n;
+      }
+      const { entries, nextSeq } = handlers.onGetLogs(since);
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify({ entries, nextSeq }));
       return;
     }
 
@@ -135,6 +157,7 @@ export function createControlRequestHandler(handlers) {
  *   onRestartAll: () => Promise<void> | void,
  *   onStopWebui?: () => Promise<void> | void,
  *   onVoiceInput?: () => Promise<void> | void,
+ *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
  * }} handlers
  */
 export function createControlServer(handlers) {
