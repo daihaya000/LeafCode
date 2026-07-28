@@ -25,6 +25,7 @@ import {
   messageHasTimelineParts,
   type TaskMatchHint,
 } from "@/lib/match-child-session";
+import { groupImagePartsForRender } from "@/lib/message-parts";
 import {
   NESTED_POLL_TIMEOUT_MS,
   shouldPollWhileVisible,
@@ -341,22 +342,43 @@ export function NestedAgentPanel({
               costPrefs={costPrefs}
               compact
             />
-            {(m.parts ?? [])
-              .filter((p) => {
+            {groupImagePartsForRender(
+              (m.parts ?? []).filter((p) => {
                 if (!isTimelinePartType(p.type)) return false;
                 if (p.type === "text") return Boolean(p.text?.trim());
                 return true;
-              })
-              .map((p) => (
+              }),
+            ).map((group) =>
+              group.kind === "images" ? (
+                <div
+                  key={group.key}
+                  className={cx(
+                    "flex flex-wrap gap-2",
+                    m.info.role === "user" ? "justify-end" : "justify-start",
+                  )}
+                >
+                  {group.items.map((p) => (
+                    <PartView
+                      key={p.id}
+                      part={p}
+                      role={m.info.role}
+                      directory={directory}
+                      rootSessionId={feed.session.id}
+                      siblingTaskCallIds={siblingTaskCallIds}
+                    />
+                  ))}
+                </div>
+              ) : (
                 <PartView
-                  key={p.id}
-                  part={p}
+                  key={group.item.id}
+                  part={group.item}
                   role={m.info.role}
                   directory={directory}
                   rootSessionId={feed.session.id}
                   siblingTaskCallIds={siblingTaskCallIds}
                 />
-              ))}
+              ),
+            )}
           </div>
         ))}
         {busy && (

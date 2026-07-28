@@ -23,6 +23,7 @@ import {
 import { cx } from "@/components/ui";
 import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
+import { isImageFilePart } from "@/lib/message-parts";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
@@ -390,8 +391,6 @@ const ReasoningView = memo(function ReasoningView({ text }: { text: string }) {
   );
 });
 
-const IMAGE_MIME_RE = /^image\//i;
-
 /** Thumbnail for a sent/received image attachment, with a click-to-expand lightbox. */
 function FileImagePreview({
   url,
@@ -512,7 +511,7 @@ export const PartView = memo(function PartView({
       );
     case "file": {
       const name = part.filename ?? "file";
-      if (part.url && IMAGE_MIME_RE.test(part.mime ?? "")) {
+      if (isImageFilePart(part)) {
         return (
           <FileImagePreview
             url={part.url}
