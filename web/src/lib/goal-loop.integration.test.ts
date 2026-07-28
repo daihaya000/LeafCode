@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   promptAsyncDelayMs: 0,
   promptAsyncCount: 0,
   promptAsyncFailuresRemaining: 0,
+  promptAsyncFailureStatus: 408,
   statusFailuresRemaining: 0,
   messageFailuresRemaining: 0,
 }));
@@ -45,8 +46,12 @@ vi.mock("./oc-server", () => ({
       h.promptAsyncCount += 1;
       if (h.promptAsyncFailuresRemaining > 0) {
         h.promptAsyncFailuresRemaining -= 1;
-        const err = new Error("OpenCode engine が120秒でタイムアウトしました (/session/sess-1/prompt_async)") as Error & { status: number };
-        err.status = 408;
+        const err = new Error(
+          h.promptAsyncFailureStatus === 408
+            ? "OpenCode engine が120秒でタイムアウトしました (/session/sess-1/prompt_async)"
+            : `OpenCode rejected prompt (${h.promptAsyncFailureStatus})`,
+        ) as Error & { status: number };
+        err.status = h.promptAsyncFailureStatus;
         throw err;
       }
       if (h.promptAsyncDelayMs > 0) {
@@ -142,7 +147,12 @@ function makeDb(): Database.Database {
   return db;
 }
 
-function msg(id: string, role: "user" | "assistant", structured?: unknown): MessageWithParts {
+function msg(
+  id: string,
+  role: "user" | "assistant",
+  structured?: unknown,
+  text?: string,
+): MessageWithParts {
   return {
     info: {
       id,
@@ -150,7 +160,7 @@ function msg(id: string, role: "user" | "assistant", structured?: unknown): Mess
       structured,
       time: { created: 1, completed: 2 },
     },
-    parts: [],
+    parts: text ? [{ id: `${id}-text`, messageID: id, type: "text", text }] : [],
   };
 }
 
@@ -183,6 +193,7 @@ beforeEach(() => {
   h.promptAsyncDelayMs = 0;
   h.promptAsyncCount = 0;
   h.promptAsyncFailuresRemaining = 0;
+  h.promptAsyncFailureStatus = 408;
   h.statusFailuresRemaining = 0;
   h.messageFailuresRemaining = 0;
 });
@@ -463,6 +474,32 @@ describe("goal loop failure recovery", () => {
     expect(getGoalLoop("ws-1")?.error).toContain("送達を確認できない");
   });
 
+  it("rolls back a turn when prompt_async definitively rejects it", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 3,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.ocCalls.length = 0;
+    h.promptAsyncFailuresRemaining = 1;
+    h.promptAsyncFailureStatus = 400;
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    const loop = getGoalLoop("ws-1")!;
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(1);
+    expect(loop.status).toBe("queued");
+    expect(loop.turnCount).toBe(0);
+    expect(loop.error).toContain("rejected prompt (400)");
+  });
+
   it("does not send a queued prompt when /message cannot be read", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({
@@ -512,6 +549,60 @@ describe("goal loop failure recovery", () => {
     expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(1);
     expect(getGoalLoop("ws-1")?.status).toBe("paused");
     expect(getGoalLoop("ws-1")?.error).toContain("完了検証プロンプト");
+  });
+
+  it("returns to verifying_completed when a verification prompt is definitively rejected", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.ocCalls.length = 0;
+    h.promptAsyncFailuresRemaining = 1;
+    h.promptAsyncFailureStatus = 422;
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    const loop = getGoalLoop("ws-1")!;
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(1);
+    expect(loop.status).toBe("verifying_completed");
+    expect(loop.turnCount).toBe(1);
+    expect(loop.error).toContain("rejected prompt (422)");
+  });
+
+  it("recovers an already delivered structured result when resuming an ambiguous pause", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+    h.promptAsyncFailuresRemaining = 1;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const paused = getGoalLoop("ws-1")!;
+    expect(paused.status).toBe("paused");
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user", undefined, "<!-- webui-goal-loop-prompt -->\nturn"),
+      msg("loop-reply", "assistant", { status: "progress", summary: "delivered turn" }),
+    ];
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+
+    expect(resumed?.status).toBe("queued");
+    expect(resumed?.turnCount).toBe(1);
+    expect(resumed?.progress.at(-1)?.summary).toBe("delivered turn");
+    expect(resumed?.lastMessageId).toBe("loop-reply");
   });
 
   it.each(["pause", "stop"] as const)(

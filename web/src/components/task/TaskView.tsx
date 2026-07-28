@@ -1558,12 +1558,26 @@ export function TaskView({ taskId }: { taskId: string }) {
         goalLoop?.status === "running" ||
         goalLoop?.status === "verifying_completed"
       ) {
-        const paused = await sendJson<{ loop: GoalLoopDto }>(
-          "PATCH",
-          `/api/tasks/${sendTaskId}/goal-loop`,
-          { action: "pause" },
-        ).catch(() => null);
-        if (paused?.loop) setGoalLoop(paused.loop);
+        let paused: { loop: GoalLoopDto };
+        try {
+          paused = await sendJson<{ loop: GoalLoopDto }>(
+            "PATCH",
+            `/api/tasks/${sendTaskId}/goal-loop`,
+            { action: "pause" },
+          );
+        } catch (err) {
+          throw new Error(
+            `Goalループを一時停止できないため手動送信を中止しました: ${
+              err instanceof Error ? err.message : "一時停止に失敗しました"
+            }`,
+          );
+        }
+        if (paused.loop.status !== "paused") {
+          throw new Error(
+            "Goalループを一時停止できないため手動送信を中止しました。状態が競合したため、現在の状態を確認してから再試行してください。",
+          );
+        }
+        setGoalLoop(paused.loop);
       }
       await touchActivity(sendSessionId, sendTaskId);
       const [providerID, modelID] = model ? model.split("::") : [];

@@ -747,6 +747,53 @@ describe("TaskView", () => {
     expect(notifyTasksChanged).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["fails", () => Promise.reject(new Error("pause unavailable"))],
+    ["returns a non-paused status", () => Promise.resolve({ loop: { id: "loop1", status: "running" } })],
+  ])(
+    "does not manually send when pausing a verifying Goal loop %s",
+    async (_caseName, pauseResponse) => {
+      taskStatus = "idle";
+      const streamMock = useSessionStream();
+      streamMock.status = { type: "idle" };
+      getJson.mockImplementation((path: string) => {
+        if (path === "/api/settings/sidepanel-width") return Promise.resolve({ value: null });
+        if (path === "/api/tasks/ws1") {
+          return Promise.resolve({
+            task: task(0.1),
+            goalLoop: {
+              id: "loop1",
+              status: "verifying_completed",
+              goal: "verify",
+              turnCount: 1,
+              maxTurns: 3,
+              progress: [],
+            },
+          });
+        }
+        return Promise.resolve({ task: task(0.1) });
+      });
+      sendJson.mockImplementation((_method: string, path: string) => {
+        if (path === "/api/tasks/ws1/goal-loop") return pauseResponse();
+        return Promise.resolve(undefined);
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const textarea = screen.getByRole("combobox", {
+        name: "フォローアップを送信",
+      }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "manual follow-up" } });
+      fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Goalループを一時停止できないため手動送信を中止しました/)).toBeTruthy();
+      });
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+      expect(textarea.value).toBe("manual follow-up");
+    },
+  );
+
   it("does not block sending for more than 5 seconds when activity hangs", async () => {
     taskStatus = "idle";
     vi.useFakeTimers();

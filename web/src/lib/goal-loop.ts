@@ -105,6 +105,7 @@ const MAX_GOAL_CHARS = 12_000;
  */
 const MAX_REJECTED_CLAIMS = 2;
 const MAX_ACCEPTANCE_CHARS = 2_000;
+const GOAL_LOOP_PROMPT_MARKER = "<!-- webui-goal-loop-prompt -->";
 
 let schedulerStarted = false;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
@@ -127,6 +128,21 @@ function transientOpenCodeStatus(err: unknown): number | null {
 function isTransientOpenCodeError(err: unknown): boolean {
   const status = transientOpenCodeStatus(err);
   return status === null || status === 408 || (status >= 500 && status <= 599);
+}
+
+/**
+ * `prompt_async` is non-idempotent. A network failure, timeout, or server
+ * failure may have accepted it despite the missing response, whereas a client
+ * error is an acknowledgement that OpenCode rejected the prompt.
+ */
+function isDefinitelyRejectedPrompt(err: unknown): boolean {
+  const status = transientOpenCodeStatus(err);
+  return status !== null && status !== 408 && status >= 400 && status <= 499;
+}
+
+function promptErrorMessage(prefix: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : "OpenCode がプロンプトを拒否しました。";
+  return `${prefix}: ${Array.from(detail).slice(0, 3500).join("")}`;
 }
 
 async function retryTransientOpenCode<T>(operation: () => Promise<T>): Promise<T> {
@@ -388,9 +404,10 @@ export async function updateGoalLoopStatus(
     // mistaken for the loop's own turn result on the next tick.
     const ws = getWorkspace(workspaceId);
     let tailMessageId: string | null;
+    let messages: MessageWithParts[];
     try {
       if (!ws) throw new Error("workspace missing");
-      const messages = await ocServer<MessageWithParts[]>(
+      messages = await ocServer<MessageWithParts[]>(
         ws.absolute_path,
         `/session/${loop.sessionId}/message`,
         { timeoutMs: MESSAGE_TIMEOUT_MS },
@@ -406,6 +423,50 @@ export async function updateGoalLoopStatus(
         )
         .run(
           "会話履歴を読めないため再開できません。重複送信を防止するため、接続回復後に再試行してください。",
+          now,
+          loop.id,
+          loop.revision,
+        );
+      return getGoalLoop(workspaceId);
+    }
+    const recovered =
+      isUnknownPromptDeliveryPause(loop)
+        ? deliveredGoalResultAfterUnknownPrompt(messages, loop.lastMessageId)
+        : null;
+    if (recovered) {
+      // The prompt may have reached OpenCode before the client timed out. Its
+      // marked user prompt and structured reply prove which turn completed, so
+      // apply it instead of tail re-anchoring and silently losing progress.
+      const claimed = getDb()
+        .prepare(
+          `UPDATE goal_loops
+           SET status = 'running', error = '', revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ? AND status = 'paused' AND last_message_id IS ?`,
+        )
+        .run(now, loop.id, loop.revision, loop.lastMessageId);
+      if (claimed.changes === 0) return getGoalLoop(workspaceId);
+      applyAssistantResult(
+        { ...loop, status: "running", error: "", revision: loop.revision + 1 },
+        recovered.assistant,
+        recovered.result,
+      );
+      const recoveredLoop = getGoalLoop(workspaceId);
+      if (recoveredLoop?.status === "queued" || recoveredLoop?.status === "verifying_completed") {
+        void runGoalLoopSchedulerTick();
+      }
+      return recoveredLoop;
+    }
+    if (isUnknownPromptDeliveryPause(loop)) {
+      // Re-queuing here could resend a request that OpenCode is still handling.
+      // Keep the explanation visible and let a later resume re-check the
+      // transcript for a marked structured result.
+      getDb()
+        .prepare(
+          `UPDATE goal_loops SET error = ?, revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ? AND status = 'paused'`,
+        )
+        .run(
+          "プロンプトの送達を確認できず、完了結果もまだ確認できません。重複送信を防ぐため一時停止を維持しています。しばらく待って再開してください。",
           now,
           loop.id,
           loop.revision,
@@ -660,6 +721,40 @@ function assistantText(message: MessageWithParts): string {
     .join("\n");
 }
 
+/** A completed structured reply belonging to the marked prompt after `boundary`. */
+function deliveredGoalResultAfterUnknownPrompt(
+  messages: MessageWithParts[],
+  boundary: string | null,
+): { assistant: MessageWithParts; result: GoalLoopProgress } | null {
+  const boundaryIndex = boundary
+    ? messages.findIndex((message) => message.info.id === boundary)
+    : -1;
+  let promptIndex = -1;
+  for (let i = boundaryIndex + 1; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (message?.info.role === "user" && assistantText(message).includes(GOAL_LOOP_PROMPT_MARKER)) {
+      promptIndex = i;
+    }
+  }
+  if (promptIndex < 0) return null;
+  let end = messages.length;
+  for (let i = promptIndex + 1; i < messages.length; i += 1) {
+    if (messages[i]?.info.role === "user") {
+      end = i;
+      break;
+    }
+  }
+  for (let i = end - 1; i > promptIndex; i -= 1) {
+    const assistant = messages[i];
+    if (assistant?.info.role !== "assistant" || typeof assistant.info.time?.completed !== "number") {
+      continue;
+    }
+    const result = extractGoalResult(assistant);
+    if (result) return { assistant, result };
+  }
+  return null;
+}
+
 /**
  * Read the turn result. `info.structured` is preferred but this OpenCode build
  * cannot round-trip it (see the prompt body: we must not send `format`), so the
@@ -849,6 +944,47 @@ function pauseAfterUnknownPromptDelivery(
     );
 }
 
+function isUnknownPromptDeliveryPause(loop: GoalLoopDto): boolean {
+  return loop.status === "paused" && loop.error.includes("送達を確認できない");
+}
+
+function recoverAfterRejectedPrompt(
+  loop: GoalLoopDto,
+  kind: "goal" | "verification",
+  err: unknown,
+): void {
+  const now = new Date().toISOString();
+  const prefix =
+    kind === "verification"
+      ? "完了検証プロンプトは OpenCode に拒否されました"
+      : "プロンプトは OpenCode に拒否されました";
+  if (kind === "verification") {
+    getDb()
+      .prepare(
+        `UPDATE goal_loops
+         SET status = 'verifying_completed', last_prompt_at = NULL, error = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
+      )
+      .run(promptErrorMessage(prefix, err), now, loop.id, loop.revision, loop.lastMessageId);
+    return;
+  }
+  getDb()
+    .prepare(
+      `UPDATE goal_loops
+       SET status = 'queued', turn_count = ?, last_prompt_at = NULL, error = ?, revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ? AND turn_count = ?`,
+    )
+    .run(
+      loop.turnCount - 1,
+      promptErrorMessage(prefix, err),
+      now,
+      loop.id,
+      loop.revision,
+      loop.lastMessageId,
+      loop.turnCount,
+    );
+}
+
 async function processLoop(loop: GoalLoopDto): Promise<void> {
   if (TERMINAL_STATUSES.includes(loop.status)) return;
   const ws = getWorkspace(loop.workspaceId);
@@ -941,11 +1077,18 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
         body,
         timeoutMs: PROMPT_TIMEOUT_MS,
       });
-    } catch {
-      pauseAfterUnknownPromptDelivery(
-        claimedLoop,
-        "完了検証プロンプトの送達を確認できないため、重複送信を防止して一時停止しました。",
-      );
+    } catch (err) {
+      if (isDefinitelyRejectedPrompt(err)) {
+        recoverAfterRejectedPrompt(claimedLoop, "verification", err);
+      } else {
+        pauseAfterUnknownPromptDelivery(
+          claimedLoop,
+          promptErrorMessage(
+            "完了検証プロンプトの送達を確認できないため、重複送信を防止して一時停止しました",
+            err,
+          ),
+        );
+      }
       return;
     }
     touchSessionActivity(loop.workspaceId, loop.sessionId, now);
@@ -1029,11 +1172,18 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
         body,
         timeoutMs: PROMPT_TIMEOUT_MS,
       });
-  } catch {
-    pauseAfterUnknownPromptDelivery(
-      claimedLoop,
-      "プロンプトの送達を確認できないため、重複送信を防止して一時停止しました。",
-    );
+  } catch (err) {
+    if (isDefinitelyRejectedPrompt(err)) {
+      recoverAfterRejectedPrompt(claimedLoop, "goal", err);
+    } else {
+      pauseAfterUnknownPromptDelivery(
+        claimedLoop,
+        promptErrorMessage(
+          "プロンプトの送達を確認できないため、重複送信を防止して一時停止しました",
+          err,
+        ),
+      );
+    }
     return;
   }
   touchSessionActivity(loop.workspaceId, loop.sessionId, now);
@@ -1098,9 +1248,11 @@ export const goalLoopTestSeams = {
   finalAssistantAfter,
   transcriptIdleFor,
   extractGoalResult,
+  deliveredGoalResultAfterUnknownPrompt,
   processLoop,
   applyAssistantResult,
   countRecentRejectedClaims,
   isTransientOpenCodeError,
+  isDefinitelyRejectedPrompt,
   retryTransientOpenCode,
 };
