@@ -24,6 +24,7 @@ function baseLoop(overrides: Partial<GoalLoopDto> = {}): GoalLoopDto {
     evidence: "",
     blockedReason: "",
     error: "",
+    revision: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -78,6 +79,19 @@ describe("GoalLoopPanel", () => {
     );
     const btn = screen.getByRole("button", { name: "Goalループを一時停止" });
     fireEvent.click(btn);
+    expect(onAction).toHaveBeenCalledWith("pause");
+  });
+
+  it("allows pausing while completion is being verified", () => {
+    const onAction = vi.fn();
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "verifying_completed" })}
+        busy={false}
+        onAction={onAction}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Goalループを一時停止" }));
     expect(onAction).toHaveBeenCalledWith("pause");
   });
 

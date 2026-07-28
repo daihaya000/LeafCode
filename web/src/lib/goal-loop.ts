@@ -42,6 +42,7 @@ export type GoalLoopDto = {
   evidence: string;
   blockedReason: string;
   error: string;
+  revision: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -66,6 +67,7 @@ type GoalLoopRow = {
   evidence: string;
   blocked_reason: string;
   error: string;
+  revision: number;
   created_at: string;
   updated_at: string;
 };
@@ -173,6 +175,7 @@ function toDto(row: GoalLoopRow): GoalLoopDto {
     evidence: row.evidence,
     blockedReason: row.blocked_reason,
     error: row.error,
+    revision: row.revision,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -309,18 +312,26 @@ export async function createGoalLoop(input: {
   const modelID = typeof model?.modelID === "string" ? model.modelID : null;
   const variant = isIntelligenceVariant(input.variant) ? input.variant : null;
 
-  const messages = await ocServer<MessageWithParts[]>(
-    ws.absolute_path,
-    `/session/${input.sessionId}/message`,
-    { timeoutMs: MESSAGE_TIMEOUT_MS },
-  ).catch(() => []);
+  let messages: MessageWithParts[] = [];
+  let transcriptReadable = true;
+  try {
+    messages = await ocServer<MessageWithParts[]>(
+      ws.absolute_path,
+      `/session/${input.sessionId}/message`,
+      { timeoutMs: MESSAGE_TIMEOUT_MS },
+    );
+  } catch {
+    // A missing transcript cannot prove that the session is idle. Start paused
+    // rather than treating it as [] and potentially sending over an unseen turn.
+    transcriptReadable = false;
+  }
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   const tx = getDb().transaction(() => {
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'stopped', updated_at = ?
+         SET status = 'stopped', revision = revision + 1, updated_at = ?
          WHERE workspace_id = ? AND status IN ('queued', 'running', 'paused', 'verifying_completed')`,
       )
       .run(now, input.workspaceId);
@@ -328,13 +339,14 @@ export async function createGoalLoop(input: {
       .prepare(
         `INSERT INTO goal_loops
           (id, workspace_id, opencode_session_id, status, goal, acceptance, max_turns,
-           last_message_id, agent, provider_id, model_id, variant, created_at, updated_at)
-         VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_message_id, agent, provider_id, model_id, variant, error, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         input.workspaceId,
         input.sessionId,
+        transcriptReadable ? "queued" : "paused",
         goal,
         JSON.stringify(acceptance),
         maxTurns,
@@ -343,13 +355,16 @@ export async function createGoalLoop(input: {
         providerID,
         modelID,
         variant,
+        transcriptReadable
+          ? ""
+          : "会話履歴を読めないため、重複送信を防止して一時停止しました。再開してください。",
         now,
         now,
       );
   });
   tx();
   touchSessionActivity(input.workspaceId, input.sessionId, now);
-  void runGoalLoopSchedulerTick();
+  if (transcriptReadable) void runGoalLoopSchedulerTick();
   return getGoalLoop(input.workspaceId)!;
 }
 
@@ -363,41 +378,57 @@ export async function updateGoalLoopStatus(
   if (action === "pause") {
     getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'paused', updated_at = ?
-         WHERE id = ? AND status IN ('queued', 'running', 'verifying_completed')`,
+        `UPDATE goal_loops SET status = 'paused', revision = revision + 1, updated_at = ?
+         WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
       )
-      .run(now, loop.id);
+      .run(now, loop.id, loop.revision);
   } else if (action === "resume") {
     // Re-anchor the read boundary to the current transcript tail so any
     // messages that arrived while paused (e.g. a manual user send) are not
     // mistaken for the loop's own turn result on the next tick.
     const ws = getWorkspace(workspaceId);
-    const tailMessageId = ws
-      ? await ocServer<MessageWithParts[]>(
-          ws.absolute_path,
-          `/session/${loop.sessionId}/message`,
-          { timeoutMs: MESSAGE_TIMEOUT_MS },
+    let tailMessageId: string | null;
+    try {
+      if (!ws) throw new Error("workspace missing");
+      const messages = await ocServer<MessageWithParts[]>(
+        ws.absolute_path,
+        `/session/${loop.sessionId}/message`,
+        { timeoutMs: MESSAGE_TIMEOUT_MS },
+      );
+      tailMessageId = latestMessageId(messages);
+    } catch {
+      // Do not resume to queued without a fresh transcript boundary: an empty
+      // fallback could make the next tick layer a loop prompt over unseen work.
+      getDb()
+        .prepare(
+          `UPDATE goal_loops SET error = ?, revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ? AND status IN ('paused', 'error')`,
         )
-          .then((messages) => latestMessageId(messages))
-          .catch(() => loop.lastMessageId)
-      : loop.lastMessageId;
+        .run(
+          "会話履歴を読めないため再開できません。重複送信を防止するため、接続回復後に再試行してください。",
+          now,
+          loop.id,
+          loop.revision,
+        );
+      return getGoalLoop(workspaceId);
+    }
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'queued', error = '', last_message_id = ?, updated_at = ?
-         WHERE id = ? AND status IN ('paused', 'error')`,
+         SET status = 'queued', error = '', last_message_id = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND revision = ? AND status IN ('paused', 'error')`,
       )
-      .run(tailMessageId, now, loop.id);
+      .run(tailMessageId, now, loop.id, loop.revision);
     void runGoalLoopSchedulerTick();
   } else {
-    getDb()
+    const stopped = getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'stopped', updated_at = ?
-         WHERE id = ? AND status NOT IN ('completed', 'blocked', 'stopped')`,
+        `UPDATE goal_loops SET status = 'stopped', revision = revision + 1, updated_at = ?
+         WHERE id = ? AND revision = ? AND status NOT IN ('completed', 'blocked', 'stopped')`,
       )
-      .run(now, loop.id);
+      .run(now, loop.id, loop.revision);
     const ws = getWorkspace(workspaceId);
-    if (ws) {
+    if (ws && stopped.changes > 0) {
       await ocServer(ws.absolute_path, `/session/${loop.sessionId}/abort`, {
         method: "POST",
         timeoutMs: PROMPT_TIMEOUT_MS,
@@ -430,9 +461,9 @@ export function updateGoalLoopMaxTurns(
   const now = new Date().toISOString();
   getDb()
     .prepare(
-      `UPDATE goal_loops SET max_turns = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE goal_loops SET max_turns = ?, revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?`,
     )
-    .run(clamped, now, loop.id);
+    .run(clamped, now, loop.id, loop.revision);
   return getGoalLoop(workspaceId);
 }
 
@@ -443,24 +474,30 @@ export async function pauseGoalLoopForManualSend(
   const loop = getGoalLoop(workspaceId);
   if (!loop || loop.sessionId !== sessionId) return;
   const ws = getWorkspace(workspaceId);
-  const tailMessageId = ws
-    ? await ocServer<MessageWithParts[]>(
+  let tailMessageId = loop.lastMessageId;
+  if (ws) {
+    try {
+      const messages = await ocServer<MessageWithParts[]>(
         ws.absolute_path,
         `/session/${loop.sessionId}/message`,
         { timeoutMs: MESSAGE_TIMEOUT_MS },
-      )
-        .then((messages) => latestMessageId(messages))
-        .catch(() => loop.lastMessageId)
-    : loop.lastMessageId;
+      );
+      tailMessageId = latestMessageId(messages);
+    } catch {
+      // Still pause for the manual send, but retain the old boundary. A later
+      // resume requires a successful fresh read before it can queue anything.
+    }
+  }
   const now = new Date().toISOString();
   getDb()
     .prepare(
       `UPDATE goal_loops
        SET status = 'paused', error = '手動送信が行われたため一時停止しました。',
-           last_message_id = ?, updated_at = ?
-       WHERE workspace_id = ? AND opencode_session_id = ? AND status IN ('queued', 'running', 'verifying_completed')`,
+           last_message_id = ?, revision = revision + 1, updated_at = ?
+       WHERE workspace_id = ? AND opencode_session_id = ? AND revision = ?
+         AND status IN ('queued', 'running', 'verifying_completed')`,
     )
-    .run(tailMessageId, now, workspaceId, sessionId);
+    .run(tailMessageId, now, workspaceId, sessionId, loop.revision);
 }
 
 /**
@@ -674,29 +711,31 @@ function applyAssistantResult(
   loop: GoalLoopDto,
   assistant: MessageWithParts,
   result: GoalLoopProgress | null,
-) {
+): void {
   const now = new Date().toISOString();
   if (!result) {
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'paused', last_message_id = ?, error = ?, updated_at = ?
-         WHERE id = ?`,
+         SET status = 'paused', last_message_id = ?, error = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
       )
-      .run(assistant.info.id, "Goalループの結果JSONを読めなかったため一時停止しました。", now, loop.id);
+      .run(
+        assistant.info.id,
+        "Goalループの結果JSONを読めなかったため一時停止しました。",
+        now,
+        loop.id,
+        loop.revision,
+        loop.lastMessageId,
+      );
     return;
   }
   const progress = [...loop.progress, result].slice(-50);
 
   // Detect whether this reply is the verification turn for a previous completed claim.
   const lastProgress = loop.progress.at(-1);
-  const freshStatus = (
-    getDb().prepare("SELECT status FROM goal_loops WHERE id = ?").get(loop.id) as
-      | { status: GoalLoopStatus }
-      | undefined
-  )?.status;
   const isVerificationReply =
-    freshStatus === "running" && lastProgress?.status === "completed";
+    loop.status === "running" && lastProgress?.status === "completed";
   let nextStatus: GoalLoopStatus;
   if (isVerificationReply) {
     if (result.status === "verified_completed") {
@@ -732,44 +771,38 @@ function applyAssistantResult(
     result.status !== "verified_completed" &&
     result.status !== "blocked" &&
     countRecentRejectedClaims(progress) >= MAX_REJECTED_CLAIMS;
-  getDb()
+  const reachedTurnLimit =
+    !TERMINAL_STATUSES.includes(nextStatus) &&
+    nextStatus !== "verifying_completed" &&
+    loop.turnCount >= loop.maxTurns;
+  const applied = getDb()
     .prepare(
       `UPDATE goal_loops
        SET status = ?, last_message_id = ?, progress = ?, summary = ?, evidence = ?,
-           blocked_reason = ?, error = ?, updated_at = ?
-       WHERE id = ?`,
+           blocked_reason = ?, error = ?, revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
     )
     .run(
-      nextStatus,
+      reachedTurnLimit ? "paused" : nextStatus,
       assistant.info.id,
       JSON.stringify(progress),
       result.summary,
       result.evidence ?? "",
       result.status === "blocked" ? result.evidence ?? result.summary : "",
-      verificationRejectedPause
+      reachedTurnLimit
+        ? "最大ターン数に到達したため一時停止しました。"
+        : verificationRejectedPause
         ? "完了宣言が検証で複数回拒否されたため一時停止しました。ゴールか acceptance を見直してください。"
         : "",
       now,
       loop.id,
+      loop.revision,
+      loop.lastMessageId,
     );
-    // Re-read turn_count from the DB so we don't act on the stale DTO snapshot
-    // (processLoop already incremented it for this turn). Without this, the
-    // maxTurns guard below would fire one turn late and oversend.
-    if (!TERMINAL_STATUSES.includes(nextStatus)) {
-      const fresh = getDb()
-        .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
-        .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
-      if (fresh && fresh.turn_count >= fresh.max_turns) {
-        getDb()
-          .prepare(
-            `UPDATE goal_loops
-           SET status = 'paused', error = ?, updated_at = ?
-           WHERE id = ? AND status NOT IN ('completed', 'blocked', 'stopped', 'verifying_completed')`,
-          )
-          .run("最大ターン数に到達したため一時停止しました。", now, loop.id);
-      }
-    }
-  }
+  // A pause/stop/manual send invalidates the revision while the transcript was
+  // being read. In that case the old assistant result must be discarded.
+  if (applied.changes === 0) return;
+}
 
 /**
  * A prompt we sent produced no usable reply (aborted turn, dropped request).
@@ -780,13 +813,39 @@ function expireStalledTurn(loop: GoalLoopDto): void {
   if (!Number.isFinite(started) || Date.now() - started < TURN_TIMEOUT_MS) return;
   getDb()
     .prepare(
-      `UPDATE goal_loops SET status = 'paused', error = ?, updated_at = ?
-       WHERE id = ? AND status = 'running'`,
+      `UPDATE goal_loops SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'running' AND revision = ?`,
     )
     .run(
       "応答が確認できないまま時間切れになったため一時停止しました。",
       new Date().toISOString(),
       loop.id,
+      loop.revision,
+    );
+}
+
+/**
+ * A POST timeout/network error is ambiguous: OpenCode may have accepted the
+ * prompt despite the client never receiving an acknowledgement. Never retry
+ * this non-idempotent mutation or roll back its turn claim; pause for an
+ * explicit user decision instead.
+ */
+function pauseAfterUnknownPromptDelivery(
+  loop: GoalLoopDto,
+  message: string,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE goal_loops
+       SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
+    )
+    .run(
+      message,
+      new Date().toISOString(),
+      loop.id,
+      loop.revision,
+      loop.lastMessageId,
     );
 }
 
@@ -794,6 +853,9 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   if (TERMINAL_STATUSES.includes(loop.status)) return;
   const ws = getWorkspace(loop.workspaceId);
   if (!ws) return;
+  // Check before the busy-status early return. An engine that stays "busy"
+  // forever must not prevent the running-turn timeout from taking effect.
+  if (loop.status === "running") expireStalledTurn(loop);
   const statuses = await retryTransientOpenCode(() =>
     ocServer<StatusMap>(ws.absolute_path, "/session/status", {
       timeoutMs: STATUS_TIMEOUT_MS,
@@ -805,13 +867,20 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // every loop at 0 turns because the engine omits idle sessions entirely.
   if (status && status.type !== "idle") return;
 
-  const messages = await retryTransientOpenCode(() =>
-    ocServer<MessageWithParts[]>(
-      ws.absolute_path,
-      `/session/${loop.sessionId}/message`,
-      { timeoutMs: MESSAGE_TIMEOUT_MS },
-    ),
-  ).catch(() => []);
+  let messages: MessageWithParts[];
+  try {
+    messages = await retryTransientOpenCode(() =>
+      ocServer<MessageWithParts[]>(
+        ws.absolute_path,
+        `/session/${loop.sessionId}/message`,
+        { timeoutMs: MESSAGE_TIMEOUT_MS },
+      ),
+    );
+  } catch {
+    // Do not treat a failed read as an empty, idle transcript: queued prompts
+    // would otherwise be sent on top of an unseen user or loop turn.
+    return;
+  }
 
   if (loop.status === "running") {
     const assistant = finalAssistantAfter(messages, loop.lastMessageId);
@@ -838,10 +907,10 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     const claimed = getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'running', last_message_id = ?, last_prompt_at = ?, updated_at = ?
-         WHERE id = ? AND status = 'verifying_completed'`,
+         SET status = 'running', last_message_id = ?, last_prompt_at = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND status = 'verifying_completed' AND revision = ?`,
       )
-      .run(anchor, now, now, loop.id);
+      .run(anchor, now, now, loop.id, loop.revision);
     if (claimed.changes === 0) return;
     // Verification does not consume a turn slot, so `turn_count` is the number
     // of goal turns actually executed before this check.
@@ -865,13 +934,20 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       body.model = { providerID: loop.providerID, modelID: loop.modelID };
     }
     if (loop.variant) body.variant = loop.variant;
-    await retryTransientOpenCode(() =>
-      ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+    const claimedLoop = { ...loop, revision: loop.revision + 1, lastMessageId: anchor };
+    try {
+      await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
         method: "POST",
         body,
         timeoutMs: PROMPT_TIMEOUT_MS,
-      }),
-    );
+      });
+    } catch {
+      pauseAfterUnknownPromptDelivery(
+        claimedLoop,
+        "完了検証プロンプトの送達を確認できないため、重複送信を防止して一時停止しました。",
+      );
+      return;
+    }
     touchSessionActivity(loop.workspaceId, loop.sessionId, now);
     return;
   }
@@ -885,8 +961,10 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // received can lag behind. Checking the stale value lets one extra prompt
   // slip through and breaks the maxTurns contract.
   const fresh = getDb()
-    .prepare("SELECT status, turn_count, max_turns FROM goal_loops WHERE id = ?")
-    .get(loop.id) as { status: GoalLoopStatus; turn_count: number; max_turns: number } | undefined;
+    .prepare("SELECT status, turn_count, max_turns, revision FROM goal_loops WHERE id = ?")
+    .get(loop.id) as
+      | { status: GoalLoopStatus; turn_count: number; max_turns: number; revision: number }
+      | undefined;
   const turnCount = fresh?.turn_count ?? loop.turnCount;
   const maxTurns = fresh?.max_turns ?? loop.maxTurns;
   // If we are genuinely out of turns with no turn in flight, pause. If a turn
@@ -896,9 +974,16 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   if (fresh?.status === "queued" && turnCount >= maxTurns) {
     getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'paused', error = ?, updated_at = ? WHERE id = ? AND status = 'queued'`,
+        `UPDATE goal_loops
+         SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND status = 'queued' AND revision = ?`,
       )
-      .run("最大ターン数に到達したため一時停止しました。", new Date().toISOString(), loop.id);
+      .run(
+        "最大ターン数に到達したため一時停止しました。",
+        new Date().toISOString(),
+        loop.id,
+        fresh?.revision ?? loop.revision,
+      );
     return;
   }
 
@@ -906,14 +991,15 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // Re-anchor the boundary on the current transcript tail so the reply to *this*
   // prompt is what we read back. The id captured at creation time points into
   // the middle of the task's initial turn.
+  const promptBoundary = latestMessageId(messages);
   const claimed = getDb()
     .prepare(
       `UPDATE goal_loops
        SET status = 'running', turn_count = turn_count + 1, last_message_id = ?,
-           last_prompt_at = ?, updated_at = ?
-       WHERE id = ? AND status = 'queued' AND turn_count < max_turns`,
+           last_prompt_at = ?, revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'queued' AND revision = ? AND turn_count < max_turns`,
     )
-    .run(latestMessageId(messages), now, now, loop.id);
+    .run(promptBoundary, now, now, loop.id, loop.revision);
   // Another writer (pause/stop/manual send) won the race: do not send.
   if (claimed.changes === 0) return;
   // Do NOT send `format` (OutputFormatJsonSchema). This OpenCode build stores
@@ -931,27 +1017,24 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     body.model = { providerID: loop.providerID, modelID: loop.modelID };
   }
   if (loop.variant) body.variant = loop.variant;
+  const claimedLoop = {
+    ...loop,
+    revision: loop.revision + 1,
+    turnCount: turnCount + 1,
+    lastMessageId: promptBoundary,
+  };
   try {
-    await retryTransientOpenCode(() =>
-      ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+    await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
         method: "POST",
         body,
         timeoutMs: PROMPT_TIMEOUT_MS,
-      }),
+      });
+  } catch {
+    pauseAfterUnknownPromptDelivery(
+      claimedLoop,
+      "プロンプトの送達を確認できないため、重複送信を防止して一時停止しました。",
     );
-  } catch (err) {
-    // Roll back the optimistic turn_count++ so a transient engine failure
-    // (timeout/network) does not burn a turn slot and exhaust maxTurns without
-    // any work done. Re-queue so the next tick retries; status stays 'running'
-    // only if the prompt actually landed.
-    getDb()
-      .prepare(
-        `UPDATE goal_loops
-         SET status = 'queued', turn_count = turn_count - 1, updated_at = ?
-         WHERE id = ? AND status = 'running'`,
-      )
-      .run(new Date().toISOString(), loop.id);
-    throw err;
+    return;
   }
   touchSessionActivity(loop.workspaceId, loop.sessionId, now);
 }
@@ -968,11 +1051,18 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
         const message = err instanceof Error ? err.message : "Goalループでエラーが発生しました。";
         getDb()
           .prepare(
-            `UPDATE goal_loops SET status = 'error', error = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE goal_loops
+             SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+             WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
           )
           // Slice on grapheme clusters so a 4000-char cut does not split a
           // surrogate pair (emoji/CJK) and garble the error string.
-          .run(Array.from(message).slice(0, 4000).join(""), new Date().toISOString(), loop.id);
+          .run(
+            Array.from(message).slice(0, 4000).join(""),
+            new Date().toISOString(),
+            loop.id,
+            loop.revision,
+          );
       }
     }
   } finally {

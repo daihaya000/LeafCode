@@ -1257,7 +1257,9 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   useEffect(() => {
     const activeLoop =
-      goalLoop?.status === "queued" || goalLoop?.status === "running";
+      goalLoop?.status === "queued" ||
+      goalLoop?.status === "running" ||
+      goalLoop?.status === "verifying_completed";
     if (!pageVisible || !activeLoop) return;
     const poll = setInterval(() => void refreshGoalLoop(), ACTIVE_TASK_POLL_MS);
     return () => clearInterval(poll);
@@ -1551,7 +1553,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
-      if (goalLoop?.status === "queued" || goalLoop?.status === "running") {
+      if (
+        goalLoop?.status === "queued" ||
+        goalLoop?.status === "running" ||
+        goalLoop?.status === "verifying_completed"
+      ) {
         const paused = await sendJson<{ loop: GoalLoopDto }>(
           "PATCH",
           `/api/tasks/${sendTaskId}/goal-loop`,

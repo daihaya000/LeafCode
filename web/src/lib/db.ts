@@ -93,6 +93,7 @@ export function getDb(): Database.Database {
       evidence TEXT NOT NULL DEFAULT '',
       blocked_reason TEXT NOT NULL DEFAULT '',
       error TEXT NOT NULL DEFAULT '',
+      revision INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -100,6 +101,12 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
   `);
+  const goalLoopColumns = db
+    .prepare("PRAGMA table_info(goal_loops)")
+    .all() as { name: string }[];
+  if (!goalLoopColumns.some((column) => column.name === "revision")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  }
   return db;
 }
 

@@ -400,6 +400,56 @@ describe("TaskView", () => {
     expect(getJson).toHaveBeenCalledTimes(2);
   });
 
+  it("polls a loop while completion is being verified even when the task is idle", async () => {
+    taskStatus = "idle";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+    });
+    const loop = {
+      id: "loop1",
+      workspaceId: "ws1",
+      sessionId: "sess1",
+      status: "verifying_completed" as const,
+      goal: "verify",
+      acceptance: [],
+      maxTurns: 2,
+      turnCount: 1,
+      lastMessageId: "reply",
+      lastPromptAt: null,
+      agent: null,
+      providerID: null,
+      modelID: null,
+      variant: null,
+      progress: [],
+      summary: "",
+      evidence: "",
+      blockedReason: "",
+      error: "",
+      revision: 0,
+      createdAt: "2026-07-18T00:00:00Z",
+      updatedAt: "2026-07-18T00:00:00Z",
+    };
+    let loopPolls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") return Promise.resolve({ value: null });
+      if (path === "/api/tasks/ws1/goal-loop") {
+        loopPolls += 1;
+        return Promise.resolve({ loop });
+      }
+      return Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2), goalLoop: loop });
+    });
+    vi.useFakeTimers();
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(loopPolls).toBe(1);
+  });
+
   it("auto-rejects task permission when subagent is denied, leaving others manual", async () => {
     localStorage.setItem("webui:subagent-permission", "deny");
     try {

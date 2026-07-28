@@ -73,6 +73,7 @@ export function GoalLoopPanel({
   if (!loop) return null;
 
   const running = loop.status === "queued" || loop.status === "running";
+  const canPause = running || loop.status === "verifying_completed";
   // ループが生きている間（実行中・完了検証中・一時停止）は、下までスクロールしても
   // 状態確認と一時停止/停止操作ができるよう上部に追従させる。
   // 終了状態では開始フォームが下に出るため通常フローに戻す。
@@ -142,7 +143,7 @@ export function GoalLoopPanel({
           <p className="mt-1 line-clamp-2 text-xs text-muted">{loop.goal}</p>
         </div>
         <div className="flex shrink-0 gap-1">
-          {running && (
+          {canPause && (
             <Button
               variant="secondary"
               size="sm"

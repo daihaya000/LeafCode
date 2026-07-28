@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   promptAsyncCount: 0,
   promptAsyncFailuresRemaining: 0,
   statusFailuresRemaining: 0,
+  messageFailuresRemaining: 0,
 }));
 
 vi.mock("./oc-server", () => ({
@@ -31,7 +32,15 @@ vi.mock("./oc-server", () => ({
       }
       return h.statusResponse;
     }
-    if (path.endsWith("/message")) return h.messageResponse;
+    if (path.endsWith("/message")) {
+      if (h.messageFailuresRemaining > 0) {
+        h.messageFailuresRemaining -= 1;
+        const err = new Error("OpenCode transcript temporarily unavailable") as Error & { status: number };
+        err.status = 503;
+        throw err;
+      }
+      return h.messageResponse;
+    }
     if (path.endsWith("/prompt_async")) {
       h.promptAsyncCount += 1;
       if (h.promptAsyncFailuresRemaining > 0) {
@@ -123,6 +132,7 @@ function makeDb(): Database.Database {
       evidence TEXT NOT NULL DEFAULT '',
       blocked_reason TEXT NOT NULL DEFAULT '',
       error TEXT NOT NULL DEFAULT '',
+      revision INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -174,6 +184,7 @@ beforeEach(() => {
   h.promptAsyncCount = 0;
   h.promptAsyncFailuresRemaining = 0;
   h.statusFailuresRemaining = 0;
+  h.messageFailuresRemaining = 0;
 });
 
 describe("goal loop integration", () => {
@@ -391,6 +402,21 @@ describe("goal loop verification turn", () => {
 });
 
 describe("goal loop failure recovery", () => {
+  it("creates a paused loop instead of treating an unreadable initial transcript as empty", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    h.messageFailuresRemaining = 1;
+
+    const loop = await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+    });
+
+    expect(loop.status).toBe("paused");
+    expect(loop.error).toContain("会話履歴を読めない");
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(0);
+  });
+
   it("retries a transient /session/status failure before prompting", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({
@@ -412,7 +438,7 @@ describe("goal loop failure recovery", () => {
     expect(getGoalLoop("ws-1")?.status).toBe("running");
   });
 
-  it("retries a transient prompt_async failure without consuming an extra turn", async () => {
+  it("does not retry an ambiguously failed prompt_async and pauses the claimed turn", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({
       workspaceId: "ws-1",
@@ -431,12 +457,13 @@ describe("goal loop failure recovery", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
 
-    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(2);
-    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(1);
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
     expect(getGoalLoop("ws-1")?.turnCount).toBe(1);
+    expect(getGoalLoop("ws-1")?.error).toContain("送達を確認できない");
   });
 
-  it("rolls back turn_count when all prompt_async retry attempts fail", async () => {
+  it("does not send a queued prompt when /message cannot be read", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({
       workspaceId: "ws-1",
@@ -445,24 +472,82 @@ describe("goal loop failure recovery", () => {
       maxTurns: 3,
     });
 
-    // createGoalLoop fires a background scheduler tick (void, not awaited) that
-    // may consume the first prompt_async. Drain it, then arm the reject flag
-    // for the next processLoop call.
+    // createGoalLoop fires a background scheduler tick (void, not awaited).
+    // Drain it, then make the next transcript read fail after finite retries.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    h.promptAsyncCount = 0;
-    h.promptAsyncFailuresRemaining = 3;
-    // Reset to queued so processLoop will try to send again.
+    h.ocCalls.length = 0;
+    h.messageFailuresRemaining = 3;
     testDb
       .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
       .run(getGoalLoop("ws-1")!.id);
 
-    await expect(
-      goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!),
-    ).rejects.toThrow();
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     const after = getGoalLoop("ws-1")!;
-    expect(h.promptAsyncCount).toBe(3);
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(0);
     expect(after.turnCount).toBe(0);
     expect(after.status).toBe("queued");
+  });
+
+  it("does not retry an ambiguously failed verification prompt", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      acceptance: ["tests pass"],
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+
+    h.ocCalls.length = 0;
+    h.promptAsyncFailuresRemaining = 1;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(1);
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
+    expect(getGoalLoop("ws-1")?.error).toContain("完了検証プロンプト");
+  });
+
+  it.each(["pause", "stop"] as const)(
+    "does not let an old assistant result overwrite a later %s",
+    async (action) => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const staleRunning = getGoalLoop("ws-1")!;
+
+    await updateGoalLoopStatus("ws-1", action);
+    goalLoopTestSeams.applyAssistantResult(
+      staleRunning,
+      msg("late-reply", "assistant", { status: "progress", summary: "late" }),
+      { time: new Date().toISOString(), status: "progress", summary: "late" },
+    );
+
+    const after = getGoalLoop("ws-1")!;
+    expect(after.status).toBe(action === "pause" ? "paused" : "stopped");
+    expect(after.progress.some((progress) => progress.summary === "late")).toBe(false);
+    },
+  );
+
+  it("expires a running turn even while the engine remains busy", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'running', last_prompt_at = ? WHERE id = ?`)
+      .run(new Date(Date.now() - 31 * 60_000).toISOString(), getGoalLoop("ws-1")!.id);
+    h.statusResponse = { ["sess-1"]: { type: "busy" } };
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
+    expect(getGoalLoop("ws-1")?.error).toContain("時間切れ");
   });
 
   it("pauses after the agent repeatedly claims completed and verification rejects", async () => {
