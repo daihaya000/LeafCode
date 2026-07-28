@@ -57,9 +57,9 @@ function FileDiffBlock({
   return (
     <div
       ref={anchorRef}
-      className="overflow-hidden rounded-xl border border-border bg-surface"
+      className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface"
     >
-      <div className="flex w-full items-center gap-2 px-2.5 py-2">
+      <div className="flex w-full min-w-0 items-center gap-2 px-2.5 py-2">
         <input
           type="checkbox"
           checked={selected}
@@ -95,7 +95,7 @@ function FileDiffBlock({
             </span>
           )}
           <span className="flex-1" />
-          <DiffStat additions={file.additions} deletions={file.deletions} />
+          <DiffStat additions={file.additions} deletions={file.deletions} className="shrink-0" />
         </button>
       </div>
       {expanded && !file.binary && file.hunks.length > 0 && (
@@ -416,14 +416,14 @@ export function DiffPane({
     });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-bg">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
       {/* Action bar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-surface px-3 py-2">
-        <span className="mr-1 text-xs font-semibold text-muted">変更</span>
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-surface px-3 py-2">
+        <span className="mr-1 shrink-0 text-xs font-semibold text-muted">変更</span>
         {payload && (
-          <DiffStat additions={payload.additions} deletions={payload.deletions} />
+          <DiffStat additions={payload.additions} deletions={payload.deletions} className="shrink-0" />
         )}
-        <span className="flex-1" />
+        <span className="min-w-2 flex-1" />
         {branches && branches.branches.length > 0 && (
           <select
             value={baseCompare}
@@ -434,7 +434,7 @@ export function DiffPane({
             title="比較の基準（選択したブランチとの分岐点から比較）"
             aria-label="比較の基準ブランチ"
             className={cx(
-              "h-8 max-w-[11rem] cursor-pointer rounded-lg border px-2 text-[11px] outline-none",
+              "h-8 min-w-0 max-w-full flex-[1_1_9rem] cursor-pointer rounded-lg border px-2 text-[11px] outline-none sm:max-w-[11rem]",
               baseCompare
                 ? "border-border-strong bg-surface text-fg"
                 : "border-border bg-surface-2 text-muted",
@@ -457,7 +457,7 @@ export function DiffPane({
           }
           title="表示する変更の種類"
           aria-label="表示する変更の種類"
-          className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none"
+          className="h-8 min-w-0 max-w-full flex-[1_1_8rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none sm:max-w-[9.5rem]"
         >
           <option value="all">すべての変更</option>
           <option value="tracked">既存の変更</option>
@@ -666,7 +666,7 @@ export function DiffPane({
       )}
 
       {/* File list */}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div className="min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto p-3">
         {!payload && loading && (
           <div className="flex justify-center py-10">
             <Spinner />

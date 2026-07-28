@@ -37,22 +37,22 @@ export function PtyPanel({ directory }: { directory: string }) {
   }, [directory]);
 
   return (
-    <div className="flex h-full flex-col border-border bg-surface p-3 lg:border-l">
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted">
-        <Terminal className="h-3.5 w-3.5" />
-        ターミナル
+    <div className="flex h-full min-w-0 flex-col border-border bg-surface p-3 lg:border-l">
+      <div className="mb-2 flex min-w-0 items-center gap-2 text-xs font-medium text-muted">
+        <Terminal className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 truncate">ターミナル</span>
       </div>
-      {error && <p className="text-xs text-faint">{error}</p>}
+      {error && <p className="min-w-0 text-xs break-words text-faint">{error}</p>}
       {!error && shells.length === 0 && (
-        <p className="text-xs text-faint">
+        <p className="min-w-0 text-xs break-words text-faint">
           稼働中の PTY はありません。対話入力 UI は次フェーズで追加します。
         </p>
       )}
-      <ul className="space-y-1">
+      <ul className="min-w-0 space-y-1">
         {shells.map((id) => (
           <li
             key={id}
-            className="rounded-lg bg-surface-2 px-2 py-1 font-mono text-[11px] text-muted"
+            className="min-w-0 rounded-lg bg-surface-2 px-2 py-1 font-mono text-[11px] break-all text-muted"
           >
             {id}
           </li>

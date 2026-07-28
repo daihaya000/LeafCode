@@ -373,20 +373,20 @@ export function GraphPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-border bg-surface lg:border-l">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-2.5 py-1.5">
-        <GitGraph className="h-3.5 w-3.5 text-muted" />
-        <span className="text-xs font-semibold text-muted">グラフ</span>
+    <div className="flex h-full min-h-0 min-w-0 flex-col border-border bg-surface lg:border-l">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-border px-2.5 py-1.5">
+        <GitGraph className="h-3.5 w-3.5 shrink-0 text-muted" />
+        <span className="shrink-0 text-xs font-semibold text-muted">グラフ</span>
         {payload?.currentBranch && (
           <span
             title={payload.currentBranch}
-            className="inline-flex max-w-[10rem] items-center gap-1 truncate rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-text"
+            className="inline-flex min-w-0 max-w-full flex-[1_1_7rem] items-center gap-1 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-text sm:max-w-[10rem]"
           >
             <GitBranch className="h-2.5 w-2.5 shrink-0" />
-            {payload.currentBranch}
+            <span className="min-w-0 truncate">{payload.currentBranch}</span>
           </span>
         )}
-        <span className="flex-1" />
+        <span className="min-w-2 flex-1" />
         <Button
           variant="ghost"
           size="icon"
@@ -398,7 +398,7 @@ export function GraphPanel({
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {loading && !payload && (
           <div className="flex justify-center py-10">
             <Spinner />
@@ -435,7 +435,7 @@ export function GraphPanel({
               <button
                 type="button"
                 onClick={() => void toggleExpand(row.commit.hash)}
-                className="flex w-full cursor-pointer items-stretch gap-1 px-1 py-0 text-left hover:bg-surface-2"
+                className="flex w-full min-w-0 cursor-pointer items-stretch gap-1 px-1 py-0 text-left hover:bg-surface-2"
                 style={{ minHeight: ROW_H }}
               >
                 <GraphCell row={row} />
@@ -458,8 +458,8 @@ export function GraphPanel({
                         {row.commit.shortHash}
                       </span>
                     </div>
-                    <div className="truncate text-[10px] text-faint">
-                      {row.commit.author}
+                    <div className="min-w-0 truncate text-[10px] text-faint">
+                      <span className="truncate">{row.commit.author}</span>
                       {commitDate && (
                         <>
                           <span className="mx-1">·</span>

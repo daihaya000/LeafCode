@@ -59,12 +59,12 @@ export function FileTreePanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-border bg-surface lg:border-l">
-      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
+    <div className="flex h-full min-h-0 min-w-0 flex-col border-border bg-surface lg:border-l">
+      <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
         <button
           type="button"
           onClick={up}
-          className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-surface-2"
+          className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-surface-2"
         >
           上へ
         </button>
@@ -72,7 +72,7 @@ export function FileTreePanel({
           {cwd}
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-1">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-1">
         {loading && (
           <div className="flex justify-center py-6">
             <Spinner />
@@ -89,7 +89,7 @@ export function FileTreePanel({
                 else void load(e.path);
               }}
               className={cx(
-                "flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs text-muted hover:bg-surface-2 hover:text-text",
+                "grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs text-muted hover:bg-surface-2 hover:text-text",
               )}
             >
               {e.type === "file" ? (
@@ -97,9 +97,9 @@ export function FileTreePanel({
               ) : (
                 <Folder className="h-3.5 w-3.5 shrink-0" />
               )}
-              <span className="min-w-0 flex-1 truncate">{e.name}</span>
+              <span className="min-w-0 truncate" title={e.path}>{e.name}</span>
               {e.type !== "file" && (
-                <ChevronRight className="ml-auto h-3 w-3 text-faint" />
+                <ChevronRight className="h-3 w-3 shrink-0 text-faint" />
               )}
             </button>
           ))}
