@@ -37,6 +37,9 @@ export function getDb(): Database.Database {
   ensureDataDir();
   db = new Database(dbPath());
   db.pragma("journal_mode = WAL");
+  // Enforce foreign keys so ON DELETE CASCADE (workspaces/goal_loops/session_bindings
+  // → projects/workspaces) actually fires. better-sqlite3 defaults this off.
+  db.pragma("foreign_keys = ON");
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,

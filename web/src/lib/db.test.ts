@@ -11,6 +11,7 @@ process.env.APPDATA = testDataDir;
 const {
   bindSession,
   createWorkspace,
+  deleteProject,
   getDb,
   touchSessionActivity,
   upsertProject,
@@ -86,4 +87,38 @@ test("upsertProject does not update last_opened_at when toggling favorite", () =
   // Open without favorite toggle (favorite=undefined SHOULD update last_opened_at)
   const opened = upsertProject({ name: "FavTest", rootPath });
   expect(opened.last_opened_at).not.toBe(initialLastOpened);
+});
+
+test("foreign_keys pragma is ON so ON DELETE CASCADE fires", () => {
+  // The DB initialization must enable foreign_keys; otherwise the REFERENCES
+  // ... ON DELETE CASCADE clauses are silently ignored by SQLite.
+  const row = getDb().prepare("PRAGMA foreign_keys").get() as { foreign_keys?: number };
+  expect(row.foreign_keys).toBe(1);
+
+  // Verify cascade behavior end-to-end: deleting a project removes its
+  // workspace, which removes the workspace's session binding.
+  const rootPath = path.join(testDataDir, "fk-cascade");
+  const project = upsertProject({ name: "FkCascade", rootPath });
+  createWorkspace({
+    id: "ws-fk",
+    projectId: project.id,
+    displayName: "FkWs",
+    absolutePath: rootPath,
+    isolation: "current_folder",
+  });
+  bindSession("ws-fk", "ses-fk", "Session", "2026-07-22T10:00:00.000Z");
+  expect(getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get("ws-fk")).toBeTruthy();
+  expect(
+    getDb()
+      .prepare("SELECT * FROM session_bindings WHERE workspace_id = ?")
+      .get("ws-fk"),
+  ).toBeTruthy();
+
+  deleteProject(project.id);
+  expect(getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get("ws-fk")).toBeUndefined();
+  expect(
+    getDb()
+      .prepare("SELECT * FROM session_bindings WHERE workspace_id = ?")
+      .get("ws-fk"),
+  ).toBeUndefined();
 });
