@@ -119,6 +119,7 @@ import {
   PLAN_APPROVAL_PROMPT,
 } from "@/lib/plan-document";
 import { collectTaskCallIds } from "@/lib/match-child-session";
+import { groupImagePartsForRender } from "@/lib/message-parts";
 import {
   applySlashCompletion,
   filterCommands,
@@ -2544,7 +2545,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               onScroll={onScroll}
               className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
-              <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6">
+              <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6">
                 <GoalLoopPanel
                   loop={goalLoop}
                   busy={goalLoopBusy}
@@ -2581,28 +2582,52 @@ export function TaskView({ taskId }: { taskId: string }) {
                         messageTime && <span>{formatMessageTime(messageTime)}</span>
                       )}
                     </div>
-                    {m.parts
-                      .filter((p) => {
+                    {groupImagePartsForRender(
+                      m.parts.filter((p) => {
                         const planPath = planPaths.get(m.info.id);
                         if (!planPath) return true;
                         return (
                           normalizedPlanPath(p.text) !== planPath &&
                           normalizedPlanPath(p.filename) !== planPath
                         );
-                      })
-                      .map((p) => (
-                      <PartView
-                        key={p.id}
-                        part={p}
-                        role={m.info.role}
-                        onFileClick={openFileInDiff}
-                        directory={task.directory}
-                        rootSessionId={task.sessionId}
-                        siblingTaskCallIds={siblingTaskCallIds}
-                        modelLabels={modelLabels}
-                        costPrefs={costPrefs}
-                      />
-                    ))}
+                      }),
+                    ).map((group) =>
+                      group.kind === "images" ? (
+                        <div
+                          key={group.key}
+                          className={cx(
+                            "flex flex-wrap gap-2",
+                            m.info.role === "user" ? "justify-end" : "justify-start",
+                          )}
+                        >
+                          {group.items.map((p) => (
+                            <PartView
+                              key={p.id}
+                              part={p}
+                              role={m.info.role}
+                              onFileClick={openFileInDiff}
+                              directory={task.directory}
+                              rootSessionId={task.sessionId}
+                              siblingTaskCallIds={siblingTaskCallIds}
+                              modelLabels={modelLabels}
+                              costPrefs={costPrefs}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <PartView
+                          key={group.item.id}
+                          part={group.item}
+                          role={m.info.role}
+                          onFileClick={openFileInDiff}
+                          directory={task.directory}
+                          rootSessionId={task.sessionId}
+                          siblingTaskCallIds={siblingTaskCallIds}
+                          modelLabels={modelLabels}
+                          costPrefs={costPrefs}
+                        />
+                      ),
+                    )}
                     {planPaths.get(m.info.id) && (
                       <PlanDocumentCard
                         path={planPaths.get(m.info.id)!}
@@ -2712,7 +2737,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
           {/* Composer */}
           <div className="shrink-0 border-t border-border bg-surface px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto max-w-4xl">
+            <div className="mx-auto max-w-5xl">
               <TodoPanel todos={stream.todos} forceOpen={working && isMd} />
               {showNextAction && (
                 <NextAction

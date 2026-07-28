@@ -740,7 +740,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       >
       <main
         className={cx(
-          "mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]",
+          "mx-auto flex min-h-full max-w-5xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]",
           slashOpen && "pt-64",
         )}
       >
@@ -756,7 +756,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             />
             <span>OpenCodeWebUI</span>
           </h1>
-          <div className="mx-auto mb-3 flex max-w-4xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mx-auto mb-3 flex max-w-5xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <GhostSelect
               value={projectId}
               disabled={projects.length === 0 || submitting}
@@ -805,7 +805,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           </div>
           <form
             aria-label="タスク作成"
-            className="relative mx-auto max-w-4xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            className="relative mx-auto max-w-5xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
