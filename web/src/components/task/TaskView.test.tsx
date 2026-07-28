@@ -9,6 +9,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type { ReactElement } from "react";
 import type { TaskSummary } from "@/lib/types";
 import { TaskView, __clearTaskViewCachesForTest } from "./TaskView";
 
@@ -1560,6 +1561,297 @@ describe("TaskView", () => {
 
       expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
       expect(screen.getByRole("region", { name: "Goalループ" })).toBeTruthy();
+    });
+  });
+
+  describe("auto model decision", () => {
+    const decision = {
+      providerID: "anthropic",
+      modelID: "claude-haiku-4-5",
+      variant: "minimal",
+      tier: "light",
+      reason: "短い質問タスクのため低コストモデルを選択しました",
+      escalation: {
+        providerID: "anthropic",
+        modelID: "claude-opus-5",
+        variant: "high",
+      },
+    };
+    const CHIP_TEXT =
+      "Auto: anthropic/claude-haiku-4-5 · effort minimal — 短い質問タスクのため低コストモデルを選択しました";
+    const RETRY_TEXT =
+      "低コストモデルでエラーが発生したため anthropic/claude-opus-5 で再試行しました";
+    const CLOSE_LABEL = "Auto の選定結果を閉じる";
+
+    function writeRecord(record: Record<string, unknown>) {
+      sessionStorage.setItem("webui:auto-task:ws1", JSON.stringify(record));
+    }
+
+    function storedRecord() {
+      return JSON.parse(sessionStorage.getItem("webui:auto-task:ws1") ?? "null");
+    }
+
+    function userMessage(id = "m1") {
+      return {
+        info: { id, role: "user", time: { created: 1 } },
+        parts: [{ id: `${id}-p`, messageID: id, type: "text", text: "これは何" }],
+      };
+    }
+
+    function completedAssistantMessage() {
+      return {
+        info: {
+          id: "m2",
+          role: "assistant",
+          time: { created: 2, completed: 3 },
+        },
+        parts: [{ id: "m2-p", messageID: "m2", type: "text", text: "回答" }],
+      };
+    }
+
+    /**
+     * Alias for reading the value configured in `beforeEach`. Calling
+     * `useSessionStream()` directly inside a named helper trips
+     * `react-hooks/rules-of-hooks`, even though this is a plain mock.
+     */
+    const readStream = useSessionStream as unknown as () => Record<
+      string,
+      unknown
+    >;
+
+    /** Base stream with a stable sendPrompt so effect deps stay stable. */
+    function streamWith(overrides: Record<string, unknown> = {}) {
+      const sendPrompt = vi.fn().mockResolvedValue(undefined);
+      const base = {
+        ...readStream(),
+        status: { type: "idle" },
+        messages: [userMessage()],
+        sendPrompt,
+        ...overrides,
+      };
+      useSessionStream.mockReturnValue(base);
+      return { base, sendPrompt };
+    }
+
+    /** Flip sessionError from null to non-null and let effects settle. */
+    async function raiseSessionError(
+      base: Record<string, unknown>,
+      rerender: (ui: ReactElement) => void,
+    ) {
+      useSessionStream.mockReturnValue({ ...base, sessionError: "boom" });
+      await act(async () => {
+        rerender(<TaskView taskId="ws1" />);
+        await Promise.resolve();
+      });
+    }
+
+    beforeEach(() => {
+      taskStatus = "idle";
+      sessionStorage.clear();
+    });
+
+    afterEach(() => {
+      sessionStorage.clear();
+    });
+
+    it("shows the selection chip and persists a dismissal without dropping the key", async () => {
+      writeRecord({ decision });
+      streamWith();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.getByText(CHIP_TEXT)).toBeTruthy();
+      fireEvent.click(screen.getByLabelText(CLOSE_LABEL));
+
+      expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
+      expect(screen.queryByText(CHIP_TEXT)).toBeNull();
+      expect(storedRecord()).toEqual({ decision, dismissed: true });
+    });
+
+    it("omits the effort segment when the decision has no variant", async () => {
+      writeRecord({ decision: { ...decision, variant: "" } });
+      streamWith();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(
+        screen.getByText(
+          "Auto: anthropic/claude-haiku-4-5 — 短い質問タスクのため低コストモデルを選択しました",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("stays hidden when the chip was already dismissed", async () => {
+      writeRecord({ decision, dismissed: true });
+      streamWith();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
+    });
+
+    it("renders no chip for a task without an auto record", async () => {
+      streamWith();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
+    });
+
+    it("retries once with the escalation model, variant and agent", async () => {
+      writeRecord({ decision, prompt: "これは何", agent: "build" });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      expect(sendPrompt).not.toHaveBeenCalled();
+
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
+      expect(sendPrompt).toHaveBeenCalledWith("これは何", {
+        model: { providerID: "anthropic", modelID: "claude-opus-5" },
+        variant: "high",
+        agent: "build",
+        sessionId: "sess1",
+      });
+      // `retried` is persisted before the send so a reload cannot repeat it.
+      expect(storedRecord().retried).toBe(true);
+      expect(await screen.findByText(RETRY_TEXT)).toBeTruthy();
+      expect(screen.queryByText(CHIP_TEXT)).toBeNull();
+
+      // A further render with the error still present must not re-send.
+      await act(async () => {
+        rerender(<TaskView taskId="ws1" />);
+        await Promise.resolve();
+      });
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
+    });
+
+    it("omits the retry variant when the escalation has none", async () => {
+      writeRecord({
+        decision: {
+          ...decision,
+          escalation: { ...decision.escalation, variant: "" },
+        },
+        prompt: "これは何",
+      });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).toHaveBeenCalledWith("これは何", {
+        model: { providerID: "anthropic", modelID: "claude-opus-5" },
+        sessionId: "sess1",
+      });
+    });
+
+    it("does not retry when the record is already marked retried", async () => {
+      writeRecord({ decision, prompt: "これは何", retried: true });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("does not retry when no prompt was stored", async () => {
+      writeRecord({ decision });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("does not retry when the decision has no escalation target", async () => {
+      writeRecord({
+        decision: {
+          providerID: decision.providerID,
+          modelID: decision.modelID,
+          variant: decision.variant,
+          tier: decision.tier,
+          reason: decision.reason,
+        },
+        prompt: "これは何",
+      });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("does not retry once a completed assistant reply exists", async () => {
+      writeRecord({ decision, prompt: "これは何" });
+      const { base, sendPrompt } = streamWith({
+        messages: [userMessage(), completedAssistantMessage()],
+      });
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("does not retry a follow-up failure (more than one user message)", async () => {
+      writeRecord({ decision, prompt: "これは何" });
+      const { base, sendPrompt } = streamWith({
+        messages: [userMessage("m1"), userMessage("m3")],
+      });
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("does not retry for a task without an auto record", async () => {
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("does not retry when the error was already present on mount", async () => {
+      writeRecord({ decision, prompt: "これは何" });
+      const { sendPrompt } = streamWith({ sessionError: "boom" });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("aborts the retry when the retried flag cannot be persisted", async () => {
+      writeRecord({ decision, prompt: "これは何" });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      // Reads keep working; only the write fails (quota / disabled storage).
+      // `vi.spyOn` cannot be used here: jsdom's Storage proxy turns a method
+      // re-definition into a stored entry instead of overriding it.
+      const real = window.sessionStorage;
+      vi.stubGlobal("sessionStorage", {
+        getItem: (key: string) => real.getItem(key),
+        removeItem: (key: string) => real.removeItem(key),
+        clear: () => real.clear(),
+        key: (index: number) => real.key(index),
+        get length() {
+          return real.length;
+        },
+        setItem: () => {
+          throw new Error("quota exceeded");
+        },
+      });
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).not.toHaveBeenCalled();
     });
   });
 });

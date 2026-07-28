@@ -92,6 +92,11 @@ import {
   type SidePanelKind,
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
+import {
+  readAutoTaskRecord,
+  writeAutoTaskRecord,
+  type AutoTaskRecord,
+} from "@/lib/auto-task-record";
 import { copyText } from "@/lib/clipboard";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
@@ -463,6 +468,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     useState(false);
   const [skillPermission, setSkillPermission] = useState<SkillPermission>("allow");
   const [skillPermissionSaving, setSkillPermissionSaving] = useState(false);
+  const [autoRecord, setAutoRecord] = useState<AutoTaskRecord | null>(null);
+  const [autoRetryNotice, setAutoRetryNotice] = useState<string | null>(null);
+  /** Guards the one-shot escalation retry against effect re-entry. */
+  const autoRetryFiredRef = useRef(false);
+  /** Previous `sessionError`; `undefined` until the first observation. */
+  const prevSessionErrorRef = useRef<string | null | undefined>(undefined);
   const costPrefs = useCostDisplayPrefs();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -502,6 +513,93 @@ export function TaskView({ taskId }: { taskId: string }) {
   const composerScopeKey = task?.directory && task.sessionId
     ? `${task.directory}\u0000${task.sessionId}`
     : "";
+
+  // Auto selection hand-off from HomeView (tab-scoped sessionStorage). Absent
+  // for manual models, for agent-pinned models, and after a tab reload.
+  useEffect(() => {
+    autoRetryFiredRef.current = false;
+    prevSessionErrorRef.current = undefined;
+    setAutoRetryNotice(null);
+    setAutoRecord(readAutoTaskRecord(taskId));
+  }, [taskId]);
+
+  const dismissAutoRecord = useCallback(() => {
+    setAutoRecord((current) => {
+      if (!current) return current;
+      const next: AutoTaskRecord = { ...current, dismissed: true };
+      // Keep the key itself: it still carries the `retried` guard.
+      writeAutoTaskRecord(taskId, next);
+      return next;
+    });
+  }, [taskId]);
+
+  /**
+   * One-shot escalation retry. Fires only on a null → non-null `sessionError`
+   * transition for a first prompt that produced no completed assistant text,
+   * so follow-up failures and partial successes are never re-sent.
+   */
+  const { messages: streamMessages, sendPrompt: streamSendPrompt } = stream;
+  const streamSessionError = stream.sessionError;
+
+  useEffect(() => {
+    const previous = prevSessionErrorRef.current;
+    prevSessionErrorRef.current = streamSessionError;
+    // First observation is not a transition (e.g. re-opening a failed task).
+    if (previous === undefined) return;
+    if (previous !== null || streamSessionError === null) return;
+    if (autoRetryFiredRef.current) return;
+    const record = autoRecord;
+    if (!record || record.retried === true) return;
+    const prompt = record.prompt;
+    const escalation = record.decision.escalation;
+    if (!prompt || !escalation) return;
+    const sessionId = task?.sessionId;
+    if (!sessionId) return;
+    const hasCompletedAssistantText = streamMessages.some(
+      (message) =>
+        message.info.role === "assistant" &&
+        message.info.time?.completed !== undefined &&
+        message.parts.some(
+          (part) => part.type === "text" && (part.text ?? "").trim().length > 0,
+        ),
+    );
+    const userMessageCount = streamMessages.filter(
+      (message) => message.info.role === "user",
+    ).length;
+    if (hasCompletedAssistantText || userMessageCount > 1) return;
+
+    autoRetryFiredRef.current = true;
+    const retried: AutoTaskRecord = { ...record, retried: true };
+    // Persist *before* sending so a failure or a race still burns the single
+    // attempt. When the write itself fails, abort instead of risking a loop.
+    if (!writeAutoTaskRecord(taskId, retried)) return;
+    setAutoRecord(retried);
+    void (async () => {
+      try {
+        await streamSendPrompt(prompt, {
+          model: {
+            providerID: escalation.providerID,
+            modelID: escalation.modelID,
+          },
+          ...(escalation.variant ? { variant: escalation.variant } : {}),
+          ...(record.agent ? { agent: record.agent } : {}),
+          sessionId,
+        });
+        setAutoRetryNotice(
+          `低コストモデルでエラーが発生したため ${escalation.providerID}/${escalation.modelID} で再試行しました`,
+        );
+      } catch {
+        // The composer's existing send-error UI reports the failure.
+      }
+    })();
+  }, [
+    streamSessionError,
+    streamMessages,
+    streamSendPrompt,
+    autoRecord,
+    task?.sessionId,
+    taskId,
+  ]);
 
   useEffect(() => {
     inputRef.current = input;
@@ -2572,6 +2670,27 @@ export function TaskView({ taskId }: { taskId: string }) {
       {stream.sessionError && (
         <div className="shrink-0 border-b border-danger/30 bg-danger-bg px-4 py-2 text-sm text-danger">
           {stream.sessionError}
+        </div>
+      )}
+
+      {autoRecord && !autoRecord.dismissed && (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-surface-2 px-4 py-2 text-sm text-muted">
+          <span className="min-w-0 break-words">
+            {autoRetryNotice ??
+              `Auto: ${autoRecord.decision.providerID}/${autoRecord.decision.modelID}${
+                autoRecord.decision.variant
+                  ? ` · effort ${autoRecord.decision.variant}`
+                  : ""
+              } — ${autoRecord.decision.reason}`}
+          </span>
+          <button
+            type="button"
+            aria-label="Auto の選定結果を閉じる"
+            onClick={dismissAutoRecord}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-surface-3 hover:text-text"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
