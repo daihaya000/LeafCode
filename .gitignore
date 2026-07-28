@@ -47,6 +47,5 @@ web/.playwright/
 /docs/home-composer-redesign.md
 /docs/agent-guidance/
 /docs/superpowers/
-/prompts/build.md
 /.cursor/rules/
 /.claude/launch.json
