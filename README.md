@@ -5,6 +5,8 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 1. リポジトリルートの `start-webui.bat` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `.next/BUILD_ID` の有無で判定する冪等な処理です）。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
 2. トレイ常駐後、`http://127.0.0.1:3000` を開きます。
 
+既定では WebUI（Next.js BFF）も OpenCode 本体も `127.0.0.1` のみで待ち受け、LAN/VPN への公開は明示的な opt-in です。スマホ/別PC からアクセスする場合は、Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`、推奨）を使うか、`OPENCODE_WEBUI_HOST=0.0.0.0` で全インターフェースにバインドしてください。
+
 `start-webui.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `start-webui.bat` を再実行してください。
 
 ### タスクバーへのピン留め
@@ -107,7 +109,7 @@ start-webui.bat
 
 - 初回起動時に [`deploy/Caddyfile.example`](./deploy/Caddyfile.example) から `deploy/Caddyfile` を生成します（ドメイン / Basic 認証を編集してください）。
 - ホストが Caddy の起動 / 停止 / 再起動を OpenCode・WebUI と連動管理し、トレイの「Status」に `Caddy: running` を表示します。
-- OpenCode 本体は常に `127.0.0.1` のみで待ち受け、公開されるのは Next.js BFF（:3000）のみです。**VPN と認証なしで公開しないでください。**
+- OpenCode 本体は常に `127.0.0.1` のみで待ち受けます。Next.js BFF（:3000）も既定は `127.0.0.1` のみで、Caddy 逆プロキシ経由で LAN/VPN に公開します（`OPENCODE_WEBUI_HOST=0.0.0.0` で直接全インターフェースにバインドすることも可能ですが、**VPN と認証なしで公開しないでください**）。
 - Caddy が PATH に無い / 無効の場合はスキップします。
 
 ### HTTPS（既定: `:8443` ローカル TLS）

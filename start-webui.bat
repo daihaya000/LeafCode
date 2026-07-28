@@ -64,10 +64,12 @@ set OPENCODE_WEBUI_MODE=prod
 rem start-webui.bat is the normal VPN/LAN entry point, so manage Caddy by default.
 rem Set OPENCODE_WEBUI_CADDY=0 before launch to use the raw WebUI URL only.
 if not defined OPENCODE_WEBUI_CADDY set OPENCODE_WEBUI_CADDY=1
-rem For VPN / phone access the WebUI listens on every interface. OpenCode itself
-rem stays on 127.0.0.1. To keep the WebUI local only, set the variable yourself:
-rem   set OPENCODE_WEBUI_HOST=127.0.0.1
-if not defined OPENCODE_WEBUI_HOST set OPENCODE_WEBUI_HOST=0.0.0.0
+rem The WebUI listens on 127.0.0.1 (loopback) by default so it is not exposed
+rem to the LAN/VPN without an explicit opt-in. OpenCode itself also stays on
+rem 127.0.0.1. For phone/LAN access use the Caddy reverse proxy (default on),
+rem or to bind every interface set the variable yourself:
+rem   set OPENCODE_WEBUI_HOST=0.0.0.0
+if not defined OPENCODE_WEBUI_HOST set OPENCODE_WEBUI_HOST=127.0.0.1
 cd host
 call node src\index.js
 set ERR=%ERRORLEVEL%

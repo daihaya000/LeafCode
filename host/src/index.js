@@ -73,9 +73,12 @@ export function isHeadless() {
   );
 }
 
-/** Bind address for Next.js. Default 0.0.0.0 so VPN/LAN phone can reach it.
- *  OpenCode engine stays on 127.0.0.1. Override with OPENCODE_WEBUI_HOST=127.0.0.1 for local-only. */
-const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '0.0.0.0';
+/** Bind address for Next.js. Default 127.0.0.1 (loopback only) so the WebUI
+ *  is not exposed to the LAN/VPN without an explicit opt-in. OpenCode engine
+ *  also stays on 127.0.0.1. To allow phone/LAN access, either enable the
+ *  Caddy reverse proxy (OPENCODE_WEBUI_CADDY=1, recommended) or set
+ *  OPENCODE_WEBUI_HOST=0.0.0.0 to bind every interface. */
+const WEBUI_HOST = process.env.OPENCODE_WEBUI_HOST || '127.0.0.1';
 let WEBUI_URL = `http://127.0.0.1:${WEBUI_PORT}`;
 let OPENCODE_URL = `http://127.0.0.1:${OPENCODE_PORT}`;
 
