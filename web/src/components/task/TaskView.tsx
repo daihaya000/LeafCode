@@ -2272,6 +2272,36 @@ export function TaskView({ taskId }: { taskId: string }) {
               <span className="text-xs text-danger">切断（再試行中）</span>
             )}
           </div>
+          {/* Mobile-only compact context usage row: the sm:flex meta row
+              below carries branch/project/cost too, but that whole row is
+              hidden below sm, so phones would otherwise show no context
+              indicator at all. */}
+          {contextUsage && (
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-faint sm:hidden">
+              <span
+                className="flex min-w-0 shrink-0 items-center gap-1.5"
+                title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
+              >
+                <span className="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-surface-2">
+                  <span
+                    className={cx(
+                      "block h-full rounded-full",
+                      contextUsage.pct >= 90
+                        ? "bg-danger"
+                        : contextUsage.pct >= 70
+                          ? "bg-warning"
+                          : "bg-accent",
+                    )}
+                    style={{ width: `${contextUsage.pct}%` }}
+                  />
+                </span>
+                <span className="font-mono">
+                  {formatTokens(contextUsage.used)}/
+                  {formatTokens(contextUsage.limit)} ({contextUsage.pct}%)
+                </span>
+              </span>
+            </div>
+          )}
           {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
             <div className="mt-0.5 hidden items-center gap-1 text-xs text-faint sm:flex">
               {task.branch && (
