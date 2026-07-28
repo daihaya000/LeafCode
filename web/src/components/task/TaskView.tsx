@@ -119,7 +119,6 @@ import {
   PLAN_APPROVAL_PROMPT,
 } from "@/lib/plan-document";
 import { collectTaskCallIds } from "@/lib/match-child-session";
-import { groupImagePartsForRender } from "@/lib/message-parts";
 import {
   applySlashCompletion,
   filterCommands,
@@ -2582,52 +2581,28 @@ export function TaskView({ taskId }: { taskId: string }) {
                         messageTime && <span>{formatMessageTime(messageTime)}</span>
                       )}
                     </div>
-                    {groupImagePartsForRender(
-                      m.parts.filter((p) => {
+                    {m.parts
+                      .filter((p) => {
                         const planPath = planPaths.get(m.info.id);
                         if (!planPath) return true;
                         return (
                           normalizedPlanPath(p.text) !== planPath &&
                           normalizedPlanPath(p.filename) !== planPath
                         );
-                      }),
-                    ).map((group) =>
-                      group.kind === "images" ? (
-                        <div
-                          key={group.key}
-                          className={cx(
-                            "flex flex-wrap gap-2",
-                            m.info.role === "user" ? "justify-end" : "justify-start",
-                          )}
-                        >
-                          {group.items.map((p) => (
-                            <PartView
-                              key={p.id}
-                              part={p}
-                              role={m.info.role}
-                              onFileClick={openFileInDiff}
-                              directory={task.directory}
-                              rootSessionId={task.sessionId}
-                              siblingTaskCallIds={siblingTaskCallIds}
-                              modelLabels={modelLabels}
-                              costPrefs={costPrefs}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <PartView
-                          key={group.item.id}
-                          part={group.item}
-                          role={m.info.role}
-                          onFileClick={openFileInDiff}
-                          directory={task.directory}
-                          rootSessionId={task.sessionId}
-                          siblingTaskCallIds={siblingTaskCallIds}
-                          modelLabels={modelLabels}
-                          costPrefs={costPrefs}
-                        />
-                      ),
-                    )}
+                      })
+                      .map((p) => (
+                      <PartView
+                        key={p.id}
+                        part={p}
+                        role={m.info.role}
+                        onFileClick={openFileInDiff}
+                        directory={task.directory}
+                        rootSessionId={task.sessionId}
+                        siblingTaskCallIds={siblingTaskCallIds}
+                        modelLabels={modelLabels}
+                        costPrefs={costPrefs}
+                      />
+                    ))}
                     {planPaths.get(m.info.id) && (
                       <PlanDocumentCard
                         path={planPaths.get(m.info.id)!}
