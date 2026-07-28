@@ -2040,6 +2040,15 @@ function wireTrayLifecycle() {
     error(`Tray process error: ${err instanceof Error ? err.message : String(err)}`);
   });
 
+  // systray2 never reads the helper's stderr itself (only stdout, via its own
+  // readline for the IPC protocol), so a native tray_windows*.exe crash reason
+  // (e.g. a Win32 API failure on locked-down/VDI/RDP sessions) was silently
+  // discarded. Surface it so `Tray helper exited unexpectedly (code=...)` has
+  // an accompanying message instead of just an exit code.
+  systray.process?.stderr?.on('data', (chunk) => {
+    error(`Tray helper stderr: ${chunk.toString().trim()}`);
+  });
+
   // Consider the tray "stable" after 60s alive → reset the restart budget.
   if (trayStableTimer) clearTimeout(trayStableTimer);
   trayStableTimer = setTimeout(() => {
