@@ -32,6 +32,26 @@ export function modelOrderPreferenceFromProviders(
   };
 }
 
+export function filterEnabledModelOptions<T extends ModelOption>(
+  options: T[],
+  providers: {
+    id: string;
+    enabled?: boolean;
+    models?: { id: string; enabled?: boolean }[];
+  }[] | undefined | null,
+): T[] {
+  if (!providers || providers.length === 0) return options;
+  const providerMap = new Map(providers.map((provider) => [provider.id, provider]));
+  return options.filter((option) => {
+    const { providerID, modelID } = parseOptionValue(option.value);
+    const provider = providerMap.get(providerID);
+    if (!provider) return true;
+    if (provider.enabled === false) return false;
+    const model = provider.models?.find((item) => item.id === modelID);
+    return model?.enabled !== false;
+  });
+}
+
 /**
  * Normalize OpenCode provider model display names for the dropdown.
  * Upstream sometimes tags a single alias (e.g. Claude Haiku) with

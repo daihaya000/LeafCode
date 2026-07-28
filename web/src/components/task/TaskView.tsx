@@ -100,6 +100,7 @@ import {
   writeSideWidthToServer,
 } from "@/lib/sidepanel-settings";
 import {
+  filterEnabledModelOptions,
   formatModelLabel,
   modelOrderPreferenceFromProviders,
   sortModelOptions,
@@ -969,9 +970,13 @@ export function TaskView({ taskId }: { taskId: string }) {
               };
             }
           }
+          const enabledOptions = filterEnabledModelOptions(
+            options,
+            providerModels?.providers,
+          );
           setModelOptions(
             sortModelOptions(
-              options,
+              enabledOptions,
               modelOrderPreferenceFromProviders(providerModels?.providers),
             ),
           );
@@ -984,7 +989,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           const savedDefault = readDefaultModel();
           if (
             savedDefault &&
-            options.some((o) => o.value === savedDefault)
+            enabledOptions.some((o) => o.value === savedDefault)
           ) {
             initial = savedDefault;
           }
@@ -994,7 +999,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               const slash = cfg.indexOf("/");
               if (slash > 0) {
                 const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-                if (options.some((o) => o.value === value)) initial = value;
+                if (enabledOptions.some((o) => o.value === value)) initial = value;
               }
             }
           }
@@ -1003,13 +1008,13 @@ export function TaskView({ taskId }: { taskId: string }) {
               const mid = data.default?.[pid];
               if (!mid) continue;
               const value = `${pid}::${mid}`;
-              if (options.some((o) => o.value === value)) {
+              if (enabledOptions.some((o) => o.value === value)) {
                 initial = value;
                 break;
               }
             }
           }
-          if (!initial && options[0]) initial = options[0].value;
+          if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
           setModel((cur) => cur || initial);
         }
 

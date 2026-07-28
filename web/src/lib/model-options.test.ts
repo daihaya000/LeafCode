@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterEnabledModelOptions,
   formatModelLabel,
   modelIntelligenceScore,
   normalizeProviderBucket,
@@ -7,6 +8,39 @@ import {
   sortModelOptions,
   type ModelOption,
 } from "./model-options";
+
+describe("filterEnabledModelOptions", () => {
+  const options: ModelOption[] = [
+    { value: "openai::gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
+    { value: "openai::gpt-5.6-sol", label: "GPT-5.6 Sol", group: "OpenAI" },
+    { value: "anthropic::claude-opus-5", label: "Claude Opus 5", group: "Anthropic" },
+    { value: "xai::grok", label: "Grok", group: "xAI" },
+  ];
+
+  it("removes disabled providers and models from dropdown options", () => {
+    expect(
+      filterEnabledModelOptions(options, [
+        {
+          id: "openai",
+          enabled: true,
+          models: [
+            { id: "gpt-5.5", enabled: false },
+            { id: "gpt-5.6-sol", enabled: true },
+          ],
+        },
+        {
+          id: "anthropic",
+          enabled: false,
+          models: [{ id: "claude-opus-5", enabled: true }],
+        },
+      ]).map((option) => option.value),
+    ).toEqual(["openai::gpt-5.6-sol", "xai::grok"]);
+  });
+
+  it("keeps all options when provider-model settings are unavailable", () => {
+    expect(filterEnabledModelOptions(options, undefined)).toBe(options);
+  });
+});
 
 describe("formatModelLabel", () => {
   it("strips a trailing (latest) marker from upstream names", () => {

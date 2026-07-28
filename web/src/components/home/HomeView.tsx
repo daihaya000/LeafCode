@@ -46,6 +46,7 @@ import {
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import {
+  filterEnabledModelOptions,
   formatModelLabel,
   modelOrderPreferenceFromProviders,
   sortModelOptions,
@@ -297,9 +298,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               };
             }
           }
+          const enabledOptions = filterEnabledModelOptions(
+            options,
+            providerModels?.providers,
+          );
           setModelOptions(
             sortModelOptions(
-              options,
+              enabledOptions,
               modelOrderPreferenceFromProviders(providerModels?.providers),
             ),
           );
@@ -311,14 +316,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           // then provider defaults.
           let initial = "";
           const lastUsed = readLastUsedModel();
-          if (lastUsed && options.some((o) => o.value === lastUsed)) {
+          if (lastUsed && enabledOptions.some((o) => o.value === lastUsed)) {
             initial = lastUsed;
           }
           if (!initial) {
             const savedDefault = readDefaultModel();
             if (
               savedDefault &&
-              options.some((o) => o.value === savedDefault)
+              enabledOptions.some((o) => o.value === savedDefault)
             ) {
               initial = savedDefault;
             }
@@ -329,7 +334,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               const slash = cfg.indexOf("/");
               if (slash > 0) {
                 const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-                if (options.some((o) => o.value === value)) initial = value;
+                if (enabledOptions.some((o) => o.value === value)) initial = value;
               }
             }
           }
@@ -338,13 +343,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               const mid = data.default?.[pid];
               if (!mid) continue;
               const value = `${pid}::${mid}`;
-              if (options.some((o) => o.value === value)) {
+              if (enabledOptions.some((o) => o.value === value)) {
                 initial = value;
                 break;
               }
             }
           }
-          if (!initial && options[0]) initial = options[0].value;
+          if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
           setModel((cur) => cur || initial);
         }
 
