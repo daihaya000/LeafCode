@@ -10,8 +10,8 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ### タスクバーへのピン留め
 
-1. （任意・推奨）`scripts/build-launcher.bat` を実行します。`.NET Framework` 同梱の `csc.exe` で `scripts/launcher/Launcher.cs` をコンパイルし、アイコン埋め込み済みのネイティブ `scripts/launcher/OpenCodeWebUI.exe` を生成します（`start-webui.bat` を同じコンソールで実行するだけの薄いラッパー）。ショートカットの対象を `.bat` ではなく実在の `.exe` にすることで、Explorerの「タスクバーにピン留めする」がより確実に提供されます。ビルド結果は `.gitignore` 済みの生成物で、リポジトリには含まれません。
-2. `scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカットを作成します。手順1で `OpenCodeWebUI.exe` を作成済みならそちらを、未作成なら `start-webui.bat` を対象にします。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
+1. （任意）`scripts/build-launcher.bat` を実行します。`.NET Framework` 同梱の `csc.exe` で `scripts/launcher/Launcher.cs` をコンパイルし、アイコン埋め込み済みのネイティブ `scripts/launcher/OpenCodeWebUI.exe` を生成します（`start-webui.bat` を同じコンソールで実行するだけの薄いラッパー）。**手動実行は不要**です。`start-webui.bat` は起動のたびに、まず自分自身がこの `.exe` を経由して呼ばれたか確認し、経由していなければ `.exe` が無い場合だけ自動で `scripts/build-launcher.bat /quiet`（無人ビルド。`.NET Framework`/`csc.exe` が無い環境では失敗しても通常起動へフォールバックします）を実行してからその `.exe` へ処理を委譲します。ショートカットの対象を `.bat` ではなく実在の `.exe` にすることで、Explorerの「タスクバーにピン留めする」がより確実に提供されます。ビルド結果は `.gitignore` 済みの生成物で、リポジトリには含まれません。
+2. `scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカットを作成します。`OpenCodeWebUI.exe` が存在すればそちらを、無ければ `start-webui.bat` を対象にします（手順1のとおり `start-webui.bat` の初回起動で自動生成されるため、多くの場合は既に存在します）。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
 
 Windows 10 1809 以降はショートカットをスクリプトから自動でタスクバーへピン留めする手段が提供されていないため、ピン留め自体は手動です。作成された `OpenCode WebUI.lnk` を右クリックし「タスクバーにピン留めする」を選択してください。
 

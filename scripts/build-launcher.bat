@@ -5,6 +5,11 @@ rem See docs\specs\bat-encoding-safety.md
 setlocal
 cd /d "%~dp0.."
 
+rem /quiet is passed by start-webui.bat for an unattended first-run build:
+rem it must not block on `pause` since nothing is watching the console then.
+set QUIET=
+if /i "%~1"=="/quiet" set QUIET=1
+
 set LAUNCHER_DIR=%CD%\scripts\launcher
 set CSC=
 
@@ -22,7 +27,7 @@ rem intentionally stays limited to the two well-known Framework paths above.
 if not defined CSC (
   echo [OpenCode WebUI] C# compiler ^(csc.exe^) not found.
   echo [OpenCode WebUI] Install .NET Framework 4.x ^(Windows Features^) or the .NET SDK, then retry.
-  pause
+  if not defined QUIET pause
   exit /b 1
 )
 
@@ -32,7 +37,7 @@ echo [OpenCode WebUI] Extracting app icon from host\src\icon.json...
 node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('host/src/icon.json','utf8'));fs.writeFileSync('scripts/launcher/app.ico', Buffer.from(j.base64,'base64'));"
 if errorlevel 1 (
   echo [OpenCode WebUI] Icon extraction failed. Run 'node scripts\gen-icons.mjs' first.
-  pause
+  if not defined QUIET pause
   exit /b 1
 )
 
@@ -40,11 +45,11 @@ echo [OpenCode WebUI] Compiling scripts\launcher\OpenCodeWebUI.exe...
 "%CSC%" /nologo /target:exe /platform:anycpu /out:"%LAUNCHER_DIR%\OpenCodeWebUI.exe" /win32icon:"%LAUNCHER_DIR%\app.ico" "%LAUNCHER_DIR%\Launcher.cs"
 if errorlevel 1 (
   echo [OpenCode WebUI] Compile failed. See the errors above.
-  pause
+  if not defined QUIET pause
   exit /b 1
 )
 
 echo [OpenCode WebUI] Built: %LAUNCHER_DIR%\OpenCodeWebUI.exe
 echo [OpenCode WebUI] Next: run scripts\create-shortcut.bat to (re)create the Desktop shortcut.
-pause
+if not defined QUIET pause
 endlocal

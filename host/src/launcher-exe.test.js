@@ -66,6 +66,33 @@ test(
 );
 
 test(
+  "Launcher.cs sets OPENCODE_WEBUI_LAUNCHER=1 for the batch file it runs (breaks start-webui.bat's re-routing loop)",
+  { skip: !isWindows || !csc },
+  () => {
+    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-envvar-"));
+    const launcherDir = join(fakeRepo, "scripts", "launcher");
+    mkdirSync(launcherDir, { recursive: true });
+    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
+
+    writeFileSync(
+      join(fakeRepo, "start-webui.bat"),
+      "@echo off\r\necho VAR=%OPENCODE_WEBUI_LAUNCHER%\r\nexit /b 0\r\n",
+    );
+
+    try {
+      const compile = compileLauncher(exePath);
+      assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
+
+      const run = spawnSync(exePath, [], { encoding: "utf8" });
+      assert.equal(run.status, 0);
+      assert.match(run.stdout, /VAR=1/);
+    } finally {
+      rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   "Launcher.cs fails clearly when start-webui.bat is missing next to the repo root",
   { skip: !isWindows || !csc },
   () => {

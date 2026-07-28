@@ -10,6 +10,26 @@ rem pin (see scripts\create-shortcut.bat) show "OpenCode WebUI" instead of the
 rem generic "Command Prompt" title. Node does not touch this on Windows.
 title OpenCode WebUI
 
+rem Route through the compiled native launcher (scripts\launcher\OpenCodeWebUI.exe)
+rem for a proper app identity (icon, Alt-Tab/taskbar entry) even when this
+rem file is run directly (e.g. a Desktop shortcut made before the launcher
+rem existed, or a manual double-click), building the launcher first if it is
+rem missing. OPENCODE_WEBUI_LAUNCHER=1 is set by the launcher on the bat
+rem instance it starts (see scripts\launcher\Launcher.cs), so that instance
+rem skips this block instead of looping back into the launcher.
+if "%OPENCODE_WEBUI_LAUNCHER%"=="1" goto :after_launcher_routing
+if exist "scripts\launcher\OpenCodeWebUI.exe" goto :run_launcher
+echo [OpenCode WebUI] Building native launcher ^(first run^)...
+call scripts\build-launcher.bat /quiet
+if not exist "scripts\launcher\OpenCodeWebUI.exe" goto :after_launcher_routing
+
+:run_launcher
+"scripts\launcher\OpenCodeWebUI.exe"
+set ERR=%ERRORLEVEL%
+exit /b %ERR%
+
+:after_launcher_routing
+
 echo [OpenCode WebUI] Starting...
 
 if not exist "web\node_modules\" (

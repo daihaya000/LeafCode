@@ -14,6 +14,14 @@
 // since a console-subsystem child inherits the parent's console when stdio
 // is not redirected and no new console is requested) and forwards its exit
 // code.
+//
+// start-webui.bat also routes into this exe itself when run directly (e.g.
+// a Desktop shortcut created before the launcher existed, or a manual
+// double-click), building it first if missing, so the console always ends
+// up with this exe's identity (icon, Alt-Tab/taskbar entry). To break that
+// loop, the child process below gets OPENCODE_WEBUI_LAUNCHER=1 in its
+// environment; start-webui.bat skips its own re-routing when it sees that
+// variable already set.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -41,6 +49,7 @@ internal static class Launcher
             WorkingDirectory = repoRoot,
             UseShellExecute = false,
         };
+        psi.EnvironmentVariables["OPENCODE_WEBUI_LAUNCHER"] = "1";
 
         using (Process p = Process.Start(psi))
         {
