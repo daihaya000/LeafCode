@@ -1,5 +1,6 @@
 "use client";
 
+import type { ComponentProps } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ChevronRight,
@@ -29,6 +30,10 @@ type Props = {
   variant?: "button" | "icon";
   className?: string;
   label?: string;
+  /** Passed through to the underlying Button when variant="button". */
+  buttonVariant?: ComponentProps<typeof Button>["variant"];
+  /** Passed through to the underlying Button when variant="button". */
+  buttonSize?: ComponentProps<typeof Button>["size"];
 };
 
 /** Lightweight client-side path format validation (Windows + Unix). */
@@ -71,6 +76,8 @@ export function AddProjectButton({
   variant = "button",
   className,
   label = "プロジェクトを追加",
+  buttonVariant,
+  buttonSize,
 }: Props) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
@@ -293,7 +300,12 @@ export function AddProjectButton({
         </button>
       ) : (
         <div className={cx(className)}>
-          <Button onClick={openPicker} busy={pickerBusy || busy}>
+          <Button
+            variant={buttonVariant}
+            size={buttonSize}
+            onClick={openPicker}
+            busy={pickerBusy || busy}
+          >
             <FolderPlus className="h-4 w-4" />
             {label}
           </Button>

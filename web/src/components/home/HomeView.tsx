@@ -757,32 +757,43 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             <span>OpenCodeWebUI</span>
           </h1>
           <div className="mx-auto mb-3 flex max-w-5xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <GhostSelect
-              value={projectId}
-              disabled={projects.length === 0 || submitting}
-              aria-label="プロジェクト"
-              icon={<FolderGit2 className="h-3.5 w-3.5" />}
-              valueLabel={
-                selectedProject
-                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                  : "プロジェクトなし"
-              }
-              onChange={setProjectId}
-              className="max-w-[12rem] shrink-0 sm:max-w-56"
-              title={
-                selectedProject
-                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                  : "プロジェクトなし"
-              }
-            >
-              {projects.length === 0 && <option value="">プロジェクトなし</option>}
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.favorite ? "★ " : ""}
-                  {p.name}
-                </option>
-              ))}
-            </GhostSelect>
+            {loaded && projects.length === 0 ? (
+              <AddProjectButton
+                label="プロジェクトを追加"
+                buttonVariant="outline"
+                buttonSize="sm"
+                className="shrink-0"
+                onAdded={(project) => {
+                  void refreshProjects().then(() => setProjectId(project.id));
+                }}
+              />
+            ) : (
+              <GhostSelect
+                value={projectId}
+                disabled={submitting}
+                aria-label="プロジェクト"
+                icon={<FolderGit2 className="h-3.5 w-3.5" />}
+                valueLabel={
+                  selectedProject
+                    ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                    : "プロジェクトなし"
+                }
+                onChange={setProjectId}
+                className="max-w-[12rem] shrink-0 sm:max-w-56"
+                title={
+                  selectedProject
+                    ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                    : "プロジェクトなし"
+                }
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.favorite ? "★ " : ""}
+                    {p.name}
+                  </option>
+                ))}
+              </GhostSelect>
+            )}
             <GhostSelect
               value={isolation}
               disabled={submitting}
@@ -1054,19 +1065,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">
               エンジン未接続。設定またはトレイから OpenCode を再起動してください。
             </p>
-          )}
-
-          {loaded && projects.length === 0 && (
-            <div className="mx-auto mt-4 max-w-2xl">
-              <p className="mb-3 text-center text-sm text-muted">
-                まずプロジェクトフォルダを追加してください
-              </p>
-              <AddProjectButton
-                onAdded={(project) => {
-                  void refreshProjects().then(() => setProjectId(project.id));
-                }}
-              />
-            </div>
           )}
 
           {error && (
