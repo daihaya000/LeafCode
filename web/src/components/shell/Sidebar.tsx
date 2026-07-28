@@ -694,20 +694,22 @@ export function Sidebar({
         <Link
           href="/"
           onClick={() => onClose()}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          className="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 text-sm font-semibold tracking-tight hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icon-192.png"
-            alt=""
-            width={18}
-            height={18}
-            className="h-4.5 w-4.5 shrink-0 rounded-[3px] object-contain"
-          />
-          <span className="truncate">OpenCodeWebUI</span>
+          <span className="flex min-w-0 items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icon-192.png"
+              alt=""
+              width={18}
+              height={18}
+              className="h-4.5 w-4.5 shrink-0 rounded-[3px] object-contain"
+            />
+            <span className="truncate">OpenCodeWebUI</span>
+          </span>
           {BUILD_COMMIT_LABEL && (
             <span
-              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
+              className="ml-6 inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-bg px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted"
               title={
                 BUILD_COMMIT_DATE
                   ? `Build commit: ${BUILD_COMMIT} (${BUILD_COMMIT_DATE})`
