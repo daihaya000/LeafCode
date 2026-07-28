@@ -346,16 +346,24 @@ function TodoPanel({
 const SIDE_WIDTH_KEY = "webui.sidepanel.width";
 const SIDE_DEFAULT = 520;
 const SIDE_MIN = 280;
+const SIDE_PANEL_MIN: Record<SidePanelKind, number> = {
+  diff: SIDE_MIN,
+  files: 380,
+  graph: 420,
+  pty: SIDE_MIN,
+};
 const SIDE_MAX = 900;
 /** Keep enough room for the chat column when the right panel is wide. */
 const SIDE_CHAT_MIN = 320;
 const ACTIVE_TASK_POLL_MS = 3000;
 
-function clampSideWidth(n: number) {
+function clampSideWidth(n: number, min = SIDE_MIN) {
   const viewport =
     typeof window !== "undefined" ? window.innerWidth : SIDE_MAX + SIDE_CHAT_MIN;
+  const effectiveMin = Math.max(SIDE_MIN, min);
   const maxByViewport = Math.max(SIDE_MIN, viewport - SIDE_CHAT_MIN);
-  return Math.min(SIDE_MAX, maxByViewport, Math.max(SIDE_MIN, Math.round(n)));
+  const max = Math.max(SIDE_MIN, Math.min(SIDE_MAX, maxByViewport));
+  return Math.min(max, Math.max(Math.min(effectiveMin, max), Math.round(n)));
 }
 
 function loadSideWidth(): number {
@@ -426,6 +434,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     return window.matchMedia("(min-width: 768px)").matches;
   });
   const sideDragRef = useRef<{ x: number; w: number } | null>(null);
+  const sidePanelMin = SIDE_PANEL_MIN[sidePanel] ?? SIDE_MIN;
+  const effectiveSideWidth = clampSideWidth(sideWidth, sidePanelMin);
   const [diffKey, setDiffKey] = useState(0);
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -601,7 +611,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     const onMove = (e: PointerEvent) => {
       const start = sideDragRef.current;
       if (!start) return;
-      setSideWidth(clampSideWidth(start.w + (start.x - e.clientX)));
+      setSideWidth(clampSideWidth(start.w + (start.x - e.clientX), sidePanelMin));
     };
     const onUp = () => {
       setSideResizing(false);
@@ -624,7 +634,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [sideResizing]);
+  }, [sidePanelMin, sideResizing]);
 
   useEffect(() => {
     setAccessMode(readAccessMode());
@@ -3139,20 +3149,20 @@ export function TaskView({ taskId }: { taskId: string }) {
               ? "lg:flex lg:flex-none lg:border-l"
               : "lg:hidden",
           )}
-          style={showDiff && isLg ? { width: sideWidth } : undefined}
+          style={showDiff && isLg ? { width: effectiveSideWidth } : undefined}
         >
           {showDiff && isLg && (
             <div
               role="separator"
               aria-orientation="vertical"
               aria-label="右パネル幅を調整"
-              aria-valuenow={sideWidth}
-              aria-valuemin={SIDE_MIN}
+              aria-valuenow={effectiveSideWidth}
+              aria-valuemin={sidePanelMin}
               aria-valuemax={SIDE_MAX}
               title="ドラッグで幅を変更（ダブルクリックでリセット）"
               onPointerDown={(e) => {
                 e.preventDefault();
-                sideDragRef.current = { x: e.clientX, w: sideWidth };
+                sideDragRef.current = { x: e.clientX, w: effectiveSideWidth };
                 setSideResizing(true);
               }}
               onDoubleClick={() => {
