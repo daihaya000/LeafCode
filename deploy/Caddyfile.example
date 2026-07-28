@@ -31,14 +31,13 @@
 # List every name/IP you will reach this by, so `tls internal` can pre-issue a
 # cert for them. Add your LAN IP (DHCP reservation recommended), VPN IP or
 # hostname here -- a name that is not listed gets no certificate.
-# List every name/IP you will reach this by, so `tls internal` can pre-issue a
-# cert for them. Add your LAN IP (DHCP reservation recommended), VPN IP or
-# hostname here -- a name that is not listed gets no certificate.
 # Host-only APIs (folder picker, voice input, restart) work through this proxy
 # because Caddy adds X-Forwarded-For from the immediate client hop; when the
 # browser is on the same PC that hop is loopback, even for LAN hostnames.
 https://localhost:8443, https://127.0.0.1:8443, https://192.168.1.100:8443, https://example-hostname:8443 {
 	tls internal
+
+	@hostOnlyApis path /api/browse/folder* /api/host/voice-input* /api/host/restart* /api/host/logs* /api/updates/*
 
 	# --- Optional Basic Auth (recommended for remote) --------------------
 	# Generate a hash:  caddy hash-password
@@ -50,7 +49,7 @@ https://localhost:8443, https://127.0.0.1:8443, https://192.168.1.100:8443, http
 	# Host-only APIs (folder picker, voice input, restart, updates, logs) require a loopback
 	# Host header so the BFF can tell the request is from this PC. When the
 	# browser uses a LAN hostname/IP, rewrite the Host header for those paths.
-	handle /api/browse/folder* /api/host/voice-input* /api/host/restart* /api/host/logs* /api/updates/* {
+	handle @hostOnlyApis {
 		reverse_proxy 127.0.0.1:3000 {
 			flush_interval -1
 			transport http {
