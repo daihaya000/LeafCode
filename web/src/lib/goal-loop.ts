@@ -131,13 +131,38 @@ function isTransientOpenCodeError(err: unknown): boolean {
 }
 
 /**
+ * HTTP statuses that mean "the prompt was NOT accepted, but resending
+ * immediately is unsafe or pointless". 409 (SessionBusyError) means the
+ * engine is already processing a prompt for this session — resending would
+ * either duplicate or immediately re-hit the busy state. 429 (rate limit)
+ * means the caller should back off, not retry right away. Treating these as
+ * ambiguous delivery (pause for a user decision) avoids a tight retry loop
+ * while preserving the non-idempotent prompt_async safety contract.
+ */
+const PROMPT_TRANSIENT_CONFLICT_STATUSES = new Set([409, 429]);
+
+/** True when `err` is a 409/429 that should pause instead of rollback+resend. */
+function isTransientConflictPrompt(err: unknown): boolean {
+  const status = transientOpenCodeStatus(err);
+  return status !== null && PROMPT_TRANSIENT_CONFLICT_STATUSES.has(status);
+}
+
+/**
  * `prompt_async` is non-idempotent. A network failure, timeout, or server
  * failure may have accepted it despite the missing response, whereas a client
- * error is an acknowledgement that OpenCode rejected the prompt.
+ * error is an acknowledgement that OpenCode rejected the prompt. 409/429 are
+ * excluded: they are not a definite rejection, but an immediate resend is
+ * unsafe (busy session / rate limited), so the caller pauses instead.
  */
 function isDefinitelyRejectedPrompt(err: unknown): boolean {
   const status = transientOpenCodeStatus(err);
-  return status !== null && status !== 408 && status >= 400 && status <= 499;
+  return (
+    status !== null &&
+    status !== 408 &&
+    !isTransientConflictPrompt(err) &&
+    status >= 400 &&
+    status <= 499
+  );
 }
 
 function promptErrorMessage(prefix: string, err: unknown): string {
@@ -1253,6 +1278,7 @@ export const goalLoopTestSeams = {
   applyAssistantResult,
   countRecentRejectedClaims,
   isTransientOpenCodeError,
+  isTransientConflictPrompt,
   isDefinitelyRejectedPrompt,
   retryTransientOpenCode,
 };

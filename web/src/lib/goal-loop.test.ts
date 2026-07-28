@@ -25,6 +25,15 @@ function running(id: string): MessageWithParts {
 }
 
 describe("goalLoopTestSeams", () => {
+  it("treats busy and rate-limit prompt failures as transient conflicts", () => {
+    expect(goalLoopTestSeams.isTransientConflictPrompt({ status: 409 })).toBe(true);
+    expect(goalLoopTestSeams.isTransientConflictPrompt({ status: 429 })).toBe(true);
+    expect(goalLoopTestSeams.isTransientConflictPrompt({ status: 400 })).toBe(false);
+    expect(goalLoopTestSeams.isDefinitelyRejectedPrompt({ status: 409 })).toBe(false);
+    expect(goalLoopTestSeams.isDefinitelyRejectedPrompt({ status: 429 })).toBe(false);
+    expect(goalLoopTestSeams.isDefinitelyRejectedPrompt({ status: 422 })).toBe(true);
+  });
+
   it("normalizes structured goal progress", () => {
     const result = goalLoopTestSeams.normalizeStructured({
       status: "progress",
