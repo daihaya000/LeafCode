@@ -7,6 +7,7 @@ import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
+import { HostLogPanel } from "@/components/settings/HostLogPanel";
 import { CodexBarWidget } from "@addons/codexbar";
 import { Badge, Button, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
@@ -640,6 +641,8 @@ export function SettingsView() {
                 )}
               </div>
             </section>
+
+            <HostLogPanel />
           </>
         )}
 

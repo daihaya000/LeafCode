@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  hostLogsPath,
   hostRestartPath,
   hostVoiceInputPath,
   resolveHostControlUrl,
@@ -16,6 +17,21 @@ describe("hostRestartPath", () => {
 describe("hostVoiceInputPath", () => {
   it("maps to the host voice-input control path", () => {
     expect(hostVoiceInputPath()).toBe("/voice-input");
+  });
+});
+
+describe("hostLogsPath", () => {
+  it("returns the bare path when since is null", () => {
+    expect(hostLogsPath(null)).toBe("/logs");
+  });
+
+  it("appends the since query when a finite number is given", () => {
+    expect(hostLogsPath(42)).toBe("/logs?since=42");
+    expect(hostLogsPath(0)).toBe("/logs?since=0");
+  });
+
+  it("falls back to the bare path for non-finite since", () => {
+    expect(hostLogsPath(Number.NaN)).toBe("/logs");
   });
 });
 

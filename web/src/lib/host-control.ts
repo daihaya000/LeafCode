@@ -69,3 +69,10 @@ export function hostRestartPath(target: HostRestartTarget): string {
 export function hostVoiceInputPath(): string {
   return "/voice-input";
 }
+
+/** GET path for the host log tail. `since` is the last-seen entry's `seq`. */
+export function hostLogsPath(since: number | null): string {
+  return since !== null && Number.isFinite(since)
+    ? `/logs?since=${since}`
+    : "/logs";
+}

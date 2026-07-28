@@ -41,6 +41,10 @@ vi.mock("@/components/settings/ExtensionsSettings", () => ({
   ),
 }));
 
+vi.mock("@/components/settings/HostLogPanel", () => ({
+  HostLogPanel: () => <div data-testid="host-log-panel">host-log-panel</div>,
+}));
+
 vi.mock("@/components/shell/ShellContext", () => ({
   useShellMobileNav: () => ({
     mobileNavOpen: false,
@@ -217,6 +221,7 @@ describe("SettingsView", () => {
     // its section heading should NOT be rendered on the 全般 tab.
     expect(screen.queryAllByText("プロジェクト")).toHaveLength(1);
     expect(screen.queryByTestId("addon-settings")).toBeNull();
+    expect(screen.getByTestId("host-log-panel")).toBeTruthy();
   });
 
   it("switches visible content when a tab is clicked", async () => {
