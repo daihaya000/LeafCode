@@ -508,142 +508,158 @@ export function SettingsView() {
           <>
             <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
-              <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={health?.opencode.ok ? "success" : "danger"}>
-                    {health?.opencode.ok ? "接続中" : "停止"}
-                  </Badge>
-                  <span className="text-sm text-muted">
-                    OpenCode {health?.opencode.version ?? ""}
-                  </span>
-                  <Badge tone={hostOk ? "success" : "warning"}>
-                    {hostOk ? "ホスト接続中" : "ホスト未検出"}
-                  </Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    busy={restarting === "webui"}
-                    disabled={hostOk !== true || restarting !== null}
-                    onClick={() => requestRestart("webui")}
-                  >
-                    WebUI を再起動
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    busy={restarting === "opencode"}
-                    disabled={hostOk !== true || restarting !== null}
-                    onClick={() => requestRestart("opencode")}
-                  >
-                    OpenCode を再起動
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    busy={restarting === "all"}
-                    disabled={hostOk !== true || restarting !== null}
-                    onClick={() => requestRestart("all")}
-                  >
-                    すべて再起動
-                  </Button>
-                </div>
-                {pendingRestart && !restarting && (
-                  <div
-                    role="dialog"
-                    aria-live="polite"
-                    aria-label="再起動の確認"
-                    className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning"
-                  >
-                    <p className="font-medium">
-                      {RESTART_LABELS[pendingRestart]}を再起動しますか？
+              <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">接続状態</h3>
+                    <p className="mt-1 text-xs text-faint">
+                      OpenCode {health?.opencode.version ?? ""}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={health?.opencode.ok ? "success" : "danger"}>
+                      {health?.opencode.ok ? "接続中" : "停止"}
+                    </Badge>
+                    <Badge tone={hostOk ? "success" : "warning"}>
+                      {hostOk ? "ホスト接続中" : "ホスト未検出"}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 p-4 md:grid-cols-2">
+                  <div className="space-y-3 rounded-lg border border-border bg-bg/40 p-3">
+                    <div>
+                      <h3 className="text-xs font-semibold text-muted">再起動</h3>
+                      <p className="mt-1 text-xs text-faint">
+                        {hostOk
+                          ? "トレイメニューの再起動操作と同じです。"
+                          : "start-webui.bat（トレイホスト）経由の起動が必要です。"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
                         size="sm"
-                        variant="primary"
-                        onClick={() => void restartService(pendingRestart)}
+                        variant="secondary"
+                        busy={restarting === "webui"}
+                        disabled={hostOk !== true || restarting !== null}
+                        onClick={() => requestRestart("webui")}
                       >
-                        再起動する
+                        WebUI を再起動
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant="secondary"
-                        onClick={() => setPendingRestart(null)}
+                        busy={restarting === "opencode"}
+                        disabled={hostOk !== true || restarting !== null}
+                        onClick={() => requestRestart("opencode")}
                       >
-                        キャンセル
+                        OpenCode を再起動
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        busy={restarting === "all"}
+                        disabled={hostOk !== true || restarting !== null}
+                        onClick={() => requestRestart("all")}
+                      >
+                        すべて再起動
                       </Button>
                     </div>
+                    {pendingRestart && !restarting && (
+                      <div
+                        role="dialog"
+                        aria-live="polite"
+                        aria-label="再起動の確認"
+                        className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning"
+                      >
+                        <p className="font-medium">
+                          {RESTART_LABELS[pendingRestart]}を再起動しますか？
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="primary"
+                            onClick={() => void restartService(pendingRestart)}
+                          >
+                            再起動する
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setPendingRestart(null)}
+                          >
+                            キャンセル
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <p className="min-h-4 text-xs text-muted" role="status" aria-live="polite">
+                      {restarting
+                        ? `${RESTART_LABELS[restarting]}を再起動しています…`
+                        : null}
+                    </p>
                   </div>
-                )}
-                <p className="min-h-5 text-xs text-muted" role="status" aria-live="polite">
-                  {restarting
-                    ? `${RESTART_LABELS[restarting]}を再起動しています…`
-                    : null}
-                </p>
-                <p className="text-xs text-faint">
-                  {hostOk
-                    ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"
-                    : "再起動には start-webui.bat（トレイホスト）経由の起動が必要です。"}
-                </p>
-                <div className="border-t border-border pt-3">
-                  <h3 className="mb-2 text-xs font-semibold text-muted">アップデート</h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      busy={updating === "webui"}
-                      disabled={updating !== null || restarting !== null}
-                      onClick={() => void updateService("webui")}
-                    >
-                      WebUI をリモートからプル
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      busy={updating === "opencode"}
-                      disabled={updating !== null || restarting !== null || health?.opencode.ok !== true}
-                      onClick={() => void updateService("opencode")}
-                    >
-                      OpenCode CLI をアップデート
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-xs text-faint">
-                    WebUI はこのリポジトリで <code>git pull --ff-only</code> を実行します。OpenCode CLI は OpenCode の upgrade API を呼び出します。
-                  </p>
-                  {updateState && (
-                    <div
-                      className={cx(
-                        "mt-2 rounded-lg border px-3 py-2 text-xs",
-                        updateState.kind === "error"
-                          ? "border-danger/30 bg-danger-bg text-diff-del-text"
-                          : updateState.kind === "success"
-                            ? "border-success/30 bg-success-bg text-success"
-                            : "border-working/30 bg-working-bg text-working",
-                      )}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      <p className="font-medium">
-                        {updateState.kind === "running"
-                          ? `${updateState.target === "webui" ? "WebUI" : "OpenCode CLI"} をアップデートしています…`
-                          : updateState.message}
+
+                  <div className="space-y-3 rounded-lg border border-border bg-bg/40 p-3">
+                    <div>
+                      <h3 className="text-xs font-semibold text-muted">アップデート</h3>
+                      <p className="mt-1 text-xs text-faint">
+                        WebUI は <code>git pull --ff-only</code>、OpenCode CLI は upgrade API を実行します。
                       </p>
-                      {updateState.detail && (
-                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg/60 p-2 font-mono text-[11px] text-muted">
-                          {updateState.detail}
-                        </pre>
-                      )}
                     </div>
-                  )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        busy={updating === "webui"}
+                        disabled={updating !== null || restarting !== null}
+                        onClick={() => void updateService("webui")}
+                      >
+                        WebUI をリモートからプル
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        busy={updating === "opencode"}
+                        disabled={updating !== null || restarting !== null || health?.opencode.ok !== true}
+                        onClick={() => void updateService("opencode")}
+                      >
+                        OpenCode CLI をアップデート
+                      </Button>
+                    </div>
+                    {updateState && (
+                      <div
+                        className={cx(
+                          "rounded-lg border px-3 py-2 text-xs",
+                          updateState.kind === "error"
+                            ? "border-danger/30 bg-danger-bg text-diff-del-text"
+                            : updateState.kind === "success"
+                              ? "border-success/30 bg-success-bg text-success"
+                              : "border-working/30 bg-working-bg text-working",
+                        )}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <p className="font-medium">
+                          {updateState.kind === "running"
+                            ? `${updateState.target === "webui" ? "WebUI" : "OpenCode CLI"} をアップデートしています…`
+                            : updateState.message}
+                        </p>
+                        {updateState.detail && (
+                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg/60 p-2 font-mono text-[11px] text-muted">
+                            {updateState.detail}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </section>
