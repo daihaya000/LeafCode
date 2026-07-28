@@ -1,2 +1,2 @@
-[Setup] webのビルドに失敗しました。
-[Setup] 復旧案内: 表示されたビルドエラーとNode.jsのバージョンを確認してください。
+[OpenCode WebUI] webのビルドに失敗しました。
+[OpenCode WebUI] 復旧案内: 表示されたビルドエラーとNode.jsのバージョンを確認してください。

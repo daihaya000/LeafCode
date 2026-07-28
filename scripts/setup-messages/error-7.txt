@@ -1,2 +1,2 @@
-[Setup] ビルド後にBUILD_IDが見つかりません。
-[Setup] 復旧案内: ビルドログを確認してから再実行してください。
+[OpenCode WebUI] ビルド後にBUILD_IDが見つかりません。
+[OpenCode WebUI] 復旧案内: ビルドログを確認してから再実行してください。

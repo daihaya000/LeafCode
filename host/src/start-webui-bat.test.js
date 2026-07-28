@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
+// start-webui.bat used to be split into a one-time setup.bat (winget / Node.js /
+// OpenCode / dependency installs, ending by starting a *separate* start-webui.bat
+// in a detached console) and start-webui.bat itself (assumed already installed).
+// setup.bat has been deleted and its logic absorbed into start-webui.bat: every
+// check below is a no-op once its condition is already satisfied (idempotent),
+// and the script continues in the same console straight into the host tail
+// (`cd host && node src\index.js`, foreground) instead of handing off to a
+// second process. See docs/specs/setup-start-webui-merge.md.
+
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const setupSource = join(repoRoot, "setup.bat");
+const startWebuiSource = join(repoRoot, "start-webui.bat");
 const messagesSource = join(repoRoot, "scripts", "setup-messages");
 const isWindows = process.platform === "win32";
 
@@ -17,20 +27,27 @@ function writeBat(path, contents) {
 }
 
 function createSandbox(options = {}) {
-  const root = mkdtempSync(join(tmpdir(), "OpenCodeWebUI-setup-"));
+  const root = mkdtempSync(join(tmpdir(), "OpenCodeWebUI-start-"));
   const bin = join(root, "mock-bin");
   const log = join(root, "commands.log");
   mkdirSync(bin);
-  mkdirSync(join(root, "web"));
-  mkdirSync(join(root, "host"));
-  writeFileSync(join(root, "setup.bat"), readFileSync(setupSource));
+  // web/host start empty (no node_modules, no .next) unless the test pre-seeds
+  // them via options below, which exercises the idempotent fast path.
+  mkdirSync(join(root, "web"), { recursive: true });
+  mkdirSync(join(root, "host"), { recursive: true });
+  writeFileSync(join(root, "start-webui.bat"), readFileSync(startWebuiSource));
   if (options.withMessages !== false) {
     mkdirSync(join(root, "scripts"), { recursive: true });
     cpSync(messagesSource, join(root, "scripts", "setup-messages"), { recursive: true });
   }
-  writeBat(join(root, "start-webui.bat"), options.asyncStart
-    ? 'type nul > "%~dp0started.txt"\nping -n 15 127.0.0.1 >nul\ntype nul > "%~dp0finished.txt"\ntype nul > "%~dp0exited.txt"\ncd /d "%TEMP%"\nexit /b 0'
-    : 'type nul > "%~dp0started.txt"\nexit /b 0');
+
+  if (options.webNodeModules) mkdirSync(join(root, "web", "node_modules"), { recursive: true });
+  if (options.webBuildId) {
+    mkdirSync(join(root, "web", ".next"), { recursive: true });
+    writeFileSync(join(root, "web", ".next", "BUILD_ID"), "preexisting-build\r\n");
+  }
+  if (options.hostNodeModules) mkdirSync(join(root, "host", "node_modules"), { recursive: true });
+
   writeBat(join(bin, "where.cmd"), [
     'if exist "%~dp0%~1.cmd" echo %~dp0%~1.cmd',
     'if exist "%~dp0%~1.cmd" exit /b 0',
@@ -59,11 +76,17 @@ function createSandbox(options = {}) {
   if (options.withNode !== false) {
     writeBat(join(bin, "node.cmd"), [
       'if "%~1"=="scripts\\production-webui-build-guard.mjs" exit /b %SETUP_TEST_GUARD_EXIT%',
-      'if not "%~1"=="-p" exit /b 0',
+      'if "%~1"=="-p" goto :version_query',
+      'if "%~1"=="src\\index.js" goto :host_tail',
+      "exit /b 0",
+      ":version_query",
       'if exist "%SETUP_TEST_ROOT%\\node-installed" echo %SETUP_TEST_NODE_MAJOR_AFTER_INSTALL%',
       'if exist "%SETUP_TEST_ROOT%\\node-installed" exit /b 0',
       "echo %SETUP_TEST_NODE_MAJOR%",
       "exit /b 0",
+      ":host_tail",
+      'type nul > "%SETUP_TEST_ROOT%\\hoststarted.txt"',
+      "exit /b %SETUP_TEST_HOST_EXIT%",
     ].join("\n"));
   }
 
@@ -95,7 +118,11 @@ function createSandbox(options = {}) {
     ...process.env,
     PATH: `${bin};${join(process.env.SystemRoot ?? "C:\\Windows", "System32")}`,
     PATHEXT: ".COM;.EXE;.BAT;.CMD",
-    SETUP_NONINTERACTIVE: "1",
+    // Skip the native-launcher routing block: it is covered separately by
+    // start-webui-launcher-routing.test.js and is orthogonal to the setup
+    // logic under test here.
+    OPENCODE_WEBUI_LAUNCHER: "1",
+    OPENCODE_WEBUI_NONINTERACTIVE: "1",
     SETUP_TEST_ROOT: root,
     SETUP_TEST_LOG: log,
     SETUP_TEST_NODE_MAJOR: String(options.nodeMajor ?? 22),
@@ -110,20 +137,20 @@ function createSandbox(options = {}) {
     SETUP_TEST_NPM_HOST_CI_EXIT: String(options.npmHostCiExit ?? 0),
     SETUP_TEST_CREATE_BUILD_ID: options.createBuildId === false ? "0" : "1",
     SETUP_TEST_GUARD_EXIT: String(options.guardExit ?? 0),
+    SETUP_TEST_HOST_EXIT: String(options.hostExit ?? 0),
   };
   return {
     root,
     log,
     run({ captureOutput = true, timeout = 30_000, codePage } = {}) {
-      const startedAt = Date.now();
       const outFile = join(root, "stdout.txt");
       const errFile = join(root, "stderr.txt");
       const codePageFile = join(root, "code-page-after.txt");
       const wrapper = join(root, "_run.bat");
       const lines = ["@echo off"];
       if (codePage !== undefined) lines.push(`chcp ${codePage} >nul`);
-      lines.push(captureOutput ? `call setup.bat >"${outFile}" 2>"${errFile}"` : "call setup.bat");
-      // Keep setup.bat's exit code: the trailing chcp probe must not overwrite it.
+      lines.push(captureOutput ? `call start-webui.bat >"${outFile}" 2>"${errFile}"` : "call start-webui.bat");
+      // Keep start-webui.bat's exit code: the trailing chcp probe must not overwrite it.
       lines.push('set "SETUP_TEST_STATUS=%ERRORLEVEL%"');
       lines.push(`chcp >"${codePageFile}" 2>&1`);
       lines.push("exit /b %SETUP_TEST_STATUS%");
@@ -142,7 +169,7 @@ function createSandbox(options = {}) {
       const codePageAfter = existsSync(codePageFile)
         ? /(\d{3,5})/.exec(readFileSync(codePageFile, "latin1"))?.[1]
         : undefined;
-      return { ...result, codePageAfter, elapsedMs: Date.now() - startedAt };
+      return { ...result, codePageAfter };
     },
     cleanup() {
       try {
@@ -159,47 +186,26 @@ function assertCompleted(result, label) {
   assert.equal(result.signal, null, `${label}: child was terminated by ${result.signal}`);
 }
 
-async function waitFor(path, attempts = 50) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (existsSync(path)) return;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
-  }
-  assert.fail(`Timed out waiting for ${basename(path)}`);
-}
-
-test("setup.bat uses successful winget installs, builds, and starts separately", { skip: !isWindows }, async () => {
+test("start-webui.bat installs winget/Node.js/OpenCode/deps on a fresh machine, then reaches the host tail", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ nodeMajor: 18, nodeMajorAfterInstall: 22, opencodeExit: 1 });
   try {
     const result = sandbox.run();
-    assertCompleted(result, "winget success");
+    assertCompleted(result, "fresh machine");
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), true);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), false);
     assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
-    await waitFor(join(sandbox.root, "started.txt"));
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
     const log = readFileSync(sandbox.log, "utf8");
     assert.match(log, /install --id OpenJS\.NodeJS\.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /install --id SST\.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
+    assert.match(log, /npm .*\\web ci/);
+    assert.match(log, /npm .*\\host ci/);
     assert.doesNotMatch(log, /npm .* install -g opencode-ai/);
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat starts the host asynchronously", { skip: !isWindows }, async () => {
-  const sandbox = createSandbox({ asyncStart: true });
-  try {
-    const result = sandbox.run({ captureOutput: false });
-    assertCompleted(result, "asynchronous host start");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.ok(result.elapsedMs < 2_000, `setup waited ${result.elapsedMs}ms for the host child`);
-    await waitFor(join(sandbox.root, "started.txt"));
-    assert.equal(existsSync(join(sandbox.root, "finished.txt")), false);
-    await waitFor(join(sandbox.root, "finished.txt"), 500);
-    await waitFor(join(sandbox.root, "exited.txt"), 500);
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
-  } finally { sandbox.cleanup(); }
-});
-
-test("setup.bat falls back to npm only after the OpenCode winget install fails", { skip: !isWindows }, () => {
+test("start-webui.bat falls back to npm only after the OpenCode winget install fails", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ opencodeExit: 1, wingetOpenCodeExit: 1 });
   try {
     const result = sandbox.run();
@@ -211,75 +217,74 @@ test("setup.bat falls back to npm only after the OpenCode winget install fails",
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat uses non-blocking start and reaches the success message", { skip: !isWindows }, async () => {
-  const sandbox = createSandbox({ asyncStart: true });
+test("start-webui.bat skips npm ci / build / guard entirely when already installed (idempotent fast path)", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ webNodeModules: true, webBuildId: true, hostNodeModules: true });
   try {
     const result = sandbox.run();
-    assertCompleted(result, "non-blocking start");
-    assert.equal(result.status, 0);
-    // success message must be reached (exit /b 0)
-    assert.match(`${result.stdout}\n${result.stderr}`, /セットアップが完了しました/);
-    // start-webui.bat must be invoked via `start` (non-blocking)
-    await waitFor(join(sandbox.root, "started.txt"));
-    // setup.bat must NOT wait for the host to finish
-    assert.equal(existsSync(join(sandbox.root, "finished.txt")), false);
+    assertCompleted(result, "idempotent fast path");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
+    assert.match(result.stdout, /Existing build found; host will rebuild if sources are newer/);
+    const log = existsSync(sandbox.log) ? readFileSync(sandbox.log, "utf8") : "";
+    assert.doesNotMatch(log, /\bci\b/, "npm ci must not run when node_modules already exists");
+    assert.doesNotMatch(log, /run build/, "npm run build must not run when BUILD_ID already exists");
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat reaches exit /b 0 with BUILD_ID present", { skip: !isWindows }, () => {
-  const sandbox = createSandbox();
+test("start-webui.bat passes through the host's real exit code from the tail", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ webNodeModules: true, webBuildId: true, hostNodeModules: true, hostExit: 42 });
   try {
     const result = sandbox.run();
-    assertCompleted(result, "build id success");
-    assert.equal(result.status, 0);
-    assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
-    assert.match(`${result.stdout}\n${result.stderr}`, /セットアップが完了しました/);
+    assertCompleted(result, "host exit code passthrough");
+    assert.equal(result.status, 42, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /Host exited with code 42/);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat continues when the guard stopped the running WebUI (exit 10)", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ guardExit: 10 });
+test("start-webui.bat continues when the guard stopped the running WebUI (exit 10)", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ webNodeModules: true, hostNodeModules: true, guardExit: 10 });
   try {
     const result = sandbox.run();
     assertCompleted(result, "guard stopped the WebUI");
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(`${result.stdout}\n${result.stderr}`, /WebUIをビルドのために停止しました/);
     assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat still aborts when the guard cannot free the port", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ guardExit: 1 });
+test("start-webui.bat still aborts when the guard cannot free the port", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ webNodeModules: true, hostNodeModules: true, guardExit: 1 });
   try {
     const result = sandbox.run();
     assertCompleted(result, "guard refused");
     assert.equal(result.status, 6, `${result.stdout}\n${result.stderr}`);
     assert.match(`${result.stdout}\n${result.stderr}`, /web build was cancelled/);
-    assert.equal(existsSync(join(sandbox.root, "started.txt")), false);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), false);
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat runs cleanly on legacy and UTF-8 code pages", { skip: !isWindows }, () => {
+test("start-webui.bat runs cleanly on legacy and UTF-8 code pages", { skip: !isWindows }, () => {
   for (const codePage of [932, 437, 65001]) {
-    const sandbox = createSandbox();
+    const sandbox = createSandbox({ npmWebCiExit: 1 });
     try {
       const result = sandbox.run({ codePage });
       assertCompleted(result, `code page ${codePage}`);
-      assert.equal(result.status, 0, `cp${codePage}: ${result.stdout}\n${result.stderr}`);
-      assert.match(result.stdout, /\[Setup\] Setup completed\./, `cp${codePage} lost the ASCII summary`);
-      assert.match(result.stdout, /セットアップが完了しました/, `cp${codePage} lost the Japanese message`);
-      assert.match(result.stdout, /トレイアイコンが表示されない場合は start-webui\.bat/, `cp${codePage} truncated the Japanese message`);
+      assert.equal(result.status, 5, `cp${codePage}: ${result.stdout}\n${result.stderr}`);
+      assert.match(result.stdout, /\[OpenCode WebUI\] ERROR 5/, `cp${codePage} lost the ASCII summary`);
+      assert.match(result.stdout, /webの依存関係の導入に失敗しました/, `cp${codePage} lost the Japanese message`);
       // A non-ASCII batch file makes cmd.exe lose its read position and execute
       // fragments of later lines, which shows up as unknown-command errors.
-      assert.doesNotMatch(result.stdoutBytes, /is not recognized as an internal or external command/, `cp${codePage} misparsed setup.bat`);
+      assert.doesNotMatch(result.stdoutBytes, /is not recognized as an internal or external command/, `cp${codePage} misparsed start-webui.bat`);
       assert.equal(result.stderrBytes.trim(), "", `cp${codePage} wrote to stderr: ${result.stderrBytes}`);
     } finally { sandbox.cleanup(); }
   }
 });
 
-test("setup.bat restores the code page it inherited", { skip: !isWindows }, () => {
+test("start-webui.bat restores the code page it inherited", { skip: !isWindows }, () => {
   for (const codePage of [932, 437]) {
-    const sandbox = createSandbox();
+    const sandbox = createSandbox({ webNodeModules: true, webBuildId: true, hostNodeModules: true });
     try {
       const result = sandbox.run({ codePage });
       assertCompleted(result, `code page ${codePage}`);
@@ -289,39 +294,39 @@ test("setup.bat restores the code page it inherited", { skip: !isWindows }, () =
   }
 });
 
-test("setup.bat completes with English-only output when the message files are missing", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ withMessages: false });
+test("start-webui.bat reports an ASCII-only failure when the message files are missing", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ withMessages: false, npmWebCiExit: 1 });
   try {
     const result = sandbox.run();
     assertCompleted(result, "missing message files");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /\[Setup\] Setup completed\./);
-    assert.doesNotMatch(result.stdout, /セットアップ/);
+    assert.equal(result.status, 5, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /\[OpenCode WebUI\] ERROR 5/);
+    assert.doesNotMatch(result.stdout, /依存関係/);
     assert.equal(result.stderrBytes.trim(), "", `stderr: ${result.stderrBytes}`);
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat reports failures as an ASCII code line plus Japanese detail", { skip: !isWindows }, () => {
+test("start-webui.bat reports failures as an ASCII code line plus Japanese detail", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ npmWebCiExit: 1 });
   try {
     const result = sandbox.run({ codePage: 932 });
     assertCompleted(result, "failure formatting");
     assert.equal(result.status, 5, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /\[Setup\] ERROR 5: web dependencies could not be installed\./);
+    assert.match(result.stdout, /\[OpenCode WebUI\] ERROR 5: web dependencies could not be installed\./);
     assert.match(result.stdout, /webの依存関係の導入に失敗しました/);
-    assert.match(result.stdout, /\[Setup\] FAILED with exit code 5\./);
+    assert.match(result.stdout, /\[OpenCode WebUI\] FAILED with exit code 5\./);
     assert.match(result.stdout, /セットアップに失敗しました/);
   } finally { sandbox.cleanup(); }
 });
 
-test("setup.bat passes --stop to the production WebUI guard", { skip: !isWindows }, () => {
-  const source = readFileSync(setupSource, "utf8");
+test("start-webui.bat passes --stop to the production WebUI guard", { skip: !isWindows }, () => {
+  const source = readFileSync(startWebuiSource, "utf8");
   assert.match(source, /call node scripts\\production-webui-build-guard\.mjs --stop/);
   assert.match(source, /set "WEB_GUARD_EXIT=%ERRORLEVEL%"/);
   assert.match(source, /if "%WEB_GUARD_EXIT%"=="10" goto :web_build_guard_stopped/);
 });
 
-test("setup.bat returns documented failures without starting a host", { skip: !isWindows }, () => {
+test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {
   const cases = [
     ["wingetがありません", { withWinget: false }, 1, "wingetが見つかりません"],
     ["Node.jsの導入に失敗", { nodeMajor: 18, wingetNodeExit: 1 }, 2, "Node.jsの導入に失敗しました"],
@@ -340,7 +345,7 @@ test("setup.bat returns documented failures without starting a host", { skip: !i
       assertCompleted(result, name);
       assert.equal(result.status, expectedExit, `${name}: ${result.stdout}\n${result.stderr}`);
       assert.match(`${result.stdout}\n${result.stderr}`, new RegExp(expectedMessage));
-      assert.equal(existsSync(join(sandbox.root, "started.txt")), false, name);
+      assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), false, name);
     } finally { sandbox.cleanup(); }
   }
 });
