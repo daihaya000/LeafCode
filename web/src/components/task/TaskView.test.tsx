@@ -324,6 +324,31 @@ describe("TaskView", () => {
     expect(textarea.value).toBe("draft for session 1");
   });
 
+  it("sends on Enter but leaves Shift+Enter for a newline", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const textarea = screen.getByRole("combobox", {
+      name: "フォローアップを送信",
+    });
+    fireEvent.change(textarea, { target: { value: "keyboard follow-up" } });
+    const shiftEnter = createEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
+    fireEvent(textarea, shiftEnter);
+    expect(shiftEnter.defaultPrevented).toBe(false);
+    expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() =>
+      expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+        "keyboard follow-up",
+        expect.any(Object),
+      ),
+    );
+  });
+
   it("keeps a newly created todo plan collapsed while working on mobile", async () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,

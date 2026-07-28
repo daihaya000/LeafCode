@@ -100,6 +100,35 @@ describe("HomeView image attachments", () => {
     expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it.each(["ctrlKey", "metaKey"])("starts a task only with %s+Enter", async (modifier) => {
+    render(<HomeView />);
+    const prompt = screen.getByRole("combobox", { name: "タスクの説明" });
+    const submit = screen.getByRole("button", { name: "タスク開始" });
+    fireEvent.change(prompt, { target: { value: "keyboard task" } });
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.keyDown(prompt, { key: "Enter", [modifier]: true });
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks",
+        expect.objectContaining({ prompt: "keyboard task" }),
+      ),
+    );
+  });
+
+  it("does not start a task on Enter or Shift+Enter", () => {
+    render(<HomeView />);
+    const prompt = screen.getByRole("combobox", { name: "タスクの説明" });
+    fireEvent.change(prompt, { target: { value: "keyboard task" } });
+
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    fireEvent.keyDown(prompt, { key: "Enter", shiftKey: true });
+
+    expect(sendJson).not.toHaveBeenCalled();
+  });
+
   it("submits an image selected without a text prompt", async () => {
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider") {

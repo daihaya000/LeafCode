@@ -7,17 +7,15 @@ import {
   Bot,
   FolderGit2,
   GitBranch,
-  Paperclip,
-  X,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { AddProjectButton } from "@/components/AddProjectButton";
+import { Composer, type ComposerAttachment } from "@/components/Composer";
 import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
-import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { Button, GhostSelect, cx } from "@/components/ui";
 import { useVoiceInput } from "@/lib/use-voice-input";
@@ -122,7 +120,7 @@ type AgentResponse = {
   model?: { providerID: string; modelID: string };
 }[];
 
-type Attachment = { uri: string; mime: string; name?: string; preview?: string };
+type Attachment = ComposerAttachment;
 
 /**
  * Cost-optimized automatic selection. The server resolves the concrete
@@ -894,161 +892,108 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               <option value="git_worktree">worktree</option>
             </GhostSelect>
           </div>
-          <form
-            aria-label="タスク作成"
-            className="relative mx-auto max-w-5xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
+          <Composer
+            form={{
+              ariaLabel: "タスク作成",
+              onSubmit: (event) => {
+                event.preventDefault();
+                void submit();
+              },
             }}
-          >
-            {slashOpen && (
-              <SlashSuggestMenu
-                items={slashItems}
-                activeIndex={slashIndex}
-                onHover={setSlashIndex}
-                onSelect={(cmd) => applySlash(cmd.name)}
-              />
-            )}
-            {attachments.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                {attachments.map((attachment, index) => (
-                  <div
-                    key={`${attachment.name ?? attachment.uri}-${index}`}
-                    className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-surface"
-                  >
-                    {attachment.preview ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={attachment.preview}
-                        alt={attachment.name ?? "添付画像"}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-faint">
-                        <Paperclip className="h-4 w-4" aria-hidden="true" />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(index)}
-                      disabled={submitting}
-                      aria-label={`${attachment.name ?? "添付画像"}を削除`}
-                      className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
-                    >
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <textarea
-              ref={textareaRef}
-              value={prompt}
-              rows={2}
-              style={{ fontSize: "16px", textSizeAdjust: "100%", WebkitTextSizeAdjust: "100%" }}
-              aria-label="タスクの説明"
-              role="combobox"
-              aria-busy={submitting || undefined}
-              aria-autocomplete="list"
-              aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
-              aria-expanded={slashOpen}
-              aria-activedescendant={
-                slashOpen && slashItems[slashIndex]
-                  ? `slash-cmd-${slashItems[slashIndex].name}`
-                  : undefined
-              }
-              readOnly={submitting}
-              onChange={(e) => {
-                setPrompt(e.target.value);
-                setCursor(e.target.selectionStart ?? e.target.value.length);
+            className="relative mx-auto max-w-5xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            slash={
+              slashOpen
+                ? {
+                    items: slashItems,
+                    activeIndex: slashIndex,
+                    onHover: setSlashIndex,
+                    onSelect: (cmd) => applySlash(cmd.name),
+                  }
+                : undefined
+            }
+            attachments={attachments}
+            onRemoveAttachment={removeAttachment}
+            attachmentRemovalDisabled={submitting}
+            attachmentRemovalLabel={(attachment) =>
+              `${attachment.name ?? "添付画像"}を削除`
+            }
+            textarea={{
+              ref: textareaRef,
+              value: prompt,
+              rows: 2,
+              style: { fontSize: "16px", textSizeAdjust: "100%", WebkitTextSizeAdjust: "100%" },
+              ariaLabel: "タスクの説明",
+              busy: submitting,
+              readOnly: submitting,
+              onChange: (event) => {
+                setPrompt(event.target.value);
+                setCursor(event.target.selectionStart ?? event.target.value.length);
                 autoResize();
-              }}
-              onClick={syncCursor}
-              onKeyUp={syncCursor}
-              onSelect={syncCursor}
-              onPaste={onPaste}
-              onCompositionStart={() => (composingRef.current = true)}
-              onCompositionEnd={() => (composingRef.current = false)}
-              onKeyDown={(e) => {
+              },
+              onClick: syncCursor,
+              onKeyUp: syncCursor,
+              onSelect: syncCursor,
+              onPaste,
+              onCompositionStart: () => (composingRef.current = true),
+              onCompositionEnd: () => (composingRef.current = false),
+              onKeyDown: (event) => {
                 if (slashOpen && !composingRef.current) {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
                     setSlashIndex((i) => (i + 1) % slashItems.length);
                     return;
                   }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSlashIndex(
-                      (i) => (i - 1 + slashItems.length) % slashItems.length,
-                    );
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSlashIndex((i) => (i - 1 + slashItems.length) % slashItems.length);
                     return;
                   }
-                  if (e.key === "Enter" || e.key === "Tab") {
-                    e.preventDefault();
+                  if (event.key === "Enter" || event.key === "Tab") {
+                    event.preventDefault();
                     const item = slashItems[slashIndex];
                     if (item) applySlash(item.name);
                     return;
                   }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
+                  if (event.key === "Escape") {
+                    event.preventDefault();
                     setSlashDismissed(true);
                     return;
                   }
                 }
-                if (
-                  e.key === "Enter" &&
-                  (e.metaKey || e.ctrlKey) &&
-                  !composingRef.current
-                ) {
-                  e.preventDefault();
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !composingRef.current) {
+                  event.preventDefault();
                   void submit();
                 }
-              }}
-              placeholder="タスクを説明してください…（Ctrl+Enter で開始）"
-              className="w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-faint"
-            />
-            {/* Goalループの詳細設定は ON のときだけ出す（OFF 時に場所を取らない） */}
-            {goalLoopEnabled && (
-              <GoalLoopOptions
-                acceptance={goalLoopAcceptance}
-                maxTurns={goalLoopMaxTurns}
-                disabled={submitting}
-                onAcceptanceChange={setGoalLoopAcceptance}
-                onMaxTurnsChange={setGoalLoopMaxTurns}
-              />
-            )}
-            <div className="flex items-center gap-2 pt-1">
-              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
+              },
+              placeholder: "タスクを説明してください…（Ctrl+Enter で開始）",
+              className: "w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-faint",
+            }}
+            afterTextarea={
+              goalLoopEnabled ? (
+                <GoalLoopOptions
+                  acceptance={goalLoopAcceptance}
+                  maxTurns={goalLoopMaxTurns}
                   disabled={submitting}
-                  aria-label="画像ファイルを選択"
-                  className="hidden"
-                  onChange={(event) => {
-                    if (event.target.files) void addImageFiles(event.target.files);
-                    event.target.value = "";
-                  }}
+                  onAcceptanceChange={setGoalLoopAcceptance}
+                  onMaxTurnsChange={setGoalLoopMaxTurns}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectedModelSupportsImage) fileInputRef.current?.click();
-                  }}
-                  disabled={submitting || !selectedModelSupportsImage}
-                  aria-label="画像を添付"
-                  title={
-                    selectedModelSupportsImage
-                      ? "画像を添付"
-                      : "選択中のモデルは画像入力に対応していません"
-                  }
-                  className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+              ) : undefined
+            }
+            attachmentControl={{
+              inputRef: fileInputRef,
+              inputDisabled: submitting,
+              inputAriaLabel: "画像ファイルを選択",
+              buttonDisabled: submitting || !selectedModelSupportsImage,
+              buttonTitle: selectedModelSupportsImage
+                ? "画像を添付"
+                : "選択中のモデルは画像入力に対応していません",
+              buttonClassName: "flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40",
+              onFilesSelected: (files) => void addImageFiles(files),
+              onTrigger: () => {
+                if (selectedModelSupportsImage) fileInputRef.current?.click();
+              },
+            }}
+            toolbar={<>
                 <VoiceInputButton
                   voice={voice}
                   onTranscript={onVoiceTranscript}
@@ -1125,8 +1070,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   disabled={submitting}
                   onToggle={() => setGoalLoopEnabled((v) => !v)}
                 />
-              </div>
-              <Button
+              </>}
+            action={<Button
                 variant="primary"
                 size="icon"
                 type="submit"
@@ -1143,9 +1088,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 }
               >
                 {!submitting && <ArrowUp className="h-4.5 w-4.5" />}
-              </Button>
-            </div>
-          </form>
+              </Button>}
+          />
 
           {loaded && !engineOk && (
             <p className="mx-auto mt-3 max-w-2xl rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">

@@ -24,7 +24,6 @@ import {
   Layers,
   ListTodo,
   Loader2,
-  Paperclip,
   PanelRight,
   RefreshCw,
   RotateCcw,
@@ -36,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
+import { Composer, type ComposerAttachment } from "@/components/Composer";
 import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
@@ -141,7 +141,6 @@ import type { ProviderModelsDto } from "@/lib/extensions";
 import { DiffPane } from "./DiffPane";
 import { FileTreePanel } from "./FileTreePanel";
 import { GoalLoopPanel } from "./GoalLoopPanel";
-import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { GraphPanel } from "./GraphPanel";
 import { MessageMetaHeader } from "./MessageMetaHeader";
 import { PartView } from "./PartView";
@@ -210,7 +209,7 @@ type AgentResponse = {
   model?: { modelID: string; providerID: string };
 }[];
 
-type Attachment = { uri: string; mime: string; name?: string; preview?: string };
+type Attachment = ComposerAttachment;
 
 type ComposerDraft = { input: string; attachments: Attachment[] };
 
@@ -2995,163 +2994,101 @@ export function TaskView({ taskId }: { taskId: string }) {
                   選択中のエージェント/モデルは画像入力に対応していない可能性があります。画像が反映されない場合があります。
                 </p>
               )}
-              <div
+              <Composer
+                className="relative mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
                 onDrop={onDrop}
                 onDragOver={onDragOver}
-                className="relative mt-2 rounded-2xl border border-border bg-bg px-3 py-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
-              >
-                {slashOpen && (
-                  <SlashSuggestMenu
-                    items={slashItems}
-                    activeIndex={slashIndex}
-                    onHover={setSlashIndex}
-                    onSelect={(cmd) => applySlash(cmd.name)}
-                  />
-                )}
-                {attachments.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {attachments.map((a, i) => (
-                      <div
-                        key={`${a.name ?? a.uri}-${i}`}
-                        className="group relative h-14 w-14 overflow-hidden rounded-lg border border-border bg-surface"
-                      >
-                        {a.preview ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={a.preview}
-                            alt={a.name ?? "添付画像"}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-faint">
-                            <Paperclip className="h-4 w-4" />
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeAttachment(i)}
-                          aria-label="添付を削除"
-                          className="absolute right-0.5 top-0.5 rounded-full bg-bg/80 p-0.5 text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100 max-sm:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  rows={1}
-                  style={{ fontSize: "16px", textSizeAdjust: "100%", WebkitTextSizeAdjust: "100%" }}
-                  aria-label="フォローアップを送信"
-                  role="combobox"
-                  aria-busy={composerLocked || undefined}
-                  aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
-                  disabled={!task.sessionId}
-                  readOnly={composerLocked}
-                  aria-autocomplete="list"
-                  aria-expanded={slashOpen}
-                  aria-activedescendant={
-                    slashOpen && slashItems[slashIndex]
-                      ? `slash-cmd-${slashItems[slashIndex].name}`
-                      : undefined
-                  }
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    setCursor(e.target.selectionStart ?? e.target.value.length);
-                    const el = e.currentTarget;
+                slash={
+                  slashOpen
+                    ? {
+                        items: slashItems,
+                        activeIndex: slashIndex,
+                        onHover: setSlashIndex,
+                        onSelect: (cmd) => applySlash(cmd.name),
+                      }
+                    : undefined
+                }
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
+                attachmentRemovalLabel={() => "添付を削除"}
+                textarea={{
+                  ref: textareaRef,
+                  value: input,
+                  rows: 1,
+                  style: { fontSize: "16px", textSizeAdjust: "100%", WebkitTextSizeAdjust: "100%" },
+                  ariaLabel: "フォローアップを送信",
+                  busy: composerLocked,
+                  disabled: !task.sessionId,
+                  readOnly: composerLocked,
+                  onChange: (event) => {
+                    setInput(event.target.value);
+                    setCursor(event.target.selectionStart ?? event.target.value.length);
+                    const el = event.currentTarget;
                     el.style.height = "auto";
                     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-                  }}
-                  onClick={syncCursor}
-                  onKeyUp={syncCursor}
-                  onSelect={syncCursor}
-                  onPaste={onPaste}
-                  onCompositionStart={() => (composingRef.current = true)}
-                  onCompositionEnd={() => (composingRef.current = false)}
-                  onKeyDown={(e) => {
+                  },
+                  onClick: syncCursor,
+                  onKeyUp: syncCursor,
+                  onSelect: syncCursor,
+                  onPaste,
+                  onCompositionStart: () => (composingRef.current = true),
+                  onCompositionEnd: () => (composingRef.current = false),
+                  onKeyDown: (event) => {
                     if (slashOpen && !composingRef.current) {
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
                         setSlashIndex((i) => (i + 1) % slashItems.length);
                         return;
                       }
-                      if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setSlashIndex(
-                          (i) =>
-                            (i - 1 + slashItems.length) % slashItems.length,
-                        );
+                      if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setSlashIndex((i) => (i - 1 + slashItems.length) % slashItems.length);
                         return;
                       }
-                      if (e.key === "Enter" || e.key === "Tab") {
-                        e.preventDefault();
+                      if (event.key === "Enter" || event.key === "Tab") {
+                        event.preventDefault();
                         const item = slashItems[slashIndex];
                         if (item) applySlash(item.name);
                         return;
                       }
-                      if (e.key === "Escape") {
-                        e.preventDefault();
+                      if (event.key === "Escape") {
+                        event.preventDefault();
                         setSlashDismissed(true);
                         return;
                       }
                     }
-                    if (
-                      e.key === "Enter" &&
-                      !e.shiftKey &&
-                      !composerLocked &&
-                      !composingRef.current
-                    ) {
-                      e.preventDefault();
+                    if (event.key === "Enter" && !event.shiftKey && !composerLocked && !composingRef.current) {
+                      event.preventDefault();
                       void send();
                     }
-                  }}
-                  placeholder={
-                    goalLoopEnabled && !goalLoopLive
-                      ? "達成したい目標を入力…（Enter で開始）"
-                      : "フォローアップを送信…"
-                  }
-                  className="max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint"
-                />
-                {/* Goalループの詳細設定は ON のときだけ出す（OFF 時に場所を取らない） */}
-                {goalLoopEnabled && !goalLoopLive && (
-                  <GoalLoopOptions
-                    acceptance={goalLoopAcceptance}
-                    maxTurns={goalLoopMaxTurns}
-                    disabled={goalLoopBusy}
-                    onAcceptanceChange={setGoalLoopAcceptance}
-                    onMaxTurnsChange={setGoalLoopMaxTurns}
-                  />
-                )}
-                <div className="flex items-center gap-2 pt-1">
-                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={!imageSupported}
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files) void addImageFiles(e.target.files);
-                        e.target.value = "";
-                      }}
+                  },
+                  placeholder: goalLoopEnabled && !goalLoopLive
+                    ? "達成したい目標を入力…（Enter で開始）"
+                    : "フォローアップを送信…",
+                  className: "max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint",
+                }}
+                afterTextarea={
+                  goalLoopEnabled && !goalLoopLive ? (
+                    <GoalLoopOptions
+                      acceptance={goalLoopAcceptance}
+                      maxTurns={goalLoopMaxTurns}
+                      disabled={goalLoopBusy}
+                      onAcceptanceChange={setGoalLoopAcceptance}
+                      onMaxTurnsChange={setGoalLoopMaxTurns}
                     />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={!task.sessionId || working || !imageSupported}
-                      aria-label="画像を添付"
-                      title={
-                        imageSupported
-                          ? "画像を添付"
-                          : "選択中のエージェント/モデルは画像入力に対応していません"
-                      }
-                      className="flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-40"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" />
-                    </button>
+                  ) : undefined
+                }
+                attachmentControl={{
+                  inputRef: fileInputRef,
+                  inputDisabled: !imageSupported,
+                  buttonDisabled: !task.sessionId || working || !imageSupported,
+                  buttonTitle: imageSupported
+                    ? "画像を添付"
+                    : "選択中のエージェント/モデルは画像入力に対応していません",
+                  onFilesSelected: (files) => void addImageFiles(files),
+                  onTrigger: () => fileInputRef.current?.click(),
+                }}
+                toolbar={<>
                     <VoiceInputButton
                       voice={voice}
                       onTranscript={onVoiceTranscript}
@@ -3230,8 +3167,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                         onToggle={() => setGoalLoopEnabled((v) => !v)}
                       />
                     )}
-                  </div>
-                  {working ? (
+                  </>}
+                action={working ? (
                     <Button
                       variant="secondary"
                       size="icon"
@@ -3263,8 +3200,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       {!goalLoopStarting && <ArrowUp className="h-4.5 w-4.5" />}
                     </Button>
                   )}
-                </div>
-              </div>
+              />
             </div>
           </div>
         </div>
