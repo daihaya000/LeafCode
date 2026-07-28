@@ -8,6 +8,9 @@
   - 理由: bash ツールはプロセス終了待ちのため必ずタイムアウトする。複数 Next 並走は `.next` 破壊の原因にもなる
 - トレイ host（`start-webui.bat`）が既に WebUI を起動している。エージェント側で追加起動しない
 - 検証は `tsc` / `eslint` / `vitest`、または既存 host（例: `http://127.0.0.1:3000`）への短いヘルスチェックに限定する
+- **禁止**: `npx playwright test --debug` / `--ui` / `codegen` / `--grep <存在しないパターン>` など、対話・常駐・終了しない実行形態を bash でフォアグラウンド起動すること
+  - Playwright E2E は `npm run e2e` または wrapper スクリプト経由の CI モードのみ。テスト名絞り込みが必要なら `--grep` 使用前に `npx playwright test --list --grep <pattern>` で存在確認する
+  - 理由: debug/ui モードは inspector 接続を待ち、bash ツールはプロセス終了待ちのためタイムアウトする。存在しない grep パターンでも `--debug` 付きでは worker が hung することがある
 
 ## Windows バッチファイル / エンコード
 
