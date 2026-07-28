@@ -499,4 +499,66 @@ test.describe("home composer", () => {
     await expect.poll(() => postedBody).not.toBeNull();
     expect(postedBody).not.toHaveProperty("variant");
   });
+
+  test("lists the Auto option first in the model menu", async ({ page }) => {
+    await mockVariantProvider(page);
+
+    await page.goto("/");
+    const model = page.getByRole("button", { name: "モデル" });
+    // Wait for the provider list to settle before opening the menu.
+    // ModelSelect values use the `provider::model` key form.
+    await expect(model).toHaveAttribute("value", "openai::gpt-5.6-sol");
+    await model.click();
+    const options = await page
+      .getByRole("listbox", { name: "モデル" })
+      .getByRole("option")
+      .allTextContents();
+    expect(options[0]).toBe("Auto（コスト最適）");
+  });
+
+  test("hides the intelligence selector while Auto is selected", async ({
+    page,
+  }) => {
+    await mockVariantProvider(page);
+
+    await page.goto("/");
+    const intelligence = page.getByRole("button", {
+      name: "インテリジェンス",
+    });
+    await expect(intelligence).toBeVisible();
+
+    const model = page.getByRole("button", { name: "モデル" });
+    await model.click();
+    await pickOption(page, "Auto（コスト最適）");
+    await expect(model).toHaveAttribute("value", "auto");
+    await expect(intelligence).toHaveCount(0);
+  });
+
+  test("sends auto instead of a model in the POST body", async ({ page }) => {
+    let postedBody: Record<string, unknown> | null = null;
+    await mockVariantProvider(page);
+    await page.route("**/api/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        postedBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({ json: { taskId: "created-task" } });
+        return;
+      }
+      await route.fulfill({ json: { tasks: [], engineOk: true } });
+    });
+
+    await page.goto("/");
+    const prompt = page.getByPlaceholder(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    await prompt.fill("これは何");
+    const model = page.getByRole("button", { name: "モデル" });
+    await model.click();
+    await pickOption(page, "Auto（コスト最適）");
+    await expect(model).toHaveAttribute("value", "auto");
+    await page.getByRole("button", { name: "タスク開始" }).click();
+    await expect.poll(() => postedBody).not.toBeNull();
+    expect(postedBody).toMatchObject({ auto: true });
+    expect(postedBody).not.toHaveProperty("model");
+    expect(postedBody).not.toHaveProperty("variant");
+  });
 });
