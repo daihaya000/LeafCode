@@ -84,6 +84,9 @@ const SCHEDULER_INTERVAL_MS = 2_500;
 const PROMPT_TIMEOUT_MS = 120_000;
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
+/** Bound transient OpenCode failures so one scheduler tick never retries forever. */
+const OPENCODE_RETRY_ATTEMPTS = 3;
+const OPENCODE_RETRY_DELAY_MS = 100;
 /** Transcript silence that proves a multi-step turn ended (steps are ms apart). */
 const TURN_QUIET_MS = 5_000;
 /** Longer silence before declaring a finished turn had no structured result. */
@@ -104,6 +107,41 @@ const MAX_ACCEPTANCE_CHARS = 2_000;
 let schedulerStarted = false;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let schedulerTicking = false;
+
+function transientOpenCodeStatus(err: unknown): number | null {
+  if (err instanceof OcError) return err.status;
+  if (
+    err &&
+    typeof err === "object" &&
+    "status" in err &&
+    typeof (err as { status?: unknown }).status === "number"
+  ) {
+    return (err as { status: number }).status;
+  }
+  return null;
+}
+
+/** Network errors have no status; only retry known transient HTTP failures. */
+function isTransientOpenCodeError(err: unknown): boolean {
+  const status = transientOpenCodeStatus(err);
+  return status === null || status === 408 || (status >= 500 && status <= 599);
+}
+
+async function retryTransientOpenCode<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= OPENCODE_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastError = err;
+      if (!isTransientOpenCodeError(err) || attempt === OPENCODE_RETRY_ATTEMPTS) break;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, OPENCODE_RETRY_DELAY_MS * attempt);
+      });
+    }
+  }
+  throw lastError;
+}
 
 function safeJsonArray<T>(value: string, fallback: T[]): T[] {
   try {
@@ -756,19 +794,23 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   if (TERMINAL_STATUSES.includes(loop.status)) return;
   const ws = getWorkspace(loop.workspaceId);
   if (!ws) return;
-  const statuses = await ocServer<StatusMap>(ws.absolute_path, "/session/status", {
-    timeoutMs: STATUS_TIMEOUT_MS,
-  });
+  const statuses = await retryTransientOpenCode(() =>
+    ocServer<StatusMap>(ws.absolute_path, "/session/status", {
+      timeoutMs: STATUS_TIMEOUT_MS,
+    }),
+  );
   const status = statuses[loop.sessionId];
   // A missing entry means "not tracked / not running" (same convention as
   // task-service), not "unknown". Requiring an explicit idle entry stalled
   // every loop at 0 turns because the engine omits idle sessions entirely.
   if (status && status.type !== "idle") return;
 
-  const messages = await ocServer<MessageWithParts[]>(
-    ws.absolute_path,
-    `/session/${loop.sessionId}/message`,
-    { timeoutMs: MESSAGE_TIMEOUT_MS },
+  const messages = await retryTransientOpenCode(() =>
+    ocServer<MessageWithParts[]>(
+      ws.absolute_path,
+      `/session/${loop.sessionId}/message`,
+      { timeoutMs: MESSAGE_TIMEOUT_MS },
+    ),
   ).catch(() => []);
 
   if (loop.status === "running") {
@@ -823,11 +865,13 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       body.model = { providerID: loop.providerID, modelID: loop.modelID };
     }
     if (loop.variant) body.variant = loop.variant;
-    await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
-      method: "POST",
-      body,
-      timeoutMs: PROMPT_TIMEOUT_MS,
-    });
+    await retryTransientOpenCode(() =>
+      ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+        method: "POST",
+        body,
+        timeoutMs: PROMPT_TIMEOUT_MS,
+      }),
+    );
     touchSessionActivity(loop.workspaceId, loop.sessionId, now);
     return;
   }
@@ -888,11 +932,13 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   }
   if (loop.variant) body.variant = loop.variant;
   try {
-    await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
-      method: "POST",
-      body,
-      timeoutMs: PROMPT_TIMEOUT_MS,
-    });
+    await retryTransientOpenCode(() =>
+      ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+        method: "POST",
+        body,
+        timeoutMs: PROMPT_TIMEOUT_MS,
+      }),
+    );
   } catch (err) {
     // Roll back the optimistic turn_count++ so a transient engine failure
     // (timeout/network) does not burn a turn slot and exhaust maxTurns without
@@ -965,4 +1011,6 @@ export const goalLoopTestSeams = {
   processLoop,
   applyAssistantResult,
   countRecentRejectedClaims,
+  isTransientOpenCodeError,
+  retryTransientOpenCode,
 };

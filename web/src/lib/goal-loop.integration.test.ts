@@ -8,7 +8,8 @@ const h = vi.hoisted(() => ({
   messageResponse: [] as MessageWithParts[],
   promptAsyncDelayMs: 0,
   promptAsyncCount: 0,
-  promptAsyncRejectOnce: false,
+  promptAsyncFailuresRemaining: 0,
+  statusFailuresRemaining: 0,
 }));
 
 vi.mock("./oc-server", () => ({
@@ -21,13 +22,23 @@ vi.mock("./oc-server", () => ({
   },
   ocServer: vi.fn(async (_dir: string | null, path: string, init?: { method?: string; body?: unknown }) => {
     h.ocCalls.push({ path, body: init?.body });
-    if (path === "/session/status") return h.statusResponse;
+    if (path === "/session/status") {
+      if (h.statusFailuresRemaining > 0) {
+        h.statusFailuresRemaining -= 1;
+        const err = new Error("OpenCode engine temporarily unavailable") as Error & { status: number };
+        err.status = 503;
+        throw err;
+      }
+      return h.statusResponse;
+    }
     if (path.endsWith("/message")) return h.messageResponse;
     if (path.endsWith("/prompt_async")) {
       h.promptAsyncCount += 1;
-      if (h.promptAsyncRejectOnce) {
-        h.promptAsyncRejectOnce = false;
-        throw new (class extends Error {})("OpenCode engine が120秒でタイムアウトしました (/session/sess-1/prompt_async)");
+      if (h.promptAsyncFailuresRemaining > 0) {
+        h.promptAsyncFailuresRemaining -= 1;
+        const err = new Error("OpenCode engine が120秒でタイムアウトしました (/session/sess-1/prompt_async)") as Error & { status: number };
+        err.status = 408;
+        throw err;
       }
       if (h.promptAsyncDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, h.promptAsyncDelayMs));
@@ -161,7 +172,8 @@ beforeEach(() => {
   h.messageResponse = [msg("m0", "assistant")];
   h.promptAsyncDelayMs = 0;
   h.promptAsyncCount = 0;
-  h.promptAsyncRejectOnce = false;
+  h.promptAsyncFailuresRemaining = 0;
+  h.statusFailuresRemaining = 0;
 });
 
 describe("goal loop integration", () => {
@@ -379,7 +391,52 @@ describe("goal loop verification turn", () => {
 });
 
 describe("goal loop failure recovery", () => {
-  it("rolls back turn_count when prompt_async fails so the budget is not burned", async () => {
+  it("retries a transient /session/status failure before prompting", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.ocCalls.length = 0;
+    h.statusFailuresRemaining = 1;
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    expect(h.ocCalls.filter((call) => call.path === "/session/status")).toHaveLength(2);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+  });
+
+  it("retries a transient prompt_async failure without consuming an extra turn", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 3,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.ocCalls.length = 0;
+    h.promptAsyncCount = 0;
+    h.promptAsyncFailuresRemaining = 1;
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    expect(h.ocCalls.filter((call) => call.path.endsWith("/prompt_async"))).toHaveLength(2);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(getGoalLoop("ws-1")?.turnCount).toBe(1);
+  });
+
+  it("rolls back turn_count when all prompt_async retry attempts fail", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({
       workspaceId: "ws-1",
@@ -393,7 +450,7 @@ describe("goal loop failure recovery", () => {
     // for the next processLoop call.
     await new Promise((resolve) => setTimeout(resolve, 0));
     h.promptAsyncCount = 0;
-    h.promptAsyncRejectOnce = true;
+    h.promptAsyncFailuresRemaining = 3;
     // Reset to queued so processLoop will try to send again.
     testDb
       .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
@@ -403,6 +460,7 @@ describe("goal loop failure recovery", () => {
       goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!),
     ).rejects.toThrow();
     const after = getGoalLoop("ws-1")!;
+    expect(h.promptAsyncCount).toBe(3);
     expect(after.turnCount).toBe(0);
     expect(after.status).toBe("queued");
   });
