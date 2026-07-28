@@ -35,6 +35,7 @@ export type StreamState = {
 export type StreamAction =
   | { kind: "reset"; scopeKey: string; cached?: StreamState }
   | { kind: "init"; messages: MessageWithParts[] }
+  | { kind: "mergeRestMessages"; messages: MessageWithParts[] }
   | { kind: "messageUpdated"; info: MessageInfo }
   | { kind: "messageRemoved"; messageID: string }
   | { kind: "partUpdated"; part: Part }
@@ -73,6 +74,13 @@ export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
  * (Japanese 408) response when the upstream truly times out.
  */
 export const SESSION_COMMAND_TIMEOUT_MS = 295_000;
+
+/**
+ * While a visible session is busy, periodically reconcile from REST. Some
+ * environments keep the SSE connection open with heartbeats while dropping
+ * message events; without this, the view can stay stale until browser reload.
+ */
+export const ACTIVE_SESSION_RECONCILE_MS = 3_000;
 
 const CANCELLED_TOOL_FAILURE_MESSAGES = new Set([
   "aborted",
@@ -301,6 +309,66 @@ function upsertPart(parts: Part[], part: Part): Part[] {
   return next;
 }
 
+function mergeRestPart(local: Part | undefined, rest: Part): Part {
+  const normalized = normalizeCancelledToolPart(rest);
+  if (!local) return normalized;
+  if (
+    (local.type === "text" || local.type === "reasoning") &&
+    local.type === normalized.type
+  ) {
+    const localText = local.text ?? "";
+    const restText = normalized.text ?? "";
+    // REST snapshots can lag behind live deltas mid-turn. Keep the longer
+    // local prefix only for text-like parts; terminal metadata still comes
+    // from REST so missed end events are recovered.
+    const text =
+      localText.startsWith(restText) && localText.length > restText.length
+        ? localText
+        : restText;
+    return {
+      ...local,
+      ...normalized,
+      text,
+      time: { ...local.time, ...normalized.time },
+    };
+  }
+  if (local.type === "tool" && normalized.type === "tool") {
+    return upsertPart([local], normalized)[0]!;
+  }
+  return normalized;
+}
+
+function mergeRestMessages(
+  localMessages: MessageWithParts[],
+  restMessages: MessageWithParts[],
+): MessageWithParts[] {
+  const localById = new Map(localMessages.map((m) => [m.info.id, m]));
+  const restIds = new Set(restMessages.map((m) => m.info.id));
+  const merged = restMessages.map((restMessage) => {
+    const localMessage = localById.get(restMessage.info.id);
+    if (!localMessage) {
+      return {
+        ...restMessage,
+        parts: restMessage.parts.map(normalizeCancelledToolPart),
+      };
+    }
+    const localParts = new Map(localMessage.parts.map((p) => [p.id, p]));
+    return {
+      ...localMessage,
+      ...restMessage,
+      parts: restMessage.parts.map((part) =>
+        mergeRestPart(localParts.get(part.id), part),
+      ),
+    };
+  });
+  // Mid-stream REST can be behind locally received SSE deltas. Keep local-only
+  // placeholders until a non-streaming init can authoritatively prune them.
+  for (const localMessage of localMessages) {
+    if (!restIds.has(localMessage.info.id)) merged.push(localMessage);
+  }
+  return merged;
+}
+
 export function sessionStreamReducer(
   state: StreamState,
   action: StreamAction,
@@ -323,6 +391,12 @@ export function sessionStreamReducer(
           ...message,
           parts: message.parts.map(normalizeCancelledToolPart),
         })),
+        loaded: true,
+      };
+    case "mergeRestMessages":
+      return {
+        ...state,
+        messages: mergeRestMessages(state.messages, action.messages),
         loaded: true,
       };
     case "messageUpdated": {
@@ -550,8 +624,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         statusRef.current?.type === "retry";
       // Early send before the first REST snapshot can leave messages empty for
       // the whole turn if we skip init while streaming. Allow init when empty.
+      const messages = Array.isArray(rows) ? rows : [];
       if (!streaming || messageCountRef.current === 0) {
-        dispatch({ kind: "init", messages: Array.isArray(rows) ? rows : [] });
+        dispatch({ kind: "init", messages });
+      } else {
+        dispatch({ kind: "mergeRestMessages", messages });
       }
     } catch (err) {
       messageError = err;
@@ -1299,6 +1376,19 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       connect(true, "silence");
     }, 5_000);
 
+    const activeSessionReconcile = setInterval(() => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      const statusType = statusRef.current?.type;
+      if (
+        !pendingMutationRef.current &&
+        statusType !== "busy" &&
+        statusType !== "retry"
+      ) {
+        return;
+      }
+      void resync();
+    }, ACTIVE_SESSION_RECONCILE_MS);
+
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       markActivity();
@@ -1319,6 +1409,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (timer) clearTimeout(timer);
       if (nextResyncTimer) clearTimeout(nextResyncTimer);
       clearInterval(silenceWatch);
+      clearInterval(activeSessionReconcile);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
       es?.close();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVE_SESSION_RECONCILE_MS,
   classifyToolFailureStatus,
   createInitialStreamState,
   filterGoalLoopMessages,
@@ -12,6 +13,11 @@ import {
 import type { MessageWithParts } from "./types";
 
 describe("SESSION_COMMAND_TIMEOUT_MS", () => {
+  it("keeps active reconcile frequent enough to recover missed SSE events", () => {
+    expect(ACTIVE_SESSION_RECONCILE_MS).toBeGreaterThanOrEqual(1_000);
+    expect(ACTIVE_SESSION_RECONCILE_MS).toBeLessThanOrEqual(5_000);
+  });
+
   it("stays above the BFF's 290s long-running upstream timeout", () => {
     // Kept just above LONG_RUNNING_UPSTREAM_TIMEOUT_MS in
     // app/api/opencode/[...path]/route.ts so the BFF—not the client—produces
@@ -322,6 +328,79 @@ describe("session stream session.next text deltas", () => {
     });
     expect(state.messages[0]!.parts[0]!.text).toBe("Hello");
     expect(state.messages[0]!.parts[0]!.time?.end).toBe(2);
+  });
+
+  it("merges REST messages during streaming without losing newer local deltas", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partTextDelta",
+      messageID: "a1",
+      partID: "t1",
+      delta: "Hello streamed",
+      partType: "text",
+      sessionID: "s1",
+    });
+
+    state = sessionStreamReducer(state, {
+      kind: "mergeRestMessages",
+      messages: [
+        {
+          info: { id: "u1", role: "user" },
+          parts: [{ id: "u1p", messageID: "u1", type: "text", text: "prompt" }],
+        },
+        {
+          info: { id: "a1", role: "assistant" },
+          parts: [{ id: "t1", messageID: "a1", type: "text", text: "Hello" }],
+        },
+      ],
+    });
+
+    expect(state.messages.map((m) => m.info.id)).toEqual(["u1", "a1"]);
+    expect(state.messages[1]!.parts[0]!.text).toBe("Hello streamed");
+  });
+
+  it("keeps local-only streaming placeholders when REST is behind", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partTextDelta",
+      messageID: "a1",
+      partID: "t1",
+      delta: "live",
+      partType: "text",
+    });
+
+    state = sessionStreamReducer(state, {
+      kind: "mergeRestMessages",
+      messages: [
+        {
+          info: { id: "u1", role: "user" },
+          parts: [{ id: "u1p", messageID: "u1", type: "text", text: "prompt" }],
+        },
+      ],
+    });
+
+    expect(state.messages.map((m) => m.info.id)).toEqual(["u1", "a1"]);
+    expect(state.messages[1]!.parts[0]!.text).toBe("live");
+  });
+
+  it("lets newer REST text replace local text when it is not just a stale prefix", () => {
+    let state = createInitialStreamState("scope");
+    state = sessionStreamReducer(state, {
+      kind: "partUpdated",
+      part: { id: "t1", messageID: "a1", type: "text", text: "old" },
+    });
+
+    state = sessionStreamReducer(state, {
+      kind: "mergeRestMessages",
+      messages: [
+        {
+          info: { id: "a1", role: "assistant" },
+          parts: [{ id: "t1", messageID: "a1", type: "text", text: "newer" }],
+        },
+      ],
+    });
+
+    expect(state.messages[0]!.parts[0]!.text).toBe("newer");
   });
 
   it("keeps local v2 permissions when REST sync lacks v2", () => {
