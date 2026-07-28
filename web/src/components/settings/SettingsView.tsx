@@ -64,6 +64,14 @@ type SettingsTab =
   | "agents"
   | "providers";
 
+type UpdateTarget = "webui" | "opencode";
+
+type UpdateState =
+  | { target: UpdateTarget; kind: "running"; detail?: string }
+  | { target: UpdateTarget; kind: "success"; message: string; detail?: string }
+  | { target: UpdateTarget; kind: "error"; message: string; detail?: string }
+  | null;
+
 const RESTART_LABELS = {
   webui: "WebUI（フロントエンド）",
   opencode: "OpenCode（バックエンド）",
@@ -77,6 +85,8 @@ export function SettingsView() {
   const [restarting, setRestarting] = useState<"webui" | "opencode" | "all" | null>(
     null,
   );
+  const [updating, setUpdating] = useState<UpdateTarget | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>(null);
   const [pendingRestart, setPendingRestart] = useState<"webui" | "opencode" | "all" | null>(
     null,
   );
@@ -284,6 +294,48 @@ export function SettingsView() {
       setRestarting(null);
     }
   };
+
+  const updateService = async (target: UpdateTarget) => {
+    setUpdating(target);
+    setUpdateState({ target, kind: "running" });
+    setError(null);
+    try {
+      const res = await timedFetch(`/api/updates/${target}`, {
+        method: "POST",
+        timeoutMs: 130_000,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        stdout?: string;
+        stderr?: string;
+        result?: { version?: unknown };
+      };
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "アップデートに失敗しました");
+      }
+      const detail = [data.stdout, data.stderr].filter(Boolean).join("\n").trim();
+      setUpdateState({
+        target,
+        kind: "success",
+        message:
+          target === "webui"
+            ? "WebUI のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
+            : `OpenCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には OpenCode の再起動が必要です。`,
+        detail: detail || undefined,
+      });
+      await refresh();
+    } catch (err) {
+      setUpdateState({
+        target,
+        kind: "error",
+        message: err instanceof Error ? err.message : "アップデートに失敗しました",
+      });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const guard = useCallback(
     async (fn: () => Promise<void>) => {
       setBusy(true);
@@ -540,6 +592,59 @@ export function SettingsView() {
                     ? "トレイメニューの Restart WebUI / Restart OpenCode と同じ操作です。"
                     : "再起動には start-webui.bat（トレイホスト）経由の起動が必要です。"}
                 </p>
+                <div className="border-t border-border pt-3">
+                  <h3 className="mb-2 text-xs font-semibold text-muted">アップデート</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      busy={updating === "webui"}
+                      disabled={updating !== null || restarting !== null}
+                      onClick={() => void updateService("webui")}
+                    >
+                      WebUI をリモートからプル
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      busy={updating === "opencode"}
+                      disabled={updating !== null || restarting !== null || health?.opencode.ok !== true}
+                      onClick={() => void updateService("opencode")}
+                    >
+                      OpenCode CLI をアップデート
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-faint">
+                    WebUI はこのリポジトリで <code>git pull --ff-only</code> を実行します。OpenCode CLI は OpenCode の upgrade API を呼び出します。
+                  </p>
+                  {updateState && (
+                    <div
+                      className={cx(
+                        "mt-2 rounded-lg border px-3 py-2 text-xs",
+                        updateState.kind === "error"
+                          ? "border-danger/30 bg-danger-bg text-diff-del-text"
+                          : updateState.kind === "success"
+                            ? "border-success/30 bg-success-bg text-success"
+                            : "border-working/30 bg-working-bg text-working",
+                      )}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <p className="font-medium">
+                        {updateState.kind === "running"
+                          ? `${updateState.target === "webui" ? "WebUI" : "OpenCode CLI"} をアップデートしています…`
+                          : updateState.message}
+                      </p>
+                      {updateState.detail && (
+                        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg/60 p-2 font-mono text-[11px] text-muted">
+                          {updateState.detail}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
 
