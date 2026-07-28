@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 // Mock the real dependencies the POST handler reaches after variant
@@ -56,6 +56,17 @@ vi.mock("@/lib/project-session-sync", () => ({
 
 vi.mock("@/lib/task-service", () => ({
   listTasks: vi.fn().mockResolvedValue({ tasks: [], engineOk: true }),
+}));
+
+// Auto model selection reads the WebUI-local disabled map from disk; keep the
+// filesystem out of the unit test and let each case supply its own state.
+vi.mock("@/lib/provider-model-state", () => ({
+  readProviderModelState: vi.fn().mockReturnValue({
+    disabled: {},
+    providerOrder: [],
+    modelOrder: {},
+    providerIcons: {},
+  }),
 }));
 
 vi.mock("@/lib/opencode-task-permission", () => ({
@@ -676,5 +687,489 @@ describe("POST /api/tasks image attachments", () => {
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({ error: "invalid files" });
+  });
+});
+
+describe("POST /api/tasks auto model selection", () => {
+  const CHEAP = "claude-haiku-4-5";
+  const MID = "claude-sonnet-5";
+  const PREMIUM = "claude-opus-5";
+
+  /** Short question → light, work instruction → standard, リファクタ → heavy. */
+  const LIGHT_PROMPT = "この関数は何が問題なの";
+  const STANDARD_PROMPT = "ログを追加して";
+  const HEAVY_PROMPT = "この辺をまとめてリファクタして";
+
+  const image = {
+    uri: "data:image/png;base64,iVBORw0KGgo=",
+    mime: "image/png",
+    name: "reference.png",
+  };
+
+  function providerFixture(
+    models?: Record<string, Record<string, unknown>>,
+  ) {
+    return {
+      all: [
+        {
+          id: "anthropic",
+          name: "Anthropic",
+          models: models ?? {
+            [CHEAP]: {
+              variants: { minimal: {}, low: {}, medium: {}, high: {} },
+            },
+            [MID]: { variants: { low: {}, medium: {}, high: {} } },
+            [PREMIUM]: { variants: { medium: {}, high: {} } },
+          },
+        },
+      ],
+      connected: ["anthropic"],
+    };
+  }
+
+  async function mockOc(
+    overrides: { provider?: unknown; agents?: unknown; commands?: unknown } = {},
+  ) {
+    const { ocServer } = await import("@/lib/oc-server");
+    const fn = ocServer as ReturnType<typeof vi.fn>;
+    fn.mockImplementation(async (_dir: string | null, path: string) => {
+      if (path === "/provider") return overrides.provider ?? providerFixture();
+      if (path === "/agent") return overrides.agents ?? [];
+      if (path === "/session") return { id: "session-1" };
+      if (path === "/command") return overrides.commands ?? [];
+      return {};
+    });
+    fn.mockClear();
+    return fn;
+  }
+
+  async function setDisabled(disabled: Record<string, true>) {
+    const { readProviderModelState } = await import(
+      "@/lib/provider-model-state"
+    );
+    (readProviderModelState as ReturnType<typeof vi.fn>).mockReturnValue({
+      disabled,
+      providerOrder: [],
+      modelOrder: {},
+      providerIcons: {},
+    });
+  }
+
+  beforeEach(async () => {
+    await setDisabled({});
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+    (provisionWorkspace as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  function promptBodyOf(fn: ReturnType<typeof vi.fn>) {
+    const call = fn.mock.calls.find((c) =>
+      String(c[1]).includes("/prompt_async"),
+    );
+    return call?.[2]?.body as Record<string, unknown> | undefined;
+  }
+
+  it("forwards the resolved model and variant to prompt_async", async () => {
+    const ocServer = await mockOc();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: CHEAP },
+      variant: "minimal",
+    });
+  });
+
+  it("picks a mid-cost model with a low effort for a standard prompt", async () => {
+    const ocServer = await mockOc();
+
+    await post({
+      projectId: "project-1",
+      prompt: STANDARD_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: MID },
+      variant: "low",
+    });
+  });
+
+  it("picks the strongest model with a medium effort for a heavy prompt", async () => {
+    const ocServer = await mockOc();
+
+    await post({
+      projectId: "project-1",
+      prompt: HEAVY_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: PREMIUM },
+      variant: "medium",
+    });
+  });
+
+  it("honours the WebUI-local disabled map", async () => {
+    const ocServer = await mockOc();
+    await setDisabled({ [`anthropic::${CHEAP}`]: true });
+
+    await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    // Cheap band is empty after filtering, so light falls back to mid.
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: MID },
+    });
+  });
+
+  it("sends the resolved model as a provider/model string for slash commands", async () => {
+    const ocServer = await mockOc({
+      commands: [{ name: "init", template: "init", hints: [] }],
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "/init",
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(200);
+    const commandCall = ocServer.mock.calls.find(
+      (c) =>
+        String(c[1]).includes("/command") && String(c[1]).includes("/session/"),
+    );
+    expect(commandCall?.[2]?.body).toMatchObject({
+      command: "init",
+      arguments: "",
+      model: `anthropic/${MID}`,
+      variant: "low",
+    });
+    expect(promptBodyOf(ocServer)).toBeUndefined();
+  });
+
+  it("returns the decision in the success response", async () => {
+    await mockOc();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.autoDecision).toEqual({
+      providerID: "anthropic",
+      modelID: CHEAP,
+      variant: "minimal",
+      tier: "light",
+      reason: "短い質問タスクのため低コストモデルを選択しました",
+      escalation: {
+        providerID: "anthropic",
+        modelID: PREMIUM,
+        variant: "high",
+      },
+    });
+  });
+
+  it("omits autoDecision when auto is not requested", async () => {
+    await mockOc();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      model: { providerID: "anthropic", modelID: MID },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).not.toHaveProperty("autoDecision");
+  });
+
+  it("does not fetch /provider when auto is not requested", async () => {
+    const ocServer = await mockOc();
+
+    await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      model: { providerID: "anthropic", modelID: MID },
+    });
+
+    expect(
+      ocServer.mock.calls.filter((c) => c[1] === "/provider"),
+    ).toEqual([]);
+  });
+
+  it("returns 400 for a non-boolean auto", async () => {
+    await mockOc();
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: "yes",
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid auto" });
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("accepts auto: false as a plain manual request", async () => {
+    const ocServer = await mockOc();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: false,
+      model: { providerID: "anthropic", modelID: MID },
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: MID },
+    });
+    expect(await res.json()).not.toHaveProperty("autoDecision");
+  });
+
+  it("returns 400 when auto and model are combined", async () => {
+    await mockOc();
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      model: { providerID: "anthropic", modelID: MID },
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "auto and model are mutually exclusive",
+    });
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("allows auto with an empty model object", async () => {
+    // Only providerID / modelID presence conflicts with auto.
+    await mockOc();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      model: {},
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 when auto and variant are combined", async () => {
+    await mockOc();
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      variant: "high",
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "variant cannot be set with auto",
+    });
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("accepts auto with an empty variant string", async () => {
+    await mockOc();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      variant: "",
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 without provisioning when no candidate model exists", async () => {
+    const ocServer = await mockOc({ provider: { all: [], connected: [] } });
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(
+      /Auto で選択可能なモデルがありません/,
+    );
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+    expect(
+      ocServer.mock.calls.filter((c) => c[1] === "/session"),
+    ).toEqual([]);
+  });
+
+  it("returns 400 without provisioning when every model is disabled", async () => {
+    await mockOc();
+    await setDisabled({ anthropic: true });
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("skips the selection when the chosen agent pins its own model", async () => {
+    const ocServer = await mockOc({
+      agents: [
+        { name: "pinned", model: { providerID: "anthropic", modelID: MID } },
+      ],
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      agent: "pinned",
+    });
+
+    expect(res.status).toBe(200);
+    // OpenCode applies the agent model itself, so no model / variant is sent.
+    const body = promptBodyOf(ocServer);
+    expect(body).not.toHaveProperty("model");
+    expect(body).not.toHaveProperty("variant");
+    expect(body).toMatchObject({ agent: "pinned" });
+    expect(await res.json()).not.toHaveProperty("autoDecision");
+    // The selection never ran, so /provider is not consulted either.
+    expect(
+      ocServer.mock.calls.filter((c) => c[1] === "/provider"),
+    ).toEqual([]);
+  });
+
+  it("still selects a model for an agent without a pinned model", async () => {
+    const ocServer = await mockOc({ agents: [{ name: "unconfigured" }] });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      agent: "unconfigured",
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: CHEAP },
+      variant: "minimal",
+      agent: "unconfigured",
+    });
+    expect((await res.json()).autoDecision).toMatchObject({ modelID: CHEAP });
+  });
+
+  it("selects only from image-capable models when files are attached", async () => {
+    const ocServer = await mockOc({
+      provider: providerFixture({
+        [CHEAP]: { variants: { minimal: {} } },
+        [MID]: {
+          variants: { low: {}, high: {} },
+          capabilities: { input: { image: true } },
+        },
+      }),
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: MID },
+      variant: "low",
+    });
+    expect((await res.json()).autoDecision.reason).toBe(
+      "短い質問タスクのため低コストモデルを選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+    );
+  });
+
+  it("returns 400 when files are attached and no model supports images", async () => {
+    await mockOc({
+      provider: providerFixture({
+        [CHEAP]: { variants: { minimal: {} } },
+        [MID]: { capabilities: { input: { image: false } } },
+      }),
+    });
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      files: [image],
+    });
+
+    expect(res.status).toBe(400);
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 without provisioning when /provider is unavailable", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    (ocServer as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_dir: string | null, path: string) => {
+        if (path === "/provider") throw new Error("provider unavailable");
+        if (path === "/session") return { id: "session-1" };
+        return {};
+      },
+    );
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(provisionWorkspace).not.toHaveBeenCalled();
   });
 });

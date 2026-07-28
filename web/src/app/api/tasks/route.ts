@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  chooseAutoModel,
+  classifyPrompt,
+  type AutoCandidateProvider,
+  type AutoDecision,
+} from "@/lib/auto-model";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
+import { readProviderModelState } from "@/lib/provider-model-state";
 import {
   setSessionTaskPermission,
   type TaskPermission,
@@ -45,6 +52,11 @@ type AgentResponse = {
   name?: string;
   model?: ModelReference;
 }[];
+/** `/provider` shape needed by the Auto selection (variants + capabilities). */
+type AutoProviderResponse = {
+  all?: { id?: string; models?: AutoCandidateProvider["models"] }[];
+  connected?: string[];
+};
 
 function isTaskPermission(value: unknown): value is TaskPermission {
   return value === "allow" || value === "deny";
@@ -129,6 +141,55 @@ async function supportsImageInput(
   }
 }
 
+/**
+ * True when the named agent pins its own model. Auto selection is skipped in
+ * that case so OpenCode keeps applying the agent model (same precedence as
+ * {@link supportsImageInput}). A `/agent` lookup failure is treated as "no
+ * pinned model" so Auto still resolves something instead of sending no model.
+ */
+async function agentHasFixedModel(agentName: string): Promise<boolean> {
+  try {
+    const agents = await ocServer<AgentResponse>(null, "/agent");
+    const configured = agents.find(({ name }) => name === agentName);
+    return Boolean(
+      configured?.model?.providerID && configured.model.modelID,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rule-based Auto model selection: classify the raw prompt, then pick the
+ * cheapest sufficient model from the connected + enabled set. Returns `null`
+ * when no candidate exists (the caller answers 400 before provisioning).
+ */
+async function resolveAutoModel(
+  prompt: string,
+  hasImages: boolean,
+): Promise<AutoDecision | null> {
+  let providers: AutoCandidateProvider[] = [];
+  let connected: string[] = [];
+  try {
+    const data = await ocServer<AutoProviderResponse>(null, "/provider");
+    providers = (data.all ?? []).flatMap((provider) =>
+      provider.id ? [{ id: provider.id, models: provider.models ?? {} }] : [],
+    );
+    connected = data.connected ?? [];
+  } catch {
+    // Provider list unavailable: no candidate can be verified.
+    return null;
+  }
+  return chooseAutoModel({
+    providers,
+    connected,
+    disabled: readProviderModelState().disabled,
+    // Slash commands are classified from their raw text (no expansion).
+    tier: classifyPrompt(prompt, { hasImages }),
+    hasImages,
+  });
+}
+
 export async function GET() {
   const result = await listTasks();
   return NextResponse.json(result);
@@ -148,6 +209,7 @@ export async function POST(req: NextRequest) {
     skillPermission?: unknown;
     variant?: unknown;
     files?: unknown;
+    auto?: unknown;
   } | null;
 
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
@@ -210,9 +272,64 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Auto model selection. Every rejection below runs before
+  // `provisionWorkspace` so a bad request never leaves an orphan workspace.
+  const autoRaw = body?.auto;
+  if (autoRaw !== undefined && typeof autoRaw !== "boolean") {
+    return NextResponse.json({ error: "invalid auto" }, { status: 400 });
+  }
+  const auto = autoRaw === true;
+  if (auto && (body?.model?.providerID || body?.model?.modelID)) {
+    return NextResponse.json(
+      { error: "auto and model are mutually exclusive" },
+      { status: 400 },
+    );
+  }
+  if (auto && variant) {
+    // Auto decides the reasoning effort itself. Clients are not supposed to
+    // send one, but the API contract rejects it explicitly.
+    return NextResponse.json(
+      { error: "variant cannot be set with auto" },
+      { status: 400 },
+    );
+  }
+
+  // From here on the resolved Auto model is indistinguishable from a manually
+  // selected one: everything downstream reads `effectiveModel` / `variant`.
+  let effectiveModel: ModelReference | undefined = body?.model;
+  let autoDecision: AutoDecision | undefined;
+  if (auto) {
+    const agentName = body?.agent?.trim();
+    // An agent with its own model wins over Auto (existing agent precedence):
+    // skip the selection entirely and let OpenCode apply the agent model.
+    const agentPinsModel = agentName
+      ? await agentHasFixedModel(agentName)
+      : false;
+    if (!agentPinsModel) {
+      const decision = await resolveAutoModel(prompt, files.length > 0);
+      if (!decision) {
+        return NextResponse.json(
+          {
+            error:
+              "Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。",
+          },
+          { status: 400 },
+        );
+      }
+      autoDecision = decision;
+      effectiveModel = {
+        providerID: decision.providerID,
+        modelID: decision.modelID,
+      };
+      variant = decision.variant;
+    }
+  }
+
+  // Redundant for Auto (candidates were already narrowed to image-capable
+  // models) but kept as a second check on the shared code path.
   if (
     files.length > 0 &&
-    !(await supportsImageInput(body?.model, body?.agent))
+    !(await supportsImageInput(effectiveModel, body?.agent))
   ) {
     return NextResponse.json(
       {
@@ -301,8 +418,8 @@ export async function POST(req: NextRequest) {
           ...(file.name ? { filename: file.name } : {}),
         }));
       }
-      if (body.model?.providerID && body.model.modelID) {
-        commandBody.model = `${body.model.providerID}/${body.model.modelID}`;
+      if (effectiveModel?.providerID && effectiveModel.modelID) {
+        commandBody.model = `${effectiveModel.providerID}/${effectiveModel.modelID}`;
       }
       if (body.agent?.trim()) commandBody.agent = body.agent.trim();
       if (variant) commandBody.variant = variant;
@@ -323,10 +440,10 @@ export async function POST(req: NextRequest) {
           })),
         ],
       };
-      if (body.model?.providerID && body.model.modelID) {
+      if (effectiveModel?.providerID && effectiveModel.modelID) {
         promptBody.model = {
-          providerID: body.model.providerID,
-          modelID: body.model.modelID,
+          providerID: effectiveModel.providerID,
+          modelID: effectiveModel.modelID,
         };
       }
       if (body.agent?.trim()) promptBody.agent = body.agent.trim();
@@ -344,6 +461,9 @@ export async function POST(req: NextRequest) {
       sessionId: session.id,
       directory: workspace.absolute_path,
       note,
+      // Only present when an Auto selection actually ran (not for a manual
+      // model, and not when an agent pinned its own model).
+      ...(autoDecision ? { autoDecision } : {}),
     });
   } catch (err) {
     // Roll back the freshly provisioned workspace so no orphan remains.
