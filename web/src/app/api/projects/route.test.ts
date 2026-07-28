@@ -91,6 +91,20 @@ describe("POST /api/projects path validation", () => {
     );
   });
 
+  it("ignores a caller-supplied name and always derives it from the folder", async () => {
+    // Regression: this endpoint upserts by rootPath, so a client-supplied
+    // `name` (e.g. from a test/smoke script) must never overwrite an
+    // already-registered project's name with something unrelated to its
+    // folder. See: project name must always tie to the folder name.
+    const res = await POST(req({ rootPath: tempRoot, name: "smoke" }) as never);
+    expect(res.status).toBe(200);
+    expect(upsertProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: path.basename(fs.realpathSync.native(tempRoot)),
+      }),
+    );
+  });
+
   it("stores the canonical target of a symlink to an allowed directory", async () => {
     const target = path.join(tempRoot, "allowed-target");
     const link = path.join(tempRoot, "allowed-link");

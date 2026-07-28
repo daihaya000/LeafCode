@@ -36,10 +36,12 @@ export async function POST(req: NextRequest) {
   }
 
   const rootPath = validation.canonicalPath;
-  const name =
-    (body.name && body.name.trim()) ||
-    path.basename(rootPath) ||
-    "Untitled project";
+  // This endpoint is the "open or create" entry point and upserts by
+  // rootPath, so it must never let a caller-supplied name overwrite an
+  // already-registered project's display name with something unrelated to
+  // its folder (e.g. a test/smoke script). The name is always derived from
+  // the folder itself; use PATCH /api/projects for an explicit rename.
+  const name = path.basename(rootPath) || "Untitled project";
 
   const row = upsertProject({
     name,

@@ -24,10 +24,14 @@ async function main() {
   });
 
   await check("projects upsert", async () => {
+    // Note: do not send an explicit `name` here. This smoke check often runs
+    // against a real, already-registered project (ROOT defaults to cwd), and
+    // /api/projects upserts by rootPath, so a hardcoded name would overwrite
+    // the real project's display name (see: name must always tie to folder).
     const res = await fetch(`${BASE}/api/projects`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ rootPath: ROOT, name: "smoke" }),
+      body: JSON.stringify({ rootPath: ROOT }),
     });
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   });
