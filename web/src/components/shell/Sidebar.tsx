@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AddonHost } from "@/components/addons/AddonHost";
-import { ThemeToggle, cx, timeAgo } from "@/components/ui";
+import { cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import { useMobileScrollTarget } from "./MobileScrollTargetContext";
@@ -752,7 +752,6 @@ export function Sidebar({
           <Settings className="h-4 w-4" />
         </Link>
         <AttentionBadge />
-        <ThemeToggle />
       </div>
 
       {!engineOk && (

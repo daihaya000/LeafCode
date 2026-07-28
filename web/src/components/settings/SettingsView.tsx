@@ -1,7 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Download, Plus, Star, Trash2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  Monitor,
+  Moon,
+  Plus,
+  Star,
+  Sun,
+  Trash2,
+} from "lucide-react";
+import { useTheme } from "next-themes";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
@@ -55,6 +66,7 @@ type AccessInfo = {
 
 type SettingsTab =
   | "general"
+  | "theme"
   | "project"
   | "connectivity"
   | "skills"
@@ -77,6 +89,64 @@ const RESTART_LABELS = {
   opencode: "OpenCode（バックエンド）",
   all: "すべて",
 } as const;
+
+function ThemeSettings() {
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const current = theme ?? "system";
+  const resolved = resolvedTheme === "dark" ? "ダーク" : "ライト";
+  const options = [
+    { key: "light", label: "ライト", description: "明るい配色で固定", icon: Sun },
+    { key: "dark", label: "ダーク", description: "暗い配色で固定", icon: Moon },
+    { key: "system", label: "システム", description: "OS の設定に合わせる", icon: Monitor },
+  ] as const;
+
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold text-muted">テーマ</h2>
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-text">表示テーマ</h3>
+          <p className="mt-1 text-xs text-faint">
+            左サイドバーから移動したテーマ切替です。現在の表示は{" "}
+            {mounted ? resolved : "読み込み中"} です。
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {options.map((option) => {
+            const Icon = option.icon;
+            const active = mounted && current === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setTheme(option.key)}
+                className={cx(
+                  "flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors",
+                  active
+                    ? "border-primary bg-primary/10 text-text"
+                    : "border-border bg-bg/40 text-muted hover:bg-surface-2 hover:text-text",
+                )}
+              >
+                <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{option.label}</span>
+                  <span className="mt-0.5 block text-xs text-faint">
+                    {option.description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
@@ -442,6 +512,7 @@ export function SettingsView() {
 
   const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
     { key: "general", label: "全般" },
+    { key: "theme", label: "テーマ" },
     {
       key: "project",
       label: "プロジェクト",
@@ -766,6 +837,8 @@ export function SettingsView() {
             <HostLogPanel />
           </>
         )}
+
+        {activeTab === "theme" && <ThemeSettings />}
 
         {activeTab === "project" && (
           <>

@@ -9,9 +9,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
-const { getJson, sendJson, timedFetch } = vi.hoisted(() => ({
+const { getJson, sendJson, timedFetch, setTheme } = vi.hoisted(() => ({
   getJson: vi.fn(),
   sendJson: vi.fn(),
+  setTheme: vi.fn(),
   timedFetch: vi.fn(
     async (input: string, init?: RequestInit & { timeoutMs?: number }) => {
       const { timeoutMs, ...rest } = init ?? {};
@@ -25,6 +26,14 @@ vi.mock("@/lib/client", () => ({
   getJson,
   sendJson,
   timedFetch,
+}));
+
+vi.mock("next-themes", () => ({
+  useTheme: () => ({
+    theme: "dark",
+    resolvedTheme: "dark",
+    setTheme,
+  }),
 }));
 
 vi.mock("@/components/AddProjectButton", () => ({
@@ -234,6 +243,17 @@ describe("SettingsView", () => {
     expect(screen.queryByText("エンジン")).toBeNull();
   });
 
+  it("moves theme switching into the テーマ tab", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("button", { name: "テーマ" }));
+
+    expect(await screen.findByRole("heading", { name: "表示テーマ" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /ライト/ }));
+    expect(setTheme).toHaveBeenCalledWith("light");
+  });
+
   it("shows the エージェント tab and lists agents when selected", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
@@ -253,6 +273,7 @@ describe("SettingsView", () => {
     ).toEqual(
       expect.arrayContaining([
         "全般",
+        "テーマ",
         "プロジェクト",
         "接続",
         "プロバイダー/モデル",
@@ -269,6 +290,7 @@ describe("SettingsView", () => {
       .filter((label) =>
         [
           "全般",
+          "テーマ",
           "プロジェクト",
           "接続",
           "プロバイダー/モデル",
@@ -281,6 +303,7 @@ describe("SettingsView", () => {
       );
     expect(tabLabels).toEqual([
       "全般",
+      "テーマ",
       "プロジェクト",
       "接続",
       "プロバイダー/モデル",
