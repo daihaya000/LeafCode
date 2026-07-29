@@ -7,6 +7,7 @@ import {
   type AutoCandidateProvider,
   type AutoDecision,
   type AutoOptimizeMode,
+  type AutoProviderUsage,
 } from "@/lib/auto-model";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
@@ -171,6 +172,7 @@ async function resolveAutoModel(
   prompt: string,
   files: readonly unknown[],
   mode: AutoOptimizeMode,
+  usage?: AutoProviderUsage,
 ): Promise<AutoDecision | null> {
   const hasImages = files.length > 0;
   let providers: AutoCandidateProvider[] = [];
@@ -198,7 +200,27 @@ async function resolveAutoModel(
     }),
     mode,
     hasImages,
+    usage,
   });
+}
+
+function parseCodexBarUsage(value: unknown): AutoProviderUsage | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const usage: AutoProviderUsage = {};
+  for (const [providerID, raw] of Object.entries(value)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const entry = raw as Record<string, unknown>;
+    const usedPercent = entry.usedPercent;
+    if (
+      (usedPercent !== null &&
+        (typeof usedPercent !== "number" || !Number.isFinite(usedPercent))) ||
+      typeof entry.limited !== "boolean"
+    ) {
+      continue;
+    }
+    usage[providerID] = { usedPercent: usedPercent as number | null, limited: entry.limited };
+  }
+  return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
 export async function GET() {
@@ -222,6 +244,7 @@ export async function POST(req: NextRequest) {
     files?: unknown;
     auto?: unknown;
     autoOptimize?: unknown;
+    codexBarUsage?: unknown;
   } | null;
 
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
@@ -324,6 +347,7 @@ export async function POST(req: NextRequest) {
     }
     autoOptimize = autoOptimizeRaw;
   }
+  const codexBarUsage = auto ? parseCodexBarUsage(body?.codexBarUsage) : undefined;
 
   // From here on the resolved Auto model is indistinguishable from a manually
   // selected one: everything downstream reads `effectiveModel` / `variant`.
@@ -337,7 +361,12 @@ export async function POST(req: NextRequest) {
       ? await agentHasFixedModel(agentName)
       : false;
     if (!agentPinsModel) {
-      const decision = await resolveAutoModel(prompt, files, autoOptimize);
+      const decision = await resolveAutoModel(
+        prompt,
+        files,
+        autoOptimize,
+        codexBarUsage,
+      );
       if (!decision) {
         return NextResponse.json(
           {

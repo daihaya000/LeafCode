@@ -1022,6 +1022,40 @@ describe("POST /api/tasks auto model selection", () => {
     expect(res.status).toBe(200);
   });
 
+  it("uses CodexBar usage to avoid a limited provider", async () => {
+    const ocServer = await mockOc({
+      provider: {
+        all: [
+          {
+            id: "anthropic",
+            models: { [CHEAP]: { variants: { minimal: {} } } },
+          },
+          {
+            id: "openai",
+            models: { "gpt-5-mini": { variants: { minimal: {} } } },
+          },
+        ],
+        connected: ["anthropic", "openai"],
+      },
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      codexBarUsage: {
+        anthropic: { usedPercent: 10, limited: true },
+        openai: { usedPercent: 80, limited: false },
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "openai", modelID: "gpt-5-mini" },
+    });
+  });
+
   it("returns 400 when auto and variant are combined", async () => {
     await mockOc();
     const { provisionWorkspace } = await import("@/lib/workspace-service");

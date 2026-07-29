@@ -81,6 +81,7 @@ import {
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { formatTokens } from "@addons/codexbar";
+import { readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import { computeContextUsage } from "@/lib/context-usage";
 import {
   readChatTab,
@@ -514,6 +515,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     providers: AutoCandidateProvider[];
     connected?: string[];
     disabled: Record<string, true>;
+    usage?: import("@/lib/auto-model").AutoProviderUsage;
   } | null>(null);
   /** Auto "Optimize For" policy; shared with HomeView and Settings. */
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
@@ -1212,10 +1214,12 @@ export function TaskView({ taskId }: { taskId: string }) {
               }
             }
           }
+          const usage = await readCodexBarAutoUsage();
           setAutoInputs({
             providers: autoProviders,
             connected: connectedList,
             disabled: autoDisabled,
+            usage,
           });
 
           // Prefer user-configured default model, then OpenCode config.model
@@ -1356,6 +1360,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         }),
         mode: autoOptimize,
         hasImages,
+        usage: autoInputs.usage,
       });
     },
     [autoInputs, autoOptimize, streamMessages.length, streamSessionError],

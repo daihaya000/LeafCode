@@ -102,6 +102,19 @@ export type AutoCandidateProvider = {
   >;
 };
 
+/**
+ * Optional provider availability data supplied by CodexBar. Keys are
+ * OpenCode provider IDs, so unknown CodexBar providers never affect routing.
+ * Missing entries deliberately retain the normal model policy.
+ */
+export type AutoProviderUsage = Record<
+  string,
+  { usedPercent: number | null; limited: boolean }
+>;
+
+/** Minimum known utilization gap that is worth rerouting an Auto request. */
+export const AUTO_USAGE_REROUTE_GAP = 20;
+
 type AutoCandidateModel = AutoCandidateProvider["models"][string];
 
 const HEAVY_KEYWORD_RE =
@@ -335,9 +348,39 @@ function supportsImages(model: AutoCandidateModel): boolean {
 }
 
 /** Highest `modelIntelligenceScore`; ties broken by `providerID::modelID`. */
-function pickBest(candidates: Candidate[]): Candidate | undefined {
+function pickBest(
+  candidates: Candidate[],
+  usage?: AutoProviderUsage,
+): Candidate | undefined {
+  const eligible = usage
+    ? candidates.filter((candidate) => !usage[candidate.providerID]?.limited)
+    : candidates;
+  if (eligible.length === 0) return undefined;
+
+  const knownUsage = eligible.filter(
+    (candidate) => usage?.[candidate.providerID]?.usedPercent != null,
+  );
+  const lowestUsage = knownUsage.reduce<number | null>((lowest, candidate) => {
+    const value = usage?.[candidate.providerID]?.usedPercent ?? null;
+    return value === null || (lowest !== null && value >= lowest)
+      ? lowest
+      : value;
+  }, null);
+  const usagePreferred =
+    lowestUsage !== null &&
+    knownUsage.some(
+      (candidate) =>
+        (usage?.[candidate.providerID]?.usedPercent ?? lowestUsage) -
+          lowestUsage >=
+        AUTO_USAGE_REROUTE_GAP,
+    )
+      ? knownUsage.filter(
+          (candidate) => usage?.[candidate.providerID]?.usedPercent === lowestUsage,
+        )
+      : eligible;
+
   let best: Candidate | undefined;
-  for (const candidate of candidates) {
+  for (const candidate of usagePreferred) {
     if (
       !best ||
       candidate.score > best.score ||
@@ -381,8 +424,10 @@ export function chooseAutoModel(input: {
   /** "Optimize For" policy; see {@link MODE_COST_ORDER}. */
   mode: AutoOptimizeMode;
   hasImages: boolean;
+  /** CodexBar utilization, when its addon is enabled and snapshot is usable. */
+  usage?: AutoProviderUsage;
 }): AutoDecision | null {
-  const { providers, connected, disabled, tier, mode, hasImages } = input;
+  const { providers, connected, disabled, tier, mode, hasImages, usage } = input;
   const connectedSet = connected === undefined ? null : new Set(connected);
 
   // Candidate construction mirrors `listProviderModels`.
@@ -412,10 +457,10 @@ export function chooseAutoModel(input: {
   let chosen: Candidate | undefined;
   let fellBack = false;
   if (costOrder === null) {
-    chosen = pickBest(candidates);
+    chosen = pickBest(candidates, usage);
   } else {
     for (const [index, cost] of costOrder.entries()) {
-      const best = pickBest(candidates.filter((c) => c.cost === cost));
+      const best = pickBest(candidates.filter((c) => c.cost === cost), usage);
       if (best) {
         chosen = best;
         fellBack = index > 0;
@@ -424,7 +469,7 @@ export function chooseAutoModel(input: {
     }
     // Every cost band is covered by `costOrder`, so a non-empty candidate
     // list always resolves; keep a defensive fallback anyway.
-    if (!chosen) chosen = pickBest(candidates);
+    if (!chosen) chosen = pickBest(candidates, usage);
   }
   if (!chosen) return null;
 
@@ -455,6 +500,7 @@ export function chooseAutoModel(input: {
     alternateProviderCandidates.length > 0
       ? alternateProviderCandidates
       : candidates,
+    usage,
   );
   if (strongest) {
     const escalationVariant = pickVariant(

@@ -44,11 +44,13 @@ import {
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
+import { readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import {
   AUTO_MODEL_OPTION,
   AUTO_MODEL_VALUE,
   type AutoDecision,
   type AutoOptimizeMode,
+  type AutoProviderUsage,
 } from "@/lib/auto-model";
 import {
   AUTO_IMPOSE_SETTING_KEY,
@@ -195,6 +197,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
+  const [codexBarUsage, setCodexBarUsage] = useState<
+    AutoProviderUsage | undefined
+  >(undefined);
   const [providerModelsMap, setProviderModelsMap] = useState<
     Record<string, ProviderModelMeta>
   >({});
@@ -279,6 +284,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     const onMode = () => setAutoOptimize(readAutoOptimizeMode());
     window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
     return () => window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+  }, []);
+
+  useEffect(() => {
+    void readCodexBarAutoUsage().then(setCodexBarUsage);
   }, []);
 
   const changeAutoOptimize = useCallback((mode: AutoOptimizeMode) => {
@@ -676,7 +685,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : {}),
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-        ...(isAuto ? { auto: true, autoOptimize } : {}),
+        ...(isAuto
+          ? {
+              auto: true,
+              autoOptimize,
+              ...(codexBarUsage ? { codexBarUsage } : {}),
+            }
+          : {}),
         // subagentPermission must be sent even when no agent is selected:
         // enforcement is session-scoped (not agent-scoped), so omitting it
         // whenever `agent` is empty left "禁止" without effect on the new
@@ -752,6 +767,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     agentModels,
     intelligence,
     autoOptimize,
+    codexBarUsage,
     goalLoopEnabled,
     goalLoopAcceptance,
     goalLoopMaxTurns,

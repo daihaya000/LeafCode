@@ -938,6 +938,49 @@ describe("chooseAutoModel optimize mode reason and echo", () => {
   });
 });
 
+describe("chooseAutoModel CodexBar provider usage", () => {
+  const providers = [
+    provider("alpha", { "gpt-5-mini": { variants: { ...allVariants } } }),
+    provider("beta", { "gpt-5-nano": { variants: { ...allVariants } } }),
+  ];
+
+  it("excludes a CodexBar-limited provider", () => {
+    expect(
+      choose({
+        providers,
+        usage: {
+          alpha: { usedPercent: 5, limited: true },
+          beta: { usedPercent: 80, limited: false },
+        },
+      })?.providerID,
+    ).toBe("beta");
+  });
+
+  it("reroutes to a provider at least 20 points less utilized", () => {
+    expect(
+      choose({
+        providers,
+        usage: {
+          alpha: { usedPercent: 75, limited: false },
+          beta: { usedPercent: 40, limited: false },
+        },
+      })?.providerID,
+    ).toBe("beta");
+  });
+
+  it("keeps the normal score tie-break when the usage gap is below 20 points", () => {
+    expect(
+      choose({
+        providers,
+        usage: {
+          alpha: { usedPercent: 55, limited: false },
+          beta: { usedPercent: 40, limited: false },
+        },
+      })?.providerID,
+    ).toBe("alpha");
+  });
+});
+
 describe("classifyPrompt file path signal", () => {
   it("stays standard for two distinct file references", () => {
     const prompt = "src/a.ts と src/b.ts の対応関係を確認";
