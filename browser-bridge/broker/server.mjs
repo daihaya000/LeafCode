@@ -130,7 +130,16 @@ export function createBrowserBridgeBroker({
     const approvalMatch = /^\/internal\/approvals\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
     if (req.method === 'POST' && approvalMatch) {
       const approval = pendingApprovals.get(approvalMatch[1]);
-      const body = await readJsonBody(req);
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const code = error?.message === 'payload_too_large'
+          ? BrowserBridgeErrorCode.PAYLOAD_TOO_LARGE
+          : BrowserBridgeErrorCode.INVALID_REQUEST;
+        json(res, code === BrowserBridgeErrorCode.PAYLOAD_TOO_LARGE ? 413 : 400, { error: { code } });
+        return;
+      }
       if (!approval) {
         json(res, 404, { error: 'not_found' });
       } else if (!body || !['allow', 'deny'].includes(body.decision)) {

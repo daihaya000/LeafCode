@@ -62,6 +62,18 @@ test('rejects oversized internal tool payloads before parsing them', async (t) =
   assert.deepEqual(await response.json(), { error: { code: 'PAYLOAD_TOO_LARGE' } });
 });
 
+test('rejects oversized approval decisions without leaving an unhandled request error', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const response = await fetch(`${broker.url}/internal/approvals/approval_missing`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ padding: 'x'.repeat(MAX_MESSAGE_BYTES) }),
+  });
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: { code: 'PAYLOAD_TOO_LARGE' } });
+});
+
 test('pairs only a Chrome extension origin and uses one-time pairing codes', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
