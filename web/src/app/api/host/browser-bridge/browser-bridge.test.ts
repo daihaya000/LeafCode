@@ -84,18 +84,59 @@ describe("Browser Bridge host-only routes", () => {
   });
 
   it("generalizes unavailable and malformed Broker approval-list responses", async () => {
-    browserBrokerFetch.mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+    browserBrokerFetch.mockResolvedValueOnce(
+      new Response("unavailable", { status: 503 }),
+    );
     const unavailable = await listApprovals(
       local("http://127.0.0.1:3000/api/host/browser-bridge/approvals"),
     );
     expect(unavailable.status).toBe(502);
-    expect(await unavailable.json()).toEqual({ error: "browser broker unavailable" });
+    expect(await unavailable.json()).toEqual({
+      error: "browser broker unavailable",
+    });
 
-    browserBrokerFetch.mockResolvedValueOnce(new Response("not json", { status: 200 }));
+    browserBrokerFetch.mockResolvedValueOnce(
+      new Response("not json", { status: 200 }),
+    );
     const malformed = await listApprovals(
       local("http://127.0.0.1:3000/api/host/browser-bridge/approvals"),
     );
     expect(malformed.status).toBe(502);
-    expect(await malformed.json()).toEqual({ error: "browser broker unavailable" });
+    expect(await malformed.json()).toEqual({
+      error: "browser broker unavailable",
+    });
+  });
+
+  it("generalizes malformed and failed mutable Broker responses", async () => {
+    browserBrokerFetch.mockResolvedValueOnce(
+      new Response("not json", { status: 201 }),
+    );
+    const malformedPairing = await createPairing(
+      local("http://127.0.0.1:3000/api/host/browser-bridge/pairing", {
+        method: "POST",
+      }),
+    );
+    expect(malformedPairing.status).toBe(502);
+    expect(await malformedPairing.json()).toEqual({
+      error: "browser broker unavailable",
+    });
+
+    browserBrokerFetch.mockResolvedValueOnce(
+      new Response("unavailable", { status: 503 }),
+    );
+    const unavailableDecision = await decideApproval(
+      local(
+        `http://127.0.0.1:3000/api/host/browser-bridge/approvals/${approvalId}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ decision: "allow" }),
+        },
+      ),
+      { params: Promise.resolve({ id: approvalId }) },
+    );
+    expect(unavailableDecision.status).toBe(502);
+    expect(await unavailableDecision.json()).toEqual({
+      error: "browser broker unavailable",
+    });
   });
 });
