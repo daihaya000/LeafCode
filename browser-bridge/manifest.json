@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "OpenCode WebUI Browser Bridge",
+  "version": "0.1.0",
+  "description": "Explicitly share the active Chrome or Brave tab with a local OpenCode WebUI Broker.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "extension/background.mjs",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "OpenCode Browser Bridge",
+    "default_popup": "extension/popup.html"
+  }
+}

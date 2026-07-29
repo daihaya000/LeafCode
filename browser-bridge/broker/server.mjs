@@ -81,6 +81,7 @@ export function createBrowserBridgeBroker({
   let deviceKey = null;
   let extensionSocket = null;
   let connectionGeneration = 0;
+  const sharedTabs = new Map();
   let listening = false;
 
   const status = () => ({
@@ -128,6 +129,10 @@ export function createBrowserBridgeBroker({
         json(res, 200, status());
         return;
       }
+      if (tool === BrowserToolName.LIST_TABS && extensionSocket) {
+        json(res, 200, { tabs: [...sharedTabs.values()] });
+        return;
+      }
       if (!extensionSocket) {
         json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
         return;
@@ -160,7 +165,22 @@ export function createBrowserBridgeBroker({
     socket.on('message', (raw, isBinary) => {
       if (isBinary) return rejectSocket(socket, 'invalid_message');
       const message = parseMessage(raw.toString());
-      if (!message || authenticated) return rejectSocket(socket, 'invalid_message');
+      if (!message) return rejectSocket(socket, 'invalid_message');
+      if (authenticated) {
+        if (message.type === 'tab_shared' && Object.keys(message).length === 2 && validSharedTab(message.tab)) {
+          sharedTabs.set(message.tab.id, message.tab);
+          return;
+        }
+        if (message.type === 'tab_unshared' && Object.keys(message).length === 2 && validOpaqueId(message.tabId)) {
+          sharedTabs.delete(message.tabId);
+          return;
+        }
+        if (message.type === 'heartbeat' && Object.keys(message).length === 1) {
+          socket.send(JSON.stringify({ type: 'heartbeat_ack', connectionGeneration }));
+          return;
+        }
+        return rejectSocket(socket, 'invalid_message');
+      }
 
       if (message.type === 'pair' && Object.keys(message).length === 2 && typeof message.code === 'string') {
         if (!pairing || now() > pairing.expiresAt || !constantTimeEquals(message.code, pairing.code)) {
@@ -187,7 +207,10 @@ export function createBrowserBridgeBroker({
         connectionGeneration += 1;
         socket.send(JSON.stringify({ type: 'authenticated', connectionGeneration }));
         socket.on('close', () => {
-          if (extensionSocket === socket) extensionSocket = null;
+          if (extensionSocket === socket) {
+            extensionSocket = null;
+            sharedTabs.clear();
+          }
         });
         return;
       }
@@ -234,5 +257,19 @@ function rejectSocket(socket, error) {
   if (socket.readyState === 1) {
     socket.send(JSON.stringify({ type: 'error', error: BrowserBridgeErrorCode.NOT_PAIRED }));
     socket.close(1008, error);
+  }
+}
+
+function validOpaqueId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(value);
+}
+
+function validSharedTab(tab) {
+  if (tab === null || typeof tab !== 'object' || Array.isArray(tab) || Object.keys(tab).some((key) => !['id', 'origin', 'title'].includes(key))) return false;
+  if (!validOpaqueId(tab.id) || typeof tab.title !== 'string' || tab.title.length > 512) return false;
+  try {
+    return new URL(tab.origin).protocol === 'https:';
+  } catch {
+    return false;
   }
 }

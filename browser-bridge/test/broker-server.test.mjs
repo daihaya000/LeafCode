@@ -104,6 +104,23 @@ test('pins reconnect authentication to the paired extension origin and device ke
   assert.equal(authenticated.connectionGeneration, 1);
 });
 
+test('lists only opaque tab metadata announced by an authenticated extension', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const pairing = await fetch(`${broker.url}/internal/pairing`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  t.after(() => socket.close());
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const tabs = await fetch(`${broker.url}/internal/tools/browser_list_tabs`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: '{}',
+  }).then((res) => res.json());
+  assert.deepEqual(tabs, { tabs: [{ id: 'tab_opaque', origin: 'https://example.test', title: 'Example' }] });
+});
+
 function openSocket(url, origin, message) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { origin });
@@ -112,6 +129,19 @@ function openSocket(url, origin, message) {
     socket.once('message', (data) => {
       socket.close();
       resolve(JSON.parse(data.toString()));
+    });
+  });
+}
+
+function authenticateSocket(url, origin, deviceKey) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { origin });
+    socket.once('error', reject);
+    socket.once('open', () => socket.send(JSON.stringify({ type: 'authenticate', deviceKey })));
+    socket.once('message', (data) => {
+      const message = JSON.parse(data.toString());
+      if (message.type !== 'authenticated') reject(new Error('authentication failed'));
+      else resolve(socket);
     });
   });
 }
