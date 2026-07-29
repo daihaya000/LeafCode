@@ -237,6 +237,7 @@ describe("goal loop integration", () => {
 
     // Simulate the engine finishing the turn with a structured reply.
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "progress", summary: "loop turn done" }),
     ];
@@ -246,6 +247,7 @@ describe("goal loop integration", () => {
     // Pause the loop, then simulate a manual user send arriving while paused.
     await updateGoalLoopStatus("ws-1", "pause");
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "progress", summary: "loop turn done" }),
       msg("manual-prompt", "user"),
@@ -262,6 +264,7 @@ describe("goal loop integration", () => {
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     expect(getGoalLoop("ws-1")?.status).toBe("running");
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "progress", summary: "loop turn done" }),
       msg("manual-prompt", "user"),
@@ -286,6 +289,7 @@ describe("goal loop integration", () => {
 
     // Simulate a manual send happening while the loop is queued.
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("manual-prompt", "user"),
       msg("manual-reply", "assistant", { status: "completed", summary: "manual" }),
     ];
@@ -314,6 +318,7 @@ describe("goal loop verification turn", () => {
 
     // Second tick reads the agent's completed claim.
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
     ];
@@ -336,6 +341,7 @@ describe("goal loop verification turn", () => {
 
     // Fourth tick reads the verification result.
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
       msg("verify-prompt", "user"),
@@ -360,6 +366,7 @@ describe("goal loop verification turn", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
     ];
@@ -370,6 +377,7 @@ describe("goal loop verification turn", () => {
     expect(getGoalLoop("ws-1")?.status).toBe("running");
 
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "tsc ok" }),
       msg("verify-prompt", "user"),
@@ -394,6 +402,7 @@ describe("goal loop verification turn", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
     ];
@@ -402,6 +411,7 @@ describe("goal loop verification turn", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
       msg("verify-prompt", "user"),
@@ -539,6 +549,7 @@ describe("goal loop failure recovery", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
     ];
@@ -565,6 +576,7 @@ describe("goal loop failure recovery", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim" }),
     ];
@@ -596,6 +608,7 @@ describe("goal loop failure recovery", () => {
     expect(paused.status).toBe("paused");
 
     h.messageResponse = [
+     msg("m0", "assistant"),
       msg("m0", "assistant"),
       msg("loop-prompt", "user", undefined, "<!-- webui-goal-loop-prompt -->\nturn"),
       msg("loop-reply", "assistant", { status: "progress", summary: "delivered turn" }),
@@ -657,6 +670,7 @@ describe("goal loop failure recovery", () => {
     // Cycle 1: claim -> verify -> reject.
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
     ];
@@ -664,6 +678,7 @@ describe("goal loop failure recovery", () => {
     expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
       msg("verify-prompt", "user"),
@@ -676,6 +691,7 @@ describe("goal loop failure recovery", () => {
     // loop must pause instead of allowing a third claim/reject round-trip.
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
       msg("verify-prompt", "user"),
@@ -687,6 +703,7 @@ describe("goal loop failure recovery", () => {
     expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim1", evidence: "ok" }),
       msg("verify-prompt", "user"),
@@ -714,6 +731,7 @@ describe("goal loop failure recovery", () => {
 
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+      msg("m0", "assistant"),
       msg("loop-prompt", "user"),
       msg("loop-reply", "assistant", { status: "completed", summary: "claim", evidence: "ok" }),
     ];
@@ -783,6 +801,7 @@ describe("goal loop pause_reason (docs/specs/goal-loop.md I5)", () => {
 
     // The prompt had actually reached OpenCode: its marked prompt and reply exist.
     h.messageResponse = [
+     msg("m0", "assistant"),
       msg("m0", "assistant"),
       msg("u1", "user", undefined, "<!-- webui-goal-loop-prompt -->\n\nwork"),
       msg("a1", "assistant", undefined, '```json\n{"status":"progress","summary":"did it"}\n```'),
@@ -901,6 +920,7 @@ describe("goal loop verification phase survives pause/resume (docs/specs/goal-lo
     expect(getGoalLoop("ws-1")?.status).toBe("running");
 
     h.messageResponse = [
+     msg("m0", "assistant"),
       msg("m0", "assistant"),
       jsonMsg("a1", "completed", "done"),
       jsonMsg("a2", "verified_completed", "checked"),
@@ -914,6 +934,7 @@ describe("goal loop verification phase survives pause/resume (docs/specs/goal-lo
     // Verification runs and rejects the claim -> back to queued as a goal turn.
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     h.messageResponse = [
+     msg("m0", "assistant"),
       msg("m0", "assistant"),
       jsonMsg("a1", "completed", "done"),
       jsonMsg("a2", "progress", "not really done"),
@@ -931,6 +952,7 @@ describe("goal loop verification phase survives pause/resume (docs/specs/goal-lo
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     expect(getGoalLoop("ws-1")?.turnKind).toBe("goal");
     h.messageResponse = [
+     msg("m0", "assistant"),
       msg("m0", "assistant"),
       jsonMsg("a1", "completed", "done"),
       jsonMsg("a2", "progress", "not really done"),
@@ -938,5 +960,63 @@ describe("goal loop verification phase survives pause/resume (docs/specs/goal-lo
     ];
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+  });
+});
+
+describe("goal loop lost read boundary (docs/specs/goal-loop.md I4)", () => {
+  it("pauses instead of consuming a result that predates the loop", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns: 5,
+    });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(getGoalLoop("ws-1")?.lastMessageId).toBe("m0");
+
+    // The boundary m0 is gone (reverted/pruned) and an older assistant message
+    // still carries a fenced JSON block claiming completion.
+    h.messageResponse = [
+      msg(
+        "ancient",
+        "assistant",
+        undefined,
+        '```json\n{"status":"completed","summary":"result from before the loop"}\n```',
+      ),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.pauseReason).toBe("boundary_lost");
+    // The stale claim must not have been recorded as progress.
+    expect(loop.progress).toHaveLength(0);
+    expect(loop.summary).toBe("");
+  });
+
+  it("does not replay an earlier marked prompt when resuming with a lost boundary", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns: 5,
+    });
+    h.promptAsyncFailuresRemaining = 1;
+    h.promptAsyncFailureStatus = 408;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("unknown_delivery");
+
+    // Boundary gone, but an older loop prompt + reply are still present.
+    h.messageResponse = [
+      msg("old-prompt", "user", undefined, "<!-- webui-goal-loop-prompt -->\n\nold turn"),
+      msg("old-reply", "assistant", undefined, '```json\n{"status":"progress","summary":"stale"}\n```'),
+    ];
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    // It must not adopt the stale reply as this turn's recovered result.
+    expect(resumed?.progress).toHaveLength(0);
+    expect(resumed?.status).toBe("paused");
+    expect(resumed?.pauseReason).toBe("unknown_delivery");
   });
 });

@@ -121,10 +121,14 @@ describe("goalLoopTestSeams", () => {
     expect(goalLoopTestSeams.finalAssistantAfter(messages, "a1")?.info.id).toBe("a2");
   });
 
-  it("handles a stale lastMessageId that no longer exists in the snapshot", () => {
+  it("refuses to attribute a reply when lastMessageId is gone from the snapshot", () => {
     const messages = [msg("a1", "assistant", { status: "progress", summary: "x" })];
-    // findIndex returns -1, Math.max(0, -1 + 1) = 0 -> scans from start
-    expect(goalLoopTestSeams.finalAssistantAfter(messages, "ghost")?.info.id).toBe("a1");
+    // Scanning from index 0 here used to let a message from before the loop be
+    // consumed as this turn's result. See docs/specs/goal-loop.md invariant I4.
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "ghost")).toBeNull();
+    expect(goalLoopTestSeams.boundaryLost(messages, "ghost")).toBe(true);
+    expect(goalLoopTestSeams.boundaryLost(messages, "a1")).toBe(false);
+    expect(goalLoopTestSeams.boundaryLost(messages, null)).toBe(false);
   });
 
   it("returns null for an empty message list", () => {

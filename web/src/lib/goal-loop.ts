@@ -313,9 +313,10 @@ function finalAssistantAfter(
   messages: MessageWithParts[],
   lastMessageId: string | null,
 ): MessageWithParts | null {
-  const start = lastMessageId
-    ? Math.max(0, messages.findIndex((m) => m.info.id === lastMessageId) + 1)
-    : 0;
+  const start = boundaryStartIndex(messages, lastMessageId);
+  // The boundary is gone (reverted or pruned): we cannot tell this turn's reply
+  // from work that predates the loop, so refuse to pick one.
+  if (start === null) return null;
   for (let i = messages.length - 1; i >= start; i -= 1) {
     const m = messages[i];
     if (m?.info.role === "assistant" && typeof m.info.time?.completed === "number") {
@@ -323,6 +324,29 @@ function finalAssistantAfter(
     }
   }
   return null;
+}
+
+/**
+ * Index just past the read boundary, or `null` when the boundary message is no
+ * longer in the transcript.
+ *
+ * Returning `-1 + 1 === 0` for a missing boundary made the caller scan the
+ * whole transcript, so a reverted boundary let a reply from before the loop
+ * started be consumed as the current turn's result (and could jump the loop
+ * straight to `verifying_completed`). See docs/specs/goal-loop.md invariant I4.
+ */
+function boundaryStartIndex(
+  messages: MessageWithParts[],
+  lastMessageId: string | null,
+): number | null {
+  if (!lastMessageId) return 0;
+  const index = messages.findIndex((m) => m.info.id === lastMessageId);
+  return index < 0 ? null : index + 1;
+}
+
+/** True when the loop has a read boundary that is no longer in the transcript. */
+function boundaryLost(messages: MessageWithParts[], lastMessageId: string | null): boolean {
+  return boundaryStartIndex(messages, lastMessageId) === null;
 }
 
 /**
@@ -828,11 +852,12 @@ function deliveredGoalResultAfterUnknownPrompt(
   messages: MessageWithParts[],
   boundary: string | null,
 ): { assistant: MessageWithParts; result: GoalLoopProgress } | null {
-  const boundaryIndex = boundary
-    ? messages.findIndex((message) => message.info.id === boundary)
-    : -1;
+  // A missing boundary used to fall back to index 0, which could match a loop
+  // prompt from an earlier turn and replay its result (I4).
+  const start = boundaryStartIndex(messages, boundary);
+  if (start === null) return null;
   let promptIndex = -1;
-  for (let i = boundaryIndex + 1; i < messages.length; i += 1) {
+  for (let i = start; i < messages.length; i += 1) {
     const message = messages[i];
     if (message?.info.role === "user" && assistantText(message).includes(GOAL_LOOP_PROMPT_MARKER)) {
       promptIndex = i;
@@ -1072,6 +1097,27 @@ function pauseAfterUnknownPromptDelivery(
  * which silently re-queued the loop and duplicated a possibly in-flight prompt.
  * See docs/specs/goal-loop.md invariant I5.
  */
+/**
+ * The read boundary vanished from the transcript (a revert or prune removed it).
+ * Pause instead of guessing which reply belongs to this turn.
+ */
+function pauseForLostBoundary(loop: GoalLoopDto): void {
+  getDb()
+    .prepare(
+      `UPDATE goal_loops
+       SET status = 'paused', pause_reason = 'boundary_lost', error = ?,
+           revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
+    )
+    .run(
+      "会話履歴の基準メッセージが見つからないため、結果の誤読を防いで一時停止しました。",
+      new Date().toISOString(),
+      loop.id,
+      loop.revision,
+      loop.lastMessageId,
+    );
+}
+
 function isUnknownPromptDeliveryPause(loop: GoalLoopDto): boolean {
   return loop.status === "paused" && loop.pauseReason === "unknown_delivery";
 }
@@ -1147,6 +1193,12 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   }
 
   if (loop.status === "running") {
+    // Without a boundary we cannot attribute any reply to this turn, so stop
+    // rather than risk consuming a pre-loop message as the result (I4).
+    if (boundaryLost(messages, loop.lastMessageId)) {
+      pauseForLostBoundary(loop);
+      return;
+    }
     const assistant = finalAssistantAfter(messages, loop.lastMessageId);
     const result = assistant ? extractGoalResult(assistant) : null;
     if (assistant && result) {
@@ -1383,6 +1435,7 @@ export const goalLoopTestSeams = {
   normalizeStructured,
   latestMessageId,
   finalAssistantAfter,
+  boundaryLost,
   transcriptIdleFor,
   extractGoalResult,
   deliveredGoalResultAfterUnknownPrompt,
