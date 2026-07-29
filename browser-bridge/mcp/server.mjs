@@ -68,7 +68,7 @@ export function createMcpServer({ brokerClient }) {
   registerReadTool(server, brokerClient, BrowserToolName.STATUS, 'Get Browser Bridge connection status.', z.object({}).strict());
   registerReadTool(server, brokerClient, BrowserToolName.LIST_TABS, 'List explicitly shared browser tabs.', z.object({}).strict());
   registerReadTool(server, brokerClient, BrowserToolName.SNAPSHOT, 'Read a privacy-filtered accessibility snapshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());
-  registerReadTool(server, brokerClient, BrowserToolName.SCREENSHOT, 'Request an approved screenshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());
+  registerTool(server, brokerClient, BrowserToolName.SCREENSHOT, 'Request an approved screenshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict(), ACTION_ANNOTATIONS);
   registerTool(server, brokerClient, BrowserToolName.TYPE, 'Type text into an approved shared-tab input ref.', z.object({
     tabId: TAB_ID_SCHEMA,
     ref: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),

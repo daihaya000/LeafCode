@@ -63,6 +63,9 @@ test('registers only read tools and maps Broker errors without leaking internals
           error.code = BrowserBridgeErrorCode.BROKER_UNAVAILABLE;
           throw error;
         }
+        if (tool === BrowserToolName.SCREENSHOT) {
+          return { image: { mimeType: 'image/png', data: 'aGVsbG8=' } };
+        }
         return tool === BrowserToolName.STATUS
           ? { extension: { connected: true, paired: true }, pendingApprovals: 0 }
           : { tabs: [] };
@@ -88,10 +91,11 @@ test('registers only read tools and maps Broker errors without leaking internals
     'browser_status',
     'browser_type',
   ]);
-  assert.ok(listed.tools.filter((tool) => !['browser_type', 'browser_scroll', 'browser_navigate'].includes(tool.name)).every((tool) => tool.annotations?.readOnlyHint === true));
+  assert.ok(listed.tools.filter((tool) => !['browser_type', 'browser_scroll', 'browser_navigate', 'browser_screenshot'].includes(tool.name)).every((tool) => tool.annotations?.readOnlyHint === true));
   assert.equal(listed.tools.find((tool) => tool.name === 'browser_type')?.annotations?.readOnlyHint, false);
   assert.equal(listed.tools.find((tool) => tool.name === 'browser_scroll')?.annotations?.readOnlyHint, false);
   assert.equal(listed.tools.find((tool) => tool.name === 'browser_navigate')?.annotations?.readOnlyHint, false);
+  assert.equal(listed.tools.find((tool) => tool.name === 'browser_screenshot')?.annotations?.readOnlyHint, false);
 
   const status = await client.callTool({ name: BrowserToolName.STATUS, arguments: {} });
   assert.equal(status.isError, undefined);
@@ -103,4 +107,7 @@ test('registers only read tools and maps Broker errors without leaking internals
   assert.deepEqual(JSON.parse(failed.content[0].text), { error: { code: BrowserBridgeErrorCode.BROKER_UNAVAILABLE } });
   assert.doesNotMatch(failed.content[0].text, /127\.0\.0\.1|secret|refused/);
   assert.deepEqual(calls[1], { tool: BrowserToolName.SNAPSHOT, args: { tabId: 'tab_1' } });
+
+  const screenshot = await client.callTool({ name: BrowserToolName.SCREENSHOT, arguments: { tabId: 'tab_1' } });
+  assert.deepEqual(screenshot.content, [{ type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }]);
 });
