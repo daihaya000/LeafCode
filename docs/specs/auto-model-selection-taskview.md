@@ -95,12 +95,16 @@ provider fetch 時（options / caps / map を構築する既存ループ）に
 
 ### 5. TaskView: 画像ゲート緩和
 
-`sendingModelKey === AUTO_MODEL_VALUE` の場合、既存の
-`sendingImageSupported` 判定を HomeView §3-2 と同一に緩和する:
-`modelCapabilities` 中に `image === true || attachment === true` の
-エントリが 1 つでもあれば通す。1 つも無ければ既存文言でブロック。
-（Auto 解決は `hasImages` で候補を画像対応に絞るため、通過後の
-実送信は必ず画像対応モデルになる。）
+Auto は自前の capability を持たないため、次の**2 箇所**を同じ規則で
+緩和する（`modelCapabilities` 中に `image === true || attachment === true`
+のエントリが 1 つでもあれば通す。1 つも無ければ既存文言でブロック）。
+Auto 解決は `hasImages` で候補を画像対応に絞るため、通過後の実送信は
+必ず画像対応モデルになる。
+
+1. 送信時の `sendingImageSupported`（HomeView §3-2 と同一）
+2. 添付コントロールの `imageSupported`（`effectiveModelKey` 由来。
+   ここを緩和しないと Auto 選択中は添付ボタンと file input が
+   disabled のままで、そもそも画像を添付できない）
 
 ### 6. TaskView: 選定結果の一時通知
 
@@ -145,6 +149,7 @@ Auto 選択中は `"auto"` が書かれ、次回 HomeView / 本 TaskView の
 - 送信成功後に follow-up 通知バナーが表示され、閉じると消える
 - `startGoalLoop` で解決済み model/variant が goal-loop POST に載る、
   解決不能時は `goalLoopError` 表示で POST されない
+- Auto 選択中も画像を添付できる（添付コントロールが有効）
 - 送信成功後 `webui:last-used-model` が `"auto"`
 - IntelligenceSelect が Auto 選択中に非表示
 
