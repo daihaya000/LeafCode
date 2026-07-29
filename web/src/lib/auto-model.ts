@@ -9,7 +9,7 @@
  * the task from the connected + enabled model set.
  */
 
-import { modelIntelligenceScore } from "./model-options";
+import { modelIntelligenceScore, type ModelOption } from "./model-options";
 import {
   getIntelligenceVariants,
   type IntelligenceVariant,
@@ -17,6 +17,20 @@ import {
 
 /** ModelSelect option value for the Auto mode. Contains no `::`. */
 export const AUTO_MODEL_VALUE = "auto";
+
+/**
+ * Shared ModelSelect option for the Auto mode (HomeView / TaskView). The
+ * resolver — the BFF for task creation, the client for follow-ups — picks the
+ * concrete `{ providerID, modelID, variant }`, so this option carries no
+ * provider of its own. Callers must prepend it *after* filter/sort:
+ * `providerSortKey("auto")` is the unknown-provider tail value, so sorting
+ * would sink it to the bottom.
+ */
+export const AUTO_MODEL_OPTION: ModelOption = {
+  value: AUTO_MODEL_VALUE,
+  label: "Auto（コスト最適）",
+  group: "Auto",
+};
 
 export type AutoTier = "light" | "standard" | "heavy";
 

@@ -43,7 +43,11 @@ import {
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
-import { AUTO_MODEL_VALUE, type AutoDecision } from "@/lib/auto-model";
+import {
+  AUTO_MODEL_OPTION,
+  AUTO_MODEL_VALUE,
+  type AutoDecision,
+} from "@/lib/auto-model";
 import {
   AUTO_TASK_PROMPT_MAX,
   writeAutoTaskRecord,
@@ -121,17 +125,6 @@ type AgentResponse = {
 }[];
 
 type Attachment = ComposerAttachment;
-
-/**
- * Cost-optimized automatic selection. The server resolves the concrete
- * `{ providerID, modelID, variant }` from the prompt, so this option carries
- * no provider of its own.
- */
-const AUTO_OPTION: ModelOption = {
-  value: AUTO_MODEL_VALUE,
-  label: "Auto（コスト最適）",
-  group: "Auto",
-};
 
 const IMAGE_MIME_RE = /^image\//i;
 // Match POST /api/tasks R28 / TaskView limits.
@@ -322,7 +315,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           // it to the bottom. Prepending keeps the "Auto" group first in the
           // menu (groupedOptions preserves insertion order).
           const selectableOptions = [
-            AUTO_OPTION,
+            AUTO_MODEL_OPTION,
             ...sortModelOptions(
               enabledOptions,
               modelOrderPreferenceFromProviders(providerModels?.providers),

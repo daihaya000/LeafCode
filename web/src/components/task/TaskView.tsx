@@ -93,6 +93,14 @@ import {
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
 import {
+  AUTO_MODEL_OPTION,
+  AUTO_MODEL_VALUE,
+  chooseAutoModel,
+  classifyPrompt,
+  type AutoCandidateProvider,
+  type AutoDecision,
+} from "@/lib/auto-model";
+import {
   readAutoTaskRecord,
   writeAutoTaskRecord,
   type AutoTaskRecord,
@@ -215,6 +223,17 @@ type ComposerDraft = { input: string; attachments: Attachment[] };
 
 const TASK_CACHE_MAX = 24;
 const COMPOSER_DRAFT_CACHE_MAX = 48;
+
+/** Shown when Auto finds no connected + enabled candidate (addendum spec §4). */
+const AUTO_NO_CANDIDATE_ERROR =
+  "Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。";
+
+/** Banner text for a resolved Auto selection (initial chip and follow-up). */
+function formatAutoDecisionNotice(decision: AutoDecision): string {
+  return `Auto: ${decision.providerID}/${decision.modelID}${
+    decision.variant ? ` · effort ${decision.variant}` : ""
+  } — ${decision.reason}`;
+}
 const taskSummaryCache = new Map<string, TaskSummary>();
 const composerDraftCache = new Map<string, ComposerDraft>();
 
@@ -469,6 +488,22 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [skillPermissionSaving, setSkillPermissionSaving] = useState(false);
   const [autoRecord, setAutoRecord] = useState<AutoTaskRecord | null>(null);
   const [autoRetryNotice, setAutoRetryNotice] = useState<string | null>(null);
+  /** Transient chip for a follow-up Auto resolution (addendum spec §6). */
+  const [autoFollowUpNotice, setAutoFollowUpNotice] = useState<string | null>(
+    null,
+  );
+  /**
+   * Inputs for the client-side Auto resolution (addendum spec §3). Snapshot
+   * of the provider fetch: the *unfiltered* provider list (chooseAutoModel
+   * applies the connected filter itself) plus a disabled record derived from
+   * the extensions DTO. Null until the fetch succeeds → Auto sends fail with
+   * a visible error instead of guessing.
+   */
+  const [autoInputs, setAutoInputs] = useState<{
+    providers: AutoCandidateProvider[];
+    connected: string[];
+    disabled: Record<string, true>;
+  } | null>(null);
   /** Guards the one-shot escalation retry against effect re-entry. */
   const autoRetryFiredRef = useRef(false);
   /** Previous `sessionError`; `undefined` until the first observation. */
@@ -519,6 +554,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     autoRetryFiredRef.current = false;
     prevSessionErrorRef.current = undefined;
     setAutoRetryNotice(null);
+    setAutoFollowUpNotice(null);
     setAutoRecord(readAutoTaskRecord(taskId));
   }, [taskId]);
 
@@ -531,6 +567,19 @@ export function TaskView({ taskId }: { taskId: string }) {
       return next;
     });
   }, [taskId]);
+
+  /** One banner for all Auto states; follow-up resolutions win. */
+  const autoBannerText =
+    autoFollowUpNotice ??
+    (autoRecord && !autoRecord.dismissed
+      ? (autoRetryNotice ?? formatAutoDecisionNotice(autoRecord.decision))
+      : null);
+
+  /** Closes whichever Auto banner is visible, in one click. */
+  const dismissAutoBanner = useCallback(() => {
+    setAutoFollowUpNotice(null);
+    dismissAutoRecord();
+  }, [dismissAutoRecord]);
 
   /**
    * One-shot escalation retry. Fires only on a null → non-null `sessionError`
@@ -1071,14 +1120,53 @@ export function TaskView({ taskId }: { taskId: string }) {
             options,
             providerModels?.providers,
           );
-          setModelOptions(
-            sortModelOptions(
+          // Auto is inserted *after* filter/sort on purpose: providerSortKey
+          // ("auto") is the unknown-provider tail value, so sorting would sink
+          // it to the bottom (same rationale as HomeView).
+          setModelOptions([
+            AUTO_MODEL_OPTION,
+            ...sortModelOptions(
               enabledOptions,
               modelOrderPreferenceFromProviders(providerModels?.providers),
             ),
-          );
+          ]);
           setModelCapabilities(caps);
           setProviderModelsMap(map);
+
+          // Auto resolution inputs (addendum spec §3). Keep the *unfiltered*
+          // provider list — chooseAutoModel applies the connected filter
+          // itself — and derive the disabled record from the extensions DTO
+          // (absent DTO = everything allowed, mirroring the fail-open policy
+          // of filterEnabledModelOptions).
+          const autoProviders: AutoCandidateProvider[] = (data.all ?? []).map(
+            (p) => ({
+              id: p.id,
+              models: Object.fromEntries(
+                Object.entries(p.models ?? {}).map(([mid, m]) => [
+                  mid,
+                  {
+                    name: m.name,
+                    variants: m.variants,
+                    capabilities: m.capabilities,
+                  },
+                ]),
+              ),
+            }),
+          );
+          const autoDisabled: Record<string, true> = {};
+          for (const provider of providerModels?.providers ?? []) {
+            if (provider.enabled === false) autoDisabled[provider.id] = true;
+            for (const providerModel of provider.models ?? []) {
+              if (providerModel.enabled === false) {
+                autoDisabled[`${provider.id}::${providerModel.id}`] = true;
+              }
+            }
+          }
+          setAutoInputs({
+            providers: autoProviders,
+            connected: connectedList,
+            disabled: autoDisabled,
+          });
 
           // Prefer user-configured default model, then OpenCode config.model
           // (provider/modelID), then provider defaults.
@@ -1189,6 +1277,27 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
+  /**
+   * Resolve Auto for a client-side send (addendum spec §4). Follow-ups bypass
+   * `POST /api/tasks`, so the shared pure resolver runs here instead of in the
+   * BFF. Returns null when the provider snapshot is missing or no candidate
+   * survives the connected / enabled / image filters.
+   */
+  const resolveAutoSelection = useCallback(
+    (text: string, hasImages: boolean): AutoDecision | null => {
+      if (!autoInputs) return null;
+      return chooseAutoModel({
+        providers: autoInputs.providers,
+        connected: autoInputs.connected,
+        disabled: autoInputs.disabled,
+        // Slash commands are classified from their raw text (no expansion).
+        tier: classifyPrompt(text, { hasImages }),
+        hasImages,
+      });
+    },
+    [autoInputs],
+  );
+
   /** Start a loop with `goal`. Returns true when the loop was created. */
   const startGoalLoop = useCallback(
     async (goal: string): Promise<boolean> => {
@@ -1198,6 +1307,26 @@ export function TaskView({ taskId }: { taskId: string }) {
       setGoalLoopError(null);
       try {
         const [providerID, modelID] = model ? model.split("::") : [];
+        // Auto: the loop runs server-side later, so it needs a concrete model
+        // rather than the "auto" sentinel. An agent with its own model wins
+        // (same precedence as POST /api/tasks), leaving both fields omitted.
+        const isAuto = model === AUTO_MODEL_VALUE;
+        const agentPinnedModel = agent ? agentModels[agent] : undefined;
+        let decision: AutoDecision | undefined;
+        if (isAuto && !agentPinnedModel) {
+          const resolved = resolveAutoSelection(goal, false);
+          if (!resolved) {
+            setGoalLoopError(AUTO_NO_CANDIDATE_ERROR);
+            return false;
+          }
+          decision = resolved;
+        }
+        const loopModel = decision
+          ? { providerID: decision.providerID, modelID: decision.modelID }
+          : providerID && modelID
+            ? { providerID, modelID }
+            : undefined;
+        const loopVariant = isAuto ? (decision?.variant ?? "") : intelligence;
         const data = await sendJson<{ loop: GoalLoopDto }>(
           "POST",
           `/api/tasks/${taskId}/goal-loop`,
@@ -1210,10 +1339,11 @@ export function TaskView({ taskId }: { taskId: string }) {
               .filter(Boolean),
             maxTurns: goalLoopMaxTurns,
             ...(agent ? { agent } : {}),
-            ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-            ...(intelligence ? { variant: intelligence } : {}),
+            ...(loopModel ? { model: loopModel } : {}),
+            ...(loopVariant ? { variant: loopVariant } : {}),
           },
         );
+        if (decision) setAutoFollowUpNotice(formatAutoDecisionNotice(decision));
         setGoalLoop(data.loop);
         setGoalLoopAcceptance("");
         setGoalLoopEnabled(false);
@@ -1228,7 +1358,16 @@ export function TaskView({ taskId }: { taskId: string }) {
         setGoalLoopBusy(false);
       }
     },
-    [agent, goalLoopAcceptance, goalLoopMaxTurns, intelligence, model, taskId],
+    [
+      agent,
+      agentModels,
+      goalLoopAcceptance,
+      goalLoopMaxTurns,
+      intelligence,
+      model,
+      resolveAutoSelection,
+      taskId,
+    ],
   );
 
   const changeGoalLoopState = useCallback(
@@ -1612,10 +1751,19 @@ export function TaskView({ taskId }: { taskId: string }) {
       return model || ``;
     })();
     const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
-    const sendingImageSupported = sendingModelKey
-      ? modelCapabilities[sendingModelKey]?.image === true ||
-        modelCapabilities[sendingModelKey]?.attachment === true
-      : false;
+    const sendingImageSupported =
+      sendingModelKey === AUTO_MODEL_VALUE
+        ? // Auto has no capabilities of its own: pass when at least one
+          // connected model could take the image. The resolution below only
+          // considers image-capable candidates, so the actual send is safe.
+          Object.values(modelCapabilities).some(
+            (capability) =>
+              capability.image === true || capability.attachment === true,
+          )
+        : sendingModelKey
+          ? modelCapabilities[sendingModelKey]?.image === true ||
+            modelCapabilities[sendingModelKey]?.attachment === true
+          : false;
     const sendingImageBlocked = hasImage && !sendingImageSupported;
     if (sendingImageBlocked) {
       setSendError(
@@ -1634,6 +1782,21 @@ export function TaskView({ taskId }: { taskId: string }) {
         `各画像は ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB 以下にしてください。`,
       );
       return;
+    }
+    // Auto: resolve the concrete model client-side (follow-ups never reach the
+    // BFF). Deliberately placed before the draft is cleared so an unresolvable
+    // Auto aborts without eating the user's input. An agent with its own model
+    // wins, matching the POST /api/tasks precedence.
+    const isAuto = model === AUTO_MODEL_VALUE;
+    const autoAgentPinnedModel = agent ? agentModels[agent] : undefined;
+    let autoDecision: AutoDecision | undefined;
+    if (isAuto && !autoAgentPinnedModel) {
+      const resolved = resolveAutoSelection(text, hasImage);
+      if (!resolved) {
+        setSendError(AUTO_NO_CANDIDATE_ERROR);
+        return;
+      }
+      autoDecision = resolved;
     }
     const files = attachments.map((a) => ({
       uri: a.uri,
@@ -1677,12 +1840,25 @@ export function TaskView({ taskId }: { taskId: string }) {
         setGoalLoop(paused.loop);
       }
       await touchActivity(sendSessionId, sendTaskId);
+      // `"auto".split("::")` yields `["auto"]`, so modelID stays undefined and
+      // the manual branch below naturally omits `model` for Auto.
       const [providerID, modelID] = model ? model.split("::") : [];
+      const sendModel = autoDecision
+        ? {
+            providerID: autoDecision.providerID,
+            modelID: autoDecision.modelID,
+          }
+        : providerID && modelID
+          ? { providerID, modelID }
+          : undefined;
+      // Auto owns the effort; `intelligence` is "" while Auto is selected but
+      // an agent-scoped leftover could survive, so drop it explicitly.
+      const sendVariant = isAuto ? (autoDecision?.variant ?? "") : intelligence;
       const opts = {
         ...(agent ? { agent } : {}),
-        ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+        ...(sendModel ? { model: sendModel } : {}),
         ...(files.length > 0 ? { files } : {}),
-        ...(intelligence ? { variant: intelligence } : {}),
+        ...(sendVariant ? { variant: sendVariant } : {}),
         sessionId: sendSessionId,
       };
       const parsed = parseCommandSubmit(text, slashCommands);
@@ -1690,6 +1866,9 @@ export function TaskView({ taskId }: { taskId: string }) {
         await stream.sendCommand(parsed.command, parsed.arguments, opts);
       } else {
         await stream.sendPrompt(text, opts);
+      }
+      if (autoDecision) {
+        setAutoFollowUpNotice(formatAutoDecisionNotice(autoDecision));
       }
       void refreshSessionTitle(sendTaskId, sendSessionId);
       // Remember the model actually applied to this submission so the next
@@ -1731,6 +1910,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     goalLoop?.status,
     goalLoopEnabled,
     goalLoopLive,
+    resolveAutoSelection,
     startGoalLoop,
   ]);
 
@@ -2672,20 +2852,15 @@ export function TaskView({ taskId }: { taskId: string }) {
         </div>
       )}
 
-      {autoRecord && !autoRecord.dismissed && (
+      {/* Single Auto banner: a follow-up resolution takes priority over the
+          initial hand-off chip / retry notice (addendum spec §6). */}
+      {autoBannerText && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-surface-2 px-4 py-2 text-sm text-muted">
-          <span className="min-w-0 break-words">
-            {autoRetryNotice ??
-              `Auto: ${autoRecord.decision.providerID}/${autoRecord.decision.modelID}${
-                autoRecord.decision.variant
-                  ? ` · effort ${autoRecord.decision.variant}`
-                  : ""
-              } — ${autoRecord.decision.reason}`}
-          </span>
+          <span className="min-w-0 break-words">{autoBannerText}</span>
           <button
             type="button"
             aria-label="Auto の選定結果を閉じる"
-            onClick={dismissAutoRecord}
+            onClick={dismissAutoBanner}
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-surface-3 hover:text-text"
           >
             <X aria-hidden="true" className="h-3.5 w-3.5" />
