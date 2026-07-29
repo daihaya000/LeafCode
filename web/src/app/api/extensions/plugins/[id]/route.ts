@@ -5,6 +5,7 @@ import {
   parsePluginBody,
 } from "@/lib/opencode-extensions/http";
 import {
+  deleteDisabledConfiguredPlugin,
   setPluginEnabled,
   updateConfiguredPlugin,
 } from "@/lib/opencode-extensions/plugins";
@@ -41,5 +42,19 @@ export async function PUT(
     return NextResponse.json({ ok: true, requiresRestart: true });
   } catch (err) {
     return extensionsErrorResponse(err, "プラグインを更新できません");
+  }
+}
+
+/** Permanently remove a disabled plugin's WebUI-local restore record. */
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  try {
+    await deleteDisabledConfiguredPlugin(id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return extensionsErrorResponse(err, "無効なプラグインの状態を削除できません");
   }
 }

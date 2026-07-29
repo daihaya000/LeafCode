@@ -384,3 +384,23 @@ export async function setPluginEnabled(
   }
   await setConfiguredPluginEnabled(id, enabled);
 }
+
+/**
+ * Permanently discard a disabled configured plugin's WebUI-local restore
+ * record. The plugin is already absent from opencode.jsonc, and removing
+ * this record intentionally makes its previous value/options unrecoverable.
+ */
+export async function deleteDisabledConfiguredPlugin(id: string): Promise<void> {
+  if (!parseConfigPluginId(id)) {
+    throw new ExtensionsError("invalid-name", "プラグインIDが不正です");
+  }
+  await withConfigLock(async () => {
+    const state = readStateFile();
+    if (!state.disabledPlugins.some((entry) => entry.id === id)) {
+      throw new ExtensionsError("not-found", "指定の無効なプラグインが見つかりません");
+    }
+    await writeStateFile({
+      disabledPlugins: state.disabledPlugins.filter((entry) => entry.id !== id),
+    });
+  });
+}

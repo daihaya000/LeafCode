@@ -12,7 +12,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
-import { PATCH, PUT } from "./route";
+import { DELETE, PATCH, PUT } from "./route";
 import { GET } from "../route";
 
 let base: string;
@@ -33,6 +33,16 @@ function put(id: string, body: unknown): Promise<Response> {
     new NextRequest(
       `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
       { method: "PUT", body: JSON.stringify(body) },
+    ),
+    { params: Promise.resolve({ id }) },
+  );
+}
+
+function remove(id: string): Promise<Response> {
+  return DELETE(
+    new NextRequest(
+      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
     ),
     { params: Promise.resolve({ id }) },
   );
@@ -173,5 +183,26 @@ describe("PUT /api/extensions/plugins/[id]", () => {
   it("returns 404 for an unknown configured id", async () => {
     const res = await put("config:0000000000000000.0", { name: "x" });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/extensions/plugins/[id]", () => {
+  it("permanently removes a disabled configured plugin's restore record", async () => {
+    const target = (await listPluginIds()).find((p) => p.name === "plug-a")!;
+    expect((await patch(target.id, { enabled: false })).status).toBe(200);
+    const disabled = (await listPluginIds()).find((p) => p.name === "plug-a")!;
+
+    const res = await remove(disabled.id);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect((await listPluginIds()).find((p) => p.name === "plug-a")).toBeUndefined();
+  });
+
+  it("rejects active, local, and unknown plugin ids", async () => {
+    const active = (await listPluginIds()).find((p) => p.name === "plug-a")!;
+    expect((await remove(active.id)).status).toBe(404);
+    expect((await remove("local:x.js")).status).toBe(400);
+    expect((await remove("config:0000000000000000.0")).status).toBe(404);
   });
 });

@@ -280,6 +280,35 @@ describe("ExtensionsSettings", () => {
     );
   });
 
+  it("confirms before permanently removing a disabled WebUI-managed plugin", async () => {
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    mockGetJson({
+      plugins: [
+        {
+          id: "config:bbbbbbbbbbbbbbbb.1",
+          name: "disabled-plug",
+          kind: "config",
+          enabled: false,
+          managedByWebui: true,
+        },
+      ],
+    });
+    render(<ExtensionsSettings activeSection="plugins" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "一覧から削除" }));
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("元設定（オプションを含む）は失われ、後で有効化しても復元できません。"),
+    );
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "DELETE",
+        "/api/extensions/plugins/config%3Abbbbbbbbbbbbbbbb.1",
+      ),
+    );
+  });
+
   it("toggles a skill and shows a single restart banner", async () => {
     render(<ExtensionsSettings activeSection="skills" />);
     const alphaSwitch = await screen.findByRole("switch", { name: "alpha を無効化" });

@@ -37,6 +37,7 @@ vi.mock("./jsonc-edit", async (importOriginal) => {
 
 import {
   addConfiguredPlugin,
+  deleteDisabledConfiguredPlugin,
   listPlugins,
   setPluginEnabled,
   updateConfiguredPlugin,
@@ -276,6 +277,42 @@ describe("configured plugin toggles", () => {
   it("rejects enabling an entry missing from state", async () => {
     await expect(
       setPluginEnabled("config:0000000000000000.0", true),
+    ).rejects.toMatchObject({ code: "not-found" });
+  });
+});
+
+describe("deleteDisabledConfiguredPlugin", () => {
+  it("permanently removes a disabled plugin's WebUI-local restore record", async () => {
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
+    await setPluginEnabled(target.id, false);
+    const disabled = (await listPlugins()).find(
+      (p) => p.name === "opencode-claude-auth@latest",
+    )!;
+
+    await deleteDisabledConfiguredPlugin(disabled.id);
+
+    expect(readState().disabledPlugins).toHaveLength(0);
+    expect(readConfig().plugin).not.toContain("opencode-claude-auth@latest");
+    expect(
+      (await listPlugins()).find(
+        (p) => p.name === "opencode-claude-auth@latest",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("rejects active, local, and unknown plugin ids", async () => {
+    const active = (await listPlugins()).find(
+      (p) => p.name === "opencode-claude-auth@latest",
+    )!;
+    await expect(deleteDisabledConfiguredPlugin(active.id)).rejects.toMatchObject({
+      code: "not-found",
+    });
+    await expect(deleteDisabledConfiguredPlugin("local:x.js")).rejects.toMatchObject({
+      code: "invalid-name",
+    });
+    await expect(
+      deleteDisabledConfiguredPlugin("config:0000000000000000.0"),
     ).rejects.toMatchObject({ code: "not-found" });
   });
 });

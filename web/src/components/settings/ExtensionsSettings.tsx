@@ -284,7 +284,27 @@ function useExtensionSection<T extends { id: string }>(
     [load],
   );
 
-  return { status, items, truncated, error, busyId, actionError, load, toggle };
+  const remove = useCallback(
+    async (item: T, deleteUrl: string): Promise<boolean> => {
+      setBusyId(item.id);
+      setActionError(null);
+      try {
+        await sendJson("DELETE", deleteUrl);
+        await load();
+        return true;
+      } catch (err) {
+        setActionError(
+          err instanceof Error ? err.message : "削除に失敗しました",
+        );
+        return false;
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [load],
+  );
+
+  return { status, items, truncated, error, busyId, actionError, load, toggle, remove };
 }
 
 function useHostStatus() {
@@ -843,8 +863,7 @@ export function ExtensionsSettings({
                     </div>
                     {p.managedByWebui && (
                       <p className="mt-0.5 text-[11px] text-faint">
-                        無効状態は WebUI のローカル管理情報です。opencode.jsonc
-                        を手動で変更した場合は設定が優先されます。
+                        無効状態と元設定は WebUI のローカル管理情報です。状態を一覧から削除すると元設定（オプションを含む）は失われ、再有効化しても復元できません。
                       </p>
                     )}
                   </div>
@@ -855,6 +874,28 @@ export function ExtensionsSettings({
                       onClick={() => editPlugin(p)}
                     >
                       編集
+                    </Button>
+                  )}
+                  {p.managedByWebui && !p.enabled && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      busy={plugins.busyId === p.id}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `無効なプラグイン「${p.name}」の保存済み状態を一覧から削除しますか？\n元設定（オプションを含む）は失われ、後で有効化しても復元できません。`,
+                          )
+                        ) {
+                          return;
+                        }
+                        void plugins.remove(
+                          p,
+                          `/api/extensions/plugins/${encodeURIComponent(p.id)}`,
+                        );
+                      }}
+                    >
+                      一覧から削除
                     </Button>
                   )}
                   <ExtensionSwitch
