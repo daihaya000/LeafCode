@@ -265,8 +265,9 @@ type Candidate = {
  * choice, `null` means "strongest candidate overall, no cost banding".
  *
  * The whole mode policy lives in this table and {@link MODE_VARIANT_ORDER} so
- * that tuning routing never touches the selection algorithm. The `cost` rows
- * are the pre-mode values and must stay byte-identical to avoid regressions.
+ * that tuning routing never touches the selection algorithm. The `cost`
+ * standard row intentionally prefers `cheap` first to make cost-priority mode
+ * aggressively economical even for small coding tasks.
  */
 const MODE_COST_ORDER: Record<
   AutoOptimizeMode,
@@ -274,7 +275,7 @@ const MODE_COST_ORDER: Record<
 > = {
   cost: {
     light: ["cheap", "mid", "premium"],
-    standard: ["mid", "cheap", "premium"],
+    standard: ["cheap", "mid", "premium"],
     heavy: null,
   },
   balanced: {

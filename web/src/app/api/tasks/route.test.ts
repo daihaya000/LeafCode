@@ -785,7 +785,7 @@ describe("POST /api/tasks auto model selection", () => {
     });
   });
 
-  it("picks a mid-cost model with a low effort for a standard prompt", async () => {
+  it("picks a cheap model with a low effort for a standard prompt in cost mode", async () => {
     const ocServer = await mockOc();
 
     await post({
@@ -796,7 +796,7 @@ describe("POST /api/tasks auto model selection", () => {
     });
 
     expect(promptBodyOf(ocServer)).toMatchObject({
-      model: { providerID: "anthropic", modelID: MID },
+      model: { providerID: "anthropic", modelID: CHEAP },
       variant: "low",
     });
   });
@@ -854,7 +854,7 @@ describe("POST /api/tasks auto model selection", () => {
     expect(commandCall?.[2]?.body).toMatchObject({
       command: "init",
       arguments: "",
-      model: `anthropic/${MID}`,
+      model: `anthropic/${CHEAP}`,
       variant: "low",
     });
     expect(promptBodyOf(ocServer)).toBeUndefined();
@@ -1183,7 +1183,7 @@ describe("POST /api/tasks auto model selection", () => {
     const expected = {
       cost: {
         light: [CHEAP, "minimal"],
-        standard: [MID, "low"],
+        standard: [CHEAP, "low"],
         heavy: [PREMIUM, "medium"],
       },
       balanced: {
@@ -1238,7 +1238,7 @@ describe("POST /api/tasks auto model selection", () => {
       });
 
       expect(promptBodyOf(ocServer)).toMatchObject({
-        model: { providerID: "anthropic", modelID: MID },
+        model: { providerID: "anthropic", modelID: CHEAP },
         variant: "low",
       });
     });
@@ -1345,9 +1345,10 @@ describe("POST /api/tasks auto model selection", () => {
         auto: true,
         files: [image, image, image],
       });
-      // Three attachments bump light → standard, which selects the mid model.
+      // Three attachments bump light → standard, but cost mode still prefers
+      // the cheap image-capable model.
       expect(promptBodyOf(threeImages)).toMatchObject({
-        model: { providerID: "anthropic", modelID: MID },
+        model: { providerID: "anthropic", modelID: CHEAP },
       });
     });
   });

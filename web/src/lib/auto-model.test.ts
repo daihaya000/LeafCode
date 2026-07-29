@@ -373,10 +373,10 @@ describe("chooseAutoModel tier selection", () => {
     });
   });
 
-  it("standard picks the highest scoring mid model", () => {
+  it("standard picks the highest scoring cheap model in cost mode", () => {
     expect(choose({ tier: "standard" })).toMatchObject({
       providerID: "alpha",
-      modelID: MID_MODEL,
+      modelID: CHEAP_MODEL,
       tier: "standard",
     });
   });
@@ -416,11 +416,11 @@ describe("chooseAutoModel tier selection", () => {
     expect(decision).toMatchObject({ modelID: PREMIUM_MODEL });
   });
 
-  it("standard falls back to cheap before premium", () => {
+  it("standard falls back to mid before premium when no cheap model exists", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [
-        provider("alpha", { [CHEAP_MODEL]: {} }),
+        provider("alpha", { [MID_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: {} }),
       ],
       connected: [],
@@ -428,10 +428,10 @@ describe("chooseAutoModel tier selection", () => {
       tier: "standard",
       hasImages: false,
     });
-    expect(decision).toMatchObject({ providerID: "alpha", modelID: CHEAP_MODEL });
+    expect(decision).toMatchObject({ providerID: "alpha", modelID: MID_MODEL });
   });
 
-  it("standard falls back to premium when neither mid nor cheap exists", () => {
+  it("standard falls back to premium when neither cheap nor mid exists", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("beta", { [PREMIUM_MODEL]: {} })],
@@ -754,7 +754,7 @@ describe("chooseAutoModel optimize mode cost bands", () => {
   const expected: Record<AutoOptimizeMode, Record<AutoTier, string>> = {
     cost: {
       light: CHEAP_MODEL,
-      standard: MID_MODEL,
+      standard: CHEAP_MODEL,
       heavy: PREMIUM_MODEL,
     },
     balanced: {
