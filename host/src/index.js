@@ -60,6 +60,7 @@ const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
 const LOCK_FILE = join(DATA_DIR, 'host.lock');
 const CONTROL_FILE = join(DATA_DIR, 'host-control.json');
+const BROWSER_BRIDGE_PAIRING_FILE = join(DATA_DIR, 'browser-bridge-pairing.json');
 /** Preferred OpenCode serve port. Override with OPENCODE_PORT. May bump on ghost sockets. */
 let OPENCODE_PORT = Number(process.env.OPENCODE_PORT) || 4096;
 let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
@@ -344,6 +345,29 @@ function browserBridgeEnvironment() {
     OPENCODE_WEBUI_BROWSER_BROKER: browserBridgeBroker.url,
     OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: browserBridgeBroker.internalToken,
   };
+}
+
+function loadBrowserBridgePairing() {
+  if (!existsSync(BROWSER_BRIDGE_PAIRING_FILE)) return null;
+  try {
+    const value = JSON.parse(readFileSync(BROWSER_BRIDGE_PAIRING_FILE, 'utf8'));
+    if (value && typeof value === 'object' && !Array.isArray(value)
+      && typeof value.origin === 'string' && /^chrome-extension:\/\/[a-z]{16,64}$/.test(value.origin)
+      && typeof value.deviceKey === 'string' && /^[A-Za-z0-9_-]{20,}$/.test(value.deviceKey)) {
+      return { origin: value.origin, deviceKey: value.deviceKey };
+    }
+  } catch {}
+  try { unlinkSync(BROWSER_BRIDGE_PAIRING_FILE); } catch {}
+  return null;
+}
+
+function saveBrowserBridgePairing(value) {
+  ensureDataDir();
+  if (!value) {
+    try { unlinkSync(BROWSER_BRIDGE_PAIRING_FILE); } catch {}
+    return;
+  }
+  writeFileSync(BROWSER_BRIDGE_PAIRING_FILE, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
 }
 
 /** @type {string | null} */
@@ -1906,6 +1930,12 @@ async function startBrowserBridgeBroker() {
   const broker = createBrowserBridgeBroker({
     internalToken: randomBytes(32).toString('base64url'),
     WebSocketServer,
+    persistedPairing: loadBrowserBridgePairing(),
+    onPairingChanged: (value) => {
+      try { saveBrowserBridgePairing(value); } catch (err) {
+        error(`Browser Bridge pairing state was not saved: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
   });
   await broker.listen(BROWSER_BRIDGE_PORT);
   browserBridgeBroker = broker;

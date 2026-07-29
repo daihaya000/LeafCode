@@ -130,6 +130,23 @@ test('pins reconnect authentication to the paired extension origin and device ke
   assert.equal(authenticated.connectionGeneration, 1);
 });
 
+test('restores a local pairing across Broker restart and clears it on extension revoke', async (t) => {
+  const persistedPairing = { origin: 'chrome-extension://abcdefghijklmnop', deviceKey: 'device_key_abcdefghijklmnopqrstuvwxyz' };
+  const changes = [];
+  const broker = await startBroker({ persistedPairing, onPairingChanged: (value) => changes.push(value) });
+  t.after(() => broker.close());
+  const socket = await authenticateSocket(broker.wsUrl, persistedPairing.origin, persistedPairing.deviceKey);
+  const closed = new Promise((resolve) => socket.once('close', resolve));
+  socket.send(JSON.stringify({ type: 'unpair' }));
+  await closed;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(changes, [null]);
+  const status = await fetch(`${broker.url}/internal/status`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(status.extension, { connected: false, paired: false });
+});
+
 test('closes an authenticated extension that exceeds the WebSocket message limit', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());

@@ -73,6 +73,8 @@ export function createBrowserBridgeBroker({
   snapshotRequestTimeoutMs = 10_000,
   approvalTimeoutMs = 30_000,
   commandTimeoutMs = 30_000,
+  persistedPairing = null,
+  onPairingChanged = () => {},
 } = {}) {
   if (typeof internalToken !== 'string' || internalToken.length < 32) {
     throw new TypeError('Browser Bridge internal token must be at least 32 characters');
@@ -84,10 +86,12 @@ export function createBrowserBridgeBroker({
   if (!Number.isSafeInteger(approvalTimeoutMs) || approvalTimeoutMs < 1 || !Number.isSafeInteger(commandTimeoutMs) || commandTimeoutMs < 1) {
     throw new TypeError('Invalid Broker command timeout');
   }
+  if (typeof onPairingChanged !== 'function') throw new TypeError('Invalid Broker pairing callback');
+  if (persistedPairing !== null && !validPersistedPairing(persistedPairing)) throw new TypeError('Invalid persisted pairing');
 
   let pairing = null;
-  let pairedOrigin = null;
-  let deviceKey = null;
+  let pairedOrigin = persistedPairing?.origin ?? null;
+  let deviceKey = persistedPairing?.deviceKey ?? null;
   let extensionSocket = null;
   let connectionGeneration = 0;
   const sharedTabs = new Map();
@@ -98,6 +102,12 @@ export function createBrowserBridgeBroker({
   const screenshots = new Map();
   const audit = new AuditLog({ now });
   let listening = false;
+
+  const persistPairing = () => {
+    Promise.resolve(onPairingChanged(
+      pairedOrigin && deviceKey ? { origin: pairedOrigin, deviceKey } : null,
+    )).catch(() => {});
+  };
 
   const status = () => ({
     extension: { connected: extensionSocket !== null, paired: pairedOrigin !== null },
@@ -281,6 +291,14 @@ export function createBrowserBridgeBroker({
       const message = parseMessage(raw.toString());
       if (!message) return rejectSocket(socket, 'invalid_message');
       if (authenticated) {
+        if (message.type === 'unpair' && Object.keys(message).length === 1) {
+          pairing = null;
+          pairedOrigin = null;
+          deviceKey = null;
+          persistPairing();
+          socket.close(1000, 'unpaired');
+          return;
+        }
         if (message.type === 'tab_shared' && Object.keys(message).length === 2 && validSharedTab(message.tab)) {
           sharedTabs.set(message.tab.id, message.tab);
           return;
@@ -340,6 +358,7 @@ export function createBrowserBridgeBroker({
         pairing = null;
         pairedOrigin = origin;
         deviceKey = createSecret();
+        persistPairing();
         socket.send(JSON.stringify({ type: 'paired', deviceKey }));
         return;
       }
@@ -433,6 +452,15 @@ function rejectSocket(socket, error) {
 
 function validOpaqueId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(value);
+}
+
+function validPersistedPairing(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === 2
+    && typeof value.origin === 'string'
+    && /^chrome-extension:\/\/[a-z]{16,64}$/.test(value.origin)
+    && typeof value.deviceKey === 'string'
+    && /^[A-Za-z0-9_-]{20,}$/.test(value.deviceKey);
 }
 
 function validSharedTab(tab) {

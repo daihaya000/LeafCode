@@ -160,6 +160,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
 
   async function revoke() {
     for (const tabId of Object.keys(state.sharedTabs)) send({ type: 'tab_unshared', tabId });
+    send({ type: 'unpair' });
     state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {} };
     await chromeApi.storage.local.remove(STORAGE_KEY);
     socket?.close();
