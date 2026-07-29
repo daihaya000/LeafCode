@@ -17,6 +17,23 @@
       sendResponse({ ok: true });
       return false;
     }
+    if (message?.type === 'browser_bridge_type') {
+      const target = Number.isSafeInteger(message.snapshotGeneration) && message.snapshotGeneration === activeGeneration ? refs.get(message.ref) : undefined;
+      if (!target) {
+        sendResponse({ ok: false, error: 'STALE_REFERENCE' });
+        return false;
+      }
+      if (target.type === 'file' || !['INPUT', 'TEXTAREA'].includes(target.tagName) || typeof message.text !== 'string') {
+        sendResponse({ ok: false, error: 'POLICY_BLOCKED' });
+        return false;
+      }
+      target.focus();
+      target.value = message.append === true ? `${target.value}${message.text}` : message.text;
+      target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: message.text }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      sendResponse({ ok: true });
+      return false;
+    }
     if (message?.type !== 'browser_bridge_collect_snapshot' || !Number.isSafeInteger(message.snapshotGeneration)) return false;
     const nodes = [];
     refs.clear();
