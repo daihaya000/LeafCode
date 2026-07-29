@@ -201,6 +201,14 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
     method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque' }),
   });
   assert.equal(consumed.status, 428);
+  const socketClosed = new Promise((resolve) => socket.once('close', resolve));
+  socket.close();
+  await socketClosed;
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const disconnectedStatus = await fetch(`${broker.url}/internal/status`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(disconnectedStatus, { extension: { connected: false, paired: true }, pendingApprovals: 0 });
 });
 
 function openSocket(url, origin, message) {

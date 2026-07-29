@@ -335,6 +335,14 @@ export function createBrowserBridgeBroker({
             extensionSocket = null;
             sharedTabs.clear();
             snapshots.clear();
+            screenshots.clear();
+            pendingApprovals.clear();
+            dispatchedCommands.clear();
+            for (const pending of pendingSnapshots.values()) {
+              clearTimeout(pending.timer);
+              pending.reject(new Error('extension disconnected'));
+            }
+            pendingSnapshots.clear();
           }
         });
         return;
