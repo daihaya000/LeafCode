@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/allowlist", () => ({
   assertAllowedDirectory: vi.fn((directory: string) => ({
@@ -8,8 +8,33 @@ vi.mock("@/lib/allowlist", () => ({
   })),
 }));
 
+// Keep the proxy tests off the real sqlite file: the manual-send hook looks up
+// session bindings and would otherwise open the user's actual database.
+const goalLoopHook = vi.hoisted(() => ({
+  workspaceIds: [] as string[],
+  outcomes: [] as ("noLoop" | "paused" | "conflict")[],
+  calls: [] as { workspaceId: string; sessionId: string }[],
+}));
+
+vi.mock("@/lib/db", () => ({
+  findWorkspaceIdsBySession: vi.fn(() => goalLoopHook.workspaceIds),
+}));
+
+vi.mock("@/lib/goal-loop", () => ({
+  pauseGoalLoopForManualSend: vi.fn(async (workspaceId: string, sessionId: string) => {
+    goalLoopHook.calls.push({ workspaceId, sessionId });
+    return goalLoopHook.outcomes.shift() ?? "noLoop";
+  }),
+}));
+
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { GET, POST } from "./route";
+
+beforeEach(() => {
+  goalLoopHook.workspaceIds = [];
+  goalLoopHook.outcomes = [];
+  goalLoopHook.calls = [];
+});
 
 function post(body: string, contentType = "application/json") {
   return POST(
@@ -840,5 +865,74 @@ describe("non-Latin-1 directory handling", () => {
     expect(headers.get("x-opencode-directory")).toBe(directory);
     fetchMock.mockRestore();
     vi.mocked(assertAllowedDirectory).mockReset();
+  });
+});
+
+describe("manual send pauses a live goal loop (docs/specs/goal-loop.md 是正 D)", () => {
+  it("pauses every workspace bound to the session before forwarding a prompt", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    goalLoopHook.workspaceIds = ["ws-1", "ws-2"];
+    goalLoopHook.outcomes = ["paused", "noLoop"];
+
+    const response = await sessionPost("prompt_async", {
+      parts: [{ type: "text", text: "hi" }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(goalLoopHook.calls).toEqual([
+      { workspaceId: "ws-1", sessionId: "session-1" },
+      { workspaceId: "ws-2", sessionId: "session-1" },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it("pauses before a /command send too", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    goalLoopHook.workspaceIds = ["ws-1"];
+    goalLoopHook.outcomes = ["paused"];
+
+    const response = await sessionPost("command", { command: "loop" });
+
+    expect(response.status).toBe(200);
+    expect(goalLoopHook.calls).toHaveLength(1);
+    fetchMock.mockRestore();
+  });
+
+  it("returns 409 without forwarding when the loop cannot be paused", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    goalLoopHook.workspaceIds = ["ws-1"];
+    goalLoopHook.outcomes = ["conflict"];
+
+    const response = await sessionPost("prompt_async", {
+      parts: [{ type: "text", text: "hi" }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("does not consult the goal loop for unrelated session reads", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify([])));
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/session/session-1/message?directory=C%3A%5C%5Crepo",
+      ) as never,
+      { params: Promise.resolve({ path: ["session", "session-1", "message"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(goalLoopHook.calls).toEqual([]);
+    fetchMock.mockRestore();
   });
 });

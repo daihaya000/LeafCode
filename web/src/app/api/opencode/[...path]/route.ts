@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { findWorkspaceIdsBySession } from "@/lib/db";
 import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
+import { pauseGoalLoopForManualSend } from "@/lib/goal-loop";
 import { isIntelligenceVariant } from "@/lib/model-variants";
 import { ocServer } from "@/lib/oc-server";
 import {
@@ -25,6 +27,20 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
  * (300s) so the abort—not the platform—produces the response.
  */
 const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
+
+/**
+ * A prompt/command written straight into a session. Any of these is a "manual
+ * send" from the goal loop's point of view and must pause a live loop first.
+ *
+ * The loop's own prompts never reach this proxy: `goal-loop.ts` calls the engine
+ * through `ocServer` directly, so this hook cannot pause the loop against
+ * itself. See docs/specs/goal-loop.md invariant I9.
+ */
+function manualSendSessionId(method: string, pathname: string): string | null {
+  if (method !== "POST") return null;
+  const match = /^\/session\/([^/]+)\/(?:prompt_async|prompt|command)$/.exec(pathname);
+  return match ? match[1] : null;
+}
 
 /** Match the synchronous, completion-blocking mutation endpoints. */
 function isLongRunningSyncMutation(method: string, pathname: string): boolean {
@@ -457,6 +473,26 @@ async function proxy(
           }
         } catch {
           // Preserve the existing behavior for non-JSON or malformed bodies.
+        }
+      }
+      // Pause any live goal loop on this session before letting a manual send
+      // through, so the send cannot interleave with a loop turn. The TaskView
+      // client also pauses first for immediate UI feedback; this server-side
+      // hook is the authoritative one and also covers other clients, direct API
+      // calls and the OpenCode TUI. See docs/specs/goal-loop.md 是正 D.
+      const manualSessionId = manualSendSessionId(req.method, pathname);
+      if (manualSessionId) {
+        for (const workspaceId of findWorkspaceIdsBySession(manualSessionId)) {
+          const outcome = await pauseGoalLoopForManualSend(workspaceId, manualSessionId);
+          if (outcome === "conflict") {
+            return NextResponse.json(
+              {
+                error:
+                  "Goalループを一時停止できないため手動送信を中止しました。状態が競合したため、現在の状態を確認してから再試行してください。",
+              },
+              { status: 409 },
+            );
+          }
         }
       }
     }

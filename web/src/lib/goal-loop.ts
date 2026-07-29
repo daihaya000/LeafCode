@@ -657,12 +657,24 @@ export function updateGoalLoopMaxTurns(
   return getGoalLoop(workspaceId);
 }
 
+/**
+ * Result of trying to pause a loop before a manual send.
+ * `noLoop` — nothing to pause (no loop, different session, or already stopped).
+ * `paused` — a live loop was paused; the manual send may proceed.
+ * `conflict` — a live loop could not be paused (another writer won the CAS);
+ * the caller must not send, or it would interleave with a loop turn.
+ */
+export type ManualSendPauseResult = "noLoop" | "paused" | "conflict";
+
+const MANUAL_SEND_PAUSABLE: GoalLoopStatus[] = ["queued", "running", "verifying_completed"];
+
 export async function pauseGoalLoopForManualSend(
   workspaceId: string,
   sessionId: string,
-): Promise<void> {
+): Promise<ManualSendPauseResult> {
   const loop = getGoalLoop(workspaceId);
-  if (!loop || loop.sessionId !== sessionId) return;
+  if (!loop || loop.sessionId !== sessionId) return "noLoop";
+  if (!MANUAL_SEND_PAUSABLE.includes(loop.status)) return "noLoop";
   const ws = getWorkspace(workspaceId);
   let tailMessageId = loop.lastMessageId;
   if (ws) {
@@ -690,6 +702,12 @@ export async function pauseGoalLoopForManualSend(
          AND status IN ('queued', 'running', 'verifying_completed')`,
     )
     .run(tailMessageId, now, workspaceId, sessionId, loop.revision);
+  // The CAS can fail when the scheduler advanced the loop while we were reading
+  // the transcript. Re-read rather than trusting `changes`: another writer may
+  // already have parked the loop in a state that is safe to send over.
+  const after = getGoalLoop(workspaceId);
+  if (!after || after.sessionId !== sessionId) return "noLoop";
+  return MANUAL_SEND_PAUSABLE.includes(after.status) ? "conflict" : "paused";
 }
 
 /**

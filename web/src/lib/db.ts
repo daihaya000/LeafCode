@@ -329,6 +329,23 @@ export function listSessionBindings(workspaceId: string): SessionBindingRow[] {
 }
 
 /**
+ * Workspaces bound to an OpenCode session id, newest activity first.
+ *
+ * `session_bindings` is keyed on `(workspace_id, opencode_session_id)`, so one
+ * session can legitimately be bound to more than one workspace. Used by the
+ * OpenCode proxy to find the goal loops that a manual send must pause.
+ */
+export function findWorkspaceIdsBySession(opencodeSessionId: string): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT workspace_id FROM session_bindings WHERE opencode_session_id = ?
+       ORDER BY updated_at DESC`,
+    )
+    .all(opencodeSessionId) as { workspace_id: string }[];
+  return rows.map((row) => row.workspace_id);
+}
+
+/**
  * Insert a workspace row verbatim (preserving id/status/created_at), skipping
  * when the id already exists. Used to restore workspaces from a project-local
  * manifest without clobbering live rows.
