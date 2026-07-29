@@ -1,0 +1,17 @@
+{
+  "name": "opencode-webui-browser-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Browser Bridge broker, MCP server, and Chrome/Brave extension assets",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "ws": "8.21.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

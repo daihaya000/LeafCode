@@ -32,6 +32,10 @@ scripts/launcher/*.pdb
 web/playwright-report/
 web/.playwright/
 
+# Browser Bridge local dependencies and transient captures
+browser-bridge/node_modules/
+browser-bridge/.screenshots/
+
 # OpenCode loop runtime state (per-session, machine-local)
 .opencode/opencode-loop/
 
