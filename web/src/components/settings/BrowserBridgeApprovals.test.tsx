@@ -48,6 +48,20 @@ describe("BrowserBridgeApprovals", () => {
     expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
   });
 
+  it("forwards a deny decision and refreshes the expired card to empty state", async () => {
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_navigate", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", decision: "deny" }))
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }));
+    render(<BrowserBridgeApprovals />);
+    fireEvent.click(await screen.findByRole("button", { name: "拒否" }));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledWith(
+      "/api/host/browser-bridge/approvals/approval_abcdefghijklmnopqrstuvwxyz",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "deny" }) }),
+    ));
+    expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
+  });
+
   it("shows a decision error and re-enables the approval actions", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
