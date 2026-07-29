@@ -66,6 +66,33 @@ test(
 );
 
 test(
+  "Launcher.cs runs start-webui.bat when the repo path contains a cmd metacharacter",
+  { skip: !isWindows || !csc },
+  () => {
+    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-&-"));
+    const launcherDir = join(fakeRepo, "scripts", "launcher");
+    mkdirSync(launcherDir, { recursive: true });
+    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
+
+    writeFileSync(
+      join(fakeRepo, "start-webui.bat"),
+      "@echo off\r\necho METACHAR_PATH_RAN\r\nexit /b 23\r\n",
+    );
+
+    try {
+      const compile = compileLauncher(exePath);
+      assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
+
+      const run = spawnSync(exePath, [], { encoding: "utf8" });
+      assert.equal(run.status, 23, `stderr: ${run.stderr}`);
+      assert.match(run.stdout, /METACHAR_PATH_RAN/);
+    } finally {
+      rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   "Launcher.cs sets OPENCODE_WEBUI_LAUNCHER=1 for the batch file it runs (breaks start-webui.bat's re-routing loop)",
   { skip: !isWindows || !csc },
   () => {

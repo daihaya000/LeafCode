@@ -45,7 +45,13 @@ internal static class Launcher
         ProcessStartInfo psi = new ProcessStartInfo
         {
             FileName = "cmd.exe",
-            Arguments = "/c \"" + batPath + "\"",
+            // Prefix the quoted batch path with CALL. If the command passed to
+            // cmd /c starts with a quote, cmd strips that quote pair before it
+            // parses metacharacters. A repo path containing '&' then gets split
+            // into separate commands and the launcher can exit without running
+            // start-webui.bat. CALL keeps the path's quotes intact while cmd
+            // parses the command.
+            Arguments = "/d /c call \"" + batPath + "\"",
             WorkingDirectory = repoRoot,
             UseShellExecute = false,
         };
