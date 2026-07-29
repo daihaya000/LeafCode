@@ -513,7 +513,7 @@ test.describe("home composer", () => {
       .getByRole("listbox", { name: "モデル" })
       .getByRole("option")
       .allTextContents();
-    expect(options[0]).toBe("Auto（コスト最適）");
+    expect(options[0]).toBe("Auto");
   });
 
   test("hides the intelligence selector while Auto is selected", async ({
@@ -529,7 +529,7 @@ test.describe("home composer", () => {
 
     const model = page.getByRole("button", { name: "モデル" });
     await model.click();
-    await pickOption(page, "Auto（コスト最適）");
+    await pickOption(page, "Auto");
     await expect(model).toHaveAttribute("value", "auto");
     await expect(intelligence).toHaveCount(0);
   });
@@ -555,7 +555,7 @@ test.describe("home composer", () => {
     await prompt.fill("これは何");
     const model = page.getByRole("button", { name: "モデル" });
     await model.click();
-    await pickOption(page, "Auto（コスト最適）");
+    await pickOption(page, "Auto");
     await expect(model).toHaveAttribute("value", "auto");
 
     const optimize = page.getByRole("button", { name: "Auto の最適化" });

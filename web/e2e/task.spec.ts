@@ -736,9 +736,9 @@ test("follow-up composer shows optimize selector for Auto and sends resolved mod
   // <option> elements would otherwise match the same role.
   const modelMenu = page.getByRole("listbox", { name: "モデル" });
   await expect(modelMenu.getByRole("option").first()).toHaveText(
-    /Auto（コスト最適）/,
+    "Auto",
   );
-  await modelMenu.getByRole("option", { name: /Auto（コスト最適）/ }).click();
+  await modelMenu.getByRole("option", { name: "Auto" }).click();
 
   // Auto owns the effort, so the manual intelligence selector disappears and
   // the optimize selector takes its place.

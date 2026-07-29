@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModelSelect } from "./ModelSelect";
 
 const options = [
+  { value: "auto", label: "Auto", group: "Auto" },
   { value: "openai::gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
   { value: "anthropic::claude", label: "Claude", group: "Anthropic" },
 ];
@@ -56,5 +57,13 @@ describe("ModelSelect", () => {
     const listbox = screen.getByRole("listbox", { name: "モデル" });
     expect(listbox.style.left).toBe("296px");
     expect(listbox.style.top).toBe("176px");
+  });
+
+  it("uses the OpenCodeWebUI icon for Auto", () => {
+    render(<ModelSelect value="auto" options={options} onChange={vi.fn()} />);
+
+    expect(
+      screen.getByRole("button", { name: "モデル" }).querySelector("img")?.getAttribute("src"),
+    ).toBe("/icon-192.png");
   });
 });

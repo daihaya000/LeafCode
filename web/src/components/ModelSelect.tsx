@@ -20,7 +20,10 @@ function providerIDFromValue(value: string): string {
 
 function ModelProviderIcon({ value }: { value: string }) {
   const providerID = providerIDFromValue(value);
-  const src = providerIconSrcForOpencodeId(providerID);
+  const src =
+    value === "auto"
+      ? "/icon-192.png"
+      : providerIconSrcForOpencodeId(providerID);
   const [broken, setBroken] = useState(false);
 
   useEffect(() => setBroken(false), [src]);

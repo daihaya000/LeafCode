@@ -2019,7 +2019,7 @@ describe("TaskView", () => {
     async function selectAuto() {
       fireEvent.click(screen.getByRole("button", { name: "モデル" }));
       fireEvent.click(
-        await screen.findByRole("option", { name: /Auto（コスト最適）/ }),
+        await screen.findByRole("option", { name: "Auto" }),
       );
     }
 
@@ -2057,7 +2057,7 @@ describe("TaskView", () => {
       fireEvent.click(screen.getByRole("button", { name: "モデル" }));
       const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
       const options = within(modelMenu).getAllByRole("option");
-      expect(options[0].textContent).toContain("Auto（コスト最適）");
+      expect(options[0].textContent).toContain("Auto");
     });
 
     it("treats an explicit empty connected list as no available providers", async () => {
@@ -2070,7 +2070,7 @@ describe("TaskView", () => {
       const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
       expect(within(modelMenu).getAllByRole("option")).toHaveLength(1);
       fireEvent.click(
-        within(modelMenu).getByRole("option", { name: /Auto（コスト最適）/ }),
+        within(modelMenu).getByRole("option", { name: "Auto" }),
       );
       await typeAndSend("なぜ失敗するのか");
 

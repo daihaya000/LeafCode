@@ -1211,7 +1211,7 @@ describe("HomeView auto model", () => {
     const trigger = await screen.findByLabelText("モデル");
     fireEvent.click(trigger);
     fireEvent.click(
-      await screen.findByRole("option", { name: /Auto（コスト最適）/ }),
+      await screen.findByRole("option", { name: "Auto" }),
     );
     await waitFor(() =>
       expect((trigger as HTMLButtonElement).value).toBe("auto"),
@@ -1273,7 +1273,7 @@ describe("HomeView auto model", () => {
     fireEvent.click(trigger);
 
     const options = await screen.findAllByRole("option");
-    expect(options[0].textContent).toContain("Auto（コスト最適）");
+    expect(options[0].textContent).toContain("Auto");
     // Group headings are plain divs; the Auto group must precede the provider.
     const listbox = screen.getByRole("listbox", { name: "モデル" });
     const headings = Array.from(
@@ -1437,7 +1437,7 @@ describe("HomeView auto model", () => {
     await waitFor(() =>
       expect((trigger as HTMLButtonElement).value).toBe("auto"),
     );
-    expect(trigger.textContent).toContain("Auto（コスト最適）");
+    expect(trigger.textContent).toContain("Auto");
   });
 
   it("passes the resolved model and variant to the goal loop", async () => {
