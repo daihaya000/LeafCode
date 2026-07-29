@@ -1895,6 +1895,10 @@ export function TaskView({ taskId }: { taskId: string }) {
     stickRef.current = true;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     try {
+      // Pause here so the composer reports the conflict before the send is
+      // attempted. The OpenCode proxy pauses again server-side and answers 409
+      // if it cannot — that hook is authoritative and covers other clients, so
+      // this one only exists for immediate feedback. See docs/specs/goal-loop.md 是正 D.
       if (
         goalLoop?.status === "queued" ||
         goalLoop?.status === "running" ||

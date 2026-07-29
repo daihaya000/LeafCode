@@ -117,6 +117,59 @@ describe("GoalLoopPanel", () => {
     expect(screen.getByRole("button", { name: "Goalループを再開" })).toBeTruthy();
   });
 
+  it("explains what resuming will do for each pause reason", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({
+          status: "paused",
+          pauseReason: "unknown_delivery",
+          error: "送信の送達を確認できませんでした。",
+        })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/重複送信は行いません/)).toBeTruthy();
+    cleanup();
+
+    // A verification rejection resumes very differently from a delivery-unknown
+    // pause, so the hint must not be the same text.
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "paused", pauseReason: "verification_rejected" })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/却下回数をリセット/)).toBeTruthy();
+  });
+
+  it("omits the pause hint while the loop is running", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "running", pauseReason: "user" })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/再開すると次のターンを送信します/)).toBeNull();
+  });
+
+  it("says the turn budget counts goal turns only", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "verifying_completed", turnCount: 3 })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByLabelText(
+        "Goalループ状態: 完了検証中、Goalターン 3 / 10（完了検証ターンは含みません）",
+      ),
+    ).toBeTruthy();
+  });
+
   it("does not show stop button when completed/blocked/stopped", () => {
     for (const status of ["completed", "blocked", "stopped"] as const) {
       render(

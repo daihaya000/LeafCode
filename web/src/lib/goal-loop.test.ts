@@ -282,6 +282,28 @@ describe("goalLoopTestSeams", () => {
     });
   });
 
+  describe("normalizeAcceptance", () => {
+    it("treats a missing list as empty and trims blank entries", () => {
+      expect(goalLoopTestSeams.normalizeAcceptance(undefined)).toEqual([]);
+      expect(goalLoopTestSeams.normalizeAcceptance([" tests pass ", "", "  "])).toEqual([
+        "tests pass",
+      ]);
+    });
+
+    it("rejects instead of truncating past the item cap", () => {
+      const ten = Array.from({ length: 10 }, (_, i) => `criterion ${i}`);
+      expect(goalLoopTestSeams.normalizeAcceptance(ten)).toHaveLength(10);
+      // Silently dropping the 11th would verify against a different contract
+      // than the caller submitted, so the request must fail instead.
+      expect(goalLoopTestSeams.normalizeAcceptance([...ten, "criterion 10"])).toBeNull();
+    });
+
+    it("rejects non-array and non-string input", () => {
+      expect(goalLoopTestSeams.normalizeAcceptance("tests pass")).toBeNull();
+      expect(goalLoopTestSeams.normalizeAcceptance([1])).toBeNull();
+    });
+  });
+
   describe("transcriptIdleFor", () => {
     const quiet = 5_000;
 

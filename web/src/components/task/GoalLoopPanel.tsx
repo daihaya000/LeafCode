@@ -21,6 +21,29 @@ const STATUS_LABEL: Record<GoalLoopDto["status"], string> = {
   stopped: "停止",
 };
 
+/**
+ * Why the loop is paused, stated as what resuming will do. `error` alone was
+ * ambiguous — a delivery-unknown pause and a manual-send pause read the same to
+ * the user but resume very differently.
+ */
+const PAUSE_REASON_HINT: Record<Exclude<GoalLoopDto["pauseReason"], "">, string> = {
+  user: "再開すると次のターンを送信します。",
+  manual_send: "手動送信を検出しました。再開すると次のターンを送信します。",
+  turn_limit: "最大ターン数に達しました。上限を増やすと再開できます。",
+  unreadable_result:
+    "応答から結果を読み取れませんでした。再開すると同じターンを送り直します。",
+  turn_timeout: "応答が確認できませんでした。再開すると同じターンを送り直します。",
+  unknown_delivery:
+    "送信の到達を確認できませんでした。再開時に送信済みかを判定し、重複送信は行いません。",
+  transcript_unreadable:
+    "会話履歴を読み取れませんでした。再開時に読み直します。",
+  boundary_lost: "会話履歴の基準点を見失いました。再開時に基準点を取り直します。",
+  verification_rejected:
+    "完了報告が検証で否認されました。再開すると却下回数をリセットして作業を続けます。",
+  scheduler_error:
+    "OpenCode の呼び出しに失敗しました。再開すると同じ位置から再試行します。",
+};
+
 /** badge class for each status */
 function statusBadgeClass(status: GoalLoopDto["status"]): string {
   switch (status) {
@@ -101,7 +124,13 @@ export function GoalLoopPanel({
   const showToggle = reversed.length > DEFAULT_VISIBLE;
 
   const badgeText = `${STATUS_LABEL[loop.status]} ${loop.turnCount}/${loop.maxTurns}`;
-  const badgeAria = `Goalループ状態: ${STATUS_LABEL[loop.status]}、ターン ${loop.turnCount} / ${loop.maxTurns}`;
+  // `turnCount` counts goal turns only; completion-verification turns are not
+  // charged to the budget, so say so rather than letting the ratio look stuck.
+  const badgeAria = `Goalループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${loop.turnCount} / ${loop.maxTurns}（完了検証ターンは含みません）`;
+  const pauseHint =
+    loop.status === "paused" && loop.pauseReason !== ""
+      ? PAUSE_REASON_HINT[loop.pauseReason]
+      : null;
 
   const commitMaxTurns = () => {
     if (editingMaxTurns == null) return;
@@ -284,7 +313,11 @@ export function GoalLoopPanel({
           className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning"
         >
           {loop.error}
+          {pauseHint && <p className="mt-1 text-muted">{pauseHint}</p>}
         </div>
+      )}
+      {!loop.error && pauseHint && (
+        <p className="mt-2 text-xs text-muted">{pauseHint}</p>
       )}
       {loop.blockedReason && (
         <div

@@ -134,13 +134,19 @@ const SCHEDULER_INTERVAL_MS = 2_500;
 /**
  * `prompt_async` normally returns 202 immediately, but under engine load the
  * prompt construction can take longer. 60s was too tight and surfaced raw
- * "The operation was aborted due to timeout" errors on busy loops; give room
- * up to the BFF's long-running mutation ceiling (290s) so a legitimate prompt
- * is not aborted mid-send.
+ * "The operation was aborted due to timeout" errors on busy loops, so allow
+ * 120s. Still well under the BFF's long-running mutation ceiling (290s), and a
+ * send that exceeds it pauses with `prompt_unknown` rather than double-sending.
  */
 const PROMPT_TIMEOUT_MS = 120_000;
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
+/**
+ * Aborting is a best-effort courtesy on the stop path. It must not inherit
+ * PROMPT_TIMEOUT_MS: a wedged engine would then hold the stop request for two
+ * minutes even though the loop row is already terminal.
+ */
+const ABORT_TIMEOUT_MS = 10_000;
 /** Bound transient OpenCode failures so one scheduler tick never retries forever. */
 const OPENCODE_RETRY_ATTEMPTS = 3;
 const OPENCODE_RETRY_DELAY_MS = 100;
@@ -291,7 +297,10 @@ function normalizeAcceptance(value: unknown): string[] | null {
     if (trimmed.length > MAX_ACCEPTANCE_CHARS) return null;
     out.push(trimmed);
   }
-  return out.slice(0, MAX_ACCEPTANCE_ITEMS);
+  // Reject rather than silently truncate: dropping acceptance criteria would let
+  // the loop verify against a different contract than the caller submitted.
+  if (out.length > MAX_ACCEPTANCE_ITEMS) return null;
+  return out;
 }
 
 function latestMessageId(messages: MessageWithParts[]): string | null {
@@ -621,7 +630,7 @@ export async function updateGoalLoopStatus(
     if (ws && stopped.changes > 0) {
       await ocServer(ws.absolute_path, `/session/${loop.sessionId}/abort`, {
         method: "POST",
-        timeoutMs: PROMPT_TIMEOUT_MS,
+        timeoutMs: ABORT_TIMEOUT_MS,
       }).catch(() => undefined);
     }
   }
@@ -1436,6 +1445,7 @@ export function stopGoalLoopSchedulerForTest(): void {
 export const goalLoopTestSeams = {
   buildGoalPrompt,
   buildVerificationPrompt,
+  normalizeAcceptance,
   normalizeStructured,
   latestMessageId,
   finalAssistantAfter,
