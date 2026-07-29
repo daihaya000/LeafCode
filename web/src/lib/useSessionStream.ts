@@ -114,6 +114,21 @@ function normalizeCancelledToolPart(part: Part): Part {
 }
 
 /**
+ * Consecutive REST idle snapshots required before overriding a live-SSE busy
+ * state. Reconcile runs every `ACTIVE_SESSION_RECONCILE_MS`, so this is a few
+ * seconds of agreement — enough to rule out a single lagging snapshot.
+ */
+export const STUCK_BUSY_IDLE_STREAK = 3;
+
+/**
+ * Session-scoped SSE silence required before overriding a live-SSE busy state.
+ * Multi-step turns emit message/part events continuously, so this much quiet
+ * plus repeated REST idle means the turn really ended and the terminal
+ * `session.idle` / `session.status` event was dropped.
+ */
+export const STUCK_BUSY_QUIET_MS = 12_000;
+
+/**
  * Decide whether a REST `/session/status` snapshot should replace local status.
  * After sendPrompt/sendCommand we hold `pendingMutation` until SSE busy/idle; if
  * those events are missed, REST must still unlock the composer and clear the flag.
@@ -124,6 +139,10 @@ export function resolveResyncStatus(opts: {
   connection: ConnectionState;
   currentType: SessionStatus["type"] | undefined | null;
   next: SessionStatus;
+  /** Consecutive REST idle snapshots seen while local status stayed busy. */
+  idleStreak?: number;
+  /** Time since the last SSE event scoped to this session. */
+  sessionQuietMs?: number;
 }): { apply: boolean; clearPending: boolean } {
   if (opts.pendingMutation) {
     const clearPending =
@@ -133,10 +152,19 @@ export function resolveResyncStatus(opts: {
     return { apply: true, clearPending };
   }
   const cur = opts.currentType;
+  // A heartbeating SSE connection can keep reporting "live" while the engine's
+  // terminal idle event is lost (proxy buffering / dropped events). Without an
+  // escape hatch the view stays "working" until the user reloads the browser,
+  // so repeated REST idle plus session-scoped SSE silence wins over the
+  // stale-idle suppression below.
+  const stuckBusy =
+    (opts.idleStreak ?? 0) >= STUCK_BUSY_IDLE_STREAK &&
+    (opts.sessionQuietMs ?? 0) >= STUCK_BUSY_QUIET_MS;
   // While SSE is live, REST can lag and report idle mid-turn. After SSE
   // disconnect/reconnect or abort, preferRestStatus trusts the REST snapshot.
   const staleIdle =
     !opts.preferRestStatus &&
+    !stuckBusy &&
     opts.connection === "live" &&
     (cur === "busy" || cur === "retry") &&
     opts.next.type === "idle";
@@ -565,6 +593,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const connectionRef = useRef<ConnectionState>(state.connection);
   /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
   const preferRestStatusRef = useRef(false);
+  /** Consecutive REST idle snapshots seen while local status stayed busy. */
+  const idleStreakRef = useRef(0);
+  /** Last SSE event scoped to this session — proves the turn is still running. */
+  const sessionActivityAtRef = useRef(Date.now());
   /** Track safety net timers to clear on unmount/session change */
   const safetyNetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageCountRef = useRef(state.messages.length);
@@ -578,6 +610,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     dispatch({ kind: "reset", scopeKey, cached: readCachedSessionState(scopeKey) });
     pendingMutationRef.current = false;
     preferRestStatusRef.current = false;
+    idleStreakRef.current = 0;
+    sessionActivityAtRef.current = Date.now();
     // Clear safety net timer on session change to prevent cross-session resync
     if (safetyNetTimerRef.current) {
       clearTimeout(safetyNetTimerRef.current);
@@ -640,17 +674,32 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         directory,
       );
       if (stale()) return;
-      if (statuses[sid]) {
-        const next = statuses[sid]!;
+      const restStatus = statuses[sid];
+      const localBusy =
+        statusRef.current?.type === "busy" ||
+        statusRef.current?.type === "retry";
+      // `/session/status` omits sessions the engine is no longer tracking, so a
+      // missing entry means "not running" (the server-side task-status
+      // derivation treats it the same). Synthesize idle only when a local busy
+      // state would otherwise never clear, so a just-sent prompt keeps its lock.
+      const next: SessionStatus | undefined =
+        restStatus ??
+        (localBusy && !pendingMutationRef.current ? { type: "idle" } : undefined);
+      if (next) {
+        if (next.type === "idle" && localBusy) idleStreakRef.current += 1;
+        else idleStreakRef.current = 0;
         const decision = resolveResyncStatus({
           pendingMutation: pendingMutationRef.current,
           preferRestStatus: preferRestStatusRef.current,
           connection: connectionRef.current,
           currentType: statusRef.current?.type,
           next,
+          idleStreak: idleStreakRef.current,
+          sessionQuietMs: Date.now() - sessionActivityAtRef.current,
         });
         if (decision.clearPending) pendingMutationRef.current = false;
         if (decision.apply) {
+          idleStreakRef.current = 0;
           dispatch({ kind: "status", status: next });
           // Clear error banner only once the turn is actually idle — a successful
           // message fetch must not hide session.error while status is still busy.
@@ -885,6 +934,16 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         unknown
       >;
       const sid = sessionRef.current;
+      // Any event that belongs to this session proves the turn is still moving,
+      // so it resets the stuck-busy recovery window in `resync`.
+      const eventSid =
+        (props.sessionID as string | undefined) ??
+        (props.info as { sessionID?: string } | undefined)?.sessionID ??
+        (props.part as { sessionID?: string } | undefined)?.sessionID;
+      if (sid && eventSid === sid) {
+        sessionActivityAtRef.current = Date.now();
+        idleStreakRef.current = 0;
+      }
 
       if (type === "message.updated") {
         const info = props.info as MessageInfo | undefined;
@@ -1432,6 +1491,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (!directory || !sid) throw new Error("session not ready");
       // Guard resync init for the whole POST window, not only after success.
       pendingMutationRef.current = true;
+      // Start the stuck-busy recovery window at the send, not at the last event
+      // of the previous turn.
+      sessionActivityAtRef.current = Date.now();
+      idleStreakRef.current = 0;
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
@@ -1493,6 +1556,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       const sid = opts?.sessionId ?? sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
       pendingMutationRef.current = true;
+      // Start the stuck-busy recovery window at the send, not at the last event
+      // of the previous turn.
+      sessionActivityAtRef.current = Date.now();
+      idleStreakRef.current = 0;
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
       const body: Record<string, unknown> = {

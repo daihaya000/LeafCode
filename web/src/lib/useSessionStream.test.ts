@@ -9,7 +9,10 @@ import {
   SESSION_COMMAND_TIMEOUT_MS,
   SESSION_MUTATION_TIMEOUT_MS,
   stripGoalLoopJsonBlock,
+  STUCK_BUSY_IDLE_STREAK,
+  STUCK_BUSY_QUIET_MS,
 } from "./useSessionStream";
+import { SSE_SILENCE_MS } from "./sse-health";
 import type { MessageWithParts } from "./types";
 
 describe("SESSION_COMMAND_TIMEOUT_MS", () => {
@@ -105,6 +108,54 @@ describe("resolveResyncStatus", () => {
       next: { type: "busy" },
     });
     expect(trusted).toEqual({ apply: true, clearPending: false });
+  });
+
+  it("recovers a stuck busy when REST keeps reporting idle and SSE went quiet", () => {
+    // Regression: a heartbeating SSE connection that dropped the terminal
+    // session.idle event left the view "working" until a browser reload.
+    const decision = resolveResyncStatus({
+      pendingMutation: false,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "busy",
+      next: { type: "idle" },
+      idleStreak: STUCK_BUSY_IDLE_STREAK,
+      sessionQuietMs: STUCK_BUSY_QUIET_MS,
+    });
+    expect(decision).toEqual({ apply: true, clearPending: false });
+  });
+
+  it("keeps suppressing stale idle until both the streak and the quiet period pass", () => {
+    const tooFewSnapshots = resolveResyncStatus({
+      pendingMutation: false,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "busy",
+      next: { type: "idle" },
+      idleStreak: STUCK_BUSY_IDLE_STREAK - 1,
+      sessionQuietMs: STUCK_BUSY_QUIET_MS * 10,
+    });
+    expect(tooFewSnapshots).toEqual({ apply: false, clearPending: false });
+
+    const stillStreaming = resolveResyncStatus({
+      pendingMutation: false,
+      preferRestStatus: false,
+      connection: "live",
+      currentType: "retry",
+      next: { type: "idle" },
+      idleStreak: STUCK_BUSY_IDLE_STREAK * 10,
+      sessionQuietMs: STUCK_BUSY_QUIET_MS - 1,
+    });
+    expect(stillStreaming).toEqual({ apply: false, clearPending: false });
+  });
+
+  it("keeps the stuck-busy window long enough to outlast a normal multi-step gap", () => {
+    expect(STUCK_BUSY_QUIET_MS).toBeGreaterThanOrEqual(
+      ACTIVE_SESSION_RECONCILE_MS * STUCK_BUSY_IDLE_STREAK,
+    );
+    // Must trip well before the SSE silence watchdog forces a reconnect, so a
+    // finished turn is not stuck for a whole silence window.
+    expect(STUCK_BUSY_QUIET_MS).toBeLessThan(SSE_SILENCE_MS);
   });
 });
 
