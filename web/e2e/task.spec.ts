@@ -720,7 +720,7 @@ test("follow-up composer omits variant when default is selected", async ({
   expect(promptBody).not.toHaveProperty("variant");
 });
 
-test("follow-up composer offers Auto first and resolves it client-side", async ({
+test("follow-up composer shows optimize selector for Auto and sends resolved model", async ({
   page,
 }) => {
   let promptBody: Record<string, unknown> | null = null;
@@ -740,10 +740,19 @@ test("follow-up composer offers Auto first and resolves it client-side", async (
   );
   await modelMenu.getByRole("option", { name: /Auto（コスト最適）/ }).click();
 
-  // Auto owns the effort, so the manual intelligence selector disappears.
+  // Auto owns the effort, so the manual intelligence selector disappears and
+  // the optimize selector takes its place.
   await expect(
     page.getByRole("button", { name: "インテリジェンス", exact: true }),
   ).toBeHidden();
+  const optimize = page.getByRole("button", {
+    name: "Auto の最適化",
+    exact: true,
+  });
+  await expect(optimize).toBeVisible();
+  await optimize.click();
+  await page.getByRole("option", { name: "バランス", exact: true }).click();
+  await expect(optimize).toHaveAttribute("value", "balanced");
 
   const composer = page.getByPlaceholder("フォローアップを送信…");
   await expect(composer).toBeEditable();
@@ -751,14 +760,13 @@ test("follow-up composer offers Auto first and resolves it client-side", async (
   await page.getByRole("button", { name: "送信" }).click();
 
   await expect.poll(() => promptBody).not.toBeNull();
-  // The only connected model wins; "auto" itself is never forwarded.
+  // Follow-ups resolve Auto client-side; the OpenCode prompt_async request
+  // receives the concrete selection, not the autoOptimize mode itself.
   expect(promptBody).toMatchObject({
     model: { providerID: "openai", modelID: "gpt-5.6-sol" },
     variant: "low",
   });
-  await expect(
-    page.getByText(/^Auto: openai\/gpt-5\.6-sol · effort low —/),
-  ).toBeVisible();
+  expect(promptBody).not.toHaveProperty("autoOptimize");
 });
 
 // Regression: the revert ("巻き戻し") button lives in the header action bar,

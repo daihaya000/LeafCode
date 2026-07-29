@@ -534,7 +534,9 @@ test.describe("home composer", () => {
     await expect(intelligence).toHaveCount(0);
   });
 
-  test("sends auto instead of a model in the POST body", async ({ page }) => {
+  test("shows optimize selector for Auto and sends its mode in the POST body", async ({
+    page,
+  }) => {
     let postedBody: Record<string, unknown> | null = null;
     await mockVariantProvider(page);
     await page.route("**/api/tasks", async (route) => {
@@ -555,9 +557,19 @@ test.describe("home composer", () => {
     await model.click();
     await pickOption(page, "Auto（コスト最適）");
     await expect(model).toHaveAttribute("value", "auto");
+
+    const optimize = page.getByRole("button", { name: "Auto の最適化" });
+    await expect(optimize).toBeVisible();
+    await optimize.click();
+    await pickOption(page, "知能優先");
+    await expect(optimize).toHaveAttribute("value", "intelligence");
+
     await page.getByRole("button", { name: "タスク開始" }).click();
     await expect.poll(() => postedBody).not.toBeNull();
-    expect(postedBody).toMatchObject({ auto: true });
+    expect(postedBody).toMatchObject({
+      auto: true,
+      autoOptimize: "intelligence",
+    });
     expect(postedBody).not.toHaveProperty("model");
     expect(postedBody).not.toHaveProperty("variant");
   });
