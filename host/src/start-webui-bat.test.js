@@ -74,7 +74,7 @@ function createSandbox(options = {}) {
   }
 
   if (options.withNode !== false) {
-    writeBat(join(bin, "node.cmd"), [
+    const nodeScript = [
       'if "%~1"=="scripts\\production-webui-build-guard.mjs" exit /b %SETUP_TEST_GUARD_EXIT%',
       'if "%~1"=="-p" goto :version_query',
       'if "%~1"=="src\\index.js" goto :host_tail',
@@ -87,7 +87,14 @@ function createSandbox(options = {}) {
       ":host_tail",
       'type nul > "%SETUP_TEST_ROOT%\\hoststarted.txt"',
       "exit /b %SETUP_TEST_HOST_EXIT%",
-    ].join("\n"));
+    ].join("\n");
+    writeBat(join(bin, "node.cmd"), nodeScript);
+    if (options.standardNodePath) {
+      const standardNodePath = join(root, "nodejs");
+      mkdirSync(standardNodePath);
+      writeBat(join(standardNodePath, "node.cmd"), nodeScript);
+      writeFileSync(join(standardNodePath, "node.exe"), "", "ascii");
+    }
   }
 
   writeBat(join(bin, "opencode.cmd"), [
@@ -117,7 +124,8 @@ function createSandbox(options = {}) {
   const env = {
     ...process.env,
     PATH: `${bin};${join(process.env.SystemRoot ?? "C:\\Windows", "System32")}`,
-    PATHEXT: ".COM;.EXE;.BAT;.CMD",
+    ProgramFiles: root,
+    PATHEXT: options.standardNodePath ? ".CMD;.EXE;.BAT;.COM" : ".COM;.EXE;.BAT;.CMD",
     // Skip the native-launcher routing block: it is covered separately by
     // start-webui-launcher-routing.test.js and is orthogonal to the setup
     // logic under test here.
@@ -127,6 +135,7 @@ function createSandbox(options = {}) {
     SETUP_TEST_LOG: log,
     SETUP_TEST_NODE_MAJOR: String(options.nodeMajor ?? 22),
     SETUP_TEST_NODE_MAJOR_AFTER_INSTALL: String(options.nodeMajorAfterInstall ?? 22),
+    SETUP_TEST_NODE_STANDARD_PATH: options.standardNodePath ? join(root, "nodejs") : "",
     SETUP_TEST_WINGET_NODE_EXIT: String(options.wingetNodeExit ?? 0),
     SETUP_TEST_WINGET_OPENCODE_EXIT: String(options.wingetOpenCodeExit ?? 0),
     SETUP_TEST_OPENCODE_WINGET_MARKER: options.opencodeWingetMarker === false ? "0" : "1",
@@ -147,7 +156,7 @@ function createSandbox(options = {}) {
       const errFile = join(root, "stderr.txt");
       const codePageFile = join(root, "code-page-after.txt");
       const wrapper = join(root, "_run.bat");
-      const lines = ["@echo off"];
+      const lines = ["@echo off", 'set "ProgramFiles=%SETUP_TEST_ROOT%"'];
       if (codePage !== undefined) lines.push(`chcp ${codePage} >nul`);
       lines.push(captureOutput ? `call start-webui.bat >"${outFile}" 2>"${errFile}"` : "call start-webui.bat");
       // Keep start-webui.bat's exit code: the trailing chcp probe must not overwrite it.
@@ -202,6 +211,17 @@ test("start-webui.bat installs winget/Node.js/OpenCode/deps on a fresh machine, 
     assert.match(log, /npm .*\\web ci/);
     assert.match(log, /npm .*\\host ci/);
     assert.doesNotMatch(log, /npm .* install -g opencode-ai/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat uses standard MSI Node.js when winget does not refresh PATH", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ nodeMajor: 18, nodeMajorAfterInstall: 22, standardNodePath: true, opencodeExit: 1 });
+  try {
+    assert.match(readFileSync(startWebuiSource, "utf8"), /if exist "%ProgramFiles%\\nodejs\\node\.exe" set "PATH=%ProgramFiles%\\nodejs;%PATH%"/);
+    const result = sandbox.run();
+    assertCompleted(result, "standard MSI Node.js fallback");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
   } finally { sandbox.cleanup(); }
 });
 
