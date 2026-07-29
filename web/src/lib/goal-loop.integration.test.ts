@@ -848,3 +848,95 @@ describe("goal loop pause_reason (docs/specs/goal-loop.md I5)", () => {
     expect(getGoalLoop("ws-1")?.pauseReason).toBe("unreadable_result");
   });
 });
+
+describe("goal loop verification phase survives pause/resume (docs/specs/goal-loop.md 遷移 22)", () => {
+  function jsonMsg(id: string, status: string, summary: string): MessageWithParts {
+    return msg(
+      id,
+      "assistant",
+      undefined,
+      'r\n```json\n{"status":"' + status + '","summary":"' + summary + '"}\n```',
+    );
+  }
+
+  async function reachVerifyingCompleted(): Promise<void> {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns: 5,
+    });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("goal");
+    h.messageResponse = [msg("m0", "assistant"), jsonMsg("a1", "completed", "done")];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("verification");
+  }
+
+  it("resumes into verifying_completed and sends the verification prompt", async () => {
+    await reachVerifyingCompleted();
+    const turnsBefore = getGoalLoop("ws-1")!.turnCount;
+
+    await updateGoalLoopStatus("ws-1", "pause");
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("verification");
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.status).toBe("verifying_completed");
+
+    h.ocCalls.length = 0;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const sent = h.ocCalls.find((c) => c.path.endsWith("/prompt_async"));
+    const text = (sent?.body as { parts: { text: string }[] } | undefined)?.parts[0].text ?? "";
+    expect(text).toContain("independently verify");
+    // Verification must not consume a goal turn slot.
+    expect(getGoalLoop("ws-1")?.turnCount).toBe(turnsBefore);
+  });
+
+  it("reaches completed after a pause/resume around verification", async () => {
+    await reachVerifyingCompleted();
+    await updateGoalLoopStatus("ws-1", "pause");
+    await updateGoalLoopStatus("ws-1", "resume");
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      jsonMsg("a1", "completed", "done"),
+      jsonMsg("a2", "verified_completed", "checked"),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("completed");
+  });
+
+  it("does not misread a goal reply as a verification reply after a rejected claim", async () => {
+    await reachVerifyingCompleted();
+    // Verification runs and rejects the claim -> back to queued as a goal turn.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      jsonMsg("a1", "completed", "done"),
+      jsonMsg("a2", "progress", "not really done"),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("goal");
+
+    // A pause here must resume as a goal turn, not as verification.
+    await updateGoalLoopStatus("ws-1", "pause");
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.status).toBe("queued");
+
+    // The next goal turn claiming completion must enter verification again.
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.turnKind).toBe("goal");
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      jsonMsg("a1", "completed", "done"),
+      jsonMsg("a2", "progress", "not really done"),
+      jsonMsg("a3", "completed", "done for real"),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+  });
+});

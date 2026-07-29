@@ -479,8 +479,14 @@ export async function updateGoalLoopStatus(
   if (action === "pause") {
     getDb()
       .prepare(
+        // Pausing overwrites `status`, so a loop stopped while waiting to send
+        // the verification prompt would lose that fact. Fold it into
+        // `turn_kind` here so resume can put the loop back into
+        // `verifying_completed` instead of silently skipping verification.
         `UPDATE goal_loops
-         SET status = 'paused', pause_reason = 'user', revision = revision + 1, updated_at = ?
+         SET status = 'paused', pause_reason = 'user',
+             turn_kind = CASE WHEN status = 'verifying_completed' THEN 'verification' ELSE turn_kind END,
+             revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
       )
       .run(now, loop.id, loop.revision);
@@ -560,14 +566,20 @@ export async function updateGoalLoopStatus(
         );
       return getGoalLoop(workspaceId);
     }
+    // A loop paused during the verification phase must resume into
+    // `verifying_completed`, not `queued`. Resuming to `queued` used to send a
+    // goal prompt and then misread its reply as a verification result, which
+    // made the completion claim unreachable. See docs/specs/goal-loop.md 遷移 22.
+    const resumeStatus: GoalLoopStatus =
+      loop.turnKind === "verification" ? "verifying_completed" : "queued";
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'queued', error = '', pause_reason = '', last_message_id = ?,
+         SET status = ?, error = '', pause_reason = '', last_message_id = ?,
              revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status = 'paused'`,
       )
-      .run(tailMessageId, now, loop.id, loop.revision);
+      .run(resumeStatus, tailMessageId, now, loop.id, loop.revision);
     void runGoalLoopSchedulerTick();
   } else {
     const stopped = getDb()
@@ -643,6 +655,7 @@ export async function pauseGoalLoopForManualSend(
       `UPDATE goal_loops
        SET status = 'paused', pause_reason = 'manual_send',
            error = '手動送信が行われたため一時停止しました。',
+           turn_kind = CASE WHEN status = 'verifying_completed' THEN 'verification' ELSE turn_kind END,
            last_message_id = ?, revision = revision + 1, updated_at = ?
        WHERE workspace_id = ? AND opencode_session_id = ? AND revision = ?
          AND status IN ('queued', 'running', 'verifying_completed')`,
@@ -917,10 +930,13 @@ function applyAssistantResult(
   }
   const progress = [...loop.progress, result].slice(-50);
 
-  // Detect whether this reply is the verification turn for a previous completed claim.
-  const lastProgress = loop.progress.at(-1);
-  const isVerificationReply =
-    loop.status === "running" && lastProgress?.status === "completed";
+  // Whether this reply answers the verification prompt is recorded on the row
+  // when the prompt is claimed (`turn_kind`). It must not be inferred from the
+  // tail of `progress`: after a pause/resume the status no longer says
+  // "verifying" while the tail still reads `completed`, so a normal goal reply
+  // was misread as a verification reply and a genuine completion claim could
+  // never reach `completed`. See docs/specs/goal-loop.md invariant I6.
+  const isVerificationReply = loop.status === "running" && loop.turnKind === "verification";
   let nextStatus: GoalLoopStatus;
   if (isVerificationReply) {
     if (result.status === "verified_completed") {
@@ -960,15 +976,22 @@ function applyAssistantResult(
     !TERMINAL_STATUSES.includes(nextStatus) &&
     nextStatus !== "verifying_completed" &&
     loop.turnCount >= loop.maxTurns;
+  // `turn_kind` describes the turn that is in flight or, when no turn is in
+  // flight, the kind the loop will send next. Keeping it in step here is what
+  // lets a pause during the verification phase resume back into it, while a
+  // pause taken after a rejected verification still resumes as a goal turn.
+  const nextTurnKind: GoalLoopTurnKind =
+    nextStatus === "verifying_completed" ? "verification" : "goal";
   const applied = getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = ?, last_message_id = ?, progress = ?, summary = ?, evidence = ?,
+       SET status = ?, turn_kind = ?, last_message_id = ?, progress = ?, summary = ?, evidence = ?,
            blocked_reason = ?, error = ?, pause_reason = ?, revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
     )
     .run(
       reachedTurnLimit ? "paused" : nextStatus,
+      nextTurnKind,
       assistant.info.id,
       JSON.stringify(progress),
       result.summary,
@@ -1148,7 +1171,8 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     const claimed = getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'running', last_message_id = ?, last_prompt_at = ?, revision = revision + 1, updated_at = ?
+         SET status = 'running', turn_kind = 'verification', last_message_id = ?,
+             last_prompt_at = ?, revision = revision + 1, updated_at = ?
          WHERE id = ? AND status = 'verifying_completed' AND revision = ?`,
       )
       .run(anchor, now, now, loop.id, loop.revision);
@@ -1175,7 +1199,12 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       body.model = { providerID: loop.providerID, modelID: loop.modelID };
     }
     if (loop.variant) body.variant = loop.variant;
-    const claimedLoop = { ...loop, revision: loop.revision + 1, lastMessageId: anchor };
+    const claimedLoop = {
+      ...loop,
+      revision: loop.revision + 1,
+      lastMessageId: anchor,
+      turnKind: "verification" as const,
+    };
     try {
       await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
         method: "POST",
@@ -1244,8 +1273,8 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   const claimed = getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = 'running', turn_count = turn_count + 1, last_message_id = ?,
-           last_prompt_at = ?, revision = revision + 1, updated_at = ?
+       SET status = 'running', turn_kind = 'goal', turn_count = turn_count + 1,
+           last_message_id = ?, last_prompt_at = ?, revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'queued' AND revision = ? AND turn_count < max_turns`,
     )
     .run(promptBoundary, now, now, loop.id, loop.revision);
@@ -1271,6 +1300,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     revision: loop.revision + 1,
     turnCount: turnCount + 1,
     lastMessageId: promptBoundary,
+    turnKind: "goal" as const,
   };
   try {
     await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
