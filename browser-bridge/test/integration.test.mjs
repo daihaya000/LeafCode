@@ -85,4 +85,38 @@ test('MCP client reads status and explicitly shared tabs through the live Broker
   assert.deepEqual(await snapshotRequest, {
     snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }],
   });
+  await assert.rejects(
+    () => client.call(BrowserToolName.CLICK, { tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 }),
+    (error) => error.code === 'APPROVAL_REQUIRED',
+  );
+  const approvals = await fetch(`${broker.url}/internal/approvals`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  const approvalId = approvals.approvals[0].approvalId;
+  const commandReceived = new Promise((resolve, reject) => socket.once('message', (data) => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'command' || message.commandId !== approvalId) {
+      reject(new Error('expected approved command'));
+      return;
+    }
+    resolve(message);
+  }));
+  await fetch(`${broker.url}/internal/approvals/${approvalId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'allow' }),
+  });
+  const command = await commandReceived;
+  assert.deepEqual(command.args, { tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 });
+  socket.send(JSON.stringify({
+    protocolVersion: 1, type: 'result', commandId: approvalId,
+    connectionGeneration: command.connectionGeneration, state: 'succeeded', result: {},
+  }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const audit = await fetch(`${broker.url}/internal/audit`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(audit.entries.map(({ commandId, tool, outcome, approval }) => ({ commandId, tool, outcome, approval })), [
+    { commandId: approvalId, tool: 'browser_click', outcome: 'succeeded', approval: 'single' },
+  ]);
 });
