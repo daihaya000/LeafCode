@@ -4,11 +4,12 @@ import test from 'node:test';
 import { WebSocket } from 'ws';
 import { createBrowserBridgeBroker } from '../broker/server.mjs';
 
-async function startBroker() {
+async function startBroker(options = {}) {
   const broker = createBrowserBridgeBroker({
     internalToken: randomBytes(32).toString('base64url'),
     WebSocketServer: (await import('ws')).WebSocketServer,
     pairingTtlMs: 500,
+    ...options,
   });
   await broker.listen(0);
   return broker;
@@ -240,6 +241,33 @@ test('rejects a command result from a stale connection generation', async (t) =>
   }));
   await closed;
   await new Promise((resolve) => setTimeout(resolve, 25));
+  const audit = await fetch(`${broker.url}/internal/audit`, { headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
+  assert.deepEqual(audit.entries, []);
+});
+
+test('drops a late result after the dispatched command expires', async (t) => {
+  const broker = await startBroker({ commandTimeoutMs: 20 });
+  t.after(() => broker.close());
+  const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
+  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  t.after(() => socket.close());
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const requested = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  }).then((res) => res.json());
+  const commandReceived = new Promise((resolve) => socket.once('message', (data) => resolve(JSON.parse(data.toString()))));
+  await fetch(`${broker.url}/internal/approvals/${requested.error.approvalId}`, { method: 'POST', headers, body: JSON.stringify({ decision: 'allow' }) });
+  const command = await commandReceived;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  socket.send(JSON.stringify({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration: command.connectionGeneration, state: 'succeeded', result: { image: { mimeType: 'image/png', data: 'aGVsbG8=' } } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const nextScreenshot = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  });
+  assert.equal(nextScreenshot.status, 428);
   const audit = await fetch(`${broker.url}/internal/audit`, { headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
   assert.deepEqual(audit.entries, []);
 });

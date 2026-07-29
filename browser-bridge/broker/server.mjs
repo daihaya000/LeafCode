@@ -71,6 +71,8 @@ export function createBrowserBridgeBroker({
   now = Date.now,
   pairingTtlMs = 5 * 60_000,
   snapshotRequestTimeoutMs = 10_000,
+  approvalTimeoutMs = 30_000,
+  commandTimeoutMs = 30_000,
 } = {}) {
   if (typeof internalToken !== 'string' || internalToken.length < 32) {
     throw new TypeError('Browser Bridge internal token must be at least 32 characters');
@@ -78,6 +80,9 @@ export function createBrowserBridgeBroker({
   if (typeof WebSocketServer !== 'function') throw new TypeError('WebSocketServer is required');
   if (typeof now !== 'function' || !Number.isSafeInteger(pairingTtlMs) || pairingTtlMs < 1) {
     throw new TypeError('Invalid Broker clock or pairing TTL');
+  }
+  if (!Number.isSafeInteger(approvalTimeoutMs) || approvalTimeoutMs < 1 || !Number.isSafeInteger(commandTimeoutMs) || commandTimeoutMs < 1) {
+    throw new TypeError('Invalid Broker command timeout');
   }
 
   let pairing = null;
@@ -119,7 +124,7 @@ export function createBrowserBridgeBroker({
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/approvals') {
-      json(res, 200, { approvals: [...pendingApprovals.values()].map(({ args, ...approval }) => approval) });
+      json(res, 200, { approvals: [...pendingApprovals.values()].map(({ args, timer, ...approval }) => approval) });
       return;
     }
     const approvalMatch = /^\/internal\/approvals\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
@@ -132,8 +137,10 @@ export function createBrowserBridgeBroker({
         json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
       } else {
         pendingApprovals.delete(approval.approvalId);
+        clearTimeout(approval.timer);
         if (body.decision === 'allow' && extensionSocket && sharedTabs.has(approval.tabId)) {
-          dispatchedCommands.set(approval.approvalId, { ...approval, connectionGeneration });
+          const command = { ...approval, connectionGeneration, timer: setTimeout(() => dispatchedCommands.delete(approval.approvalId), commandTimeoutMs) };
+          dispatchedCommands.set(approval.approvalId, command);
           extensionSocket.send(JSON.stringify({
             protocolVersion: 1,
             type: 'command',
@@ -207,6 +214,7 @@ export function createBrowserBridgeBroker({
           origin: sharedTabs.get(args.tabId).origin,
           createdAt: now(),
           args,
+          timer: setTimeout(() => pendingApprovals.delete(approvalId), approvalTimeoutMs),
         });
         json(res, 428, { error: { code: BrowserBridgeErrorCode.APPROVAL_REQUIRED, approvalId } });
         return;
@@ -269,7 +277,10 @@ export function createBrowserBridgeBroker({
           sharedTabs.delete(message.tabId);
           snapshots.delete(message.tabId);
           for (const [approvalId, approval] of pendingApprovals) {
-            if (approval.tabId === message.tabId) pendingApprovals.delete(approvalId);
+            if (approval.tabId === message.tabId) {
+              clearTimeout(approval.timer);
+              pendingApprovals.delete(approvalId);
+            }
           }
           return;
         }
@@ -286,6 +297,7 @@ export function createBrowserBridgeBroker({
             }
             if (command) {
               dispatchedCommands.delete(message.commandId);
+              clearTimeout(command.timer);
               if (command.tool === BrowserToolName.SCREENSHOT && validImage(message.result?.image)) {
                 screenshots.set(command.tabId, message.result.image);
               }
@@ -339,7 +351,9 @@ export function createBrowserBridgeBroker({
             sharedTabs.clear();
             snapshots.clear();
             screenshots.clear();
+            for (const approval of pendingApprovals.values()) clearTimeout(approval.timer);
             pendingApprovals.clear();
+            for (const command of dispatchedCommands.values()) clearTimeout(command.timer);
             dispatchedCommands.clear();
             for (const pending of pendingSnapshots.values()) {
               clearTimeout(pending.timer);
@@ -382,6 +396,15 @@ export function createBrowserBridgeBroker({
       if (!listening) return;
       extensionSocket?.close(1001, 'broker_shutdown');
       extensionSocket = null;
+      for (const approval of pendingApprovals.values()) clearTimeout(approval.timer);
+      pendingApprovals.clear();
+      for (const command of dispatchedCommands.values()) clearTimeout(command.timer);
+      dispatchedCommands.clear();
+      for (const pending of pendingSnapshots.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error('broker shutdown'));
+      }
+      pendingSnapshots.clear();
       await new Promise((resolve) => server.close(() => resolve()));
       wss.close();
       listening = false;
