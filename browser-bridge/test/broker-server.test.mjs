@@ -178,6 +178,29 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
   await refreshRequested;
   const snapshot = await snapshotResponse.then((res) => res.json());
   assert.deepEqual(snapshot, { snapshotGeneration: 2, truncated: false, nodes: [{ ref: 'ref_2_1', role: 'button', name: 'Save now' }] });
+
+  const requestedScreenshot = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  }).then((res) => res.json());
+  const screenshotCommand = new Promise((resolve, reject) => socket.once('message', (data) => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'command' || message.tool !== 'browser_screenshot') return reject(new Error('expected screenshot command'));
+    resolve(message);
+  }));
+  await fetch(`${broker.url}/internal/approvals/${requestedScreenshot.error.approvalId}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'allow' }),
+  });
+  const capture = await screenshotCommand;
+  socket.send(JSON.stringify({ protocolVersion: 1, type: 'result', commandId: capture.commandId, connectionGeneration: 1, state: 'succeeded', result: { image: { mimeType: 'image/png', data: 'aGVsbG8=' } } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const delivered = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  }).then((res) => res.json());
+  assert.deepEqual(delivered, { image: { mimeType: 'image/png', data: 'aGVsbG8=' } });
+  const consumed = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  });
+  assert.equal(consumed.status, 428);
 });
 
 function openSocket(url, origin, message) {
