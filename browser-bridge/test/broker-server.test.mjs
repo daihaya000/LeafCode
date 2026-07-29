@@ -168,6 +168,34 @@ test('returns COMMAND_TIMEOUT when an extension does not answer a snapshot reque
   assert.deepEqual(await response.json(), { error: { code: 'COMMAND_TIMEOUT' } });
 });
 
+test('settles a pending snapshot as COMMAND_TIMEOUT when the extension disconnects', async (t) => {
+  const broker = await startBroker({ snapshotRequestTimeoutMs: 5_000 });
+  t.after(() => broker.close());
+  const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
+  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const requested = new Promise((resolve, reject) => socket.once('message', (data) => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'snapshot_request') return reject(new Error('expected snapshot request'));
+    resolve();
+  }));
+  const response = fetch(`${broker.url}/internal/tools/browser_snapshot`, {
+    method: 'POST', headers, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  });
+  await requested;
+  const closed = new Promise((resolve) => socket.once('close', resolve));
+  socket.close();
+  await closed;
+  const settled = await response;
+  assert.equal(settled.status, 504);
+  assert.deepEqual(await settled.json(), { error: { code: 'COMMAND_TIMEOUT' } });
+  const status = await fetch(`${broker.url}/internal/status`, { headers }).then((res) => res.json());
+  assert.deepEqual(status, { extension: { connected: false, paired: true }, pendingApprovals: 0 });
+});
+
 test('lists only opaque tab metadata announced by an authenticated extension', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
