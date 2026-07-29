@@ -7,6 +7,9 @@
 選定結果を常時バナー表示する実装になっている。ユーザーから
 「Cursor の Auto モードのような挙動が理想」との要望があった。
 
+本仕様は上記2仕様の追補であり、コスト帯順、初期モデル優先順、表示設定など
+同じ事項が競合する場合は本仕様を優先する。
+
 Cursor の Auto の実体は **Cursor Router**（一次情報:
 https://cursor.com/docs/cursor-router ）で、要点は次のとおり。
 
@@ -27,7 +30,7 @@ https://cursor.com/docs/cursor-router ）で、要点は次のとおり。
 | リクエスト毎ルーティング | ○ | ○ | 変更なし |
 | 無効モデルの迂回 | ○ | ○ | 変更なし |
 | モデル名表示 | 既定非表示 | 常時表示 | **既定非表示・設定で表示** |
-| 既定モデル化 | Soft / Hard | 手動のみ | **Soft のみ設定で追加** |
+| 既定モデル化 | Soft / Hard | デフォルトモデルで選択可 | **既存設定へ統合** |
 | 分類器 | データ駆動 | 正規表現のみ | **シグナル追加でルール強化** |
 
 ## 目的
@@ -66,14 +69,14 @@ export function autoOptimizeModeLabel(mode: AutoOptimizeMode): string;
 #### 1-2. モード別のコスト帯順・variant 順
 
 `TIER_COST_ORDER` / `TIER_VARIANT_ORDER` をモード別テーブルへ拡張する。
-`cost` 列は現行値と**完全一致**させる（既存挙動の回帰を防ぐ）。
+`cost` 列は現行のコスト優先方針と一致させる。
 
 **コスト帯順**（`heavy` は全モードで「全候補中の最強」= コスト帯なし）
 
 | tier | cost | balanced | intelligence |
 |---|---|---|---|
 | light | cheap → mid → premium | cheap → mid → premium | mid → cheap → premium |
-| standard | mid → cheap → premium | mid → premium → cheap | premium → mid → cheap |
+| standard | cheap → mid → premium | mid → premium → cheap | premium → mid → cheap |
 | heavy | 最強 | 最強 | 最強 |
 
 **variant（reasoning effort）順**
@@ -99,7 +102,7 @@ export function autoOptimizeModeLabel(mode: AutoOptimizeMode): string;
   `heavy` = `大規模・高難度タスク`
 - 既存の付記は維持:
   画像時 `（画像対応モデルに限定）`、
-  コスト帯フォールバック時 `（該当コスト帯に候補がなく上位帯へフォールバック）`
+  コスト帯フォールバック時 `（該当コスト帯に候補がなく別コスト帯へフォールバック）`
 - 例: `短い質問タスクのためコスト優先で選択しました`
 
 既存テスト・E2E の期待文字列はこの新形式へ更新する（reason は既定で
@@ -168,7 +171,7 @@ export type AutoSignals = {
 | 最適化モード | `webui:auto-optimize` | `auto-optimize` | `cost` / `balanced` / `intelligence` | `cost` |
 | モデル名表示 | `webui:auto-show-model` | `auto-show-model` | `"1"` / `""` | `""`（非表示） |
 
-公開 API（各設定につき read / write、および cross-tab 通知イベント）:
+公開 API（各設定につき read / write、および通知イベント）:
 
 ```ts
 export const AUTO_OPTIMIZE_EVENT = "webui:auto-optimize";
@@ -185,6 +188,10 @@ export function writeAutoSettingToServer(key, value): Promise<void>;
 
 読み取りは `window` 不在時・不正値・例外時に既定値へフォールバックする
 （`default-model.ts` と同じ fail-safe 方針）。
+
+同一documentでは既存の`CustomEvent`で即時同期する。別タブではブラウザの
+`storage`イベントを監視し、`webui:auto-optimize` / `webui:auto-show-model`
+の変更時に同じstate更新を行う。自タブへの二重通知は行わない。
 
 ### 4. `web/src/app/api/settings/[key]/route.ts`
 
@@ -227,11 +234,10 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
 2. **モード UI**: `model === AUTO_MODEL_VALUE` のとき
    `AutoOptimizeSelect` を表示（IntelligenceSelect は既存条件で非表示）。
 3. **送信**: Auto のとき body に `autoOptimize: <mode>` を追加する。
-4. **Impose Auto (Soft)**: 初期モデル決定で、`readAutoImpose()` が true なら
-   **最優先で `AUTO_MODEL_VALUE`** を採用する（last-used より前）。
-   false のときは現行の優先順（last-used → default → config.model →
-   provider default → options[0]）を一切変更しない。
-   どちらの場合も Auto へ暗黙フォールバックしない。
+4. **初期モデル**: 現行の優先順（default → last-used → config.model →
+   provider default → options[0]）を維持する。設定画面のデフォルトモデルで
+   `Auto`を選んだ場合は新規タスクの初期モデルをAutoにする。候補がない場合に
+   Autoへ暗黙フォールバックしない。
 5. **バナー/引き継ぎ**: `readAutoShowModel()` が false のときは
    `AutoTaskRecord` の `decision` を保存しても**チップを表示しない**
    （表示制御は TaskView 側。§8）。保存自体は再試行に必要なため継続する。
@@ -245,9 +251,11 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
    `AUTO_SHOW_MODEL_EVENT` に追従する。
    - **false（既定）**: 初回選定チップと follow-up 通知を**表示しない**。
    - **true**: 現行どおり単一バナーで表示する。
-   - **自動再試行の通知は設定に関わらず常に表示する**。想定外の追加ターンが
-     発生した事実の説明であり、モデル名を見せるための表示ではないため。
-5. `dismissAutoBanner` の挙動は現行のまま。
+   - **自動再試行の通知は設定や過去バナーのdismiss状態に関わらず常に表示する**。
+     想定外の追加ターンが発生した事実の説明であり、モデル名を見せるための
+     表示ではないため。
+5. `dismissAutoBanner` は現在表示中の通知だけを閉じる。初回選定チップを
+   閉じた後に自動再試行が起きた場合、再試行通知は新しい通知として表示する。
 
 ### 9. `web/src/components/settings/ProviderModelsSettings.tsx`
 
@@ -259,20 +267,33 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
   composer と同じ値を読み書きし、双方向に同期する）
 - チェックボックス `Auto が選んだモデルを表示`
   （補足: `既定では非表示です。モデル名ではなく結果で判断できます。`）
-- チェックボックス `新規タスクの既定モデルを Auto にする`
-  （補足: `各タスクで個別に他のモデルへ切り替えられます。`）
-
 いずれも変更時に localStorage へ即書き込み、サーバーへは非同期ミラー
 （失敗は無視）。
 
-### 10. 変更しないもの
+新規タスクでAutoを既定にする操作は、直前の「デフォルトモデル」セクションで
+`Auto`を選ぶ既存操作へ統合する。Auto専用の重複トグルは追加しない。
+
+### 10. CodexBar利用状況によるprovider迂回
+
+CodexBarが有効で利用状況を取得できた場合だけ、同一コスト帯内のprovider選択へ
+補助シグナルとして適用する。
+
+- `limited` / `maxed` providerは候補外にする。
+- 通常ポリシーで選ばれるproviderの使用率が不明なら、通常選定を維持する。
+- 通常選定providerの使用率が既知で、同一帯に20pt以上低い既知providerがある
+  場合だけ、最低使用率provider群の中から通常スコアで選ぶ。
+- 使用率不明provider、スナップショット欠落、アドオン無効、取得失敗だけを理由に
+  通常ポリシーを変更しない。
+- `heavy`でも同じprovider可用性規則を最強候補選定へ適用する。
+
+### 11. 変更しないもの
 
 - `POST /api/tasks` 以外の送信経路、`useSessionStream`
 - `auto-task-record.ts` の形状（`decision` に `mode` が増えるのみ。
   `parseDecision` は未知値を許容するため後方互換。ただし `mode` が
   不正/欠落の場合は `DEFAULT_AUTO_OPTIMIZE_MODE` で補完する）
 - 自動再試行の発火条件（初回プロンプト限定・1 回のみ）
-- Hard の Impose Auto（本仕様では非対応）
+- モデルピッカーをAutoへ固定するHard相当の機能
 - DB スキーマ
 
 ## 検証・テスト
@@ -284,6 +305,8 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
 - balanced / intelligence のコスト帯順・variant 順（tier × mode の代表組合せ）
 - reason 文字列（tier × mode、画像付記、フォールバック付記）
 - `AutoDecision.mode` が入力モードと一致する
+- CodexBar: 通常選定providerの使用率不明時は通常結果を維持し、通常選定provider
+  から20pt以上低い既知providerがある場合だけ迂回する
 - シグナル: ファイルパス 2 個 → heavy でない / 3 個 → heavy、
   番号付きリスト 3 個 → heavy でない / 4 個 → heavy
 - 引き上げ: `recentFailure` / `attachmentCount>=3` / `historyMessageCount>=20`
@@ -294,11 +317,12 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
 
 - 既定値（未設定・不正値・例外時）
 - 読み書きと `CustomEvent` 発火
+- `storage`イベントによる別タブ相当のstate同期
 - サーバー読み書きの失敗が握り潰されること
 
 ### `web/src/app/api/settings/[key]/route.test.ts`
 
-- 3 キーの GET/PUT 正常系、不正値 400、空文字で未設定
+- Auto設定2キーのGET/PUT正常系、不正値400、空文字で未設定
 
 ### `web/src/app/api/tasks/route.test.ts`
 
@@ -312,8 +336,8 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
 
 - Auto 選択で `AutoOptimizeSelect` が表示され、IntelligenceSelect は非表示
 - モード変更が永続化され、送信 body に `autoOptimize` が載る
-- Impose Auto ON で初期モデルが Auto（last-used があっても Auto 優先）
-- Impose Auto OFF で既存の優先順が不変
+- デフォルトモデルがAutoなら、last-usedより優先して初期モデルがAuto
+- デフォルト未設定時はlast-usedへフォールバックし、Autoへ暗黙遷移しない
 
 ### `web/src/components/task/TaskView.test.tsx`
 
@@ -321,11 +345,13 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
 - 表示設定 OFF（既定）で選定チップ・follow-up 通知が出ない
 - 表示設定 ON で従来どおり表示される
 - 表示設定 OFF でも自動再試行の通知は出る
+- 初回選定バナーをdismissした後でも、後発の自動再試行通知は出る
 - 履歴 20 件以上／直前失敗で tier が 1 段上がる（解決モデルで観測）
 
 ### `web/src/components/settings/ProviderModelsSettings.test.tsx`
 
-- 3 つのコントロールの表示・変更・永続化
+- Auto設定2コントロールの表示・変更・永続化
+- デフォルトモデルでAutoを選択できる
 
 ### E2E
 
@@ -363,28 +389,30 @@ Cursor はモード選択をモデルピッカー配下に置く。本 WebUI で
 3. モード選択はリロード後・別画面でも保持され、設定画面と composer で同期する。
 4. 既定ではモデル名バナーが出ず、設定 ON で従来どおり表示される。
 5. 自動再試行の通知は表示設定に関わらず出る。
-6. 「新規タスクの既定モデルを Auto にする」ON で、新規タスクの初期モデルが
-   Auto になり、個別に他モデルへ切り替えられる。
+6. デフォルトモデルでAutoを選ぶと新規タスクの初期モデルがAutoになり、
+   個別に他モデルへ切り替えられる。
 7. ファイルパス多数言及・長い会話・直前の失敗で tier が上がる。
 8. `autoOptimize` 未指定・不正時の API 挙動が仕様どおり（既定 cost / 400）。
-9. cost モードの選定結果が本改修前と一致する（回帰なし）。
-10. `tsc` / `eslint` / `vitest` / `npm run e2e` が全緑。
+9. cost/standardはcheap帯を優先し、他モードも表の順序どおり選定される。
+10. 別タブのAuto設定変更が開いているHome/Task/Settingsへ反映される。
+11. 使用率不明providerは既知provider間の使用率差だけで排除されない。
+12. `tsc` / `eslint` / `vitest` / `npm run e2e` が全緑。
 
 ## 非対応（本仕様では扱わない）
 
-- Hard の Impose Auto（モデルピッカーの固定）
+- モデルピッカーをAutoへ固定するHard相当の機能
 - LLM による分類（追加トークンコストを避ける方針は維持）
 - 実測レイテンシ・実価格 API に基づくルーティング（名前ヒューリスティクス継続）
 - ルーティング統計の収集・学習
-- TaskView で新規セッションを作成した場合の Impose Auto 適用
 - follow-up 失敗時の自動再試行（初回プロンプト限定のまま）
 
 ## 既知の制約・リスク
 
 | 項目 | 内容 | 緩和策 |
 |---|---|---|
-| モード別テーブルの主観性 | Cursor の内部ルーティングは非公開のため、3 モードの割当は本実装の設計判断 | テーブルを 1 箇所に集約し調整可能にする。cost は現行値固定で回帰なし |
+| モード別テーブルの主観性 | Cursor の内部ルーティングは非公開のため、3 モードの割当は本実装の設計判断 | テーブルを 1 箇所に集約し、各mode/tierの期待値をテストで固定 |
 | シグナルの閾値 | 3 件 / 4 項目 / 20 メッセージは経験則 | 定数として集約し、テストで境界を固定 |
 | モデル名非表示 | どのモデルが動いたか即座に分からない | 設定 1 つで復帰できる。再試行通知は常時表示 |
-| Impose Auto と last-used の競合 | ON のとき last-used が無視される | Cursor の Soft と同義（新規チャットは既定 Auto、個別切替可）と仕様に明記 |
-| 設定キー増加 | localStorage / server 双方に 3 キー追加 | `auto-settings.ts` に集約し、検証をサーバー側 allowlist で強制 |
+| default と last-used の競合 | 明示したデフォルトモデルが直近使用モデルを上書きする | default → last-usedの優先順を仕様・テスト・UI説明で統一 |
+| 使用率データの部分欠落 | 一部providerだけ値がないと比較が不公平になる | 通常選定providerが不明なら通常結果を維持し、既知値だけで不明providerを排除しない |
+| 設定キー増加 | localStorage / server 双方に2キー追加 | `auto-settings.ts` に集約し、検証をサーバー側allowlistで強制 |
