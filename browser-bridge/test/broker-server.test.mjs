@@ -119,6 +119,13 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
     method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: '{}',
   }).then((res) => res.json());
   assert.deepEqual(tabs, { tabs: [{ id: 'tab_opaque', origin: 'https://example.test', title: 'Example' }] });
+
+  socket.send(JSON.stringify({ type: 'snapshot', tabId: 'tab_opaque', snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const snapshot = await fetch(`${broker.url}/internal/tools/browser_snapshot`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  }).then((res) => res.json());
+  assert.deepEqual(snapshot, { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] });
 });
 
 function openSocket(url, origin, message) {

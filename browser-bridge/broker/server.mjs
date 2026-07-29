@@ -82,6 +82,7 @@ export function createBrowserBridgeBroker({
   let extensionSocket = null;
   let connectionGeneration = 0;
   const sharedTabs = new Map();
+  const snapshots = new Map();
   let listening = false;
 
   const status = () => ({
@@ -137,10 +138,19 @@ export function createBrowserBridgeBroker({
         json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
         return;
       }
-      // The extension command dispatcher is introduced with the shared-tab
-      // implementation. Until then, do not pretend that a connected browser
-      // has returned page data.
-      void args;
+      if (tool === BrowserToolName.SNAPSHOT) {
+        if (!sharedTabs.has(args.tabId)) {
+          json(res, 404, { error: { code: BrowserBridgeErrorCode.TAB_NOT_SHARED } });
+          return;
+        }
+        const snapshot = snapshots.get(args.tabId);
+        if (!snapshot) {
+          json(res, 409, { error: { code: BrowserBridgeErrorCode.STALE_REFERENCE } });
+          return;
+        }
+        json(res, 200, snapshot);
+        return;
+      }
       json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
       return;
     }
@@ -173,6 +183,11 @@ export function createBrowserBridgeBroker({
         }
         if (message.type === 'tab_unshared' && Object.keys(message).length === 2 && validOpaqueId(message.tabId)) {
           sharedTabs.delete(message.tabId);
+          snapshots.delete(message.tabId);
+          return;
+        }
+        if (message.type === 'snapshot' && Object.keys(message).length === 3 && sharedTabs.has(message.tabId) && validSnapshot(message.snapshot)) {
+          snapshots.set(message.tabId, message.snapshot);
           return;
         }
         if (message.type === 'heartbeat' && Object.keys(message).length === 1) {
@@ -210,6 +225,7 @@ export function createBrowserBridgeBroker({
           if (extensionSocket === socket) {
             extensionSocket = null;
             sharedTabs.clear();
+            snapshots.clear();
           }
         });
         return;
@@ -272,4 +288,17 @@ function validSharedTab(tab) {
   } catch {
     return false;
   }
+}
+
+function validSnapshot(snapshot) {
+  if (snapshot === null || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
+  if (!Number.isSafeInteger(snapshot.snapshotGeneration) || snapshot.snapshotGeneration < 1 || typeof snapshot.truncated !== 'boolean' || !Array.isArray(snapshot.nodes) || snapshot.nodes.length > 100) return false;
+  return snapshot.nodes.every((node) => {
+    if (node === null || typeof node !== 'object' || Array.isArray(node) || Object.keys(node).some((key) => !['ref', 'role', 'name', 'text', 'hasValue'].includes(key))) return false;
+    return validOpaqueId(node.ref)
+      && typeof node.role === 'string' && node.role.length <= 128
+      && typeof node.name === 'string' && node.name.length <= 256
+      && (node.text === undefined || typeof node.text === 'string' && node.text.length <= 8_000)
+      && (node.hasValue === undefined || typeof node.hasValue === 'boolean');
+  });
 }
