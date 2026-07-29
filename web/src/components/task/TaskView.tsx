@@ -104,11 +104,11 @@ import {
   type AutoOptimizeMode,
 } from "@/lib/auto-model";
 import {
-  AUTO_OPTIMIZE_EVENT,
   AUTO_OPTIMIZE_SETTING_KEY,
-  AUTO_SHOW_MODEL_EVENT,
+  AUTO_SHOW_MODEL_SETTING_KEY,
   readAutoOptimizeMode,
   readAutoShowModel,
+  subscribeAutoSetting,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
 } from "@/lib/auto-settings";
@@ -594,11 +594,17 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     const onMode = () => setAutoOptimize(readAutoOptimizeMode());
     const onShow = () => setAutoShowModel(readAutoShowModel());
-    window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
-    window.addEventListener(AUTO_SHOW_MODEL_EVENT, onShow);
+    const unsubscribeMode = subscribeAutoSetting(
+      AUTO_OPTIMIZE_SETTING_KEY,
+      onMode,
+    );
+    const unsubscribeShow = subscribeAutoSetting(
+      AUTO_SHOW_MODEL_SETTING_KEY,
+      onShow,
+    );
     return () => {
-      window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
-      window.removeEventListener(AUTO_SHOW_MODEL_EVENT, onShow);
+      unsubscribeMode();
+      unsubscribeShow();
     };
   }, []);
 
@@ -617,14 +623,15 @@ export function TaskView({ taskId }: { taskId: string }) {
    * which model Auto picked.
    */
   const autoBannerText =
+    autoRetryNotice ??
     (autoShowModel ? autoFollowUpNotice : null) ??
     (autoRecord && !autoRecord.dismissed
-      ? (autoRetryNotice ??
-        (autoShowModel ? formatAutoDecisionNotice(autoRecord.decision) : null))
+      ? (autoShowModel ? formatAutoDecisionNotice(autoRecord.decision) : null)
       : null);
 
   /** Closes whichever Auto banner is visible, in one click. */
   const dismissAutoBanner = useCallback(() => {
+    setAutoRetryNotice(null);
     setAutoFollowUpNotice(null);
     dismissAutoRecord();
   }, [dismissAutoRecord]);

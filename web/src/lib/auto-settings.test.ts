@@ -6,6 +6,7 @@ import {
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
   readAutoShowModel,
+  subscribeAutoSetting,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
   writeAutoShowModel,
@@ -160,6 +161,27 @@ describe("auto boolean toggles", () => {
   it("uses separate keys per toggle", () => {
     writeAutoShowModel(true);
     expect(localStorage.getItem("webui:auto-show-model")).toBe("1");
+  });
+});
+
+describe("auto setting subscriptions", () => {
+  it("handles same-document and matching cross-tab events", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeAutoSetting("auto-optimize", listener);
+
+    window.dispatchEvent(new CustomEvent(AUTO_OPTIMIZE_EVENT));
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "webui:auto-show-model" }),
+    );
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "webui:auto-optimize" }),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    expect(listener).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    window.dispatchEvent(new CustomEvent(AUTO_OPTIMIZE_EVENT));
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 });
 

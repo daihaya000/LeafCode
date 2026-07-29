@@ -1232,7 +1232,7 @@ describe("POST /api/tasks auto model selection", () => {
       variant: "low",
     });
     expect((await res.json()).autoDecision.reason).toBe(
-      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく別コスト帯へフォールバック）",
     );
   });
 

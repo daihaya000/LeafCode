@@ -723,7 +723,7 @@ describe("chooseAutoModel reason text", () => {
       hasImages: false,
     });
     expect(decision?.reason).toBe(
-      "短い質問タスクのためコスト優先で選択しました（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのためコスト優先で選択しました（該当コスト帯に候補がなく別コスト帯へフォールバック）",
     );
   });
 
@@ -742,7 +742,7 @@ describe("chooseAutoModel reason text", () => {
       hasImages: true,
     });
     expect(decision?.reason).toBe(
-      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく別コスト帯へフォールバック）",
     );
   });
 
@@ -927,7 +927,7 @@ describe("chooseAutoModel optimize mode reason and echo", () => {
       ],
     });
     expect(decision?.reason).toBe(
-      "短い質問タスクのため知能優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのため知能優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく別コスト帯へフォールバック）",
     );
   });
 
@@ -975,6 +975,28 @@ describe("chooseAutoModel CodexBar provider usage", () => {
         usage: {
           alpha: { usedPercent: 55, limited: false },
           beta: { usedPercent: 40, limited: false },
+        },
+      })?.providerID,
+    ).toBe("alpha");
+  });
+
+  it("keeps the normal provider when its usage is unknown", () => {
+    expect(
+      choose({
+        providers: [
+          provider("alpha", {
+            "gpt-5.6-luna-mini": { variants: { ...allVariants } },
+          }),
+          provider("beta", {
+            "gpt-5-mini": { variants: { ...allVariants } },
+          }),
+          provider("gamma", {
+            "gpt-5-nano": { variants: { ...allVariants } },
+          }),
+        ],
+        usage: {
+          beta: { usedPercent: 70, limited: false },
+          gamma: { usedPercent: 10, limited: false },
         },
       })?.providerID,
     ).toBe("alpha");

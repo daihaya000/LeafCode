@@ -7,14 +7,13 @@ import { ModelSelect } from "@/components/ModelSelect";
 import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { getJson, sendJson } from "@/lib/client";
 import {
-  AUTO_OPTIMIZE_EVENT,
   AUTO_OPTIMIZE_SETTING_KEY,
-  AUTO_SHOW_MODEL_EVENT,
   AUTO_SHOW_MODEL_SETTING_KEY,
   hasStoredAutoSetting,
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
   readAutoShowModel,
+  subscribeAutoSetting,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
   writeAutoShowModel,
@@ -353,11 +352,17 @@ export function ProviderModelsSettings() {
       autoSettingsTouched.current.showModel = true;
       setAutoShowModel(readAutoShowModel());
     };
-    window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
-    window.addEventListener(AUTO_SHOW_MODEL_EVENT, onShowModel);
+    const unsubscribeMode = subscribeAutoSetting(
+      AUTO_OPTIMIZE_SETTING_KEY,
+      onMode,
+    );
+    const unsubscribeShowModel = subscribeAutoSetting(
+      AUTO_SHOW_MODEL_SETTING_KEY,
+      onShowModel,
+    );
     return () => {
-      window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
-      window.removeEventListener(AUTO_SHOW_MODEL_EVENT, onShowModel);
+      unsubscribeMode();
+      unsubscribeShowModel();
     };
   }, []);
 

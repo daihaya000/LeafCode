@@ -338,7 +338,7 @@ const TIER_LABEL: Record<AutoTier, string> = {
 };
 
 const REASON_IMAGES_SUFFIX = "（画像対応モデルに限定）";
-const REASON_FALLBACK_SUFFIX = "（該当コスト帯に候補がなく上位帯へフォールバック）";
+const REASON_FALLBACK_SUFFIX = "（該当コスト帯に候補がなく別コスト帯へフォールバック）";
 
 function supportsImages(model: AutoCandidateModel): boolean {
   return (
@@ -357,25 +357,37 @@ function pickBest(
     : candidates;
   if (eligible.length === 0) return undefined;
 
+  let normalBest: Candidate | undefined;
+  for (const candidate of eligible) {
+    if (
+      !normalBest ||
+      candidate.score > normalBest.score ||
+      (candidate.score === normalBest.score && candidate.key < normalBest.key)
+    ) {
+      normalBest = candidate;
+    }
+  }
+  if (!normalBest || !usage) return normalBest;
+
+  const normalUsage = usage[normalBest.providerID]?.usedPercent ?? null;
+  // An unknown value must retain the normal policy. Otherwise unrelated
+  // known-provider gaps could silently remove the strongest candidate.
+  if (normalUsage === null) return normalBest;
+
   const knownUsage = eligible.filter(
-    (candidate) => usage?.[candidate.providerID]?.usedPercent != null,
+    (candidate) => usage[candidate.providerID]?.usedPercent != null,
   );
   const lowestUsage = knownUsage.reduce<number | null>((lowest, candidate) => {
-    const value = usage?.[candidate.providerID]?.usedPercent ?? null;
+    const value = usage[candidate.providerID]?.usedPercent ?? null;
     return value === null || (lowest !== null && value >= lowest)
       ? lowest
       : value;
   }, null);
   const usagePreferred =
     lowestUsage !== null &&
-    knownUsage.some(
-      (candidate) =>
-        (usage?.[candidate.providerID]?.usedPercent ?? lowestUsage) -
-          lowestUsage >=
-        AUTO_USAGE_REROUTE_GAP,
-    )
+    normalUsage - lowestUsage >= AUTO_USAGE_REROUTE_GAP
       ? knownUsage.filter(
-          (candidate) => usage?.[candidate.providerID]?.usedPercent === lowestUsage,
+          (candidate) => usage[candidate.providerID]?.usedPercent === lowestUsage,
         )
       : eligible;
 

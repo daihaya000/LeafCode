@@ -83,6 +83,35 @@ export type AutoSettingKey =
   | typeof AUTO_OPTIMIZE_SETTING_KEY
   | typeof AUTO_SHOW_MODEL_SETTING_KEY;
 
+const EVENT_BY_SETTING: Record<AutoSettingKey, string> = {
+  "auto-optimize": AUTO_OPTIMIZE_EVENT,
+  "auto-show-model": AUTO_SHOW_MODEL_EVENT,
+};
+
+/**
+ * Subscribe to same-document writes and cross-tab localStorage changes.
+ * The native `storage` event is not fired in the document that performed the
+ * write, so it complements rather than duplicates the CustomEvent path.
+ */
+export function subscribeAutoSetting(
+  key: AutoSettingKey,
+  listener: () => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const eventName = EVENT_BY_SETTING[key];
+  const storageKey = LOCAL_KEY_BY_SETTING[key];
+  const onStorage = (event: StorageEvent) => {
+    // `key === null` means another tab called localStorage.clear().
+    if (event.key === storageKey || event.key === null) listener();
+  };
+  window.addEventListener(eventName, listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(eventName, listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
 export type AutoSettingsSnapshot = {
   mode?: AutoOptimizeMode;
   showModel?: boolean;

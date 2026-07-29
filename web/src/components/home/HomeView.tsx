@@ -53,11 +53,11 @@ import {
   type AutoProviderUsage,
 } from "@/lib/auto-model";
 import {
-  AUTO_OPTIMIZE_EVENT,
   AUTO_OPTIMIZE_SETTING_KEY,
   hasStoredAutoSetting,
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
+  subscribeAutoSetting,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
   type AutoSettingsSnapshot,
@@ -271,8 +271,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   // Follow changes made in the Settings screen or another tab.
   useEffect(() => {
     const onMode = () => setAutoOptimize(readAutoOptimizeMode());
-    window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
-    return () => window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+    return subscribeAutoSetting(AUTO_OPTIMIZE_SETTING_KEY, onMode);
   }, []);
 
   useEffect(() => {

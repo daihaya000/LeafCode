@@ -1634,14 +1634,16 @@ describe("HomeView auto model", () => {
       expect(taskBody()!).not.toHaveProperty("autoOptimize");
     });
 
-    it("follows a mode change made elsewhere", async () => {
+    it("follows a mode change made in another tab", async () => {
       mockProvider();
       render(<HomeView />);
       await selectAuto();
 
       await act(async () => {
         localStorage.setItem("webui:auto-optimize", "balanced");
-        window.dispatchEvent(new CustomEvent("webui:auto-optimize"));
+        window.dispatchEvent(
+          new StorageEvent("storage", { key: "webui:auto-optimize" }),
+        );
       });
 
       expect(

@@ -288,14 +288,18 @@ describe("ProviderModelsSettings", () => {
     });
   });
 
-  it("syncs external Auto setting events in the same window", async () => {
+  it("syncs Auto setting storage events from another tab", async () => {
     render(<ProviderModelsSettings />);
 
     const mode = await screen.findByRole("button", { name: "Auto の最適化" });
     localStorage.setItem("webui:auto-optimize", "intelligence");
     localStorage.setItem("webui:auto-show-model", "1");
-    window.dispatchEvent(new CustomEvent("webui:auto-optimize"));
-    window.dispatchEvent(new CustomEvent("webui:auto-show-model"));
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "webui:auto-optimize" }),
+    );
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "webui:auto-show-model" }),
+    );
 
     await waitFor(() => {
       expect(mode).toHaveProperty("value", "intelligence");

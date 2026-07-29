@@ -1843,6 +1843,21 @@ describe("TaskView", () => {
       expect(sendPrompt).toHaveBeenCalledTimes(1);
     });
 
+    it("shows a later retry notice after the selection chip was dismissed", async () => {
+      writeRecord({ decision, prompt: "これは何" });
+      const { base, sendPrompt } = streamWith();
+      const { rerender } = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByLabelText(CLOSE_LABEL));
+      expect(screen.queryByText(CHIP_TEXT)).toBeNull();
+
+      await raiseSessionError(base, rerender);
+
+      expect(sendPrompt).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText(RETRY_TEXT)).toBeTruthy();
+    });
+
     it("omits the retry variant when the escalation has none", async () => {
       writeRecord({
         decision: {
@@ -2578,14 +2593,16 @@ describe("TaskView", () => {
         );
       });
 
-      it("follows a mode change made elsewhere", async () => {
+      it("follows a mode change made in another tab", async () => {
         render(<TaskView taskId="ws1" />);
         await flushTaskLoad();
         await selectAuto();
 
         await act(async () => {
           localStorage.setItem("webui:auto-optimize", "balanced");
-          window.dispatchEvent(new CustomEvent("webui:auto-optimize"));
+          window.dispatchEvent(
+            new StorageEvent("storage", { key: "webui:auto-optimize" }),
+          );
         });
 
         expect(
@@ -2720,7 +2737,7 @@ describe("TaskView", () => {
         expect(await screen.findByLabelText(CLOSE_LABEL)).toBeTruthy();
       });
 
-      it("reveals a suppressed notice when the setting is turned on", async () => {
+      it("reveals a suppressed notice when another tab turns the setting on", async () => {
         localStorage.removeItem("webui:auto-show-model");
         render(<TaskView taskId="ws1" />);
         await flushTaskLoad();
@@ -2734,7 +2751,9 @@ describe("TaskView", () => {
 
         await act(async () => {
           localStorage.setItem("webui:auto-show-model", "1");
-          window.dispatchEvent(new CustomEvent("webui:auto-show-model"));
+          window.dispatchEvent(
+            new StorageEvent("storage", { key: "webui:auto-show-model" }),
+          );
         });
 
         expect(screen.getByLabelText(CLOSE_LABEL)).toBeTruthy();
