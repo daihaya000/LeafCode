@@ -3,9 +3,14 @@
   globalThis.__opencodeBrowserBridgeSnapshotInstalled = true;
   const sensitive = (el) => el.type === 'password' || /one-time-code|cc-number|cc-csc/i.test(el.autocomplete || '') || /pass(?:word)?|otp|cvv|cvc|card.?number/i.test(`${el.name} ${el.id} ${el.getAttribute('aria-label') || ''}`);
   const clean = (value, max = 512) => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
+  const refs = new Map();
+  let activeGeneration = 0;
+  new MutationObserver(() => { refs.clear(); activeGeneration = 0; }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type !== 'browser_bridge_collect_snapshot' || !Number.isSafeInteger(message.snapshotGeneration)) return false;
     const nodes = [];
+    refs.clear();
+    activeGeneration = message.snapshotGeneration;
     let truncated = false;
     let totalText = 0;
     for (const el of document.querySelectorAll('a,button,input,textarea,select,[role],[contenteditable="true"]')) {
@@ -20,6 +25,7 @@
       totalText += text.length;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) node.hasValue = Boolean(el.value);
       nodes.push(node);
+      refs.set(node.ref, el);
       if (totalText >= 8_000) { truncated = true; break; }
     }
     sendResponse({ snapshotGeneration: message.snapshotGeneration, nodes, truncated });
