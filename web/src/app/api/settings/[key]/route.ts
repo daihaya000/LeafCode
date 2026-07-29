@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAutoOptimizeMode } from "@/lib/auto-model";
 import { getSetting, setSetting } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -10,9 +11,18 @@ export const dynamic = "force-dynamic";
  * `settings` table.
  */
 const ALLOWED_KEYS = new Set<string>([
+  "auto-impose",
+  "auto-optimize",
+  "auto-show-model",
   "default-model",
   "sidebar",
   "sidepanel-width",
+]);
+
+/** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
+const BOOLEAN_SETTING_KEYS = new Set<string>([
+  "auto-impose",
+  "auto-show-model",
 ]);
 
 const MAX_SETTING_VALUE_CHARS = 32_768;
@@ -50,6 +60,23 @@ function normalizeSettingValue(
         ok: false,
         error: "default-model must be provider::model",
       };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === "auto-optimize") {
+    if (!isAutoOptimizeMode(value)) {
+      return {
+        ok: false,
+        error: "auto-optimize must be cost, balanced or intelligence",
+      };
+    }
+    return { ok: true, value };
+  }
+
+  if (BOOLEAN_SETTING_KEYS.has(key)) {
+    if (value !== "1") {
+      return { ok: false, error: `${key} must be 1 or empty` };
     }
     return { ok: true, value };
   }

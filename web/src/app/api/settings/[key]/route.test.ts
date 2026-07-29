@@ -182,3 +182,105 @@ describe("/api/settings/[key]", () => {
     });
   });
 });
+
+describe("/api/settings/[key] auto mode settings", () => {
+  beforeEach(() => {
+    getSetting.mockReset();
+    setSetting.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function getReq(key: string) {
+    return GET(
+      new Request(`http://localhost/api/settings/${key}`) as never,
+      ctx(key),
+    );
+  }
+
+  describe("auto-optimize", () => {
+    for (const mode of ["cost", "balanced", "intelligence"]) {
+      it(`stores ${mode}`, async () => {
+        const res = await PUT(
+          putReq({ value: mode }, "auto-optimize") as never,
+          ctx("auto-optimize"),
+        );
+        expect(res.status).toBe(200);
+        expect(setSetting).toHaveBeenCalledWith("auto-optimize", mode);
+      });
+    }
+
+    it("returns the stored mode", async () => {
+      getSetting.mockReturnValue("intelligence");
+      const res = await getReq("auto-optimize");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ value: "intelligence" });
+    });
+
+    it("treats an empty string as unset", async () => {
+      const res = await PUT(
+        putReq({ value: "" }, "auto-optimize") as never,
+        ctx("auto-optimize"),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("auto-optimize", "");
+    });
+
+    for (const bad of ["balance", "COST", "auto", "cheap"]) {
+      it(`rejects ${bad} with 400`, async () => {
+        const res = await PUT(
+          putReq({ value: bad }, "auto-optimize") as never,
+          ctx("auto-optimize"),
+        );
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({
+          error: "auto-optimize must be cost, balanced or intelligence",
+        });
+        expect(setSetting).not.toHaveBeenCalled();
+      });
+    }
+  });
+
+  for (const key of ["auto-show-model", "auto-impose"]) {
+    describe(key, () => {
+      it("stores 1", async () => {
+        const res = await PUT(putReq({ value: "1" }, key) as never, ctx(key));
+        expect(res.status).toBe(200);
+        expect(setSetting).toHaveBeenCalledWith(key, "1");
+      });
+
+      it("treats an empty string as unset", async () => {
+        const res = await PUT(putReq({ value: "" }, key) as never, ctx(key));
+        expect(res.status).toBe(200);
+        expect(setSetting).toHaveBeenCalledWith(key, "");
+      });
+
+      it("returns the stored value", async () => {
+        getSetting.mockReturnValue("1");
+        const res = await getReq(key);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ value: "1" });
+      });
+
+      it("returns null when unset", async () => {
+        getSetting.mockReturnValue(null);
+        const res = await getReq(key);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ value: null });
+      });
+
+      for (const bad of ["0", "true", "on", "yes"]) {
+        it(`rejects ${bad} with 400`, async () => {
+          const res = await PUT(putReq({ value: bad }, key) as never, ctx(key));
+          expect(res.status).toBe(400);
+          expect(await res.json()).toEqual({
+            error: `${key} must be 1 or empty`,
+          });
+          expect(setSetting).not.toHaveBeenCalled();
+        });
+      }
+    });
+  }
+});
