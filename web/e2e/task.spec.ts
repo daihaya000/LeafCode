@@ -720,6 +720,47 @@ test("follow-up composer omits variant when default is selected", async ({
   expect(promptBody).not.toHaveProperty("variant");
 });
 
+test("follow-up composer offers Auto first and resolves it client-side", async ({
+  page,
+}) => {
+  let promptBody: Record<string, unknown> | null = null;
+  await mockIdleVariantTask(page, (body) => {
+    promptBody = body;
+  });
+
+  await page.goto("/task/task-1");
+  const modelSelect = page.getByRole("button", { name: "モデル", exact: true });
+  await expect(modelSelect).toBeVisible();
+  await modelSelect.click();
+  // Scope to the model menu: the agent picker is a native <select>, whose
+  // <option> elements would otherwise match the same role.
+  const modelMenu = page.getByRole("listbox", { name: "モデル" });
+  await expect(modelMenu.getByRole("option").first()).toHaveText(
+    /Auto（コスト最適）/,
+  );
+  await modelMenu.getByRole("option", { name: /Auto（コスト最適）/ }).click();
+
+  // Auto owns the effort, so the manual intelligence selector disappears.
+  await expect(
+    page.getByRole("button", { name: "インテリジェンス", exact: true }),
+  ).toBeHidden();
+
+  const composer = page.getByPlaceholder("フォローアップを送信…");
+  await expect(composer).toBeEditable();
+  await composer.fill("なぜ失敗するのか");
+  await page.getByRole("button", { name: "送信" }).click();
+
+  await expect.poll(() => promptBody).not.toBeNull();
+  // The only connected model wins; "auto" itself is never forwarded.
+  expect(promptBody).toMatchObject({
+    model: { providerID: "openai", modelID: "gpt-5.6-sol" },
+    variant: "low",
+  });
+  await expect(
+    page.getByText(/^Auto: openai\/gpt-5\.6-sol · effort low —/),
+  ).toBeVisible();
+});
+
 // Regression: the revert ("巻き戻し") button lives in the header action bar,
 // which is a horizontally-scrollable, scrollbar-hidden region on small
 // screens. It must stay fully visible (not clipped out of view) on mobile,
