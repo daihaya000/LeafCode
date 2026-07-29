@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { BrowserBridgeErrorCode } from '../shared/errors.mjs';
 import { BrowserToolName, MAX_MESSAGE_BYTES, validateToolInput } from '../shared/schemas.mjs';
+import { evaluateCommandPolicy } from './policy.mjs';
 
 const JSON_HEADERS = Object.freeze({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
 
@@ -150,6 +151,18 @@ export function createBrowserBridgeBroker({
         } catch {
           json(res, 504, { error: { code: BrowserBridgeErrorCode.COMMAND_TIMEOUT } });
         }
+        return;
+      }
+      if (tool === BrowserToolName.CLICK) {
+        const policy = evaluateCommandPolicy({
+          tool,
+          tab: { shared: sharedTabs.has(args.tabId), lowRiskAllowed: false },
+        });
+        if (policy.decision === 'deny') {
+          json(res, 403, { error: { code: policy.code } });
+          return;
+        }
+        json(res, 428, { error: { code: BrowserBridgeErrorCode.APPROVAL_REQUIRED } });
         return;
       }
       json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });

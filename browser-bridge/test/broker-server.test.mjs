@@ -120,6 +120,12 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
   }).then((res) => res.json());
   assert.deepEqual(tabs, { tabs: [{ id: 'tab_opaque', origin: 'https://example.test', title: 'Example' }] });
 
+  const click = await fetch(`${broker.url}/internal/tools/browser_click`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 }),
+  });
+  assert.equal(click.status, 428);
+  assert.deepEqual(await click.json(), { error: { code: 'APPROVAL_REQUIRED' } });
+
   socket.send(JSON.stringify({ type: 'snapshot', tabId: 'tab_opaque', snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] } }));
   await new Promise((resolve) => setImmediate(resolve));
   const refreshRequested = new Promise((resolve, reject) => socket.once('message', (data) => {
