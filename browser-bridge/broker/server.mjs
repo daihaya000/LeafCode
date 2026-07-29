@@ -86,11 +86,12 @@ export function createBrowserBridgeBroker({
   const sharedTabs = new Map();
   const snapshots = new Map();
   const pendingSnapshots = new Map();
+  const pendingApprovals = new Map();
   let listening = false;
 
   const status = () => ({
     extension: { connected: extensionSocket !== null, paired: pairedOrigin !== null },
-    pendingApprovals: 0,
+    pendingApprovals: pendingApprovals.size,
   });
 
   const server = createServer(async (req, res) => {
@@ -113,7 +114,7 @@ export function createBrowserBridgeBroker({
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/approvals') {
-      json(res, 200, { approvals: [] });
+      json(res, 200, { approvals: [...pendingApprovals.values()] });
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/audit') {
@@ -162,7 +163,15 @@ export function createBrowserBridgeBroker({
           json(res, 403, { error: { code: policy.code } });
           return;
         }
-        json(res, 428, { error: { code: BrowserBridgeErrorCode.APPROVAL_REQUIRED } });
+        const approvalId = `approval_${createSecret()}`;
+        pendingApprovals.set(approvalId, {
+          approvalId,
+          tool,
+          tabId: args.tabId,
+          origin: sharedTabs.get(args.tabId).origin,
+          createdAt: now(),
+        });
+        json(res, 428, { error: { code: BrowserBridgeErrorCode.APPROVAL_REQUIRED, approvalId } });
         return;
       }
       json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
@@ -222,6 +231,9 @@ export function createBrowserBridgeBroker({
         if (message.type === 'tab_unshared' && Object.keys(message).length === 2 && validOpaqueId(message.tabId)) {
           sharedTabs.delete(message.tabId);
           snapshots.delete(message.tabId);
+          for (const [approvalId, approval] of pendingApprovals) {
+            if (approval.tabId === message.tabId) pendingApprovals.delete(approvalId);
+          }
           return;
         }
         if (message.type === 'snapshot' && Object.keys(message).length === 3 && sharedTabs.has(message.tabId) && validSnapshot(message.snapshot)) {
