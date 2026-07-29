@@ -211,6 +211,39 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
   assert.deepEqual(disconnectedStatus, { extension: { connected: false, paired: true }, pendingApprovals: 0 });
 });
 
+test('rejects a command result from a stale connection generation', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
+  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const requested = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  }).then((res) => res.json());
+  const commandReceived = new Promise((resolve, reject) => socket.once('message', (data) => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'command') return reject(new Error('expected command'));
+    resolve(message);
+  }));
+  await fetch(`${broker.url}/internal/approvals/${requested.error.approvalId}`, {
+    method: 'POST', headers, body: JSON.stringify({ decision: 'allow' }),
+  });
+  const command = await commandReceived;
+  const closed = new Promise((resolve) => socket.once('close', resolve));
+  socket.send(JSON.stringify({
+    protocolVersion: 1, type: 'result', commandId: command.commandId,
+    connectionGeneration: command.connectionGeneration + 1, state: 'succeeded', result: {},
+  }));
+  await closed;
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const audit = await fetch(`${broker.url}/internal/audit`, { headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
+  assert.deepEqual(audit.entries, []);
+});
+
 function openSocket(url, origin, message) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { origin });

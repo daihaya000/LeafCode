@@ -133,7 +133,7 @@ export function createBrowserBridgeBroker({
       } else {
         pendingApprovals.delete(approval.approvalId);
         if (body.decision === 'allow' && extensionSocket && sharedTabs.has(approval.tabId)) {
-          dispatchedCommands.set(approval.approvalId, approval);
+          dispatchedCommands.set(approval.approvalId, { ...approval, connectionGeneration });
           extensionSocket.send(JSON.stringify({
             protocolVersion: 1,
             type: 'command',
@@ -281,6 +281,9 @@ export function createBrowserBridgeBroker({
           try {
             validateResultEnvelope(message);
             const command = dispatchedCommands.get(message.commandId);
+            if (command && command.connectionGeneration !== message.connectionGeneration) {
+              return rejectSocket(socket, 'stale_result');
+            }
             if (command) {
               dispatchedCommands.delete(message.commandId);
               if (command.tool === BrowserToolName.SCREENSHOT && validImage(message.result?.image)) {
