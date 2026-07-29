@@ -16,12 +16,26 @@ LAN/VPN の URL で WebUI を使うと、`/api/browse/folder` と
 したがって、認証済みかつ権限を持つ利用者だけに API を開く仕組みを先に導入する。
 
 - BFF が検証できる認証済み主体と `project:read` / `project:add` 権限を定義する。
-- 認証プロキシを使う場合、BFF は直接到達を遮断し、プロキシが付与する署名付きで
-  改ざん不能な利用者ヘッダーだけを信頼する。
+  `project:add` は `project:read` を含む。
+- 認証プロキシを使う場合、BFF は直接到達を遮断し、プロキシが専用ヘッダーで付与する
+  JWT assertion だけを信頼する。この assertion は BFF が issuer / audience / 署名を検証する。
+- 認証プロキシは外来の `Authorization`、`X-User`、`X-Email`、`X-Groups`、同名 assertion ヘッダーを削除し、
+  検証済み JWT assertion だけを再付与する。
+- 同一ホスト上の BFF 直接アクセス対策として、ランダム shared secret による assertion の追加署名、
+  または認証プロキシと BFF 間の mTLS を必須にする。
 - 管理者は利用者またはロールごとに「選択可能ルート」を設定する。
   既存の `allowed_roots` をそのまま公開範囲に流用しない。
+- 選択可能ルートの実効値は主体 allow とロール allow の union とし、主体またはロールの明示 deny を常に優先する。
+- `rootId` は実パスを含まない一意な opaque ID、表示名は識別子に使わない短い名称とする。
+- 初期実装で有効な主体は、必須設定 `remoteAuth.initialAdminSubject` に完全一致する単一管理主体だけとする。
+  `remoteAuth.initialAdminSubject` は、JWT assertion の検証済み `iss` と `sub` から BFF が導出する
+  正規 `iss + sub` 主体 ID と同じ表現で設定する。空または不正な場合はリモート機能を無効化し、導出した正規 `iss + sub` 主体 ID が完全一致しない場合は
+  認証済みでもリモート API を `403` にする。
 - 認証・認可・監査ログの仕様が承認されるまでは、LAN/VPN へのフォルダ列挙 API を
   実装しない。loopback 向け既存 API の制限も緩めない。
+- 既存 Projects / Sessions は利用者所有権を持たず他者可視性があるため、複数利用者向けの
+  リモート機能有効化はブロッカーとする。複数主体、複数管理者、group / role による管理主体拡張は、
+  データ所有権と共有範囲を設計・実装した後に行う。
 
 ## 目的
 
@@ -34,6 +48,7 @@ LAN/VPN の URL で WebUI を使うと、`/api/browse/folder` と
 - ネイティブ Windows フォルダダイアログのリモート表示
 - ホーム、クイックアクセス、ドライブ直下、UNC、システム領域の列挙
 - 任意パス入力による選択範囲の回避
+- 複数利用者間の Projects / Sessions 共有・分離モデルの確定
 
 ## UX
 
@@ -68,25 +83,51 @@ LAN/VPN の URL で WebUI を使うと、`/api/browse/folder` と
 
 新しいリモート専用 API を作る。既存 `/api/browse/dirs` は loopback 専用のまま維持する。
 
-- API は認証と `project:read` を必須とし、許可ルート一覧、現在位置、親（許可ルート内のみ）、
-  直下の子ディレクトリだけを返す。
+| API | 権限 | 入力 | レスポンス |
+|-----|------|------|------------|
+| `GET /api/remote-projects/roots` | `project:read` | なし | `{ roots: [{ rootId, name }] }` |
+| `GET /api/remote-projects/browse?rootId=&path=` | `project:read` | `rootId`、root 相対の論理パス | `{ rootId, path, parentPath, children: [{ name }] }` |
+| `POST /api/remote-projects` | `project:add` | JSON `{ rootId, path }` | `{ rootId, path, name }` |
+
+- `path` は root 相対の論理パスで、空文字は root 自身を表す。区切りは `/` に正規化する。
+- API は認証と権限を必須とし、許可ルート一覧、現在位置、親（許可ルート内のみ）、
+  直下の子ディレクトリ名だけを返す。絶対パス、realpath、子の full path は返さない。
 - 各要求で、利用者に割り当てられたルートへの所属を `path.resolve` と realpath の両方で確認する。
   シンボリックリンクが範囲外へ出る場合は列挙・追加とも拒否する。
 - ルートは管理者設定からのみ取得する。リクエストのパス、`Host`、`X-Forwarded-For` を
   認可根拠にしない。
-- プロジェクト追加 API は `project:add` を必須にし、同一の realpath 範囲検証を再実行する。
+- プロジェクト追加 API は `project:add` を必須にし、追加直前に同一の realpath 範囲検証を再実行する。
   列挙済みであることを信頼しない。
-- API は利用者ID、操作種別、許可ルートID、結果、時刻を監査ログに残す。拒否時に絶対パスを
-  クライアントへ返さない。
+- 追加後に Project を利用する各 API でも、保存済みパスの realpath が同じ root の許可範囲内に残っているか再検証する。
+  TOCTOU は完全排除できないため、拒否・逸脱・再検証失敗を監査ログに残す。
+- API は利用者ID、操作種別、許可ルートID、root 相対の論理パス、結果、時刻を監査ログに残す。
+- リモート API は、request ID 生成、認証・認可・入力 schema・CSRF・レート制限検証、監査予約、
+  filesystem 列挙または追加前の `path.resolve` / realpath 検証、結果監査確定の順に処理する。
+- 検証で拒否が確定した場合は filesystem 操作を実行せず、監査予約と結果監査確定の後に拒否応答を返す。
+- 監査予約を書き込めない場合、remote API は即時 fail closed し、filesystem 列挙・追加を実行しない。
+  結果監査確定が失敗した場合も、列挙結果や追加済み Project を成功レスポンスとして返さない。
+- プロジェクト追加は、結果監査確定前の Project を後続 API から参照不能な隔離状態に置くか、
+  同一トランザクションでロールバックできる設計にする。結果監査確定に失敗した追加は、後続アクセス不能にする。
+- 拒否時とエラー時に絶対パスをクライアントへ返さない。
 - レート制限、CSRF 対策、認証失効時の 401/403、監査ログの保持期間は認証基盤仕様で定義する。
 
 ## 受入基準
 
 1. 権限を持つ LAN/VPN 利用者は、403 にならず自分の許可ルートとその配下だけを閲覧・追加できる。
-2. 権限のない利用者、未認証利用者、範囲外パス、ドライブルート、UNC、システム領域、
+2. `project:add` は `project:read` を含む。`project:read` のみを持つ利用者は閲覧できるが追加できない。
+3. `remoteAuth.initialAdminSubject` が空または不正な場合、リモート機能は無効化される。
+4. JWT assertion から導出した正規 `iss + sub` 主体 ID が `remoteAuth.initialAdminSubject` と完全一致しない場合、
+   認証済みでもリモート API は `403` になる。
+5. 権限のない利用者、未認証利用者、明示 deny、範囲外パス、ドライブルート、UNC、システム領域、
    シンボリックリンク逸脱先は列挙・追加できない。
-3. 任意パス入力や API 直呼びでは範囲制限を回避できない。
-4. 許可ルートなし、読み込み、空、通信失敗、権限拒否、重複、成功の各状態を上記文言と
+6. 任意パス入力や API 直呼びでは範囲制限を回避できない。
+7. `GET /api/remote-projects/roots`、`GET /api/remote-projects/browse?rootId=&path=`、
+   `POST /api/remote-projects` は root 相対の論理パスだけを扱い、レスポンスとエラーに絶対パスを含めない。
+8. 許可ルートなし、読み込み、空、通信失敗、権限拒否、重複、成功の各状態を上記文言と
    操作可否で確認できる。
-5. キーボードだけで開く、移動、追加、閉じる操作ができ、狭幅・広幅とも主操作に到達できる。
-6. loopback の既存ネイティブ選択と `/api/browse/dirs` の host-only 制限は回帰しない。
+9. キーボードだけで開く、移動、追加、閉じる操作ができ、狭幅・広幅とも主操作に到達できる。
+10. 監査予約を書き込めない場合、remote API は fail closed し、filesystem 列挙・追加を実行しない。
+11. 結果監査確定が失敗した場合、remote API は成功レスポンスや追加済み Project を返さず、
+    追加処理はロールバックまたは後続アクセス不能な隔離状態にされる。
+12. 既存 Projects / Sessions の他者可視性が残る状態では、複数利用者向けリモート機能を有効化できない。
+13. loopback の既存ネイティブ選択と `/api/browse/dirs` の host-only 制限は回帰しない。
