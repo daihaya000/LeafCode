@@ -560,6 +560,35 @@ describe("chooseAutoModel escalation", () => {
     });
   });
 
+  it("prefers a different provider for retry to survive provider outages", () => {
+    const decision = chooseAutoModel({
+      mode: "cost",
+      providers: [
+        provider("anthropic", {
+          [CHEAP_MODEL]: { variants: { ...allVariants } },
+          [PREMIUM_MODEL]: { variants: { ...allVariants } },
+        }),
+        provider("openai", {
+          [MID_MODEL]: { variants: { ...allVariants } },
+        }),
+      ],
+      connected: undefined,
+      disabled: {},
+      tier: "light",
+      hasImages: false,
+    });
+
+    expect(decision).toMatchObject({
+      providerID: "anthropic",
+      modelID: CHEAP_MODEL,
+      escalation: {
+        providerID: "openai",
+        modelID: MID_MODEL,
+        variant: "high",
+      },
+    });
+  });
+
   it("falls back to max then medium then empty for the escalation variant", () => {
     const withMax = chooseAutoModel({
       mode: "cost",

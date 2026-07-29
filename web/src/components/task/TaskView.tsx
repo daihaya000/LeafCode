@@ -680,7 +680,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           sessionId,
         });
         setAutoRetryNotice(
-          `低コストモデルでエラーが発生したため ${escalation.providerID}/${escalation.modelID} で再試行しました`,
+          `Auto の選択モデルでエラーが発生したため ${escalation.providerID}/${escalation.modelID} で再試行しました`,
         );
       } catch {
         // The composer's existing send-error UI reports the failure.

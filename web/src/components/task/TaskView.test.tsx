@@ -1691,7 +1691,7 @@ describe("TaskView", () => {
     const CHIP_TEXT =
       "Auto: anthropic/claude-haiku-4-5 · effort minimal — 短い質問タスクのためコスト優先で選択しました";
     const RETRY_TEXT =
-      "低コストモデルでエラーが発生したため anthropic/claude-opus-5 で再試行しました";
+      "Auto の選択モデルでエラーが発生したため anthropic/claude-opus-5 で再試行しました";
     const CLOSE_LABEL = "Auto の選定結果を閉じる";
 
     function writeRecord(record: Record<string, unknown>) {

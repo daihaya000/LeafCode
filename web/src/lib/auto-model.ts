@@ -443,10 +443,19 @@ export function chooseAutoModel(input: {
     reason,
   };
 
-  // Escalation target for the one-shot automatic retry: the strongest
-  // candidate at the highest available effort. Omitted when it is identical
-  // to the chosen model (retrying would change nothing).
-  const strongest = pickBest(candidates);
+  // Escalation target for the one-shot automatic retry. Prefer another
+  // provider when one is available: a provider-level outage (for example a
+  // 529 overload response) is unlikely to be fixed by changing only the
+  // model or reasoning effort within that same provider. Fall back to the
+  // strongest candidate overall for single-provider setups.
+  const alternateProviderCandidates = candidates.filter(
+    (candidate) => candidate.providerID !== decision.providerID,
+  );
+  const strongest = pickBest(
+    alternateProviderCandidates.length > 0
+      ? alternateProviderCandidates
+      : candidates,
+  );
   if (strongest) {
     const escalationVariant = pickVariant(
       strongest.model,
