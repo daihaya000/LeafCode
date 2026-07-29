@@ -34,6 +34,16 @@
       sendResponse({ ok: true });
       return false;
     }
+    if (message?.type === 'browser_bridge_scroll') {
+      if (!['up', 'down', 'left', 'right'].includes(message.direction) || !Number.isSafeInteger(message.amount) || message.amount < 1 || message.amount > 2000) {
+        sendResponse({ ok: false, error: 'POLICY_BLOCKED' });
+        return false;
+      }
+      const amount = message.direction === 'up' || message.direction === 'left' ? -message.amount : message.amount;
+      window.scrollBy({ top: ['up', 'down'].includes(message.direction) ? amount : 0, left: ['left', 'right'].includes(message.direction) ? amount : 0, behavior: 'auto' });
+      sendResponse({ ok: true });
+      return false;
+    }
     if (message?.type !== 'browser_bridge_collect_snapshot' || !Number.isSafeInteger(message.snapshotGeneration)) return false;
     const nodes = [];
     refs.clear();
