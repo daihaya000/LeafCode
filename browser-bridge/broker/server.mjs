@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { BrowserBridgeErrorCode } from '../shared/errors.mjs';
-import { MAX_MESSAGE_BYTES } from '../shared/schemas.mjs';
+import { BrowserToolName, MAX_MESSAGE_BYTES, validateToolInput } from '../shared/schemas.mjs';
 
 const JSON_HEADERS = Object.freeze({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
 
@@ -45,6 +45,19 @@ function parseMessage(raw) {
   }
 }
 
+async function readJsonBody(req) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_MESSAGE_BYTES) {
+      throw new Error('payload_too_large');
+    }
+    chunks.push(chunk);
+  }
+  return parseMessage(Buffer.concat(chunks).toString());
+}
+
 /**
  * Creates the local-only bridge transport. WebSocketServer is injected so the
  * host owns the ws dependency while this package stays independently testable.
@@ -70,7 +83,12 @@ export function createBrowserBridgeBroker({
   let connectionGeneration = 0;
   let listening = false;
 
-  const server = createServer((req, res) => {
+  const status = () => ({
+    extension: { connected: extensionSocket !== null, paired: pairedOrigin !== null },
+    pendingApprovals: 0,
+  });
+
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     if (!url.pathname.startsWith('/internal/')) {
       json(res, 404, { error: 'not_found' });
@@ -81,10 +99,7 @@ export function createBrowserBridgeBroker({
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/status') {
-      json(res, 200, {
-        extension: { connected: extensionSocket !== null, paired: pairedOrigin !== null },
-        pendingApprovals: 0,
-      });
+      json(res, 200, status());
       return;
     }
     if (req.method === 'POST' && url.pathname === '/internal/pairing') {
@@ -98,6 +113,30 @@ export function createBrowserBridgeBroker({
     }
     if (req.method === 'GET' && url.pathname === '/internal/audit') {
       json(res, 200, { entries: [] });
+      return;
+    }
+    const tool = /^\/internal\/tools\/([^/]+)$/.exec(url.pathname)?.[1];
+    if (req.method === 'POST' && tool) {
+      let args;
+      try {
+        args = validateToolInput(tool, await readJsonBody(req));
+      } catch {
+        json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
+        return;
+      }
+      if (tool === BrowserToolName.STATUS) {
+        json(res, 200, status());
+        return;
+      }
+      if (!extensionSocket) {
+        json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
+        return;
+      }
+      // The extension command dispatcher is introduced with the shared-tab
+      // implementation. Until then, do not pretend that a connected browser
+      // has returned page data.
+      void args;
+      json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
       return;
     }
     json(res, 404, { error: 'not_found' });

@@ -28,6 +28,24 @@ test('internal endpoints are loopback-only and require the generated bearer toke
   const status = await allowed.json();
   assert.deepEqual(status, { extension: { connected: false, paired: false }, pendingApprovals: 0 });
   assert.equal(JSON.stringify(status).includes(broker.internalToken), false);
+
+  const toolStatus = await fetch(`${broker.url}/internal/tools/browser_status`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  assert.equal(toolStatus.status, 200);
+  assert.deepEqual(await toolStatus.json(), status);
+
+  const unavailable = await fetch(`${broker.url}/internal/tools/browser_snapshot`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: 'tab_1' }),
+  });
+  assert.equal(unavailable.status, 503);
+  assert.deepEqual(await unavailable.json(), {
+    error: { code: 'EXTENSION_DISCONNECTED' },
+  });
 });
 
 test('pairs only a Chrome extension origin and uses one-time pairing codes', async (t) => {

@@ -1,0 +1,69 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
+import { BrowserBridgeErrorCode } from '../shared/errors.mjs';
+import { BrowserToolName, validateToolInput } from '../shared/schemas.mjs';
+import { BrowserBridgeClient } from './broker-client.mjs';
+
+const TAB_ID_SCHEMA = z.string().regex(/^[A-Za-z0-9_-]{1,256}$/);
+const READ_ONLY_ANNOTATIONS = Object.freeze({
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+});
+
+function textResult(value) {
+  return { content: [{ type: 'text', text: JSON.stringify(value) }] };
+}
+
+function errorResult(code) {
+  return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code } }) }] };
+}
+
+function registerReadTool(server, brokerClient, name, description, inputSchema) {
+  server.registerTool(name, {
+    title: name,
+    description,
+    inputSchema,
+    annotations: READ_ONLY_ANNOTATIONS,
+  }, async (args) => {
+    try {
+      const input = validateToolInput(name, args);
+      return textResult(await brokerClient.call(name, input));
+    } catch (error) {
+      const code = error?.code;
+      return errorResult(Object.values(BrowserBridgeErrorCode).includes(code)
+        ? code
+        : BrowserBridgeErrorCode.BROKER_UNAVAILABLE);
+    }
+  });
+}
+
+export function createMcpServer({ brokerClient }) {
+  if (!brokerClient || typeof brokerClient.call !== 'function') {
+    throw new TypeError('Broker client is required');
+  }
+  const server = new McpServer({ name: 'opencode-webui-browser-bridge', version: '0.1.0' });
+  registerReadTool(server, brokerClient, BrowserToolName.STATUS, 'Get Browser Bridge connection status.', z.object({}).strict());
+  registerReadTool(server, brokerClient, BrowserToolName.LIST_TABS, 'List explicitly shared browser tabs.', z.object({}).strict());
+  registerReadTool(server, brokerClient, BrowserToolName.SNAPSHOT, 'Read a privacy-filtered accessibility snapshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());
+  registerReadTool(server, brokerClient, BrowserToolName.SCREENSHOT, 'Request an approved screenshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());
+  return server;
+}
+
+export async function runStdio({ env = process.env, stdin = process.stdin, stdout = process.stdout } = {}) {
+  const server = createMcpServer({ brokerClient: BrowserBridgeClient.fromEnvironment(env) });
+  const transport = new StdioServerTransport(stdin, stdout, { maxBufferSize: 1024 * 1024 });
+  await server.connect(transport);
+  return server;
+}
+
+if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {
+  runStdio().catch((error) => {
+    process.stderr.write(`Browser Bridge MCP failed to start: ${error?.code ?? 'BROKER_UNAVAILABLE'}\n`);
+    process.exitCode = 1;
+  });
+}
