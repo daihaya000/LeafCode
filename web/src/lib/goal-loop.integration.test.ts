@@ -735,3 +735,116 @@ describe("goal loop failure recovery", () => {
     expect(loop.maxTurns).toBe(5);
   });
 });
+
+describe("goal loop pause_reason (docs/specs/goal-loop.md I5)", () => {
+  it("keeps unknown_delivery across repeated resumes and never resends the prompt", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5,
+    });
+    // Turn 1 prompt fails ambiguously (408): delivery cannot be proven.
+    h.promptAsyncFailuresRemaining = 1;
+    h.promptAsyncFailureStatus = 408;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("unknown_delivery");
+
+    // First resume: no structured reply yet, so it must stay paused.
+    const first = await updateGoalLoopStatus("ws-1", "resume");
+    expect(first?.status).toBe("paused");
+    expect(first?.pauseReason).toBe("unknown_delivery");
+
+    // Second resume used to fall through to `queued` because the error text had
+    // been reworded, which resent a possibly in-flight prompt.
+    h.promptAsyncCount = 0;
+    const second = await updateGoalLoopStatus("ws-1", "resume");
+    expect(second?.status).toBe("paused");
+    expect(second?.pauseReason).toBe("unknown_delivery");
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(h.promptAsyncCount).toBe(0);
+  });
+
+  it("recovers and clears pause_reason when the delivered reply is found on resume", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5,
+    });
+    h.promptAsyncFailuresRemaining = 1;
+    h.promptAsyncFailureStatus = 408;
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("unknown_delivery");
+
+    // The prompt had actually reached OpenCode: its marked prompt and reply exist.
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("u1", "user", undefined, "<!-- webui-goal-loop-prompt -->\n\nwork"),
+      msg("a1", "assistant", undefined, '```json\n{"status":"progress","summary":"did it"}\n```'),
+    ];
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.status).toBe("queued");
+    expect(resumed?.pauseReason).toBe("");
+    expect(resumed?.progress.at(-1)?.summary).toBe("did it");
+  });
+
+  it("records a distinct pause_reason for each pause path", async () => {
+    setupWorkspace("ws-1", "sess-1");
+
+    // transcript_unreadable at creation
+    h.messageFailuresRemaining = 1;
+    const created = await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 2,
+    });
+    expect(created.pauseReason).toBe("transcript_unreadable");
+
+    // user pause
+    await updateGoalLoopStatus("ws-1", "resume");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("");
+    await updateGoalLoopStatus("ws-1", "pause");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("user");
+
+    // manual_send pause
+    await updateGoalLoopStatus("ws-1", "resume");
+    await pauseGoalLoopForManualSend("ws-1", "sess-1");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("manual_send");
+
+    // turn_limit pause: exhaust the budget with the loop already at max turns
+    testDb
+      .prepare(
+        `UPDATE goal_loops SET status = 'queued', pause_reason = '', turn_count = 2, max_turns = 2
+         WHERE id = ?`,
+      )
+      .run(getGoalLoop("ws-1")!.id);
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("turn_limit");
+  });
+
+  it("records unreadable_result when a finished turn has no structured JSON", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5,
+    });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    // A completed assistant with no JSON block, quiet long enough to prove the
+    // turn really ended (STRUCTURED_GRACE_MS is 60s; `completed` is epoch-ish).
+    h.messageResponse = [msg("m0", "assistant"), msg("a1", "assistant", undefined, "no json here")];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("paused");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("unreadable_result");
+  });
+});

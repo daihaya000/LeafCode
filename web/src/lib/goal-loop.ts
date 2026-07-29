@@ -438,8 +438,9 @@ export async function createGoalLoop(input: {
       .prepare(
         `INSERT INTO goal_loops
           (id, workspace_id, opencode_session_id, status, goal, acceptance, max_turns,
-           last_message_id, agent, provider_id, model_id, variant, error, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_message_id, agent, provider_id, model_id, variant, error, pause_reason,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -457,6 +458,7 @@ export async function createGoalLoop(input: {
         transcriptReadable
           ? ""
           : "会話履歴を読めないため、重複送信を防止して一時停止しました。再開してください。",
+        transcriptReadable ? "" : "transcript_unreadable",
         now,
         now,
       );
@@ -477,7 +479,8 @@ export async function updateGoalLoopStatus(
   if (action === "pause") {
     getDb()
       .prepare(
-        `UPDATE goal_loops SET status = 'paused', revision = revision + 1, updated_at = ?
+        `UPDATE goal_loops
+         SET status = 'paused', pause_reason = 'user', revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
       )
       .run(now, loop.id, loop.revision);
@@ -523,13 +526,14 @@ export async function updateGoalLoopStatus(
       const claimed = getDb()
         .prepare(
           `UPDATE goal_loops
-           SET status = 'running', error = '', revision = revision + 1, updated_at = ?
+           SET status = 'running', error = '', pause_reason = '',
+               revision = revision + 1, updated_at = ?
            WHERE id = ? AND revision = ? AND status = 'paused' AND last_message_id IS ?`,
         )
         .run(now, loop.id, loop.revision, loop.lastMessageId);
       if (claimed.changes === 0) return getGoalLoop(workspaceId);
       applyAssistantResult(
-        { ...loop, status: "running", error: "", revision: loop.revision + 1 },
+        { ...loop, status: "running", error: "", pauseReason: "", revision: loop.revision + 1 },
         recovered.assistant,
         recovered.result,
       );
@@ -559,7 +563,8 @@ export async function updateGoalLoopStatus(
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'queued', error = '', last_message_id = ?, revision = revision + 1, updated_at = ?
+         SET status = 'queued', error = '', pause_reason = '', last_message_id = ?,
+             revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status = 'paused'`,
       )
       .run(tailMessageId, now, loop.id, loop.revision);
@@ -636,7 +641,8 @@ export async function pauseGoalLoopForManualSend(
   getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = 'paused', error = '手動送信が行われたため一時停止しました。',
+       SET status = 'paused', pause_reason = 'manual_send',
+           error = '手動送信が行われたため一時停止しました。',
            last_message_id = ?, revision = revision + 1, updated_at = ?
        WHERE workspace_id = ? AND opencode_session_id = ? AND revision = ?
          AND status IN ('queued', 'running', 'verifying_completed')`,
@@ -895,7 +901,8 @@ function applyAssistantResult(
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'paused', last_message_id = ?, error = ?, revision = revision + 1, updated_at = ?
+         SET status = 'paused', pause_reason = 'unreadable_result', last_message_id = ?,
+             error = ?, revision = revision + 1, updated_at = ?
          WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
       )
       .run(
@@ -957,7 +964,7 @@ function applyAssistantResult(
     .prepare(
       `UPDATE goal_loops
        SET status = ?, last_message_id = ?, progress = ?, summary = ?, evidence = ?,
-           blocked_reason = ?, error = ?, revision = revision + 1, updated_at = ?
+           blocked_reason = ?, error = ?, pause_reason = ?, revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
     )
     .run(
@@ -971,6 +978,11 @@ function applyAssistantResult(
         ? "最大ターン数に到達したため一時停止しました。"
         : verificationRejectedPause
         ? "完了宣言が検証で複数回拒否されたため一時停止しました。ゴールか acceptance を見直してください。"
+        : "",
+      reachedTurnLimit
+        ? "turn_limit"
+        : verificationRejectedPause
+        ? "verification_rejected"
         : "",
       now,
       loop.id,
@@ -991,7 +1003,9 @@ function expireStalledTurn(loop: GoalLoopDto): void {
   if (!Number.isFinite(started) || Date.now() - started < TURN_TIMEOUT_MS) return;
   getDb()
     .prepare(
-      `UPDATE goal_loops SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+      `UPDATE goal_loops
+       SET status = 'paused', pause_reason = 'turn_timeout', error = ?,
+           revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'running' AND revision = ?`,
     )
     .run(
@@ -1015,7 +1029,8 @@ function pauseAfterUnknownPromptDelivery(
   getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+       SET status = 'paused', pause_reason = 'unknown_delivery', error = ?,
+           revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
     )
     .run(
@@ -1027,8 +1042,15 @@ function pauseAfterUnknownPromptDelivery(
     );
 }
 
+/**
+ * True when the loop is paused because a `prompt_async` POST gave no usable
+ * acknowledgement. Reads the `pause_reason` column: matching on the Japanese
+ * `error` text used to break as soon as a later resume reworded the message,
+ * which silently re-queued the loop and duplicated a possibly in-flight prompt.
+ * See docs/specs/goal-loop.md invariant I5.
+ */
 function isUnknownPromptDeliveryPause(loop: GoalLoopDto): boolean {
-  return loop.status === "paused" && loop.error.includes("送達を確認できない");
+  return loop.status === "paused" && loop.pauseReason === "unknown_delivery";
 }
 
 function recoverAfterRejectedPrompt(
@@ -1201,7 +1223,8 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+         SET status = 'paused', pause_reason = 'turn_limit', error = ?,
+             revision = revision + 1, updated_at = ?
          WHERE id = ? AND status = 'queued' AND revision = ?`,
       )
       .run(
@@ -1285,7 +1308,8 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
         getDb()
           .prepare(
             `UPDATE goal_loops
-             SET status = 'paused', error = ?, revision = revision + 1, updated_at = ?
+             SET status = 'paused', pause_reason = 'scheduler_error', error = ?,
+                 revision = revision + 1, updated_at = ?
              WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
           )
           // Slice on grapheme clusters so a 4000-char cut does not split a
