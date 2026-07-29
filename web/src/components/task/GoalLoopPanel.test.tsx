@@ -297,6 +297,26 @@ describe("GoalLoopPanel", () => {
     expect(onUpdate).toHaveBeenCalledWith(25);
   });
 
+  it("allows replacing 1 with a multi-digit maxTurns value", () => {
+    const onUpdate = vi.fn();
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "paused", maxTurns: 1 })}
+        busy={false}
+        onAction={vi.fn()}
+        onUpdateMaxTurns={onUpdate}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("最大ターン数を編集"));
+    const input = screen.getByLabelText("最大ターン数") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.change(input, { target: { value: "2" } });
+    fireEvent.change(input, { target: { value: "20" } });
+    expect(input.value).toBe("20");
+    fireEvent.click(screen.getByLabelText("最大ターン数を保存"));
+    expect(onUpdate).toHaveBeenCalledWith(20);
+  });
+
   it("clamps edited maxTurns to 1..100", () => {
     const onUpdate = vi.fn();
     render(
@@ -372,6 +392,25 @@ describe("GoalLoopPanel", () => {
     );
     expect(screen.getByText("verified")).toBeTruthy();
     expect(screen.getByText("claim")).toBeTruthy();
+  });
+
+  it("renders verifying_completed history entry with a check icon", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({
+          progress: [
+            {
+              time: "2026-01-01T00:00:00.000Z",
+              status: "verifying_completed",
+              summary: "completion claim",
+            },
+          ],
+        })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("goal-loop-progress-check")).toBeTruthy();
   });
 
   it.each(["queued", "running", "paused", "verifying_completed"] as const)(

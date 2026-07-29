@@ -66,8 +66,17 @@ function statusBadgeClass(status: GoalLoopDto["status"]): string {
 }
 
 function progressIcon(p: GoalLoopProgress) {
-  if (p.status === "completed" || p.status === "verified_completed")
-    return <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />;
+  if (
+    p.status === "completed" ||
+    p.status === "verifying_completed" ||
+    p.status === "verified_completed"
+  )
+    return (
+      <Check
+        data-testid="goal-loop-progress-check"
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+      />
+    );
   if (p.status === "blocked")
     return <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />;
   return <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-working" />;
@@ -88,7 +97,9 @@ export function GoalLoopPanel({
   onUpdateMaxTurns?: (maxTurns: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [editingMaxTurns, setEditingMaxTurns] = useState<number | null>(null);
+  // Keep the draft as text. Clamping on every keystroke made it impossible to
+  // clear a value such as `1` before typing a multi-digit replacement (`20`).
+  const [editingMaxTurns, setEditingMaxTurns] = useState<string | null>(null);
 
   if (!loop) return null;
 
@@ -134,7 +145,7 @@ export function GoalLoopPanel({
 
   const commitMaxTurns = () => {
     if (editingMaxTurns == null) return;
-    const clamped = Math.min(100, Math.max(1, Math.trunc(editingMaxTurns)));
+    const clamped = Math.min(100, Math.max(1, Math.trunc(Number(editingMaxTurns) || 1)));
     if (clamped !== loop.maxTurns) onUpdateMaxTurns?.(clamped);
     setEditingMaxTurns(null);
   };
@@ -218,7 +229,7 @@ export function GoalLoopPanel({
               type="button"
               id="goal-loop-maxturns"
               className="h-7 w-20 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
-              onClick={() => setEditingMaxTurns(loop.maxTurns)}
+              onClick={() => setEditingMaxTurns(String(loop.maxTurns))}
               aria-label="最大ターン数を編集"
             >
               {loop.maxTurns}
@@ -233,11 +244,7 @@ export function GoalLoopPanel({
                 autoFocus
                 value={editingMaxTurns}
                 aria-label="最大ターン数"
-                onChange={(e) =>
-                  setEditingMaxTurns(
-                    Math.min(100, Math.max(1, Number(e.target.value) || 1)),
-                  )
-                }
+                onChange={(e) => setEditingMaxTurns(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
