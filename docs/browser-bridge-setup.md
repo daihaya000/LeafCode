@@ -170,6 +170,22 @@ OpenCode から次のツールを呼び出して動作を確認します。
 
 承認は単一操作だけに有効です。拒否・共有解除・拡張切断では保留中の承認は失効します。
 
+### Chrome / Brave 実機スモークチェックリスト
+
+Chrome stable と Brave stable の**それぞれ**で、テスト用の HTTPS ページまたは loopback HTTP ページを使って以下を確認します。実サイトの秘密情報を含むページは使用しません。
+
+- [ ] unpacked 拡張を読み込み、ペアリングコードで接続できる
+- [ ] 明示共有するまで `browser_list_tabs` にタブが表示されない
+- [ ] 共有後に `browser_snapshot` で title、origin、可視テキスト、opaque ref を取得できる
+- [ ] `browser_screenshot`、`browser_type`、`browser_scroll`、`browser_navigate` は承認カードを表示し、許可後に一度だけ実行される
+- [ ] 承認カードで「拒否」を選ぶと、操作が実行されず `APPROVAL_DENIED` になる
+- [ ] snapshot取得後にページを再読込し、古い ref の click/type が `STALE_REFERENCE` になる
+- [ ] 共有解除、拡張無効化、またはタブを閉じた後、保留中の承認・commandが後から実行されない
+- [ ] password/OTP/カード番号候補の入力、禁止 scheme、cross-origin iframe 操作が拒否される
+- [ ] WebUI をLANアドレスから開いた場合、Browser Bridgeの承認・ペアリングAPIが403で拒否される
+
+確認したブラウザの版数、実施日、失敗した項目はリリース記録に残してください。
+
 ## 8. Playwright MCP との使い分け
 
 Browser Bridge は Playwright MCP の代替ではなく、目的が異なります。
