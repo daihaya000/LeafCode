@@ -97,6 +97,9 @@ export function getDb(): Database.Database {
       blocked_reason TEXT NOT NULL DEFAULT '',
       error TEXT NOT NULL DEFAULT '',
       revision INTEGER NOT NULL DEFAULT 0,
+      turn_kind TEXT NOT NULL DEFAULT 'goal',
+      pause_reason TEXT NOT NULL DEFAULT '',
+      rejected_claims INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -107,8 +110,23 @@ export function getDb(): Database.Database {
   const goalLoopColumns = db
     .prepare("PRAGMA table_info(goal_loops)")
     .all() as { name: string }[];
-  if (!goalLoopColumns.some((column) => column.name === "revision")) {
+  const hasGoalLoopColumn = (name: string): boolean =>
+    goalLoopColumns.some((column) => column.name === name);
+  if (!hasGoalLoopColumn("revision")) {
     db.exec("ALTER TABLE goal_loops ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  }
+  // See docs/specs/goal-loop.md. These three columns replace state that used to
+  // be inferred from the human-readable `error` text or from the tail of the
+  // `progress` array (which is truncated to 50 entries and therefore unusable
+  // as a source of truth).
+  if (!hasGoalLoopColumn("turn_kind")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN turn_kind TEXT NOT NULL DEFAULT 'goal'");
+  }
+  if (!hasGoalLoopColumn("pause_reason")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN pause_reason TEXT NOT NULL DEFAULT ''");
+  }
+  if (!hasGoalLoopColumn("rejected_claims")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN rejected_claims INTEGER NOT NULL DEFAULT 0");
   }
   return db;
 }

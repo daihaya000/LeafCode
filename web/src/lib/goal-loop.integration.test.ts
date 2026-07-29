@@ -138,6 +138,9 @@ function makeDb(): Database.Database {
       blocked_reason TEXT NOT NULL DEFAULT '',
       error TEXT NOT NULL DEFAULT '',
       revision INTEGER NOT NULL DEFAULT 0,
+      turn_kind TEXT NOT NULL DEFAULT 'goal',
+      pause_reason TEXT NOT NULL DEFAULT '',
+      rejected_claims INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );

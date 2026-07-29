@@ -14,6 +14,56 @@ export type GoalLoopStatus =
   | "stopped"
   | "error";
 
+/**
+ * Which prompt the current (or most recent) `running` turn is answering.
+ * Stored explicitly because inferring it from the tail of `progress` misreads a
+ * normal goal reply as a verification reply after a pause/resume, which made a
+ * completion claim unreachable. See docs/specs/goal-loop.md invariant I6.
+ */
+export type GoalLoopTurnKind = "goal" | "verification";
+
+/**
+ * Why a loop is `paused`. Stored as an enum instead of being matched out of the
+ * Japanese `error` text: rewording the message used to silently change control
+ * flow. See docs/specs/goal-loop.md invariant I5.
+ */
+export type GoalLoopPauseReason =
+  | ""
+  | "user"
+  | "manual_send"
+  | "turn_limit"
+  | "unreadable_result"
+  | "turn_timeout"
+  | "unknown_delivery"
+  | "transcript_unreadable"
+  | "boundary_lost"
+  | "verification_rejected"
+  | "scheduler_error";
+
+const GOAL_LOOP_PAUSE_REASONS = new Set<string>([
+  "",
+  "user",
+  "manual_send",
+  "turn_limit",
+  "unreadable_result",
+  "turn_timeout",
+  "unknown_delivery",
+  "transcript_unreadable",
+  "boundary_lost",
+  "verification_rejected",
+  "scheduler_error",
+]);
+
+function toPauseReason(value: unknown): GoalLoopPauseReason {
+  return typeof value === "string" && GOAL_LOOP_PAUSE_REASONS.has(value)
+    ? (value as GoalLoopPauseReason)
+    : "";
+}
+
+function toTurnKind(value: unknown): GoalLoopTurnKind {
+  return value === "verification" ? "verification" : "goal";
+}
+
 export type GoalLoopProgress = {
   time: string;
   status: "progress" | "completed" | "verifying_completed" | "verified_completed" | "blocked";
@@ -43,6 +93,9 @@ export type GoalLoopDto = {
   blockedReason: string;
   error: string;
   revision: number;
+  turnKind: GoalLoopTurnKind;
+  pauseReason: GoalLoopPauseReason;
+  rejectedClaims: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -68,6 +121,9 @@ type GoalLoopRow = {
   blocked_reason: string;
   error: string;
   revision: number;
+  turn_kind: string;
+  pause_reason: string;
+  rejected_claims: number;
   created_at: string;
   updated_at: string;
 };
@@ -217,6 +273,9 @@ function toDto(row: GoalLoopRow): GoalLoopDto {
     blockedReason: row.blocked_reason,
     error: row.error,
     revision: row.revision,
+    turnKind: toTurnKind(row.turn_kind),
+    pauseReason: toPauseReason(row.pause_reason),
+    rejectedClaims: row.rejected_claims ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
