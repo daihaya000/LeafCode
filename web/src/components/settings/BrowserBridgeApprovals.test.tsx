@@ -40,4 +40,15 @@ describe("BrowserBridgeApprovals", () => {
     ));
     expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
   });
+
+  it("generates a one-time pairing code without exposing broker credentials", async () => {
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ code: "pairing_code_1234567890" }));
+    render(<BrowserBridgeApprovals />);
+    await screen.findByText("保留中の承認はありません。");
+    fireEvent.click(screen.getByRole("button", { name: "ペアリングコードを生成" }));
+    expect((await screen.findByLabelText("ペアリングコード")).textContent).toBe("pairing_code_1234567890");
+    expect(timedFetch).toHaveBeenCalledWith("/api/host/browser-bridge/pairing", expect.objectContaining({ method: "POST" }));
+  });
 });
