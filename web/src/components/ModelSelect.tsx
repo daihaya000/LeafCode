@@ -52,6 +52,8 @@ export function ModelSelect({
   onChange,
   className,
   title,
+  ariaLabel = "モデル",
+  emptyLabel = "モデル",
 }: {
   value: string;
   options: ModelOption[];
@@ -59,6 +61,8 @@ export function ModelSelect({
   onChange: (value: string) => void;
   className?: string;
   title?: string;
+  ariaLabel?: string;
+  emptyLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{
@@ -151,7 +155,7 @@ export function ModelSelect({
     <div
       ref={menuRef}
       role="listbox"
-      aria-label="モデル"
+      aria-label={ariaLabel}
       className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
       style={{
         top: menuPosition?.top ?? 0,
@@ -206,7 +210,7 @@ export function ModelSelect({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label="モデル"
+        aria-label={ariaLabel}
         title={title ?? selected?.label ?? "モデル"}
         onClick={() => setOpen((current) => !current)}
         className={cx(
@@ -215,7 +219,7 @@ export function ModelSelect({
         )}
       >
         <ModelProviderIcon value={value} />
-        <span className="min-w-0 truncate">{selected?.label ?? "モデル"}</span>
+        <span className="min-w-0 truncate">{selected?.label ?? emptyLabel}</span>
         {selected?.image && (
           <ImageIcon
             aria-label="画像入力対応"
