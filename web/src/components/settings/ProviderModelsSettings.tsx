@@ -1,9 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { GripVertical, Trash2 } from "lucide-react";
 import { Badge, Button, GhostSelect, cx } from "@/components/ui";
+import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { getJson, sendJson } from "@/lib/client";
+import {
+  AUTO_IMPOSE_EVENT,
+  AUTO_IMPOSE_SETTING_KEY,
+  AUTO_OPTIMIZE_EVENT,
+  AUTO_OPTIMIZE_SETTING_KEY,
+  AUTO_SHOW_MODEL_EVENT,
+  AUTO_SHOW_MODEL_SETTING_KEY,
+  hasStoredAutoSetting,
+  readAutoImpose,
+  readAutoOptimizeMode,
+  readAutoSettingsFromServer,
+  readAutoShowModel,
+  writeAutoImpose,
+  writeAutoOptimizeMode,
+  writeAutoSettingToServer,
+  writeAutoShowModel,
+} from "@/lib/auto-settings";
+import type { AutoOptimizeMode } from "@/lib/auto-model";
 import {
   readDefaultModel,
   readDefaultModelFromServer,
@@ -310,6 +329,12 @@ export function ProviderModelsSettings() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("");
+  const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
+    readAutoOptimizeMode(),
+  );
+  const [autoShowModel, setAutoShowModel] = useState(() => readAutoShowModel());
+  const [autoImpose, setAutoImpose] = useState(() => readAutoImpose());
+  const autoSettingsTouched = useRef({ mode: false, showModel: false, impose: false });
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
@@ -338,6 +363,61 @@ export function ProviderModelsSettings() {
       // DBに無くlocalStorageにある場合はDBへ保存（マイグレーション）。
       if (serverValue == null && localValue) {
         await writeDefaultModelToServer(localValue).catch(() => undefined);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const onMode = () => {
+      autoSettingsTouched.current.mode = true;
+      setAutoOptimize(readAutoOptimizeMode());
+    };
+    const onShowModel = () => {
+      autoSettingsTouched.current.showModel = true;
+      setAutoShowModel(readAutoShowModel());
+    };
+    const onImpose = () => {
+      autoSettingsTouched.current.impose = true;
+      setAutoImpose(readAutoImpose());
+    };
+    window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+    window.addEventListener(AUTO_SHOW_MODEL_EVENT, onShowModel);
+    window.addEventListener(AUTO_IMPOSE_EVENT, onImpose);
+    return () => {
+      window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+      window.removeEventListener(AUTO_SHOW_MODEL_EVENT, onShowModel);
+      window.removeEventListener(AUTO_IMPOSE_EVENT, onImpose);
+    };
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const snapshot = await readAutoSettingsFromServer();
+      // Keep a local choice authoritative, as HomeView and TaskView do.
+      // Server-only values are hydrated into localStorage for other screens.
+      if (
+        snapshot.mode &&
+        !autoSettingsTouched.current.mode &&
+        !hasStoredAutoSetting(AUTO_OPTIMIZE_SETTING_KEY)
+      ) {
+        writeAutoOptimizeMode(snapshot.mode);
+        setAutoOptimize(snapshot.mode);
+      }
+      if (
+        snapshot.showModel !== undefined &&
+        !autoSettingsTouched.current.showModel &&
+        !hasStoredAutoSetting(AUTO_SHOW_MODEL_SETTING_KEY)
+      ) {
+        writeAutoShowModel(snapshot.showModel);
+        setAutoShowModel(snapshot.showModel);
+      }
+      if (
+        snapshot.impose !== undefined &&
+        !autoSettingsTouched.current.impose &&
+        !hasStoredAutoSetting(AUTO_IMPOSE_SETTING_KEY)
+      ) {
+        writeAutoImpose(snapshot.impose);
+        setAutoImpose(snapshot.impose);
       }
     })();
   }, []);
@@ -672,6 +752,88 @@ export function ProviderModelsSettings() {
               )}
             </div>
           )}
+        </div>
+      </section>
+
+      <section aria-labelledby="auto-settings-heading">
+        <h2
+          id="auto-settings-heading"
+          className="mb-3 text-sm font-semibold text-muted"
+        >
+          Autoモード
+        </h2>
+        <p className="mb-3 text-xs text-faint">
+          Autoがタスクに合ったモデルを選ぶときの動作を設定します。
+        </p>
+        <div className="divide-y divide-border rounded-xl border border-border bg-surface px-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-muted">最適化モード</p>
+              <p className="mt-1 text-xs text-faint">
+                コスト、バランス、知能のどれを優先するかを選びます。
+              </p>
+            </div>
+            <AutoOptimizeSelect
+              value={autoOptimize}
+              disabled={false}
+              onChange={(mode) => {
+                autoSettingsTouched.current.mode = true;
+                setAutoOptimize(mode);
+                writeAutoOptimizeMode(mode);
+                void writeAutoSettingToServer(AUTO_OPTIMIZE_SETTING_KEY, mode);
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-muted">
+                Autoが選んだモデル名を表示
+              </p>
+              <p className="mt-1 text-xs text-faint">
+                タスク画面で実際に選ばれたモデル名を表示します。
+              </p>
+            </div>
+            <ExtensionSwitch
+              name="Autoが選んだモデル名を表示"
+              enabled={autoShowModel}
+              busy={false}
+              onToggle={() => {
+                const next = !autoShowModel;
+                autoSettingsTouched.current.showModel = true;
+                setAutoShowModel(next);
+                writeAutoShowModel(next);
+                void writeAutoSettingToServer(
+                  AUTO_SHOW_MODEL_SETTING_KEY,
+                  next ? "1" : "",
+                );
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-medium text-muted">
+                新規タスクでAutoを使う
+              </p>
+              <p className="mt-1 text-xs text-faint">
+                新規タスクの初期選択をAutoにします。タスクごとに変更できます。
+              </p>
+            </div>
+            <ExtensionSwitch
+              name="新規タスクでAutoを使う"
+              enabled={autoImpose}
+              busy={false}
+              onToggle={() => {
+                const next = !autoImpose;
+                autoSettingsTouched.current.impose = true;
+                setAutoImpose(next);
+                writeAutoImpose(next);
+                void writeAutoSettingToServer(
+                  AUTO_IMPOSE_SETTING_KEY,
+                  next ? "1" : "",
+                );
+              }}
+            />
+          </div>
         </div>
       </section>
 

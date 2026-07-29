@@ -46,10 +46,22 @@ function mockGetJson(overrides?: {
   fail?: boolean;
   empty?: boolean;
   defaultModel?: string | null;
+  autoOptimize?: string | null;
+  autoShowModel?: string | null;
+  autoImpose?: string | null;
 }) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/settings/default-model") {
       return Promise.resolve({ value: overrides?.defaultModel ?? null });
+    }
+    if (path === "/api/settings/auto-optimize") {
+      return Promise.resolve({ value: overrides?.autoOptimize ?? null });
+    }
+    if (path === "/api/settings/auto-show-model") {
+      return Promise.resolve({ value: overrides?.autoShowModel ?? null });
+    }
+    if (path === "/api/settings/auto-impose") {
+      return Promise.resolve({ value: overrides?.autoImpose ?? null });
     }
     if (path === "/api/extensions/provider-models") {
       if (overrides?.fail) {
@@ -144,6 +156,206 @@ describe("ProviderModelsSettings", () => {
       );
     });
     expect(localStorage.getItem("webui:default-model")).toBe("local::model");
+  });
+
+  it("uses local Auto settings immediately and keeps their defaults", async () => {
+    localStorage.setItem("webui:auto-optimize", "intelligence");
+    localStorage.setItem("webui:auto-show-model", "1");
+
+    render(<ProviderModelsSettings />);
+
+    expect(
+      await screen.findByRole("button", { name: "Auto の最適化" }),
+    ).toHaveProperty("value", "intelligence");
+    expect(
+      screen
+        .getByRole("switch", {
+          name: "Autoが選んだモデル名を表示 を無効化",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("switch", {
+          name: "新規タスクでAutoを使う を有効化",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  it("hydrates server Auto settings into localStorage when no local value exists", async () => {
+    mockGetJson({
+      autoOptimize: "balanced",
+      autoShowModel: "1",
+      autoImpose: "1",
+    });
+
+    render(<ProviderModelsSettings />);
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:auto-optimize")).toBe("balanced");
+      expect(localStorage.getItem("webui:auto-show-model")).toBe("1");
+      expect(localStorage.getItem("webui:auto-impose")).toBe("1");
+    });
+    expect(screen.getByRole("button", { name: "Auto の最適化" })).toHaveProperty(
+      "value",
+      "balanced",
+    );
+    expect(
+      screen
+        .getByRole("switch", {
+          name: "Autoが選んだモデル名を表示 を無効化",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("switch", {
+          name: "新規タスクでAutoを使う を無効化",
+        })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("persists each Auto setting change locally and to the server", async () => {
+    render(<ProviderModelsSettings />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Auto の最適化" }));
+    fireEvent.click(screen.getByRole("option", { name: "知能優先" }));
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "Autoが選んだモデル名を表示 を有効化",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "新規タスクでAutoを使う を有効化",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:auto-optimize")).toBe("intelligence");
+      expect(localStorage.getItem("webui:auto-show-model")).toBe("1");
+      expect(localStorage.getItem("webui:auto-impose")).toBe("1");
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/auto-optimize",
+        { value: "intelligence" },
+      );
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/auto-show-model",
+        { value: "1" },
+      );
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/auto-impose",
+        { value: "1" },
+      );
+    });
+  });
+
+  it("removes local Auto toggles and sends empty values when turned off", async () => {
+    localStorage.setItem("webui:auto-show-model", "1");
+    localStorage.setItem("webui:auto-impose", "1");
+    render(<ProviderModelsSettings />);
+
+    fireEvent.click(
+      await screen.findByRole("switch", {
+        name: "Autoが選んだモデル名を表示 を無効化",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "新規タスクでAutoを使う を無効化",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:auto-show-model")).toBeNull();
+      expect(localStorage.getItem("webui:auto-impose")).toBeNull();
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/auto-show-model",
+        { value: "" },
+      );
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/auto-impose",
+        { value: "" },
+      );
+    });
+  });
+
+  it("does not let a late server value restore a toggle turned off by the user", async () => {
+    localStorage.setItem("webui:auto-show-model", "1");
+    let releaseServer: () => void = () => undefined;
+    const serverReady = new Promise<void>((resolve) => {
+      releaseServer = resolve;
+    });
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({ providers: PROVIDERS });
+      }
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/settings/auto-show-model") {
+        return serverReady.then(() => ({ value: "1" }));
+      }
+      if (
+        path === "/api/settings/auto-optimize" ||
+        path === "/api/settings/auto-impose"
+      ) {
+        return serverReady.then(() => ({ value: null }));
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+
+    render(<ProviderModelsSettings />);
+    fireEvent.click(
+      await screen.findByRole("switch", {
+        name: "Autoが選んだモデル名を表示 を無効化",
+      }),
+    );
+    releaseServer();
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:auto-show-model")).toBeNull();
+      expect(
+        screen
+          .getByRole("switch", {
+            name: "Autoが選んだモデル名を表示 を有効化",
+          })
+          .getAttribute("aria-checked"),
+      ).toBe("false");
+    });
+  });
+
+  it("syncs external Auto setting events in the same window", async () => {
+    render(<ProviderModelsSettings />);
+
+    const mode = await screen.findByRole("button", { name: "Auto の最適化" });
+    localStorage.setItem("webui:auto-optimize", "intelligence");
+    localStorage.setItem("webui:auto-show-model", "1");
+    localStorage.setItem("webui:auto-impose", "1");
+    window.dispatchEvent(new CustomEvent("webui:auto-optimize"));
+    window.dispatchEvent(new CustomEvent("webui:auto-show-model"));
+    window.dispatchEvent(new CustomEvent("webui:auto-impose"));
+
+    await waitFor(() => {
+      expect(mode).toHaveProperty("value", "intelligence");
+      expect(
+        screen.getByRole("switch", {
+          name: "Autoが選んだモデル名を表示 を無効化",
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("switch", {
+          name: "新規タスクでAutoを使う を無効化",
+        }),
+      ).toBeTruthy();
+    });
   });
 
   it("expands a provider to show its models", async () => {
