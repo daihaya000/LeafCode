@@ -46,7 +46,7 @@ test('shares only an explicitly selected active HTTPS tab and never exposes its 
   assert.deepEqual(controller.publicState().sharedTabs, []);
 });
 
-test('executes a duplicated command id only once per connection generation', async () => {
+test('resyncs shared tabs and resets command dedupe on a new connection generation', async () => {
   const stored = { browserBridge: { brokerUrl: 'ws://127.0.0.1:18766/extension', deviceKey: 'device_key', sharedTabs: { tab_opaque: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example', browserTabId: 42 } } } };
   let delivered = 0;
   const chromeApi = {
@@ -79,4 +79,11 @@ test('executes a duplicated command id only once per connection generation', asy
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(delivered, 1);
   assert.equal(socket.sent.filter((message) => message.type === 'result').length, 1);
+
+  socket.emit('message', { data: JSON.stringify({ type: 'authenticated', connectionGeneration: 2 }) });
+  socket.emit('message', { data: JSON.stringify({ ...command, connectionGeneration: 2 }) });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(delivered, 2);
+  assert.equal(socket.sent.filter((message) => message.type === 'result').length, 2);
+  assert.equal(socket.sent.filter((message) => message.type === 'tab_shared').length, 2);
 });
