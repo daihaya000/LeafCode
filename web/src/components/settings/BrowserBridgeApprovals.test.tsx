@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserBridgeApprovals } from "./BrowserBridgeApprovals";
 
 const { timedFetch } = vi.hoisted(() => ({ timedFetch: vi.fn() }));
@@ -30,6 +30,17 @@ describe("BrowserBridgeApprovals", () => {
     render(<BrowserBridgeApprovals />);
     expect(await screen.findByText("Browser Bridgeに接続できません")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Browser Bridge 承認" })).toBeTruthy();
+  });
+
+  it("recovers from a transient refresh failure on the next poll", async () => {
+    timedFetch
+      .mockRejectedValueOnce(new Error("Browser Bridgeに接続できません"))
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }));
+    render(<BrowserBridgeApprovals />);
+    expect(await screen.findByText("Browser Bridgeに接続できません")).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
+    expect(screen.queryByText("Browser Bridgeに接続できません")).toBeNull();
   });
 
   it("renders approval metadata and forwards an allow decision", async () => {
