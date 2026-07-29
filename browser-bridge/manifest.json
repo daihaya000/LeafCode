@@ -9,8 +9,20 @@
     "service_worker": "extension/background.mjs",
     "type": "module"
   },
+  "icons": {
+    "16": "extension/icons/icon-16.png",
+    "32": "extension/icons/icon-32.png",
+    "48": "extension/icons/icon-48.png",
+    "128": "extension/icons/icon-128.png"
+  },
   "action": {
     "default_title": "OpenCode Browser Bridge",
-    "default_popup": "extension/popup.html"
+    "default_popup": "extension/popup.html",
+    "default_icon": {
+      "16": "extension/icons/icon-16.png",
+      "32": "extension/icons/icon-32.png",
+      "48": "extension/icons/icon-48.png",
+      "128": "extension/icons/icon-128.png"
+    }
   }
 }
