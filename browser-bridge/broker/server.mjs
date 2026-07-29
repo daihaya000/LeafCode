@@ -163,8 +163,11 @@ export function createBrowserBridgeBroker({
       let args;
       try {
         args = validateToolInput(tool, await readJsonBody(req));
-      } catch {
-        json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
+      } catch (error) {
+        const code = error?.message === 'payload_too_large'
+          ? BrowserBridgeErrorCode.PAYLOAD_TOO_LARGE
+          : BrowserBridgeErrorCode.INVALID_REQUEST;
+        json(res, code === BrowserBridgeErrorCode.PAYLOAD_TOO_LARGE ? 413 : 400, { error: { code } });
         return;
       }
       if (tool === BrowserToolName.STATUS) {

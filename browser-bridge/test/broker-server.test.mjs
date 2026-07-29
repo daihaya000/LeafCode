@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { WebSocket } from 'ws';
 import { createBrowserBridgeBroker } from '../broker/server.mjs';
+import { MAX_MESSAGE_BYTES } from '../shared/schemas.mjs';
 
 async function startBroker(options = {}) {
   const broker = createBrowserBridgeBroker({
@@ -47,6 +48,18 @@ test('internal endpoints are loopback-only and require the generated bearer toke
   assert.deepEqual(await unavailable.json(), {
     error: { code: 'EXTENSION_DISCONNECTED' },
   });
+});
+
+test('rejects oversized internal tool payloads before parsing them', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const response = await fetch(`${broker.url}/internal/tools/browser_status`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ padding: 'x'.repeat(MAX_MESSAGE_BYTES) }),
+  });
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: { code: 'PAYLOAD_TOO_LARGE' } });
 });
 
 test('pairs only a Chrome extension origin and uses one-time pairing codes', async (t) => {
