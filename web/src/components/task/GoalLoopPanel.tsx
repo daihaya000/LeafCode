@@ -19,7 +19,6 @@ const STATUS_LABEL: Record<GoalLoopDto["status"], string> = {
   completed: "完了",
   blocked: "ブロック",
   stopped: "停止",
-  error: "エラー",
 };
 
 /** badge class for each status */
@@ -38,8 +37,6 @@ function statusBadgeClass(status: GoalLoopDto["status"]): string {
       return "bg-warning-bg text-warning";
     case "stopped":
       return "bg-surface-2 text-muted";
-    case "error":
-      return "bg-danger-bg text-danger";
     default:
       return "bg-surface-2 text-muted";
   }
@@ -83,7 +80,7 @@ export function GoalLoopPanel({
     loop.status !== "completed" &&
     loop.status !== "blocked" &&
     loop.status !== "stopped";
-  const canResume = loop.status === "paused" || loop.status === "error";
+  const canResume = loop.status === "paused";
   const canEditMaxTurns = loop.status === "paused" && Boolean(onUpdateMaxTurns);
 
   const handleStop = () => {

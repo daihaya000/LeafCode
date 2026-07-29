@@ -11,8 +11,7 @@ export type GoalLoopStatus =
   | "verifying_completed"
   | "completed"
   | "blocked"
-  | "stopped"
-  | "error";
+  | "stopped";
 
 /**
  * Which prompt the current (or most recent) `running` turn is answering.
@@ -130,7 +129,7 @@ type GoalLoopRow = {
 
 type StatusMap = Record<string, SessionStatus>;
 
-const TERMINAL_STATUSES: GoalLoopStatus[] = ["completed", "blocked", "stopped", "error"];
+const TERMINAL_STATUSES: GoalLoopStatus[] = ["completed", "blocked", "stopped"];
 const SCHEDULER_INTERVAL_MS = 2_500;
 /**
  * `prompt_async` normally returns 202 immediately, but under engine load the
@@ -503,7 +502,7 @@ export async function updateGoalLoopStatus(
       getDb()
         .prepare(
           `UPDATE goal_loops SET error = ?, revision = revision + 1, updated_at = ?
-           WHERE id = ? AND revision = ? AND status IN ('paused', 'error')`,
+           WHERE id = ? AND revision = ? AND status = 'paused'`,
         )
         .run(
           "会話履歴を読めないため再開できません。重複送信を防止するため、接続回復後に再試行してください。",
@@ -561,7 +560,7 @@ export async function updateGoalLoopStatus(
       .prepare(
         `UPDATE goal_loops
          SET status = 'queued', error = '', last_message_id = ?, revision = revision + 1, updated_at = ?
-         WHERE id = ? AND revision = ? AND status IN ('paused', 'error')`,
+         WHERE id = ? AND revision = ? AND status = 'paused'`,
       )
       .run(tailMessageId, now, loop.id, loop.revision);
     void runGoalLoopSchedulerTick();

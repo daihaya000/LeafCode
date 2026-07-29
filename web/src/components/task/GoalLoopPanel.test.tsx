@@ -64,7 +64,6 @@ describe("GoalLoopPanel", () => {
     ["completed", "完了"],
     ["blocked", "ブロック"],
     ["stopped", "停止"],
-    ["error", "エラー"],
   ] as const)("renders status label %s -> %s", (status, label) => {
     render(
       <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
@@ -107,9 +106,13 @@ describe("GoalLoopPanel", () => {
     expect(onAction).toHaveBeenCalledWith("resume");
   });
 
-  it("shows resume button when error", () => {
+  it("shows resume button when paused by a scheduler error", () => {
     render(
-      <GoalLoopPanel loop={baseLoop({ status: "error" })} busy={false} onAction={vi.fn()} />,
+      <GoalLoopPanel
+        loop={baseLoop({ status: "paused", pauseReason: "scheduler_error", error: "爆発した" })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
     );
     expect(screen.getByRole("button", { name: "Goalループを再開" })).toBeTruthy();
   });
@@ -276,7 +279,12 @@ describe("GoalLoopPanel", () => {
   it("renders error and blockedReason alerts", () => {
     render(
       <GoalLoopPanel
-        loop={baseLoop({ status: "error", error: "爆発した", blockedReason: "理由" })}
+        loop={baseLoop({
+          status: "paused",
+          pauseReason: "scheduler_error",
+          error: "爆発した",
+          blockedReason: "理由",
+        })}
         busy={false}
         onAction={vi.fn()}
       />,
@@ -329,7 +337,7 @@ describe("GoalLoopPanel", () => {
     },
   );
 
-  it.each(["completed", "blocked", "stopped", "error"] as const)(
+  it.each(["completed", "blocked", "stopped"] as const)(
     "does not stick when loop is finished (%s)",
     (status) => {
       render(
