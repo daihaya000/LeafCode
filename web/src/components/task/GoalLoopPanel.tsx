@@ -207,7 +207,7 @@ export function GoalLoopPanel({
             <Button
               variant="secondary"
               size="sm"
-              disabled={busy}
+              disabled={busy || loop.pauseRequested}
               aria-label="Goalループを一時停止"
               onClick={() => onAction("pause")}
             >
@@ -243,6 +243,9 @@ export function GoalLoopPanel({
       </div>
 
       {pauseHint && <p className="mt-2 truncate text-xs text-muted">{pauseHint}</p>}
+      {loop.pauseRequested && (
+        <p className="mt-2 text-xs text-muted">このターンの完了後に一時停止します。</p>
+      )}
       {terminalSummary && (
         <p
           className={cx(

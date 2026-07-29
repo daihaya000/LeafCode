@@ -100,6 +100,7 @@ export function getDb(): Database.Database {
       turn_kind TEXT NOT NULL DEFAULT 'goal',
       pause_reason TEXT NOT NULL DEFAULT '',
       rejected_claims INTEGER NOT NULL DEFAULT 0,
+      pause_requested INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -127,6 +128,9 @@ export function getDb(): Database.Database {
   }
   if (!hasGoalLoopColumn("rejected_claims")) {
     db.exec("ALTER TABLE goal_loops ADD COLUMN rejected_claims INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!hasGoalLoopColumn("pause_requested")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0");
   }
   return db;
 }

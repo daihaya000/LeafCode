@@ -95,6 +95,7 @@ export type GoalLoopDto = {
   turnKind: GoalLoopTurnKind;
   pauseReason: GoalLoopPauseReason;
   rejectedClaims: number;
+  pauseRequested: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -123,6 +124,7 @@ type GoalLoopRow = {
   turn_kind: string;
   pause_reason: string;
   rejected_claims: number;
+  pause_requested: number;
   created_at: string;
   updated_at: string;
 };
@@ -281,6 +283,7 @@ function toDto(row: GoalLoopRow): GoalLoopDto {
     turnKind: toTurnKind(row.turn_kind),
     pauseReason: toPauseReason(row.pause_reason),
     rejectedClaims: row.rejected_claims ?? 0,
+    pauseRequested: row.pause_requested === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -517,7 +520,9 @@ export async function updateGoalLoopStatus(
         // `turn_kind` here so resume can put the loop back into
         // `verifying_completed` instead of silently skipping verification.
         `UPDATE goal_loops
-         SET status = 'paused', pause_reason = 'user',
+         SET status = CASE WHEN status = 'queued' THEN 'paused' ELSE status END,
+             pause_requested = CASE WHEN status = 'queued' THEN 0 ELSE 1 END,
+             pause_reason = CASE WHEN status = 'queued' THEN 'user' ELSE pause_reason END,
              turn_kind = CASE WHEN status = 'verifying_completed' THEN 'verification' ELSE turn_kind END,
              revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
@@ -1021,13 +1026,13 @@ function applyAssistantResult(
   const applied = getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = ?, turn_kind = ?, rejected_claims = ?, last_message_id = ?, progress = ?,
+      SET status = ?, turn_kind = ?, rejected_claims = ?, pause_requested = 0, last_message_id = ?, progress = ?,
            summary = ?, evidence = ?, blocked_reason = ?, error = ?, pause_reason = ?,
            revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
     )
     .run(
-      reachedTurnLimit ? "paused" : nextStatus,
+      reachedTurnLimit ? "paused" : loop.pauseRequested && !TERMINAL_STATUSES.includes(nextStatus) ? "paused" : nextStatus,
       nextTurnKind,
       rejectedClaims,
       assistant.info.id,
@@ -1044,7 +1049,9 @@ function applyAssistantResult(
         ? "turn_limit"
         : verificationRejectedPause
         ? "verification_rejected"
-        : "",
+        : loop.pauseRequested && !TERMINAL_STATUSES.includes(nextStatus)
+          ? "user"
+          : "",
       now,
       loop.id,
       loop.revision,
