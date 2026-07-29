@@ -25,6 +25,13 @@ describe("BrowserBridgeApprovals", () => {
     expect(screen.queryByRole("region", { name: "Browser Bridge 承認" })).toBeNull();
   });
 
+  it("shows a safe error when the local Broker request fails", async () => {
+    timedFetch.mockRejectedValue(new Error("Browser Bridgeに接続できません"));
+    render(<BrowserBridgeApprovals />);
+    expect(await screen.findByText("Browser Bridgeに接続できません")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Browser Bridge 承認" })).toBeTruthy();
+  });
+
   it("renders approval metadata and forwards an allow decision", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
