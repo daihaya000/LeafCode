@@ -52,6 +52,30 @@ test('Broker client validates shared tool schemas and sanitizes unavailable resp
   assert.equal(requests[0].init.headers.Authorization, `Bearer ${'x'.repeat(32)}`);
 });
 
+test('Broker client generalizes malformed and unknown Broker errors', async () => {
+  const client = new BrowserBridgeClient({
+    baseUrl: 'http://127.0.0.1:18766',
+    token: 'x'.repeat(32),
+    fetchImpl: async () => new Response(JSON.stringify({ error: { code: 'INTERNAL_STACK_TRACE', detail: 'secret' } }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  });
+  await assert.rejects(
+    () => client.call(BrowserToolName.STATUS, {}),
+    (error) => error.code === BrowserBridgeErrorCode.BROKER_UNAVAILABLE && !error.message.includes('secret'),
+  );
+  const malformed = new BrowserBridgeClient({
+    baseUrl: 'http://127.0.0.1:18766',
+    token: 'x'.repeat(32),
+    fetchImpl: async () => new Response('not json', { status: 200 }),
+  });
+  await assert.rejects(
+    () => malformed.call(BrowserToolName.STATUS, {}),
+    (error) => error.code === BrowserBridgeErrorCode.BROKER_UNAVAILABLE,
+  );
+});
+
 test('registers only read tools and maps Broker errors without leaking internals', async (t) => {
   const calls = [];
   const server = createMcpServer({
