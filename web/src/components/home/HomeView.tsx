@@ -895,43 +895,42 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             <span>OpenCodeWebUI</span>
           </h1>
           <div className="mx-auto mb-3 flex max-w-5xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {loaded && projects.length === 0 ? (
-              <AddProjectButton
-                label="プロジェクトを追加"
-                buttonVariant="outline"
-                buttonSize="sm"
-                className="shrink-0"
-                onAdded={(project) => {
-                  void refreshProjects().then(() => setProjectId(project.id));
-                }}
-              />
-            ) : (
-              <GhostSelect
-                value={projectId}
-                disabled={submitting}
-                aria-label="プロジェクト"
-                icon={<FolderGit2 className="h-3.5 w-3.5" />}
-                valueLabel={
-                  selectedProject
-                    ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                    : "プロジェクトなし"
-                }
-                onChange={setProjectId}
-                className="max-w-[12rem] shrink-0 sm:max-w-56"
-                title={
-                  selectedProject
-                    ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                    : "プロジェクトなし"
-                }
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.favorite ? "★ " : ""}
-                    {p.name}
-                  </option>
-                ))}
-              </GhostSelect>
-            )}
+            <GhostSelect
+              value={projectId}
+              disabled={submitting}
+              aria-label="プロジェクト"
+              icon={<FolderGit2 className="h-3.5 w-3.5" />}
+              valueLabel={
+                selectedProject
+                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                  : "プロジェクトなし"
+              }
+              onChange={setProjectId}
+              className="max-w-[12rem] shrink-0 sm:max-w-56"
+              title={
+                selectedProject
+                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                  : "プロジェクトなし"
+              }
+              action={
+                <AddProjectButton
+                  label="プロジェクトを追加"
+                  buttonVariant="ghost"
+                  buttonSize="sm"
+                  className="w-full"
+                  onAdded={(project) => {
+                    void refreshProjects().then(() => setProjectId(project.id));
+                  }}
+                />
+              }
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.favorite ? "★ " : ""}
+                  {p.name}
+                </option>
+              ))}
+            </GhostSelect>
             <GhostSelect
               value={isolation}
               disabled={submitting}

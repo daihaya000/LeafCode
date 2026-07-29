@@ -466,6 +466,20 @@ describe("HomeView image attachments", () => {
     );
   });
 
+  it("shows the project add action and opens the existing folder picker flow", async () => {
+    render(<HomeView />);
+
+    fireEvent.click(await screen.findByLabelText("プロジェクト"));
+
+    const addButton = await screen.findByRole("button", { name: "プロジェクトを追加" });
+    expect(screen.getByRole("option", { name: "Project" })).toBeTruthy();
+    expect(addButton.closest('[role="listbox"]')).toBeNull();
+
+    sendJson.mockRejectedValueOnce(Object.assign(new Error("native picker unavailable"), { status: 403 }));
+    fireEvent.click(addButton);
+    expect(await screen.findByRole("dialog", { name: "フォルダを選択" })).toBeTruthy();
+  });
+
   describe("HomeView voice input", () => {
     let mockRecognition: {
       start: ReturnType<typeof vi.fn>;

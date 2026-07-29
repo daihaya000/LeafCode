@@ -27,6 +27,7 @@ export { cx };
 export function GhostSelect({
   icon,
   valueLabel,
+  action,
   tone = "default",
   className,
   disabled,
@@ -41,6 +42,7 @@ export function GhostSelect({
 > & {
   icon: ReactNode;
   valueLabel: ReactNode;
+  action?: ReactNode;
   tone?: "default" | "warning";
   className?: string;
   disabled?: boolean;
@@ -167,10 +169,7 @@ export function GhostSelect({
   const menu = open && !disabled && (
     <div
       ref={menuRef}
-      id={listboxId}
-      role="listbox"
-      aria-label={ariaLabel}
-      className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
+      className="fixed z-50 w-max max-w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface text-xs shadow-xl"
       style={{
         top: menuPosition?.top ?? 0,
         left: menuPosition?.left ?? 0,
@@ -178,41 +177,53 @@ export function GhostSelect({
         visibility: menuPosition ? undefined : "hidden",
       }}
     >
-      {groupedOptions.map((group, groupIndex) => (
-        <div key={groupIndex}>
-          {group.label && (
-            <div className="px-2 py-1 text-[11px] font-semibold text-faint">
-              {group.label}
-            </div>
-          )}
-          {group.options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-selected={option.value === value}
-              disabled={option.disabled}
-              title={option.title}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-              className={cx(
-                "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
-                option.value === value && "bg-surface-2 text-text",
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              {option.value === value && (
-                <Check
-                  aria-hidden="true"
-                  className="h-3.5 w-3.5 shrink-0 text-primary"
-                />
-              )}
-            </button>
-          ))}
+      <div
+        id={listboxId}
+        role="listbox"
+        aria-label={ariaLabel}
+        className="max-h-80 overflow-y-auto p-1"
+      >
+        {groupedOptions.map((group, groupIndex) => (
+          <div key={groupIndex}>
+            {group.label && (
+              <div className="px-2 py-1 text-[11px] font-semibold text-faint">
+                {group.label}
+              </div>
+            )}
+            {group.options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                disabled={option.disabled}
+                title={option.title}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={cx(
+                  "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                  option.value === value && "bg-surface-2 text-text",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {option.value === value && (
+                  <Check
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0 text-primary"
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      {action && (
+        <div className="border-t border-border p-1">
+          {action}
         </div>
-      ))}
+      )}
     </div>
   );
 
