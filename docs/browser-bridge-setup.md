@@ -69,7 +69,8 @@ MCP を有効化する前にこの手順を一度実行してください。
 
 - ペアリングコードは 1 回限り・5 分で期限切れ
 - 成功後、拡張機能は `chrome.storage.local` に device key を保存し、次回以降は自動再接続
-- トレイ host 再起動ごとに新しい内部 credential が生成されるが、拡張側の device key は維持される
+- トレイ host 再起動ごとに新しい内部 credential が生成されるが、host はローカルにペアリング情報を保持するため再ペアリングは不要
+- OpenCode の再起動、拡張 Service Worker の休止・再開、またはトレイ host の再起動後も自動再接続する
 - ペアリング解除は拡張 popup の「Forget this connection」から
 
 ## 4. タブの共有
@@ -85,6 +86,7 @@ MCP を有効化する前にこの手順を一度実行してください。
 ### 共有の制限
 
 - 新規タブは自動共有されない。都度「Share active tab」が必要
+- 既に共有したままのタブはhost再起動後に拡張が再通知する。タブを閉じた・originが変わった・明示解除した場合だけ再共有が必要
 - タブを閉じる・ナビゲーションが発生すると自動で共有解除される
 - 共有できるのは `https:` および loopback `http:`（localhost / 127.0.0.1）のページのみ
 - `chrome://`、`chrome-extension://`、`file://`、`data:`、`javascript:` は共有不可
