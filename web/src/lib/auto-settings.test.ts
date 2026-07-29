@@ -3,6 +3,7 @@ import {
   AUTO_IMPOSE_EVENT,
   AUTO_OPTIMIZE_EVENT,
   AUTO_SHOW_MODEL_EVENT,
+  hasStoredAutoSetting,
   readAutoImpose,
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
@@ -149,6 +150,24 @@ describe("auto boolean toggles", () => {
       });
     });
   }
+
+  it("reports whether a local choice exists", () => {
+    expect(hasStoredAutoSetting("auto-optimize")).toBe(false);
+    expect(hasStoredAutoSetting("auto-show-model")).toBe(false);
+    expect(hasStoredAutoSetting("auto-impose")).toBe(false);
+
+    writeAutoOptimizeMode("balanced");
+    writeAutoShowModel(true);
+    expect(hasStoredAutoSetting("auto-optimize")).toBe(true);
+    expect(hasStoredAutoSetting("auto-show-model")).toBe(true);
+    expect(hasStoredAutoSetting("auto-impose")).toBe(false);
+
+    // Turning a toggle off removes the key, so "configured off" is
+    // indistinguishable from "never configured" locally — the server snapshot
+    // is what carries an explicit off.
+    writeAutoShowModel(false);
+    expect(hasStoredAutoSetting("auto-show-model")).toBe(false);
+  });
 
   it("uses separate keys per toggle", () => {
     writeAutoShowModel(true);

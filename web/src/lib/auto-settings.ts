@@ -89,6 +89,12 @@ export function writeAutoImpose(enabled: boolean): void {
   writeRaw(IMPOSE_STORAGE_KEY, AUTO_IMPOSE_EVENT, enabled ? ON : "");
 }
 
+const LOCAL_KEY_BY_SETTING = {
+  "auto-optimize": OPTIMIZE_STORAGE_KEY,
+  "auto-show-model": SHOW_MODEL_STORAGE_KEY,
+  "auto-impose": IMPOSE_STORAGE_KEY,
+} as const;
+
 export type AutoSettingKey =
   | typeof AUTO_OPTIMIZE_SETTING_KEY
   | typeof AUTO_SHOW_MODEL_SETTING_KEY
@@ -99,6 +105,14 @@ export type AutoSettingsSnapshot = {
   showModel?: boolean;
   impose?: boolean;
 };
+
+/**
+ * Whether this browser already has a local choice for `key`. Callers use it to
+ * restore a server value only when it would not clobber a local decision.
+ */
+export function hasStoredAutoSetting(key: AutoSettingKey): boolean {
+  return readRaw(LOCAL_KEY_BY_SETTING[key]) !== null;
+}
 
 async function readServerSetting(key: AutoSettingKey): Promise<string | null> {
   try {

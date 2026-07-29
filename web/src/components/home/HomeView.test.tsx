@@ -1483,4 +1483,189 @@ describe("HomeView auto model", () => {
     expect(loopBody).not.toHaveProperty("model");
     expect(loopBody).not.toHaveProperty("variant");
   });
+
+  describe("optimize mode", () => {
+    const OPTIMIZE_LABEL = "Auto の最適化";
+
+    it("shows the optimize selector only while Auto is selected", async () => {
+      mockProvider();
+      render(<HomeView />);
+
+      await waitFor(() =>
+        expect(screen.getByLabelText("インテリジェンス")).toBeTruthy(),
+      );
+      expect(screen.queryByLabelText(OPTIMIZE_LABEL)).toBeNull();
+
+      await selectAuto();
+
+      expect(screen.getByLabelText(OPTIMIZE_LABEL)).toBeTruthy();
+      expect(screen.queryByLabelText("インテリジェンス")).toBeNull();
+    });
+
+    it("defaults to コスト優先", async () => {
+      mockProvider();
+      render(<HomeView />);
+      await selectAuto();
+
+      const trigger = screen.getByLabelText(OPTIMIZE_LABEL);
+      expect((trigger as HTMLButtonElement).value).toBe("cost");
+      expect(trigger.textContent).toContain("コスト優先");
+    });
+
+    it("hydrates the stored mode on mount", async () => {
+      localStorage.setItem("webui:auto-optimize", "intelligence");
+      mockProvider();
+      render(<HomeView />);
+      await selectAuto();
+
+      expect(
+        (screen.getByLabelText(OPTIMIZE_LABEL) as HTMLButtonElement).value,
+      ).toBe("intelligence");
+    });
+
+    async function pickMode(mode: string, label: string) {
+      const trigger = screen.getByLabelText(OPTIMIZE_LABEL);
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByRole("option", { name: label }));
+      await waitFor(() =>
+        expect((trigger as HTMLButtonElement).value).toBe(mode),
+      );
+    }
+
+    it("persists a mode change to localStorage and the server", async () => {
+      mockProvider();
+      render(<HomeView />);
+      await selectAuto();
+
+      await pickMode("balanced", "バランス");
+
+      expect(localStorage.getItem("webui:auto-optimize")).toBe("balanced");
+      await waitFor(() =>
+        expect(
+          sendJson.mock.calls.some(
+            ([method, path, body]) =>
+              method === "PUT" &&
+              path === "/api/settings/auto-optimize" &&
+              (body as { value?: string })?.value === "balanced",
+          ),
+        ).toBe(true),
+      );
+    });
+
+    it("sends the selected mode with the task", async () => {
+      mockProvider();
+      render(<HomeView />);
+      await selectAuto();
+      await pickMode("intelligence", "知能優先");
+
+      fireEvent.change(screen.getByLabelText("タスクの説明"), {
+        target: { value: "この関数は何が問題なの" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+      await waitFor(() => expect(taskBody()).toBeDefined());
+      const body = taskBody()!;
+      expect(body.auto).toBe(true);
+      expect(body.autoOptimize).toBe("intelligence");
+    });
+
+    it("omits autoOptimize when Auto is not selected", async () => {
+      mockProvider();
+      render(<HomeView />);
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("モデル") as HTMLButtonElement).value,
+        ).toBe("anthropic::claude-opus-5"),
+      );
+
+      fireEvent.change(screen.getByLabelText("タスクの説明"), {
+        target: { value: "hello" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+      await waitFor(() => expect(taskBody()).toBeDefined());
+      expect(taskBody()!).not.toHaveProperty("autoOptimize");
+    });
+
+    it("follows a mode change made elsewhere", async () => {
+      mockProvider();
+      render(<HomeView />);
+      await selectAuto();
+
+      await act(async () => {
+        localStorage.setItem("webui:auto-optimize", "balanced");
+        window.dispatchEvent(new CustomEvent("webui:auto-optimize"));
+      });
+
+      expect(
+        (screen.getByLabelText(OPTIMIZE_LABEL) as HTMLButtonElement).value,
+      ).toBe("balanced");
+    });
+  });
+
+  describe("impose auto (soft)", () => {
+    it("starts a new task on Auto when enabled", async () => {
+      localStorage.setItem("webui:auto-impose", "1");
+      mockProvider();
+      render(<HomeView />);
+
+      const trigger = await screen.findByLabelText("モデル");
+      await waitFor(() =>
+        expect((trigger as HTMLButtonElement).value).toBe("auto"),
+      );
+      expect(screen.getByLabelText("Auto の最適化")).toBeTruthy();
+    });
+
+    it("wins over a stored last-used model", async () => {
+      localStorage.setItem("webui:auto-impose", "1");
+      localStorage.setItem(
+        "webui:last-used-model",
+        "anthropic::claude-haiku-4-5",
+      );
+      mockProvider();
+      render(<HomeView />);
+
+      const trigger = await screen.findByLabelText("モデル");
+      await waitFor(() =>
+        expect((trigger as HTMLButtonElement).value).toBe("auto"),
+      );
+    });
+
+    it("leaves the existing priority order untouched when disabled", async () => {
+      localStorage.setItem(
+        "webui:last-used-model",
+        "anthropic::claude-haiku-4-5",
+      );
+      mockProvider();
+      render(<HomeView />);
+
+      const trigger = await screen.findByLabelText("モデル");
+      await waitFor(() =>
+        expect((trigger as HTMLButtonElement).value).toBe(
+          "anthropic::claude-haiku-4-5",
+        ),
+      );
+    });
+
+    it("still allows switching to a concrete model", async () => {
+      localStorage.setItem("webui:auto-impose", "1");
+      mockProvider();
+      render(<HomeView />);
+
+      const trigger = await screen.findByLabelText("モデル");
+      await waitFor(() =>
+        expect((trigger as HTMLButtonElement).value).toBe("auto"),
+      );
+
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByRole("option", { name: /Opus/ }));
+      await waitFor(() =>
+        expect((trigger as HTMLButtonElement).value).toBe(
+          "anthropic::claude-opus-5",
+        ),
+      );
+      expect(screen.queryByLabelText("Auto の最適化")).toBeNull();
+    });
+  });
+
 });

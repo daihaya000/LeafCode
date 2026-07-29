@@ -14,6 +14,7 @@ import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect"
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { Composer, type ComposerAttachment } from "@/components/Composer";
 import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
+import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
@@ -47,7 +48,21 @@ import {
   AUTO_MODEL_OPTION,
   AUTO_MODEL_VALUE,
   type AutoDecision,
+  type AutoOptimizeMode,
 } from "@/lib/auto-model";
+import {
+  AUTO_IMPOSE_SETTING_KEY,
+  AUTO_OPTIMIZE_EVENT,
+  AUTO_OPTIMIZE_SETTING_KEY,
+  hasStoredAutoSetting,
+  readAutoImpose,
+  readAutoOptimizeMode,
+  readAutoSettingsFromServer,
+  writeAutoImpose,
+  writeAutoOptimizeMode,
+  writeAutoSettingToServer,
+  type AutoSettingsSnapshot,
+} from "@/lib/auto-settings";
 import {
   AUTO_TASK_PROMPT_MAX,
   writeAutoTaskRecord,
@@ -172,6 +187,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [model, setModel] = useState("");
   const [agent, setAgent] = useState("");
   const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
+  /**
+   * Auto "Optimize For" policy. Seeded from localStorage during the first
+   * render so the composer never flashes the wrong mode, then reconciled with
+   * the server copy and kept in sync with the Settings screen.
+   */
+  const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
+    readAutoOptimizeMode(),
+  );
   const [providerModelsMap, setProviderModelsMap] = useState<
     Record<string, ProviderModelMeta>
   >({});
@@ -227,6 +250,41 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         writeDefaultModel(serverValue);
       }
     })();
+  }, []);
+
+  // Same DB → localStorage restore for the Auto settings. Only keys the server
+  // actually has are applied, and only when localStorage has no copy yet, so a
+  // local choice is never overwritten by a stale server value. The restored
+  // "impose" flag takes effect from the next load: the initial model has
+  // usually been resolved by the time this request settles.
+  useEffect(() => {
+    void (async () => {
+      const snapshot: AutoSettingsSnapshot = await readAutoSettingsFromServer()
+        .catch(() => ({}));
+      if (snapshot.mode && !hasStoredAutoSetting(AUTO_OPTIMIZE_SETTING_KEY)) {
+        writeAutoOptimizeMode(snapshot.mode);
+        setAutoOptimize(snapshot.mode);
+      }
+      if (
+        snapshot.impose !== undefined &&
+        !hasStoredAutoSetting(AUTO_IMPOSE_SETTING_KEY)
+      ) {
+        writeAutoImpose(snapshot.impose);
+      }
+    })();
+  }, []);
+
+  // Follow changes made in the Settings screen or another tab.
+  useEffect(() => {
+    const onMode = () => setAutoOptimize(readAutoOptimizeMode());
+    window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+    return () => window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+  }, []);
+
+  const changeAutoOptimize = useCallback((mode: AutoOptimizeMode) => {
+    setAutoOptimize(mode);
+    writeAutoOptimizeMode(mode);
+    void writeAutoSettingToServer(AUTO_OPTIMIZE_SETTING_KEY, mode);
   }, []);
 
   const refreshProjects = useCallback(async () => {
@@ -330,8 +388,16 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           // then provider defaults. `"auto"` is part of selectableOptions, so
           // a stored last-used Auto restores through the same check.
           let initial = "";
+          // "Impose Auto (Soft)": when enabled, every new task starts on Auto
+          // regardless of history. The user can still switch per task, so this
+          // only overrides the *initial* selection.
+          if (readAutoImpose()) initial = AUTO_MODEL_VALUE;
           const lastUsed = readLastUsedModel();
-          if (lastUsed && selectableOptions.some((o) => o.value === lastUsed)) {
+          if (
+            !initial &&
+            lastUsed &&
+            selectableOptions.some((o) => o.value === lastUsed)
+          ) {
             initial = lastUsed;
           }
           if (!initial) {
@@ -610,7 +676,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : {}),
         ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-        ...(isAuto ? { auto: true } : {}),
+        ...(isAuto ? { auto: true, autoOptimize } : {}),
         // subagentPermission must be sent even when no agent is selected:
         // enforcement is session-scoped (not agent-scoped), so omitting it
         // whenever `agent` is empty left "禁止" without effect on the new
@@ -685,6 +751,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     agent,
     agentModels,
     intelligence,
+    autoOptimize,
     goalLoopEnabled,
     goalLoopAcceptance,
     goalLoopMaxTurns,
@@ -1016,6 +1083,18 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     disabled={submitting}
                   />
                 )}
+                {/* Shares the effort slot with IntelligenceSelect: Auto picks
+                    the effort itself. The variant list is empty for Auto
+                    unless an agent pins its own model, in which case Auto is
+                    bypassed server-side and the effort selector wins. */}
+                {model === AUTO_MODEL_VALUE &&
+                  intelligenceVariants.length === 0 && (
+                    <AutoOptimizeSelect
+                      value={autoOptimize}
+                      onChange={changeAutoOptimize}
+                      disabled={submitting}
+                    />
+                  )}
                 {agents.length > 0 && (
                   <GhostSelect
                     value={agent}
