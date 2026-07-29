@@ -81,15 +81,17 @@ test('registers only read tools and maps Broker errors without leaking internals
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
     'browser_list_tabs',
+    'browser_navigate',
     'browser_screenshot',
     'browser_scroll',
     'browser_snapshot',
     'browser_status',
     'browser_type',
   ]);
-  assert.ok(listed.tools.filter((tool) => !['browser_type', 'browser_scroll'].includes(tool.name)).every((tool) => tool.annotations?.readOnlyHint === true));
+  assert.ok(listed.tools.filter((tool) => !['browser_type', 'browser_scroll', 'browser_navigate'].includes(tool.name)).every((tool) => tool.annotations?.readOnlyHint === true));
   assert.equal(listed.tools.find((tool) => tool.name === 'browser_type')?.annotations?.readOnlyHint, false);
   assert.equal(listed.tools.find((tool) => tool.name === 'browser_scroll')?.annotations?.readOnlyHint, false);
+  assert.equal(listed.tools.find((tool) => tool.name === 'browser_navigate')?.annotations?.readOnlyHint, false);
 
   const status = await client.callTool({ name: BrowserToolName.STATUS, arguments: {} });
   assert.equal(status.isError, undefined);

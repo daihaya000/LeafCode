@@ -119,16 +119,17 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   }
 
   async function executeCommand(command) {
-    if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type', 'browser_scroll'].includes(command.tool)) return;
+    if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type', 'browser_scroll', 'browser_navigate'].includes(command.tool)) return;
     const shared = state.sharedTabs[command.args?.tabId];
     if (!shared) return;
     try {
       const result = await chromeApi.tabs.sendMessage(shared.browserTabId, {
-        type: command.tool === 'browser_click' ? 'browser_bridge_click' : command.tool === 'browser_type' ? 'browser_bridge_type' : 'browser_bridge_scroll',
+        type: command.tool === 'browser_click' ? 'browser_bridge_click' : command.tool === 'browser_type' ? 'browser_bridge_type' : command.tool === 'browser_scroll' ? 'browser_bridge_scroll' : 'browser_bridge_navigate',
         ref: command.args.ref,
         snapshotGeneration: command.args.snapshotGeneration,
         ...(command.tool === 'browser_type' ? { text: command.args.text, append: command.args.append === true } : {}),
         ...(command.tool === 'browser_scroll' ? { direction: command.args.direction, amount: command.args.amount } : {}),
+        ...(command.tool === 'browser_navigate' ? { url: command.args.url } : {}),
       });
       send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: result?.ok ? 'succeeded' : 'failed', ...(result?.ok ? { result: {} } : { error: { code: result?.error === 'STALE_REFERENCE' ? 'STALE_REFERENCE' : 'POLICY_BLOCKED', message: 'Command was not executed' } }) });
     } catch {

@@ -73,6 +73,10 @@ export function createMcpServer({ brokerClient }) {
     direction: z.enum(['up', 'down', 'left', 'right']),
     amount: z.number().int().min(1).max(2000),
   }).strict(), ACTION_ANNOTATIONS);
+  registerTool(server, brokerClient, BrowserToolName.NAVIGATE, 'Navigate an approved shared tab to an allowed URL.', z.object({
+    tabId: TAB_ID_SCHEMA,
+    url: z.string().url().max(8192),
+  }).strict(), ACTION_ANNOTATIONS);
   return server;
 }
 
