@@ -820,6 +820,39 @@ describe("HomeView last-used model", () => {
     });
   });
 
+  it("prefers the configured default model over the last-used model", async () => {
+    localStorage.setItem("webui:default-model", "openai::vision");
+    localStorage.setItem("webui:last-used-model", "openai::gpt-5");
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  "gpt-5": { name: "GPT-5" },
+                  vision: { name: "Vision" },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "gpt-5" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    render(<HomeView />);
+
+    const select = (await screen.findByLabelText("モデル")) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(select.value).toBe("openai::vision");
+    });
+  });
+
   it("falls back to the provider default when last-used is not available", async () => {
     localStorage.setItem("webui:last-used-model", "mystery::ghost");
     timedFetch.mockImplementation((input: string) => {

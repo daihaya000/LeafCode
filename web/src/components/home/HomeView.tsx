@@ -381,26 +381,25 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 
-          // Prefer the last actually-used model, then the user-configured
-          // default model, then OpenCode config.model (provider/modelID),
-          // then provider defaults. `"auto"` is part of selectableOptions, so
-          // a stored last-used Auto restores through the same check.
+          // Prefer the user-configured default model, then the last actually-
+          // used model, then OpenCode config.model (provider/modelID), then
+          // provider defaults. `"auto"` is part of selectableOptions, so a
+          // stored last-used Auto restores through the same check.
           let initial = "";
-          const lastUsed = readLastUsedModel();
+          const savedDefault = readDefaultModel();
           if (
-            !initial &&
-            lastUsed &&
-            selectableOptions.some((o) => o.value === lastUsed)
+            savedDefault &&
+            selectableOptions.some((o) => o.value === savedDefault)
           ) {
-            initial = lastUsed;
+            initial = savedDefault;
           }
           if (!initial) {
-            const savedDefault = readDefaultModel();
+            const lastUsed = readLastUsedModel();
             if (
-              savedDefault &&
-              selectableOptions.some((o) => o.value === savedDefault)
+              lastUsed &&
+              selectableOptions.some((o) => o.value === lastUsed)
             ) {
-              initial = savedDefault;
+              initial = lastUsed;
             }
           }
           if (!initial) {
