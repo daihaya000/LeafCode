@@ -67,6 +67,7 @@ export function createBrowserBridgeBroker({
   WebSocketServer,
   now = Date.now,
   pairingTtlMs = 5 * 60_000,
+  snapshotRequestTimeoutMs = 10_000,
 } = {}) {
   if (typeof internalToken !== 'string' || internalToken.length < 32) {
     throw new TypeError('Browser Bridge internal token must be at least 32 characters');
@@ -83,6 +84,7 @@ export function createBrowserBridgeBroker({
   let connectionGeneration = 0;
   const sharedTabs = new Map();
   const snapshots = new Map();
+  const pendingSnapshots = new Map();
   let listening = false;
 
   const status = () => ({
@@ -143,12 +145,11 @@ export function createBrowserBridgeBroker({
           json(res, 404, { error: { code: BrowserBridgeErrorCode.TAB_NOT_SHARED } });
           return;
         }
-        const snapshot = snapshots.get(args.tabId);
-        if (!snapshot) {
-          json(res, 409, { error: { code: BrowserBridgeErrorCode.STALE_REFERENCE } });
-          return;
+        try {
+          json(res, 200, await requestSnapshot(args.tabId));
+        } catch {
+          json(res, 504, { error: { code: BrowserBridgeErrorCode.COMMAND_TIMEOUT } });
         }
-        json(res, 200, snapshot);
         return;
       }
       json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
@@ -156,6 +157,30 @@ export function createBrowserBridgeBroker({
     }
     json(res, 404, { error: 'not_found' });
   });
+
+  function requestSnapshot(tabId) {
+    if (pendingSnapshots.has(tabId)) return pendingSnapshots.get(tabId).promise;
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => { resolve = resolvePromise; reject = rejectPromise; });
+    const timer = setTimeout(() => {
+      pendingSnapshots.delete(tabId);
+      reject(new Error('snapshot timeout'));
+    }, snapshotRequestTimeoutMs);
+    pendingSnapshots.set(tabId, { promise, resolve, reject, timer });
+    extensionSocket.send(JSON.stringify({ type: 'snapshot_request', tabId }));
+    return promise;
+  }
+
+  function saveSnapshot(tabId, snapshot) {
+    snapshots.set(tabId, snapshot);
+    const pending = pendingSnapshots.get(tabId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingSnapshots.delete(tabId);
+      pending.resolve(snapshot);
+    }
+  }
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
   server.on('upgrade', (req, socket, head) => {
@@ -187,7 +212,7 @@ export function createBrowserBridgeBroker({
           return;
         }
         if (message.type === 'snapshot' && Object.keys(message).length === 3 && sharedTabs.has(message.tabId) && validSnapshot(message.snapshot)) {
-          snapshots.set(message.tabId, message.snapshot);
+          saveSnapshot(message.tabId, message.snapshot);
           return;
         }
         if (message.type === 'heartbeat' && Object.keys(message).length === 1) {
