@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { WebSocket } from 'ws';
 import { createBrowserBridgeBroker } from '../broker/server.mjs';
@@ -67,5 +67,22 @@ test('MCP client reads status and explicitly shared tabs through the live Broker
   });
   assert.deepEqual(await client.call(BrowserToolName.LIST_TABS, {}), {
     tabs: [{ id: 'tab_opaque', origin: 'https://example.test', title: 'Example' }],
+  });
+  const requested = new Promise((resolve, reject) => socket.once('message', (data) => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'snapshot_request' || message.tabId !== 'tab_opaque') {
+      reject(new Error('expected snapshot request'));
+      return;
+    }
+    socket.send(JSON.stringify({
+      type: 'snapshot', tabId: 'tab_opaque',
+      snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] },
+    }));
+    resolve();
+  }));
+  const snapshotRequest = client.call(BrowserToolName.SNAPSHOT, { tabId: 'tab_opaque' });
+  await requested;
+  assert.deepEqual(await snapshotRequest, {
+    snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }],
   });
 });
