@@ -31,3 +31,10 @@ test('collects visible actionable nodes without values or sensitive fields', () 
   ]);
   assert.equal(JSON.stringify(snapshot).includes('do-not-read'), false);
 });
+
+test('marks a snapshot as truncated when its aggregate text budget is exhausted', () => {
+  const element = (text) => ({ tagName: 'BUTTON', hidden: false, innerText: text, textContent: text, getAttribute: () => '', getBoundingClientRect: () => ({ width: 10, height: 10 }) });
+  const snapshot = collectSnapshot({ documentRef: { querySelectorAll: () => [element('abcdef'), element('later')] }, windowRef: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) }, snapshotGeneration: 1, maxTextLength: 3 });
+  assert.equal(snapshot.truncated, true);
+  assert.deepEqual(snapshot.nodes, [{ ref: 'ref_1_1', role: 'button', name: 'abcdef', text: 'abc' }]);
+});
