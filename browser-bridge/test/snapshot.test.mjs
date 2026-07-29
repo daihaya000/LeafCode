@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createOpaqueRef, isSensitiveControl, sanitizeText } from '../extension/snapshot-safety.mjs';
+import { SnapshotReferenceStore, createOpaqueRef, isSensitiveControl, sanitizeText } from '../extension/snapshot-safety.mjs';
 import { collectSnapshot } from '../extension/content.js';
 
 test('snapshot safety excludes password, OTP, and card controls before DOM values are read', () => {
@@ -37,4 +37,14 @@ test('marks a snapshot as truncated when its aggregate text budget is exhausted'
   const snapshot = collectSnapshot({ documentRef: { querySelectorAll: () => [element('abcdef'), element('later')] }, windowRef: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) }, snapshotGeneration: 1, maxTextLength: 3 });
   assert.equal(snapshot.truncated, true);
   assert.deepEqual(snapshot.nodes, [{ ref: 'ref_1_1', role: 'button', name: 'abcdef', text: 'abc' }]);
+});
+
+test('reference store rejects stale generations and invalidates DOM references', () => {
+  const store = new SnapshotReferenceStore();
+  const target = { id: 'element' };
+  store.replace(3, [['ref_3_1', target]]);
+  assert.equal(store.get(3, 'ref_3_1'), target);
+  assert.equal(store.get(2, 'ref_3_1'), undefined);
+  store.invalidate();
+  assert.equal(store.get(3, 'ref_3_1'), undefined);
 });
