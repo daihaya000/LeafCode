@@ -17,6 +17,12 @@ test('shares only an explicitly selected active HTTPS tab and never exposes its 
     storage: { local: { get: async () => stored, set: async (value) => Object.assign(stored, value), remove: async (key) => delete stored[key] } },
     tabs: {
       query: async () => [{ id: 42, url: 'https://example.test/path', title: 'Example' }],
+      get: async (id) => ({ id, active: true, windowId: 7 }),
+      captureVisibleTab: async (windowId, options) => {
+        assert.equal(windowId, 7);
+        assert.deepEqual(options, { format: 'png' });
+        return 'data:image/png;base64,aGVsbG8=';
+      },
       sendMessage: async (tabId, message) => ({ snapshotGeneration: message.snapshotGeneration, nodes: [{ ref: `ref_${message.snapshotGeneration}_1`, role: 'button', name: 'Save' }], truncated: false }),
       onRemoved: { addListener: (listener) => { listeners.removed = listener; } },
       onUpdated: { addListener: (listener) => { listeners.updated = listener; } },
@@ -34,6 +40,7 @@ test('shares only an explicitly selected active HTTPS tab and never exposes its 
   const snapshot = await controller.collectSnapshot('tab_opaque');
   assert.equal(snapshot.snapshotGeneration, 1);
   assert.deepEqual(injected, [{ target: { tabId: 42 }, files: ['extension/content-runtime.js'] }]);
+  assert.deepEqual(await controller.captureScreenshot('tab_opaque'), { mimeType: 'image/png', data: 'aGVsbG8=' });
   listeners.removed(42);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(controller.publicState().sharedTabs, []);

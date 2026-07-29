@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'browserBridge';
 const DEFAULT_BROKER_URL = 'ws://127.0.0.1:18766/extension';
+const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024;
 
 export function isSafeBrokerSocketUrl(value) {
   try {
@@ -118,6 +119,17 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     return snapshot;
   }
 
+  async function captureScreenshot(tabId) {
+    const shared = state.sharedTabs[tabId];
+    if (!shared) throw new Error('Tab is not shared');
+    const tab = await chromeApi.tabs.get(shared.browserTabId);
+    if (!tab?.active || !Number.isInteger(tab.windowId)) throw new Error('Shared tab must be active to capture');
+    const dataUrl = await chromeApi.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? '');
+    if (!match || Math.floor((match[2].length * 3) / 4) > MAX_SCREENSHOT_BYTES) throw new Error('Screenshot exceeds the allowed size');
+    return { mimeType: match[1], data: match[2] };
+  }
+
   async function executeCommand(command) {
     if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type', 'browser_scroll', 'browser_navigate'].includes(command.tool)) return;
     const shared = state.sharedTabs[command.args?.tabId];
@@ -159,7 +171,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       if (shared) void unshare(shared[0]);
     }
   });
-  return { load, pair, shareActiveTab, collectSnapshot, unshare, revoke, publicState };
+  return { load, pair, shareActiveTab, collectSnapshot, captureScreenshot, unshare, revoke, publicState };
 }
 
 if (globalThis.chrome?.runtime?.onMessage) {
