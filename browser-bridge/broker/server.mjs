@@ -183,7 +183,7 @@ export function createBrowserBridgeBroker({
         }
         return;
       }
-      if (tool === BrowserToolName.CLICK) {
+      if (tool === BrowserToolName.CLICK || tool === BrowserToolName.TYPE) {
         const policy = evaluateCommandPolicy({
           tool,
           tab: { shared: sharedTabs.has(args.tabId), lowRiskAllowed: false },

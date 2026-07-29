@@ -119,16 +119,19 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   }
 
   async function executeCommand(command) {
-    if (command.connectionGeneration !== connectionGeneration || command.tool !== 'browser_click') return;
+    if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type'].includes(command.tool)) return;
     const shared = state.sharedTabs[command.args?.tabId];
     if (!shared) return;
     try {
       const result = await chromeApi.tabs.sendMessage(shared.browserTabId, {
-        type: 'browser_bridge_click', ref: command.args.ref, snapshotGeneration: command.args.snapshotGeneration,
+        type: command.tool === 'browser_click' ? 'browser_bridge_click' : 'browser_bridge_type',
+        ref: command.args.ref,
+        snapshotGeneration: command.args.snapshotGeneration,
+        ...(command.tool === 'browser_type' ? { text: command.args.text, append: command.args.append === true } : {}),
       });
-      send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: result?.ok ? 'succeeded' : 'failed', ...(result?.ok ? { result: {} } : { error: { code: result?.error === 'STALE_REFERENCE' ? 'STALE_REFERENCE' : 'POLICY_BLOCKED', message: 'Click was not executed' } }) });
+      send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: result?.ok ? 'succeeded' : 'failed', ...(result?.ok ? { result: {} } : { error: { code: result?.error === 'STALE_REFERENCE' ? 'STALE_REFERENCE' : 'POLICY_BLOCKED', message: 'Command was not executed' } }) });
     } catch {
-      send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: 'failed', error: { code: 'EXTENSION_DISCONNECTED', message: 'Click delivery failed' } });
+      send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: 'failed', error: { code: 'EXTENSION_DISCONNECTED', message: 'Command delivery failed' } });
     }
   }
 
