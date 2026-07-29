@@ -282,59 +282,6 @@ describe("goalLoopTestSeams", () => {
     });
   });
 
-  describe("countRecentRejectedClaims", () => {
-    const t = "2026-01-01T00:00:00.000Z";
-    it("returns zero when no claims exist", () => {
-      expect(goalLoopTestSeams.countRecentRejectedClaims([])).toBe(0);
-      expect(
-        goalLoopTestSeams.countRecentRejectedClaims([
-          { time: t, status: "progress", summary: "wip" },
-        ]),
-      ).toBe(0);
-    });
-
-    it("counts a single completed-then-rejected pair", () => {
-      expect(
-        goalLoopTestSeams.countRecentRejectedClaims([
-          { time: t, status: "completed", summary: "claim" },
-          { time: t, status: "progress", summary: "verify rejected" },
-        ]),
-      ).toBe(1);
-    });
-
-    it("counts two consecutive rejected pairs", () => {
-      expect(
-        goalLoopTestSeams.countRecentRejectedClaims([
-          { time: t, status: "completed", summary: "claim1" },
-          { time: t, status: "progress", summary: "reject1" },
-          { time: t, status: "completed", summary: "claim2" },
-          { time: t, status: "progress", summary: "reject2" },
-        ]),
-      ).toBe(2);
-    });
-
-    it("stops at a verified pair", () => {
-      expect(
-        goalLoopTestSeams.countRecentRejectedClaims([
-          { time: t, status: "completed", summary: "ok" },
-          { time: t, status: "verified_completed", summary: "verified" },
-          { time: t, status: "completed", summary: "claim" },
-          { time: t, status: "progress", summary: "reject" },
-        ]),
-      ).toBe(1);
-    });
-
-    it("stops at a progress reset before the claim", () => {
-      expect(
-        goalLoopTestSeams.countRecentRejectedClaims([
-          { time: t, status: "progress", summary: "real work" },
-          { time: t, status: "completed", summary: "claim" },
-          { time: t, status: "progress", summary: "reject" },
-        ]),
-      ).toBe(1);
-    });
-  });
-
   describe("transcriptIdleFor", () => {
     const quiet = 5_000;
 

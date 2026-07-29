@@ -1020,3 +1020,138 @@ describe("goal loop lost read boundary (docs/specs/goal-loop.md I4)", () => {
     expect(resumed?.pauseReason).toBe("unknown_delivery");
   });
 });
+
+const TERMINAL = ["completed", "blocked", "stopped"] as const as readonly string[];
+
+describe("goal loop rejected claim counter (docs/specs/goal-loop.md 是正 E)", () => {
+  function jsonMsg(id: string, status: string, summary: string): MessageWithParts {
+    return msg(
+      id,
+      "assistant",
+      undefined,
+      'r\n```json\n{"status":"' + status + '","summary":"' + summary + '"}\n```',
+    );
+  }
+
+  /** Run one goal turn whose reply is `status`, returning the resulting loop. */
+  async function goalTurn(tail: MessageWithParts[], id: string, status: string): Promise<void> {
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    tail.push(jsonMsg(id, status, status));
+    h.messageResponse = [msg("m0", "assistant"), ...tail];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+  }
+
+  /** Run the verification turn whose reply is `status`. */
+  async function verifyTurn(tail: MessageWithParts[], id: string, status: string): Promise<void> {
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    tail.push(jsonMsg(id, status, status));
+    h.messageResponse = [msg("m0", "assistant"), ...tail];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+  }
+
+  it("accumulates rejections even when a work turn sits between them", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns: 20,
+    });
+    const tail: MessageWithParts[] = [];
+
+    // claim 1 -> rejected
+    await goalTurn(tail, "c1", "completed");
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+    await verifyTurn(tail, "r1", "progress");
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.rejectedClaims).toBe(1);
+
+    // a real work turn in between: this used to reset the pairing and made the
+    // cap unreachable.
+    await goalTurn(tail, "w1", "progress");
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.rejectedClaims).toBe(1);
+
+    // claim 2 -> rejected: the cap must now fire.
+    await goalTurn(tail, "c2", "completed");
+    expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
+    await verifyTurn(tail, "r2", "progress");
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.rejectedClaims).toBe(2);
+    expect(loop.status).toBe("paused");
+    expect(loop.pauseReason).toBe("verification_rejected");
+  });
+
+  it("resets the counter when verification finally passes", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns: 20,
+    });
+    const tail: MessageWithParts[] = [];
+    await goalTurn(tail, "c1", "completed");
+    await verifyTurn(tail, "r1", "progress");
+    expect(getGoalLoop("ws-1")?.rejectedClaims).toBe(1);
+
+    await goalTurn(tail, "c2", "completed");
+    await verifyTurn(tail, "v2", "verified_completed");
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("completed");
+    expect(loop.rejectedClaims).toBe(0);
+  });
+
+  it("clears the counter when resuming a verification_rejected pause", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns: 20,
+    });
+    const tail: MessageWithParts[] = [];
+    await goalTurn(tail, "c1", "completed");
+    await verifyTurn(tail, "r1", "progress");
+    await goalTurn(tail, "c2", "completed");
+    await verifyTurn(tail, "r2", "progress");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("verification_rejected");
+
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.status).toBe("queued");
+    expect(resumed?.rejectedClaims).toBe(0);
+  });
+
+  it("never sends more than maxTurns + MAX_REJECTED_CLAIMS + 1 prompts", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    const maxTurns = 4;
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "audit",
+      maxTurns,
+    });
+    const tail: MessageWithParts[] = [];
+    h.promptAsyncCount = 0;
+
+    // The agent always claims completion and verification always rejects: the
+    // worst case for prompt volume.
+    for (let i = 0; i < 40; i += 1) {
+      const before = getGoalLoop("ws-1")!;
+      if (before.status === "paused" || TERMINAL.includes(before.status)) break;
+      const kind = before.status === "verifying_completed" ? "verify" : "goal";
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+      tail.push(
+        jsonMsg(`m${i}`, kind === "verify" ? "progress" : "completed", `turn ${i}`),
+      );
+      h.messageResponse = [msg("m0", "assistant"), ...tail];
+      await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    }
+
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.turnCount).toBeLessThanOrEqual(maxTurns);
+    // 2 is MAX_REJECTED_CLAIMS.
+    expect(h.promptAsyncCount).toBeLessThanOrEqual(maxTurns + 2 + 1);
+  });
+});

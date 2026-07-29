@@ -596,14 +596,19 @@ export async function updateGoalLoopStatus(
     // made the completion claim unreachable. See docs/specs/goal-loop.md 遷移 22.
     const resumeStatus: GoalLoopStatus =
       loop.turnKind === "verification" ? "verifying_completed" : "queued";
+    // Resuming a loop that was stopped for repeated rejected claims is a
+    // deliberate "continue anyway", so clear the counter. Leaving it at the cap
+    // would re-pause on the very next rejection and block all further progress.
+    const resumeRejectedClaims =
+      loop.pauseReason === "verification_rejected" ? 0 : loop.rejectedClaims;
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = ?, error = '', pause_reason = '', last_message_id = ?,
+         SET status = ?, error = '', pause_reason = '', rejected_claims = ?, last_message_id = ?,
              revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status = 'paused'`,
       )
-      .run(resumeStatus, tailMessageId, now, loop.id, loop.revision);
+      .run(resumeStatus, resumeRejectedClaims, tailMessageId, now, loop.id, loop.revision);
     void runGoalLoopSchedulerTick();
   } else {
     const stopped = getDb()
@@ -905,30 +910,6 @@ function extractGoalResult(assistant: MessageWithParts): GoalLoopProgress | null
   return null;
 }
 
-/**
- * Count consecutive "agent claimed completed → verification rejected" pairs at
- * the tail of the progress log. Each pair is a `completed` entry immediately
- * followed by a non-`verified_completed` verification entry. Stops at the
- * first gap (e.g. a `progress` entry that reset the cycle).
- */
-function countRecentRejectedClaims(progress: GoalLoopProgress[]): number {
-  let count = 0;
-  for (let i = progress.length - 1; i >= 1; i -= 2) {
-    const claim = progress[i - 1];
-    const verify = progress[i];
-    if (
-      claim?.status === "completed" &&
-      verify &&
-      verify.status !== "verified_completed"
-    ) {
-      count += 1;
-    } else {
-      break;
-    }
-  }
-  return count;
-}
-
 function applyAssistantResult(
   loop: GoalLoopDto,
   assistant: MessageWithParts,
@@ -962,6 +943,19 @@ function applyAssistantResult(
   // was misread as a verification reply and a genuine completion claim could
   // never reach `completed`. See docs/specs/goal-loop.md invariant I6.
   const isVerificationReply = loop.status === "running" && loop.turnKind === "verification";
+  // Running count of rejected completion claims. A counter column is used
+  // instead of pairing entries at the tail of `progress`: any real work turn
+  // between two rejections broke the pairing, so the cap never fired in the
+  // case it exists for. See docs/specs/goal-loop.md 是正 E.
+  const verificationRejected =
+    isVerificationReply &&
+    result.status !== "verified_completed" &&
+    result.status !== "blocked";
+  const rejectedClaims = verificationRejected
+    ? loop.rejectedClaims + 1
+    : isVerificationReply && result.status === "verified_completed"
+    ? 0
+    : loop.rejectedClaims;
   let nextStatus: GoalLoopStatus;
   if (isVerificationReply) {
     if (result.status === "verified_completed") {
@@ -969,17 +963,10 @@ function applyAssistantResult(
     } else if (result.status === "blocked") {
       nextStatus = "blocked";
     } else {
-      // Verification rejected the claim or returned an unexpected status.
-      // Go back to queued so the loop can do more real work — unless the agent
-      // has repeatedly claimed completion and been rejected, in which case we
-      // pause to avoid burning the rest of the turn budget on a verify loop.
-      // `progress` includes the just-rejected result so the count reflects it.
-      const rejectedPairs = countRecentRejectedClaims(progress);
-      if (rejectedPairs >= MAX_REJECTED_CLAIMS) {
-        nextStatus = "paused";
-      } else {
-        nextStatus = "queued";
-      }
+      // Verification rejected the claim. Go back to queued so the loop can do
+      // more real work — unless the agent has repeatedly claimed completion and
+      // been rejected, in which case pause instead of burning the turn budget.
+      nextStatus = rejectedClaims >= MAX_REJECTED_CLAIMS ? "paused" : "queued";
     }
   } else {
     if (result.status === "completed") {
@@ -993,10 +980,7 @@ function applyAssistantResult(
   }
 
   const verificationRejectedPause =
-    isVerificationReply &&
-    result.status !== "verified_completed" &&
-    result.status !== "blocked" &&
-    countRecentRejectedClaims(progress) >= MAX_REJECTED_CLAIMS;
+    verificationRejected && rejectedClaims >= MAX_REJECTED_CLAIMS;
   const reachedTurnLimit =
     !TERMINAL_STATUSES.includes(nextStatus) &&
     nextStatus !== "verifying_completed" &&
@@ -1010,13 +994,15 @@ function applyAssistantResult(
   const applied = getDb()
     .prepare(
       `UPDATE goal_loops
-       SET status = ?, turn_kind = ?, last_message_id = ?, progress = ?, summary = ?, evidence = ?,
-           blocked_reason = ?, error = ?, pause_reason = ?, revision = revision + 1, updated_at = ?
+       SET status = ?, turn_kind = ?, rejected_claims = ?, last_message_id = ?, progress = ?,
+           summary = ?, evidence = ?, blocked_reason = ?, error = ?, pause_reason = ?,
+           revision = revision + 1, updated_at = ?
        WHERE id = ? AND status = 'running' AND revision = ? AND last_message_id IS ?`,
     )
     .run(
       reachedTurnLimit ? "paused" : nextStatus,
       nextTurnKind,
+      rejectedClaims,
       assistant.info.id,
       JSON.stringify(progress),
       result.summary,
@@ -1441,7 +1427,6 @@ export const goalLoopTestSeams = {
   deliveredGoalResultAfterUnknownPrompt,
   processLoop,
   applyAssistantResult,
-  countRecentRejectedClaims,
   isTransientOpenCodeError,
   isTransientConflictPrompt,
   isDefinitelyRejectedPrompt,
