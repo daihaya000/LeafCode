@@ -7,6 +7,16 @@
   let activeGeneration = 0;
   new MutationObserver(() => { refs.clear(); activeGeneration = 0; }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === 'browser_bridge_click') {
+      const target = Number.isSafeInteger(message.snapshotGeneration) && message.snapshotGeneration === activeGeneration ? refs.get(message.ref) : undefined;
+      if (!target) {
+        sendResponse({ ok: false, error: 'STALE_REFERENCE' });
+        return false;
+      }
+      target.click();
+      sendResponse({ ok: true });
+      return false;
+    }
     if (message?.type !== 'browser_bridge_collect_snapshot' || !Number.isSafeInteger(message.snapshotGeneration)) return false;
     const nodes = [];
     refs.clear();
