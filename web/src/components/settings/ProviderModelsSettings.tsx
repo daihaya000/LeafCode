@@ -7,18 +7,14 @@ import { ModelSelect } from "@/components/ModelSelect";
 import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { getJson, sendJson } from "@/lib/client";
 import {
-  AUTO_IMPOSE_EVENT,
-  AUTO_IMPOSE_SETTING_KEY,
   AUTO_OPTIMIZE_EVENT,
   AUTO_OPTIMIZE_SETTING_KEY,
   AUTO_SHOW_MODEL_EVENT,
   AUTO_SHOW_MODEL_SETTING_KEY,
   hasStoredAutoSetting,
-  readAutoImpose,
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
   readAutoShowModel,
-  writeAutoImpose,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
   writeAutoShowModel,
@@ -315,8 +311,7 @@ export function ProviderModelsSettings() {
     readAutoOptimizeMode(),
   );
   const [autoShowModel, setAutoShowModel] = useState(() => readAutoShowModel());
-  const [autoImpose, setAutoImpose] = useState(() => readAutoImpose());
-  const autoSettingsTouched = useRef({ mode: false, showModel: false, impose: false });
+  const autoSettingsTouched = useRef({ mode: false, showModel: false });
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
@@ -358,17 +353,11 @@ export function ProviderModelsSettings() {
       autoSettingsTouched.current.showModel = true;
       setAutoShowModel(readAutoShowModel());
     };
-    const onImpose = () => {
-      autoSettingsTouched.current.impose = true;
-      setAutoImpose(readAutoImpose());
-    };
     window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
     window.addEventListener(AUTO_SHOW_MODEL_EVENT, onShowModel);
-    window.addEventListener(AUTO_IMPOSE_EVENT, onImpose);
     return () => {
       window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
       window.removeEventListener(AUTO_SHOW_MODEL_EVENT, onShowModel);
-      window.removeEventListener(AUTO_IMPOSE_EVENT, onImpose);
     };
   }, []);
 
@@ -392,14 +381,6 @@ export function ProviderModelsSettings() {
       ) {
         writeAutoShowModel(snapshot.showModel);
         setAutoShowModel(snapshot.showModel);
-      }
-      if (
-        snapshot.impose !== undefined &&
-        !autoSettingsTouched.current.impose &&
-        !hasStoredAutoSetting(AUTO_IMPOSE_SETTING_KEY)
-      ) {
-        writeAutoImpose(snapshot.impose);
-        setAutoImpose(snapshot.impose);
       }
     })();
   }, []);
@@ -769,31 +750,6 @@ export function ProviderModelsSettings() {
                 writeAutoShowModel(next);
                 void writeAutoSettingToServer(
                   AUTO_SHOW_MODEL_SETTING_KEY,
-                  next ? "1" : "",
-                );
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3 py-3">
-            <div>
-              <p className="text-sm font-medium text-muted">
-                新規タスクでAutoを使う
-              </p>
-              <p className="mt-1 text-xs text-faint">
-                新規タスクの初期選択をAutoにします。タスクごとに変更できます。
-              </p>
-            </div>
-            <ExtensionSwitch
-              name="新規タスクでAutoを使う"
-              enabled={autoImpose}
-              busy={false}
-              onToggle={() => {
-                const next = !autoImpose;
-                autoSettingsTouched.current.impose = true;
-                setAutoImpose(next);
-                writeAutoImpose(next);
-                void writeAutoSettingToServer(
-                  AUTO_IMPOSE_SETTING_KEY,
                   next ? "1" : "",
                 );
               }}

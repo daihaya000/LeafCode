@@ -53,14 +53,11 @@ import {
   type AutoProviderUsage,
 } from "@/lib/auto-model";
 import {
-  AUTO_IMPOSE_SETTING_KEY,
   AUTO_OPTIMIZE_EVENT,
   AUTO_OPTIMIZE_SETTING_KEY,
   hasStoredAutoSetting,
-  readAutoImpose,
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
-  writeAutoImpose,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
   type AutoSettingsSnapshot,
@@ -259,9 +256,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   // Same DB → localStorage restore for the Auto settings. Only keys the server
   // actually has are applied, and only when localStorage has no copy yet, so a
-  // local choice is never overwritten by a stale server value. The restored
-  // "impose" flag takes effect from the next load: the initial model has
-  // usually been resolved by the time this request settles.
+  // local choice is never overwritten by a stale server value.
   useEffect(() => {
     void (async () => {
       const snapshot: AutoSettingsSnapshot = await readAutoSettingsFromServer()
@@ -269,12 +264,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       if (snapshot.mode && !hasStoredAutoSetting(AUTO_OPTIMIZE_SETTING_KEY)) {
         writeAutoOptimizeMode(snapshot.mode);
         setAutoOptimize(snapshot.mode);
-      }
-      if (
-        snapshot.impose !== undefined &&
-        !hasStoredAutoSetting(AUTO_IMPOSE_SETTING_KEY)
-      ) {
-        writeAutoImpose(snapshot.impose);
       }
     })();
   }, []);
@@ -397,10 +386,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           // then provider defaults. `"auto"` is part of selectableOptions, so
           // a stored last-used Auto restores through the same check.
           let initial = "";
-          // "Impose Auto (Soft)": when enabled, every new task starts on Auto
-          // regardless of history. The user can still switch per task, so this
-          // only overrides the *initial* selection.
-          if (readAutoImpose()) initial = AUTO_MODEL_VALUE;
           const lastUsed = readLastUsedModel();
           if (
             !initial &&

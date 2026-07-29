@@ -167,21 +167,17 @@ export type AutoSignals = {
 |---|---|---|---|---|
 | 最適化モード | `webui:auto-optimize` | `auto-optimize` | `cost` / `balanced` / `intelligence` | `cost` |
 | モデル名表示 | `webui:auto-show-model` | `auto-show-model` | `"1"` / `""` | `""`（非表示） |
-| Auto を既定に | `webui:auto-impose` | `auto-impose` | `"1"` / `""` | `""`（OFF） |
 
 公開 API（各設定につき read / write、および cross-tab 通知イベント）:
 
 ```ts
 export const AUTO_OPTIMIZE_EVENT = "webui:auto-optimize";
 export const AUTO_SHOW_MODEL_EVENT = "webui:auto-show-model";
-export const AUTO_IMPOSE_EVENT = "webui:auto-impose";
 
 export function readAutoOptimizeMode(): AutoOptimizeMode;      // 既定 cost
 export function writeAutoOptimizeMode(mode: AutoOptimizeMode): void;
 export function readAutoShowModel(): boolean;                  // 既定 false
 export function writeAutoShowModel(enabled: boolean): void;
-export function readAutoImpose(): boolean;                     // 既定 false
-export function writeAutoImpose(enabled: boolean): void;
 /** サーバー側コピーの読み書き（失敗は無視、localStorage が優先）。 */
 export function readAutoSettingsFromServer(): Promise<Partial<...>>;
 export function writeAutoSettingToServer(key, value): Promise<void>;
@@ -192,12 +188,12 @@ export function writeAutoSettingToServer(key, value): Promise<void>;
 
 ### 4. `web/src/app/api/settings/[key]/route.ts`
 
-`ALLOWED_KEYS` に `auto-optimize` / `auto-show-model` / `auto-impose` を
+`ALLOWED_KEYS` に `auto-optimize` / `auto-show-model` を
 追加し、`normalizeSettingValue` に検証を追加する。
 
 - `auto-optimize`: `cost` / `balanced` / `intelligence` 以外は
   `400 { error: "auto-optimize must be cost, balanced or intelligence" }`
-- `auto-show-model` / `auto-impose`: `"1"` 以外の非空文字列は
+- `auto-show-model`: `"1"` 以外の非空文字列は
   `400 { error: "<key> must be 1 or empty" }`（空文字は既存どおり「未設定」）
 
 ### 5. `web/src/app/api/tasks/route.ts`

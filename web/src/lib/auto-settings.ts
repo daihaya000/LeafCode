@@ -1,6 +1,6 @@
 /**
- * Auto mode settings: the "Optimize For" policy, whether the resolved model
- * name is surfaced, and whether new tasks default to Auto.
+ * Auto mode settings: the "Optimize For" policy and whether the resolved
+ * model name is surfaced.
  *
  * Same two-layer scheme as `default-model.ts`: localStorage is the source of
  * truth for synchronous reads (instant hydration, no request on first paint),
@@ -18,16 +18,13 @@ import {
 
 const OPTIMIZE_STORAGE_KEY = "webui:auto-optimize";
 const SHOW_MODEL_STORAGE_KEY = "webui:auto-show-model";
-const IMPOSE_STORAGE_KEY = "webui:auto-impose";
 
 export const AUTO_OPTIMIZE_EVENT = "webui:auto-optimize";
 export const AUTO_SHOW_MODEL_EVENT = "webui:auto-show-model";
-export const AUTO_IMPOSE_EVENT = "webui:auto-impose";
 
 /** Server-side `settings` keys, mirrored in the settings route allowlist. */
 export const AUTO_OPTIMIZE_SETTING_KEY = "auto-optimize";
 export const AUTO_SHOW_MODEL_SETTING_KEY = "auto-show-model";
-export const AUTO_IMPOSE_SETTING_KEY = "auto-impose";
 
 /** Stored form of the boolean toggles: `"1"` on, `""` (or absent) off. */
 const ON = "1";
@@ -77,33 +74,18 @@ export function writeAutoShowModel(enabled: boolean): void {
   writeRaw(SHOW_MODEL_STORAGE_KEY, AUTO_SHOW_MODEL_EVENT, enabled ? ON : "");
 }
 
-/**
- * "Impose Auto (Soft)": new tasks start on Auto. The user can still switch to
- * any concrete model per task, so this only changes the initial selection.
- */
-export function readAutoImpose(): boolean {
-  return readRaw(IMPOSE_STORAGE_KEY) === ON;
-}
-
-export function writeAutoImpose(enabled: boolean): void {
-  writeRaw(IMPOSE_STORAGE_KEY, AUTO_IMPOSE_EVENT, enabled ? ON : "");
-}
-
 const LOCAL_KEY_BY_SETTING = {
   "auto-optimize": OPTIMIZE_STORAGE_KEY,
   "auto-show-model": SHOW_MODEL_STORAGE_KEY,
-  "auto-impose": IMPOSE_STORAGE_KEY,
 } as const;
 
 export type AutoSettingKey =
   | typeof AUTO_OPTIMIZE_SETTING_KEY
-  | typeof AUTO_SHOW_MODEL_SETTING_KEY
-  | typeof AUTO_IMPOSE_SETTING_KEY;
+  | typeof AUTO_SHOW_MODEL_SETTING_KEY;
 
 export type AutoSettingsSnapshot = {
   mode?: AutoOptimizeMode;
   showModel?: boolean;
-  impose?: boolean;
 };
 
 /**
@@ -133,15 +115,13 @@ async function readServerSetting(key: AutoSettingKey): Promise<string | null> {
  */
 export async function readAutoSettingsFromServer(): Promise<AutoSettingsSnapshot> {
   if (typeof window === "undefined") return {};
-  const [mode, showModel, impose] = await Promise.all([
+  const [mode, showModel] = await Promise.all([
     readServerSetting(AUTO_OPTIMIZE_SETTING_KEY),
     readServerSetting(AUTO_SHOW_MODEL_SETTING_KEY),
-    readServerSetting(AUTO_IMPOSE_SETTING_KEY),
   ]);
   const snapshot: AutoSettingsSnapshot = {};
   if (isAutoOptimizeMode(mode)) snapshot.mode = mode;
   if (showModel !== null) snapshot.showModel = showModel === ON;
-  if (impose !== null) snapshot.impose = impose === ON;
   return snapshot;
 }
 

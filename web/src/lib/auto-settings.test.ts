@@ -1,14 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AUTO_IMPOSE_EVENT,
   AUTO_OPTIMIZE_EVENT,
   AUTO_SHOW_MODEL_EVENT,
   hasStoredAutoSetting,
-  readAutoImpose,
   readAutoOptimizeMode,
   readAutoSettingsFromServer,
   readAutoShowModel,
-  writeAutoImpose,
   writeAutoOptimizeMode,
   writeAutoSettingToServer,
   writeAutoShowModel,
@@ -105,13 +102,6 @@ describe("auto boolean toggles", () => {
       read: readAutoShowModel,
       write: writeAutoShowModel,
     },
-    {
-      name: "impose auto",
-      key: "webui:auto-impose",
-      event: AUTO_IMPOSE_EVENT,
-      read: readAutoImpose,
-      write: writeAutoImpose,
-    },
   ];
 
   beforeEach(() => {
@@ -154,13 +144,11 @@ describe("auto boolean toggles", () => {
   it("reports whether a local choice exists", () => {
     expect(hasStoredAutoSetting("auto-optimize")).toBe(false);
     expect(hasStoredAutoSetting("auto-show-model")).toBe(false);
-    expect(hasStoredAutoSetting("auto-impose")).toBe(false);
 
     writeAutoOptimizeMode("balanced");
     writeAutoShowModel(true);
     expect(hasStoredAutoSetting("auto-optimize")).toBe(true);
     expect(hasStoredAutoSetting("auto-show-model")).toBe(true);
-    expect(hasStoredAutoSetting("auto-impose")).toBe(false);
 
     // Turning a toggle off removes the key, so "configured off" is
     // indistinguishable from "never configured" locally — the server snapshot
@@ -172,8 +160,6 @@ describe("auto boolean toggles", () => {
   it("uses separate keys per toggle", () => {
     writeAutoShowModel(true);
     expect(localStorage.getItem("webui:auto-show-model")).toBe("1");
-    expect(localStorage.getItem("webui:auto-impose")).toBeNull();
-    expect(readAutoImpose()).toBe(false);
   });
 });
 
@@ -195,20 +181,17 @@ describe("auto settings server sync", () => {
     });
   }
 
-  it("reads all three keys", async () => {
+  it("reads configured keys", async () => {
     serverValues({
       "auto-optimize": "balanced",
       "auto-show-model": "1",
-      "auto-impose": "1",
     });
     expect(await readAutoSettingsFromServer()).toEqual({
       mode: "balanced",
       showModel: true,
-      impose: true,
     });
     expect(getJson).toHaveBeenCalledWith("/api/settings/auto-optimize");
     expect(getJson).toHaveBeenCalledWith("/api/settings/auto-show-model");
-    expect(getJson).toHaveBeenCalledWith("/api/settings/auto-impose");
   });
 
   it("omits keys the server has not configured", async () => {
@@ -221,11 +204,6 @@ describe("auto settings server sync", () => {
     expect(await readAutoSettingsFromServer()).toEqual({ showModel: true });
   });
 
-  it("reports a stored non-1 toggle as explicitly off", async () => {
-    serverValues({ "auto-impose": "0" });
-    expect(await readAutoSettingsFromServer()).toEqual({ impose: false });
-  });
-
   it("swallows per-key request failures", async () => {
     getJson.mockImplementation((path: string) =>
       path.endsWith("auto-optimize")
@@ -234,7 +212,6 @@ describe("auto settings server sync", () => {
     );
     expect(await readAutoSettingsFromServer()).toEqual({
       showModel: true,
-      impose: true,
     });
   });
 
@@ -250,7 +227,7 @@ describe("auto settings server sync", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     sendJson.mockRejectedValue(new Error("network"));
     await expect(
-      writeAutoSettingToServer("auto-impose", "1"),
+      writeAutoSettingToServer("auto-show-model", "1"),
     ).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalled();
   });

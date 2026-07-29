@@ -11,7 +11,6 @@ export const dynamic = "force-dynamic";
  * `settings` table.
  */
 const ALLOWED_KEYS = new Set<string>([
-  "auto-impose",
   "auto-optimize",
   "auto-show-model",
   "default-model",
@@ -21,7 +20,6 @@ const ALLOWED_KEYS = new Set<string>([
 
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
 const BOOLEAN_SETTING_KEYS = new Set<string>([
-  "auto-impose",
   "auto-show-model",
 ]);
 
