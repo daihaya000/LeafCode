@@ -44,6 +44,24 @@
       sendResponse({ ok: true });
       return false;
     }
+    if (message?.type === 'browser_bridge_navigate') {
+      let url;
+      try {
+        url = new URL(message.url);
+      } catch {
+        sendResponse({ ok: false, error: 'POLICY_BLOCKED' });
+        return false;
+      }
+      if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
+        sendResponse({ ok: false, error: 'POLICY_BLOCKED' });
+        return false;
+      }
+      refs.clear();
+      activeGeneration = 0;
+      window.location.assign(url.href);
+      sendResponse({ ok: true });
+      return false;
+    }
     if (message?.type !== 'browser_bridge_collect_snapshot' || !Number.isSafeInteger(message.snapshotGeneration)) return false;
     const nodes = [];
     refs.clear();
