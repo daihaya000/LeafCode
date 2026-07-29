@@ -191,6 +191,7 @@ export type GraphCommit = {
   parents: string[];
   subject: string;
   author: string;
+  authorEmail: string;
   date: string;
 };
 

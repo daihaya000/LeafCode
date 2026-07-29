@@ -98,7 +98,12 @@ vi.mock("./workspace-branch", () => ({
   makeWorktreeBranchName: () => "webui__main__task-x",
 }));
 
-import { destroyWorkspace, provisionWorkspace, ServiceError } from "./workspace-service";
+import {
+  configureAgentGitIdentity,
+  destroyWorkspace,
+  provisionWorkspace,
+  ServiceError,
+} from "./workspace-service";
 
 const WT = "C:\\Users\\testuser\\AppData\\Roaming\\opencode-webui\\worktrees\\p1\\task-1";
 
@@ -134,7 +139,7 @@ beforeEach(() => {
     },
   ]);
   removeWorktree.mockResolvedValue(undefined);
-  runGit.mockResolvedValue({ stdout: "", stderr: "" });
+  runGit.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
   ocServer.mockResolvedValue({});
   assertAllowedDirectory.mockReturnValue({ ok: true });
 });
@@ -166,6 +171,44 @@ describe("provisionWorkspace current_folder path binding", () => {
       }),
     );
     expect(workspace.absolute_path).toBe("C:\\repo");
+  });
+});
+
+describe("configureAgentGitIdentity", () => {
+  it("stores a worktree-scoped identity for the selected agent", async () => {
+    await configureAgentGitIdentity({
+      repoRoot: "C:\\repo",
+      workspacePath: WT,
+      isolation: "git_worktree",
+      agentName: "lead-programmer",
+    });
+
+    expect(runGit).toHaveBeenNthCalledWith(
+      1,
+      "C:\\repo",
+      ["config", "extensions.worktreeConfig", "true"],
+    );
+    expect(runGit).toHaveBeenNthCalledWith(
+      2,
+      WT,
+      ["config", "--worktree", "user.name", "lead-programmer"],
+    );
+    expect(runGit).toHaveBeenNthCalledWith(
+      3,
+      WT,
+      ["config", "--worktree", "user.email", "lead-programmer@opencode.local"],
+    );
+  });
+
+  it("does not change Git configuration for a current-folder workspace", async () => {
+    await configureAgentGitIdentity({
+      repoRoot: "C:\\repo",
+      workspacePath: "C:\\repo",
+      isolation: "current_folder",
+      agentName: "build",
+    });
+
+    expect(runGit).not.toHaveBeenCalled();
   });
 });
 

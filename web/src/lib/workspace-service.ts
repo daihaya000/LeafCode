@@ -68,6 +68,40 @@ export function isIsolation(value: unknown): value is Isolation {
   );
 }
 
+const AGENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/** Configure an isolated WebUI workspace without changing the user's Git identity. */
+export async function configureAgentGitIdentity(input: {
+  repoRoot: string;
+  workspacePath: string;
+  isolation: Isolation;
+  agentName: string;
+}): Promise<void> {
+  if (!AGENT_NAME.test(input.agentName)) {
+    throw new ServiceError("invalid agent commit identity", 400);
+  }
+  if (input.isolation === "current_folder" || input.isolation === "devcontainer") {
+    return;
+  }
+
+  const scope = input.isolation === "git_worktree" ? "--worktree" : "--local";
+  if (scope === "--worktree") {
+    const enable = await runGit(input.repoRoot, ["config", "extensions.worktreeConfig", "true"]);
+    if (enable.code !== 0) {
+      throw new ServiceError(enable.stderr.trim() || "git worktree config failed", 500);
+    }
+  }
+  for (const [key, value] of [
+    ["user.name", input.agentName],
+    ["user.email", `${input.agentName}@opencode.local`],
+  ]) {
+    const result = await runGit(input.workspacePath, ["config", scope, key, value]);
+    if (result.code !== 0) {
+      throw new ServiceError(result.stderr.trim() || "git commit identity setup failed", 500);
+    }
+  }
+}
+
 /** Create the working directory (worktree/copy) + workspace row. */
 export async function provisionWorkspace(input: {
   projectId: string;
@@ -75,6 +109,7 @@ export async function provisionWorkspace(input: {
   isolation: Isolation;
   baseBranch?: string;
   branch?: string;
+  agentName?: string;
 }): Promise<{ workspace: WorkspaceRow; note?: string }> {
   const project = getDb()
     .prepare("SELECT * FROM projects WHERE id = ?")
@@ -123,6 +158,7 @@ export async function provisionWorkspace(input: {
       input.projectId,
       branch.replace(/\//g, "__"),
     );
+    let worktreeAdded = false;
     try {
       await addWorktree({
         repoRoot: project.root_path,
@@ -130,7 +166,24 @@ export async function provisionWorkspace(input: {
         branch,
         baseBranch: input.baseBranch,
       });
+      worktreeAdded = true;
+      if (input.agentName) {
+        await configureAgentGitIdentity({
+          repoRoot: project.root_path,
+          workspacePath: wtDir,
+          isolation,
+          agentName: input.agentName,
+        });
+      }
     } catch (err) {
+      if (worktreeAdded) {
+        await removeWorktree({
+          repoRoot: project.root_path,
+          worktreePath: wtDir,
+          force: true,
+        }).catch(() => undefined);
+      }
+      if (err instanceof ServiceError) throw err;
       throw new ServiceError(
         err instanceof Error ? err.message : "worktree add failed",
         500,
@@ -145,6 +198,14 @@ export async function provisionWorkspace(input: {
       absolutePath = createTemporaryCopy(project.root_path, workspaceId);
       worktreePath = absolutePath;
       addAllowedRoot(absolutePath);
+      if (input.agentName) {
+        await configureAgentGitIdentity({
+          repoRoot: project.root_path,
+          workspacePath: absolutePath,
+          isolation,
+          agentName: input.agentName,
+        });
+      }
     } catch (err) {
       // createTemporaryCopy rolls back its partial directory. If allowlisting
       // failed after the copy was created, remove precisely that copy and its

@@ -452,7 +452,17 @@ export function GraphPanel({
                     </div>
                     <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-faint">
                       <div className="min-w-0 flex-1 truncate">
-                        <span className="truncate">{row.commit.author}</span>
+                        <span
+                          className="truncate"
+                          title={
+                            row.commit.authorEmail
+                              ? `作者: ${row.commit.author} <${row.commit.authorEmail}>`
+                              : `作者: ${row.commit.author}`
+                          }
+                        >
+                          作者: {row.commit.author}
+                          {row.commit.authorEmail && ` <${row.commit.authorEmail}>`}
+                        </span>
                         {commitDate && (
                           <>
                             <span className="mx-1">·</span>

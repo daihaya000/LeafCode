@@ -347,7 +347,7 @@ export async function gitLogGraph(
 ): Promise<{ commits: import("./types").GraphCommit[]; hasMore: boolean }> {
   const n = Math.min(Math.max(limit, 1), 200);
   const s = Math.max(skip, 0);
-  const fmt = ["%H", "%P", "%s", "%an", "%cI"].join(LOG_SEP);
+  const fmt = ["%H", "%P", "%s", "%an", "%ae", "%cI"].join(LOG_SEP);
   const result = await runGit(cwd, [
     "log",
     "--all",
@@ -362,13 +362,14 @@ export async function gitLogGraph(
   const raw = result.stdout.split(LOG_REC).map((r) => r.trim()).filter(Boolean);
   const hasMore = raw.length > n;
   const commits = raw.slice(0, n).map((rec) => {
-    const [hash, parents, subject, author, date] = rec.split(LOG_SEP);
+    const [hash, parents, subject, author, authorEmail, date] = rec.split(LOG_SEP);
     return {
       hash: hash ?? "",
       shortHash: (hash ?? "").slice(0, 7),
       parents: (parents ?? "").trim() ? (parents ?? "").trim().split(/\s+/) : [],
       subject: subject ?? "",
       author: author ?? "",
+      authorEmail: authorEmail ?? "",
       date: date ?? "",
     };
   });

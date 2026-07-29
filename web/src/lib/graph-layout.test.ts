@@ -13,6 +13,7 @@ function c(
     parents,
     subject,
     author: "t",
+    authorEmail: "t@opencode.local",
     date: "2026-01-01",
   };
 }

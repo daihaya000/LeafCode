@@ -17,6 +17,7 @@ function payloadWith(commitCount: number): GraphLogPayload {
       parents: i + 1 < commitCount ? [`hash${i + 1}`] : [],
       subject: `commit ${i}`,
       author: "tester",
+      authorEmail: "tester@opencode.local",
       date: "2026-07-18T00:00:00Z",
     })),
     refs: [],
@@ -72,6 +73,15 @@ describe("GraphPanel", () => {
     const commitDate = await screen.findByTitle("2026-07-18T00:00:00Z");
     expect(commitDate.tagName).toBe("TIME");
     expect(commitDate.textContent).toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);
+  });
+
+  it("shows the commit author name and email explicitly", async () => {
+    render(<GraphPanel directory="/repo" />);
+
+    expect(
+      (await screen.findByTitle("作者: tester <tester@opencode.local>"))
+        .textContent,
+    ).toBe("作者: tester <tester@opencode.local>");
   });
 
   it("refetches immediately when refreshKey changes, without touching the visible spinner state", async () => {
@@ -157,6 +167,7 @@ describe("GraphPanel", () => {
             parents: [],
             subject: "stale commit",
             author: "tester",
+            authorEmail: "tester@opencode.local",
             date: "2026-07-18T00:00:00Z",
           },
         ],

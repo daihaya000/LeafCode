@@ -414,6 +414,10 @@ export async function POST(req: NextRequest) {
       displayName: title,
       isolation,
       baseBranch: body.baseBranch,
+      // A task without an explicit selection executes as the built-in build
+      // agent. Isolated workspaces receive only this task's identity, never
+      // the user's repository-wide Git configuration.
+      agentName: body.agent?.trim() || "build",
     });
     workspace = result.workspace;
     note = result.note;
