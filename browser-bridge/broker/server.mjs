@@ -4,6 +4,7 @@ import { BrowserBridgeErrorCode } from '../shared/errors.mjs';
 import { BrowserToolName, MAX_MESSAGE_BYTES, validateToolInput } from '../shared/schemas.mjs';
 import { validateResultEnvelope } from '../shared/protocol.mjs';
 import { evaluateCommandPolicy } from './policy.mjs';
+import { AuditLog } from './audit.mjs';
 
 const JSON_HEADERS = Object.freeze({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
 
@@ -88,6 +89,8 @@ export function createBrowserBridgeBroker({
   const snapshots = new Map();
   const pendingSnapshots = new Map();
   const pendingApprovals = new Map();
+  const dispatchedCommands = new Map();
+  const audit = new AuditLog({ now });
   let listening = false;
 
   const status = () => ({
@@ -129,6 +132,7 @@ export function createBrowserBridgeBroker({
       } else {
         pendingApprovals.delete(approval.approvalId);
         if (body.decision === 'allow' && extensionSocket && sharedTabs.has(approval.tabId)) {
+          dispatchedCommands.set(approval.approvalId, approval);
           extensionSocket.send(JSON.stringify({
             protocolVersion: 1,
             type: 'command',
@@ -143,7 +147,7 @@ export function createBrowserBridgeBroker({
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/audit') {
-      json(res, 200, { entries: [] });
+      json(res, 200, { entries: audit.list() });
       return;
     }
     const tool = /^\/internal\/tools\/([^/]+)$/.exec(url.pathname)?.[1];
@@ -269,6 +273,17 @@ export function createBrowserBridgeBroker({
         if (message.type === 'result') {
           try {
             validateResultEnvelope(message);
+            const command = dispatchedCommands.get(message.commandId);
+            if (command) {
+              dispatchedCommands.delete(message.commandId);
+              audit.record({
+                commandId: message.commandId,
+                tool: command.tool,
+                origin: command.origin,
+                outcome: message.state,
+                approval: 'single',
+              });
+            }
             return;
           } catch {
             return rejectSocket(socket, 'invalid_result');

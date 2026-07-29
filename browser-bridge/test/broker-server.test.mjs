@@ -155,6 +155,14 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
   });
   const command = await commandReceived;
   assert.deepEqual(command, { protocolVersion: 1, type: 'command', commandId: secondClick.error.approvalId, connectionGeneration: 1, tool: 'browser_click', args: { tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 } });
+  socket.send(JSON.stringify({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration: 1, state: 'succeeded', result: {} }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const audit = await fetch(`${broker.url}/internal/audit`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(audit.entries.map(({ commandId, tool, origin, outcome, approval }) => ({ commandId, tool, origin, outcome, approval })), [{
+    commandId: secondClick.error.approvalId, tool: 'browser_click', origin: 'https://example.test', outcome: 'succeeded', approval: 'single',
+  }]);
 
   socket.send(JSON.stringify({ type: 'snapshot', tabId: 'tab_opaque', snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] } }));
   await new Promise((resolve) => setImmediate(resolve));
