@@ -217,7 +217,7 @@ type ProviderResponse = {
       }
     >;
   }[];
-  connected: string[];
+  connected?: string[];
   default: Record<string, string>;
 };
 
@@ -512,7 +512,7 @@ export function TaskView({ taskId }: { taskId: string }) {
    */
   const [autoInputs, setAutoInputs] = useState<{
     providers: AutoCandidateProvider[];
-    connected: string[];
+    connected?: string[];
     disabled: Record<string, true>;
   } | null>(null);
   /** Auto "Optimize For" policy; shared with HomeView and Settings. */
@@ -1136,13 +1136,17 @@ export function TaskView({ taskId }: { taskId: string }) {
           : null;
 
         if (data) {
-          const connectedList = data.connected ?? [];
-          const connected = new Set(connectedList);
+          // An omitted `connected` field is the legacy unrestricted shape.
+          // An explicit empty array means that no provider is connected.
+          const connectedList = data.connected;
+          const connected = connectedList === undefined
+            ? null
+            : new Set(connectedList);
           const options: ModelOption[] = [];
           const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
           const map: Record<string, ProviderModelMeta> = {};
           for (const p of data.all ?? []) {
-            if (connected.size > 0 && !connected.has(p.id)) continue;
+            if (connected && !connected.has(p.id)) continue;
             for (const [mid, m] of Object.entries(p.models ?? {})) {
               const value = `${p.id}::${mid}`;
               options.push({
@@ -1235,7 +1239,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             }
           }
           if (!initial) {
-            for (const pid of connectedList) {
+            for (const pid of connectedList ?? []) {
               const mid = data.default?.[pid];
               if (!mid) continue;
               const value = `${pid}::${mid}`;
@@ -1385,7 +1389,11 @@ export function TaskView({ taskId }: { taskId: string }) {
           : providerID && modelID
             ? { providerID, modelID }
             : undefined;
-        const loopVariant = isAuto ? (decision?.variant ?? "") : intelligence;
+        // A fixed agent model bypasses Auto resolution, but it must still
+        // receive the manually selected Intelligence effort.
+        const loopVariant = isAuto && !agentPinnedModel
+          ? (decision?.variant ?? "")
+          : intelligence;
         const data = await sendJson<{ loop: GoalLoopDto }>(
           "POST",
           `/api/tasks/${taskId}/goal-loop`,
@@ -1787,6 +1795,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     // Goal loop mode: the composer text is the goal, not a chat turn. Hand it
     // to the loop API and restore the draft when the API rejects it.
     if (goalLoopEnabled && !goalLoopLive) {
+      if (attachments.length > 0) {
+        setGoalLoopError(
+          "Goalループでは添付ファイルを利用できません。添付を削除してから開始してください。",
+        );
+        return;
+      }
       if (!text) return;
       rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
       setInput("");
@@ -1914,9 +1928,11 @@ export function TaskView({ taskId }: { taskId: string }) {
         : providerID && modelID
           ? { providerID, modelID }
           : undefined;
-      // Auto owns the effort; `intelligence` is "" while Auto is selected but
-      // an agent-scoped leftover could survive, so drop it explicitly.
-      const sendVariant = isAuto ? (autoDecision?.variant ?? "") : intelligence;
+      // A fixed agent model wins over Auto, while retaining the manual
+      // Intelligence selection for the agent's concrete model.
+      const sendVariant = isAuto && !autoAgentPinnedModel
+        ? (autoDecision?.variant ?? "")
+        : intelligence;
       const opts = {
         ...(agent ? { agent } : {}),
         ...(sendModel ? { model: sendModel } : {}),

@@ -252,7 +252,7 @@ function choose(
   return chooseAutoModel({
     mode: "cost",
     providers: threeTierProviders(),
-    connected: [],
+    connected: undefined,
     disabled: {},
     tier: "standard",
     hasImages: false,
@@ -272,7 +272,11 @@ describe("chooseAutoModel score assumptions", () => {
 });
 
 describe("chooseAutoModel candidate filtering", () => {
-  it("allows every provider when connected is empty", () => {
+  it("returns no candidate when connected is explicitly empty", () => {
+    expect(choose({ tier: "light", connected: [] })).toBeNull();
+  });
+
+  it("allows every provider when connected is omitted for legacy responses", () => {
     expect(choose({ tier: "light" })).toMatchObject({
       providerID: "alpha",
       modelID: CHEAP_MODEL,
@@ -309,7 +313,7 @@ describe("chooseAutoModel candidate filtering", () => {
           [MID_MODEL]: { capabilities: { input: { image: true } } },
         }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: true,
@@ -325,7 +329,7 @@ describe("chooseAutoModel candidate filtering", () => {
           [CHEAP_MODEL]: { capabilities: { attachment: true } },
         }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: true,
@@ -342,7 +346,7 @@ describe("chooseAutoModel candidate filtering", () => {
           [MID_MODEL]: {},
         }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: true,
@@ -356,7 +360,7 @@ describe("chooseAutoModel candidate filtering", () => {
     expect(chooseAutoModel({
       mode: "cost",
       providers: [],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -396,7 +400,7 @@ describe("chooseAutoModel tier selection", () => {
         provider("alpha", { [MID_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: {} }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: false,
@@ -408,7 +412,7 @@ describe("chooseAutoModel tier selection", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("beta", { [PREMIUM_MODEL]: {} })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: false,
@@ -423,7 +427,7 @@ describe("chooseAutoModel tier selection", () => {
         provider("alpha", { [MID_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: {} }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -435,7 +439,7 @@ describe("chooseAutoModel tier selection", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("beta", { [PREMIUM_MODEL]: {} })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -450,7 +454,7 @@ describe("chooseAutoModel tier selection", () => {
         provider("zeta", { [MID_MODEL]: {} }),
         provider("alpha", { [MID_MODEL]: {} }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -465,7 +469,7 @@ describe("chooseAutoModel tier selection", () => {
         provider("alpha", { [MID_MODEL]: {} }),
         provider("zeta", { [MID_MODEL]: {} }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -476,7 +480,7 @@ describe("chooseAutoModel tier selection", () => {
         provider("zeta", { [MID_MODEL]: {} }),
         provider("alpha", { [MID_MODEL]: {} }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -493,7 +497,7 @@ describe("chooseAutoModel variant selection", () => {
     return chooseAutoModel({
       mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: { variants } })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier,
       hasImages: false,
@@ -563,7 +567,7 @@ describe("chooseAutoModel escalation", () => {
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: { variants: { max: {}, medium: {} } } }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: false,
@@ -576,7 +580,7 @@ describe("chooseAutoModel escalation", () => {
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: { variants: { medium: {}, low: {} } } }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: false,
@@ -589,7 +593,7 @@ describe("chooseAutoModel escalation", () => {
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: { variants: { low: {} } } }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: false,
@@ -601,7 +605,7 @@ describe("chooseAutoModel escalation", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: { variants: { medium: {} } } })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "heavy",
       hasImages: false,
@@ -614,7 +618,7 @@ describe("chooseAutoModel escalation", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: {} })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -629,7 +633,7 @@ describe("chooseAutoModel escalation", () => {
       providers: [
         provider("alpha", { [MID_MODEL]: { variants: { low: {}, high: {} } } }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "standard",
       hasImages: false,
@@ -670,7 +674,7 @@ describe("chooseAutoModel reason text", () => {
           [CHEAP_MODEL]: { capabilities: { input: { image: true } } },
         }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: true,
@@ -684,7 +688,7 @@ describe("chooseAutoModel reason text", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: {} })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: false,
@@ -703,7 +707,7 @@ describe("chooseAutoModel reason text", () => {
           [MID_MODEL]: { capabilities: { input: { image: true } } },
         }),
       ],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "light",
       hasImages: true,
@@ -717,7 +721,7 @@ describe("chooseAutoModel reason text", () => {
     const decision = chooseAutoModel({
       mode: "cost",
       providers: [provider("alpha", { [CHEAP_MODEL]: {} })],
-      connected: [],
+      connected: undefined,
       disabled: {},
       tier: "heavy",
       hasImages: false,

@@ -370,8 +370,11 @@ function pickVariant(
 export function chooseAutoModel(input: {
   /** `/provider` response `all`. */
   providers: AutoCandidateProvider[];
-  /** `/provider` response `connected`. Empty = no restriction. */
-  connected: string[];
+  /**
+   * `/provider` response `connected`. An omitted legacy field means no
+   * restriction; an explicit empty list means no providers are connected.
+   */
+  connected?: string[];
   /** `provider-model-state` disabled map (`providerID` or `providerID::modelID`). */
   disabled: Record<string, true>;
   tier: AutoTier;
@@ -380,7 +383,7 @@ export function chooseAutoModel(input: {
   hasImages: boolean;
 }): AutoDecision | null {
   const { providers, connected, disabled, tier, mode, hasImages } = input;
-  const connectedSet = connected.length > 0 ? new Set(connected) : null;
+  const connectedSet = connected === undefined ? null : new Set(connected);
 
   // Candidate construction mirrors `listProviderModels`.
   const candidates: Candidate[] = [];

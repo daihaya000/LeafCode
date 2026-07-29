@@ -507,6 +507,44 @@ describe("POST /api/tasks image attachments", () => {
     });
   });
 
+  it("rejects an image submission when connected is explicitly empty", async () => {
+    const ocServer = await mockOpenCodeProvider({
+      ...providerWithModel("vision", { input: { image: true } }),
+      connected: [],
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "vision" },
+      files: [image],
+    });
+
+    expect(res.status).toBe(400);
+    expectNoOpenCodeTaskStart(ocServer.mock.calls);
+  });
+
+  it("allows an image submission when connected is omitted by a legacy provider", async () => {
+    const ocServer = await mockOpenCodeProvider({
+      ...providerWithModel("vision", { input: { image: true } }),
+      connected: undefined,
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "describe this",
+      isolation: "current_folder",
+      model: { providerID: "openai", modelID: "vision" },
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    expect(
+      ocServer.mock.calls.find((c) => String(c[1]).includes("/prompt_async")),
+    ).toBeDefined();
+  });
+
   it("allows image submission when attachment capability is explicitly true", async () => {
     const ocServer = await mockOpenCodeProvider(
       providerWithModel("attachment-model", { attachment: true }),
@@ -1036,6 +1074,39 @@ describe("POST /api/tasks auto model selection", () => {
     expect(
       ocServer.mock.calls.filter((c) => c[1] === "/session"),
     ).toEqual([]);
+  });
+
+  it("returns 400 when provider reports an explicit empty connected list", async () => {
+    await mockOc({ provider: { ...providerFixture(), connected: [] } });
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("keeps an omitted connected field compatible with legacy responses", async () => {
+    const ocServer = await mockOc({
+      provider: { ...providerFixture(), connected: undefined },
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: CHEAP },
+    });
   });
 
   it("returns 400 without provisioning when every model is disabled", async () => {

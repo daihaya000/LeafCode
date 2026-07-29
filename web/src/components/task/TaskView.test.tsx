@@ -98,7 +98,30 @@ vi.mock("@/components/shell/ShellContext", () => ({
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
 vi.mock("@/components/SkillPermissionSelect", () => ({ SkillPermissionSelect: () => null }));
 vi.mock("@/components/SubagentPermissionSelect", () => ({ SubagentPermissionSelect: () => null }));
-vi.mock("@/components/IntelligenceSelect", () => ({ IntelligenceSelect: () => null }));
+vi.mock("@/components/IntelligenceSelect", () => ({
+  IntelligenceSelect: ({
+    variants,
+    value,
+    onChange,
+  }: {
+    variants: string[];
+    value: string;
+    onChange: (value: string) => void;
+  }) => (
+    <select
+      aria-label="インテリジェンス"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="">デフォルト</option>
+      {variants.map((variant) => (
+        <option key={variant} value={variant}>
+          {variant}
+        </option>
+      ))}
+    </select>
+  ),
+}));
 vi.mock("@/components/StatusBadge", () => ({ StatusBadge: () => null }));
 vi.mock("./DiffPane", () => ({
   DiffPane: ({ refreshKey }: { refreshKey: number }) => {
@@ -1573,6 +1596,67 @@ describe("TaskView", () => {
       expect(screen.getByLabelText("承認条件")).toBeTruthy();
     });
 
+    it("rejects an attachment-only Goal loop without clearing the attachment", async () => {
+      setupIdle(useSessionStream());
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) => {
+          if (String(input).includes("/api/opencode/provider")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                all: [
+                  {
+                    id: "anthropic",
+                    name: "Anthropic",
+                    models: {
+                      "claude-opus-5": {
+                        capabilities: { input: { image: true } },
+                      },
+                    },
+                  },
+                ],
+                connected: ["anthropic"],
+                default: { anthropic: "claude-opus-5" },
+              }),
+            });
+          }
+          return Promise.resolve({ ok: false });
+        }),
+      );
+      const view = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const image = new File(["image"], "reference.png", {
+        type: "image/png",
+      });
+      fireEvent.change(
+        view.container.querySelector('input[type="file"]') as HTMLInputElement,
+        { target: { files: [image] } },
+      );
+      expect(await screen.findByRole("img", { name: "reference.png" })).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+      const textarea = screen.getByRole("combobox", {
+        name: "フォローアップを送信",
+      }) as HTMLTextAreaElement;
+      fireEvent.keyDown(textarea, { key: "Enter" });
+
+      expect(
+        await screen.findByText(
+          "Goalループでは添付ファイルを利用できません。添付を削除してから開始してください。",
+        ),
+      ).toBeTruthy();
+      expect(sendJson).not.toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks/ws1/goal-loop",
+        expect.anything(),
+      );
+      expect(textarea.value).toBe("");
+      expect(screen.getByRole("img", { name: "reference.png" })).toBeTruthy();
+      expect(screen.getByLabelText("添付を削除")).toBeTruthy();
+    });
+
     it("hides the composer toggle while a loop is already live", async () => {
       setupIdle(useSessionStream(), {
         id: "loop1",
@@ -1971,8 +2055,52 @@ describe("TaskView", () => {
       await flushTaskLoad();
 
       fireEvent.click(screen.getByRole("button", { name: "モデル" }));
-      const options = await screen.findAllByRole("option");
+      const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
+      const options = within(modelMenu).getAllByRole("option");
       expect(options[0].textContent).toContain("Auto（コスト最適）");
+    });
+
+    it("treats an explicit empty connected list as no available providers", async () => {
+      stubProviderFetch({ ...providerPayload(), connected: [] });
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
+      expect(within(modelMenu).getAllByRole("option")).toHaveLength(1);
+      fireEvent.click(
+        within(modelMenu).getByRole("option", { name: /Auto（コスト最適）/ }),
+      );
+      await typeAndSend("なぜ失敗するのか");
+
+      expect(
+        await screen.findByText(
+          "Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。",
+        ),
+      ).toBeTruthy();
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("keeps omitted connected compatible with legacy unrestricted responses", async () => {
+      stubProviderFetch({ ...providerPayload(), connected: undefined });
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("なぜ失敗するのか");
+
+      await waitFor(() =>
+        expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+          "なぜ失敗するのか",
+          expect.objectContaining({
+            model: {
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+            },
+          }),
+        ),
+      );
     });
 
     it("resolves a cheap model with a minimal effort for a short question", async () => {
@@ -2126,6 +2254,53 @@ describe("TaskView", () => {
       expect(opts.agent).toBe("build");
     });
 
+    it("forwards manual Intelligence when Auto defers to an agent model", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/api/opencode/provider")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => providerPayload(),
+            });
+          }
+          if (url.includes("/api/opencode/agent")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => [
+                {
+                  name: "build",
+                  model: {
+                    providerID: "anthropic",
+                    modelID: "claude-haiku-4-5",
+                  },
+                },
+              ],
+            });
+          }
+          return Promise.resolve({ ok: false });
+        }),
+      );
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      fireEvent.change(await screen.findByLabelText("エージェント"), {
+        target: { value: "build" },
+      });
+      fireEvent.change(await screen.findByLabelText("インテリジェンス"), {
+        target: { value: "high" },
+      });
+      await typeAndSend("なぜ失敗するのか");
+
+      await waitFor(() => expect(streamMock.sendPrompt).toHaveBeenCalled());
+      const opts = streamMock.sendPrompt.mock.calls[0][1];
+      expect(opts.model).toBeUndefined();
+      expect(opts.variant).toBe("high");
+      expect(opts.agent).toBe("build");
+    });
+
     it("restricts the candidates to image-capable models when an image is attached", async () => {
       const streamMock = useSessionStream();
       const view = render(<TaskView taskId="ws1" />);
@@ -2217,6 +2392,75 @@ describe("TaskView", () => {
           }),
         ),
       );
+    });
+
+    it("forwards manual Intelligence to a fixed agent model in a goal loop", async () => {
+      sendJson.mockResolvedValue({
+        loop: {
+          id: "loop1",
+          status: "queued",
+          turns: [],
+          progress: [],
+          turnCount: 0,
+          maxTurns: 10,
+        },
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/api/opencode/provider")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => providerPayload(),
+            });
+          }
+          if (url.includes("/api/opencode/agent")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => [
+                {
+                  name: "build",
+                  model: {
+                    providerID: "anthropic",
+                    modelID: "claude-haiku-4-5",
+                  },
+                },
+              ],
+            });
+          }
+          return Promise.resolve({ ok: false });
+        }),
+      );
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      fireEvent.change(await screen.findByLabelText("エージェント"), {
+        target: { value: "build" },
+      });
+      fireEvent.change(await screen.findByLabelText("インテリジェンス"), {
+        target: { value: "high" },
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Goalループで継続実行" }),
+      );
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "フォローアップを送信" }),
+        { target: { value: "なぜ失敗するのか" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+
+      await waitFor(() =>
+        expect(sendJson).toHaveBeenCalledWith(
+          "POST",
+          "/api/tasks/ws1/goal-loop",
+          expect.objectContaining({ agent: "build", variant: "high" }),
+        ),
+      );
+      const body = sendJson.mock.calls.find(
+        (call) => call[1] === "/api/tasks/ws1/goal-loop",
+      )?.[2];
+      expect(body?.model).toBeUndefined();
     });
 
     describe("optimize mode", () => {

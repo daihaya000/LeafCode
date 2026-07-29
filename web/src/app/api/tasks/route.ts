@@ -128,7 +128,7 @@ async function supportsImageInput(
 
     const providers = await ocServer<ProviderResponse>(null, "/provider");
     if (
-      providers.connected?.length &&
+      providers.connected !== undefined &&
       !providers.connected.includes(effectiveModel.providerID)
     ) {
       return false;
@@ -174,13 +174,13 @@ async function resolveAutoModel(
 ): Promise<AutoDecision | null> {
   const hasImages = files.length > 0;
   let providers: AutoCandidateProvider[] = [];
-  let connected: string[] = [];
+  let connected: string[] | undefined;
   try {
     const data = await ocServer<AutoProviderResponse>(null, "/provider");
     providers = (data.all ?? []).flatMap((provider) =>
       provider.id ? [{ id: provider.id, models: provider.models ?? {} }] : [],
     );
-    connected = data.connected ?? [];
+    connected = data.connected;
   } catch {
     // Provider list unavailable: no candidate can be verified.
     return null;
