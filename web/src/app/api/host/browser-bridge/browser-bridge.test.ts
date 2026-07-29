@@ -82,4 +82,20 @@ describe("Browser Bridge host-only routes", () => {
       }),
     );
   });
+
+  it("generalizes unavailable and malformed Broker approval-list responses", async () => {
+    browserBrokerFetch.mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+    const unavailable = await listApprovals(
+      local("http://127.0.0.1:3000/api/host/browser-bridge/approvals"),
+    );
+    expect(unavailable.status).toBe(502);
+    expect(await unavailable.json()).toEqual({ error: "browser broker unavailable" });
+
+    browserBrokerFetch.mockResolvedValueOnce(new Response("not json", { status: 200 }));
+    const malformed = await listApprovals(
+      local("http://127.0.0.1:3000/api/host/browser-bridge/approvals"),
+    );
+    expect(malformed.status).toBe(502);
+    expect(await malformed.json()).toEqual({ error: "browser broker unavailable" });
+  });
 });

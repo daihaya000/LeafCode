@@ -12,7 +12,10 @@ export async function GET(req: Request) {
     const res = await browserBrokerFetch("/internal/approvals");
     if (!res) return NextResponse.json({ approvals: [], available: false });
     if (!res.ok) return NextResponse.json({ error: "browser broker unavailable" }, { status: 502 });
-    const data = (await res.json().catch(() => ({}))) as { approvals?: unknown };
+    const data = await res.json().catch(() => null) as { approvals?: unknown } | null;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return NextResponse.json({ error: "browser broker unavailable" }, { status: 502 });
+    }
     return NextResponse.json({ approvals: Array.isArray(data.approvals) ? data.approvals : [], available: true });
   } catch {
     return NextResponse.json({ error: "browser broker unavailable" }, { status: 502 });
