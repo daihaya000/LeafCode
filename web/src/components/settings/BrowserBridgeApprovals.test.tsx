@@ -48,6 +48,18 @@ describe("BrowserBridgeApprovals", () => {
     expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
   });
 
+  it("shows a decision error and re-enables the approval actions", async () => {
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ error: "unavailable" }, false));
+    render(<BrowserBridgeApprovals />);
+    const allow = await screen.findByRole("button", { name: "許可" });
+    fireEvent.click(allow);
+    expect(await screen.findByText("承認の更新に失敗しました")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "許可" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "拒否" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("generates a one-time pairing code without exposing broker credentials", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [] }))
