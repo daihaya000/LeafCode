@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { BrowserBridgeErrorCode } from '../shared/errors.mjs';
 import { BrowserToolName, MAX_MESSAGE_BYTES, validateToolInput } from '../shared/schemas.mjs';
+import { validateResultEnvelope } from '../shared/protocol.mjs';
 import { evaluateCommandPolicy } from './policy.mjs';
 
 const JSON_HEADERS = Object.freeze({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -129,6 +130,7 @@ export function createBrowserBridgeBroker({
         pendingApprovals.delete(approval.approvalId);
         if (body.decision === 'allow' && extensionSocket && sharedTabs.has(approval.tabId)) {
           extensionSocket.send(JSON.stringify({
+            protocolVersion: 1,
             type: 'command',
             commandId: approval.approvalId,
             connectionGeneration,
@@ -263,6 +265,14 @@ export function createBrowserBridgeBroker({
         if (message.type === 'snapshot' && Object.keys(message).length === 3 && sharedTabs.has(message.tabId) && validSnapshot(message.snapshot)) {
           saveSnapshot(message.tabId, message.snapshot);
           return;
+        }
+        if (message.type === 'result') {
+          try {
+            validateResultEnvelope(message);
+            return;
+          } catch {
+            return rejectSocket(socket, 'invalid_result');
+          }
         }
         if (message.type === 'heartbeat' && Object.keys(message).length === 1) {
           socket.send(JSON.stringify({ type: 'heartbeat_ack', connectionGeneration }));

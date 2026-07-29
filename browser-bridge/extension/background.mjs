@@ -43,6 +43,8 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         for (const tab of Object.values(state.sharedTabs)) send({ type: 'tab_shared', tab });
       } else if (message.type === 'snapshot_request' && typeof message.tabId === 'string') {
         void collectSnapshot(message.tabId).catch(() => {});
+      } else if (message.type === 'command') {
+        void executeCommand(message);
       }
     });
     socket.addEventListener('close', () => {
@@ -114,6 +116,20 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     if (!snapshot || !Array.isArray(snapshot.nodes)) throw new Error('Snapshot collection failed');
     send({ type: 'snapshot', tabId, snapshot });
     return snapshot;
+  }
+
+  async function executeCommand(command) {
+    if (command.connectionGeneration !== connectionGeneration || command.tool !== 'browser_click') return;
+    const shared = state.sharedTabs[command.args?.tabId];
+    if (!shared) return;
+    try {
+      const result = await chromeApi.tabs.sendMessage(shared.browserTabId, {
+        type: 'browser_bridge_click', ref: command.args.ref, snapshotGeneration: command.args.snapshotGeneration,
+      });
+      send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: result?.ok ? 'succeeded' : 'failed', ...(result?.ok ? { result: {} } : { error: { code: result?.error === 'STALE_REFERENCE' ? 'STALE_REFERENCE' : 'POLICY_BLOCKED', message: 'Click was not executed' } }) });
+    } catch {
+      send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: 'failed', error: { code: 'EXTENSION_DISCONNECTED', message: 'Click delivery failed' } });
+    }
   }
 
   async function revoke() {

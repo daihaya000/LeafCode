@@ -154,7 +154,7 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
     method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'allow' }),
   });
   const command = await commandReceived;
-  assert.deepEqual(command, { type: 'command', commandId: secondClick.error.approvalId, connectionGeneration: 1, tool: 'browser_click', args: { tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 } });
+  assert.deepEqual(command, { protocolVersion: 1, type: 'command', commandId: secondClick.error.approvalId, connectionGeneration: 1, tool: 'browser_click', args: { tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 } });
 
   socket.send(JSON.stringify({ type: 'snapshot', tabId: 'tab_opaque', snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] } }));
   await new Promise((resolve) => setImmediate(resolve));
