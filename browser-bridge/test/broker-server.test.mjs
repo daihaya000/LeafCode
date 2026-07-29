@@ -148,6 +148,26 @@ test('closes an authenticated extension that exceeds the WebSocket message limit
   assert.deepEqual(status, { extension: { connected: false, paired: true }, pendingApprovals: 0 });
 });
 
+test('returns COMMAND_TIMEOUT when an extension does not answer a snapshot request', async (t) => {
+  const broker = await startBroker({ snapshotRequestTimeoutMs: 20 });
+  t.after(() => broker.close());
+  const pairing = await fetch(`${broker.url}/internal/pairing`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  t.after(() => socket.close());
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const response = await fetch(`${broker.url}/internal/tools/browser_snapshot`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: 'tab_opaque' }),
+  });
+  assert.equal(response.status, 504);
+  assert.deepEqual(await response.json(), { error: { code: 'COMMAND_TIMEOUT' } });
+});
+
 test('lists only opaque tab metadata announced by an authenticated extension', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
