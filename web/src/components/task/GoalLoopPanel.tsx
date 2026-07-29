@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Check,
+  ChevronDown,
   CircleAlert,
   ListTodo,
   Loader2,
@@ -93,9 +94,17 @@ export function GoalLoopPanel({
   onAction: (action: "pause" | "resume" | "stop") => void;
   onUpdateMaxTurns?: (maxTurns: number) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   // Keep the draft as text. Clamping on every keystroke made it impossible to
   // clear a value such as `1` before typing a multi-digit replacement (`20`).
   const [editingMaxTurns, setEditingMaxTurns] = useState<string | null>(null);
+
+  const terminal =
+    loop?.status === "completed" || loop?.status === "blocked" || loop?.status === "stopped";
+
+  useEffect(() => {
+    if (terminal) setExpanded(false);
+  }, [terminal]);
 
   if (!loop) return null;
 
@@ -136,6 +145,14 @@ export function GoalLoopPanel({
     loop.status === "paused" && loop.pauseReason !== ""
       ? PAUSE_REASON_HINT[loop.pauseReason]
       : null;
+  const terminalSummary =
+    loop.status === "completed"
+      ? `完了: ${loop.summary || currentProgress?.summary || "Goalを達成しました。"}`
+      : loop.status === "blocked"
+        ? `ブロック: ${loop.blockedReason || currentProgress?.summary || "対応が必要です。"}`
+        : loop.status === "stopped"
+          ? "停止しました。"
+          : null;
 
   const commitMaxTurns = () => {
     if (editingMaxTurns == null) return;
@@ -152,13 +169,13 @@ export function GoalLoopPanel({
       className={cx(
         "rounded-xl border border-border bg-surface p-3 text-sm",
         live &&
-          // 追従時は背景を不透明のまま、履歴が伸びても画面を占有しないよう高さを制限する
-          "sticky top-0 z-10 max-h-[45dvh] overflow-y-auto shadow-md",
+          "sticky top-0 z-10 shadow-md",
+        expanded && "max-h-[45dvh] overflow-y-auto",
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 font-medium text-text">
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 font-medium text-text">
             <ListTodo className="h-4 w-4 text-primary" />
             Goalループ
             <span
@@ -171,9 +188,21 @@ export function GoalLoopPanel({
               {badgeText}
             </span>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs text-muted">{loop.goal}</p>
+          <p className="min-w-0 flex-1 truncate text-xs text-muted" title={loop.goal}>
+            {loop.goal}
+          </p>
         </div>
         <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label={expanded ? "Goalループの詳細を折りたたむ" : "Goalループの詳細を展開"}
+            aria-controls="goal-loop-detail"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <ChevronDown className={cx("h-4 w-4 transition-transform", !expanded && "-rotate-90")} />
+          </button>
           {canPause && (
             <Button
               variant="secondary"
@@ -183,7 +212,7 @@ export function GoalLoopPanel({
               onClick={() => onAction("pause")}
             >
               <Pause className="h-3.5 w-3.5" />
-              一時停止
+              <span className="hidden sm:inline">一時停止</span>
             </Button>
           )}
           {canResume && (
@@ -195,7 +224,7 @@ export function GoalLoopPanel({
               onClick={() => onAction("resume")}
             >
               <Play className="h-3.5 w-3.5" />
-              再開
+              <span className="hidden sm:inline">再開</span>
             </Button>
           )}
           {canStop && (
@@ -207,12 +236,31 @@ export function GoalLoopPanel({
               onClick={handleStop}
             >
               <Square className="h-3.5 w-3.5" />
-              停止
+              <span className="hidden sm:inline">停止</span>
             </Button>
           )}
         </div>
       </div>
 
+      {pauseHint && <p className="mt-2 truncate text-xs text-muted">{pauseHint}</p>}
+      {terminalSummary && (
+        <p
+          className={cx(
+            "mt-2 truncate text-xs",
+            loop.status === "completed"
+              ? "text-success"
+              : loop.status === "blocked"
+                ? "text-warning"
+                : "text-muted",
+          )}
+          title={terminalSummary}
+        >
+          {terminalSummary}
+        </p>
+      )}
+
+      {expanded && (
+        <div id="goal-loop-detail" className="mt-3 border-t border-border pt-3" aria-live="polite">
       {canEditMaxTurns && (
         <div className="mt-2 flex items-center gap-2 text-xs text-muted">
           <label htmlFor="goal-loop-maxturns" className="shrink-0">
@@ -302,11 +350,7 @@ export function GoalLoopPanel({
           className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-xs text-warning"
         >
           {loop.error}
-          {pauseHint && <p className="mt-1 text-muted">{pauseHint}</p>}
         </div>
-      )}
-      {!loop.error && pauseHint && (
-        <p className="mt-2 text-xs text-muted">{pauseHint}</p>
       )}
       {loop.blockedReason && (
         <div
@@ -314,6 +358,8 @@ export function GoalLoopPanel({
           className="mt-2 rounded-lg bg-danger-bg px-3 py-2 text-xs text-danger"
         >
           {loop.blockedReason}
+        </div>
+      )}
         </div>
       )}
     </div>

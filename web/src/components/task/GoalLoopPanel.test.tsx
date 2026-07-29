@@ -34,6 +34,10 @@ function baseLoop(overrides: Partial<GoalLoopDto> = {}): GoalLoopDto {
   };
 }
 
+function expandGoalLoopDetails() {
+  fireEvent.click(screen.getByRole("button", { name: "Goalループの詳細を展開" }));
+}
+
 describe("GoalLoopPanel", () => {
   afterEach(() => {
     cleanup();
@@ -54,6 +58,46 @@ describe("GoalLoopPanel", () => {
   it("renders region with aria-label", () => {
     render(<GoalLoopPanel loop={baseLoop()} busy={false} onAction={vi.fn()} />);
     expect(screen.getByRole("region", { name: "Goalループ" })).toBeTruthy();
+  });
+
+  it("starts compact and reveals details only when expanded", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({
+          progress: [
+            {
+              time: "2026-01-01T00:00:00.000Z",
+              status: "progress",
+              summary: "現在の作業",
+            },
+          ],
+        })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "Goalループの詳細を展開" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("現在の作業")).toBeNull();
+    fireEvent.click(toggle);
+    expect(
+      screen
+        .getByRole("button", { name: "Goalループの詳細を折りたたむ" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(screen.getByText("現在の作業")).toBeTruthy();
+  });
+
+  it("keeps a completed loop compact with a short result summary", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "completed", summary: "承認カードを統合しました" })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("完了: 承認カードを統合しました")).toBeTruthy();
+    expect(screen.queryByRole("list")).toBeNull();
   });
 
   it.each([
@@ -226,6 +270,7 @@ describe("GoalLoopPanel", () => {
       ],
     });
     render(<GoalLoopPanel loop={loop} busy={false} onAction={vi.fn()} />);
+    expandGoalLoopDetails();
     const list = screen.getByRole("list");
     expect(list).toBeTruthy();
     const items = screen.getAllByRole("listitem");
@@ -243,6 +288,7 @@ describe("GoalLoopPanel", () => {
     }));
     const loop = baseLoop({ status: "running", progress });
     render(<GoalLoopPanel loop={loop} busy={false} onAction={vi.fn()} />);
+    expandGoalLoopDetails();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /履歴を/ })).toBeNull();
     expect(screen.getByText("entry-4")).toBeTruthy();
@@ -275,6 +321,7 @@ describe("GoalLoopPanel", () => {
         onUpdateMaxTurns={onUpdate}
       />,
     );
+    expandGoalLoopDetails();
     expect(screen.getByLabelText("最大ターン数を編集")).toBeTruthy();
   });
 
@@ -288,6 +335,7 @@ describe("GoalLoopPanel", () => {
         onUpdateMaxTurns={onUpdate}
       />,
     );
+    expandGoalLoopDetails();
     // click the display button to enter edit mode
     fireEvent.click(screen.getByLabelText("最大ターン数を編集"));
     const input = screen.getByLabelText("最大ターン数") as HTMLInputElement;
@@ -306,6 +354,7 @@ describe("GoalLoopPanel", () => {
         onUpdateMaxTurns={onUpdate}
       />,
     );
+    expandGoalLoopDetails();
     fireEvent.click(screen.getByLabelText("最大ターン数を編集"));
     const input = screen.getByLabelText("最大ターン数") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "" } });
@@ -326,6 +375,7 @@ describe("GoalLoopPanel", () => {
         onUpdateMaxTurns={onUpdate}
       />,
     );
+    expandGoalLoopDetails();
     fireEvent.click(screen.getByLabelText("最大ターン数を編集"));
     const input = screen.getByLabelText("最大ターン数") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "999" } });
@@ -343,6 +393,7 @@ describe("GoalLoopPanel", () => {
         onUpdateMaxTurns={onUpdate}
       />,
     );
+    expandGoalLoopDetails();
     fireEvent.click(screen.getByLabelText("最大ターン数を編集"));
     fireEvent.click(screen.getByLabelText("最大ターン数を保存"));
     expect(onUpdate).not.toHaveBeenCalled();
@@ -361,6 +412,7 @@ describe("GoalLoopPanel", () => {
         onAction={vi.fn()}
       />,
     );
+    expandGoalLoopDetails();
     expect(screen.getByText("爆発した")).toBeTruthy();
     expect(screen.getByText("理由")).toBeTruthy();
   });
@@ -389,6 +441,7 @@ describe("GoalLoopPanel", () => {
         onAction={vi.fn()}
       />,
     );
+    expandGoalLoopDetails();
     expect(screen.getByText("verified")).toBeTruthy();
     expect(screen.queryByText("claim")).toBeNull();
   });
@@ -409,6 +462,7 @@ describe("GoalLoopPanel", () => {
         onAction={vi.fn()}
       />,
     );
+    expandGoalLoopDetails();
     expect(screen.getByTestId("goal-loop-progress-check")).toBeTruthy();
   });
 
@@ -422,7 +476,9 @@ describe("GoalLoopPanel", () => {
       expect(region.getAttribute("data-live")).toBe("true");
       expect(region.className).toContain("sticky");
       expect(region.className).toContain("top-0");
-      // 履歴が伸びても画面を占有しないよう高さを制限する
+      expect(region.className).not.toContain("max-h-[45dvh]");
+      expect(region.className).not.toContain("overflow-y-auto");
+      expandGoalLoopDetails();
       expect(region.className).toContain("max-h-[45dvh]");
       expect(region.className).toContain("overflow-y-auto");
     },
