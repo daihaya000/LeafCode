@@ -70,4 +70,16 @@ describe("BrowserBridgeApprovals", () => {
     expect((await screen.findByLabelText("ペアリングコード")).textContent).toBe("pairing_code_1234567890");
     expect(timedFetch).toHaveBeenCalledWith("/api/host/browser-bridge/pairing", expect.objectContaining({ method: "POST" }));
   });
+
+  it("shows a pairing generation error without rendering a code", async () => {
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ error: "unavailable" }, false));
+    render(<BrowserBridgeApprovals />);
+    await screen.findByText("保留中の承認はありません。");
+    fireEvent.click(screen.getByRole("button", { name: "ペアリングコードを生成" }));
+    expect(await screen.findByText("ペアリングコードを生成できません")).toBeTruthy();
+    expect(screen.queryByLabelText("ペアリングコード")).toBeNull();
+    expect(screen.getByRole("button", { name: "ペアリングコードを生成" })).toBeTruthy();
+  });
 });
