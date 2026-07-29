@@ -147,6 +147,8 @@ export type TaskSummary = {
   providerID?: string;
   /** Model id of the session's current/last model (from Session.model.id). */
   modelID?: string;
+  /** Reasoning effort of the session's current/last model (from Session.model.variant). */
+  variant?: string;
   createdAt: string;
   updatedAt: string;
 };

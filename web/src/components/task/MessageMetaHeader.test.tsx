@@ -54,6 +54,21 @@ describe("MessageMetaHeader", () => {
     expect(meta.textContent).not.toMatch(/·\s*·|^\s*·|·\s*$/);
   });
 
+  it("shows the effort immediately after the model", () => {
+    render(
+      <MessageMetaHeader
+        info={{ modelID: "gpt-5.6-luna", time: { created: 1 } }}
+        modelLabel="GPT-5.6 Luna"
+        effort="high"
+        costPrefs={DEFAULT_COST_PREFS}
+      />,
+    );
+
+    const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
+    expect(text).toContain("GPT-5.6 Luna·effort high·");
+    expect(text.indexOf("GPT-5.6 Luna")).toBeLessThan(text.indexOf("effort high"));
+  });
+
   it("uses a CPU fallback when the provider icon is unknown or broken", () => {
     const { rerender } = render(
       <MessageMetaHeader

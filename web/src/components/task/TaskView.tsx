@@ -3066,6 +3066,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                               ? modelLabels[`${m.info.providerID}::${m.info.modelID}`]
                               : undefined
                           }
+                          effort={task.variant}
                           costPrefs={costPrefs}
                         />
                       ) : (

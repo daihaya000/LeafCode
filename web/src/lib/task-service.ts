@@ -18,6 +18,7 @@ type SessionMeta = {
   agent?: string;
   providerID?: string;
   modelID?: string;
+  variant?: string;
 };
 type MetaMap = Record<string, SessionMeta>;
 
@@ -98,6 +99,7 @@ async function sessionMetaFor(dirs: string[]): Promise<MetaMap> {
         if (typeof s.model?.providerID === "string")
           meta.providerID = s.model.providerID;
         if (typeof s.model?.id === "string") meta.modelID = s.model.id;
+        if (typeof s.model?.variant === "string") meta.variant = s.model.variant;
         metas[s.id] = meta;
       }
     }),
@@ -138,6 +140,7 @@ function toTask(
     agent: meta?.agent,
     providerID: meta?.providerID,
     modelID: meta?.modelID,
+    variant: meta?.variant,
     createdAt: ws.created_at,
     updatedAt: binding?.updated_at ?? ws.created_at,
   };
