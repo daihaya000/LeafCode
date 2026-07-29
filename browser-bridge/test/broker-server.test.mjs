@@ -272,6 +272,33 @@ test('drops a late result after the dispatched command expires', async (t) => {
   assert.deepEqual(audit.entries, []);
 });
 
+test('expires an unapproved action without dispatching it later', async (t) => {
+  const broker = await startBroker({ approvalTimeoutMs: 20 });
+  t.after(() => broker.close());
+  const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
+  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  t.after(() => socket.close());
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  const requested = await fetch(`${broker.url}/internal/tools/browser_screenshot`, {
+    method: 'POST', headers, body: JSON.stringify({ tabId: 'tab_opaque' }),
+  }).then((res) => res.json());
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const approvals = await fetch(`${broker.url}/internal/approvals`, { headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
+  assert.deepEqual(approvals, { approvals: [] });
+  const expired = await fetch(`${broker.url}/internal/approvals/${requested.error.approvalId}`, {
+    method: 'POST', headers, body: JSON.stringify({ decision: 'allow' }),
+  });
+  assert.equal(expired.status, 404);
+  const command = await Promise.race([
+    new Promise((resolve) => socket.once('message', resolve)),
+    new Promise((resolve) => setTimeout(() => resolve(null), 20)),
+  ]);
+  assert.equal(command, null);
+});
+
 function openSocket(url, origin, message) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { origin });
