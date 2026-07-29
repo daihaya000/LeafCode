@@ -1173,4 +1173,183 @@ describe("POST /api/tasks auto model selection", () => {
     expect(res.status).toBe(400);
     expect(provisionWorkspace).not.toHaveBeenCalled();
   });
+
+  describe("autoOptimize", () => {
+    /**
+     * Fixture efforts: cheap has minimal/low/medium/high, mid has
+     * low/medium/high, premium has medium/high (no max), so the tables below
+     * also exercise "requested effort not declared" fallbacks.
+     */
+    const expected = {
+      cost: {
+        light: [CHEAP, "minimal"],
+        standard: [MID, "low"],
+        heavy: [PREMIUM, "medium"],
+      },
+      balanced: {
+        light: [CHEAP, "low"],
+        standard: [MID, "medium"],
+        heavy: [PREMIUM, "high"],
+      },
+      intelligence: {
+        light: [MID, "medium"],
+        standard: [PREMIUM, "high"],
+        heavy: [PREMIUM, "high"],
+      },
+    } as const;
+
+    const promptFor = {
+      light: LIGHT_PROMPT,
+      standard: STANDARD_PROMPT,
+      heavy: HEAVY_PROMPT,
+    } as const;
+
+    for (const mode of ["cost", "balanced", "intelligence"] as const) {
+      for (const tier of ["light", "standard", "heavy"] as const) {
+        const [modelID, variant] = expected[mode][tier];
+        it(`${mode} + ${tier} resolves ${modelID} at ${variant}`, async () => {
+          const ocServer = await mockOc();
+
+          const res = await post({
+            projectId: "project-1",
+            prompt: promptFor[tier],
+            isolation: "current_folder",
+            auto: true,
+            autoOptimize: mode,
+          });
+
+          expect(res.status).toBe(200);
+          expect(promptBodyOf(ocServer)).toMatchObject({
+            model: { providerID: "anthropic", modelID },
+            variant,
+          });
+        });
+      }
+    }
+
+    it("defaults to cost when autoOptimize is omitted", async () => {
+      const ocServer = await mockOc();
+
+      await post({
+        projectId: "project-1",
+        prompt: STANDARD_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+      });
+
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: MID },
+        variant: "low",
+      });
+    });
+
+    it("echoes the mode on autoDecision", async () => {
+      await mockOc();
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "intelligence",
+      });
+
+      const body = await res.json();
+      expect(body.autoDecision).toMatchObject({
+        mode: "intelligence",
+        modelID: MID,
+        tier: "light",
+        reason: "短い質問タスクのため知能優先で選択しました",
+      });
+    });
+
+    it.each(["bogus", "balance", "COST", "", 1, null, true])(
+      "rejects autoOptimize %p with 400 before provisioning",
+      async (value) => {
+        await mockOc();
+        const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+        const res = await post({
+          projectId: "project-1",
+          prompt: LIGHT_PROMPT,
+          isolation: "current_folder",
+          auto: true,
+          autoOptimize: value,
+        });
+
+        expect(res.status).toBe(400);
+        await expect(res.json()).resolves.toEqual({
+          error: "invalid autoOptimize",
+        });
+        expect(provisionWorkspace).not.toHaveBeenCalled();
+      },
+    );
+
+    it("rejects autoOptimize without auto before provisioning", async () => {
+      await mockOc();
+      const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        model: { providerID: "anthropic", modelID: MID },
+        autoOptimize: "balanced",
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: "autoOptimize requires auto",
+      });
+      expect(provisionWorkspace).not.toHaveBeenCalled();
+    });
+
+    it("bumps the tier when three or more images are attached", async () => {
+      const visionModels = {
+        [CHEAP]: {
+          variants: { minimal: {}, low: {}, medium: {}, high: {} },
+          capabilities: { input: { image: true } },
+        },
+        [MID]: {
+          variants: { low: {}, medium: {}, high: {} },
+          capabilities: { input: { image: true } },
+        },
+        [PREMIUM]: {
+          variants: { medium: {}, high: {} },
+          capabilities: { input: { image: true } },
+        },
+      };
+
+      const oneImage = await mockOc({
+        provider: providerFixture(visionModels),
+      });
+      await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        files: [image],
+      });
+      // light stays light below the attachment threshold.
+      expect(promptBodyOf(oneImage)).toMatchObject({
+        model: { providerID: "anthropic", modelID: CHEAP },
+      });
+
+      const threeImages = await mockOc({
+        provider: providerFixture(visionModels),
+      });
+      await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        files: [image, image, image],
+      });
+      // Three attachments bump light → standard, which selects the mid model.
+      expect(promptBodyOf(threeImages)).toMatchObject({
+        model: { providerID: "anthropic", modelID: MID },
+      });
+    });
+  });
+
 });

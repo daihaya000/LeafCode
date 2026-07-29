@@ -3,8 +3,10 @@ import {
   chooseAutoModel,
   classifyPrompt,
   DEFAULT_AUTO_OPTIMIZE_MODE,
+  isAutoOptimizeMode,
   type AutoCandidateProvider,
   type AutoDecision,
+  type AutoOptimizeMode,
 } from "@/lib/auto-model";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
@@ -167,8 +169,10 @@ async function agentHasFixedModel(agentName: string): Promise<boolean> {
  */
 async function resolveAutoModel(
   prompt: string,
-  hasImages: boolean,
+  files: readonly unknown[],
+  mode: AutoOptimizeMode,
 ): Promise<AutoDecision | null> {
+  const hasImages = files.length > 0;
   let providers: AutoCandidateProvider[] = [];
   let connected: string[] = [];
   try {
@@ -186,8 +190,13 @@ async function resolveAutoModel(
     connected,
     disabled: readProviderModelState().disabled,
     // Slash commands are classified from their raw text (no expansion).
-    tier: classifyPrompt(prompt, { hasImages }),
-    mode: DEFAULT_AUTO_OPTIMIZE_MODE,
+    // A brand-new session has no history and no prior failure, so the only
+    // context signal available here is the attachment count.
+    tier: classifyPrompt(prompt, {
+      hasImages,
+      attachmentCount: files.length,
+    }),
+    mode,
     hasImages,
   });
 }
@@ -212,6 +221,7 @@ export async function POST(req: NextRequest) {
     variant?: unknown;
     files?: unknown;
     auto?: unknown;
+    autoOptimize?: unknown;
   } | null;
 
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
@@ -295,6 +305,25 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  // "Optimize For" policy. Absent means the default (cost); a value without
+  // `auto` is a client bug worth surfacing rather than silently ignoring.
+  const autoOptimizeRaw = body?.autoOptimize;
+  let autoOptimize = DEFAULT_AUTO_OPTIMIZE_MODE;
+  if (autoOptimizeRaw !== undefined) {
+    if (!auto) {
+      return NextResponse.json(
+        { error: "autoOptimize requires auto" },
+        { status: 400 },
+      );
+    }
+    if (!isAutoOptimizeMode(autoOptimizeRaw)) {
+      return NextResponse.json(
+        { error: "invalid autoOptimize" },
+        { status: 400 },
+      );
+    }
+    autoOptimize = autoOptimizeRaw;
+  }
 
   // From here on the resolved Auto model is indistinguishable from a manually
   // selected one: everything downstream reads `effectiveModel` / `variant`.
@@ -308,7 +337,7 @@ export async function POST(req: NextRequest) {
       ? await agentHasFixedModel(agentName)
       : false;
     if (!agentPinsModel) {
-      const decision = await resolveAutoModel(prompt, files.length > 0);
+      const decision = await resolveAutoModel(prompt, files, autoOptimize);
       if (!decision) {
         return NextResponse.json(
           {
