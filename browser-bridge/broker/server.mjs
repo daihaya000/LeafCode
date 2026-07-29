@@ -90,6 +90,7 @@ export function createBrowserBridgeBroker({
   const pendingSnapshots = new Map();
   const pendingApprovals = new Map();
   const dispatchedCommands = new Map();
+  const screenshots = new Map();
   const audit = new AuditLog({ now });
   let listening = false;
 
@@ -181,6 +182,12 @@ export function createBrowserBridgeBroker({
         } catch {
           json(res, 504, { error: { code: BrowserBridgeErrorCode.COMMAND_TIMEOUT } });
         }
+        return;
+      }
+      if (tool === BrowserToolName.SCREENSHOT && screenshots.has(args.tabId)) {
+        const image = screenshots.get(args.tabId);
+        screenshots.delete(args.tabId);
+        json(res, 200, { image });
         return;
       }
       if ([BrowserToolName.CLICK, BrowserToolName.TYPE, BrowserToolName.SCROLL, BrowserToolName.NAVIGATE, BrowserToolName.SCREENSHOT].includes(tool)) {
@@ -276,6 +283,9 @@ export function createBrowserBridgeBroker({
             const command = dispatchedCommands.get(message.commandId);
             if (command) {
               dispatchedCommands.delete(message.commandId);
+              if (command.tool === BrowserToolName.SCREENSHOT && validImage(message.result?.image)) {
+                screenshots.set(command.tabId, message.result.image);
+              }
               audit.record({
                 commandId: message.commandId,
                 tool: command.tool,
@@ -387,6 +397,14 @@ function validSharedTab(tab) {
   } catch {
     return false;
   }
+}
+
+function validImage(image) {
+  return image !== null && typeof image === 'object' && !Array.isArray(image)
+    && ['image/png', 'image/jpeg'].includes(image.mimeType)
+    && typeof image.data === 'string'
+    && /^[A-Za-z0-9+/=]+$/.test(image.data)
+    && Math.floor((image.data.length * 3) / 4) <= 4 * 1024 * 1024;
 }
 
 function validSnapshot(snapshot) {

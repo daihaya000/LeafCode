@@ -25,6 +25,14 @@ function textResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
 }
 
+function toolResult(name, value) {
+  const image = value?.image;
+  if (name === BrowserToolName.SCREENSHOT && typeof image?.data === 'string' && ['image/png', 'image/jpeg'].includes(image.mimeType)) {
+    return { content: [{ type: 'image', data: image.data, mimeType: image.mimeType }] };
+  }
+  return textResult(value);
+}
+
 function errorResult(code) {
   return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: { code } }) }] };
 }
@@ -42,7 +50,7 @@ function registerTool(server, brokerClient, name, description, inputSchema, anno
   }, async (args) => {
     try {
       const input = validateToolInput(name, args);
-      return textResult(await brokerClient.call(name, input));
+      return toolResult(name, await brokerClient.call(name, input));
     } catch (error) {
       const code = error?.code;
       return errorResult(Object.values(BrowserBridgeErrorCode).includes(code)
