@@ -220,7 +220,10 @@ export function GhostSelect({
         ))}
       </div>
       {action && (
-        <div className="border-t border-border p-1">
+        <div
+          className="border-t border-border p-1"
+          onPointerDown={() => setOpen(false)}
+        >
           {action}
         </div>
       )}
