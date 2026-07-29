@@ -11,7 +11,11 @@
  * server-importable; everything here touches a browser-only global.
  */
 
-import type { AutoDecision } from "./auto-model";
+import {
+  DEFAULT_AUTO_OPTIMIZE_MODE,
+  isAutoOptimizeMode,
+  type AutoDecision,
+} from "./auto-model";
 import type { IntelligenceVariant } from "./model-variants";
 
 export type AutoTaskRecord = {
@@ -43,7 +47,8 @@ function optionalString(value: unknown): string | undefined {
 
 function parseDecision(value: unknown): AutoDecision | null {
   if (!isRecord(value)) return null;
-  const { providerID, modelID, variant, tier, reason, escalation } = value;
+  const { providerID, modelID, variant, tier, mode, reason, escalation } =
+    value;
   if (typeof providerID !== "string" || !providerID) return null;
   if (typeof modelID !== "string" || !modelID) return null;
   if (typeof variant !== "string") return null;
@@ -54,6 +59,10 @@ function parseDecision(value: unknown): AutoDecision | null {
     modelID,
     variant: variant as IntelligenceVariant | "",
     tier,
+    // Records written before optimize modes existed carry no `mode`; treat
+    // them (and any corrupted value) as the default rather than dropping the
+    // record, which would silently disable the retry.
+    mode: isAutoOptimizeMode(mode) ? mode : DEFAULT_AUTO_OPTIMIZE_MODE,
     reason,
   };
   if (isRecord(escalation)) {

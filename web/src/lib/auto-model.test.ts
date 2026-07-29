@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTO_MODEL_VALUE,
+  AUTO_OPTIMIZE_MODES,
+  autoOptimizeModeLabel,
   chooseAutoModel,
   classifyPrompt,
+  DEFAULT_AUTO_OPTIMIZE_MODE,
+  isAutoOptimizeMode,
   modelCostTier,
+  SIGNAL_ATTACHMENT_THRESHOLD,
+  SIGNAL_HISTORY_THRESHOLD,
   type AutoCandidateProvider,
+  type AutoOptimizeMode,
+  type AutoTier,
 } from "./auto-model";
 import { modelIntelligenceScore } from "./model-options";
 
@@ -242,6 +250,7 @@ function choose(
   overrides: Partial<Parameters<typeof chooseAutoModel>[0]> = {},
 ) {
   return chooseAutoModel({
+    mode: "cost",
     providers: threeTierProviders(),
     connected: [],
     disabled: {},
@@ -293,6 +302,7 @@ describe("chooseAutoModel candidate filtering", () => {
 
   it("keeps only image-capable models when hasImages is true", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", {
           [CHEAP_MODEL]: {},
@@ -309,6 +319,7 @@ describe("chooseAutoModel candidate filtering", () => {
 
   it("accepts attachment capability as image support", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", {
           [CHEAP_MODEL]: { capabilities: { attachment: true } },
@@ -324,6 +335,7 @@ describe("chooseAutoModel candidate filtering", () => {
 
   it("returns null when no model supports images", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", {
           [CHEAP_MODEL]: { capabilities: { input: { image: false } } },
@@ -342,6 +354,7 @@ describe("chooseAutoModel candidate filtering", () => {
     expect(choose({ connected: ["gamma"] })).toBeNull();
     expect(choose({ disabled: { alpha: true, beta: true } })).toBeNull();
     expect(chooseAutoModel({
+      mode: "cost",
       providers: [],
       connected: [],
       disabled: {},
@@ -378,6 +391,7 @@ describe("chooseAutoModel tier selection", () => {
 
   it("light falls back to mid when no cheap model exists", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [MID_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: {} }),
@@ -392,6 +406,7 @@ describe("chooseAutoModel tier selection", () => {
 
   it("light falls back to premium when neither cheap nor mid exists", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [provider("beta", { [PREMIUM_MODEL]: {} })],
       connected: [],
       disabled: {},
@@ -403,6 +418,7 @@ describe("chooseAutoModel tier selection", () => {
 
   it("standard falls back to cheap before premium", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: {} }),
@@ -417,6 +433,7 @@ describe("chooseAutoModel tier selection", () => {
 
   it("standard falls back to premium when neither mid nor cheap exists", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [provider("beta", { [PREMIUM_MODEL]: {} })],
       connected: [],
       disabled: {},
@@ -428,6 +445,7 @@ describe("chooseAutoModel tier selection", () => {
 
   it("breaks score ties by providerID::modelID lexical order", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("zeta", { [MID_MODEL]: {} }),
         provider("alpha", { [MID_MODEL]: {} }),
@@ -442,6 +460,7 @@ describe("chooseAutoModel tier selection", () => {
 
   it("is deterministic regardless of provider iteration order", () => {
     const a = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [MID_MODEL]: {} }),
         provider("zeta", { [MID_MODEL]: {} }),
@@ -452,6 +471,7 @@ describe("chooseAutoModel tier selection", () => {
       hasImages: false,
     });
     const b = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("zeta", { [MID_MODEL]: {} }),
         provider("alpha", { [MID_MODEL]: {} }),
@@ -471,6 +491,7 @@ describe("chooseAutoModel variant selection", () => {
     variants: Record<string, { disabled?: boolean } | undefined> | undefined,
   ) {
     return chooseAutoModel({
+      mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: { variants } })],
       connected: [],
       disabled: {},
@@ -537,6 +558,7 @@ describe("chooseAutoModel escalation", () => {
 
   it("falls back to max then medium then empty for the escalation variant", () => {
     const withMax = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: { variants: { max: {}, medium: {} } } }),
@@ -549,6 +571,7 @@ describe("chooseAutoModel escalation", () => {
     expect(withMax?.escalation?.variant).toBe("max");
 
     const withMedium = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: { variants: { medium: {}, low: {} } } }),
@@ -561,6 +584,7 @@ describe("chooseAutoModel escalation", () => {
     expect(withMedium?.escalation?.variant).toBe("medium");
 
     const withNone = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [CHEAP_MODEL]: {} }),
         provider("beta", { [PREMIUM_MODEL]: { variants: { low: {} } } }),
@@ -575,6 +599,7 @@ describe("chooseAutoModel escalation", () => {
 
   it("omits escalation when it equals the selected model and variant", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: { variants: { medium: {} } } })],
       connected: [],
       disabled: {},
@@ -587,6 +612,7 @@ describe("chooseAutoModel escalation", () => {
 
   it("omits escalation for a single model with no variants", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: {} })],
       connected: [],
       disabled: {},
@@ -599,6 +625,7 @@ describe("chooseAutoModel escalation", () => {
 
   it("keeps escalation on the same model when only the variant differs", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", { [MID_MODEL]: { variants: { low: {}, high: {} } } }),
       ],
@@ -619,24 +646,25 @@ describe("chooseAutoModel escalation", () => {
 describe("chooseAutoModel reason text", () => {
   it("uses the light template", () => {
     expect(choose({ tier: "light" })?.reason).toBe(
-      "短い質問タスクのため低コストモデルを選択しました",
+      "短い質問タスクのためコスト優先で選択しました",
     );
   });
 
   it("uses the standard template", () => {
     expect(choose({ tier: "standard" })?.reason).toBe(
-      "標準的なコーディングタスクのため中コストモデルを選択しました",
+      "標準的なコーディングタスクのためコスト優先で選択しました",
     );
   });
 
   it("uses the heavy template", () => {
     expect(choose({ tier: "heavy" })?.reason).toBe(
-      "大規模・高難度タスクのため高性能モデルを選択しました",
+      "大規模・高難度タスクのためコスト優先で選択しました",
     );
   });
 
   it("appends the image note when hasImages is true", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", {
           [CHEAP_MODEL]: { capabilities: { input: { image: true } } },
@@ -648,12 +676,13 @@ describe("chooseAutoModel reason text", () => {
       hasImages: true,
     });
     expect(decision?.reason).toBe(
-      "短い質問タスクのため低コストモデルを選択しました（画像対応モデルに限定）",
+      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）",
     );
   });
 
   it("appends the fallback note when the primary cost band is empty", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [provider("alpha", { [MID_MODEL]: {} })],
       connected: [],
       disabled: {},
@@ -661,12 +690,13 @@ describe("chooseAutoModel reason text", () => {
       hasImages: false,
     });
     expect(decision?.reason).toBe(
-      "短い質問タスクのため低コストモデルを選択しました（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのためコスト優先で選択しました（該当コスト帯に候補がなく上位帯へフォールバック）",
     );
   });
 
   it("appends both notes when images narrowed the set and a fallback happened", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [
         provider("alpha", {
           [CHEAP_MODEL]: {},
@@ -679,12 +709,13 @@ describe("chooseAutoModel reason text", () => {
       hasImages: true,
     });
     expect(decision?.reason).toBe(
-      "短い質問タスクのため低コストモデルを選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
     );
   });
 
   it("never marks heavy as a fallback", () => {
     const decision = chooseAutoModel({
+      mode: "cost",
       providers: [provider("alpha", { [CHEAP_MODEL]: {} })],
       connected: [],
       disabled: {},
@@ -692,7 +723,315 @@ describe("chooseAutoModel reason text", () => {
       hasImages: false,
     });
     expect(decision?.reason).toBe(
-      "大規模・高難度タスクのため高性能モデルを選択しました",
+      "大規模・高難度タスクのためコスト優先で選択しました",
     );
+  });
+});
+
+describe("AutoOptimizeMode helpers", () => {
+  it("exposes the three modes with cost as the default", () => {
+    expect(AUTO_OPTIMIZE_MODES).toEqual(["cost", "balanced", "intelligence"]);
+    expect(DEFAULT_AUTO_OPTIMIZE_MODE).toBe("cost");
+  });
+
+  it("accepts only the known modes", () => {
+    for (const mode of AUTO_OPTIMIZE_MODES) {
+      expect(isAutoOptimizeMode(mode)).toBe(true);
+    }
+    for (const value of ["", "COST", "balance", "auto", 1, null, undefined, {}]) {
+      expect(isAutoOptimizeMode(value)).toBe(false);
+    }
+  });
+
+  it("labels every mode in Japanese", () => {
+    expect(autoOptimizeModeLabel("cost")).toBe("コスト優先");
+    expect(autoOptimizeModeLabel("balanced")).toBe("バランス");
+    expect(autoOptimizeModeLabel("intelligence")).toBe("知能優先");
+  });
+});
+
+describe("chooseAutoModel optimize mode cost bands", () => {
+  const expected: Record<AutoOptimizeMode, Record<AutoTier, string>> = {
+    cost: {
+      light: CHEAP_MODEL,
+      standard: MID_MODEL,
+      heavy: PREMIUM_MODEL,
+    },
+    balanced: {
+      light: CHEAP_MODEL,
+      standard: MID_MODEL,
+      heavy: PREMIUM_MODEL,
+    },
+    intelligence: {
+      light: MID_MODEL,
+      standard: PREMIUM_MODEL,
+      heavy: PREMIUM_MODEL,
+    },
+  };
+
+  for (const mode of AUTO_OPTIMIZE_MODES) {
+    for (const tier of ["light", "standard", "heavy"] as AutoTier[]) {
+      it(`${mode} + ${tier} picks ${expected[mode][tier]}`, () => {
+        expect(choose({ mode, tier })?.modelID).toBe(expected[mode][tier]);
+      });
+    }
+  }
+
+  it("balanced standard prefers premium over cheap when no mid exists", () => {
+    const decision = choose({
+      mode: "balanced",
+      tier: "standard",
+      providers: [
+        provider("alpha", { [CHEAP_MODEL]: { variants: { ...allVariants } } }),
+        provider("beta", { [PREMIUM_MODEL]: { variants: { ...allVariants } } }),
+      ],
+    });
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+  });
+
+  it("cost standard prefers cheap over premium when no mid exists", () => {
+    const decision = choose({
+      mode: "cost",
+      tier: "standard",
+      providers: [
+        provider("alpha", { [CHEAP_MODEL]: { variants: { ...allVariants } } }),
+        provider("beta", { [PREMIUM_MODEL]: { variants: { ...allVariants } } }),
+      ],
+    });
+    expect(decision?.modelID).toBe(CHEAP_MODEL);
+  });
+
+  it("intelligence standard falls back to mid, then cheap", () => {
+    const withMid = choose({
+      mode: "intelligence",
+      tier: "standard",
+      providers: [
+        provider("alpha", {
+          [CHEAP_MODEL]: { variants: { ...allVariants } },
+          [MID_MODEL]: { variants: { ...allVariants } },
+        }),
+      ],
+    });
+    expect(withMid?.modelID).toBe(MID_MODEL);
+
+    const cheapOnly = choose({
+      mode: "intelligence",
+      tier: "standard",
+      providers: [
+        provider("alpha", { [CHEAP_MODEL]: { variants: { ...allVariants } } }),
+      ],
+    });
+    expect(cheapOnly?.modelID).toBe(CHEAP_MODEL);
+  });
+
+  it("intelligence light falls back to cheap when no mid exists", () => {
+    const decision = choose({
+      mode: "intelligence",
+      tier: "light",
+      providers: [
+        provider("alpha", { [CHEAP_MODEL]: { variants: { ...allVariants } } }),
+      ],
+    });
+    expect(decision?.modelID).toBe(CHEAP_MODEL);
+  });
+});
+
+describe("chooseAutoModel optimize mode variants", () => {
+  const expected: Record<AutoOptimizeMode, Record<AutoTier, string>> = {
+    cost: { light: "minimal", standard: "low", heavy: "medium" },
+    balanced: { light: "low", standard: "medium", heavy: "high" },
+    intelligence: { light: "medium", standard: "high", heavy: "max" },
+  };
+
+  for (const mode of AUTO_OPTIMIZE_MODES) {
+    for (const tier of ["light", "standard", "heavy"] as AutoTier[]) {
+      it(`${mode} + ${tier} prefers effort ${expected[mode][tier]}`, () => {
+        expect(choose({ mode, tier })?.variant).toBe(expected[mode][tier]);
+      });
+    }
+  }
+
+  it("skips efforts the model does not declare", () => {
+    const decision = choose({
+      mode: "intelligence",
+      tier: "light",
+      providers: [
+        provider("alpha", {
+          // intelligence/light order is medium, low, high, minimal, none.
+          [MID_MODEL]: { variants: { none: {}, high: {} } },
+        }),
+      ],
+    });
+    expect(decision?.variant).toBe("high");
+  });
+});
+
+describe("chooseAutoModel optimize mode reason and echo", () => {
+  it("names the mode in the reason", () => {
+    expect(choose({ mode: "cost", tier: "light" })?.reason).toBe(
+      "短い質問タスクのためコスト優先で選択しました",
+    );
+    expect(choose({ mode: "balanced", tier: "standard" })?.reason).toBe(
+      "標準的なコーディングタスクのためバランスで選択しました",
+    );
+    expect(choose({ mode: "intelligence", tier: "heavy" })?.reason).toBe(
+      "大規模・高難度タスクのため知能優先で選択しました",
+    );
+  });
+
+  it("keeps the image and fallback suffixes", () => {
+    const decision = choose({
+      mode: "intelligence",
+      tier: "light",
+      hasImages: true,
+      providers: [
+        provider("alpha", {
+          [CHEAP_MODEL]: {
+            variants: { ...allVariants },
+            capabilities: { input: { image: true } },
+          },
+        }),
+      ],
+    });
+    expect(decision?.reason).toBe(
+      "短い質問タスクのため知能優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+    );
+  });
+
+  it("echoes the requested mode on the decision", () => {
+    for (const mode of AUTO_OPTIMIZE_MODES) {
+      expect(choose({ mode })?.mode).toBe(mode);
+    }
+  });
+});
+
+describe("classifyPrompt file path signal", () => {
+  it("stays standard for two distinct file references", () => {
+    const prompt = "src/a.ts と src/b.ts の対応関係を確認";
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("standard");
+  });
+
+  it("escalates to heavy for three distinct file references", () => {
+    const prompt = "src/a.ts と src/b.ts と src/c.ts の対応関係を確認";
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("heavy");
+  });
+
+  it("counts repeated references only once", () => {
+    const prompt = "src/a.ts src/a.ts SRC/A.TS src/b.ts の対応関係を確認";
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("standard");
+  });
+
+  it("recognizes several extensions and path separators", () => {
+    const prompt = "web\\a.tsx, host/b.mjs, docs/c.md の対応関係を確認";
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("heavy");
+  });
+
+  it("does not treat a bare sentence period as a file reference", () => {
+    // Three periods, zero known extensions: the prompt stays a light question.
+    const prompt = "なぜこうなるの. ここが分からない. もう一度.";
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("light");
+  });
+});
+
+describe("classifyPrompt numbered list signal", () => {
+  // Wording deliberately free of question / work keywords so the base tier is
+  // `standard` and the numbered-list rule is what moves it.
+  const item = (n: number) => `${n}. 手順のメモ`;
+
+  it("stays standard for three numbered items", () => {
+    const prompt = [1, 2, 3].map(item).join("\n");
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("standard");
+  });
+
+  it("escalates to heavy for four numbered items", () => {
+    const prompt = [1, 2, 3, 4].map(item).join("\n");
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("heavy");
+  });
+
+  it("accepts the paren form", () => {
+    const prompt = [1, 2, 3, 4].map((n) => `${n}) 手順のメモ`).join("\n");
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("heavy");
+  });
+
+  it("ignores numbers that are not at a line start", () => {
+    const prompt = "手順は 1. これ 2. あれ 3. それ 4. どれ";
+    expect(classifyPrompt(prompt, { hasImages: false })).toBe("standard");
+  });
+});
+
+describe("classifyPrompt context signals", () => {
+  const LIGHT = "なぜこうなるの";
+  const STANDARD = "この関数を実装して";
+  const HEAVY = "全面的にリファクタして";
+
+  it("matches the text-only result when no signals are given", () => {
+    expect(classifyPrompt(LIGHT, { hasImages: false })).toBe("light");
+    expect(classifyPrompt(STANDARD, { hasImages: false })).toBe("standard");
+    expect(classifyPrompt(HEAVY, { hasImages: false })).toBe("heavy");
+  });
+
+  it("bumps one step on a recent failure", () => {
+    expect(
+      classifyPrompt(LIGHT, { hasImages: false, recentFailure: true }),
+    ).toBe("standard");
+    expect(
+      classifyPrompt(STANDARD, { hasImages: false, recentFailure: true }),
+    ).toBe("heavy");
+  });
+
+  it("keeps heavy at heavy", () => {
+    expect(
+      classifyPrompt(HEAVY, {
+        hasImages: false,
+        recentFailure: true,
+        attachmentCount: 9,
+        historyMessageCount: 999,
+      }),
+    ).toBe("heavy");
+  });
+
+  it("bumps at the attachment threshold, not below", () => {
+    expect(
+      classifyPrompt(LIGHT, {
+        hasImages: false,
+        attachmentCount: SIGNAL_ATTACHMENT_THRESHOLD - 1,
+      }),
+    ).toBe("light");
+    expect(
+      classifyPrompt(LIGHT, {
+        hasImages: false,
+        attachmentCount: SIGNAL_ATTACHMENT_THRESHOLD,
+      }),
+    ).toBe("standard");
+  });
+
+  it("bumps at the history threshold, not below", () => {
+    expect(
+      classifyPrompt(LIGHT, {
+        hasImages: false,
+        historyMessageCount: SIGNAL_HISTORY_THRESHOLD - 1,
+      }),
+    ).toBe("light");
+    expect(
+      classifyPrompt(LIGHT, {
+        hasImages: false,
+        historyMessageCount: SIGNAL_HISTORY_THRESHOLD,
+      }),
+    ).toBe("standard");
+  });
+
+  it("bumps only one step even when every signal fires", () => {
+    expect(
+      classifyPrompt(LIGHT, {
+        hasImages: false,
+        recentFailure: true,
+        attachmentCount: SIGNAL_ATTACHMENT_THRESHOLD,
+        historyMessageCount: SIGNAL_HISTORY_THRESHOLD,
+      }),
+    ).toBe("standard");
+  });
+
+  it("still ignores hasImages for the tier", () => {
+    expect(classifyPrompt(LIGHT, { hasImages: true })).toBe("light");
   });
 });

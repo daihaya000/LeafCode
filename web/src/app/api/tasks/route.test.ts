@@ -877,7 +877,8 @@ describe("POST /api/tasks auto model selection", () => {
       modelID: CHEAP,
       variant: "minimal",
       tier: "light",
-      reason: "短い質問タスクのため低コストモデルを選択しました",
+      mode: "cost",
+      reason: "短い質問タスクのためコスト優先で選択しました",
       escalation: {
         providerID: "anthropic",
         modelID: PREMIUM,
@@ -1126,7 +1127,7 @@ describe("POST /api/tasks auto model selection", () => {
       variant: "low",
     });
     expect((await res.json()).autoDecision.reason).toBe(
-      "短い質問タスクのため低コストモデルを選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
+      "短い質問タスクのためコスト優先で選択しました（画像対応モデルに限定）（該当コスト帯に候補がなく上位帯へフォールバック）",
     );
   });
 

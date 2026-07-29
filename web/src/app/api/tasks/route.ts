@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   chooseAutoModel,
   classifyPrompt,
+  DEFAULT_AUTO_OPTIMIZE_MODE,
   type AutoCandidateProvider,
   type AutoDecision,
 } from "@/lib/auto-model";
@@ -186,6 +187,7 @@ async function resolveAutoModel(
     disabled: readProviderModelState().disabled,
     // Slash commands are classified from their raw text (no expansion).
     tier: classifyPrompt(prompt, { hasImages }),
+    mode: DEFAULT_AUTO_OPTIMIZE_MODE,
     hasImages,
   });
 }

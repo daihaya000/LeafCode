@@ -34,11 +34,49 @@ export const AUTO_MODEL_OPTION: ModelOption = {
 
 export type AutoTier = "light" | "standard" | "heavy";
 
+/**
+ * "Optimize For" mode, mirroring Cursor Router.
+ *
+ * - `cost`: cheapest model that still fits the task (the original behaviour).
+ * - `balanced`: trades some spend for intelligence and headroom.
+ * - `intelligence`: routes harder tasks to the most capable models, while
+ *   still keeping trivial prompts off the frontier tier.
+ */
+export type AutoOptimizeMode = "cost" | "balanced" | "intelligence";
+
+export const AUTO_OPTIMIZE_MODES: readonly AutoOptimizeMode[] = [
+  "cost",
+  "balanced",
+  "intelligence",
+];
+
+export const DEFAULT_AUTO_OPTIMIZE_MODE: AutoOptimizeMode = "cost";
+
+export function isAutoOptimizeMode(value: unknown): value is AutoOptimizeMode {
+  return (
+    typeof value === "string" &&
+    (AUTO_OPTIMIZE_MODES as readonly string[]).includes(value)
+  );
+}
+
+const AUTO_OPTIMIZE_MODE_LABEL: Record<AutoOptimizeMode, string> = {
+  cost: "コスト優先",
+  balanced: "バランス",
+  intelligence: "知能優先",
+};
+
+/** Japanese display name for an optimize mode. */
+export function autoOptimizeModeLabel(mode: AutoOptimizeMode): string {
+  return AUTO_OPTIMIZE_MODE_LABEL[mode];
+}
+
 export type AutoDecision = {
   providerID: string;
   modelID: string;
   variant: IntelligenceVariant | "";
   tier: AutoTier;
+  /** Optimize mode that produced this decision. */
+  mode: AutoOptimizeMode;
   /** Display string (Japanese, machine-generated from templates). */
   reason: string;
   escalation?: {
@@ -79,6 +117,44 @@ const CODE_FENCE = "```";
 const HEAVY_LENGTH = 1500;
 const LIGHT_LENGTH = 200;
 
+/**
+ * Source-ish file references. Distinct hits above
+ * {@link SIGNAL_FILE_PATH_THRESHOLD} mean the prompt spans several files,
+ * which is the cheapest reliable proxy for "multi-file change".
+ */
+const FILE_PATH_RE =
+  /[\w./\\-]+\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|rb|php|cs|cpp|c|h|md|json|jsonc|ya?ml|toml|css|scss|html|sql|sh|bat|ps1)\b/gi;
+
+/** Ordered numbered-list items (`1.` / `1)` at line start). */
+const NUMBERED_ITEM_RE = /^[ \t]*\d+[.)][ \t]+\S/gm;
+
+/** Distinct file references that push a prompt to `heavy`. */
+export const SIGNAL_FILE_PATH_THRESHOLD = 3;
+/** Numbered list items that push a prompt to `heavy`. */
+export const SIGNAL_NUMBERED_LIST_THRESHOLD = 4;
+/** Attachments on a single send that bump the tier one step. */
+export const SIGNAL_ATTACHMENT_THRESHOLD = 3;
+/** Session messages that bump the tier one step. */
+export const SIGNAL_HISTORY_THRESHOLD = 20;
+
+/**
+ * Context available to the classifier beyond the prompt text itself. All
+ * fields are free to compute (no extra tokens, no extra requests).
+ */
+export type AutoSignals = {
+  /**
+   * Whether images are attached. Never changes the tier; it only narrows the
+   * candidate set in {@link chooseAutoModel}.
+   */
+  hasImages: boolean;
+  /** Attachments on this send. Defaults to 0. */
+  attachmentCount?: number;
+  /** Messages already in the session (follow-up depth). Defaults to 0. */
+  historyMessageCount?: number;
+  /** The previous turn failed. Defaults to false. */
+  recentFailure?: boolean;
+};
+
 function countCodeFences(text: string): number {
   let count = 0;
   let index = text.indexOf(CODE_FENCE);
@@ -89,18 +165,33 @@ function countCodeFences(text: string): number {
   return count;
 }
 
-/**
- * Classify a prompt into a cost tier. Deterministic, regex based.
- * Priority: heavy → light → standard (a single heavy hit wins outright).
- *
- * `opts.hasImages` never changes the tier; it only narrows the candidate set
- * in {@link chooseAutoModel}, so a short question with an image stays `light`.
- */
-export function classifyPrompt(
-  prompt: string,
-  opts: { hasImages: boolean },
-): AutoTier {
-  void opts;
+function countDistinctFilePaths(text: string): number {
+  const seen = new Set<string>();
+  for (const match of text.matchAll(FILE_PATH_RE)) {
+    seen.add(match[0].toLowerCase());
+  }
+  return seen.size;
+}
+
+function countMatches(text: string, re: RegExp): number {
+  let count = 0;
+  for (const match of text.matchAll(re)) {
+    void match;
+    count += 1;
+  }
+  return count;
+}
+
+const TIER_LADDER: readonly AutoTier[] = ["light", "standard", "heavy"];
+
+/** One step up the ladder; `heavy` stays `heavy`. */
+function bumpTier(tier: AutoTier): AutoTier {
+  const index = TIER_LADDER.indexOf(tier);
+  return TIER_LADDER[Math.min(index + 1, TIER_LADDER.length - 1)] ?? tier;
+}
+
+/** Text-only classification. Priority: heavy → light → standard. */
+function classifyText(prompt: string): AutoTier {
   const p = prompt.trim();
   const fences = countCodeFences(p);
 
@@ -108,6 +199,10 @@ export function classifyPrompt(
   if (p.length > HEAVY_LENGTH) return "heavy";
   if (fences >= 4) return "heavy";
   if (HEAVY_KEYWORD_RE.test(p)) return "heavy";
+  if (countDistinctFilePaths(p) >= SIGNAL_FILE_PATH_THRESHOLD) return "heavy";
+  if (countMatches(p, NUMBERED_ITEM_RE) >= SIGNAL_NUMBERED_LIST_THRESHOLD) {
+    return "heavy";
+  }
 
   // light: every condition must hold.
   if (
@@ -120,6 +215,22 @@ export function classifyPrompt(
   }
 
   return "standard";
+}
+
+/**
+ * Classify a prompt into a cost tier. Deterministic, regex based.
+ *
+ * The text decides the base tier; context signals (a failed previous turn,
+ * many attachments, a long session) then raise it by **at most one step** so
+ * that several weak signals can never jump `light` straight to `heavy`.
+ */
+export function classifyPrompt(prompt: string, signals: AutoSignals): AutoTier {
+  const base = classifyText(prompt);
+  const escalate =
+    signals.recentFailure === true ||
+    (signals.attachmentCount ?? 0) >= SIGNAL_ATTACHMENT_THRESHOLD ||
+    (signals.historyMessageCount ?? 0) >= SIGNAL_HISTORY_THRESHOLD;
+  return escalate ? bumpTier(base) : base;
 }
 
 export type ModelCostTier = "cheap" | "mid" | "premium";
@@ -149,19 +260,55 @@ type Candidate = {
   model: AutoCandidateModel;
 };
 
-/** Cost band preference per tier: first entry is the primary choice. */
-const TIER_COST_ORDER: Record<AutoTier, ModelCostTier[] | null> = {
-  light: ["cheap", "mid", "premium"],
-  standard: ["mid", "cheap", "premium"],
-  // heavy always takes the strongest available model, no cost banding.
-  heavy: null,
+/**
+ * Cost band preference per optimize mode and tier: first entry is the primary
+ * choice, `null` means "strongest candidate overall, no cost banding".
+ *
+ * The whole mode policy lives in this table and {@link MODE_VARIANT_ORDER} so
+ * that tuning routing never touches the selection algorithm. The `cost` rows
+ * are the pre-mode values and must stay byte-identical to avoid regressions.
+ */
+const MODE_COST_ORDER: Record<
+  AutoOptimizeMode,
+  Record<AutoTier, ModelCostTier[] | null>
+> = {
+  cost: {
+    light: ["cheap", "mid", "premium"],
+    standard: ["mid", "cheap", "premium"],
+    heavy: null,
+  },
+  balanced: {
+    light: ["cheap", "mid", "premium"],
+    standard: ["mid", "premium", "cheap"],
+    heavy: null,
+  },
+  intelligence: {
+    light: ["mid", "cheap", "premium"],
+    standard: ["premium", "mid", "cheap"],
+    heavy: null,
+  },
 };
 
-/** Variant (reasoning effort) preference per tier: first match wins. */
-const TIER_VARIANT_ORDER: Record<AutoTier, IntelligenceVariant[]> = {
-  light: ["minimal", "none", "low"],
-  standard: ["low", "minimal", "none", "medium"],
-  heavy: ["medium", "high", "low"],
+/** Variant (reasoning effort) preference per optimize mode and tier. */
+const MODE_VARIANT_ORDER: Record<
+  AutoOptimizeMode,
+  Record<AutoTier, IntelligenceVariant[]>
+> = {
+  cost: {
+    light: ["minimal", "none", "low"],
+    standard: ["low", "minimal", "none", "medium"],
+    heavy: ["medium", "high", "low"],
+  },
+  balanced: {
+    light: ["low", "minimal", "none", "medium"],
+    standard: ["medium", "low", "high", "minimal", "none"],
+    heavy: ["high", "medium", "max", "low"],
+  },
+  intelligence: {
+    light: ["medium", "low", "high", "minimal", "none"],
+    standard: ["high", "medium", "max", "low"],
+    heavy: ["max", "high", "medium"],
+  },
 };
 
 const ESCALATION_VARIANT_ORDER: IntelligenceVariant[] = [
@@ -170,10 +317,10 @@ const ESCALATION_VARIANT_ORDER: IntelligenceVariant[] = [
   "medium",
 ];
 
-const REASON_BY_TIER: Record<AutoTier, string> = {
-  light: "短い質問タスクのため低コストモデルを選択しました",
-  standard: "標準的なコーディングタスクのため中コストモデルを選択しました",
-  heavy: "大規模・高難度タスクのため高性能モデルを選択しました",
+const TIER_LABEL: Record<AutoTier, string> = {
+  light: "短い質問タスク",
+  standard: "標準的なコーディングタスク",
+  heavy: "大規模・高難度タスク",
 };
 
 const REASON_IMAGES_SUFFIX = "（画像対応モデルに限定）";
@@ -227,9 +374,11 @@ export function chooseAutoModel(input: {
   /** `provider-model-state` disabled map (`providerID` or `providerID::modelID`). */
   disabled: Record<string, true>;
   tier: AutoTier;
+  /** "Optimize For" policy; see {@link MODE_COST_ORDER}. */
+  mode: AutoOptimizeMode;
   hasImages: boolean;
 }): AutoDecision | null {
-  const { providers, connected, disabled, tier, hasImages } = input;
+  const { providers, connected, disabled, tier, mode, hasImages } = input;
   const connectedSet = connected.length > 0 ? new Set(connected) : null;
 
   // Candidate construction mirrors `listProviderModels`.
@@ -255,7 +404,7 @@ export function chooseAutoModel(input: {
   }
   if (candidates.length === 0) return null;
 
-  const costOrder = TIER_COST_ORDER[tier];
+  const costOrder = MODE_COST_ORDER[mode][tier];
   let chosen: Candidate | undefined;
   let fellBack = false;
   if (costOrder === null) {
@@ -275,9 +424,9 @@ export function chooseAutoModel(input: {
   }
   if (!chosen) return null;
 
-  const variant = pickVariant(chosen.model, TIER_VARIANT_ORDER[tier]);
+  const variant = pickVariant(chosen.model, MODE_VARIANT_ORDER[mode][tier]);
 
-  let reason = REASON_BY_TIER[tier];
+  let reason = `${TIER_LABEL[tier]}のため${autoOptimizeModeLabel(mode)}で選択しました`;
   if (hasImages) reason += REASON_IMAGES_SUFFIX;
   if (fellBack) reason += REASON_FALLBACK_SUFFIX;
 
@@ -286,6 +435,7 @@ export function chooseAutoModel(input: {
     modelID: chosen.modelID,
     variant,
     tier,
+    mode,
     reason,
   };
 

@@ -1143,7 +1143,7 @@ describe("HomeView auto model", () => {
     modelID: "claude-haiku-4-5",
     variant: "minimal" as const,
     tier: "light" as const,
-    reason: "短い質問タスクのため低コストモデルを選択しました",
+    reason: "短い質問タスクのためコスト優先で選択しました",
     escalation: {
       providerID: "anthropic",
       modelID: "claude-opus-5",

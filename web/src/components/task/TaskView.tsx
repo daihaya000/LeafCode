@@ -97,6 +97,7 @@ import {
   AUTO_MODEL_VALUE,
   chooseAutoModel,
   classifyPrompt,
+  DEFAULT_AUTO_OPTIMIZE_MODE,
   type AutoCandidateProvider,
   type AutoDecision,
 } from "@/lib/auto-model";
@@ -1292,6 +1293,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         disabled: autoInputs.disabled,
         // Slash commands are classified from their raw text (no expansion).
         tier: classifyPrompt(text, { hasImages }),
+        mode: DEFAULT_AUTO_OPTIMIZE_MODE,
         hasImages,
       });
     },
