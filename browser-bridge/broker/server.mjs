@@ -114,7 +114,7 @@ export function createBrowserBridgeBroker({
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/approvals') {
-      json(res, 200, { approvals: [...pendingApprovals.values()] });
+      json(res, 200, { approvals: [...pendingApprovals.values()].map(({ args, ...approval }) => approval) });
       return;
     }
     const approvalMatch = /^\/internal\/approvals\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
@@ -127,6 +127,15 @@ export function createBrowserBridgeBroker({
         json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
       } else {
         pendingApprovals.delete(approval.approvalId);
+        if (body.decision === 'allow' && extensionSocket && sharedTabs.has(approval.tabId)) {
+          extensionSocket.send(JSON.stringify({
+            type: 'command',
+            commandId: approval.approvalId,
+            connectionGeneration,
+            tool: approval.tool,
+            args: approval.args,
+          }));
+        }
         json(res, 200, { approvalId: approval.approvalId, decision: body.decision });
       }
       return;
@@ -184,6 +193,7 @@ export function createBrowserBridgeBroker({
           tabId: args.tabId,
           origin: sharedTabs.get(args.tabId).origin,
           createdAt: now(),
+          args,
         });
         json(res, 428, { error: { code: BrowserBridgeErrorCode.APPROVAL_REQUIRED, approvalId } });
         return;

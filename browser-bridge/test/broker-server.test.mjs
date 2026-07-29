@@ -142,6 +142,20 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
   }).then((res) => res.json());
   assert.equal(approvalStatus.pendingApprovals, 0);
 
+  const secondClick = await fetch(`${broker.url}/internal/tools/browser_click`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 }),
+  }).then((res) => res.json());
+  const commandReceived = new Promise((resolve, reject) => socket.once('message', (data) => {
+    const message = JSON.parse(data.toString());
+    if (message.type !== 'command') return reject(new Error('expected command'));
+    resolve(message);
+  }));
+  await fetch(`${broker.url}/internal/approvals/${secondClick.error.approvalId}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'allow' }),
+  });
+  const command = await commandReceived;
+  assert.deepEqual(command, { type: 'command', commandId: secondClick.error.approvalId, connectionGeneration: 1, tool: 'browser_click', args: { tabId: 'tab_opaque', ref: 'ref_1_1', snapshotGeneration: 1 } });
+
   socket.send(JSON.stringify({ type: 'snapshot', tabId: 'tab_opaque', snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] } }));
   await new Promise((resolve) => setImmediate(resolve));
   const refreshRequested = new Promise((resolve, reject) => socket.once('message', (data) => {
