@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { Badge, Button, cx } from "@/components/ui";
+import { BrowserBridgeApprovals } from "./BrowserBridgeApprovals";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import type { McpDto, PluginDto, SkillDto } from "@/lib/extensions";
 import {
@@ -642,6 +643,8 @@ export function ExtensionsSettings({
           )}
         </div>
       )}
+
+      <BrowserBridgeApprovals />
 
       {activeSection === "skills" && (
         <SectionShell
