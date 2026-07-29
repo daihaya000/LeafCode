@@ -82,9 +82,6 @@ function progressIcon(p: GoalLoopProgress) {
   return <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-working" />;
 }
 
-const DEFAULT_VISIBLE = 3;
-const MAX_HISTORY = 5;
-
 export function GoalLoopPanel({
   loop,
   busy,
@@ -96,7 +93,6 @@ export function GoalLoopPanel({
   onAction: (action: "pause" | "resume" | "stop") => void;
   onUpdateMaxTurns?: (maxTurns: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   // Keep the draft as text. Clamping on every keystroke made it impossible to
   // clear a value such as `1` before typing a multi-digit replacement (`20`).
   const [editingMaxTurns, setEditingMaxTurns] = useState<string | null>(null);
@@ -127,12 +123,10 @@ export function GoalLoopPanel({
     onAction("stop");
   };
 
-  // newest first
-  const reversed = [...loop.progress].reverse();
-  const visibleCount = expanded ? MAX_HISTORY : DEFAULT_VISIBLE;
-  const visible = reversed.slice(0, visibleCount);
-  const hiddenCount = Math.max(0, reversed.length - DEFAULT_VISIBLE);
-  const showToggle = reversed.length > DEFAULT_VISIBLE;
+  // A goal loop can accumulate many completed turns. Keep the panel compact by
+  // showing only its current (most recent) task; the complete history remains
+  // available in the conversation transcript.
+  const currentProgress = loop.progress.at(-1);
 
   const badgeText = `${STATUS_LABEL[loop.status]} ${loop.turnCount}/${loop.maxTurns}`;
   // `turnCount` counts goal turns only; completion-verification turns are not
@@ -277,41 +271,29 @@ export function GoalLoopPanel({
         </div>
       )}
 
-      {visible.length > 0 && (
+      {currentProgress && (
         <ol role="list" className="mt-2 space-y-1.5">
-          {visible.map((p, i) => (
-            <li
-              key={`${p.time}-${i}`}
-              role="listitem"
-              className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted"
-            >
-              <div className="flex items-start gap-2">
-                {progressIcon(p)}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-text">{p.summary}</span>
-                    <span className="shrink-0 text-[10px] text-faint">
-                      {formatMessageTime(p.time)}
-                    </span>
-                  </div>
-                  {p.next && <div className="mt-1">次: {p.next}</div>}
-                  {p.evidence && <div className="mt-1">証跡: {p.evidence}</div>}
+          <li
+            role="listitem"
+            className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted"
+          >
+            <div className="flex items-start gap-2">
+              {progressIcon(currentProgress)}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-text">{currentProgress.summary}</span>
+                  <span className="shrink-0 text-[10px] text-faint">
+                    {formatMessageTime(currentProgress.time)}
+                  </span>
                 </div>
+                {currentProgress.next && <div className="mt-1">次: {currentProgress.next}</div>}
+                {currentProgress.evidence && (
+                  <div className="mt-1">証跡: {currentProgress.evidence}</div>
+                )}
               </div>
-            </li>
-          ))}
+            </div>
+          </li>
         </ol>
-      )}
-
-      {showToggle && (
-        <button
-          type="button"
-          className="mt-2 text-xs text-primary hover:underline"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-        >
-          {expanded ? "履歴を折りたたむ" : `履歴を表示(残り${hiddenCount}件)`}
-        </button>
       )}
 
       {loop.error && (

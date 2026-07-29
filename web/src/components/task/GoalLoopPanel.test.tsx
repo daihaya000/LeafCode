@@ -203,7 +203,7 @@ describe("GoalLoopPanel", () => {
     expect(onAction).not.toHaveBeenCalled();
   });
 
-  it("renders progress entries newest-first with role=list", () => {
+  it("renders only the current progress entry", () => {
     const loop = baseLoop({
       status: "running",
       progress: [
@@ -229,13 +229,13 @@ describe("GoalLoopPanel", () => {
     const list = screen.getByRole("list");
     expect(list).toBeTruthy();
     const items = screen.getAllByRole("listitem");
-    expect(items).toHaveLength(3);
-    // newest first
+    expect(items).toHaveLength(1);
     expect(items[0]!.textContent).toContain("third");
-    expect(items[2]!.textContent).toContain("first");
+    expect(screen.queryByText("first")).toBeNull();
+    expect(screen.queryByText("second")).toBeNull();
   });
 
-  it("shows toggle when more than 3 entries and expands to show all (max 5)", () => {
+  it("does not render history controls when prior entries exist", () => {
     const progress = Array.from({ length: 5 }, (_, i) => ({
       time: `2026-01-01T00:00:0${i + 1}.000Z`,
       status: "progress" as const,
@@ -243,10 +243,9 @@ describe("GoalLoopPanel", () => {
     }));
     const loop = baseLoop({ status: "running", progress });
     render(<GoalLoopPanel loop={loop} busy={false} onAction={vi.fn()} />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    const toggle = screen.getByRole("button", { name: /履歴を表示/ });
-    fireEvent.click(toggle);
-    expect(screen.getAllByRole("listitem")).toHaveLength(5);
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /履歴を/ })).toBeNull();
+    expect(screen.getByText("entry-4")).toBeTruthy();
   });
 
   it("does not render progress list when empty", () => {
@@ -391,7 +390,7 @@ describe("GoalLoopPanel", () => {
       />,
     );
     expect(screen.getByText("verified")).toBeTruthy();
-    expect(screen.getByText("claim")).toBeTruthy();
+    expect(screen.queryByText("claim")).toBeNull();
   });
 
   it("renders verifying_completed history entry with a check icon", () => {
