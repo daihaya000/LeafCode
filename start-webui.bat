@@ -216,7 +216,11 @@ call :fail 7 "BUILD_ID is missing after the build." error-7
 exit /b 7
 
 :install_host
-if exist "host\node_modules\" exit /b 0
+if not exist "host\node_modules\" goto :install_host_run
+if exist "host\node_modules\ws\package.json" exit /b 0
+echo [OpenCode WebUI] Host dependencies changed; refreshing...
+
+:install_host_run
 echo [OpenCode WebUI] Installing host dependencies...
 pushd host
 if errorlevel 1 goto :host_ci_failed_without_pushd

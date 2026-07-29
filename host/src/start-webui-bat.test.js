@@ -46,7 +46,10 @@ function createSandbox(options = {}) {
     mkdirSync(join(root, "web", ".next"), { recursive: true });
     writeFileSync(join(root, "web", ".next", "BUILD_ID"), "preexisting-build\r\n");
   }
-  if (options.hostNodeModules) mkdirSync(join(root, "host", "node_modules"), { recursive: true });
+  if (options.hostNodeModules) {
+    mkdirSync(join(root, "host", "node_modules", "ws"), { recursive: true });
+    writeFileSync(join(root, "host", "node_modules", "ws", "package.json"), "{}\r\n", "ascii");
+  }
 
   writeBat(join(bin, "where.cmd"), [
     'if exist "%~dp0%~1.cmd" echo %~dp0%~1.cmd',

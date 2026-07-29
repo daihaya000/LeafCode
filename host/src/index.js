@@ -7,9 +7,12 @@ import {
   writeFileSync,
   unlinkSync,
 } from 'fs';
+import { randomBytes } from 'crypto';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
+import { WebSocketServer } from 'ws';
+import { createBrowserBridgeBroker } from '../../browser-bridge/broker/server.mjs';
 import { formatServiceStatus } from './service-status.js';
 import {
   getWebLaunchPlan,
@@ -63,6 +66,8 @@ let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
 /** Localhost control plane for WebUI / tray restart actions. */
 const CONTROL_PORT = Number(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT) || 18765;
 let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
+/** Local-only Browser Bridge Broker. This port is never exposed through Caddy. */
+const BROWSER_BRIDGE_PORT = Number(process.env.OPENCODE_WEBUI_BROWSER_BROKER_PORT) || 18766;
 
 /** True when the host should run without a tray icon. */
 export function isHeadless() {
@@ -319,6 +324,7 @@ let caddyProc = null;
 let systray = null;
 /** @type {import('http').Server | null} */
 let controlServer = null;
+let browserBridgeBroker = null;
 let quitting = false;
 let restartingServices = false;
 
@@ -331,6 +337,14 @@ let webRestartTimer = null;
 let webStableTimer = null;
 const expectedWebExitPids = new Set();
 const expectedOpencodeExitPids = new Set();
+
+function browserBridgeEnvironment() {
+  if (!browserBridgeBroker) return {};
+  return {
+    OPENCODE_WEBUI_BROWSER_BROKER: browserBridgeBroker.url,
+    OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: browserBridgeBroker.internalToken,
+  };
+}
 
 /** @type {string | null} */
 let cachedNpmCli = null;
@@ -803,6 +817,7 @@ function spawnOpencode(opencodePath) {
       env: {
         ...process.env,
         CURSOR_ACP_PROXY_PORT: String(proxyPort),
+        ...browserBridgeEnvironment(),
       },
     },
   );
@@ -1192,6 +1207,7 @@ async function spawnWeb() {
       OPENCODE_WEBUI_HOST: WEBUI_HOST,
       OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
       OPENCODE_WEBUI_HOST_CONTROL_URL: CONTROL_URL,
+      ...browserBridgeEnvironment(),
       PORT: String(WEBUI_PORT),
       // When Caddy fronts the WebUI with HTTPS, advertise its public origin so
       // /api/access shows the reachable URL instead of http://IP:3000.
@@ -1885,6 +1901,24 @@ async function startControlServer() {
   log(`Host control listening on ${CONTROL_URL}`);
 }
 
+async function startBrowserBridgeBroker() {
+  if (browserBridgeBroker) return;
+  const broker = createBrowserBridgeBroker({
+    internalToken: randomBytes(32).toString('base64url'),
+    WebSocketServer,
+  });
+  await broker.listen(BROWSER_BRIDGE_PORT);
+  browserBridgeBroker = broker;
+  log(`Browser Bridge Broker listening on ${broker.url}`);
+}
+
+async function closeBrowserBridgeBroker() {
+  if (!browserBridgeBroker) return;
+  const broker = browserBridgeBroker;
+  browserBridgeBroker = null;
+  await broker.close();
+}
+
 async function quit() {
   if (quitting) return;
   quitting = true;
@@ -1895,6 +1929,7 @@ async function quit() {
   }
   try {
     await stopChildren();
+    await closeBrowserBridgeBroker();
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
@@ -2165,9 +2200,17 @@ async function main() {
 
   try {
     await startControlServer();
+    try {
+      await startBrowserBridgeBroker();
+    } catch (err) {
+      error(
+        `Browser Bridge Broker is disabled: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     await startChildren();
   } catch (err) {
     await stopChildren();
+    await closeBrowserBridgeBroker();
     await closeControlServer(controlServer);
     controlServer = null;
     removeControlFile();
