@@ -130,6 +130,24 @@ test('pins reconnect authentication to the paired extension origin and device ke
   assert.equal(authenticated.connectionGeneration, 1);
 });
 
+test('closes an authenticated extension that exceeds the WebSocket message limit', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const pairing = await fetch(`${broker.url}/internal/pairing`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  const closed = new Promise((resolve) => socket.once('close', (code) => resolve(code)));
+  socket.send('x'.repeat(MAX_MESSAGE_BYTES + 1));
+  assert.equal(await closed, 1009);
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const status = await fetch(`${broker.url}/internal/status`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(status, { extension: { connected: false, paired: true }, pendingApprovals: 0 });
+});
+
 test('lists only opaque tab metadata announced by an authenticated extension', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
