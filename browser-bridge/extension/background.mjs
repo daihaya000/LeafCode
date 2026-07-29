@@ -41,6 +41,8 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         connectionGeneration = message.connectionGeneration;
         reconnectDelay = 500;
         for (const tab of Object.values(state.sharedTabs)) send({ type: 'tab_shared', tab });
+      } else if (message.type === 'snapshot_request' && typeof message.tabId === 'string') {
+        void collectSnapshot(message.tabId).catch(() => {});
       }
     });
     socket.addEventListener('close', () => {
