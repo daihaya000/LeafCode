@@ -68,6 +68,11 @@ export function createMcpServer({ brokerClient }) {
     text: z.string().min(1).max(8000),
     append: z.boolean().optional(),
   }).strict(), ACTION_ANNOTATIONS);
+  registerTool(server, brokerClient, BrowserToolName.SCROLL, 'Scroll an approved shared tab by a bounded amount.', z.object({
+    tabId: TAB_ID_SCHEMA,
+    direction: z.enum(['up', 'down', 'left', 'right']),
+    amount: z.number().int().min(1).max(2000),
+  }).strict(), ACTION_ANNOTATIONS);
   return server;
 }
 
