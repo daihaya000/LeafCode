@@ -53,6 +53,17 @@ function publicUrl(): string | null {
   }
 }
 
+function caddyLocalUrl(): string | null {
+  const raw = process.env.OPENCODE_WEBUI_CADDY_LOCAL_URL?.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function networkAddresses(port: number): NetAddr[] {
   const addresses: NetAddr[] = [];
 
@@ -96,6 +107,15 @@ export async function GET() {
     "0.0.0.0";
 
   const publicOrigin = publicUrl();
+  const localCaddyOrigin = caddyLocalUrl();
+  const caddyAddresses = localCaddyOrigin && localCaddyOrigin !== publicOrigin
+    ? [{
+        name: "Caddy (localhost)",
+        address: localCaddyOrigin,
+        url: localCaddyOrigin,
+        kind: "caddy" as const,
+      }]
+    : [];
   if (publicOrigin) {
     // Caddy HTTPS mode: keep the public origin first, but still expose the raw
     // WebUI URLs for users who intentionally bypass Caddy on trusted networks.
@@ -106,6 +126,7 @@ export async function GET() {
       publicUrl: publicOrigin,
       localUrl: `http://127.0.0.1:${PORT}`,
       addresses: [
+        ...caddyAddresses,
         {
           name: "Caddy (HTTPS)",
           address: publicOrigin,
@@ -125,7 +146,7 @@ export async function GET() {
     bind: host,
     port: PORT,
     localUrl: `http://127.0.0.1:${PORT}`,
-    addresses,
+    addresses: [...caddyAddresses, ...addresses],
     hint:
       host === "127.0.0.1"
         ? "WebUI が localhost のみ待ち受け中です。スマホから使うには OPENCODE_WEBUI_HOST=0.0.0.0 で再起動してください。"

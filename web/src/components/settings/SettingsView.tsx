@@ -1012,7 +1012,14 @@ export function SettingsView() {
                       {kindLabel(a.kind)}
                     </Badge>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-sm">{a.url}</p>
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block truncate font-mono text-sm text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                      >
+                        {a.url}
+                      </a>
                       <p className="truncate text-[11px] text-faint">{a.name}</p>
                     </div>
                     <Button

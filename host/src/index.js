@@ -1198,6 +1198,9 @@ async function spawnWeb() {
       ...(detectCaddyPublicUrl()
         ? { OPENCODE_WEBUI_PUBLIC_URL: detectCaddyPublicUrl() }
         : {}),
+      ...(detectCaddyLoopbackUrl()
+        ? { OPENCODE_WEBUI_CADDY_LOCAL_URL: detectCaddyLoopbackUrl() }
+        : {}),
     },
   });
   webProc = child;

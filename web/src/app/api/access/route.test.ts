@@ -3,11 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 
 const ENV_KEY = "OPENCODE_WEBUI_PUBLIC_URL";
+const CADDY_LOCAL_ENV_KEY = "OPENCODE_WEBUI_CADDY_LOCAL_URL";
 let saved: string | undefined;
+let savedCaddyLocal: string | undefined;
 
 beforeEach(() => {
   saved = process.env[ENV_KEY];
+  savedCaddyLocal = process.env[CADDY_LOCAL_ENV_KEY];
   delete process.env[ENV_KEY];
+  delete process.env[CADDY_LOCAL_ENV_KEY];
   vi.spyOn(os, "networkInterfaces").mockReturnValue({
     "Wi-Fi": [
       {
@@ -36,11 +40,14 @@ afterEach(() => {
   vi.restoreAllMocks();
   if (saved === undefined) delete process.env[ENV_KEY];
   else process.env[ENV_KEY] = saved;
+  if (savedCaddyLocal === undefined) delete process.env[CADDY_LOCAL_ENV_KEY];
+  else process.env[CADDY_LOCAL_ENV_KEY] = savedCaddyLocal;
 });
 
 describe("GET /api/access", () => {
   it("advertises the Caddy public origin and direct URLs when set", async () => {
     process.env[ENV_KEY] = "https://webui.example.com/";
+    process.env[CADDY_LOCAL_ENV_KEY] = "https://127.0.0.1:8443";
     const res = await GET();
     const body = (await res.json()) as {
       publicUrl?: string;
@@ -48,9 +55,10 @@ describe("GET /api/access", () => {
       certificateUrls: { url: string; kind: string }[];
     };
     expect(body.publicUrl).toBe("https://webui.example.com");
-    expect(body.addresses).toHaveLength(3);
-    expect(body.addresses[0].url).toBe("https://webui.example.com");
+    expect(body.addresses).toHaveLength(4);
+    expect(body.addresses[0].url).toBe("https://127.0.0.1:8443");
     expect(body.addresses[0].kind).toBe("caddy");
+    expect(body.addresses[1].url).toBe("https://webui.example.com");
     expect(body.addresses.map((a) => a.url)).toContain("http://100.64.0.10:3000");
     expect(body.addresses.map((a) => a.url)).toContain("http://192.168.1.100:3000");
     expect(body.certificateUrls.map((a) => a.url)).toContain(

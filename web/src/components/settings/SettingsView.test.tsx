@@ -651,6 +651,7 @@ describe("SettingsView", () => {
 
     expect(await screen.findByText("https://webui.example.com")).toBeTruthy();
     expect(screen.getByText("http://192.168.1.100:3000")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "https://webui.example.com" }).getAttribute("target")).toBe("_blank");
     const dl = screen.getByRole("link", { name: "LAN 証明書DL" });
     expect(dl.getAttribute("href")).toBe(
       "http://192.168.1.100:8080/caddy-root.crt",
