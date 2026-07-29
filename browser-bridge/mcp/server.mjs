@@ -14,6 +14,12 @@ const READ_ONLY_ANNOTATIONS = Object.freeze({
   idempotentHint: true,
   openWorldHint: false,
 });
+const ACTION_ANNOTATIONS = Object.freeze({
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+});
 
 function textResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }] };
@@ -24,11 +30,15 @@ function errorResult(code) {
 }
 
 function registerReadTool(server, brokerClient, name, description, inputSchema) {
+  registerTool(server, brokerClient, name, description, inputSchema, READ_ONLY_ANNOTATIONS);
+}
+
+function registerTool(server, brokerClient, name, description, inputSchema, annotations) {
   server.registerTool(name, {
     title: name,
     description,
     inputSchema,
-    annotations: READ_ONLY_ANNOTATIONS,
+    annotations,
   }, async (args) => {
     try {
       const input = validateToolInput(name, args);
@@ -51,6 +61,13 @@ export function createMcpServer({ brokerClient }) {
   registerReadTool(server, brokerClient, BrowserToolName.LIST_TABS, 'List explicitly shared browser tabs.', z.object({}).strict());
   registerReadTool(server, brokerClient, BrowserToolName.SNAPSHOT, 'Read a privacy-filtered accessibility snapshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());
   registerReadTool(server, brokerClient, BrowserToolName.SCREENSHOT, 'Request an approved screenshot of a shared tab.', z.object({ tabId: TAB_ID_SCHEMA }).strict());
+  registerTool(server, brokerClient, BrowserToolName.TYPE, 'Type text into an approved shared-tab input ref.', z.object({
+    tabId: TAB_ID_SCHEMA,
+    ref: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),
+    snapshotGeneration: z.number().int().positive(),
+    text: z.string().min(1).max(8000),
+    append: z.boolean().optional(),
+  }).strict(), ACTION_ANNOTATIONS);
   return server;
 }
 

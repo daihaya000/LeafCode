@@ -44,7 +44,7 @@ test('stdio MCP initializes, lists tools, and keeps protocol stdout clean', asyn
   t.after(() => client.close());
 
   const listed = await client.listTools();
-  assert.equal(listed.tools.length, 4);
+  assert.equal(listed.tools.length, 5);
   const response = await client.callTool({ name: 'browser_status', arguments: {} });
   assert.equal(response.isError, undefined);
   assert.match(response.content[0].text, /connected/);

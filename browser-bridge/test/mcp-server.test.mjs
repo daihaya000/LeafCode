@@ -84,8 +84,10 @@ test('registers only read tools and maps Broker errors without leaking internals
     'browser_screenshot',
     'browser_snapshot',
     'browser_status',
+    'browser_type',
   ]);
-  assert.ok(listed.tools.every((tool) => tool.annotations?.readOnlyHint === true));
+  assert.ok(listed.tools.filter((tool) => tool.name !== 'browser_type').every((tool) => tool.annotations?.readOnlyHint === true));
+  assert.equal(listed.tools.find((tool) => tool.name === 'browser_type')?.annotations?.readOnlyHint, false);
 
   const status = await client.callTool({ name: BrowserToolName.STATUS, arguments: {} });
   assert.equal(status.isError, undefined);
