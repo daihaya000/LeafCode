@@ -37,6 +37,7 @@ import {
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { Composer, type ComposerAttachment } from "@/components/Composer";
 import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
+import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { IntelligenceSelect } from "@/components/IntelligenceSelect";
 import { ModelSelect } from "@/components/ModelSelect";
 import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
@@ -97,10 +98,19 @@ import {
   AUTO_MODEL_VALUE,
   chooseAutoModel,
   classifyPrompt,
-  DEFAULT_AUTO_OPTIMIZE_MODE,
   type AutoCandidateProvider,
   type AutoDecision,
+  type AutoOptimizeMode,
 } from "@/lib/auto-model";
+import {
+  AUTO_OPTIMIZE_EVENT,
+  AUTO_OPTIMIZE_SETTING_KEY,
+  AUTO_SHOW_MODEL_EVENT,
+  readAutoOptimizeMode,
+  readAutoShowModel,
+  writeAutoOptimizeMode,
+  writeAutoSettingToServer,
+} from "@/lib/auto-settings";
 import {
   readAutoTaskRecord,
   writeAutoTaskRecord,
@@ -505,6 +515,15 @@ export function TaskView({ taskId }: { taskId: string }) {
     connected: string[];
     disabled: Record<string, true>;
   } | null>(null);
+  /** Auto "Optimize For" policy; shared with HomeView and Settings. */
+  const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
+    readAutoOptimizeMode(),
+  );
+  /**
+   * Whether to name the model Auto picked. Off by default (Cursor parity), so
+   * the composer stays quiet unless the user opts in from Settings.
+   */
+  const [autoShowModel, setAutoShowModel] = useState(() => readAutoShowModel());
   /** Guards the one-shot escalation retry against effect re-entry. */
   const autoRetryFiredRef = useRef(false);
   /** Previous `sessionError`; `undefined` until the first observation. */
@@ -569,11 +588,37 @@ export function TaskView({ taskId }: { taskId: string }) {
     });
   }, [taskId]);
 
-  /** One banner for all Auto states; follow-up resolutions win. */
+  // Follow Auto settings changed in the Settings screen or another tab.
+  useEffect(() => {
+    const onMode = () => setAutoOptimize(readAutoOptimizeMode());
+    const onShow = () => setAutoShowModel(readAutoShowModel());
+    window.addEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+    window.addEventListener(AUTO_SHOW_MODEL_EVENT, onShow);
+    return () => {
+      window.removeEventListener(AUTO_OPTIMIZE_EVENT, onMode);
+      window.removeEventListener(AUTO_SHOW_MODEL_EVENT, onShow);
+    };
+  }, []);
+
+  const changeAutoOptimize = useCallback((mode: AutoOptimizeMode) => {
+    setAutoOptimize(mode);
+    writeAutoOptimizeMode(mode);
+    void writeAutoSettingToServer(AUTO_OPTIMIZE_SETTING_KEY, mode);
+  }, []);
+
+  /**
+   * One banner for all Auto states; follow-up resolutions win.
+   *
+   * The retry notice is shown regardless of `autoShowModel`: it explains an
+   * unexpected extra turn rather than advertising a model name. The selection
+   * chip and follow-up notice are suppressed unless the user asked to see
+   * which model Auto picked.
+   */
   const autoBannerText =
-    autoFollowUpNotice ??
+    (autoShowModel ? autoFollowUpNotice : null) ??
     (autoRecord && !autoRecord.dismissed
-      ? (autoRetryNotice ?? formatAutoDecisionNotice(autoRecord.decision))
+      ? (autoRetryNotice ??
+        (autoShowModel ? formatAutoDecisionNotice(autoRecord.decision) : null))
       : null);
 
   /** Closes whichever Auto banner is visible, in one click. */
@@ -1285,19 +1330,31 @@ export function TaskView({ taskId }: { taskId: string }) {
    * survives the connected / enabled / image filters.
    */
   const resolveAutoSelection = useCallback(
-    (text: string, hasImages: boolean): AutoDecision | null => {
+    (
+      text: string,
+      hasImages: boolean,
+      attachmentCount = 0,
+    ): AutoDecision | null => {
       if (!autoInputs) return null;
       return chooseAutoModel({
         providers: autoInputs.providers,
         connected: autoInputs.connected,
         disabled: autoInputs.disabled,
         // Slash commands are classified from their raw text (no expansion).
-        tier: classifyPrompt(text, { hasImages }),
-        mode: DEFAULT_AUTO_OPTIMIZE_MODE,
+        // Unlike a brand-new task, a follow-up has real context: how deep the
+        // conversation already is and whether the previous turn failed both
+        // raise the tier by one step.
+        tier: classifyPrompt(text, {
+          hasImages,
+          attachmentCount,
+          historyMessageCount: streamMessages.length,
+          recentFailure: streamSessionError !== null,
+        }),
+        mode: autoOptimize,
         hasImages,
       });
     },
-    [autoInputs],
+    [autoInputs, autoOptimize, streamMessages.length, streamSessionError],
   );
 
   /** Start a loop with `goal`. Returns true when the loop was created. */
@@ -1793,7 +1850,11 @@ export function TaskView({ taskId }: { taskId: string }) {
     const autoAgentPinnedModel = agent ? agentModels[agent] : undefined;
     let autoDecision: AutoDecision | undefined;
     if (isAuto && !autoAgentPinnedModel) {
-      const resolved = resolveAutoSelection(text, hasImage);
+      const resolved = resolveAutoSelection(
+        text,
+        hasImage,
+        attachments.length,
+      );
       if (!resolved) {
         setSendError(AUTO_NO_CANDIDATE_ERROR);
         return;
@@ -3307,6 +3368,18 @@ export function TaskView({ taskId }: { taskId: string }) {
                         disabled={!task.sessionId}
                       />
                     )}
+                    {/* Shares the effort slot with IntelligenceSelect: Auto
+                        decides the effort itself. The variant list is empty
+                        for Auto unless an agent pins its own model, in which
+                        case Auto is bypassed and the effort selector wins. */}
+                    {model === AUTO_MODEL_VALUE &&
+                      intelligenceVariants.length === 0 && (
+                        <AutoOptimizeSelect
+                          value={autoOptimize}
+                          onChange={changeAutoOptimize}
+                          disabled={!task.sessionId}
+                        />
+                      )}
                     {agents.length > 0 && (
                       <GhostSelect
                         value={agent}

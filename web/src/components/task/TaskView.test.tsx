@@ -1675,10 +1675,15 @@ describe("TaskView", () => {
     beforeEach(() => {
       taskStatus = "idle";
       sessionStorage.clear();
+      localStorage.clear();
+      // These cases assert the banner *content*, so opt in to naming the
+      // resolved model. The default-off behaviour is covered separately.
+      localStorage.setItem("webui:auto-show-model", "1");
     });
 
     afterEach(() => {
       sessionStorage.clear();
+      localStorage.clear();
     });
 
     it("shows the selection chip and persists a dismissal without dropping the key", async () => {
@@ -1945,6 +1950,10 @@ describe("TaskView", () => {
     beforeEach(() => {
       taskStatus = "idle";
       sessionStorage.clear();
+      localStorage.clear();
+      // Naming the resolved model is off by default; these cases assert the
+      // notice text, so opt in. Default-off behaviour is covered separately.
+      localStorage.setItem("webui:auto-show-model", "1");
       stubProviderFetch();
       useSessionStream.mockReturnValue({
         ...useSessionStream(),
@@ -1954,6 +1963,7 @@ describe("TaskView", () => {
 
     afterEach(() => {
       sessionStorage.clear();
+      localStorage.clear();
     });
 
     it("offers Auto as the first option in the model dropdown", async () => {
@@ -2169,8 +2179,18 @@ describe("TaskView", () => {
     });
 
     it("passes the resolved model to a goal loop", async () => {
+      // `progress` / `turnCount` / `maxTurns` must be present: GoalLoopPanel
+      // spreads `loop.progress` as soon as this response lands, and without
+      // them the late state update threw an unhandled TypeError.
       sendJson.mockResolvedValue({
-        loop: { id: "loop1", status: "queued", turns: [] },
+        loop: {
+          id: "loop1",
+          status: "queued",
+          turns: [],
+          progress: [],
+          turnCount: 0,
+          maxTurns: 10,
+        },
       });
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
@@ -2198,6 +2218,285 @@ describe("TaskView", () => {
         ),
       );
     });
+
+    describe("optimize mode", () => {
+      const OPTIMIZE_LABEL = "Auto の最適化";
+
+      it("replaces the effort selector while Auto is selected", async () => {
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        expect(screen.queryByLabelText(OPTIMIZE_LABEL)).toBeNull();
+
+        await selectAuto();
+
+        expect(screen.getByLabelText(OPTIMIZE_LABEL)).toBeTruthy();
+        expect(screen.queryByLabelText("インテリジェンス")).toBeNull();
+      });
+
+      it("hydrates the stored mode", async () => {
+        localStorage.setItem("webui:auto-optimize", "balanced");
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+
+        expect(
+          (screen.getByLabelText(OPTIMIZE_LABEL) as HTMLButtonElement).value,
+        ).toBe("balanced");
+      });
+
+      async function pickMode(mode: string, label: string) {
+        fireEvent.click(screen.getByLabelText(OPTIMIZE_LABEL));
+        fireEvent.click(await screen.findByRole("option", { name: label }));
+        await waitFor(() =>
+          expect(
+            (screen.getByLabelText(OPTIMIZE_LABEL) as HTMLButtonElement).value,
+          ).toBe(mode),
+        );
+      }
+
+      it("persists a mode change locally", async () => {
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await pickMode("intelligence", "知能優先");
+
+        expect(localStorage.getItem("webui:auto-optimize")).toBe(
+          "intelligence",
+        );
+      });
+
+      it("raises the effort for a light prompt under 知能優先", async () => {
+        const streamMock = useSessionStream();
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await pickMode("intelligence", "知能優先");
+        await typeAndSend("なぜ失敗するのか");
+
+        // The fixture has no mid-band model, so light still lands on the cheap
+        // one — but the effort rises from minimal (cost) to low.
+        await waitFor(() =>
+          expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+            "なぜ失敗するのか",
+            expect.objectContaining({
+              model: {
+                providerID: "anthropic",
+                modelID: "claude-haiku-4-5",
+              },
+              variant: "low",
+            }),
+          ),
+        );
+      });
+
+      it("routes a standard prompt to the strong model under 知能優先", async () => {
+        const streamMock = useSessionStream();
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await pickMode("intelligence", "知能優先");
+        await typeAndSend("ログを追加して");
+
+        // intelligence/standard prefers the premium band at a high effort,
+        // where cost/standard would have stayed on the cheap model.
+        await waitFor(() =>
+          expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+            "ログを追加して",
+            expect.objectContaining({
+              model: {
+                providerID: "anthropic",
+                modelID: "claude-opus-5",
+              },
+              variant: "high",
+            }),
+          ),
+        );
+      });
+
+      it("keeps a standard prompt on the cheap model under コスト優先", async () => {
+        const streamMock = useSessionStream();
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("ログを追加して");
+
+        await waitFor(() =>
+          expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+            "ログを追加して",
+            expect.objectContaining({
+              model: {
+                providerID: "anthropic",
+                modelID: "claude-haiku-4-5",
+              },
+              variant: "low",
+            }),
+          ),
+        );
+      });
+
+      it("follows a mode change made elsewhere", async () => {
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+
+        await act(async () => {
+          localStorage.setItem("webui:auto-optimize", "balanced");
+          window.dispatchEvent(new CustomEvent("webui:auto-optimize"));
+        });
+
+        expect(
+          (screen.getByLabelText(OPTIMIZE_LABEL) as HTMLButtonElement).value,
+        ).toBe("balanced");
+      });
+    });
+
+    describe("context signals", () => {
+      /** A long conversation bumps the tier one step (light → standard). */
+      function longHistory(count: number) {
+        return Array.from({ length: count }, (_unused, index) => ({
+          info: {
+            id: `h${index}`,
+            role: index % 2 === 0 ? "user" : "assistant",
+            time: { created: index + 1, completed: index + 1 },
+          },
+          parts: [
+            {
+              id: `h${index}-p`,
+              messageID: `h${index}`,
+              type: "text",
+              text: "過去のやりとり",
+            },
+          ],
+        }));
+      }
+
+      it("keeps the light tier just below the history threshold", async () => {
+        useSessionStream.mockReturnValue({
+          ...useSessionStream(),
+          status: { type: "idle" },
+          messages: longHistory(19),
+        });
+        const streamMock = useSessionStream();
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("なぜ失敗するのか");
+
+        await waitFor(() =>
+          expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+            "なぜ失敗するのか",
+            expect.objectContaining({
+              model: {
+                providerID: "anthropic",
+                modelID: "claude-haiku-4-5",
+              },
+              variant: "minimal",
+            }),
+          ),
+        );
+      });
+
+      it("bumps the tier once the conversation is long", async () => {
+        useSessionStream.mockReturnValue({
+          ...useSessionStream(),
+          status: { type: "idle" },
+          messages: longHistory(20),
+        });
+        const streamMock = useSessionStream();
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("なぜ失敗するのか");
+
+        // light → standard: the cheap model stays (no mid band in the
+        // fixture) but the effort rises from minimal to low.
+        await waitFor(() =>
+          expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+            "なぜ失敗するのか",
+            expect.objectContaining({
+              model: {
+                providerID: "anthropic",
+                modelID: "claude-haiku-4-5",
+              },
+              variant: "low",
+            }),
+          ),
+        );
+      });
+
+      it("bumps the tier when the previous turn failed", async () => {
+        useSessionStream.mockReturnValue({
+          ...useSessionStream(),
+          status: { type: "idle" },
+          sessionError: "boom",
+        });
+        const streamMock = useSessionStream();
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("なぜ失敗するのか");
+
+        // light → standard for the same reason as the long-history case.
+        await waitFor(() =>
+          expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+            "なぜ失敗するのか",
+            expect.objectContaining({
+              model: {
+                providerID: "anthropic",
+                modelID: "claude-haiku-4-5",
+              },
+              variant: "low",
+            }),
+          ),
+        );
+      });
+    });
+
+    describe("model name visibility", () => {
+      it("shows no follow-up notice by default", async () => {
+        localStorage.removeItem("webui:auto-show-model");
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("なぜ失敗するのか");
+
+        await waitFor(() =>
+          expect(useSessionStream().sendPrompt).toHaveBeenCalled(),
+        );
+        expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
+        expect(screen.queryByText(/^Auto: /)).toBeNull();
+      });
+
+      it("shows the follow-up notice once enabled", async () => {
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("なぜ失敗するのか");
+
+        expect(await screen.findByLabelText(CLOSE_LABEL)).toBeTruthy();
+      });
+
+      it("reveals a suppressed notice when the setting is turned on", async () => {
+        localStorage.removeItem("webui:auto-show-model");
+        render(<TaskView taskId="ws1" />);
+        await flushTaskLoad();
+        await selectAuto();
+        await typeAndSend("なぜ失敗するのか");
+
+        await waitFor(() =>
+          expect(useSessionStream().sendPrompt).toHaveBeenCalled(),
+        );
+        expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
+
+        await act(async () => {
+          localStorage.setItem("webui:auto-show-model", "1");
+          window.dispatchEvent(new CustomEvent("webui:auto-show-model"));
+        });
+
+        expect(screen.getByLabelText(CLOSE_LABEL)).toBeTruthy();
+      });
+    });
+
   });
 });
 
