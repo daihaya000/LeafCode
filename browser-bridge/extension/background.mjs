@@ -11,6 +11,19 @@ export function isSafeBrokerSocketUrl(value) {
   }
 }
 
+const AUTO_SHARE_ORIGIN_PATTERNS = ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'];
+
+function isShareableTabUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol === 'https:') return url;
+    if (url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)) return url;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function createBackgroundController({ chromeApi, WebSocketImpl, randomId = () => crypto.randomUUID().replaceAll('-', '') }) {
   let socket = null;
   let connectionGeneration = 0;
@@ -18,7 +31,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let reconnectDelay = 500;
   let nextSnapshotGeneration = 1;
   let handledCommandIds = new Set();
-  let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {} };
+  let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
 
   const persist = async () => chromeApi.storage.local.set({ [STORAGE_KEY]: state });
   const send = (message) => {
@@ -85,10 +98,8 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   async function shareActiveTab() {
     const [tab] = await chromeApi.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id || !tab.url) throw new Error('No active tab');
-    const url = new URL(tab.url);
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) {
-      throw new Error('This page cannot be shared');
-    }
+    const url = isShareableTabUrl(tab.url);
+    if (!url) throw new Error('This page cannot be shared');
     const originPattern = `${url.origin}/*`;
     const granted = await chromeApi.permissions.request({ origins: [originPattern] });
     if (!granted) throw new Error('Site permission was not granted');
@@ -98,6 +109,36 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     await persist();
     send({ type: 'tab_shared', tab: shared });
     return publicState();
+  }
+
+  async function enableAutoShare() {
+    const granted = await chromeApi.permissions.request({ origins: AUTO_SHARE_ORIGIN_PATTERNS });
+    if (!granted) throw new Error('Broad site permission was not granted');
+    state.autoShareEnabled = true;
+    await persist();
+    const [tab] = await chromeApi.tabs.query({ active: true, currentWindow: true });
+    if (tab) await autoShareTab(tab);
+    return publicState();
+  }
+
+  async function disableAutoShare() {
+    state.autoShareEnabled = false;
+    await persist();
+    return publicState();
+  }
+
+  async function autoShareTab(tab) {
+    if (!state.autoShareEnabled || !tab?.id || !tab.url || tab.active !== true) return;
+    if (Object.values(state.sharedTabs).some((shared) => shared.browserTabId === tab.id)) return;
+    const url = isShareableTabUrl(tab.url);
+    if (!url) return;
+    const granted = await chromeApi.permissions.contains({ origins: [`${url.origin}/*`] });
+    if (!granted) return;
+    const id = `tab_${randomId()}`;
+    const shared = { id, origin: url.origin, title: String(tab.title ?? '').slice(0, 512) };
+    state.sharedTabs[id] = { ...shared, browserTabId: tab.id };
+    await persist();
+    send({ type: 'tab_shared', tab: shared });
   }
 
   async function unshare(tabId) {
@@ -161,34 +202,43 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   async function revoke() {
     for (const tabId of Object.keys(state.sharedTabs)) send({ type: 'tab_unshared', tabId });
     send({ type: 'unpair' });
-    state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {} };
+    state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
     await chromeApi.storage.local.remove(STORAGE_KEY);
     socket?.close();
     return publicState();
   }
 
   function publicState() {
-    return { paired: Boolean(state.deviceKey), connected: socket?.readyState === WebSocketImpl.OPEN, connectionGeneration, sharedTabs: Object.values(state.sharedTabs).map(({ browserTabId, ...tab }) => tab) };
+    return { paired: Boolean(state.deviceKey), connected: socket?.readyState === WebSocketImpl.OPEN, connectionGeneration, autoShareEnabled: Boolean(state.autoShareEnabled), sharedTabs: Object.values(state.sharedTabs).map(({ browserTabId, ...tab }) => tab) };
   }
 
   chromeApi.tabs.onRemoved.addListener((browserTabId) => {
     const shared = Object.entries(state.sharedTabs).find(([, tab]) => tab.browserTabId === browserTabId);
     if (shared) void unshare(shared[0]);
   });
-  chromeApi.tabs.onUpdated.addListener((browserTabId, changeInfo) => {
+  chromeApi.tabs.onUpdated.addListener((browserTabId, changeInfo, tab) => {
     if (changeInfo.status === 'loading') {
-      const shared = Object.entries(state.sharedTabs).find(([, tab]) => tab.browserTabId === browserTabId);
+      const shared = Object.entries(state.sharedTabs).find(([, sharedTab]) => sharedTab.browserTabId === browserTabId);
       if (shared) void unshare(shared[0]);
+    } else if (changeInfo.status === 'complete') {
+      void autoShareTab(tab);
     }
   });
-  return { load, pair, shareActiveTab, collectSnapshot, captureScreenshot, unshare, revoke, publicState };
+  chromeApi.tabs.onActivated?.addListener(({ tabId }) => {
+    void (async () => {
+      if (!state.autoShareEnabled) return;
+      const tab = await chromeApi.tabs.get(tabId).catch(() => null);
+      if (tab?.status === 'complete') await autoShareTab(tab);
+    })();
+  });
+  return { load, pair, shareActiveTab, enableAutoShare, disableAutoShare, collectSnapshot, captureScreenshot, unshare, revoke, publicState };
 }
 
 if (globalThis.chrome?.runtime?.onMessage) {
   const controller = createBackgroundController({ chromeApi: globalThis.chrome, WebSocketImpl: globalThis.WebSocket });
   void controller.load();
   globalThis.chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    const handlers = { status: controller.publicState, pair: () => controller.pair(message), share: controller.shareActiveTab, snapshot: () => controller.collectSnapshot(message.tabId), unshare: () => controller.unshare(message.tabId), revoke: controller.revoke };
+    const handlers = { status: controller.publicState, pair: () => controller.pair(message), share: controller.shareActiveTab, enableAutoShare: controller.enableAutoShare, disableAutoShare: controller.disableAutoShare, snapshot: () => controller.collectSnapshot(message.tabId), unshare: () => controller.unshare(message.tabId), revoke: controller.revoke };
     const handler = handlers[message?.action];
     if (!handler) return false;
     Promise.resolve(handler()).then((value) => sendResponse({ ok: true, value }), (error) => sendResponse({ ok: false, error: error.message }));

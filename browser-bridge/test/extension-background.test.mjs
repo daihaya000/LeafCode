@@ -2,6 +2,32 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createBackgroundController, isSafeBrokerSocketUrl } from '../extension/background.mjs';
 
+function createAutoShareChromeApi({ containsResult = true } = {}) {
+  const stored = {};
+  const listeners = { removed: null, updated: null, activated: null };
+  const requests = [];
+  const tabsById = {
+    42: { id: 42, url: 'https://example.test/path', title: 'Example', active: true, status: 'complete' },
+    43: { id: 43, url: 'https://second.test/path', title: 'Second', active: true, status: 'complete' },
+  };
+  const chromeApi = {
+    storage: { local: { get: async () => stored, set: async (value) => Object.assign(stored, value), remove: async (key) => delete stored[key] } },
+    tabs: {
+      query: async () => [tabsById[42]],
+      get: async (id) => tabsById[id],
+      onRemoved: { addListener: (listener) => { listeners.removed = listener; } },
+      onUpdated: { addListener: (listener) => { listeners.updated = listener; } },
+      onActivated: { addListener: (listener) => { listeners.activated = listener; } },
+    },
+    permissions: {
+      request: async ({ origins }) => { requests.push(origins); return true; },
+      contains: async () => containsResult,
+    },
+    scripting: { executeScript: async () => {} },
+  };
+  return { chromeApi, listeners, requests, tabsById };
+}
+
 test('only permits loopback WebSocket Broker URLs', () => {
   assert.equal(isSafeBrokerSocketUrl('ws://127.0.0.1:18766/extension'), true);
   assert.equal(isSafeBrokerSocketUrl('wss://localhost:18766/extension'), true);
@@ -86,4 +112,59 @@ test('resyncs shared tabs and resets command dedupe on a new connection generati
   assert.equal(delivered, 2);
   assert.equal(socket.sent.filter((message) => message.type === 'result').length, 2);
   assert.equal(socket.sent.filter((message) => message.type === 'tab_shared').length, 2);
+});
+
+test('does not auto-share tabs until the user explicitly enables auto-share', async () => {
+  const { chromeApi, listeners, tabsById } = createAutoShareChromeApi();
+  class FakeSocket { static OPEN = 1; }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
+  await controller.load();
+  listeners.updated(42, { status: 'complete' }, tabsById[42]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.publicState().autoShareEnabled, false);
+  assert.deepEqual(controller.publicState().sharedTabs, []);
+});
+
+test('auto-shares the active tab once enabled, and again when switching to another eligible tab', async () => {
+  const { chromeApi, listeners, requests } = createAutoShareChromeApi();
+  class FakeSocket { static OPEN = 1; }
+  let counter = 0;
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => `opaque${counter++}` });
+  await controller.load();
+  const state = await controller.enableAutoShare();
+  assert.equal(state.autoShareEnabled, true);
+  assert.deepEqual(state.sharedTabs, [{ id: 'tab_opaque0', origin: 'https://example.test', title: 'Example' }]);
+  assert.deepEqual(requests, [['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*']]);
+
+  listeners.activated({ tabId: 43 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const after = controller.publicState();
+  assert.equal(after.sharedTabs.length, 2);
+  assert.ok(after.sharedTabs.some((tab) => tab.origin === 'https://second.test'));
+  assert.equal(requests.length, 1);
+});
+
+test('auto-share fails safe when the granted broad permission does not cover the active tab origin', async () => {
+  const { chromeApi, requests } = createAutoShareChromeApi({ containsResult: false });
+  class FakeSocket { static OPEN = 1; }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
+  await controller.load();
+  const state = await controller.enableAutoShare();
+  assert.equal(state.autoShareEnabled, true);
+  assert.deepEqual(state.sharedTabs, []);
+  assert.deepEqual(requests, [['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*']]);
+});
+
+test('disabling auto-share stops further automatic sharing but keeps already-shared tabs', async () => {
+  const { chromeApi, listeners } = createAutoShareChromeApi();
+  class FakeSocket { static OPEN = 1; }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
+  await controller.load();
+  await controller.enableAutoShare();
+  assert.equal(controller.publicState().sharedTabs.length, 1);
+  const state = await controller.disableAutoShare();
+  assert.equal(state.autoShareEnabled, false);
+  listeners.activated({ tabId: 43 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.publicState().sharedTabs.length, 1);
 });
