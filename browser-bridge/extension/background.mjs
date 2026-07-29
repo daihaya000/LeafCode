@@ -131,10 +131,15 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   }
 
   async function executeCommand(command) {
-    if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type', 'browser_scroll', 'browser_navigate'].includes(command.tool)) return;
+    if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type', 'browser_scroll', 'browser_navigate', 'browser_screenshot'].includes(command.tool)) return;
     const shared = state.sharedTabs[command.args?.tabId];
     if (!shared) return;
     try {
+      if (command.tool === 'browser_screenshot') {
+        const image = await captureScreenshot(command.args.tabId);
+        send({ protocolVersion: 1, type: 'result', commandId: command.commandId, connectionGeneration, state: 'succeeded', result: { image } });
+        return;
+      }
       const result = await chromeApi.tabs.sendMessage(shared.browserTabId, {
         type: command.tool === 'browser_click' ? 'browser_bridge_click' : command.tool === 'browser_type' ? 'browser_bridge_type' : command.tool === 'browser_scroll' ? 'browser_bridge_scroll' : 'browser_bridge_navigate',
         ref: command.args.ref,
