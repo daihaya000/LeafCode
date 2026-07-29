@@ -53,11 +53,15 @@ function publicUrl(): string | null {
   }
 }
 
-function caddyLocalUrl(): string | null {
+function caddyLocalUrl(publicOrigin: string | null): string | null {
   const raw = process.env.OPENCODE_WEBUI_CADDY_LOCAL_URL?.trim();
-  if (!raw) return null;
+  if (!raw && !publicOrigin) return null;
   try {
-    const u = new URL(raw);
+    const u = new URL(raw || publicOrigin!);
+    if (!raw) {
+      u.hostname = "127.0.0.1";
+      if (!u.port) u.port = "8443";
+    }
     return u.protocol === "http:" || u.protocol === "https:" ? u.origin : null;
   } catch {
     return null;
@@ -107,7 +111,7 @@ export async function GET() {
     "0.0.0.0";
 
   const publicOrigin = publicUrl();
-  const localCaddyOrigin = caddyLocalUrl();
+  const localCaddyOrigin = caddyLocalUrl(publicOrigin);
   const caddyAddresses = localCaddyOrigin && localCaddyOrigin !== publicOrigin
     ? [{
         name: "Caddy (localhost)",

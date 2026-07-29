@@ -47,7 +47,6 @@ afterEach(() => {
 describe("GET /api/access", () => {
   it("advertises the Caddy public origin and direct URLs when set", async () => {
     process.env[ENV_KEY] = "https://webui.example.com/";
-    process.env[CADDY_LOCAL_ENV_KEY] = "https://127.0.0.1:8443";
     const res = await GET();
     const body = (await res.json()) as {
       publicUrl?: string;
@@ -66,6 +65,15 @@ describe("GET /api/access", () => {
     );
     expect(body.certificateUrls.map((a) => a.url)).toContain(
       "http://192.168.1.100:8080/caddy-root.crt",
+    );
+  });
+
+  it("derives the loopback Caddy URL from the public HTTPS port", async () => {
+    process.env[ENV_KEY] = "https://192.168.0.102:8443";
+    const res = await GET();
+    const body = (await res.json()) as { addresses: { url: string }[] };
+    expect(body.addresses.map((address) => address.url)).toContain(
+      "https://127.0.0.1:8443",
     );
   });
 
