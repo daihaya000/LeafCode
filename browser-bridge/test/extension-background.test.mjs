@@ -12,14 +12,17 @@ test('only permits loopback WebSocket Broker URLs', () => {
 test('shares only an explicitly selected active HTTPS tab and never exposes its browser tab id', async () => {
   const stored = {};
   const listeners = { removed: null, updated: null };
+  const injected = [];
   const chromeApi = {
     storage: { local: { get: async () => stored, set: async (value) => Object.assign(stored, value), remove: async (key) => delete stored[key] } },
     tabs: {
       query: async () => [{ id: 42, url: 'https://example.test/path', title: 'Example' }],
+      sendMessage: async (tabId, message) => ({ snapshotGeneration: message.snapshotGeneration, nodes: [{ ref: `ref_${message.snapshotGeneration}_1`, role: 'button', name: 'Save' }], truncated: false }),
       onRemoved: { addListener: (listener) => { listeners.removed = listener; } },
       onUpdated: { addListener: (listener) => { listeners.updated = listener; } },
     },
     permissions: { request: async ({ origins }) => origins[0] === 'https://example.test/*' },
+    scripting: { executeScript: async (options) => injected.push(options) },
   };
   class FakeSocket { static OPEN = 1; }
   const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
@@ -28,6 +31,9 @@ test('shares only an explicitly selected active HTTPS tab and never exposes its 
   assert.deepEqual(state.sharedTabs, [{ id: 'tab_opaque', origin: 'https://example.test', title: 'Example' }]);
   assert.equal(JSON.stringify(state).includes('42'), false);
   assert.equal(stored.browserBridge.sharedTabs.tab_opaque.browserTabId, 42);
+  const snapshot = await controller.collectSnapshot('tab_opaque');
+  assert.equal(snapshot.snapshotGeneration, 1);
+  assert.deepEqual(injected, [{ target: { tabId: 42 }, files: ['extension/content-runtime.js'] }]);
   listeners.removed(42);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(controller.publicState().sharedTabs, []);

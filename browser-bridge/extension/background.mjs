@@ -15,6 +15,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let connectionGeneration = 0;
   let reconnectTimer = null;
   let reconnectDelay = 500;
+  let nextSnapshotGeneration = 1;
   let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {} };
 
   const persist = async () => chromeApi.storage.local.set({ [STORAGE_KEY]: state });
@@ -101,6 +102,18 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     return publicState();
   }
 
+  async function collectSnapshot(tabId) {
+    const shared = state.sharedTabs[tabId];
+    if (!shared) throw new Error('Tab is not shared');
+    await chromeApi.scripting.executeScript({ target: { tabId: shared.browserTabId }, files: ['extension/content-runtime.js'] });
+    const snapshot = await chromeApi.tabs.sendMessage(shared.browserTabId, {
+      type: 'browser_bridge_collect_snapshot', snapshotGeneration: nextSnapshotGeneration++,
+    });
+    if (!snapshot || !Array.isArray(snapshot.nodes)) throw new Error('Snapshot collection failed');
+    send({ type: 'snapshot', tabId, snapshot });
+    return snapshot;
+  }
+
   async function revoke() {
     for (const tabId of Object.keys(state.sharedTabs)) send({ type: 'tab_unshared', tabId });
     state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {} };
@@ -123,14 +136,14 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       if (shared) void unshare(shared[0]);
     }
   });
-  return { load, pair, shareActiveTab, unshare, revoke, publicState };
+  return { load, pair, shareActiveTab, collectSnapshot, unshare, revoke, publicState };
 }
 
 if (globalThis.chrome?.runtime?.onMessage) {
   const controller = createBackgroundController({ chromeApi: globalThis.chrome, WebSocketImpl: globalThis.WebSocket });
   void controller.load();
   globalThis.chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    const handlers = { status: controller.publicState, pair: () => controller.pair(message), share: controller.shareActiveTab, unshare: () => controller.unshare(message.tabId), revoke: controller.revoke };
+    const handlers = { status: controller.publicState, pair: () => controller.pair(message), share: controller.shareActiveTab, snapshot: () => controller.collectSnapshot(message.tabId), unshare: () => controller.unshare(message.tabId), revoke: controller.revoke };
     const handler = handlers[message?.action];
     if (!handler) return false;
     Promise.resolve(handler()).then((value) => sendResponse({ ok: true, value }), (error) => sendResponse({ ok: false, error: error.message }));
