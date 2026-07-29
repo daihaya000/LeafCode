@@ -117,6 +117,20 @@ export function createBrowserBridgeBroker({
       json(res, 200, { approvals: [...pendingApprovals.values()] });
       return;
     }
+    const approvalMatch = /^\/internal\/approvals\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+    if (req.method === 'POST' && approvalMatch) {
+      const approval = pendingApprovals.get(approvalMatch[1]);
+      const body = await readJsonBody(req);
+      if (!approval) {
+        json(res, 404, { error: 'not_found' });
+      } else if (!body || !['allow', 'deny'].includes(body.decision)) {
+        json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
+      } else {
+        pendingApprovals.delete(approval.approvalId);
+        json(res, 200, { approvalId: approval.approvalId, decision: body.decision });
+      }
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/internal/audit') {
       json(res, 200, { entries: [] });
       return;

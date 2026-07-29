@@ -133,6 +133,14 @@ test('lists only opaque tab metadata announced by an authenticated extension', a
   assert.deepEqual(approvals.approvals.map(({ approvalId, tool, tabId, origin }) => ({ approvalId, tool, tabId, origin })), [{
     approvalId: clickBody.error.approvalId, tool: 'browser_click', tabId: 'tab_opaque', origin: 'https://example.test',
   }]);
+  const decision = await fetch(`${broker.url}/internal/approvals/${clickBody.error.approvalId}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'deny' }),
+  });
+  assert.deepEqual(await decision.json(), { approvalId: clickBody.error.approvalId, decision: 'deny' });
+  const approvalStatus = await fetch(`${broker.url}/internal/status`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.equal(approvalStatus.pendingApprovals, 0);
 
   socket.send(JSON.stringify({ type: 'snapshot', tabId: 'tab_opaque', snapshot: { snapshotGeneration: 1, truncated: false, nodes: [{ ref: 'ref_1_1', role: 'button', name: 'Save' }] } }));
   await new Promise((resolve) => setImmediate(resolve));
