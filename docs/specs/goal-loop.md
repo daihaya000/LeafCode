@@ -84,7 +84,9 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | 15 | `running` | プロンプト POST が 4xx（409/429 を除く）で拒否 | `queued` / `verifying_completed` | goal は `turn_count - 1` して `queued` へ、検証は `verifying_completed` へ戻す。`last_prompt_at = NULL` |
 | 16 | `running` | プロンプト POST がタイムアウト・ネットワーク断・5xx・409・429 | `paused` | `pause_reason = 'unknown_delivery'`。**再送もロールバックもしない** |
 | 17 | `running` | 結果読取時に `last_message_id` が履歴に存在しない | `paused` | `pause_reason = 'boundary_lost'` |
-| 18 | `queued` / `running` / `verifying_completed` | `PATCH action=pause` | `paused` | `pause_reason = 'user'`。`turn_kind` は保持 |
+| 18a | `queued` | `PATCH action=pause` | `paused` | in-flight ターンがないため即時停止。`pause_reason = 'user'` |
+| 18b | `running` / `verifying_completed` | `PATCH action=pause` | 状態維持 | `pause_requested = 1`。現在の goal / verification ターンの結果を適用してから停止する。次ターンは送信しない |
+| 18c | `running` (`pause_requested = 1`) | 構造化結果を適用 | `paused` | 結果・progress・summary/evidence を保存してから `pause_reason = 'user'` で停止。ターン上限や完了・blocked の終端結果は user pause より優先 |
 | 19 | `queued` / `running` / `verifying_completed` | 手動送信を検出 | `paused` | `pause_reason = 'manual_send'`、`last_message_id` = 履歴末尾（読めた場合） |
 | 20 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・マーカー付きプロンプトへの構造化応答を発見 | 6〜12 に従う | 失われた進捗を復元して適用する |
 | 21 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・応答未発見 | `paused` | `pause_reason` は**維持**。`error` 本文のみ更新。**再送しない** |
@@ -135,13 +137,14 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 
 ## スキーマ変更
 
-`goal_loops` に3列を追加する。既存の `revision` 列と同じ `PRAGMA table_info` による冪等マイグレーションを使う。
+`goal_loops` に4列を追加する。既存の `revision` 列と同じ `PRAGMA table_info` による冪等マイグレーションを使う。
 
 | 列 | 型 | 既定 | 用途 |
 | --- | --- | --- | --- |
 | `turn_kind` | TEXT NOT NULL | `'goal'` | `'goal'` \| `'verification'`。I6 |
 | `pause_reason` | TEXT NOT NULL | `''` | 下表の enum。I5 |
 | `rejected_claims` | INTEGER NOT NULL | `0` | 完了宣言が検証で棄却された累計。E |
+| `pause_requested` | INTEGER NOT NULL | `0` | running / verifying_completed 中のユーザー停止要求。現在ターンの結果適用後に `paused` へ遷移 |
 
 `pause_reason` の値:
 
@@ -159,12 +162,24 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | `verification_rejected` | 完了宣言が繰り返し棄却された | 「完了宣言が検証で複数回拒否されたため一時停止しました。ゴールか acceptance を見直してください。」 |
 | `scheduler_error` | 想定外の例外 | 例外メッセージ（4000 grapheme で切り詰め） |
 
-`GoalLoopDto` には `turnKind` / `pauseReason` / `rejectedClaims` を追加する。
+`GoalLoopDto` には `turnKind` / `pauseReason` / `rejectedClaims` / `pauseRequested` を追加する。
 `error` は人間向け表示専用のまま残す（I5）。
 
 ## 是正仕様
 
-### A. 検証フェーズを pause/resume で失わない
+### A. 現在ターンを完了してから一時停止する
+
+1. ユーザーによる `pause` は queued では即時停止、running / verifying_completed では
+   `pause_requested = 1` を記録するだけにする。in-flight の OpenCode 呼び出しは abort しない。
+2. `applyAssistantResult` は `pause_requested = 1` の場合でも構造化結果・progress・summary・evidence を
+   通常どおり保存し、次の送信先を決める前に `paused` + `pause_reason = 'user'` にする。ただし
+   `completed` / `blocked` / ターン上限 / 検証棄却上限はそれぞれの終端・安全停止理由を優先する。
+3. `pause_requested = 1` の間はスケジューラが次の goal / verification プロンプトを送信しない。
+   再度の pause は冪等に成功し、stop は従来どおり即時 abort を試みる。
+4. UI は `pause_requested = 1` の間、「このターンの完了後に一時停止します」と表示し、
+   一時停止ボタンを無効化する。queued の即時停止と、手動送信・エラーによる安全停止の挙動は変えない。
+
+### B. 検証フェーズを pause/resume で失わない
 
 1. 遷移 3 / 5 のプロンプト主張時に `turn_kind` を設定する。
 2. `applyAssistantResult` の検証判定を
@@ -180,7 +195,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
    両者を1列に畳み込む。
 4. `verified_completed` 到達時（遷移 9）に `rejected_claims = 0` にする。
 
-### B. 停止理由を列で持ち、文字列一致判定を全廃
+### C. 停止理由を列で持ち、文字列一致判定を全廃
 
 1. `isUnknownPromptDeliveryPause` を
    `loop.pauseReason === 'unknown_delivery'` に置き換える。`error.includes(...)` を削除する。
@@ -188,7 +203,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
    これにより2回目以降の resume も遷移 20 / 21 の判定に入り、`queued` へ落ちない。
 3. 他の `error` 本文による分岐が無いことを確認し、あれば同様に列へ移す。
 
-### C. 境界を失ったら結果を読まない
+### D. 境界を失ったら結果を読まない
 
 1. `finalAssistantAfter` は、`lastMessageId` が非 null かつ履歴に存在しない場合に
    「境界喪失」を呼び出し元へ伝える。`Math.max(0, -1 + 1)` による全履歴走査を廃止する。
@@ -200,7 +215,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
    インデックス 0 から走査せず `null` を返す。
 4. `queued` 分岐は結果を読まないため対象外。現行どおり履歴末尾へ再アンカーする。
 
-### D. 手動送信検出をサーバー側に配線
+### E. 手動送信検出をサーバー側に配線
 
 1. `web/src/lib/db.ts` に逆引きヘルパを追加する。
    `findWorkspaceIdsBySession(sessionId: string): string[]`
@@ -216,7 +231,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 4. `TaskView` のクライアント側 PATCH pause は**残す**。UI を即座に更新するための先行操作であり、
    サーバー側フックが唯一の正となる。二重に pause されても CAS により冪等。
 
-### E. 棄却回数をカウンタ列で数える
+### F. 棄却回数をカウンタ列で数える
 
 1. `countRecentRejectedClaims`（`progress` 末尾の2つ飛ばしペアリング）を削除する。
 2. 遷移 11 で `rejected_claims` を +1 し、更新後の値が `MAX_REJECTED_CLAIMS` 以上なら
@@ -226,7 +241,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
    ユーザーが状況を認識したうえで継続を選んだ操作であり、リセットしないと次の棄却で即再停止する。
 5. `updateGoalLoopMaxTurns` は `rejected_claims` を変更しない（予算の変更と棄却履歴は independent）。
 
-### F. `error` 状態の削除
+### G. `error` 状態の削除
 
 1. `GoalLoopStatus` から `error` を削除する。
 2. resume の対象を `status = 'paused'` のみにする（`IN ('paused','error')` を改める）。
@@ -262,35 +277,39 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 監査で作成した4本の再現テストを回帰テストとして正式に組み込む。いずれも現行実装で fail し、
 是正後に pass する。
 
-1. `verifying_completed` 中に pause → resume → 次tickで**検証**プロンプトが送られ、
+1. running / verifying_completed 中に pause すると、現在ターンの構造化結果と進捗を保存してから
+   `paused` になり、次のプロンプトが送られないこと。queued の pause は即時に `paused` になること。
+2. `verifying_completed` 中に pause → resume → 次tickで**検証**プロンプトが送られ、
    `turn_count` が増えないこと（A）
-2. `unknown_delivery` pause に対し resume を2回行っても `paused` を維持し、
+3. `unknown_delivery` pause に対し resume を2回行っても `paused` を維持し、
    `prompt_async` が発行されないこと（B）
-3. `finalAssistantAfter` が境界喪失時に全履歴を走査しないこと（単体）と、
+4. `finalAssistantAfter` が境界喪失時に全履歴を走査しないこと（単体）と、
    境界喪失時にループが `paused` + `boundary_lost` になり古い結果を取り込まないこと（統合）（C）
-4. `rejected_claims` が作業ターンを挟んでも累積し、`MAX_REJECTED_CLAIMS` で停止すること（E）
-5. （新規）`POST /api/opencode/session/:id/prompt_async` がライブなループを pause させ、
+5. `rejected_claims` が作業ターンを挟んでも累積し、`MAX_REJECTED_CLAIMS` で停止すること（E）
+6. （新規）`POST /api/opencode/session/:id/prompt_async` がライブなループを pause させ、
    pause 不能時に 409 を返すこと（D）
-6. （新規）`pause_reason` の各値に対する resume の復帰先が遷移表 20〜23 と一致すること
-7. （新規）プロンプト送信総数が `maxTurns + MAX_REJECTED_CLAIMS + 1` を超えないこと（ターン予算）
-8. （新規）スキーママイグレーションが既存 DB（3列なし）に対して冪等に適用されること
+7. （新規）`pause_reason` の各値に対する resume の復帰先が遷移表 20〜23 と一致すること
+8. （新規）プロンプト送信総数が `maxTurns + MAX_REJECTED_CLAIMS + 1` を超えないこと（ターン予算）
+9. （新規）スキーママイグレーションが既存 DB（4列なし）に対して冪等に適用されること
 
 1〜4 は監査で作成済みの再現テスト（現行実装で fail）、5〜8 は新規に書き起こすもの。
 
 ## 受入条件
 
-1. `verifying_completed` 中に一時停止して再開すると検証ターンから再開し、
+1. running / verifying_completed 中の一時停止要求では現在ターンの結果を保存してから停止し、
+   次のプロンプトを送信しない。queued 中の一時停止は即時に停止する。
+2. `verifying_completed` 中に一時停止して再開すると検証ターンから再開し、
    完了宣言が `completed` に到達できる。
-2. 送達不明で停止したループは、resume を何回行っても構造化応答を発見するまで `paused` を維持し、
+3. 送達不明で停止したループは、resume を何回行っても構造化応答を発見するまで `paused` を維持し、
    `prompt_async` を再送しない。
-3. `last_message_id` が履歴から消えた場合、ループは古い返信を結果として取り込まず
+4. `last_message_id` が履歴から消えた場合、ループは古い返信を結果として取り込まず
    `paused` + `boundary_lost` になる。
-4. `TaskView` 以外の経路（API 直叩き・他クライアント・OpenCode TUI）からの手動送信でも
+5. `TaskView` 以外の経路（API 直叩き・他クライアント・OpenCode TUI）からの手動送信でも
    ループが自動的に一時停止し、停止できない場合は送信が 409 で拒否される。
-5. 完了宣言の棄却が作業ターンを挟んで 2 回起きた時点でループが停止する。
-6. `error` 状態がコード・型・UI から消えている。
-7. `pause_reason` / `turn_kind` / `rejected_claims` が DTO と API 応答に含まれ、
+6. 完了宣言の棄却が作業ターンを挟んで 2 回起きた時点でループが停止する。
+7. `error` 状態がコード・型・UI から消えている。
+8. `pause_reason` / `turn_kind` / `rejected_claims` / `pause_requested` が DTO と API 応答に含まれ、
    状態判定にエラー本文・`progress` 末尾を使う分岐が残っていない。
-8. `GoalLoopPanel` のターン表示が goal ターン基準であることが表示と支援技術に伝わる。
-9. 上記テスト1〜8が通り、既存の goal-loop テスト53件が回帰していない。
-10. `npx tsc --noEmit` と `eslint` が通る。
+9. `GoalLoopPanel` のターン表示が goal ターン基準であることが表示と支援技術に伝わる。
+10. 上記テスト1〜9が通り、既存の goal-loop テスト53件が回帰していない。
+11. `npx tsc --noEmit` と `eslint` が通る。
