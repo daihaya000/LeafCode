@@ -17,6 +17,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let reconnectTimer = null;
   let reconnectDelay = 500;
   let nextSnapshotGeneration = 1;
+  let handledCommandIds = new Set();
   let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {} };
 
   const persist = async () => chromeApi.storage.local.set({ [STORAGE_KEY]: state });
@@ -40,6 +41,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       const message = JSON.parse(event.data);
       if (message.type === 'authenticated') {
         connectionGeneration = message.connectionGeneration;
+        handledCommandIds = new Set();
         reconnectDelay = 500;
         for (const tab of Object.values(state.sharedTabs)) send({ type: 'tab_shared', tab });
       } else if (message.type === 'snapshot_request' && typeof message.tabId === 'string') {
@@ -132,6 +134,8 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
 
   async function executeCommand(command) {
     if (command.connectionGeneration !== connectionGeneration || !['browser_click', 'browser_type', 'browser_scroll', 'browser_navigate', 'browser_screenshot'].includes(command.tool)) return;
+    if (typeof command.commandId !== 'string' || handledCommandIds.has(command.commandId)) return;
+    handledCommandIds.add(command.commandId);
     const shared = state.sharedTabs[command.args?.tabId];
     if (!shared) return;
     try {
