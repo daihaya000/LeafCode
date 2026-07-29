@@ -19,18 +19,26 @@ rem pin (see scripts\create-shortcut.bat) show "OpenCode WebUI" instead of the
 rem generic "Command Prompt" title. Node does not touch this on Windows.
 title OpenCode WebUI
 
-rem Route through the compiled native launcher (scripts\launcher\OpenCodeWebUI.exe)
-rem for a proper app identity (icon, Alt-Tab/taskbar entry) even when this
-rem file is run directly (e.g. a Desktop shortcut made before the launcher
-rem existed, or a manual double-click), building the launcher first if it is
-rem missing. OPENCODE_WEBUI_LAUNCHER=1 is set by the launcher on the bat
-rem instance it starts (see scripts\launcher\Launcher.cs), so that instance
-rem skips this block instead of looping back into the launcher.
+rem Route through the compiled native launcher for a proper app identity.
+rem Rebuild it when its inputs are newer so Launcher.cs fixes take effect.
+rem If Node.js is not installed yet, defer the build until setup installs it.
 if "%OPENCODE_WEBUI_LAUNCHER%"=="1" goto :after_launcher_routing
-if exist "scripts\launcher\OpenCodeWebUI.exe" goto :run_launcher
-echo [OpenCode WebUI] Building native launcher ^(first run^)...
+if not exist "scripts\launcher\OpenCodeWebUI.exe" goto :build_launcher_if_possible
+call :launcher_is_current
+if not errorlevel 1 goto :run_launcher
+
+:build_launcher_if_possible
+call where node >nul 2>&1
+if errorlevel 1 goto :defer_launcher_build
+echo [OpenCode WebUI] Building native launcher...
 call scripts\build-launcher.bat /quiet
-if not exist "scripts\launcher\OpenCodeWebUI.exe" goto :after_launcher_routing
+if errorlevel 1 goto :after_launcher_routing
+if exist "scripts\launcher\OpenCodeWebUI.exe" goto :run_launcher
+goto :after_launcher_routing
+
+:defer_launcher_build
+set "LAUNCHER_BUILD_DEFERRED=1"
+goto :after_launcher_routing
 
 :run_launcher
 "scripts\launcher\OpenCodeWebUI.exe"
@@ -39,6 +47,7 @@ exit /b %ERR%
 
 :after_launcher_routing
 
+if "%OPENCODE_WEBUI_SETUP_COMPLETE%"=="1" goto :start_host
 call :remember_code_page
 chcp 65001 >nul 2>&1
 echo [OpenCode WebUI] Starting...
@@ -48,8 +57,6 @@ rem OpenCode / dependency installs) and this file (assumed already installed).
 rem They are merged here: every check below is a no-op once its condition is
 rem already satisfied, so repeat runs stay as fast as before the merge, while
 rem a brand new machine gets the same install steps setup.bat used to run.
-call :check_winget
-if errorlevel 1 goto :failure
 call :check_node
 if errorlevel 1 goto :failure
 call :check_opencode
@@ -58,8 +65,22 @@ call :install_web
 if errorlevel 1 goto :failure
 call :install_host
 if errorlevel 1 goto :failure
+call :install_browser_bridge
+if errorlevel 1 goto :failure
 call :restore_code_page
 
+if defined LAUNCHER_BUILD_DEFERRED goto :build_deferred_launcher
+goto :start_host
+
+:build_deferred_launcher
+echo [OpenCode WebUI] Building native launcher...
+call scripts\build-launcher.bat /quiet
+if errorlevel 1 goto :start_host
+if not exist "scripts\launcher\OpenCodeWebUI.exe" goto :start_host
+set "OPENCODE_WEBUI_SETUP_COMPLETE=1"
+goto :run_launcher
+
+:start_host
 set OPENCODE_WEBUI_MODE=prod
 rem start-webui.bat is the normal VPN/LAN entry point, so manage Caddy by default.
 rem Set OPENCODE_WEBUI_CADDY=0 before launch to use the raw WebUI URL only.
@@ -102,6 +123,8 @@ set "NODE_MAJOR=0"
 for /f %%V in ('node -p "process.versions.node.split('.')[0]" 2^>nul') do set "NODE_MAJOR=%%V"
 call :node_major_is_supported
 if not errorlevel 1 exit /b 0
+call :check_winget
+if errorlevel 1 exit /b 1
 echo [OpenCode WebUI] Installing Node.js LTS...
 call winget install --id OpenJS.NodeJS.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :node_install_failed
@@ -129,6 +152,8 @@ exit /b 3
 :check_opencode
 call opencode --version >nul 2>&1
 if not errorlevel 1 exit /b 0
+call where winget >nul 2>&1
+if errorlevel 1 goto :install_opencode_with_npm
 echo [OpenCode WebUI] Installing OpenCode with winget...
 call winget install --id SST.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :install_opencode_with_npm
@@ -151,7 +176,12 @@ call :fail 4 "OpenCode could not be installed." error-4-install
 exit /b 4
 
 :install_web
-if exist "web\node_modules\" goto :install_web_build
+if not exist "web\node_modules\" goto :install_web_run
+call npm --prefix web ls --depth=0 >nul 2>&1
+if not errorlevel 1 goto :install_web_build
+echo [OpenCode WebUI] Web dependencies changed; refreshing...
+
+:install_web_run
 echo [OpenCode WebUI] Installing web dependencies...
 pushd web
 if errorlevel 1 goto :web_ci_failed_without_pushd
@@ -217,7 +247,8 @@ exit /b 7
 
 :install_host
 if not exist "host\node_modules\" goto :install_host_run
-if exist "host\node_modules\ws\package.json" exit /b 0
+call npm --prefix host ls --depth=0 >nul 2>&1
+if not errorlevel 1 exit /b 0
 echo [OpenCode WebUI] Host dependencies changed; refreshing...
 
 :install_host_run
@@ -237,6 +268,30 @@ exit /b 8
 popd
 call :fail 8 "host dependencies could not be installed." error-8
 exit /b 8
+
+:install_browser_bridge
+if not exist "browser-bridge\node_modules\" goto :install_browser_bridge_run
+call npm --prefix browser-bridge ls --depth=0 >nul 2>&1
+if not errorlevel 1 exit /b 0
+echo [OpenCode WebUI] Browser Bridge dependencies changed; refreshing...
+
+:install_browser_bridge_run
+echo [OpenCode WebUI] Installing Browser Bridge dependencies...
+pushd browser-bridge
+if errorlevel 1 goto :browser_bridge_ci_failed_without_pushd
+call npm ci
+if errorlevel 1 goto :browser_bridge_ci_failed
+popd
+exit /b 0
+
+:browser_bridge_ci_failed_without_pushd
+call :fail 9 "Browser Bridge dependencies could not be installed." error-9
+exit /b 9
+
+:browser_bridge_ci_failed
+popd
+call :fail 9 "Browser Bridge dependencies could not be installed." error-9
+exit /b 9
 
 :fail
 set "FAIL_CODE=%~1"
@@ -259,6 +314,11 @@ exit /b 0
 if not defined CP_ORIGINAL exit /b 0
 chcp %CP_ORIGINAL% >nul 2>&1
 exit /b 0
+
+:launcher_is_current
+if not exist "scripts\launcher\OpenCodeWebUI.exe" exit /b 1
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$e=(Get-Item -LiteralPath 'scripts\launcher\OpenCodeWebUI.exe').LastWriteTimeUtc; if((Test-Path -LiteralPath 'scripts\launcher\Launcher.cs') -and (Get-Item -LiteralPath 'scripts\launcher\Launcher.cs').LastWriteTimeUtc -gt $e){exit 1}; if((Test-Path -LiteralPath 'scripts\build-launcher.bat') -and (Get-Item -LiteralPath 'scripts\build-launcher.bat').LastWriteTimeUtc -gt $e){exit 1}; if((Test-Path -LiteralPath 'host\src\icon.json') -and (Get-Item -LiteralPath 'host\src\icon.json').LastWriteTimeUtc -gt $e){exit 1}" >nul 2>&1
+exit /b %ERRORLEVEL%
 
 :pause_if_interactive
 if "%OPENCODE_WEBUI_NONINTERACTIVE%"=="1" exit /b 0

@@ -1,0 +1,2 @@
+[OpenCode WebUI] Browser Bridgeの依存関係の導入に失敗しました。
+[OpenCode WebUI] 復旧案内: browser-bridgeフォルダーで npm ci を実行し、表示されたエラーを確認してください。

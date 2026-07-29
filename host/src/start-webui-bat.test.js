@@ -35,6 +35,7 @@ function createSandbox(options = {}) {
   // them via options below, which exercises the idempotent fast path.
   mkdirSync(join(root, "web"), { recursive: true });
   mkdirSync(join(root, "host"), { recursive: true });
+  mkdirSync(join(root, "browser-bridge"), { recursive: true });
   writeFileSync(join(root, "start-webui.bat"), readFileSync(startWebuiSource));
   if (options.withMessages !== false) {
     mkdirSync(join(root, "scripts"), { recursive: true });
@@ -49,6 +50,9 @@ function createSandbox(options = {}) {
   if (options.hostNodeModules) {
     mkdirSync(join(root, "host", "node_modules", "ws"), { recursive: true });
     writeFileSync(join(root, "host", "node_modules", "ws", "package.json"), "{}\r\n", "ascii");
+  }
+  if (options.browserBridgeNodeModules) {
+    mkdirSync(join(root, "browser-bridge", "node_modules"), { recursive: true });
   }
 
   writeBat(join(bin, "where.cmd"), [
@@ -107,11 +111,18 @@ function createSandbox(options = {}) {
   ].join("\n"));
   writeBat(join(bin, "npm.cmd"), [
     'echo npm %CD% %*>>"%SETUP_TEST_LOG%"',
+    'if "%~1"=="--prefix" if "%~3"=="ls" goto :prefix_ls',
     'if "%~1"=="install" if "%~2"=="-g" goto :global',
     'if /i "%CD:~-4%"=="\\web" if "%~1"=="ci" exit /b %SETUP_TEST_NPM_WEB_CI_EXIT%',
     'if /i "%CD:~-4%"=="\\web" if "%~1"=="run" if "%~2"=="build" goto :build',
     'if /i "%CD:~-5%"=="\\host" if "%~1"=="ci" exit /b %SETUP_TEST_NPM_HOST_CI_EXIT%',
+    'if /i "%CD:~-15%"=="\\browser-bridge" if "%~1"=="ci" exit /b %SETUP_TEST_NPM_BROWSER_BRIDGE_CI_EXIT%',
     "exit /b 0",
+    ":prefix_ls",
+    'if /i "%~2"=="web" exit /b %SETUP_TEST_NPM_WEB_LS_EXIT%',
+    'if /i "%~2"=="host" exit /b %SETUP_TEST_NPM_HOST_LS_EXIT%',
+    'if /i "%~2"=="browser-bridge" exit /b %SETUP_TEST_NPM_BROWSER_BRIDGE_LS_EXIT%',
+    "exit /b 87",
     ":global",
     'if not "%SETUP_TEST_NPM_GLOBAL_EXIT%"=="0" exit /b %SETUP_TEST_NPM_GLOBAL_EXIT%',
     'type nul > "%SETUP_TEST_ROOT%\\opencode-npm-installed"',
@@ -145,8 +156,12 @@ function createSandbox(options = {}) {
     SETUP_TEST_OPENCODE_EXIT: String(options.opencodeExit ?? 0),
     SETUP_TEST_NPM_GLOBAL_EXIT: String(options.npmGlobalExit ?? 0),
     SETUP_TEST_NPM_WEB_CI_EXIT: String(options.npmWebCiExit ?? 0),
+    SETUP_TEST_NPM_WEB_LS_EXIT: String(options.npmWebLsExit ?? 0),
     SETUP_TEST_NPM_WEB_BUILD_EXIT: String(options.npmWebBuildExit ?? 0),
     SETUP_TEST_NPM_HOST_CI_EXIT: String(options.npmHostCiExit ?? 0),
+    SETUP_TEST_NPM_HOST_LS_EXIT: String(options.npmHostLsExit ?? 0),
+    SETUP_TEST_NPM_BROWSER_BRIDGE_CI_EXIT: String(options.npmBrowserBridgeCiExit ?? 0),
+    SETUP_TEST_NPM_BROWSER_BRIDGE_LS_EXIT: String(options.npmBrowserBridgeLsExit ?? 0),
     SETUP_TEST_CREATE_BUILD_ID: options.createBuildId === false ? "0" : "1",
     SETUP_TEST_GUARD_EXIT: String(options.guardExit ?? 0),
     SETUP_TEST_HOST_EXIT: String(options.hostExit ?? 0),
@@ -213,7 +228,24 @@ test("start-webui.bat installs winget/Node.js/OpenCode/deps on a fresh machine, 
     assert.match(log, /install --id SST\.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /npm .*\\web ci/);
     assert.match(log, /npm .*\\host ci/);
+    assert.match(log, /npm .*\\browser-bridge ci/);
     assert.doesNotMatch(log, /npm .* install -g opencode-ai/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat does not require winget when Node.js and OpenCode are already available", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({
+    withWinget: false,
+    webNodeModules: true,
+    webBuildId: true,
+    hostNodeModules: true,
+    browserBridgeNodeModules: true,
+  });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "existing tools without winget");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
   } finally { sandbox.cleanup(); }
 });
 
@@ -241,7 +273,12 @@ test("start-webui.bat falls back to npm only after the OpenCode winget install f
 });
 
 test("start-webui.bat skips npm ci / build / guard entirely when already installed (idempotent fast path)", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ webNodeModules: true, webBuildId: true, hostNodeModules: true });
+  const sandbox = createSandbox({
+    webNodeModules: true,
+    webBuildId: true,
+    hostNodeModules: true,
+    browserBridgeNodeModules: true,
+  });
   try {
     const result = sandbox.run();
     assertCompleted(result, "idempotent fast path");
@@ -251,6 +288,27 @@ test("start-webui.bat skips npm ci / build / guard entirely when already install
     const log = existsSync(sandbox.log) ? readFileSync(sandbox.log, "utf8") : "";
     assert.doesNotMatch(log, /\bci\b/, "npm ci must not run when node_modules already exists");
     assert.doesNotMatch(log, /run build/, "npm run build must not run when BUILD_ID already exists");
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat refreshes existing but invalid dependency trees", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({
+    webNodeModules: true,
+    webBuildId: true,
+    hostNodeModules: true,
+    browserBridgeNodeModules: true,
+    npmWebLsExit: 1,
+    npmHostLsExit: 1,
+    npmBrowserBridgeLsExit: 1,
+  });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "stale dependencies");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const log = readFileSync(sandbox.log, "utf8");
+    assert.match(log, /npm .*\\web ci/);
+    assert.match(log, /npm .*\\host ci/);
+    assert.match(log, /npm .*\\browser-bridge ci/);
   } finally { sandbox.cleanup(); }
 });
 
@@ -351,7 +409,7 @@ test("start-webui.bat passes --stop to the production WebUI guard", { skip: !isW
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {
   const cases = [
-    ["wingetがありません", { withWinget: false }, 1, "wingetが見つかりません"],
+    ["wingetがありません", { withWinget: false, nodeMajor: 18 }, 1, "wingetが見つかりません"],
     ["Node.jsの導入に失敗", { nodeMajor: 18, wingetNodeExit: 1 }, 2, "Node.jsの導入に失敗しました"],
     ["Node.jsのPATHが未反映", { withNode: false }, 3, "Node.jsがこのコマンドプロンプトで利用できません"],
     ["OpenCodeのPATHが未反映", { opencodeExit: 1, opencodeWingetMarker: false }, 4, "OpenCodeがこのコマンドプロンプトで利用できません"],
@@ -360,6 +418,7 @@ test("start-webui.bat returns documented failures without reaching the host tail
     ["webのビルドに失敗", { npmWebBuildExit: 1 }, 6, "webのビルドに失敗しました"],
     ["webのBUILD_IDがない", { createBuildId: false }, 7, "ビルド後にBUILD_IDが見つかりません"],
     ["hostのnpm ciに失敗", { npmHostCiExit: 1 }, 8, "hostの依存関係の導入に失敗しました"],
+    ["browser-bridgeのnpm ciに失敗", { npmBrowserBridgeCiExit: 1 }, 9, "Browser Bridgeの依存関係の導入に失敗しました"],
   ];
   for (const [name, options, expectedExit, expectedMessage] of cases) {
     const sandbox = createSandbox(options);

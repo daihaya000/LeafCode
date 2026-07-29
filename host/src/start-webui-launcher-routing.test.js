@@ -99,6 +99,42 @@ test(
 );
 
 test(
+  "start-webui.bat rebuilds an existing launcher when its build inputs are newer",
+  { skip: !isWindows || !csc },
+  () => {
+    const fakeRepo = makeFakeRepo();
+    const scriptsDir = join(fakeRepo, "scripts");
+    const launcherDir = join(scriptsDir, "launcher");
+    mkdirSync(launcherDir, { recursive: true });
+    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
+    const prebuiltReplacement = join(fakeRepo, "replacement.exe");
+    try {
+      const oldCompile = compileMarkerExe(exePath, 7);
+      assert.equal(oldCompile.status, 0, `csc failed: ${oldCompile.stderr}\n${oldCompile.stdout}`);
+      const newCompile = compileMarkerExe(prebuiltReplacement, 9);
+      assert.equal(newCompile.status, 0, `csc failed: ${newCompile.stderr}\n${newCompile.stdout}`);
+
+      writeFileSync(
+        join(scriptsDir, "build-launcher.bat"),
+        [
+          "@echo off",
+          "echo [OpenCode WebUI] FAKE_STALE_REBUILD_RAN",
+          `copy /y "${prebuiltReplacement}" "%~dp0launcher\\OpenCodeWebUI.exe" >nul`,
+          "exit /b 0",
+        ].join("\r\n") + "\r\n",
+      );
+
+      const result = runStartWebui(fakeRepo, { OPENCODE_WEBUI_LAUNCHER: "" });
+      assert.equal(result.status, 9, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.match(result.stdout, /FAKE_STALE_REBUILD_RAN/);
+      assert.match(result.stdout, /MARKER_RAN/);
+    } finally {
+      rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
   "start-webui.bat skips launcher routing when OPENCODE_WEBUI_LAUNCHER=1 is already set, and proceeds to the normal startup steps",
   { skip: !isWindows || !csc },
   () => {
