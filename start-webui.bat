@@ -105,6 +105,7 @@ if not errorlevel 1 exit /b 0
 echo [OpenCode WebUI] Installing Node.js LTS...
 call winget install --id OpenJS.NodeJS.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :node_install_failed
+if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
 call where node >nul 2>&1
 if errorlevel 1 goto :node_path_not_refreshed
 set "NODE_MAJOR=0"
