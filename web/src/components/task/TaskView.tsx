@@ -1945,10 +1945,19 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (am) return `${am.providerID}::${am.modelID}`;
     return model || ``;
   })();
-  const imageSupported = effectiveModelKey
-    ? modelCapabilities[effectiveModelKey]?.image === true ||
-      modelCapabilities[effectiveModelKey]?.attachment === true
-    : false;
+  const imageSupported =
+    effectiveModelKey === AUTO_MODEL_VALUE
+      ? // Auto carries no capabilities: keep the attachment controls usable
+        // when any connected model could take an image. The send-time
+        // resolution then restricts the candidates to image-capable models.
+        Object.values(modelCapabilities).some(
+          (capability) =>
+            capability.image === true || capability.attachment === true,
+        )
+      : effectiveModelKey
+        ? modelCapabilities[effectiveModelKey]?.image === true ||
+          modelCapabilities[effectiveModelKey]?.attachment === true
+        : false;
   const hasImageAttachment = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
   const showImageWarning = hasImageAttachment && !imageSupported;
 

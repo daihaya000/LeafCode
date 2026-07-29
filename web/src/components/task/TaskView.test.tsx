@@ -10,6 +10,7 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { writeLastUsedModel } from "@/lib/default-model";
 import type { TaskSummary } from "@/lib/types";
 import { TaskView, __clearTaskViewCachesForTest } from "./TaskView";
 
@@ -1877,6 +1878,324 @@ describe("TaskView", () => {
       await raiseSessionError(base, rerender);
 
       expect(sendPrompt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("follow-up auto model", () => {
+    const CLOSE_LABEL = "Auto の選定結果を閉じる";
+
+    /**
+     * Two cost tiers plus an image-only model so tier selection, the image
+     * filter and the effort choice are all observable through the send opts.
+     */
+    function providerPayload() {
+      return {
+        all: [
+          {
+            id: "anthropic",
+            name: "Anthropic",
+            models: {
+              "claude-haiku-4-5": {
+                name: "Claude Haiku 4.5",
+                variants: { minimal: {}, low: {}, high: {} },
+                capabilities: { input: { image: false }, attachment: false },
+              },
+              "claude-opus-5": {
+                name: "Claude Opus 5",
+                variants: { medium: {}, high: {} },
+                capabilities: { input: { image: true }, attachment: false },
+              },
+            },
+          },
+        ],
+        connected: ["anthropic"],
+        default: { anthropic: "claude-haiku-4-5" },
+      };
+    }
+
+    function stubProviderFetch(payload: unknown = providerPayload()) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) => {
+          if (String(input).includes("/api/opencode/provider")) {
+            return Promise.resolve({ ok: true, json: async () => payload });
+          }
+          return Promise.resolve({ ok: false });
+        }),
+      );
+    }
+
+    /** Pick Auto in the composer's model dropdown. */
+    async function selectAuto() {
+      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      fireEvent.click(
+        await screen.findByRole("option", { name: /Auto（コスト最適）/ }),
+      );
+    }
+
+    async function typeAndSend(text: string) {
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "フォローアップを送信" }),
+        { target: { value: text } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    }
+
+    beforeEach(() => {
+      taskStatus = "idle";
+      sessionStorage.clear();
+      stubProviderFetch();
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        status: { type: "idle" },
+      });
+    });
+
+    afterEach(() => {
+      sessionStorage.clear();
+    });
+
+    it("offers Auto as the first option in the model dropdown", async () => {
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      const options = await screen.findAllByRole("option");
+      expect(options[0].textContent).toContain("Auto（コスト最適）");
+    });
+
+    it("resolves a cheap model with a minimal effort for a short question", async () => {
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("なぜ失敗するのか");
+
+      await waitFor(() =>
+        expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+          "なぜ失敗するのか",
+          expect.objectContaining({
+            model: {
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+            },
+            variant: "minimal",
+            sessionId: "sess1",
+          }),
+        ),
+      );
+    });
+
+    it("uses a low effort for a standard coding follow-up", async () => {
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("ログ出力を追加して");
+
+      await waitFor(() =>
+        expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+          "ログ出力を追加して",
+          expect.objectContaining({
+            model: {
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+            },
+            variant: "low",
+          }),
+        ),
+      );
+    });
+
+    it("escalates to the strongest model for a heavy task", async () => {
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("認証周りを全面的にリファクタリングして");
+
+      await waitFor(() =>
+        expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+          "認証周りを全面的にリファクタリングして",
+          expect.objectContaining({
+            model: { providerID: "anthropic", modelID: "claude-opus-5" },
+            variant: "medium",
+          }),
+        ),
+      );
+    });
+
+    it("resolves a slash command the same way", async () => {
+      slashCommands.push({ name: "review" });
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("/review なぜ失敗するのか");
+
+      await waitFor(() =>
+        expect(streamMock.sendCommand).toHaveBeenCalledWith(
+          "review",
+          "なぜ失敗するのか",
+          expect.objectContaining({
+            model: {
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+            },
+            variant: "minimal",
+          }),
+        ),
+      );
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("shows the resolution notice and closes it on demand", async () => {
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("なぜ失敗するのか");
+
+      const notice = await screen.findByText(
+        "Auto: anthropic/claude-haiku-4-5 · effort minimal — 短い質問タスクのため低コストモデルを選択しました",
+      );
+      expect(notice).toBeTruthy();
+      fireEvent.click(screen.getByLabelText(CLOSE_LABEL));
+      expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
+    });
+
+    it("remembers Auto as the last used model", async () => {
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("なぜ失敗するのか");
+
+      await waitFor(() =>
+        expect(writeLastUsedModel).toHaveBeenCalledWith("auto"),
+      );
+    });
+
+    it("keeps the agent model when the agent pins one", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/api/opencode/provider")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => providerPayload(),
+            });
+          }
+          if (url.includes("/api/opencode/agent")) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => [
+                {
+                  name: "build",
+                  model: { providerID: "openai", modelID: "gpt-5.6" },
+                },
+              ],
+            });
+          }
+          return Promise.resolve({ ok: false });
+        }),
+      );
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      fireEvent.change(await screen.findByLabelText("エージェント"), {
+        target: { value: "build" },
+      });
+      await typeAndSend("なぜ失敗するのか");
+
+      await waitFor(() => expect(streamMock.sendPrompt).toHaveBeenCalled());
+      const opts = streamMock.sendPrompt.mock.calls[0][1];
+      expect(opts.model).toBeUndefined();
+      expect(opts.variant).toBeUndefined();
+      expect(opts.agent).toBe("build");
+    });
+
+    it("restricts the candidates to image-capable models when an image is attached", async () => {
+      const streamMock = useSessionStream();
+      const view = render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+
+      const image = new File(["img"], "shot.png", { type: "image/png" });
+      const input = view.container.querySelector('input[type="file"]');
+      fireEvent.change(input as HTMLInputElement, { target: { files: [image] } });
+      expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
+      await typeAndSend("なぜ失敗するのか");
+
+      // Haiku is cheaper but text-only, so the image-capable Opus wins.
+      await waitFor(() =>
+        expect(streamMock.sendPrompt).toHaveBeenCalledWith(
+          "なぜ失敗するのか",
+          expect.objectContaining({
+            model: { providerID: "anthropic", modelID: "claude-opus-5" },
+          }),
+        ),
+      );
+    });
+
+    it("aborts with an error and keeps the draft when nothing can be selected", async () => {
+      // Connected provider without any usable model: Auto stays selectable
+      // (it is inserted unconditionally) but resolves to nothing.
+      stubProviderFetch({
+        all: [{ id: "anthropic", name: "Anthropic", models: {} }],
+        connected: ["anthropic"],
+        default: {},
+      });
+      const streamMock = useSessionStream();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      await typeAndSend("なぜ失敗するのか");
+
+      expect(
+        await screen.findByText(
+          "Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。",
+        ),
+      ).toBeTruthy();
+      expect(streamMock.sendPrompt).not.toHaveBeenCalled();
+      expect(
+        (
+          screen.getByRole("combobox", {
+            name: "フォローアップを送信",
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toBe("なぜ失敗するのか");
+    });
+
+    it("passes the resolved model to a goal loop", async () => {
+      sendJson.mockResolvedValue({
+        loop: { id: "loop1", status: "queued", turns: [] },
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Goalループで継続実行" }),
+      );
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "フォローアップを送信" }),
+        { target: { value: "なぜ失敗するのか" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+
+      await waitFor(() =>
+        expect(sendJson).toHaveBeenCalledWith(
+          "POST",
+          "/api/tasks/ws1/goal-loop",
+          expect.objectContaining({
+            model: {
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+            },
+            variant: "minimal",
+          }),
+        ),
+      );
     });
   });
 });
