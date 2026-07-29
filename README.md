@@ -64,6 +64,7 @@ node src\index.js
 | 文書 | 役割 |
 |------|------|
 | [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
+| [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP セットアップ手順 |
 | [OpenCode Docs](https://opencode.ai/docs) | OpenCode 公式ドキュメント |
 
 企画・アーキテクチャや開発途中の計画・作業メモは非公開のローカル文書として管理しており、本リポジトリには含まれません。
