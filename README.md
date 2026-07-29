@@ -161,4 +161,4 @@ cd web && npm install && npm run dev
 ```
 
 別ターミナルで `opencode serve --hostname 127.0.0.1 --port 4096`。  
-スモーク: WebUI 起動後に `node scripts/smoke-api.mjs`
+スモーク: WebUI 起動後に `node scripts/smoke-api.mjs`。Browser Bridge はトレイ host が起動済みの環境で `npm run smoke:browser-bridge` を実行する（このコマンドは host / Broker を起動しない）。
