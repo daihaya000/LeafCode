@@ -4,10 +4,10 @@ import { assertAllowedDirectory } from "@/lib/allowlist";
 import { connectPty, PtyError } from "@/lib/pty-session";
 import { logPtyEvent } from "@/lib/pty-audit";
 import {
+  acquireRelay,
   deleteRelay,
-  getRelay,
   releaseRelay,
-  setRelay,
+  type PtyRelay,
 } from "@/lib/pty-relay";
 
 export const runtime = "nodejs";
@@ -56,40 +56,40 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Open (or reuse) the BFF→Engine WebSocket for this PTY.
-  let relay = getRelay(ptyId);
-  if (!relay) {
-    let ws: WebSocket;
-    try {
-      ws = await connectPty(dirCheck.path, ptyId);
-    } catch (err) {
-      const status = err instanceof PtyError ? err.status : 500;
-      const message = err instanceof Error ? err.message : "failed to connect";
-      return new Response(JSON.stringify({ error: message }), {
-        status,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    relay = { ws, refcount: 0, listeners: new Set(), closed: false };
-    setRelay(ptyId, relay);
-
-    const onMessage = (ev: MessageEvent) => {
-      const data = typeof ev.data === "string" ? ev.data : "";
-      for (const listener of relay!.listeners) {
-        try { listener(data); } catch { /* ignore listener errors */ }
-      }
-    };
-    const onClose = () => {
-      relay!.closed = true;
-      deleteRelay(ptyId);
-      logPtyEvent(ptyId, "disconnect", { directory: dirCheck.path });
-      for (const listener of relay!.listeners) {
-        try { listener(""); } catch { /* ignore */ }
-      }
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
-    ws.addEventListener("error", onClose);
+  // Open (or reuse) the BFF→Engine WebSocket for this PTY. acquireRelay
+  // dedupes concurrent callers so a single PTY never gets two Engine sockets.
+  let relay: PtyRelay | undefined;
+  try {
+    relay = await acquireRelay(
+      ptyId,
+      () => connectPty(dirCheck.path, ptyId),
+      (r) => {
+        const onMessage = (ev: MessageEvent) => {
+          const data = typeof ev.data === "string" ? ev.data : "";
+          for (const listener of r.listeners) {
+            try { listener(data); } catch { /* ignore listener errors */ }
+          }
+        };
+        const onClose = () => {
+          r.closed = true;
+          deleteRelay(ptyId);
+          logPtyEvent(ptyId, "disconnect", { directory: dirCheck.path });
+          for (const listener of r.listeners) {
+            try { listener(""); } catch { /* ignore */ }
+          }
+        };
+        r.ws.addEventListener("message", onMessage);
+        r.ws.addEventListener("close", onClose);
+        r.ws.addEventListener("error", onClose);
+      },
+    );
+  } catch (err) {
+    const status = err instanceof PtyError ? err.status : 500;
+    const message = err instanceof Error ? err.message : "failed to connect";
+    return new Response(JSON.stringify({ error: message }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
   }
   relay.refcount += 1;
 
