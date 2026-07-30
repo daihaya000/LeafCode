@@ -207,3 +207,91 @@ export function removePty(
     directory,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Phase B: WebSocket relay (BFF ↔ Engine) + pseudo-bidirectional SSE/POST
+// (Browser ↔ BFF). Next.js Route Handlers cannot accept HTTP Upgrade, so the
+// browser side uses an SSE output stream + POST input stream, while the BFF
+// talks to the Engine over a real WebSocket (Node 22+ global `WebSocket`).
+// ---------------------------------------------------------------------------
+
+/** Result of `POST /pty/{id}/connect-token` — a short-lived WS ticket. */
+export interface PtyConnectToken {
+  ticket: string;
+  expires_in: number;
+}
+
+/**
+ * Issue a short-lived WebSocket connect ticket from the Engine for `ptyId`.
+ * Uses the v1 endpoint; the ticket is forwarded to the WS URL by `connectPty`.
+ */
+export function createConnectToken(
+  directory: string,
+  ptyId: string,
+): Promise<PtyConnectToken> {
+  // The v2 token endpoint returns `{ location, data: { ticket, expires_in } }`;
+  // normalize both v1 and v2 shapes.
+  return engineFetch<unknown>(
+    `/pty/${encodeURIComponent(ptyId)}/connect-token`,
+    { method: "POST", directory },
+  ).then((raw) => {
+    const r = raw as Partial<PtyConnectToken> & {
+      data?: Partial<PtyConnectToken>;
+    };
+    const inner = r.data ?? r;
+    if (!inner || typeof inner.ticket !== "string") {
+      throw new PtyError("engine did not return a connect ticket", 502);
+    }
+    return {
+      ticket: inner.ticket,
+      expires_in: typeof inner.expires_in === "number" ? inner.expires_in : 0,
+    };
+  });
+}
+
+/**
+ * Build the Engine WebSocket URL for `/pty/{id}/connect`.
+ *
+ * The v1 connect endpoint declares no query params, so the ticket is passed
+ * via the `Sec-WebSocket-Protocol` subprotocol (`ticket.<value>`). The v2
+ * endpoint accepts `?ticket=` as a query param. We try v2 first (cleaner),
+ * falling back is unnecessary because the Engine accepts both forms here.
+ */
+function engineWsUrl(
+  ptyId: string,
+  directory: string,
+  ticket: string,
+): { url: string; protocols: string[] } {
+  const base = new URL(OPENCODE_BASE_URL);
+  // http(s) -> ws(s)
+  const wsProto = base.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new URL(`${wsProto}//${base.host}/api/pty/${encodeURIComponent(ptyId)}/connect`);
+  ws.searchParams.set("ticket", ticket);
+  ws.searchParams.set("location[directory]", directory);
+  return { url: ws.toString(), protocols: [] };
+}
+
+/** Open BFF→Engine WebSocket and resolve once open. Rejects on error/timeout. */
+export function connectPty(
+  directory: string,
+  ptyId: string,
+): Promise<WebSocket> {
+  return createConnectToken(directory, ptyId).then((token) => {
+    const { url, protocols } = engineWsUrl(ptyId, directory, token.ticket);
+    const ws = new WebSocket(url, protocols);
+    return new Promise<WebSocket>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        try { ws.close(); } catch { /* ignore */ }
+        reject(new PtyError("engine WebSocket open timed out", 504));
+      }, DEFAULT_TIMEOUT_MS);
+      ws.addEventListener("open", () => {
+        clearTimeout(timer);
+        resolve(ws);
+      });
+      ws.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new PtyError("engine WebSocket connection failed", 502));
+      });
+    });
+  });
+}
