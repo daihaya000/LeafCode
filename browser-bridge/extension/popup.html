@@ -1,3 +1,48 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="popup.css"><title>Browser Bridge</title></head>
-<body><main><h1>Browser Bridge</h1><p id="status" role="status">接続を確認しています…</p><label>Broker URL<input id="broker-url" value="ws://127.0.0.1:18766/extension" inputmode="url"></label><label>ペアリングコード<input id="pairing-code" autocomplete="one-time-code"></label><button id="pair" class="primary">拡張機能をペアリング</button><button id="share" class="secondary">現在のタブを共有</button><label class="auto-share"><input type="checkbox" id="auto-share"> 閲覧中のタブを自動的に共有</label><p class="warning">初回のみ広範なサイト権限を許可します。以後、対象タブを開くたびに再確認なしで自動共有されます。</p><ul id="tabs"></ul><button id="revoke" class="danger">この接続を削除</button></main><script type="module" src="popup.mjs"></script></body></html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="popup.css">
+  <title>Browser Bridge</title>
+</head>
+<body>
+  <main>
+    <header class="app-header">
+      <img src="icons/icon-32.png" width="20" height="20" alt="">
+      <h1>Browser Bridge</h1>
+    </header>
+
+    <p id="status" class="status-badge" role="status">
+      <span id="status-dot" class="status-dot" aria-hidden="true"></span>
+      <span id="status-text">接続を確認しています…</span>
+    </p>
+
+    <section id="connect-section" class="card">
+      <h2>接続</h2>
+      <label>Broker URL<input id="broker-url" value="ws://127.0.0.1:18766/extension" inputmode="url"></label>
+      <label>ペアリングコード<input id="pairing-code" autocomplete="one-time-code"></label>
+      <button id="pair" class="primary">拡張機能をペアリング</button>
+    </section>
+
+    <section class="card">
+      <h2>タブ共有</h2>
+      <button id="share" class="secondary">現在のタブを共有</button>
+      <label class="switch-row">
+        <span>閲覧中のタブを自動的に共有</span>
+        <span class="switch"><input type="checkbox" id="auto-share"><span class="switch-track"></span></span>
+      </label>
+      <p class="note">初回のみ広範なサイト権限を許可します。以後、対象タブを開くたびに再確認なしで自動共有されます。</p>
+    </section>
+
+    <section class="card">
+      <h2 id="tabs-heading">共有中のタブ</h2>
+      <ul id="tabs"></ul>
+      <p id="tabs-empty" class="placeholder">共有中のタブはありません</p>
+    </section>
+
+    <button id="revoke" class="danger">この接続を削除</button>
+  </main>
+  <script type="module" src="popup.mjs"></script>
+</body>
+</html>
