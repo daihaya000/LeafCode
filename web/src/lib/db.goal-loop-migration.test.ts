@@ -68,15 +68,16 @@ function goalLoopColumns(): Map<string, { notnull: number; dflt_value: string | 
   return new Map(rows.map((r) => [r.name, { notnull: r.notnull, dflt_value: r.dflt_value }]));
 }
 
-test("migrates a legacy goal_loops table by adding the three new columns", () => {
+test("migrates a legacy goal_loops table by adding the four new columns", () => {
   const columns = goalLoopColumns();
-  for (const name of ["revision", "turn_kind", "pause_reason", "rejected_claims"]) {
+  for (const name of ["revision", "turn_kind", "pause_reason", "rejected_claims", "pause_requested"]) {
     expect(columns.has(name), `missing column ${name}`).toBe(true);
     expect(columns.get(name)?.notnull).toBe(1);
   }
   expect(columns.get("turn_kind")?.dflt_value).toBe("'goal'");
   expect(columns.get("pause_reason")?.dflt_value).toBe("''");
   expect(columns.get("rejected_claims")?.dflt_value).toBe("0");
+  expect(columns.get("pause_requested")?.dflt_value).toBe("0");
 });
 
 test("backfills the new columns on the pre-existing row without losing data", () => {
@@ -88,6 +89,7 @@ test("backfills the new columns on the pre-existing row without losing data", ()
     turn_kind: string;
     pause_reason: string;
     rejected_claims: number;
+    pause_requested: number;
     revision: number;
   };
   expect(row.goal).toBe("legacy goal");
@@ -95,6 +97,7 @@ test("backfills the new columns on the pre-existing row without losing data", ()
   expect(row.turn_kind).toBe("goal");
   expect(row.pause_reason).toBe("");
   expect(row.rejected_claims).toBe(0);
+  expect(row.pause_requested).toBe(0);
   expect(row.revision).toBe(0);
 });
 
