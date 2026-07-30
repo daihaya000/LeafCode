@@ -122,11 +122,14 @@ OpenCodeWebUI
 
 ## ペアリングと認証
 
-1. host が短寿命・一回限りのペアリングコードを生成し、ローカル WebUI に表示する。
-2. ユーザーが拡張 UI にコードを入力する。
-3. Broker は拡張ID、ブラウザプロファイル識別子、ランダムな端末鍵を紐づける。
-4. 拡張は端末鍵を `chrome.storage.local` に、host は検証情報をユーザーデータ領域に保存する。
-5. WebSocket 接続直後の認証メッセージを検証するまで、Broker はコマンドを配送しない。
+1. 未ペアリングの拡張は Broker への WebSocket 接続直後に `request_pairing` を自動送信する。
+   コードの入力・共有は発生しない。
+2. Broker は接続ごとに 1 件だけペアリング要求を保留し、ローカル WebUI に一覧表示する。
+3. ユーザーが WebUI で要求内容（origin）を確認し、明示的に許可または拒否する。
+4. 許可された場合のみ、Broker は拡張ID、ブラウザプロファイル識別子、ランダムな端末鍵を紐づけて発行する。
+5. 拡張は端末鍵を `chrome.storage.local` に、host は検証情報をユーザーデータ領域に保存する。
+6. 未決定の要求は一定時間で失効し、拡張の切断時も即座に破棄される。
+7. WebSocket 接続直後の認証メッセージを検証するまで、Broker はコマンドを配送しない。
 
 - WebSocket は loopback bind とし、許可した `chrome-extension://<id>` Origin だけを受け付ける。
 - 秘密をURL query、ログ、Git管理ファイル、WebUIレスポンスへ含めない。
