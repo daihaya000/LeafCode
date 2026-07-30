@@ -79,7 +79,7 @@ export function PtyPanel({ directory }: { directory: string }) {
       allowProposedApi: true,
       theme: {
         background: cssVar("--surface", "#ffffff"),
-        foreground: cssVar("--muted", "#71717a"),
+        foreground: cssVar("--text", "#18181b"),
         cursor: cssVar("--muted", "#71717a"),
       },
     });
