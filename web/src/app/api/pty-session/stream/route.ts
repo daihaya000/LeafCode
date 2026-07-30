@@ -17,7 +17,7 @@ export const maxDuration = 300;
 const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
- * GET /api/pty-session/[id]/stream?directory= — SSE stream of PTY output.
+ * GET /api/pty-session/stream?id=&directory= — SSE stream of PTY output.
  *
  * The browser opens this as a long-lived SSE connection. The BFF opens a real
  * WebSocket to the Engine (`/api/pty/{id}/connect`) and forwards each received

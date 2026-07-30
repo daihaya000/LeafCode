@@ -1,20 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { removePty, PtyError } from "@/lib/pty-session";
+import { resizePty, PtyError } from "@/lib/pty-session";
 import { logPtyEvent } from "@/lib/pty-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-/** PTY id format used by the Engine (alphanumeric, avoids path injection in /pty/{id}). */
 const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const MIN_DIM = 1;
+const MAX_DIM = 1000;
+
+function validDim(n: unknown): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n >= MIN_DIM && n <= MAX_DIM;
+}
 
 /**
- * DELETE /api/pty-session/[id]?directory= — terminate a PTY (host-only).
+ * POST /api/pty-session/resize?id=&directory= — update PTY size (host-only).
+ *
+ * Body: { rows: number, cols: number }
  */
-export async function DELETE(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const denied = rejectUnlessLocal(req);
   if (denied) return denied;
 
@@ -33,16 +40,29 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: dirCheck.error }, { status: dirCheck.status });
   }
 
+  const body = (await req.json().catch(() => null)) as
+    | { rows?: number; cols?: number }
+    | null;
+  if (!body || !validDim(body.rows) || !validDim(body.cols)) {
+    return NextResponse.json(
+      { error: `rows and cols must be integers in [${MIN_DIM}, ${MAX_DIM}]` },
+      { status: 400 },
+    );
+  }
+
   try {
-    const removed = await removePty(dirCheck.path, ptyId);
-    logPtyEvent(ptyId, "delete", { directory: dirCheck.path });
-    return NextResponse.json({ ok: removed });
+    await resizePty(dirCheck.path, ptyId, body.rows, body.cols);
+    logPtyEvent(ptyId, "resize", {
+      directory: dirCheck.path,
+      detail: `${body.rows}x${body.cols}`,
+    });
+    return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof PtyError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "failed to remove PTY" },
+      { error: err instanceof Error ? err.message : "failed to resize PTY" },
       { status: 500 },
     );
   }

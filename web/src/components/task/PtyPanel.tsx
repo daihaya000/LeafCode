@@ -17,8 +17,9 @@ interface PtyInfo {
 /**
  * Interactive terminal panel backed by the host-only PTY BFF routes.
  *
- * Output flows Engine WebSocket → BFF SSE (`/api/pty-session/[id]/stream`);
- * input flows browser POST (`/api/pty-session/[id]/input`). The Engine's
+ * Output flows Engine WebSocket → BFF SSE (`/api/pty-session/stream?id=`);
+ * input flows browser POST (`/api/pty-session/input?id=`), and terminal
+ * resizes flow to `POST /api/pty-session/resize?id=`. The Engine's
  * connect ticket never reaches the browser — the BFF holds the only
  * WebSocket to the Engine.
  */
@@ -165,9 +166,28 @@ export function PtyPanel({ directory }: { directory: string }) {
       });
     });
 
+    // Sync the terminal size to the Engine PTY so vim/htop layouts match.
+    // fit() fires onResize on the initial measurement, covering the first
+    // sync; container ResizeObserver-driven fits cover subsequent changes.
+    const resizeDisposable = term.onResize(({ cols, rows }) => {
+      if (!activeId) return;
+      void fetch(
+        apiUrl("/api/pty-session/resize", { id: activeId, directory }),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ rows, cols }),
+          keepalive: true,
+        },
+      ).catch(() => {
+        /* best effort; resize failures don't surface to the user */
+      });
+    });
+
     return () => {
       es.close();
       disposable.dispose();
+      resizeDisposable.dispose();
     };
   }, [activeId, directory, mountTerminal]);
 

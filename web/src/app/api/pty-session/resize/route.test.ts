@@ -46,11 +46,11 @@ function jsonBody(body: unknown): BodyInit {
   };
 }
 
-describe("POST /api/pty-session/[id]/resize", () => {
+describe("POST /api/pty-session/resize", () => {
   it("rejects non-loopback callers (host-only guard)", async () => {
     const res = await POST(
       lanRequest(
-        "http://localhost/api/pty-session/pty_1/resize?directory=C:/proj",
+        "http://localhost/api/pty-session/resize?id=pty_1&directory=C:/proj",
         jsonBody({ rows: 24, cols: 80 }),
       ),
     );
@@ -60,12 +60,12 @@ describe("POST /api/pty-session/[id]/resize", () => {
   it("rejects malformed pty id", async () => {
     const res = await POST(
       localRequest(
-        "http://localhost/api/pty-session/escape/resize?directory=C:/proj",
+        "http://localhost/api/pty-session/resize?directory=C:/proj",
         jsonBody({ rows: 24, cols: 80 }),
       ),
     );
-    // The dynamic param is in the URL path, not a query param here; the route
-    // reads `id` from searchParams, so a missing id is rejected.
+    // No `id` query param — the route reads `id` from searchParams, so the
+    // request is rejected.
     expect(res.status).toBe(400);
   });
 

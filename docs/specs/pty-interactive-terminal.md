@@ -72,12 +72,12 @@ if (m === "POST" && /^\/pty\/[^/]+\/connect-token$/.test(p)) return true;
 ```
 Browser (xterm.js)
   → PTY 専用 API (api/pty-session/**, host-only)
-      - POST   /api/pty-session            PTY 作成（Engine POST /pty を代行）
-      - GET    /api/pty-session            一覧（Engine GET /pty を代行）
-      - POST   /api/pty-session/:id/resize size 更新（Engine PUT /pty/:id を代行）
-      - DELETE /api/pty-session/:id         終了（Engine DELETE /pty/:id を代行）
-      - GET    /api/pty-session/:id/stream  SSE 出力ストリーム（Engine WS → BFF → ブラウザ）
-      - POST   /api/pty-session/:id/input   入力送信（ブラウザ → BFF → Engine WS）
+      - POST   /api/pty-session              PTY 作成（Engine POST /pty を代行）
+      - GET    /api/pty-session              一覧（Engine GET /pty を代行）
+      - POST   /api/pty-session/resize?id=    size 更新（Engine PUT /pty/:id を代行）
+      - DELETE /api/pty-session?id=           終了（Engine DELETE /pty/:id を代行）
+      - GET    /api/pty-session/stream?id=     SSE 出力ストリーム（Engine WS → BFF → ブラウザ）
+      - POST   /api/pty-session/input?id=      入力送信（ブラウザ → BFF → Engine WS）
   → Engine PTY API（127.0.0.1、BFF からのみ到達）
 ```
 
@@ -98,10 +98,10 @@ Browser (xterm.js)
 |-----|------|------|------------|
 | `POST /api/pty-session` | host-only | `{ directory, cwd?, title? }` | `{ id, title, cwd, status }` |
 | `GET /api/pty-session?directory=` | host-only | なし | `{ sessions: [{ id, title, cwd, status }] }` |
-| `POST /api/pty-session/:id/resize` | host-only | `{ rows, cols }` | `{ ok: true }` |
-| `DELETE /api/pty-session/:id` | host-only | なし | `{ ok: true }` |
-| `GET /api/pty-session/:id/stream` | host-only | `?id=&directory=` | 出力: `text/event-stream` (`data: {t:"o",d:"..."}`) |
-| `POST /api/pty-session/:id/input` | host-only | `{ data: string }` | `{ ok: true }` |
+| `POST /api/pty-session/resize?id=` | host-only | `{ rows, cols }` | `{ ok: true }` |
+| `DELETE /api/pty-session?id=` | host-only | なし | `{ ok: true }` |
+| `GET /api/pty-session/stream?id=` | host-only | `?id=&directory=` | 出力: `text/event-stream` (`data: {t:"o",d:"..."}`) |
+| `POST /api/pty-session/input?id=` | host-only | `{ data: string }` | `{ ok: true }` |
 
 - `directory` は既存の `directoryHeaders` / `withDirectoryQuery` の慣例に従い、
   プロジェクトディレクトリのスコープ内であることを検証してから Engine へ渡す。
@@ -112,17 +112,19 @@ Browser (xterm.js)
 
 ## WebSocket/SSE 中継の要件
 
-- BFF は `GET /api/pty-session/:id/stream` 接続時に、対象 `id` の PTY セッションが
+- BFF は `GET /api/pty-session/stream?id=` 接続時に、対象 `id` の PTY セッションが
   同一 BFF プロセスで既に作成されたものであることを検証する（他セッションの `id` を
   推測して繋がせない）。
 - BFF ⇔ Engine 間の WebSocket は `ticket`（短命トークン）で 1 回だけ確立し、
   ブラウザ切断時は Engine 側 WebSocket も必ず close する。
 - ブラウザ ⇄ BFF 間は SSE（長時間 `ReadableStream`）で PTY 出力を配信し、
-  `POST /api/pty-session/:id/input` でキー入力を受け取る。
+  `POST /api/pty-session/input?id=` でキー入力を受け取る。
   SSE フレームは `data: {t:"o",d:"..."}` という JSON 形式で、改行やバイナリデータも
   テキスト安全に中継できる。
-- resize は WebSocket フレームではなく `POST /api/pty-session/:id/resize` を使う
+- resize は WebSocket フレームではなく `POST /api/pty-session/resize?id=` を使う
   （Engine の `pty.update` は HTTP PUT のため、専用チャンネルを分けない）。
+  クライアント（`PtyPanel.tsx`）は xterm の `onResize` イベントでこのエンドポイントに
+  `{ rows, cols }` を POST し、Engine PTY の内部サイズを同期する。
 - 中継は UTF-8 テキストで行い、xterm.js 側でのエスケープシーケンス解釈に委ねる。
 ## UI 要件
 

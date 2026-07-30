@@ -11,6 +11,7 @@ const disposeMock = vi.fn();
 const fitMock = vi.fn();
 const clearMock = vi.fn();
 const dataHandlers = new Set<(data: string) => void>();
+const resizeHandlers = new Set<(dims: { cols: number; rows: number }) => void>();
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: vi.fn(() => ({
@@ -21,6 +22,10 @@ vi.mock("@xterm/xterm", () => ({
     onData: vi.fn((handler: (data: string) => void) => {
       dataHandlers.add(handler);
       return { dispose: () => { dataHandlers.delete(handler); } };
+    }),
+    onResize: vi.fn((handler: (dims: { cols: number; rows: number }) => void) => {
+      resizeHandlers.add(handler);
+      return { dispose: () => { resizeHandlers.delete(handler); } };
     }),
     loadAddon: vi.fn(),
   })),
@@ -88,6 +93,7 @@ describe("PtyPanel", () => {
     disposeMock.mockClear();
     clearMock.mockClear();
     dataHandlers.clear();
+    resizeHandlers.clear();
     eventSourceInstances.length = 0;
   });
 

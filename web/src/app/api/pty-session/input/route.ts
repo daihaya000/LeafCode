@@ -11,7 +11,7 @@ const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_INPUT_BYTES = 64 * 1024;
 
 /**
- * POST /api/pty-session/[id]/input?directory= — send keystrokes to the PTY.
+ * POST /api/pty-session/input?id=&directory= — send keystrokes to the PTY.
  *
  * Body: `{ data: string }` (raw bytes as a string; xterm.js serializes this
  * way). The BFF forwards the data to the Engine WebSocket opened by the
