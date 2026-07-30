@@ -77,10 +77,16 @@ vi.mock("@/lib/useSlashCommands", () => ({
   useSlashCommands: () => slashCommands,
 }));
 
+const { readDefaultModel, readLastUsedModel } = vi.hoisted(() => ({
+  readDefaultModel: vi.fn(() => null),
+  readLastUsedModel: vi.fn(() => null),
+}));
+
 vi.mock("@/lib/default-model", () => ({
   DEFAULT_MODEL_EVENT: "webui:default-model",
-  readDefaultModel: () => null,
+  readDefaultModel,
   readDefaultModelFromServer: () => Promise.resolve(null),
+  readLastUsedModel,
   writeDefaultModel: vi.fn(),
   writeLastUsedModel: vi.fn(),
 }));
@@ -209,6 +215,8 @@ describe("TaskView", () => {
     taskStatus = "working";
     taskResponseCosts = [0.1, 0.2];
     taskSessionId = "sess1";
+    readDefaultModel.mockReturnValue(null);
+    readLastUsedModel.mockReturnValue(null);
     taskResponseId = "ws1";
     __clearTaskViewCachesForTest();
     diffPaneRefreshKeys.length = 0;
@@ -2226,6 +2234,61 @@ describe("TaskView", () => {
       await waitFor(() =>
         expect(writeLastUsedModel).toHaveBeenCalledWith("auto"),
       );
+    });
+
+    it("keeps Auto selected when an assistant reply arrives (HomeView carryover)", async () => {
+      // HomeView writes the model actually applied on submission via
+      // writeLastUsedModel("auto"). TaskView reads it back on mount so the
+      // composer starts on Auto, and the first assistant reply (which
+      // carries the concrete model Auto resolved to) must NOT flip the
+      // dropdown — the user keeps Auto for every follow-up.
+      readLastUsedModel.mockReturnValue("auto");
+      const streamMock = useSessionStream();
+      useSessionStream.mockReturnValue({
+        ...streamMock,
+        messages: [
+          {
+            info: {
+              id: "assistant-1",
+              role: "assistant",
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+              cost: 0,
+              time: { created: 1 },
+            },
+            parts: [{ id: "text-1", type: "text", text: "回答" }],
+          },
+        ],
+        visibleMessages: [
+          {
+            info: {
+              id: "assistant-1",
+              role: "assistant",
+              providerID: "anthropic",
+              modelID: "claude-haiku-4-5",
+              cost: 0,
+              time: { created: 1 },
+            },
+            parts: [{ id: "text-1", type: "text", text: "回答" }],
+          },
+        ],
+        loaded: true,
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      // The composer dropdown should remain on Auto, not flip to
+      // anthropic/claude-haiku-4-5. waitFor covers the async provider fetch
+      // and the seeded-model effect that runs once stream + options settle.
+      await waitFor(() => {
+        fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+        const modelMenu = screen.getByRole("listbox", { name: "モデル" });
+        const selected = within(modelMenu).getAllByRole("option", {
+          selected: true,
+        });
+        expect(selected.length).toBeGreaterThan(0);
+        expect(selected[0].textContent).toContain("Auto");
+      });
     });
 
     it("keeps the agent model when the agent pins one", async () => {
