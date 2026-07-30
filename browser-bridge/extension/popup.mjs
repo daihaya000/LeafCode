@@ -30,11 +30,18 @@ export function render(state) {
   $('tabs-heading').textContent = `共有中のタブ${tabs.length ? ` (${tabs.length})` : ''}`;
   $('tabs-empty').hidden = tabs.length > 0;
   $('tabs').replaceChildren(...tabs.map((tab) => {
+    const label = tab.title || tab.origin;
     const item = document.createElement('li');
+    const title = document.createElement('span');
+    title.className = 'tab-title';
+    title.textContent = label;
+    title.title = label;
     const button = document.createElement('button');
-    button.textContent = `「${tab.title || tab.origin}」の共有を停止`;
+    button.className = 'tab-stop';
+    button.textContent = '停止';
+    button.setAttribute('aria-label', `「${label}」の共有を停止`);
     button.onclick = () => call('unshare', { tabId: tab.id }).then(render).catch(showError);
-    item.append(button);
+    item.append(title, button);
     return item;
   }));
 }

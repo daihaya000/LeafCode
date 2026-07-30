@@ -24,8 +24,13 @@ function createFakeDocument() {
     getElementById: (id) => elements.get(id) ?? null,
     createElement: () => ({
       textContent: '',
+      className: '',
+      title: '',
       onclick: null,
       children: [],
+      attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; },
+      getAttribute(name) { return this.attributes[name] ?? null; },
       append(...items) { this.children.push(...items); },
     }),
   };
@@ -72,13 +77,20 @@ test('render shows a reconnecting state once paired but not yet connected, and h
   assert.equal(document.getElementById('connect-section').hidden, true);
 });
 
-test('each shared tab renders a stop-sharing button labelled with its title, falling back to origin', () => {
+test('each shared tab row shows its title (falling back to origin) with a short stop button carrying the full context as an aria-label', () => {
   const document = setup();
   render({ connected: true, paired: true, autoShareEnabled: false, sharedTabs: [{ id: 'tab_1', origin: 'https://a.test', title: 'A' }, { id: 'tab_2', origin: 'https://b.test', title: '' }] });
   const items = document.getElementById('tabs').children;
   assert.equal(items.length, 2);
-  assert.equal(items[0].children[0].textContent, '「A」の共有を停止');
-  assert.equal(items[1].children[0].textContent, '「https://b.test」の共有を停止');
+
+  const [title1, stop1] = items[0].children;
+  assert.equal(title1.textContent, 'A');
+  assert.equal(stop1.textContent, '停止');
+  assert.equal(stop1.getAttribute('aria-label'), '「A」の共有を停止');
+
+  const [title2, stop2] = items[1].children;
+  assert.equal(title2.textContent, 'https://b.test');
+  assert.equal(stop2.getAttribute('aria-label'), '「https://b.test」の共有を停止');
 });
 
 test('showError marks the status dot as errored and surfaces the message', () => {
