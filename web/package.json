@@ -21,6 +21,8 @@
     "e2e:smoke": "node scripts/e2e.mjs --project=chromium smoke.spec.ts"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "better-sqlite3": "^12.11.1",
     "jsonc-parser": "^3.3.1",
     "lucide-react": "^1.24.0",
