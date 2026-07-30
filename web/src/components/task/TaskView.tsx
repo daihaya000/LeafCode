@@ -3592,6 +3592,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <DiffPane
                 directory={task.directory}
                 workspaceId={task.id}
+                agent={task.agent}
                 refreshKey={diffKey}
                 focusFile={focusFile}
                 onFocusHandled={() => setFocusFile(null)}

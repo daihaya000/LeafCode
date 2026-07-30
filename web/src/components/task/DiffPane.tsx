@@ -179,14 +179,16 @@ function FileDiffBlock({
 export function DiffPane({
   directory,
   workspaceId,
+  agent,
   refreshKey,
   focusFile,
   onFocusHandled,
   onMutated,
 }: {
   directory: string;
-  workspaceId?: string;
-  refreshKey: number;
+  workspaceId: string;
+  agent?: string;
+  refreshKey?: number;
   focusFile?: string | null;
   onFocusHandled?: () => void;
   onMutated?: () => void;
@@ -353,6 +355,9 @@ export function DiffPane({
       const body: Record<string, unknown> = {
         directory,
         message: commitMsg.trim(),
+        // Let the server stamp the executing agent as the commit author so the
+        // graph always shows who performed the commit.
+        agent,
       };
       // Only "commit everything" (git add -A) when the entire UNFILTERED set is
       // selected. `files` is filter-scoped, so comparing against it would let a

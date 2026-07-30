@@ -39,6 +39,46 @@ beforeEach(() => {
   h.runGit.mockResolvedValue({ code: 0, stdout: "abc123 message", stderr: "" });
 });
 
+function lastGitEnv() {
+  const call = h.runGit.mock.calls.find((c) => (c[1] as string[])[0] === "commit");
+  return (call?.[3] as Record<string, string> | undefined) ?? {};
+}
+
+describe("commit author stamping", () => {
+  it("defaults to the build agent when no agent is supplied", async () => {
+    await post({ directory: "C:\\repo", message: "fix", paths: ["src/a.ts"] });
+    expect(lastGitEnv()).toMatchObject({
+      GIT_AUTHOR_NAME: "build",
+      GIT_AUTHOR_EMAIL: "build@opencode.local",
+      GIT_COMMITTER_NAME: "build",
+      GIT_COMMITTER_EMAIL: "build@opencode.local",
+    });
+  });
+
+  it("stamps the supplied agent name", async () => {
+    await post({
+      directory: "C:\\repo",
+      message: "fix",
+      paths: ["src/a.ts"],
+      agent: "lead-programmer",
+    });
+    expect(lastGitEnv()).toMatchObject({
+      GIT_AUTHOR_NAME: "lead-programmer",
+      GIT_AUTHOR_EMAIL: "lead-programmer@opencode.local",
+    });
+  });
+
+  it("falls back to build for an invalid agent name", async () => {
+    await post({
+      directory: "C:\\repo",
+      message: "fix",
+      paths: ["src/a.ts"],
+      agent: "not valid!",
+    });
+    expect(lastGitEnv()).toEqual({});
+  });
+});
+
 describe("commitPathError", () => {
   it("rejects broad and magic pathspecs", () => {
     expect(commitPathError(".")).toMatch(/unsafe/);
@@ -89,10 +129,6 @@ describe("POST /api/git/commit paths", () => {
       paths: ["src/a.ts"],
     });
     expect(res.status).toBe(200);
-    expect(h.runGit).toHaveBeenCalledWith("C:\\repo", [
-      "add",
-      "--",
-      "src/a.ts",
-    ]);
+    expect(h.runGit).toHaveBeenCalledWith("C:\\repo", ["add", "--", "src/a.ts"]);
   });
 });

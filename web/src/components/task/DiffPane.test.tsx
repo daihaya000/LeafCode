@@ -87,13 +87,13 @@ describe("DiffPane directory race", () => {
     });
 
     const { rerender } = render(
-      <DiffPane directory="/repo-a" refreshKey={0} />,
+      <DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />,
     );
     await act(async () => {
       await Promise.resolve();
     });
 
-    rerender(<DiffPane directory="/repo-b" refreshKey={0} />);
+    rerender(<DiffPane directory="/repo-b" workspaceId="ws-b" refreshKey={0} />);
     await screen.findByText("new.ts");
 
     await act(async () => {
@@ -107,7 +107,7 @@ describe("DiffPane directory race", () => {
 
   it("does not commit via Enter when no paths are selected", async () => {
     mockMetaApis();
-    render(<DiffPane directory="/repo-a" refreshKey={0} />);
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
     await screen.findByText("file.ts");
 
     fireEvent.click(screen.getByRole("button", { name: /Commit/i }));

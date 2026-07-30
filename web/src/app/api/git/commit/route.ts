@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SAFE_MSG = /^[\s\S]{1,2000}$/;
+const SAFE_AGENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
@@ -15,6 +16,7 @@ export async function POST(req: NextRequest) {
     message?: string;
     paths?: string[];
     all?: boolean;
+    agent?: string;
   } | null;
 
   if (!body?.directory || !body.message?.trim()) {
@@ -84,7 +86,21 @@ export async function POST(req: NextRequest) {
   if (!body.all && body.paths?.length) {
     commitArgs.push("--", ...body.paths);
   }
-  const commit = await runGit(check.path, commitArgs);
+
+  // Enforce the execution agent as the commit author so every WebUI-driven
+  // commit is attributable even when the workspace shares the user's directory
+  // (current_folder) or overrides may exist in the repo's Git config.
+  const agentName = body.agent?.trim() || "build";
+  const gitEnv: Record<string, string> | undefined = SAFE_AGENT.test(agentName)
+    ? {
+        GIT_AUTHOR_NAME: agentName,
+        GIT_AUTHOR_EMAIL: `${agentName}@opencode.local`,
+        GIT_COMMITTER_NAME: agentName,
+        GIT_COMMITTER_EMAIL: `${agentName}@opencode.local`,
+      }
+    : undefined;
+
+  const commit = await runGit(check.path, commitArgs, undefined, gitEnv);
   if (commit.code !== 0) {
     return NextResponse.json(
       {

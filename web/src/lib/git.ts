@@ -33,6 +33,7 @@ export function runGit(
   cwd: string,
   args: string[],
   timeoutMs = GIT_TIMEOUT_MS,
+  env?: Record<string, string>,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     // `core.quotepath=false` keeps non-ASCII paths (e.g. Japanese filenames)
@@ -47,6 +48,7 @@ export function runGit(
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",
         GIT_EDITOR: "true",
+        ...(env ?? {}),
       },
     });
     let stdout = "";
