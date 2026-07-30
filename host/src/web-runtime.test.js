@@ -3,6 +3,7 @@ import test from 'node:test';
 import { join } from 'node:path';
 import {
   getWebLaunchPlan,
+  getPostBuildLaunchPlan,
   isWebBuildStale,
   webRestartDelay,
 } from './web-runtime.js';
@@ -59,6 +60,38 @@ test('dev and auto modes preserve their existing launch behavior', () => {
   assert.deepEqual(getWebLaunchPlan(undefined, true), {
     needsBuild: false,
     useProd: true,
+  });
+});
+
+test('getPostBuildLaunchPlan never re-requests a build after a fresh build, even if stale', () => {
+  assert.deepEqual(getPostBuildLaunchPlan('prod', true, true), {
+    needsBuild: false,
+    useProd: true,
+    staleAfterBuild: true,
+  });
+});
+
+test('getPostBuildLaunchPlan still needs a build when BUILD_ID is missing', () => {
+  assert.deepEqual(getPostBuildLaunchPlan('prod', false), {
+    needsBuild: true,
+    useProd: true,
+    staleAfterBuild: false,
+  });
+});
+
+test('getPostBuildLaunchPlan in auto mode reports staleAfterBuild without forcing a rebuild', () => {
+  assert.deepEqual(getPostBuildLaunchPlan(undefined, true, true), {
+    needsBuild: false,
+    useProd: true,
+    staleAfterBuild: true,
+  });
+});
+
+test('getPostBuildLaunchPlan in dev mode never needs a build', () => {
+  assert.deepEqual(getPostBuildLaunchPlan('dev', true, true), {
+    needsBuild: false,
+    useProd: false,
+    staleAfterBuild: true,
   });
 });
 

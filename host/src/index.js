@@ -16,6 +16,7 @@ import { createBrowserBridgeBroker } from '../../browser-bridge/broker/server.mj
 import { formatServiceStatus } from './service-status.js';
 import {
   getWebLaunchPlan,
+  getPostBuildLaunchPlan,
   isWebBuildStale,
   webRestartDelay,
 } from './web-runtime.js';
@@ -319,6 +320,9 @@ export function getOpencodeExitDecision({
 let webProc = null;
 /** @type {import('child_process').ChildProcess | null} */
 let webBuildProc = null;
+/** In-flight production build promise, shared by concurrent callers to avoid
+ * a second build tearing down the first one's in-progress `.next` output. */
+let webBuildPromise = null;
 /** @type {import('child_process').ChildProcess | null} */
 let caddyProc = null;
 /** @type {import('systray2').default | null} */
@@ -1139,8 +1143,22 @@ function spawnNpm(args, options) {
   });
 }
 
-/** Build the production WebUI when prod mode has no usable or stale BUILD_ID. */
+/**
+ * Build the production WebUI when prod mode has no usable or stale BUILD_ID.
+ * Concurrent callers (e.g. overlapping restart triggers) share the same
+ * in-flight build instead of starting a second `npm run build`, which would
+ * otherwise let `removeBrokenWebBuild()` delete the first build's output
+ * mid-flight.
+ */
 function buildWebProduction(reason = 'missing') {
+  if (webBuildPromise) return webBuildPromise;
+  webBuildPromise = buildWebProductionInternal(reason).finally(() => {
+    webBuildPromise = null;
+  });
+  return webBuildPromise;
+}
+
+function buildWebProductionInternal(reason = 'missing') {
   return new Promise((resolve, reject) => {
     removeBrokenWebBuild();
     const reasonText =
@@ -1208,7 +1226,12 @@ async function spawnWeb() {
     await buildWebProduction(hasBuild && buildStale ? 'stale' : 'missing');
     hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
     buildStale = hasBuild && isWebBuildStale(WEB_DIR);
-    plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
+    plan = getPostBuildLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
+    if (plan.staleAfterBuild) {
+      log(
+        'Sources changed while the WebUI build ran; starting the fresh build anyway (the next restart will rebuild)',
+      );
+    }
   }
   if (plan.needsBuild) throw new Error('WebUI production build is unavailable');
   const useProd = plan.useProd;

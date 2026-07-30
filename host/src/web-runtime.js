@@ -56,6 +56,26 @@ export function getWebLaunchPlan(mode, hasBuild, buildStale = false) {
   };
 }
 
+/**
+ * Plan for the retry that follows a rebuild. A freshly built tree must never be
+ * rejected just because a source file changed while the build ran (parallel
+ * agent edits / OneDrive sync touch mtimes mid-build). Only a missing BUILD_ID
+ * is fatal here; renewed staleness is reported for logging and deferred to the
+ * next restart.
+ *
+ * @param {string | undefined} mode
+ * @param {boolean} hasBuild
+ * @param {boolean} [buildStale=false]
+ */
+export function getPostBuildLaunchPlan(mode, hasBuild, buildStale = false) {
+  const { needsBuild, useProd } = getWebLaunchPlan(mode, hasBuild, false);
+  return {
+    needsBuild,
+    useProd,
+    staleAfterBuild: Boolean(hasBuild && buildStale),
+  };
+}
+
 export function webRestartDelay(attempt) {
   const n = Number.isFinite(attempt) ? Math.max(1, Math.trunc(attempt)) : 1;
   return Math.min(1000 * n, 5000);
