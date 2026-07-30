@@ -77,6 +77,7 @@ import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
   readDefaultModelFromServer,
+  readLastUsedModel,
   writeDefaultModel,
   writeLastUsedModel,
 } from "@/lib/default-model";
@@ -1182,13 +1183,14 @@ export function TaskView({ taskId }: { taskId: string }) {
           // Auto is inserted *after* filter/sort on purpose: providerSortKey
           // ("auto") is the unknown-provider tail value, so sorting would sink
           // it to the bottom (same rationale as HomeView).
-          setModelOptions([
+          const selectableOptions = [
             AUTO_MODEL_OPTION,
             ...sortModelOptions(
               enabledOptions,
               modelOrderPreferenceFromProviders(providerModels?.providers),
             ),
-          ]);
+          ];
+          setModelOptions(selectableOptions);
           setModelCapabilities(caps);
           setProviderModelsMap(map);
 
@@ -1229,15 +1231,30 @@ export function TaskView({ taskId }: { taskId: string }) {
             usage,
           });
 
-          // Prefer user-configured default model, then OpenCode config.model
-          // (provider/modelID), then provider defaults.
+          // Prefer user-configured default model, then the last actually-used
+          // model (set by HomeView on submission — including "auto" — so an
+          // Auto task carries over here), then OpenCode config.model
+          // (provider/modelID), then provider defaults. `"auto"` is part of
+          // selectableOptions (mirrors HomeView), so a default/last-used of
+          // "auto" restores here instead of silently falling back to a
+          // concrete model and flipping the dropdown on the first assistant
+          // reply.
           let initial = "";
           const savedDefault = readDefaultModel();
           if (
             savedDefault &&
-            enabledOptions.some((o) => o.value === savedDefault)
+            selectableOptions.some((o) => o.value === savedDefault)
           ) {
             initial = savedDefault;
+          }
+          if (!initial) {
+            const lastUsed = readLastUsedModel();
+            if (
+              lastUsed &&
+              selectableOptions.some((o) => o.value === lastUsed)
+            ) {
+              initial = lastUsed;
+            }
           }
           if (!initial) {
             const cfg = config?.model?.trim();
@@ -1245,7 +1262,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               const slash = cfg.indexOf("/");
               if (slash > 0) {
                 const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
-                if (enabledOptions.some((o) => o.value === value)) initial = value;
+                if (selectableOptions.some((o) => o.value === value)) initial = value;
               }
             }
           }
@@ -1254,7 +1271,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               const mid = data.default?.[pid];
               if (!mid) continue;
               const value = `${pid}::${mid}`;
-              if (enabledOptions.some((o) => o.value === value)) {
+              if (selectableOptions.some((o) => o.value === value)) {
                 initial = value;
                 break;
               }
@@ -2199,6 +2216,16 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [streamScopeKey]);
   useEffect(() => {
     if (seededModelRef.current || !stream.loaded || modelOptions.length === 0) return;
+    // When the composer is set to Auto — either carried over from HomeView
+    // (default/last-used model = Auto) or manually re-picked here — keep it.
+    // Seeding the concrete model that Auto resolved to would silently
+    // downgrade the selector on the first assistant reply, forcing the user
+    // to re-pick Auto on every follow-up. Mark as seeded so later turns
+    // don't reset.
+    if (model === AUTO_MODEL_VALUE) {
+      seededModelRef.current = true;
+      return;
+    }
     for (let i = stream.messages.length - 1; i >= 0; i--) {
       const info = stream.messages[i]?.info;
       if (info?.role !== "assistant" || !info.providerID || !info.modelID) continue;
