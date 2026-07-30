@@ -242,7 +242,7 @@ export function GoalLoopPanel({
         </div>
       </div>
 
-      {loop.acceptance.length > 0 && (
+      {loop.acceptance?.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1 text-xs">
           <span className="text-muted">承認条件:</span>
           {loop.acceptance.map((criterion, index) => (

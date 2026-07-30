@@ -522,4 +522,16 @@ describe("GoalLoopPanel", () => {
     const region = screen.getByRole("region", { name: "Goalループ" });
     expect(region.className).toContain("z-10");
   });
+
+  it("does not crash when acceptance is missing (legacy/mock payload)", () => {
+    // The DTO types `acceptance` as a required string[], but a stale API
+    // response, a partial mock, or a pre-migration row can omit it. Reading
+    // `.length` on undefined used to throw and blank the whole panel.
+    const loop = baseLoop() as GoalLoopDto & { acceptance?: undefined };
+    delete (loop as { acceptance?: unknown }).acceptance;
+    expect(() =>
+      render(<GoalLoopPanel loop={loop} busy={false} onAction={vi.fn()} />),
+    ).not.toThrow();
+    expect(screen.queryByText("承認条件:")).toBeNull();
+  });
 });

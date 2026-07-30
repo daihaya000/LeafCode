@@ -1551,7 +1551,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   /** Scope that owns the in-flight send — other sessions must stay editable. */
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
   const composerLocked =
-    working || (sending && sendingScopeKey === composerScopeKey);
+    working || (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
   const voiceDisabled = composerLocked || !task?.sessionId;
   const voice = useVoiceInput({ disabled: voiceDisabled });
   useEffect(() => {
