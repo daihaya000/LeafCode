@@ -35,29 +35,35 @@ function compileLauncher(outExe) {
   });
 }
 
+/** The launcher exe lives at the repository root, and the internal batch it
+ * runs at scripts\start-webui.bat below it (see scripts/launcher/Launcher.cs). */
+function fakeRepoLayout(name, batBody) {
+  const fakeRepo = mkdtempSync(join(tmpdir(), name));
+  mkdirSync(join(fakeRepo, "scripts"), { recursive: true });
+  writeFileSync(join(fakeRepo, "scripts", "start-webui.bat"), batBody);
+  return fakeRepo;
+}
+
 test(
-  "Launcher.cs compiles and runs the sibling start-webui.bat, forwarding its exit code",
+  "Launcher.cs compiles and runs scripts/start-webui.bat below the exe, forwarding its exit code",
   { skip: !isWindows || !csc },
   () => {
-    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-"));
-    const launcherDir = join(fakeRepo, "scripts", "launcher");
-    mkdirSync(launcherDir, { recursive: true });
-    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
-
-    // A trivial stand-in for start-webui.bat: proves the launcher resolves
-    // "<exeDir>/../.." as the repo root and forwards cmd's exit code.
-    writeFileSync(
-      join(fakeRepo, "start-webui.bat"),
+    const fakeRepo = fakeRepoLayout(
+      "ocwebui-launcher-",
       "@echo off\r\necho FAKE_START_WEBUI_RAN\r\nexit /b 42\r\n",
     );
+    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
 
     try {
       const compile = compileLauncher(exePath);
       assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
       assert.ok(existsSync(exePath), "expected OpenCodeWebUI.exe to be produced");
 
+      // A trivial stand-in for scripts/start-webui.bat: proves the launcher
+      // resolves its own directory as the repo root and forwards cmd's exit
+      // code.
       const run = spawnSync(exePath, [], { encoding: "utf8" });
-      assert.equal(run.status, 42, `expected the launcher to forward start-webui.bat's exit code`);
+      assert.equal(run.status, 42, `expected the launcher to forward the batch's exit code`);
       assert.match(run.stdout, /FAKE_START_WEBUI_RAN/);
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
@@ -66,18 +72,14 @@ test(
 );
 
 test(
-  "Launcher.cs runs start-webui.bat when the repo path contains a cmd metacharacter",
+  "Launcher.cs runs scripts/start-webui.bat when the repo path contains a cmd metacharacter",
   { skip: !isWindows || !csc },
   () => {
-    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-&-"));
-    const launcherDir = join(fakeRepo, "scripts", "launcher");
-    mkdirSync(launcherDir, { recursive: true });
-    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
-
-    writeFileSync(
-      join(fakeRepo, "start-webui.bat"),
+    const fakeRepo = fakeRepoLayout(
+      "ocwebui-launcher-&-",
       "@echo off\r\necho METACHAR_PATH_RAN\r\nexit /b 23\r\n",
     );
+    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
 
     try {
       const compile = compileLauncher(exePath);
@@ -93,26 +95,25 @@ test(
 );
 
 test(
-  "Launcher.cs sets OPENCODE_WEBUI_LAUNCHER=1 for the batch file it runs (breaks start-webui.bat's re-routing loop)",
+  "Launcher.cs runs the batch with the repository root (the exe's directory) as the working directory",
   { skip: !isWindows || !csc },
   () => {
-    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-envvar-"));
-    const launcherDir = join(fakeRepo, "scripts", "launcher");
-    mkdirSync(launcherDir, { recursive: true });
-    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
-
-    writeFileSync(
-      join(fakeRepo, "start-webui.bat"),
-      "@echo off\r\necho VAR=%OPENCODE_WEBUI_LAUNCHER%\r\nexit /b 0\r\n",
+    const fakeRepo = fakeRepoLayout(
+      "ocwebui-launcher-cwd-",
+      "@echo off\r\necho CWD=%CD%\r\nexit /b 0\r\n",
     );
+    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
 
     try {
       const compile = compileLauncher(exePath);
       assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
 
-      const run = spawnSync(exePath, [], { encoding: "utf8" });
-      assert.equal(run.status, 0);
-      assert.match(run.stdout, /VAR=1/);
+      // Run from an unrelated cwd to prove the launcher sets WorkingDirectory
+      // itself (setup/start steps inside the batch rely on repo-relative
+      // paths resolving from the root).
+      const run = spawnSync(exePath, [], { encoding: "utf8", cwd: tmpdir() });
+      assert.equal(run.status, 0, `stderr: ${run.stderr}`);
+      assert.match(run.stdout.replace(/\//g, "\\"), new RegExp("CWD=" + fakeRepo.replace(/\\/g, "\\\\"), "i"));
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }
@@ -120,13 +121,11 @@ test(
 );
 
 test(
-  "Launcher.cs fails clearly when start-webui.bat is missing next to the repo root",
+  "Launcher.cs fails clearly when scripts/start-webui.bat is missing below the repo root",
   { skip: !isWindows || !csc },
   () => {
     const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-missing-"));
-    const launcherDir = join(fakeRepo, "scripts", "launcher");
-    mkdirSync(launcherDir, { recursive: true });
-    const exePath = join(launcherDir, "OpenCodeWebUI.exe");
+    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
 
     try {
       const compile = compileLauncher(exePath);
@@ -134,7 +133,7 @@ test(
 
       const run = spawnSync(exePath, [], { encoding: "utf8" });
       assert.equal(run.status, 1);
-      assert.match(run.stderr, /start-webui\.bat not found/);
+      assert.match(run.stderr, /scripts\\start-webui\.bat not found/);
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }

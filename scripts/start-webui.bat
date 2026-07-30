@@ -6,46 +6,29 @@ rem track of the read position and starts executing fragments of later lines.
 rem Japanese text lives in scripts\setup-messages\*.txt (UTF-8) and is printed
 rem with `type`, which is not parsed by cmd.exe.
 rem See docs\specs\bat-encoding-safety.md and docs\specs\setup-start-webui-merge.md
+rem
+rem Internal setup/start script. The single user-facing entry point is the
+rem native launcher OpenCodeWebUI.exe at the repository root, which runs this
+rem file via cmd.exe in the same console (see scripts\launcher\Launcher.cs).
+rem Running this file directly also works (e.g. for debugging); it simply
+rem skips the launcher's app identity (icon / Alt-Tab / taskbar pinning).
 rem ---------------------------------------------------------------------------
 goto :main
 
 :main
 setlocal EnableExtensions DisableDelayedExpansion
-cd /d "%~dp0"
-set "MESSAGE_DIR=%~dp0scripts\setup-messages"
+cd /d "%~dp0.."
+set "MESSAGE_DIR=%~dp0setup-messages"
 
 rem Give the console window a stable, app-like title so Alt-Tab and a taskbar
 rem pin (see scripts\create-shortcut.bat) show "OpenCode WebUI" instead of the
 rem generic "Command Prompt" title. Node does not touch this on Windows.
 title OpenCode WebUI
 
-rem Route through the compiled native launcher for a proper app identity.
-rem Rebuild it when its inputs are newer so Launcher.cs fixes take effect.
-rem If Node.js is not installed yet, defer the build until setup installs it.
-if "%OPENCODE_WEBUI_LAUNCHER%"=="1" goto :after_launcher_routing
-if not exist "scripts\launcher\OpenCodeWebUI.exe" goto :build_launcher_if_possible
-call :launcher_is_current
-if not errorlevel 1 goto :run_launcher
-
-:build_launcher_if_possible
-call where node >nul 2>&1
-if errorlevel 1 goto :defer_launcher_build
-echo [OpenCode WebUI] Building native launcher...
-call scripts\build-launcher.bat /quiet
-if errorlevel 1 goto :after_launcher_routing
-if exist "scripts\launcher\OpenCodeWebUI.exe" goto :run_launcher
-goto :after_launcher_routing
-
-:defer_launcher_build
-set "LAUNCHER_BUILD_DEFERRED=1"
-goto :after_launcher_routing
-
-:run_launcher
-"scripts\launcher\OpenCodeWebUI.exe"
-set ERR=%ERRORLEVEL%
-exit /b %ERR%
-
-:after_launcher_routing
+rem Keep the committed root launcher in sync with its build inputs. Best
+rem effort only: if csc.exe / node are unavailable (e.g. a fresh machine
+rem before setup installs Node.js) the existing exe simply stays as is.
+call :refresh_launcher
 
 if "%OPENCODE_WEBUI_SETUP_COMPLETE%"=="1" goto :start_host
 call :remember_code_page
@@ -53,10 +36,11 @@ chcp 65001 >nul 2>&1
 echo [OpenCode WebUI] Starting...
 
 rem This file used to be split into a one-time setup.bat (winget / Node.js /
-rem OpenCode / dependency installs) and this file (assumed already installed).
-rem They are merged here: every check below is a no-op once its condition is
-rem already satisfied, so repeat runs stay as fast as before the merge, while
-rem a brand new machine gets the same install steps setup.bat used to run.
+rem OpenCode / dependency installs) and the old root start-webui.bat (assumed
+rem already installed). They are merged here: every check below is a no-op
+rem once its condition is already satisfied, so repeat runs stay as fast as
+rem before the merge, while a brand new machine gets the same install steps
+rem setup.bat used to run.
 call :check_node
 if errorlevel 1 goto :failure
 call :check_opencode
@@ -68,21 +52,11 @@ if errorlevel 1 goto :failure
 call :install_browser_bridge
 if errorlevel 1 goto :failure
 call :restore_code_page
-
-if defined LAUNCHER_BUILD_DEFERRED goto :build_deferred_launcher
 goto :start_host
-
-:build_deferred_launcher
-echo [OpenCode WebUI] Building native launcher...
-call scripts\build-launcher.bat /quiet
-if errorlevel 1 goto :start_host
-if not exist "scripts\launcher\OpenCodeWebUI.exe" goto :start_host
-set "OPENCODE_WEBUI_SETUP_COMPLETE=1"
-goto :run_launcher
 
 :start_host
 set OPENCODE_WEBUI_MODE=prod
-rem start-webui.bat is the normal VPN/LAN entry point, so manage Caddy by default.
+rem The launcher is the normal VPN/LAN entry point, so manage Caddy by default.
 rem Set OPENCODE_WEBUI_CADDY=0 before launch to use the raw WebUI URL only.
 if not defined OPENCODE_WEBUI_CADDY set OPENCODE_WEBUI_CADDY=1
 rem The WebUI listens on 127.0.0.1 (loopback) by default so it is not exposed
@@ -111,6 +85,14 @@ call :say failure
 call :restore_code_page
 call :pause_if_interactive
 exit /b %FAIL_EXIT%
+
+:refresh_launcher
+rem Exit 0 = the root exe is current, 1 = missing or older than an input.
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "if(-not (Test-Path -LiteralPath 'OpenCodeWebUI.exe')){exit 1}; $e=(Get-Item -LiteralPath 'OpenCodeWebUI.exe').LastWriteTimeUtc; foreach($i in 'scripts\launcher\Launcher.cs','scripts\build-launcher.bat','host\src\icon.json'){ if((Test-Path -LiteralPath $i) -and (Get-Item -LiteralPath $i).LastWriteTimeUtc -gt $e){exit 1} }" >nul 2>&1
+if not errorlevel 1 exit /b 0
+echo [OpenCode WebUI] Refreshing native launcher...
+call scripts\build-launcher.bat /quiet
+exit /b 0
 
 :check_winget
 call where winget >nul 2>&1
@@ -204,7 +186,7 @@ call node scripts\production-webui-build-guard.mjs --stop
 set "WEB_GUARD_EXIT=%ERRORLEVEL%"
 if "%WEB_GUARD_EXIT%"=="0" goto :web_build_guard_passed
 if "%WEB_GUARD_EXIT%"=="10" goto :web_build_guard_stopped
-call :fail 6 "web build was cancelled to protect a running WebUI. Stop the WebUI and run start-webui.bat again." error-6-guard
+call :fail 6 "web build was cancelled to protect a running WebUI. Stop the WebUI and run OpenCodeWebUI.exe again." error-6-guard
 exit /b 6
 
 :web_build_guard_stopped
@@ -314,11 +296,6 @@ exit /b 0
 if not defined CP_ORIGINAL exit /b 0
 chcp %CP_ORIGINAL% >nul 2>&1
 exit /b 0
-
-:launcher_is_current
-if not exist "scripts\launcher\OpenCodeWebUI.exe" exit /b 1
-"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$e=(Get-Item -LiteralPath 'scripts\launcher\OpenCodeWebUI.exe').LastWriteTimeUtc; if((Test-Path -LiteralPath 'scripts\launcher\Launcher.cs') -and (Get-Item -LiteralPath 'scripts\launcher\Launcher.cs').LastWriteTimeUtc -gt $e){exit 1}; if((Test-Path -LiteralPath 'scripts\build-launcher.bat') -and (Get-Item -LiteralPath 'scripts\build-launcher.bat').LastWriteTimeUtc -gt $e){exit 1}; if((Test-Path -LiteralPath 'host\src\icon.json') -and (Get-Item -LiteralPath 'host\src\icon.json').LastWriteTimeUtc -gt $e){exit 1}" >nul 2>&1
-exit /b %ERRORLEVEL%
 
 :pause_if_interactive
 if "%OPENCODE_WEBUI_NONINTERACTIVE%"=="1" exit /b 0

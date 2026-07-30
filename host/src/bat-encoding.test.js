@@ -57,8 +57,8 @@ function listOnDiskBatchFiles(dir = repoRoot, out = []) {
 
 const messageDir = join(repoRoot, "scripts", "setup-messages");
 
-// start-webui.bat reads these straight off disk, so the on-disk listing is
-// the authoritative one here (no git indirection).
+// scripts/start-webui.bat reads these straight off disk, so the on-disk
+// listing is the authoritative one here (no git indirection).
 function listMessageFileNames() {
   return readdirSync(messageDir).filter((name) => name.endsWith(".txt")).sort();
 }
@@ -205,8 +205,8 @@ test("setup message files are UTF-8 without BOM and use CRLF", () => {
   }
 });
 
-test("every start-webui.bat message key has a file and every file is referenced", () => {
-  const setupPath = join(repoRoot, "start-webui.bat");
+test("every scripts/start-webui.bat message key has a file and every file is referenced", () => {
+  const setupPath = join(repoRoot, "scripts", "start-webui.bat");
   const setupText = readFileSync(setupPath, "utf8");
   const lines = setupText.split(/\r\n/);
 
@@ -230,21 +230,21 @@ test("every start-webui.bat message key has a file and every file is referenced"
     }
   }
 
-  assert.ok(keys.size > 0, "expected at least one message key referenced in start-webui.bat");
+  assert.ok(keys.size > 0, "expected at least one message key referenced in scripts/start-webui.bat");
 
   const messageKeys = listMessageFileNames().map((name) => name.slice(0, -".txt".length));
 
   for (const key of keys) {
     assert.ok(
       messageKeys.includes(key),
-      `start-webui.bat references message key '${key}' but scripts/setup-messages/${key}.txt does not exist`,
+      `scripts/start-webui.bat references message key '${key}' but scripts/setup-messages/${key}.txt does not exist`,
     );
   }
 
   for (const key of messageKeys) {
     assert.ok(
       keys.has(key),
-      `scripts/setup-messages/${key}.txt is not referenced by start-webui.bat`,
+      `scripts/setup-messages/${key}.txt is not referenced by scripts/start-webui.bat`,
     );
   }
 });

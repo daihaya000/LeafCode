@@ -2,11 +2,12 @@
 # pinned to the taskbar with a proper name and icon instead of a generic
 # "cmd.exe" / "Command Prompt" entry.
 #
-# Targets scripts\launcher\OpenCodeWebUI.exe (built by scripts\build-launcher.bat)
-# when present, since Explorer only reliably offers "Pin to taskbar" for a
-# shortcut whose target is a real .exe (support for a shortcut targeting a
-# .bat/.cmd script directly is inconsistent across Windows builds). Falls
-# back to start-webui.bat when the compiled launcher has not been built yet.
+# Targets OpenCodeWebUI.exe at the repository root: the single entry point,
+# committed to git and rebuilt by scripts\build-launcher.bat when its inputs
+# are newer. Explorer only reliably offers "Pin to taskbar" for a shortcut
+# whose target is a real .exe (support for a shortcut targeting a .bat/.cmd
+# script directly is inconsistent across Windows builds). If the exe is
+# missing for some reason, it is rebuilt before giving up.
 #
 # Windows removed the scriptable "pin to taskbar" verb (Windows 10 1809+), so
 # pinning itself stays a manual, one-time step: right-click the shortcut this
@@ -40,21 +41,22 @@ $iconJson = Get-Content -LiteralPath $iconJsonPath -Raw | ConvertFrom-Json
 $iconBytes = [Convert]::FromBase64String($iconJson.base64)
 [System.IO.File]::WriteAllBytes($iconPath, $iconBytes)
 
-$exePath = Join-Path $repoRoot "scripts\launcher\OpenCodeWebUI.exe"
-$batPath = Join-Path $repoRoot "start-webui.bat"
+$exePath = Join-Path $repoRoot "OpenCodeWebUI.exe"
 
-if (Test-Path -LiteralPath $exePath) {
-    $targetPath = $exePath
-    # The exe already carries the icon as an embedded Win32 resource (see
-    # scripts\build-launcher.bat's /win32icon), so point the shortcut at it
-    # directly rather than the standalone .ico copy above.
-    $shortcutIconLocation = "$exePath,0"
-} elseif (Test-Path -LiteralPath $batPath) {
-    $targetPath = $batPath
-    $shortcutIconLocation = $iconPath
-} else {
-    throw "Launcher not found: neither $exePath nor $batPath exists"
+if (-not (Test-Path -LiteralPath $exePath)) {
+    # The exe is committed to git, so a missing copy means it was deleted
+    # locally: rebuild it (quietly) before failing the shortcut creation.
+    & cmd.exe /d /c "call `"$repoRoot\scripts\build-launcher.bat`" /quiet" | Out-Null
 }
+if (-not (Test-Path -LiteralPath $exePath)) {
+    throw "Launcher not found: $exePath (run scripts\build-launcher.bat to build it)"
+}
+
+$targetPath = $exePath
+# The exe already carries the icon as an embedded Win32 resource (see
+# scripts\build-launcher.bat's /win32icon), so point the shortcut at it
+# directly rather than the standalone .ico copy above.
+$shortcutIconLocation = "$exePath,0"
 
 $shortcutPath = Join-Path $DesktopDir "OpenCode WebUI.lnk"
 

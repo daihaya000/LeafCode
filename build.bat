@@ -62,7 +62,7 @@ if not exist "web\.next\BUILD_ID" (
 )
 
 echo [OpenCode WebUI] Build OK ^(BUILD_ID exists^)
-echo [OpenCode WebUI] Start the WebUI from the tray or start-webui.bat to serve the new build.
+echo [OpenCode WebUI] Start the WebUI from the tray or OpenCodeWebUI.exe to serve the new build.
 
 endlocal
 exit /b 0

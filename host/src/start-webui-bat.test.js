@@ -7,17 +7,20 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-// start-webui.bat used to be split into a one-time setup.bat (winget / Node.js /
-// OpenCode / dependency installs, ending by starting a *separate* start-webui.bat
-// in a detached console) and start-webui.bat itself (assumed already installed).
-// setup.bat has been deleted and its logic absorbed into start-webui.bat: every
-// check below is a no-op once its condition is already satisfied (idempotent),
-// and the script continues in the same console straight into the host tail
-// (`cd host && node src\index.js`, foreground) instead of handing off to a
-// second process. See docs/specs/setup-start-webui-merge.md.
+// scripts/start-webui.bat is the internal setup/start script run by the
+// native launcher (OpenCodeWebUI.exe at the repository root; see
+// scripts/launcher/Launcher.cs). It used to live at the repository root and
+// before that was split into a one-time setup.bat (winget / Node.js /
+// OpenCode / dependency installs, ending by starting a *separate* start
+// script in a detached console) plus the start script itself (assumed
+// already installed). setup.bat has been deleted and its logic absorbed:
+// every check below is a no-op once its condition is already satisfied
+// (idempotent), and the script continues in the same console straight into
+// the host tail (`cd host && node src\index.js`, foreground) instead of
+// handing off to a second process. See docs/specs/setup-start-webui-merge.md.
 
 const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const startWebuiSource = join(repoRoot, "start-webui.bat");
+const startWebuiSource = join(repoRoot, "scripts", "start-webui.bat");
 const messagesSource = join(repoRoot, "scripts", "setup-messages");
 const isWindows = process.platform === "win32";
 
@@ -36,9 +39,15 @@ function createSandbox(options = {}) {
   mkdirSync(join(root, "web"), { recursive: true });
   mkdirSync(join(root, "host"), { recursive: true });
   mkdirSync(join(root, "browser-bridge"), { recursive: true });
-  writeFileSync(join(root, "start-webui.bat"), readFileSync(startWebuiSource));
+  mkdirSync(join(root, "scripts"), { recursive: true });
+  writeFileSync(join(root, "scripts", "start-webui.bat"), readFileSync(startWebuiSource));
+  // The batch's first step refreshes the root launcher exe when its build
+  // inputs are newer (a PowerShell timestamp check). A dummy, up-to-date exe
+  // with no build inputs beside it keeps that check quiet so the setup logic
+  // under test runs in isolation (and without a missing-build-launcher.bat
+  // error polluting stderr, which some assertions require to be empty).
+  writeFileSync(join(root, "OpenCodeWebUI.exe"), "", "ascii");
   if (options.withMessages !== false) {
-    mkdirSync(join(root, "scripts"), { recursive: true });
     cpSync(messagesSource, join(root, "scripts", "setup-messages"), { recursive: true });
   }
 
@@ -140,10 +149,6 @@ function createSandbox(options = {}) {
     PATH: `${bin};${join(process.env.SystemRoot ?? "C:\\Windows", "System32")}`,
     ProgramFiles: root,
     PATHEXT: options.standardNodePath ? ".CMD;.EXE;.BAT;.COM" : ".COM;.EXE;.BAT;.CMD",
-    // Skip the native-launcher routing block: it is covered separately by
-    // start-webui-launcher-routing.test.js and is orthogonal to the setup
-    // logic under test here.
-    OPENCODE_WEBUI_LAUNCHER: "1",
     OPENCODE_WEBUI_NONINTERACTIVE: "1",
     SETUP_TEST_ROOT: root,
     SETUP_TEST_LOG: log,
@@ -176,8 +181,8 @@ function createSandbox(options = {}) {
       const wrapper = join(root, "_run.bat");
       const lines = ["@echo off", 'set "ProgramFiles=%SETUP_TEST_ROOT%"'];
       if (codePage !== undefined) lines.push(`chcp ${codePage} >nul`);
-      lines.push(captureOutput ? `call start-webui.bat >"${outFile}" 2>"${errFile}"` : "call start-webui.bat");
-      // Keep start-webui.bat's exit code: the trailing chcp probe must not overwrite it.
+      lines.push(captureOutput ? `call scripts\\start-webui.bat >"${outFile}" 2>"${errFile}"` : "call scripts\\start-webui.bat");
+      // Keep the batch's exit code: the trailing chcp probe must not overwrite it.
       lines.push('set "SETUP_TEST_STATUS=%ERRORLEVEL%"');
       lines.push(`chcp >"${codePageFile}" 2>&1`);
       lines.push("exit /b %SETUP_TEST_STATUS%");
