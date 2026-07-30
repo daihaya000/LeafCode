@@ -91,62 +91,6 @@ export function PtyPanel({ directory }: { directory: string }) {
     fitRef.current = fit;
   }, [cssVar]);
 
-  /** Open the SSE output stream + wire xterm input for `ptyId`. */
-  const attachStream = useCallback(
-    (ptyId: string) => {
-      // Tear down any previous stream.
-      sseRef.current?.close();
-      termRef.current?.clear();
-
-      mountTerminal();
-      const term = termRef.current;
-      if (!term) return;
-
-      const streamUrl = apiUrl("/api/pty-session/stream", {
-        id: ptyId,
-        directory,
-      });
-      const es = new EventSource(streamUrl);
-      sseRef.current = es;
-
-      es.onmessage = (ev) => {
-        // Heartbeat comments (`: heartbeat`) never reach onmessage.
-        try {
-          const payload = JSON.parse(ev.data) as { t?: string; d?: string };
-          if (payload?.t === "o" && typeof payload.d === "string") {
-            term.write(payload.d);
-          }
-        } catch {
-          // Non-JSON frame; ignore.
-        }
-      };
-      es.onerror = () => {
-        // The BFF closes the stream when the Engine socket ends.
-        es.close();
-      };
-
-      // Wire xterm keystrokes → BFF input POST.
-      const disposable = term.onData((data: string) => {
-        void fetch(
-          apiUrl("/api/pty-session/input", { id: ptyId, directory }),
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ data }),
-            keepalive: true,
-          },
-        ).catch(() => {
-          /* swallow input errors; the stream will surface disconnects */
-        });
-      });
-
-      // Keep the disposable for teardown.
-      (term as unknown as { __inputDisposable?: unknown }).__inputDisposable =
-        disposable;
-    },
-    [directory, mountTerminal],
-  );
-
   /** Create a new PTY and switch to it. */
   const createSession = useCallback(async () => {
     setCreating(true);
@@ -161,7 +105,6 @@ export function PtyPanel({ directory }: { directory: string }) {
       await refresh();
       if (created.id) {
         setActiveId(created.id);
-        attachStream(created.id);
       }
     } catch (err) {
       setError(
@@ -170,16 +113,61 @@ export function PtyPanel({ directory }: { directory: string }) {
     } finally {
       setCreating(false);
     }
-  }, [directory, refresh, attachStream]);
+  }, [directory, refresh]);
 
   /** Switch to an existing session. */
-  const openSession = useCallback(
-    (ptyId: string) => {
-      setActiveId(ptyId);
-      attachStream(ptyId);
-    },
-    [attachStream],
-  );
+  const openSession = useCallback((ptyId: string) => {
+    setActiveId(ptyId);
+  }, []);
+
+  /** Wire the terminal + SSE stream whenever `activeId` becomes non-null. */
+  useEffect(() => {
+    if (!activeId) return;
+
+    mountTerminal();
+    const term = termRef.current;
+    if (!term) return;
+
+    const streamUrl = apiUrl("/api/pty-session/stream", {
+      id: activeId,
+      directory,
+    });
+    const es = new EventSource(streamUrl);
+    sseRef.current = es;
+
+    es.onmessage = (ev) => {
+      try {
+        const payload = JSON.parse(ev.data) as { t?: string; d?: string };
+        if (payload?.t === "o" && typeof payload.d === "string") {
+          term.write(payload.d);
+        }
+      } catch {
+        // Non-JSON frame; ignore.
+      }
+    };
+    es.onerror = () => {
+      es.close();
+    };
+
+    const disposable = term.onData((data: string) => {
+      void fetch(
+        apiUrl("/api/pty-session/input", { id: activeId, directory }),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ data }),
+          keepalive: true,
+        },
+      ).catch(() => {
+        /* swallow input errors; the stream will surface disconnects */
+      });
+    });
+
+    return () => {
+      es.close();
+      disposable.dispose();
+    };
+  }, [activeId, directory, mountTerminal]);
 
   /** Close a PTY session (BFF → Engine DELETE). */
   const closeSession = useCallback(
@@ -262,6 +250,7 @@ export function PtyPanel({ directory }: { directory: string }) {
               <span className="max-w-[8rem] truncate">{s.title || s.id}</span>
               <X
                 className="h-3 w-3 opacity-0 transition group-hover:opacity-100"
+                data-testid={`close-pty-${s.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   void closeSession(s.id);
