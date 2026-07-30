@@ -1353,7 +1353,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       setGoalLoopError(null);
     } catch (err) {
       setGoalLoopError(
-        err instanceof Error ? err.message : "Goalループを読み込めません",
+        err instanceof Error ? err.message : "ループを読み込めません",
       );
     }
   }, [taskId]);
@@ -1450,7 +1450,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         return true;
       } catch (err) {
         setGoalLoopError(
-          err instanceof Error ? err.message : "Goalループの開始に失敗しました",
+          err instanceof Error ? err.message : "ループの開始に失敗しました",
         );
         return false;
       } finally {
@@ -1483,7 +1483,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         if (action === "resume") setGoalLoopError(null);
         notifyTasksChanged();
       } catch (err) {
-        setGoalLoopError(err instanceof Error ? err.message : "Goalループ操作に失敗しました");
+        setGoalLoopError(err instanceof Error ? err.message : "ループ操作に失敗しました");
       } finally {
         setGoalLoopBusy(false);
       }
@@ -1829,7 +1829,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (goalLoopEnabled && !goalLoopLive) {
       if (attachments.length > 0) {
         setGoalLoopError(
-          "Goalループでは添付ファイルを利用できません。添付を削除してから開始してください。",
+          "ループでは添付ファイルを利用できません。添付を削除してから開始してください。",
         );
         return;
       }
@@ -1940,14 +1940,14 @@ export function TaskView({ taskId }: { taskId: string }) {
           );
         } catch (err) {
           throw new Error(
-            `Goalループを一時停止できないため手動送信を中止しました: ${
+            `ループを一時停止できないため手動送信を中止しました: ${
               err instanceof Error ? err.message : "一時停止に失敗しました"
             }`,
           );
         }
         if (paused.loop.status !== "paused") {
           throw new Error(
-            "Goalループを一時停止できないため手動送信を中止しました。状態が競合したため、現在の状態を確認してから再試行してください。",
+            "ループを一時停止できないため手動送信を中止しました。状態が競合したため、現在の状態を確認してから再試行してください。",
           );
         }
         setGoalLoop(paused.loop);
@@ -3561,7 +3561,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       className="shrink-0"
                       aria-label={
                         goalLoopEnabled && !goalLoopLive
-                          ? "Goalループを開始"
+                          ? "ループを開始"
                           : "送信"
                       }
                       busy={goalLoopStarting}

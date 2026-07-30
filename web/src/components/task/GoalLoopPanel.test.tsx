@@ -36,7 +36,7 @@ function baseLoop(overrides: Partial<GoalLoopDto> = {}): GoalLoopDto {
 }
 
 function expandGoalLoopDetails() {
-  fireEvent.click(screen.getByRole("button", { name: "Goalループの詳細を展開" }));
+  fireEvent.click(screen.getByRole("button", { name: "ループの詳細を展開" }));
 }
 
 describe("GoalLoopPanel", () => {
@@ -58,7 +58,7 @@ describe("GoalLoopPanel", () => {
 
   it("renders region with aria-label", () => {
     render(<GoalLoopPanel loop={baseLoop()} busy={false} onAction={vi.fn()} />);
-    expect(screen.getByRole("region", { name: "Goalループ" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "ループ" })).toBeTruthy();
   });
 
   it("renders acceptance criteria when present", () => {
@@ -96,13 +96,13 @@ describe("GoalLoopPanel", () => {
         onAction={vi.fn()}
       />,
     );
-    const toggle = screen.getByRole("button", { name: "Goalループの詳細を展開" });
+    const toggle = screen.getByRole("button", { name: "ループの詳細を展開" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("現在の作業")).toBeNull();
     fireEvent.click(toggle);
     expect(
       screen
-        .getByRole("button", { name: "Goalループの詳細を折りたたむ" })
+        .getByRole("button", { name: "ループの詳細を折りたたむ" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
     expect(screen.getByText("現在の作業")).toBeTruthy();
@@ -132,7 +132,7 @@ describe("GoalLoopPanel", () => {
     render(
       <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
     );
-    const badge = screen.getByRole("region", { name: "Goalループ" }).querySelector(
+    const badge = screen.getByRole("region", { name: "ループ" }).querySelector(
       "span[aria-label]",
     );
     expect(badge?.textContent).toContain(label);
@@ -143,7 +143,7 @@ describe("GoalLoopPanel", () => {
     render(
       <GoalLoopPanel loop={baseLoop({ status: "running" })} busy={false} onAction={onAction} />,
     );
-    const btn = screen.getByRole("button", { name: "Goalループを一時停止" });
+    const btn = screen.getByRole("button", { name: "ループを一時停止" });
     fireEvent.click(btn);
     expect(onAction).toHaveBeenCalledWith("pause");
   });
@@ -157,7 +157,7 @@ describe("GoalLoopPanel", () => {
         onAction={onAction}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Goalループを一時停止" }));
+    fireEvent.click(screen.getByRole("button", { name: "ループを一時停止" }));
     expect(onAction).toHaveBeenCalledWith("pause");
   });
 
@@ -166,7 +166,7 @@ describe("GoalLoopPanel", () => {
     render(
       <GoalLoopPanel loop={baseLoop({ status: "paused" })} busy={false} onAction={onAction} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Goalループを再開" }));
+    fireEvent.click(screen.getByRole("button", { name: "ループを再開" }));
     expect(onAction).toHaveBeenCalledWith("resume");
   });
 
@@ -178,7 +178,7 @@ describe("GoalLoopPanel", () => {
         onAction={vi.fn()}
       />,
     );
-    expect(screen.getByRole("button", { name: "Goalループを再開" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ループを再開" })).toBeTruthy();
   });
 
   it("explains what resuming will do for each pause reason", () => {
@@ -229,7 +229,7 @@ describe("GoalLoopPanel", () => {
     );
     expect(
       screen.getByLabelText(
-        "Goalループ状態: 完了検証中、Goalターン 3 / 10（完了検証ターンは含みません）",
+        "ループ状態: 完了検証中、Goalターン 3 / 10（完了検証ターンは含みません）",
       ),
     ).toBeTruthy();
   });
@@ -239,7 +239,7 @@ describe("GoalLoopPanel", () => {
       render(
         <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
       );
-      expect(screen.queryByRole("button", { name: "Goalループを停止" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "ループを停止" })).toBeNull();
       cleanup();
     }
   });
@@ -250,9 +250,9 @@ describe("GoalLoopPanel", () => {
     render(
       <GoalLoopPanel loop={baseLoop({ status: "running" })} busy={false} onAction={onAction} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Goalループを停止" }));
+    fireEvent.click(screen.getByRole("button", { name: "ループを停止" }));
     expect(confirmSpy).toHaveBeenCalledWith(
-      "Goalループを停止しますか？セッションは中断され、進行中の作業は失われます。",
+      "ループを停止しますか？セッションは中断され、進行中の作業は失われます。",
     );
     expect(onAction).toHaveBeenCalledWith("stop");
   });
@@ -263,7 +263,7 @@ describe("GoalLoopPanel", () => {
     render(
       <GoalLoopPanel loop={baseLoop({ status: "running" })} busy={false} onAction={onAction} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Goalループを停止" }));
+    fireEvent.click(screen.getByRole("button", { name: "ループを停止" }));
     expect(onAction).not.toHaveBeenCalled();
   });
 
@@ -492,7 +492,7 @@ describe("GoalLoopPanel", () => {
       render(
         <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
       );
-      const region = screen.getByRole("region", { name: "Goalループ" });
+      const region = screen.getByRole("region", { name: "ループ" });
       expect(region.getAttribute("data-live")).toBe("true");
       expect(region.className).toContain("sticky");
       expect(region.className).toContain("top-0");
@@ -510,7 +510,7 @@ describe("GoalLoopPanel", () => {
       render(
         <GoalLoopPanel loop={baseLoop({ status })} busy={false} onAction={vi.fn()} />,
       );
-      const region = screen.getByRole("region", { name: "Goalループ" });
+      const region = screen.getByRole("region", { name: "ループ" });
       expect(region.getAttribute("data-live")).toBeNull();
       expect(region.className).not.toContain("sticky");
     },
@@ -519,7 +519,7 @@ describe("GoalLoopPanel", () => {
   it("keeps the scroll-to-bottom button above the sticky panel", () => {
     render(<GoalLoopPanel loop={baseLoop()} busy={false} onAction={vi.fn()} />);
     // TaskView の「最新のメッセージへ」ボタンは z-50。パネルはその下に潜る必要がある
-    const region = screen.getByRole("region", { name: "Goalループ" });
+    const region = screen.getByRole("region", { name: "ループ" });
     expect(region.className).toContain("z-10");
   });
 

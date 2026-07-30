@@ -1,4 +1,4 @@
-# GoalループUI 見直し 仕様
+# ループUI 見直し 仕様
 
 ## 背景
 
@@ -51,7 +51,7 @@
 
 ### レイアウト
 - パネル全体: `rounded-xl border bg-surface p-3`（既存維持）
-- ヘッダ: アイコン + 「Goalループ」+ ステータスバッジ + ターン数 + 操作ボタン
+- ヘッダ: アイコン + 「ループ」+ ステータスバッジ + ターン数 + 操作ボタン
 - goal テキスト: `line-clamp-2`（既存維持）
 - 進捗履歴: ヘッダ下、最新3件、展開可
 - error/blockedReason: 既存の警告/危険バンド（維持）
@@ -62,15 +62,15 @@ TaskView / HomeView の Goal 開始 UI は `components/GoalLoopComposer.tsx` の
 `GoalLoopToggle` / `GoalLoopOptions` を共有する。
 
 - **goal はコンポーザーの本文**。専用の goal 入力欄は持たない
-- **トグル**: コンポーザー下部ツールバーのピル（`aria-pressed` / `aria-label="Goalループで継続実行"`）。
+- **トグル**: コンポーザー下部ツールバーのピル（`aria-pressed` / `aria-label="ループで継続実行"`）。
   OFF の間は縦方向の場所を取らない
 - **詳細設定**: トグル ON のときだけ acceptance（`aria-label="承認条件"`）と
   maxTurns（`aria-label="最大ターン数"`、1..100 にクランプ）を本文欄の下に出す
 
 ### TaskView（セッション側）
-- 会話ペイン先頭の常設「Goalループを開始」カードは廃止（ループ未使用のセッションで
+- 会話ペイン先頭の常設「ループを開始」カードは廃止（ループ未使用のセッションで
   冒頭を占有していたため）
-- ON のとき送信ボタンは `aria-label="Goalループを開始"` になり、`send()` は
+- ON のとき送信ボタンは `aria-label="ループを開始"` になり、`send()` は
   プロンプト送信ではなく `POST /api/tasks/:id/goal-loop` を呼ぶ。失敗時は下書きを復元して
   トグル ON のまま保つ
 - 稼働中ループ（queued / running / verifying_completed / paused）の間はトグルを隠す。
@@ -83,7 +83,7 @@ TaskView / HomeView の Goal 開始 UI は `components/GoalLoopComposer.tsx` の
 ## 4. 停止確認ダイアログ
 
 - `stop` アクション実行前に確認ダイアログを表示
-- メッセージ: 「Goalループを停止しますか？セッションは中断され、進行中の作業は失われます。」
+- メッセージ: 「ループを停止しますか？セッションは中断され、進行中の作業は失われます。」
 - 「停止する」（danger）/「キャンセル」
 - 既存の confirm dialog パターンを調査して踏襲（TaskView 内の approval dialog などを参考）
 
@@ -102,12 +102,12 @@ TaskView / HomeView の Goal 開始 UI は `components/GoalLoopComposer.tsx` の
 
 ## 7. アクセシビリティ
 
-- GoalLoopPanel: `role="region" aria-label="Goalループ"`
+- GoalLoopPanel: `role="region" aria-label="ループ"`
 - ステータスバッジ: `aria-label` で状態をフルテキスト
 - 操作ボタン: 既存の `aria-label` または可視テキスト
 - 進捗履歴リスト: `role="list"`、各項目 `role="listitem"`
-- 開始トグル: `aria-pressed` + `aria-label="Goalループで継続実行"`、ON 時の送信ボタンは
-  `aria-label="Goalループを開始"`
+- 開始トグル: `aria-pressed` + `aria-label="ループで継続実行"`、ON 時の送信ボタンは
+  `aria-label="ループを開始"`
 
 ## 8. テスト計画
 
@@ -117,7 +117,7 @@ TaskView / HomeView の Goal 開始 UI は `components/GoalLoopComposer.tsx` の
 - maxTurns 編集（paused 時のみ）
 - TaskView.test.tsx に GoalLoop シナリオを追加（モック fetch で loop を返す）
 - GoalLoopComposer.test.tsx（トグルの pressed 状態・disabled、maxTurns のクランプ）
-- TaskView.test.tsx の「Goalループ composer」（常設フォーム不在・トグル開閉・
+- TaskView.test.tsx の「ループ composer」（常設フォーム不在・トグル開閉・
   goal として送信・失敗時の下書き復元・稼働中はトグル非表示）
 
 ## 9. 非対象

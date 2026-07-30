@@ -13,7 +13,7 @@ import { cx } from "@/components/ui";
  * which is why there is no dedicated "goal" field here.
  */
 
-export const GOAL_LOOP_TOGGLE_LABEL = "Goalループで継続実行";
+export const GOAL_LOOP_TOGGLE_LABEL = "ループで継続実行";
 
 export function GoalLoopToggle({
   enabled,
@@ -43,7 +43,7 @@ export function GoalLoopToggle({
       )}
     >
       <ListTodo className="h-3.5 w-3.5" aria-hidden="true" />
-      Goalループ
+      ループ
     </button>
   );
 }

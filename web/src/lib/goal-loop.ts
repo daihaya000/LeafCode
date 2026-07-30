@@ -958,7 +958,7 @@ function applyAssistantResult(
       )
       .run(
         assistant.info.id,
-        "Goalループの結果JSONを読めなかったため一時停止しました。",
+        "ループの結果JSONを読めなかったため一時停止しました。",
         now,
         loop.id,
         loop.revision,
@@ -1406,7 +1406,7 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
       try {
         await processLoop(loop);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Goalループでエラーが発生しました。";
+        const message = err instanceof Error ? err.message : "ループでエラーが発生しました。";
         getDb()
           .prepare(
             `UPDATE goal_loops

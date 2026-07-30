@@ -847,7 +847,7 @@ describe("TaskView", () => {
       fireEvent.click(screen.getByRole("button", { name: "送信" }));
 
       await waitFor(() => {
-        expect(screen.getByText(/Goalループを一時停止できないため手動送信を中止しました/)).toBeTruthy();
+        expect(screen.getByText(/ループを一時停止できないため手動送信を中止しました/)).toBeTruthy();
       });
       expect(streamMock.sendPrompt).not.toHaveBeenCalled();
       expect(textarea.value).toBe("manual follow-up");
@@ -1474,8 +1474,8 @@ describe("TaskView", () => {
     expect(screen.getByTestId("pty-panel")).toBeTruthy();
   });
 
-  describe("Goalループ composer", () => {
-    const TOGGLE = "Goalループで継続実行";
+  describe("ループ composer", () => {
+    const TOGGLE = "ループで継続実行";
 
     /**
      * Idle session with an optional loop attached to the task response.
@@ -1508,7 +1508,7 @@ describe("TaskView", () => {
       await flushTaskLoad();
 
       // The old always-on card used these two fields at the top of the scroller.
-      expect(screen.queryByText("Goalループを開始")).toBeNull();
+      expect(screen.queryByText("ループを開始")).toBeNull();
       expect(screen.queryByLabelText("承認条件")).toBeNull();
       expect(screen.getByRole("button", { name: TOGGLE })).toBeTruthy();
     });
@@ -1556,7 +1556,7 @@ describe("TaskView", () => {
         name: "フォローアップを送信",
       }) as HTMLTextAreaElement;
       fireEvent.change(textarea, { target: { value: "ship the loop UI" } });
-      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+      fireEvent.click(screen.getByRole("button", { name: "ループを開始" }));
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
@@ -1594,7 +1594,7 @@ describe("TaskView", () => {
         name: "フォローアップを送信",
       }) as HTMLTextAreaElement;
       fireEvent.change(textarea, { target: { value: "ship the loop UI" } });
-      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+      fireEvent.click(screen.getByRole("button", { name: "ループを開始" }));
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
@@ -1654,7 +1654,7 @@ describe("TaskView", () => {
 
       expect(
         await screen.findByText(
-          "Goalループでは添付ファイルを利用できません。添付を削除してから開始してください。",
+          "ループでは添付ファイルを利用できません。添付を削除してから開始してください。",
         ),
       ).toBeTruthy();
       expect(sendJson).not.toHaveBeenCalledWith(
@@ -1680,7 +1680,7 @@ describe("TaskView", () => {
       await flushTaskLoad();
 
       expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
-      expect(screen.getByRole("region", { name: "Goalループ" })).toBeTruthy();
+      expect(screen.getByRole("region", { name: "ループ" })).toBeTruthy();
     });
   });
 
@@ -2451,13 +2451,13 @@ describe("TaskView", () => {
       await flushTaskLoad();
       await selectAuto();
       fireEvent.click(
-        screen.getByRole("button", { name: "Goalループで継続実行" }),
+        screen.getByRole("button", { name: "ループで継続実行" }),
       );
       fireEvent.change(
         screen.getByRole("combobox", { name: "フォローアップを送信" }),
         { target: { value: "なぜ失敗するのか" } },
       );
-      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+      fireEvent.click(screen.getByRole("button", { name: "ループを開始" }));
 
       await waitFor(() =>
         expect(sendJson).toHaveBeenCalledWith(
@@ -2522,13 +2522,13 @@ describe("TaskView", () => {
         target: { value: "high" },
       });
       fireEvent.click(
-        screen.getByRole("button", { name: "Goalループで継続実行" }),
+        screen.getByRole("button", { name: "ループで継続実行" }),
       );
       fireEvent.change(
         screen.getByRole("combobox", { name: "フォローアップを送信" }),
         { target: { value: "なぜ失敗するのか" } },
       );
-      fireEvent.click(screen.getByRole("button", { name: "Goalループを開始" }));
+      fireEvent.click(screen.getByRole("button", { name: "ループを開始" }));
 
       await waitFor(() =>
         expect(sendJson).toHaveBeenCalledWith(

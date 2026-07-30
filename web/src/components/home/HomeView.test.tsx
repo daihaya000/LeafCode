@@ -1098,7 +1098,7 @@ describe("HomeView goal loop toggle", () => {
     render(<HomeView />);
 
     const toggle = await screen.findByRole("button", {
-      name: "Goalループで継続実行",
+      name: "ループで継続実行",
     });
     // The pill lives in the scrolling control row next to the other selects.
     const controlRow = screen
@@ -1109,7 +1109,7 @@ describe("HomeView goal loop toggle", () => {
     expect(toggle.className).toContain("shrink-0");
     // No checkbox card taking a full row while the loop is off.
     expect(
-      screen.queryByRole("checkbox", { name: "Goalループで継続実行" }),
+      screen.queryByRole("checkbox", { name: "ループで継続実行" }),
     ).toBeNull();
   });
 
@@ -1117,7 +1117,7 @@ describe("HomeView goal loop toggle", () => {
     render(<HomeView />);
 
     const toggle = await screen.findByRole("button", {
-      name: "Goalループで継続実行",
+      name: "ループで継続実行",
     });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByLabelText("承認条件")).toBeNull();
@@ -1139,7 +1139,7 @@ describe("HomeView goal loop toggle", () => {
     render(<HomeView />);
 
     const toggle = await screen.findByRole("button", {
-      name: "Goalループで継続実行",
+      name: "ループで継続実行",
     });
     fireEvent.click(toggle);
     fireEvent.change(screen.getByLabelText("承認条件"), {
@@ -1171,7 +1171,7 @@ describe("HomeView goal loop toggle", () => {
   it("does not start a goal loop when the pill is off", async () => {
     render(<HomeView />);
 
-    await screen.findByRole("button", { name: "Goalループで継続実行" });
+    await screen.findByRole("button", { name: "ループで継続実行" });
     fireEvent.change(screen.getByLabelText("タスクの説明"), {
       target: { value: "バグを直す" },
     });
@@ -1479,7 +1479,7 @@ describe("HomeView auto model", () => {
     await selectAuto();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Goalループで継続実行" }),
+      await screen.findByRole("button", { name: "ループで継続実行" }),
     );
     fireEvent.change(screen.getByLabelText("タスクの説明"), {
       target: { value: "この関数は何が問題なの" },
@@ -1510,7 +1510,7 @@ describe("HomeView auto model", () => {
     await selectAuto();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Goalループで継続実行" }),
+      await screen.findByRole("button", { name: "ループで継続実行" }),
     );
     fireEvent.change(screen.getByLabelText("タスクの説明"), {
       target: { value: "これは何" },

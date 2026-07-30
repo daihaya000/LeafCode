@@ -125,7 +125,7 @@ export function GoalLoopPanel({
   const handleStop = () => {
     if (
       !window.confirm(
-        "Goalループを停止しますか？セッションは中断され、進行中の作業は失われます。",
+        "ループを停止しますか？セッションは中断され、進行中の作業は失われます。",
       )
     )
       return;
@@ -140,7 +140,7 @@ export function GoalLoopPanel({
   const badgeText = `${STATUS_LABEL[loop.status]} ${loop.turnCount}/${loop.maxTurns}`;
   // `turnCount` counts goal turns only; completion-verification turns are not
   // charged to the budget, so say so rather than letting the ratio look stuck.
-  const badgeAria = `Goalループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${loop.turnCount} / ${loop.maxTurns}（完了検証ターンは含みません）`;
+  const badgeAria = `ループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${loop.turnCount} / ${loop.maxTurns}（完了検証ターンは含みません）`;
   const pauseHint =
     loop.status === "paused" && loop.pauseReason !== ""
       ? PAUSE_REASON_HINT[loop.pauseReason]
@@ -164,7 +164,7 @@ export function GoalLoopPanel({
   return (
     <div
       role="region"
-      aria-label="Goalループ"
+      aria-label="ループ"
       data-live={live ? "true" : undefined}
       className={cx(
         "rounded-xl border border-border bg-surface p-3 text-sm",
@@ -177,7 +177,7 @@ export function GoalLoopPanel({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="flex shrink-0 items-center gap-2 font-medium text-text">
             <ListTodo className="h-4 w-4 text-primary" />
-            Goalループ
+            ループ
             <span
               className={cx(
                 "rounded-full px-2 py-0.5 text-[11px]",
@@ -196,7 +196,7 @@ export function GoalLoopPanel({
           <button
             type="button"
             className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text focus:outline-none focus:ring-2 focus:ring-primary"
-            aria-label={expanded ? "Goalループの詳細を折りたたむ" : "Goalループの詳細を展開"}
+            aria-label={expanded ? "ループの詳細を折りたたむ" : "ループの詳細を展開"}
             aria-controls="goal-loop-detail"
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
@@ -208,7 +208,7 @@ export function GoalLoopPanel({
               variant="secondary"
               size="sm"
               disabled={busy || loop.pauseRequested}
-              aria-label="Goalループを一時停止"
+              aria-label="ループを一時停止"
               onClick={() => onAction("pause")}
             >
               <Pause className="h-3.5 w-3.5" />
@@ -220,7 +220,7 @@ export function GoalLoopPanel({
               variant="secondary"
               size="sm"
               disabled={busy}
-              aria-label="Goalループを再開"
+              aria-label="ループを再開"
               onClick={() => onAction("resume")}
             >
               <Play className="h-3.5 w-3.5" />
@@ -232,7 +232,7 @@ export function GoalLoopPanel({
               variant="danger"
               size="sm"
               disabled={busy}
-              aria-label="Goalループを停止"
+              aria-label="ループを停止"
               onClick={handleStop}
             >
               <Square className="h-3.5 w-3.5" />
