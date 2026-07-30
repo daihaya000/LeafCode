@@ -13,6 +13,7 @@ import {
 import { resolvedOpenCodePathname } from "@/lib/opencode-id";
 import {
   SSE_HEARTBEAT_MS,
+  SSE_UPSTREAM_CONNECT_TIMEOUT_MS,
   encodeSseHeartbeat,
 } from "@/lib/sse-health";
 
@@ -417,8 +418,22 @@ async function proxy(
     headers.set(key, value);
   }
 
+  const wantsSse = pathname === "/event" || pathname === "/global/event";
+
   let requestBody: ArrayBuffer | undefined;
   let upstream: Response;
+  /**
+   * Bounds only the wait for upstream SSE response headers; cleared the moment
+   * they arrive so an established stream is never timed out.
+   */
+  let sseConnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let sseConnectTimedOut = false;
+  const clearSseConnectTimer = () => {
+    if (sseConnectTimer) {
+      clearTimeout(sseConnectTimer);
+      sseConnectTimer = null;
+    }
+  };
   try {
     if (req.method !== "GET" && req.method !== "HEAD") {
       requestBody = await req.arrayBuffer();
@@ -496,18 +511,36 @@ async function proxy(
         }
       }
     }
-    const wantsSse =
-      pathname === "/event" || pathname === "/global/event";
     const upstreamTimeoutMs = isLongRunningSyncMutation(req.method, pathname)
       ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
       : UPSTREAM_TIMEOUT_MS;
-    // SSE: follow the client disconnect (req.signal) with no idle timeout.
+    // SSE: follow the client disconnect (req.signal) and bound only the wait for
+    // response headers — an established stream must never be timed out.
     // Other calls: timeout, optionally combined with client abort.
     const clientSignal =
       req.signal && typeof req.signal.aborted === "boolean" ? req.signal : null;
     let signal: AbortSignal;
     if (wantsSse) {
-      signal = clientSignal ?? AbortSignal.timeout(2_147_483_647);
+      const connectAbort = new AbortController();
+      sseConnectTimer = setTimeout(() => {
+        sseConnectTimedOut = true;
+        connectAbort.abort();
+      }, SSE_UPSTREAM_CONNECT_TIMEOUT_MS);
+      if (!clientSignal) {
+        signal = connectAbort.signal;
+      } else if (typeof AbortSignal.any === "function") {
+        signal = AbortSignal.any([clientSignal, connectAbort.signal]);
+      } else {
+        // Older runtimes without AbortSignal.any: forward the client abort by hand
+        // so a disconnected browser still releases the upstream subscription.
+        if (clientSignal.aborted) connectAbort.abort();
+        else {
+          clientSignal.addEventListener("abort", () => connectAbort.abort(), {
+            once: true,
+          });
+        }
+        signal = connectAbort.signal;
+      }
     } else if (clientSignal && typeof AbortSignal.any === "function") {
       signal = AbortSignal.any([
         AbortSignal.timeout(upstreamTimeoutMs),
@@ -527,7 +560,23 @@ async function proxy(
       init.body = requestBody;
     }
     upstream = await fetch(target, init);
+    clearSseConnectTimer();
   } catch (err) {
+    clearSseConnectTimer();
+    // A stalled engine that never starts the stream must surface as a fast,
+    // retryable error. Holding the request open instead leaves the browser's
+    // EventSource in CONNECTING with no `error` event to reconnect from.
+    if (sseConnectTimedOut) {
+      return NextResponse.json(
+        {
+          error: `イベントストリームの接続が${Math.round(
+            SSE_UPSTREAM_CONNECT_TIMEOUT_MS / 1000,
+          )}秒でタイムアウトしました`,
+          detail: "SSE upstream did not send response headers in time",
+        },
+        { status: 504 },
+      );
+    }
     // `AbortSignal.timeout` rejects with a DOMException whose raw message is
     // "The operation was aborted due to timeout" — unhelpful when surfaced to
     // the user. Convert it to a clear 408 so long commands report a real
@@ -557,10 +606,7 @@ async function proxy(
   if (req.method === "GET" && (pathname === "/provider" || pathname === "/agent")) {
     await cacheCapabilityMetadata(directory, pathname, upstream);
   }
-  const isSse =
-    contentType.includes("text/event-stream") ||
-    pathname === "/event" ||
-    pathname === "/global/event";
+  const isSse = contentType.includes("text/event-stream") || wantsSse;
 
   const outHeaders = new Headers();
   upstream.headers.forEach((value, key) => {

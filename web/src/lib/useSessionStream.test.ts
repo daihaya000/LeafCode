@@ -4,10 +4,14 @@ import {
   classifyToolFailureStatus,
   createInitialStreamState,
   filterGoalLoopMessages,
+  MAX_ACTIVE_RECONCILE_MS,
+  MESSAGE_REFETCH_TRUST_SSE_MS,
+  nextReconcileDelayMs,
   resolveResyncStatus,
   sessionStreamReducer,
   SESSION_COMMAND_TIMEOUT_MS,
   SESSION_MUTATION_TIMEOUT_MS,
+  shouldTrustSseForMessages,
   stripGoalLoopJsonBlock,
   STUCK_BUSY_IDLE_STREAK,
   STUCK_BUSY_QUIET_MS,
@@ -34,6 +38,76 @@ describe("SESSION_COMMAND_TIMEOUT_MS", () => {
 
   it("is longer than the default prompt/abort mutation timeout", () => {
     expect(SESSION_COMMAND_TIMEOUT_MS).toBeGreaterThan(SESSION_MUTATION_TIMEOUT_MS);
+  });
+});
+
+describe("nextReconcileDelayMs", () => {
+  it("keeps the base interval when the last pass was fast or unmeasured", () => {
+    expect(nextReconcileDelayMs(0)).toBe(ACTIVE_SESSION_RECONCILE_MS);
+    expect(nextReconcileDelayMs(-1)).toBe(ACTIVE_SESSION_RECONCILE_MS);
+    expect(nextReconcileDelayMs(Number.NaN)).toBe(ACTIVE_SESSION_RECONCILE_MS);
+    expect(nextReconcileDelayMs(120)).toBe(ACTIVE_SESSION_RECONCILE_MS);
+  });
+
+  it("backs off to roughly the last pass duration on a slow engine", () => {
+    // A saturated engine took ~25s to answer; re-asking every 3s only deepens
+    // the backlog that made it slow in the first place.
+    expect(nextReconcileDelayMs(8_000)).toBe(8_000);
+    expect(nextReconcileDelayMs(25_000)).toBe(25_000);
+  });
+
+  it("never exceeds the cap, however slow the engine is", () => {
+    expect(nextReconcileDelayMs(120_000)).toBe(MAX_ACTIVE_RECONCILE_MS);
+    expect(MAX_ACTIVE_RECONCILE_MS).toBeGreaterThan(ACTIVE_SESSION_RECONCILE_MS);
+  });
+});
+
+describe("shouldTrustSseForMessages", () => {
+  const base = {
+    connection: "live" as const,
+    sessionQuietMs: 0,
+    messageCount: 3,
+  };
+
+  it("skips the full-history refetch while SSE is live and recently active", () => {
+    expect(shouldTrustSseForMessages(base)).toBe(true);
+    expect(
+      shouldTrustSseForMessages({
+        ...base,
+        sessionQuietMs: MESSAGE_REFETCH_TRUST_SSE_MS - 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("refetches once SSE has gone quiet for this session", () => {
+    // This is the case the periodic reconcile exists for: heartbeats keep the
+    // stream open while message events are being dropped.
+    expect(
+      shouldTrustSseForMessages({
+        ...base,
+        sessionQuietMs: MESSAGE_REFETCH_TRUST_SSE_MS,
+      }),
+    ).toBe(false);
+  });
+
+  it.each(["connecting", "reconnecting", "down"] as const)(
+    "refetches while the connection is %s",
+    (connection) => {
+      expect(shouldTrustSseForMessages({ ...base, connection })).toBe(false);
+    },
+  );
+
+  it("refetches when no messages have been loaded yet", () => {
+    expect(shouldTrustSseForMessages({ ...base, messageCount: 0 })).toBe(false);
+  });
+
+  it("honours an explicit trust window", () => {
+    expect(
+      shouldTrustSseForMessages({ ...base, sessionQuietMs: 500, trustWindowMs: 400 }),
+    ).toBe(false);
+    expect(
+      shouldTrustSseForMessages({ ...base, sessionQuietMs: 300, trustWindowMs: 400 }),
+    ).toBe(true);
   });
 });
 

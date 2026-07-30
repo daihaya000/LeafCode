@@ -11,7 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import { apiUrl, getJson, ocJson } from "@/lib/client";
-import { isSseSilent, SSE_SILENCE_MS } from "@/lib/sse-health";
+import {
+  isSseConnectStalled,
+  isSseSilent,
+  SSE_SILENCE_MS,
+} from "@/lib/sse-health";
 import { notifyAttentionCountChanged } from "@/lib/events";
 import {
   parseGlobalEvent,
@@ -470,6 +474,8 @@ export function GlobalAttentionProvider({
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
     let lastActivityAt = Date.now();
+    /** When the current EventSource attempt started — drives the connect-stall guard. */
+    let connectStartedAt = Date.now();
 
     const markActivity = () => {
       lastActivityAt = Date.now();
@@ -486,6 +492,7 @@ export function GlobalAttentionProvider({
         es.onerror = null;
         es.close();
       }
+      connectStartedAt = Date.now();
       es = new EventSource(apiUrl("/api/opencode/global/event"));
       es.onmessage = (ev) => {
         markActivity();
@@ -514,7 +521,15 @@ export function GlobalAttentionProvider({
     };
 
     const silenceWatch = setInterval(() => {
-      if (cancelled || !es || es.readyState !== EventSource.OPEN) return;
+      if (cancelled || !es) return;
+      if (es.readyState === EventSource.CONNECTING) {
+        // A stalled engine can leave the stream in CONNECTING indefinitely; the
+        // silence check below needs an OPEN stream and would never fire. Only
+        // CONNECTING is retried here — CLOSED is already on the backoff timer.
+        if (isSseConnectStalled(connectStartedAt, Date.now())) connect(true);
+        return;
+      }
+      if (es.readyState !== EventSource.OPEN) return;
       if (!isSseSilent(lastActivityAt, Date.now(), SSE_SILENCE_MS)) return;
       connect(true);
     }, 5_000);

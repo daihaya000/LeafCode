@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { apiUrl, ApiError, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
-import { isSseSilent, SSE_SILENCE_MS } from "./sse-health";
+import { isSseConnectStalled, isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import type {
   MessageInfo,
   MessageWithParts,
@@ -95,6 +95,69 @@ export const SESSION_COMMAND_TIMEOUT_MS = 125_000;
  */
 export const ACTIVE_SESSION_RECONCILE_MS = 3_000;
 
+/**
+ * Upper bound for the adaptive reconcile delay.
+ *
+ * One reconcile pass issues eight requests, including the session's full message
+ * history. On a saturated engine a single pass can take tens of seconds, and
+ * re-asking every {@link ACTIVE_SESSION_RECONCILE_MS} only deepens the backlog,
+ * so the next pass is delayed to roughly how long the last one actually took.
+ */
+export const MAX_ACTIVE_RECONCILE_MS = 30_000;
+
+/**
+ * When the SSE stream is live and this session emitted an event within this
+ * window, the periodic reconcile trusts SSE for the message list and skips the
+ * full `/session/{id}/message` refetch.
+ *
+ * That endpoint returns the entire session history — measured at ~2.9 MB on a
+ * long session, which the engine needs >20s to serialize. Refetching it every
+ * few seconds saturates the engine, and the resulting slowness hits *every*
+ * request including `/event`, which surfaces as an unstable connection. The
+ * refetch still runs whenever SSE cannot be trusted (not live, no recent event
+ * for this session, or no messages loaded yet), which is exactly the case the
+ * reconcile exists to recover from.
+ */
+export const MESSAGE_REFETCH_TRUST_SSE_MS = 10_000;
+
+/** Per-pass options for a REST resync. */
+export type ResyncOptions = {
+  /**
+   * Allow skipping the full `/session/{id}/message` refetch when SSE is live and
+   * recently active for this session. Only the periodic reconcile sets this;
+   * mount, reconnect and lifecycle-event resyncs always refetch.
+   */
+  trustSseForMessages?: boolean;
+};
+
+/** Delay before the next active-session reconcile, adapted to engine latency. */
+export function nextReconcileDelayMs(
+  lastResyncMs: number,
+  baseMs: number = ACTIVE_SESSION_RECONCILE_MS,
+  maxMs: number = MAX_ACTIVE_RECONCILE_MS,
+): number {
+  if (!Number.isFinite(lastResyncMs) || lastResyncMs <= 0) return baseMs;
+  return Math.min(maxMs, Math.max(baseMs, Math.round(lastResyncMs)));
+}
+
+/**
+ * True when the periodic reconcile can rely on SSE for the message list and skip
+ * the full-history refetch. See {@link MESSAGE_REFETCH_TRUST_SSE_MS}.
+ */
+export function shouldTrustSseForMessages(input: {
+  connection: ConnectionState;
+  /** Time since the last SSE event scoped to this session. */
+  sessionQuietMs: number;
+  messageCount: number;
+  trustWindowMs?: number;
+}): boolean {
+  if (input.connection !== "live") return false;
+  if (input.messageCount <= 0) return false;
+  return (
+    input.sessionQuietMs < (input.trustWindowMs ?? MESSAGE_REFETCH_TRUST_SSE_MS)
+  );
+}
+
 const CANCELLED_TOOL_FAILURE_MESSAGES = new Set([
   "aborted",
   "tool execution aborted",
@@ -128,8 +191,11 @@ function normalizeCancelledToolPart(part: Part): Part {
 
 /**
  * Consecutive REST idle snapshots required before overriding a live-SSE busy
- * state. Reconcile runs every `ACTIVE_SESSION_RECONCILE_MS`, so this is a few
- * seconds of agreement — enough to rule out a single lagging snapshot.
+ * state. Reconcile runs at least every `ACTIVE_SESSION_RECONCILE_MS`, so this is
+ * a few seconds of agreement — enough to rule out a single lagging snapshot.
+ * `STUCK_BUSY_QUIET_MS` is the wall-clock half of the same guard, so a slow
+ * engine that stretches the interval (see `nextReconcileDelayMs`) cannot make
+ * this trip sooner than intended.
  */
 export const STUCK_BUSY_IDLE_STREAK = 3;
 
@@ -626,6 +692,14 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const mutationElapsedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Stable ref to the latest abort() so sendPrompt/sendCommand can call it without a circular dep. */
   const abortRef = useRef<(reason?: string) => Promise<void>>(async () => {});
+  /** The single in-flight resync pass, if any — see the `resync` wrapper. */
+  const resyncInFlightRef = useRef<Promise<void> | null>(null);
+  /** A resync was requested while one was already running. */
+  const resyncQueuedRef = useRef(false);
+  /** False once any queued caller needs the full message refetch. */
+  const resyncQueuedTrustSseRef = useRef(true);
+  /** Wall-clock duration of the last resync pass, for the adaptive reconcile delay. */
+  const lastResyncMsRef = useRef(0);
   const messageCountRef = useRef(state.messages.length);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
@@ -650,6 +724,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     preferRestStatusRef.current = false;
     idleStreakRef.current = 0;
     sessionActivityAtRef.current = Date.now();
+    // A slow pass on the previous session must not delay the new session's first
+    // reconcile.
+    lastResyncMsRef.current = 0;
     clearMutationTimers();
   }, [scopeKey, clearMutationTimers]);
 
@@ -664,7 +741,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     };
   }, [clearMutationTimers]);
 
-  const resync = useCallback(async () => {
+  const runResync = useCallback(async (options?: ResyncOptions) => {
     const sid = sessionRef.current;
     if (!directory || !sid) return;
     const requestedScope = `${directory}\u0000${sid}`;
@@ -673,31 +750,43 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     const stale = () =>
       scopeRef.current !== requestedScope || gen !== resyncGenRef.current;
 
+    // The full-history refetch is by far the most expensive call in this pass,
+    // so the periodic reconcile skips it while SSE is provably delivering.
+    const skipMessages =
+      options?.trustSseForMessages === true &&
+      shouldTrustSseForMessages({
+        connection: connectionRef.current,
+        sessionQuietMs: Date.now() - sessionActivityAtRef.current,
+        messageCount: messageCountRef.current,
+      });
+
     let messageError: unknown = null;
-    try {
-      const rows = await ocJson<MessageWithParts[]>(
-        `/session/${sid}/message`,
-        directory,
-      );
-      if (stale()) return;
-      // While streaming, a full REST replace can wipe in-flight session.next
-      // deltas that the server snapshot has not caught up to yet.
-      // Do not require `loaded` — opening an already-busy session can receive
-      // SSE deltas before the first resync completes.
-      const streaming =
-        pendingMutationRef.current ||
-        statusRef.current?.type === "busy" ||
-        statusRef.current?.type === "retry";
-      // Early send before the first REST snapshot can leave messages empty for
-      // the whole turn if we skip init while streaming. Allow init when empty.
-      const messages = Array.isArray(rows) ? rows : [];
-      if (!streaming || messageCountRef.current === 0) {
-        dispatch({ kind: "init", messages });
-      } else {
-        dispatch({ kind: "mergeRestMessages", messages });
+    if (!skipMessages) {
+      try {
+        const rows = await ocJson<MessageWithParts[]>(
+          `/session/${sid}/message`,
+          directory,
+        );
+        if (stale()) return;
+        // While streaming, a full REST replace can wipe in-flight session.next
+        // deltas that the server snapshot has not caught up to yet.
+        // Do not require `loaded` — opening an already-busy session can receive
+        // SSE deltas before the first resync completes.
+        const streaming =
+          pendingMutationRef.current ||
+          statusRef.current?.type === "busy" ||
+          statusRef.current?.type === "retry";
+        // Early send before the first REST snapshot can leave messages empty for
+        // the whole turn if we skip init while streaming. Allow init when empty.
+        const messages = Array.isArray(rows) ? rows : [];
+        if (!streaming || messageCountRef.current === 0) {
+          dispatch({ kind: "init", messages });
+        } else {
+          dispatch({ kind: "mergeRestMessages", messages });
+        }
+      } catch (err) {
+        messageError = err;
       }
-    } catch (err) {
-      messageError = err;
     }
 
     try {
@@ -923,6 +1012,51 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     }
   }, [directory, clearMutationTimers]);
 
+  /**
+   * Serialize resyncs.
+   *
+   * A pass issues eight sequential requests, so overlapping passes are what turn
+   * a merely slow engine into an unusable one: the 3s reconcile used to start a
+   * new pass while several earlier ones were still waiting, multiplying the load
+   * on the very engine that was already too slow to answer. Only one pass runs at
+   * a time; requests that arrive during a pass collapse into a single follow-up
+   * pass so the newest state is still picked up.
+   *
+   * The follow-up keeps the *strictest* option any queued caller asked for: if
+   * anything wanted a full refetch, the follow-up refetches.
+   */
+  const resync = useCallback(
+    (options?: ResyncOptions): Promise<void> => {
+      if (resyncInFlightRef.current) {
+        resyncQueuedRef.current = true;
+        if (options?.trustSseForMessages !== true) {
+          resyncQueuedTrustSseRef.current = false;
+        }
+        return resyncInFlightRef.current;
+      }
+      const run = (async () => {
+        let pending = options;
+        try {
+          for (;;) {
+            resyncQueuedRef.current = false;
+            resyncQueuedTrustSseRef.current = true;
+            const startedAt = Date.now();
+            await runResync(pending);
+            lastResyncMsRef.current = Date.now() - startedAt;
+            if (!resyncQueuedRef.current) break;
+            pending = { trustSseForMessages: resyncQueuedTrustSseRef.current };
+          }
+        } finally {
+          resyncInFlightRef.current = null;
+          resyncQueuedRef.current = false;
+        }
+      })();
+      resyncInFlightRef.current = run;
+      return run;
+    },
+    [runResync],
+  );
+
   useEffect(() => {
     if (!directory || !sessionId) return;
 
@@ -934,6 +1068,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     let timer: ReturnType<typeof setTimeout> | null = null;
     let nextResyncTimer: ReturnType<typeof setTimeout> | null = null;
     let lastActivityAt = Date.now();
+    /** When the current EventSource attempt started — drives the connect-stall guard. */
+    let connectStartedAt = Date.now();
     /** Accrue session.next.tool.input.delta fragments until .ended / .called. */
     const toolInputBuf = new Map<string, string>();
     const markActivity = () => {
@@ -1430,6 +1566,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         kind: "connection",
         connection: isReconnect ? "reconnecting" : "connecting",
       });
+      connectStartedAt = Date.now();
       es = new EventSource(apiUrl("/api/opencode/event", { directory }));
 
       es.onopen = () => {
@@ -1465,23 +1602,51 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     };
 
     const silenceWatch = setInterval(() => {
-      if (cancelled || !es || es.readyState !== EventSource.OPEN) return;
+      if (cancelled || !es) return;
+      if (es.readyState === EventSource.CONNECTING) {
+        // A stalled engine can leave the stream in CONNECTING indefinitely, and
+        // the silence check below never fires because it needs an OPEN stream.
+        // Without this the WebUI sits in "reconnecting" with nothing to recover
+        // it. Only CONNECTING is retried here — a CLOSED stream is already
+        // waiting on the backoff timer and must not be reconnected early.
+        if (isSseConnectStalled(connectStartedAt, Date.now())) {
+          connect(true, "silence");
+        }
+        return;
+      }
+      if (es.readyState !== EventSource.OPEN) return;
       if (!isSseSilent(lastActivityAt, Date.now(), SSE_SILENCE_MS)) return;
       connect(true, "silence");
     }, 5_000);
 
-    const activeSessionReconcile = setInterval(() => {
-      if (cancelled || document.visibilityState !== "visible") return;
+    // Self-scheduling rather than a fixed interval: the next pass is only queued
+    // once the previous one has finished, and its delay grows with how long that
+    // pass actually took. A fixed 3s interval kept firing into a saturated engine.
+    let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+    function scheduleReconcile(delayMs: number) {
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      reconcileTimer = setTimeout(() => {
+        void runReconcile();
+      }, delayMs);
+    }
+    async function runReconcile() {
+      reconcileTimer = null;
+      if (cancelled) return;
       const statusType = statusRef.current?.type;
-      if (
-        !pendingMutationRef.current &&
-        statusType !== "busy" &&
-        statusType !== "retry"
-      ) {
-        return;
+      const active =
+        document.visibilityState === "visible" &&
+        (pendingMutationRef.current ||
+          statusType === "busy" ||
+          statusType === "retry");
+      let delayMs = ACTIVE_SESSION_RECONCILE_MS;
+      if (active) {
+        await resync({ trustSseForMessages: true });
+        delayMs = nextReconcileDelayMs(lastResyncMsRef.current);
       }
-      void resync();
-    }, ACTIVE_SESSION_RECONCILE_MS);
+      if (cancelled) return;
+      scheduleReconcile(delayMs);
+    }
+    scheduleReconcile(ACTIVE_SESSION_RECONCILE_MS);
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -1502,8 +1667,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       cancelled = true;
       if (timer) clearTimeout(timer);
       if (nextResyncTimer) clearTimeout(nextResyncTimer);
+      if (reconcileTimer) clearTimeout(reconcileTimer);
       clearInterval(silenceWatch);
-      clearInterval(activeSessionReconcile);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
       es?.close();

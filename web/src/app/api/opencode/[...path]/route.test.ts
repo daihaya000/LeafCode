@@ -28,6 +28,7 @@ vi.mock("@/lib/goal-loop", () => ({
 }));
 
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { SSE_UPSTREAM_CONNECT_TIMEOUT_MS } from "@/lib/sse-health";
 import { GET, POST } from "./route";
 
 beforeEach(() => {
@@ -724,6 +725,68 @@ describe("directory requirement for /event", () => {
     const [, init] = fetchMock.mock.calls[0] ?? [];
     expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal);
     fetchMock.mockRestore();
+  });
+
+  it("returns 504 when the engine never sends SSE response headers", async () => {
+    // A saturated engine used to hold this request open for the whole
+    // maxDuration window, leaving the browser's EventSource stuck in CONNECTING
+    // with no error event to reconnect from.
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(
+          (_input, init) =>
+            new Promise((_resolve, reject) => {
+              const signal = (init as RequestInit | undefined)?.signal;
+              signal?.addEventListener("abort", () =>
+                reject(new DOMException("aborted", "AbortError")),
+              );
+            }),
+        );
+      const pending = GET(
+        new NextRequest(
+          "http://localhost/api/opencode/event?directory=C%3A%5C%5Crepo",
+        ) as never,
+        { params: Promise.resolve({ path: ["event"] }) },
+      );
+      await vi.advanceTimersByTimeAsync(SSE_UPSTREAM_CONNECT_TIMEOUT_MS + 10);
+      const response = await pending;
+      expect(response.status).toBe(504);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toContain("タイムアウト");
+      fetchMock.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not time out an SSE stream once headers have arrived", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(new ReadableStream(), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+      const response = await GET(
+        new NextRequest(
+          "http://localhost/api/opencode/event?directory=C%3A%5C%5Crepo",
+        ) as never,
+        { params: Promise.resolve({ path: ["event"] }) },
+      );
+      expect(response.status).toBe(200);
+      const [, init] = fetchMock.mock.calls[0] ?? [];
+      const signal = (init as RequestInit | undefined)?.signal;
+      // The connect timer is cleared on headers, so advancing well past it must
+      // leave the established stream untouched.
+      await vi.advanceTimersByTimeAsync(SSE_UPSTREAM_CONNECT_TIMEOUT_MS * 3);
+      expect(signal?.aborted).toBe(false);
+      fetchMock.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
