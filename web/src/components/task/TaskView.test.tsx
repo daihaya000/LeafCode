@@ -77,9 +77,11 @@ vi.mock("@/lib/useSlashCommands", () => ({
   useSlashCommands: () => slashCommands,
 }));
 
+// Both helpers return `string | null`; annotate the mocks so tests can
+// `mockReturnValue("auto")` without vi.fn() narrowing the return type to null.
 const { readDefaultModel, readLastUsedModel } = vi.hoisted(() => ({
-  readDefaultModel: vi.fn(() => null),
-  readLastUsedModel: vi.fn(() => null),
+  readDefaultModel: vi.fn((): string | null => null),
+  readLastUsedModel: vi.fn((): string | null => null),
 }));
 
 vi.mock("@/lib/default-model", () => ({
