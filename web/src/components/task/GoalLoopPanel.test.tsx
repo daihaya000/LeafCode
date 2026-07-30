@@ -61,6 +61,25 @@ describe("GoalLoopPanel", () => {
     expect(screen.getByRole("region", { name: "Goalループ" })).toBeTruthy();
   });
 
+  it("renders acceptance criteria when present", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ acceptance: ["tests pass", "lint clean"] })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("tests pass")).toBeTruthy();
+    expect(screen.getByText("lint clean")).toBeTruthy();
+  });
+
+  it("hides acceptance label when no criteria are set", () => {
+    render(
+      <GoalLoopPanel loop={baseLoop({ acceptance: [] })} busy={false} onAction={vi.fn()} />,
+    );
+    expect(screen.queryByText("承認条件:")).toBeNull();
+  });
+
   it("starts compact and reveals details only when expanded", () => {
     render(
       <GoalLoopPanel

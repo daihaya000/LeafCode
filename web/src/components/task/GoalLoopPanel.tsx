@@ -242,6 +242,20 @@ export function GoalLoopPanel({
         </div>
       </div>
 
+      {loop.acceptance.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1 text-xs">
+          <span className="text-muted">承認条件:</span>
+          {loop.acceptance.map((criterion, index) => (
+            <span
+              key={index}
+              className="inline-flex items-center rounded-md bg-surface-2 px-2 py-0.5 text-text"
+              title={criterion}
+            >
+              {criterion}
+            </span>
+          ))}
+        </div>
+      )}
       {pauseHint && <p className="mt-2 truncate text-xs text-muted">{pauseHint}</p>}
       {loop.pauseRequested && (
         <p className="mt-2 text-xs text-muted">このターンの完了後に一時停止します。</p>
