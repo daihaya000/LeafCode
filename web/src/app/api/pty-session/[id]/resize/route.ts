@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { resizePty, PtyError } from "@/lib/pty-session";
+import { logPtyEvent } from "@/lib/pty-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +52,10 @@ export async function POST(req: NextRequest) {
 
   try {
     await resizePty(dirCheck.path, ptyId, body.rows, body.cols);
+    logPtyEvent(ptyId, "resize", {
+      directory: dirCheck.path,
+      detail: `${body.rows}x${body.cols}`,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof PtyError) {

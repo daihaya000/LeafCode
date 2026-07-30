@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { removePty, PtyError } from "@/lib/pty-session";
+import { logPtyEvent } from "@/lib/pty-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const removed = await removePty(dirCheck.path, ptyId);
+    logPtyEvent(ptyId, "delete", { directory: dirCheck.path });
     return NextResponse.json({ ok: removed });
   } catch (err) {
     if (err instanceof PtyError) {

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { connectPty, PtyError } from "@/lib/pty-session";
+import { logPtyEvent } from "@/lib/pty-audit";
 import {
   deleteRelay,
   getRelay,
@@ -81,6 +82,7 @@ export async function GET(req: NextRequest) {
     const onClose = () => {
       relay!.closed = true;
       deleteRelay(ptyId);
+      logPtyEvent(ptyId, "disconnect", { directory: dirCheck.path });
       for (const listener of relay!.listeners) {
         try { listener(""); } catch { /* ignore */ }
       }

@@ -80,6 +80,7 @@ describe("POST /api/pty-session", () => {
   });
 
   it("creates a PTY and returns id/title/cwd/status", async () => {
+    // POST /pty response
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({
         id: "pty_1",
@@ -91,6 +92,12 @@ describe("POST /api/pty-session", () => {
         pid: 1234,
       }), { status: 200 }),
     );
+    // GET /pty/shells response (acceptable list includes pwsh)
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([
+        { path: "pwsh", name: "PowerShell", acceptable: true },
+      ]), { status: 200 }),
+    );
     const res = await POST(
       localRequest(
         "http://localhost/api/pty-session",
@@ -100,10 +107,11 @@ describe("POST /api/pty-session", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string; title: string };
     expect(body.id).toBe("pty_1");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0];
-    const sent = JSON.parse(init!.body as string);
-    // command/args/env must NOT be forwarded to the Engine.
+    // Verify the POST body did not include command/args/env
+    const postCall = fetchMock.mock.calls.find(
+      (c) => c[1]?.method === "POST",
+    );
+    const sent = JSON.parse(postCall![1].body as string);
     expect(sent.command).toBeUndefined();
     expect(sent.cwd).toBeTruthy();
   });

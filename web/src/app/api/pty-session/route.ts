@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { createPty, listPtys, resolveScopedCwd, PtyError } from "@/lib/pty-session";
+import { createPtyWithShellCheck, listPtys, resolveScopedCwd, PtyError } from "@/lib/pty-session";
+import { logPtyEvent } from "@/lib/pty-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,20 +68,23 @@ export async function POST(req: NextRequest) {
   if (title.length > TITLE_MAX_LEN) title = title.slice(0, TITLE_MAX_LEN);
 
   try {
-    const pty = await createPty(dirCheck.path, {
+    const pty = await createPtyWithShellCheck(dirCheck.path, {
       cwd: cwdCheck.cwd,
       title: title || undefined,
     });
+    logPtyEvent(pty.id, "create", { directory: dirCheck.path });
     return NextResponse.json(
       { id: pty.id, title: pty.title, cwd: pty.cwd, status: pty.status },
       { status: 200 },
     );
   } catch (err) {
+    const message = err instanceof Error ? err.message : "failed to create PTY";
+    logPtyEvent("?", "create-error", { directory: dirCheck.path, detail: message });
     if (err instanceof PtyError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "failed to create PTY" },
+      { error: message },
       { status: 500 },
     );
   }

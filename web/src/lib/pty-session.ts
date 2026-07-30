@@ -178,6 +178,59 @@ export function createPty(
   });
 }
 
+/** Engine `pty.shells` entry — a candidate shell with an acceptability flag. */
+export interface PtyShell {
+  path: string;
+  name: string;
+  acceptable: boolean;
+}
+
+/**
+ * List candidate shells from the Engine (`GET /pty/shells`).
+ * Used to verify that the Engine's default shell is in the acceptable set.
+ */
+export function listShells(directory: string): Promise<PtyShell[]> {
+  return engineFetch<PtyShell[]>("/pty/shells", { method: "GET", directory });
+}
+
+/**
+ * Create a PTY and verify the returned shell is in the Engine's acceptable
+ * set (`pty.shells` with `acceptable: true`). If the Engine picked a shell that
+ * is not acceptable, the PTY is removed and an error is thrown.
+ *
+ * This is a defense-in-depth check: since the WebUI never sends `command`, the
+ * Engine should always pick an acceptable shell on its own. The check catches
+ * Engine misconfiguration or a future endpoint that accepts a `command`.
+ */
+export async function createPtyWithShellCheck(
+  directory: string,
+  body: { cwd: string; title?: string },
+): Promise<Pty> {
+  const pty = await createPty(directory, body);
+
+  // Best-effort shell acceptability check. If /pty/shells is unavailable
+  // (older Engine), skip the check rather than blocking creation.
+  try {
+    const shells = await listShells(directory);
+    const acceptable = shells.filter((s) => s.acceptable).map((s) => s.path);
+    if (acceptable.length > 0 && !acceptable.includes(pty.command)) {
+      // The Engine picked a non-acceptable shell — remove it and fail closed.
+      await removePty(directory, pty.id).catch(() => { /* best effort */ });
+      throw new PtyError(
+        `engine returned a non-acceptable shell: ${pty.command}`,
+        403,
+      );
+    }
+  } catch (err) {
+    // If the shell list fetch itself failed (not the acceptability check),
+    // re-throw acceptability errors but swallow list-fetch failures.
+    if (err instanceof PtyError && err.status === 403) throw err;
+    // /pty/shells unavailable — skip the check.
+  }
+
+  return pty;
+}
+
 /** List PTY sessions on the Engine (GET /pty). */
 export function listPtys(directory: string): Promise<Pty[]> {
   return engineFetch<Pty[]>("/pty", { method: "GET", directory });
