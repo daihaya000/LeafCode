@@ -17,7 +17,7 @@ Browser Bridge は次の 4 つの要素で構成されます。
 
 ## 前提条件
 
-- Windows 上の OpenCodeWebUI（`start-webui.bat` で起動済み）
+- Windows 上の OpenCodeWebUI（`OpenCodeWebUI.exe` で起動済み）
 - Chrome または Brave（最新安定版）
 - 同一端末で動作（別 PC のブラウザは対象外）
 
@@ -57,7 +57,7 @@ MCP を有効化する前にこの手順を一度実行してください。
 
 拡張機能とトレイ host の Broker を接続します。
 
-1. トレイ host が起動していることを確認する（`start-webui.bat` 実行中）
+1. トレイ host が起動していることを確認する（`OpenCodeWebUI.exe` 実行中）
 2. ブラウザの拡張機能アイコン（パズルピース）→ **OpenCode WebUI Browser Bridge** をクリック
 3. WebUI を開く（`http://127.0.0.1:3000`）
 4. 設定 → 拡張機能にある **Browser Bridge 承認**カードで「ペアリングコードを生成」をクリック
@@ -182,7 +182,7 @@ npm run install:browser-bridge-mcp
 MCP 設定の変更を反映するには OpenCode の再起動が必要です。
 
 - トレイアイコンを右クリック → 「Restart OpenCode」
-- またはトレイアイコンを右クリック → 「Quit」してから `start-webui.bat` を再実行
+- またはトレイアイコンを右クリック → 「Quit」してから `OpenCodeWebUI.exe` を再実行
 
 再起動後、OpenCode の MCP 設定画面で `browser-bridge` の状態が `connected` になっていることを確認してください。
 
@@ -296,7 +296,7 @@ WebUI をリモート公開している場合、Browser Bridge の管理 API は
 | 症状 | 原因と対処 |
 |------|-----------|
 | popup に「未ペアリング」と表示される | ペアリングコードを入力して「拡張機能をペアリング」をクリックする。コードは WebUI 設定 → ブラウザ セクションで生成 |
-| popup に「ペアリング済み・再接続中…」と表示される | Broker が起動しているか確認。`start-webui.bat` が実行中であることを確認 |
+| popup に「ペアリング済み・再接続中…」と表示される | Broker が起動しているか確認。`OpenCodeWebUI.exe` が実行中であることを確認 |
 | `BROKER_UNAVAILABLE` が返る | トレイ host が起動しているか確認。host 再起動後に OpenCode も再起動する |
 | `EXTENSION_DISCONNECTED` が返る | 拡張機能の popup を開き、接続状態を確認。`chrome://extensions` で拡張が有効か確認 |
 | `STALE_REFERENCE` が返る | ページが変更された可能性がある。再度 `browser_snapshot` を呼び出して新しい ref を取得 |

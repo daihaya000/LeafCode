@@ -2,27 +2,29 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ## 起動（Windows）
 
-1. リポジトリルートの `start-webui.bat` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `.next/BUILD_ID` の有無で判定する冪等な処理です）。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
+1. リポジトリルートの `OpenCodeWebUI.exe` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `.next/BUILD_ID` の有無で判定する冪等な処理です）。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
 2. トレイ常駐後、`http://127.0.0.1:3000` を開きます。
 
 既定では WebUI（Next.js BFF）も OpenCode 本体も `127.0.0.1` のみで待ち受け、LAN/VPN への公開は明示的な opt-in です。スマホ/別PC からアクセスする場合は、Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`、推奨）を使うか、`OPENCODE_WEBUI_HOST=0.0.0.0` で全インターフェースにバインドしてください。
 
-`start-webui.bat` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `start-webui.bat` を再実行してください。
+`OpenCodeWebUI.exe` は管理者権限、Firewallルール、Caddy設定を変更しません。通常は失敗時に画面を止めて案内を表示します。`winget` がない場合はMicrosoft Storeから「アプリインストーラー」を入手してください。Node.jsまたはOpenCodeを導入した直後に見つからない場合は、再ログインまたはPC再起動後に `OpenCodeWebUI.exe` を再実行してください。
 
 ### タスクバーへのピン留め
 
-1. （任意）`scripts/build-launcher.bat` を実行します。`.NET Framework` 同梱の `csc.exe` で `scripts/launcher/Launcher.cs` をコンパイルし、アイコン埋め込み済みのネイティブ `scripts/launcher/OpenCodeWebUI.exe` を生成します（`start-webui.bat` を同じコンソールで実行するだけの薄いラッパー）。**手動実行は不要**です。`start-webui.bat` は起動のたびに、まず自分自身がこの `.exe` を経由して呼ばれたか確認し、経由していなければ `.exe` が無い場合だけ自動で `scripts/build-launcher.bat /quiet`（無人ビルド。`.NET Framework`/`csc.exe` が無い環境では失敗しても通常起動へフォールバックします）を実行してからその `.exe` へ処理を委譲します。ショートカットの対象を `.bat` ではなく実在の `.exe` にすることで、Explorerの「タスクバーにピン留めする」がより確実に提供されます。ビルド結果は `.gitignore` 済みの生成物で、リポジトリには含まれません。
-2. `scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカットを作成します。`OpenCodeWebUI.exe` が存在すればそちらを、無ければ `start-webui.bat` を対象にします（手順1のとおり `start-webui.bat` の初回起動で自動生成されるため、多くの場合は既に存在します）。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
+`OpenCodeWebUI.exe` はリポジトリ直下に配置された唯一のエントリで、git 管理されています（新規 clone でもダブルクリックで即起動できます）。実体は `scripts/launcher/Launcher.cs` を `.NET Framework` 同梱の `csc.exe` でコンパイルしたアイコン埋め込み済みのネイティブ exe で、コンソールタイトルを設定したうえで内部の `scripts/start-webui.bat`（セットアップ＋トレイ host 起動）を同じコンソールで実行する薄いラッパーです。ショートカットの対象を `.bat` ではなく実在の `.exe` にすることで、Explorerの「タスクバーにピン留めする」がより確実に提供されます。
+
+- `scripts/build-launcher.bat` で exe を再生成できます。出力先はリポジトリ直下で、実行中の exe は上書きできないため rename-swap（旧 exe を `.old` に退避してから新 exe を書き、成功後に破棄）で再ビルドします。通常は不要ですが、`Launcher.cs` やアイコンを編集した後に `scripts/start-webui.bat` が起動時に新しさを検知して自動で `/quiet` 再ビルドするため、次回起動から反映されます。
+- `scripts/create-shortcut.bat` を実行すると、デスクトップに固有アイコン付きの `OpenCode WebUI.lnk` ショートカットを作成します（対象はリポジトリ直下の `OpenCodeWebUI.exe`。何らかの理由で exe が欠落している場合は `scripts/build-launcher.bat` で再生成してから対象にします）。実行中のコンソールウィンドウは `title` コマンドで "OpenCode WebUI" というタイトルになるため、Alt-Tab やタスクバーで汎用的な「コマンド プロンプト」ではなく識別しやすい表示になります。
 
 Windows 10 1809 以降はショートカットをスクリプトから自動でタスクバーへピン留めする手段が提供されていないため、ピン留め自体は手動です。作成された `OpenCode WebUI.lnk` を右クリックし「タスクバーにピン留めする」を選択してください。
 
 ### 文字化け・エンコード
 
-`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。`start-webui.bat` は英語の要約行（`[OpenCode WebUI] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `start-webui.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
+`.bat` / `.cmd` は ASCII のみで記述し、日本語メッセージは `scripts/setup-messages/*.txt`（UTF-8・BOM なし・CRLF）に分離して `type` で出力します。cmd.exe は非 ASCII バイトを含む行の直後で読み取り位置を誤り、行の途中から実行するためです。ランチャーが呼ぶ内部の `scripts/start-webui.bat` は英語の要約行（`[OpenCode WebUI] ERROR <code>: ...`）を先に出力し、続けて日本語詳細を `type` する二段構成のため、日本語が読めない環境でもエラーコードで判別できます。メッセージファイルが欠落していても `scripts/start-webui.bat` は完走します。README 内の `bat` コード例も ASCII のみにしてください。配布前チェック: `npm run test:encoding`。詳細は `docs/specs/bat-encoding-safety.md` を参照してください。
 
 ### production build
 
-稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` と `start-webui.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `start-webui.bat` からの起動を案内します）。
+稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` とランチャー内部の `scripts/start-webui.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `OpenCodeWebUI.exe` からの起動を案内します）。
 
 停止できない場合はビルドを中止します。
 
@@ -32,7 +34,7 @@ Windows 10 1809 以降はショートカットをスクリプトから自動で�
 
 `npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
 
-`start-webui.bat` は各エラーを `[OpenCode WebUI] ERROR <code>: <english summary>` の英語行として表示します。下記のコード表と対応します。
+ランチャー（内部の `scripts/start-webui.bat`）は各エラーを `[OpenCode WebUI] ERROR <code>: <english summary>` の英語行として表示します。下記のコード表と対応します。
 
 セットアップの終了コード:
 
@@ -105,7 +107,7 @@ VPN 経由で公開する場合、トレイ常駐ホストが **Caddy 逆プロ�
 set OPENCODE_WEBUI_CADDY=1
 rem optional: override Caddyfile path
 set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
-start-webui.bat
+OpenCodeWebUI.exe
 ```
 
 - 初回起動時に [`deploy/Caddyfile.example`](./deploy/Caddyfile.example) から `deploy/Caddyfile` を生成します（ドメイン / Basic 認証を編集してください）。

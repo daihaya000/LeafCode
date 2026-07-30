@@ -246,7 +246,7 @@ export async function main(argv = process.argv.slice(2)) {
   // nothing to restart. Kept for backward compatibility with older build.bat.
   if (argv.includes("--restart")) {
     console.log(
-      "[OpenCode WebUI] --restart is a no-op; build.bat no longer stops the WebUI. Start it from the tray or start-webui.bat if needed.",
+      "[OpenCode WebUI] --restart is a no-op; build.bat no longer stops the WebUI. Start it from the tray or OpenCodeWebUI.exe if needed.",
     );
     return;
   }
@@ -258,7 +258,7 @@ export async function main(argv = process.argv.slice(2)) {
     const result = inspectProductionWebUi({ port });
     if (result.state === "absent") return;
     console.error(
-      `[OpenCode WebUI] --stop is no longer supported. Stop the running production WebUI (port ${port}) from the tray or start-webui.bat, then re-run build.bat.`,
+      `[OpenCode WebUI] --stop is no longer supported. Stop the running production WebUI (port ${port}) from the tray or OpenCodeWebUI.exe, then re-run build.bat.`,
     );
     process.exitCode = 1;
     return;
@@ -276,7 +276,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   console.error(
-    `[OpenCode WebUI] Production WebUI is running on port ${port} (PID ${result.pid}). Stop it from the tray or start-webui.bat before building.`,
+    `[OpenCode WebUI] Production WebUI is running on port ${port} (PID ${result.pid}). Stop it from the tray or OpenCodeWebUI.exe before building.`,
   );
   process.exitCode = 1;
 }
