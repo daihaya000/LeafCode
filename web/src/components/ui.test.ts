@@ -28,7 +28,10 @@ describe("GhostSelect", () => {
     fireEvent.click(trigger);
 
     const listbox = screen.getByRole("listbox", { name: "モデル" });
-    expect(listbox.parentElement).toBe(document.body);
+    // The menu is portaled into document.body inside a fixed positioning
+    // wrapper (which carries the dynamic top/left and optional action footer),
+    // so the listbox's grandparent — not its parent — is <body>.
+    expect(listbox.parentElement?.parentElement).toBe(document.body);
     fireEvent.click(screen.getByRole("option", { name: "GPT-4.1" }));
     expect(onChange).toHaveBeenCalledWith("gpt-4.1");
   });
