@@ -5,6 +5,7 @@ import { createPty, listPtys, resolveScopedCwd, PtyError } from "@/lib/pty-sessi
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const TITLE_MAX_LEN = 200;
 

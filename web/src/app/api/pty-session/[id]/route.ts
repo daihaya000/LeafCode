@@ -5,6 +5,7 @@ import { removePty, PtyError } from "@/lib/pty-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 /** PTY id format used by the Engine (alphanumeric, avoids path injection in /pty/{id}). */
 const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;

@@ -280,18 +280,27 @@ export function connectPty(
     const { url, protocols } = engineWsUrl(ptyId, directory, token.ticket);
     const ws = new WebSocket(url, protocols);
     return new Promise<WebSocket>((resolve, reject) => {
+      let settled = false;
       const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         try { ws.close(); } catch { /* ignore */ }
         reject(new PtyError("engine WebSocket open timed out", 504));
       }, DEFAULT_TIMEOUT_MS);
       ws.addEventListener("open", () => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         resolve(ws);
       });
-      ws.addEventListener("error", () => {
+      const fail = () => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         reject(new PtyError("engine WebSocket connection failed", 502));
-      });
+      };
+      ws.addEventListener("error", fail);
+      ws.addEventListener("close", fail);
     });
   });
 }

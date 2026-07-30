@@ -5,6 +5,7 @@ import { resizePty, PtyError } from "@/lib/pty-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const MIN_DIM = 1;
