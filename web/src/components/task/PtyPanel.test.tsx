@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, fireEvent } from "@testing-library/re
 
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
 
-import { PtyPanel } from "./PtyPanel";
+import { PtyPanel, ptyReconnectDelayMs } from "./PtyPanel";
 
 // Mock xterm.js so the unit test does not need a real canvas implementation.
 const writeMock = vi.fn();
@@ -38,15 +38,16 @@ vi.mock("@xterm/addon-fit", () => ({
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
-const eventSourceInstances: EventSource[] = [];
+const eventSourceInstances: FakeEventSource[] = [];
 class FakeEventSource {
   url = "";
+  onopen: (() => void) | null = null;
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: (() => void) | null = null;
   closed = false;
   constructor(url: string | URL) {
     this.url = String(url);
-    eventSourceInstances.push(this as unknown as EventSource);
+    eventSourceInstances.push(this);
   }
   close() {
     this.closed = true;
@@ -157,6 +158,51 @@ describe("PtyPanel", () => {
     expect(writeMock).toHaveBeenCalledWith("hello");
   });
 
+  it("schedules a backoff reconnect on a transient stream error", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    mockFetchJson(200, {
+      sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
+    });
+
+    render(<PtyPanel directory="C:/proj" />);
+    fireEvent.click(await screen.findByText("bash"));
+    await waitFor(() => expect(eventSourceInstances.length).toBe(1));
+
+    setTimeoutSpy.mockClear();
+    eventSourceInstances[0].onerror?.();
+
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(setTimeoutSpy.mock.calls[0][1]).toBe(500); // first backoff step
+    // Clear the pending reconnect so no dangling timer fires after the test.
+    clearTimeout(setTimeoutSpy.mock.results[0]?.value);
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("stops reconnecting after a PTY exit sentinel and refreshes the list", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    mockFetchJson(200, {
+      sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
+    });
+
+    render(<PtyPanel directory="C:/proj" />);
+    fireEvent.click(await screen.findByText("bash"));
+    await waitFor(() => expect(eventSourceInstances.length).toBe(1));
+    mockFetchJson(200, { sessions: [] }); // refresh() triggered by the exit
+
+    eventSourceInstances[0].onmessage?.(
+      new MessageEvent("message", { data: JSON.stringify({ t: "exit" }) }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(eventSourceInstances[0].closed).toBe(true);
+
+    // A later error must not schedule any reconnect.
+    setTimeoutSpy.mockClear();
+    eventSourceInstances[0].onerror?.();
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    setTimeoutSpy.mockRestore();
+  });
+
   it("closes a session and disposes the terminal", async () => {
     mockFetchJson(200, {
       sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
@@ -178,5 +224,17 @@ describe("PtyPanel", () => {
       expect(deleteCall).toBeTruthy();
     });
     expect(disposeMock).toHaveBeenCalled();
+  });
+});
+
+describe("ptyReconnectDelayMs", () => {
+  it("grows exponentially, caps, then gives up past the retry budget", () => {
+    expect(ptyReconnectDelayMs(0)).toBe(500);
+    expect(ptyReconnectDelayMs(1)).toBe(1000);
+    expect(ptyReconnectDelayMs(2)).toBe(2000);
+    expect(ptyReconnectDelayMs(3)).toBe(4000);
+    expect(ptyReconnectDelayMs(4)).toBe(8000);
+    expect(ptyReconnectDelayMs(5)).toBeNull();
+    expect(ptyReconnectDelayMs(99)).toBeNull();
   });
 });

@@ -14,6 +14,20 @@ interface PtyInfo {
   status: "running" | "exited";
 }
 
+/** SSE reconnect backoff: 0.5s, 1s, 2s, 4s, 8s, then give up. */
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS = 8000;
+const RECONNECT_MAX_ATTEMPTS = 5;
+
+/**
+ * Backoff delay (ms) for the `attempt`-th reconnect (0-based), or `null` once
+ * the retry budget is exhausted. Exported for unit testing.
+ */
+export function ptyReconnectDelayMs(attempt: number): number | null {
+  if (attempt >= RECONNECT_MAX_ATTEMPTS) return null;
+  return Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
+}
+
 /**
  * Interactive terminal panel backed by the host-only PTY BFF routes.
  *
@@ -131,26 +145,54 @@ export function PtyPanel({ directory }: { directory: string }) {
     const term = termRef.current;
     if (!term) return;
 
-    const streamUrl = apiUrl("/api/pty-session/stream", {
-      id: activeId,
-      directory,
-    });
-    const es = new EventSource(streamUrl);
-    sseRef.current = es;
+    // SSE stream with reconnect backoff. A transient network drop (or a BFF
+    // restart) ends the stream without a sentinel, so we reopen with
+    // exponential backoff. A real PTY exit sends `{t:"exit"}`, which sets
+    // `terminated` and stops the backoff.
+    let disposed = false;
+    let terminated = false;
+    let retries = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let es: EventSource | null = null;
 
-    es.onmessage = (ev) => {
-      try {
-        const payload = JSON.parse(ev.data) as { t?: string; d?: string };
-        if (payload?.t === "o" && typeof payload.d === "string") {
-          term.write(payload.d);
+    const connect = () => {
+      if (disposed || terminated) return;
+      const source = new EventSource(
+        apiUrl("/api/pty-session/stream", { id: activeId, directory }),
+      );
+      es = source;
+      sseRef.current = source;
+
+      source.onopen = () => {
+        retries = 0;
+      };
+      source.onmessage = (ev) => {
+        try {
+          const payload = JSON.parse(ev.data) as { t?: string; d?: string };
+          if (payload?.t === "o" && typeof payload.d === "string") {
+            term.write(payload.d);
+          } else if (payload?.t === "exit") {
+            terminated = true;
+            source.close();
+            void refresh();
+          }
+        } catch {
+          // Non-JSON frame; ignore.
         }
-      } catch {
-        // Non-JSON frame; ignore.
-      }
+      };
+      source.onerror = () => {
+        source.close();
+        if (disposed || terminated) return;
+        const delay = ptyReconnectDelayMs(retries);
+        if (delay === null) {
+          setError("ターミナル接続が切断されました。セッションを開き直してください。");
+          return;
+        }
+        retries += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
     };
-    es.onerror = () => {
-      es.close();
-    };
+    connect();
 
     const disposable = term.onData((data: string) => {
       void fetch(
@@ -185,11 +227,13 @@ export function PtyPanel({ directory }: { directory: string }) {
     });
 
     return () => {
-      es.close();
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      es?.close();
       disposable.dispose();
       resizeDisposable.dispose();
     };
-  }, [activeId, directory, mountTerminal]);
+  }, [activeId, directory, mountTerminal, refresh]);
 
   /** Close a PTY session (BFF → Engine DELETE). */
   const closeSession = useCallback(

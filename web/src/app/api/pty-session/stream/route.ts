@@ -99,6 +99,13 @@ export async function GET(req: NextRequest) {
       const listener = (data: string) => {
         // Empty data signals the Engine socket closed; end the SSE stream.
         if (data === "" && relay!.closed) {
+          // Sentinel so the client can tell a real PTY exit from a transient
+          // network drop and stop its reconnect backoff accordingly.
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ t: "exit" })}\n\n`),
+            );
+          } catch { /* already closed */ }
           try { controller.close(); } catch { /* already closed */ }
           return;
         }
