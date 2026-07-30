@@ -32,6 +32,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let nextSnapshotGeneration = 1;
   let handledCommandIds = new Set();
   let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
+  const intentionalCloses = new WeakSet();
 
   const persist = async () => chromeApi.storage.local.set({ [STORAGE_KEY]: state });
   const send = (message) => {
@@ -47,7 +48,10 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
 
   function connect() {
     if (!state.deviceKey || !isSafeBrokerSocketUrl(state.brokerUrl)) return;
-    socket?.close();
+    if (socket) {
+      intentionalCloses.add(socket);
+      socket.close();
+    }
     socket = new WebSocketImpl(state.brokerUrl);
     socket.addEventListener('open', () => send({ type: 'authenticate', deviceKey: state.deviceKey }));
     socket.addEventListener('message', async (event) => {
@@ -63,9 +67,15 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         void executeCommand(message);
       }
     });
-    socket.addEventListener('close', () => {
-      socket = null;
-      if (state.deviceKey && !reconnectTimer) {
+    socket.addEventListener('close', (event) => {
+      const closedSocket = event.target;
+      const wasIntentional = intentionalCloses.has(closedSocket);
+      intentionalCloses.delete(closedSocket);
+      // Only clear `socket` if this event belongs to the currently held socket.
+      // If connect() replaced the socket (intentional close before reconnect),
+      // the new socket must not be nulled by the old one's close event.
+      if (socket === closedSocket) socket = null;
+      if (state.deviceKey && !reconnectTimer && !wasIntentional) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           connect();
@@ -204,7 +214,15 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     send({ type: 'unpair' });
     state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
     await chromeApi.storage.local.remove(STORAGE_KEY);
-    socket?.close();
+    if (socket) {
+      intentionalCloses.add(socket);
+      socket.close();
+      socket = null;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     return publicState();
   }
 

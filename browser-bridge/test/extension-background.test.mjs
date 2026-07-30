@@ -168,3 +168,56 @@ test('disabling auto-share stops further automatic sharing but keeps already-sha
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(controller.publicState().sharedTabs.length, 1);
 });
+
+test('does not nuke a fresh socket when the previous intentionally-closed socket fires close late', async () => {
+  const stored = { browserBridge: { brokerUrl: 'ws://127.0.0.1:18766/extension', deviceKey: 'device_key', sharedTabs: {} } };
+  const createdSockets = [];
+  class FakeSocket {
+    static OPEN = 1;
+    constructor() {
+      this.readyState = 0;
+      this.listeners = {};
+      this.sent = [];
+      createdSockets.push(this);
+    }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    close() {}
+    send(message) { this.sent.push(JSON.parse(message)); }
+    emit(type, event = {}) {
+      if (type === 'open') this.readyState = FakeSocket.OPEN;
+      for (const listener of this.listeners[type] ?? []) listener(event);
+    }
+  }
+  const chromeApi = {
+    storage: { local: { get: async () => stored, set: async () => {}, remove: async () => {} } },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
+  await controller.load();
+  createdSockets[0].emit('open');
+
+  await controller.revoke();
+  const pairPromise = controller.pair({ code: 'pairing_code_long_enough_for_test' });
+  await new Promise((resolve) => setImmediate(resolve));
+  createdSockets[1].emit('open');
+  createdSockets[1].emit('message', { data: JSON.stringify({ type: 'paired', deviceKey: 'new_device_key' }) });
+  await pairPromise;
+
+  // At this point the controller should hold the third (permanent) socket.
+  assert.equal(createdSockets.length, 3);
+  const permanentSocket = createdSockets[2];
+  permanentSocket.emit('open');
+  permanentSocket.emit('message', { data: JSON.stringify({ type: 'authenticated', connectionGeneration: 7 }) });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.publicState().connected, true);
+  assert.equal(controller.publicState().connectionGeneration, 7);
+
+  // Firing the original load() socket's stale close event must not clear the
+  // permanent socket. Before the fix, `socket = null` would run here and break
+  // the connection even though the new socket is healthy.
+  createdSockets[0].emit('close');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.publicState().paired, true);
+  assert.equal(controller.publicState().connected, true);
+});
+
