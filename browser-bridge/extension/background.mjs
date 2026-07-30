@@ -76,7 +76,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   }
 
   async function pair({ brokerUrl = DEFAULT_BROKER_URL, code }) {
-    if (!isSafeBrokerSocketUrl(brokerUrl) || typeof code !== 'string' || code.length < 20) throw new Error('Invalid pairing input');
+    if (!isSafeBrokerSocketUrl(brokerUrl) || typeof code !== 'string' || code.length < 20) throw new Error('ペアリング情報が不正です');
     state.brokerUrl = brokerUrl;
     const pairingSocket = new WebSocketImpl(brokerUrl);
     const paired = await new Promise((resolve, reject) => {
@@ -97,12 +97,12 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
 
   async function shareActiveTab() {
     const [tab] = await chromeApi.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab.url) throw new Error('No active tab');
+    if (!tab?.id || !tab.url) throw new Error('アクティブなタブがありません');
     const url = isShareableTabUrl(tab.url);
-    if (!url) throw new Error('This page cannot be shared');
+    if (!url) throw new Error('このページは共有できません');
     const originPattern = `${url.origin}/*`;
     const granted = await chromeApi.permissions.request({ origins: [originPattern] });
-    if (!granted) throw new Error('Site permission was not granted');
+    if (!granted) throw new Error('サイト権限が許可されませんでした');
     const id = `tab_${randomId()}`;
     const shared = { id, origin: url.origin, title: String(tab.title ?? '').slice(0, 512) };
     state.sharedTabs[id] = { ...shared, browserTabId: tab.id };
@@ -113,7 +113,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
 
   async function enableAutoShare() {
     const granted = await chromeApi.permissions.request({ origins: AUTO_SHARE_ORIGIN_PATTERNS });
-    if (!granted) throw new Error('Broad site permission was not granted');
+    if (!granted) throw new Error('広範なサイト権限が許可されませんでした');
     state.autoShareEnabled = true;
     await persist();
     const [tab] = await chromeApi.tabs.query({ active: true, currentWindow: true });
@@ -152,24 +152,24 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
 
   async function collectSnapshot(tabId) {
     const shared = state.sharedTabs[tabId];
-    if (!shared) throw new Error('Tab is not shared');
+    if (!shared) throw new Error('タブが共有されていません');
     await chromeApi.scripting.executeScript({ target: { tabId: shared.browserTabId }, files: ['extension/content-runtime.js'] });
     const snapshot = await chromeApi.tabs.sendMessage(shared.browserTabId, {
       type: 'browser_bridge_collect_snapshot', snapshotGeneration: nextSnapshotGeneration++,
     });
-    if (!snapshot || !Array.isArray(snapshot.nodes)) throw new Error('Snapshot collection failed');
+    if (!snapshot || !Array.isArray(snapshot.nodes)) throw new Error('スナップショットの取得に失敗しました');
     send({ type: 'snapshot', tabId, snapshot });
     return snapshot;
   }
 
   async function captureScreenshot(tabId) {
     const shared = state.sharedTabs[tabId];
-    if (!shared) throw new Error('Tab is not shared');
+    if (!shared) throw new Error('タブが共有されていません');
     const tab = await chromeApi.tabs.get(shared.browserTabId);
-    if (!tab?.active || !Number.isInteger(tab.windowId)) throw new Error('Shared tab must be active to capture');
+    if (!tab?.active || !Number.isInteger(tab.windowId)) throw new Error('共有タブがアクティブでないため撮影できません');
     const dataUrl = await chromeApi.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
     const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? '');
-    if (!match || Math.floor((match[2].length * 3) / 4) > MAX_SCREENSHOT_BYTES) throw new Error('Screenshot exceeds the allowed size');
+    if (!match || Math.floor((match[2].length * 3) / 4) > MAX_SCREENSHOT_BYTES) throw new Error('スクリーンショットが許容サイズを超えています');
     return { mimeType: match[1], data: match[2] };
   }
 
