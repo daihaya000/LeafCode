@@ -104,6 +104,9 @@ input, button {
   border-radius: var(--radius-sm);
   font: inherit;
   padding: 6px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: background-color .15s ease, box-shadow .15s ease;
 }
 
@@ -141,9 +144,18 @@ input:focus-visible, button:focus-visible, .switch input:focus-visible + .switch
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
+  min-width: 0;
   font-weight: 400;
   font-size: 13px;
   cursor: pointer;
+}
+
+.switch-row > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .switch {
