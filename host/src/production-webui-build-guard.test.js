@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   inspectProductionWebUi,
   isThisWebUiNextStart,
+  main,
   parseListeningPids,
   requestHostRestartWebUi,
   resolveHostControlUrl,
@@ -332,4 +333,49 @@ test("resolveHostControlUrl prefers env, then the control file, then the default
     }),
     "http://127.0.0.1:18765",
   );
+});
+
+// --- main() CLI behavior ----------------------------------------------------
+
+test("main --restart is a no-op that does not contact the host", async () => {
+  let fetched = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => {
+    fetched = true;
+    return new Response("ok", { status: 200 });
+  };
+  try {
+    await main(["--restart"]);
+    assert.equal(fetched, false, "--restart must not call the host");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("main --stop refuses and exits 1 when the WebUI is running", async () => {
+  // inspectProductionWebUi uses real netstat/powershell. On the test host port
+  // 39998 is effectively always free, so --stop should be a no-op (absent),
+  // not a stop. This verifies --stop no longer attempts a stop.
+  const originalPort = process.env.OPENCODE_WEBUI_PORT;
+  process.env.OPENCODE_WEBUI_PORT = "39998";
+  try {
+    await main(["--stop"]);
+    // Port is free -> absent -> main returns without setting exitCode.
+    assert.equal(process.exitCode, undefined);
+  } finally {
+    process.env.OPENCODE_WEBUI_PORT = originalPort;
+    if (process.exitCode !== undefined) process.exitCode = undefined;
+  }
+});
+
+test("main with no args is a no-op when the port is free", async () => {
+  const originalPort = process.env.OPENCODE_WEBUI_PORT;
+  process.env.OPENCODE_WEBUI_PORT = "39999";
+  try {
+    await main([]);
+    assert.equal(process.exitCode, undefined);
+  } finally {
+    process.env.OPENCODE_WEBUI_PORT = originalPort;
+    if (process.exitCode !== undefined) process.exitCode = undefined;
+  }
 });

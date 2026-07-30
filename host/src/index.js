@@ -1855,6 +1855,12 @@ async function restartWeb() {
  * control plane: going through stopWebOnly() clears the restart timers and
  * registers the PIDs in expectedWebExitPids, so the watchdog does not respawn
  * `next start` on top of the build.
+ *
+ * NOTE: build.bat no longer calls this (see commit history). The guard now
+ * refuses to build while the WebUI is running instead of stopping it. The
+ * endpoint and this handler remain for backward compatibility with older
+ * build.bat / manual control-plane callers, but must not be relied on by the
+ * current build flow.
  */
 async function stopWebForBuild() {
   if (restartingServices) {

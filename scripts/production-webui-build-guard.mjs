@@ -242,13 +242,25 @@ export async function requestHostRestartWebUi({
 export async function main(argv = process.argv.slice(2)) {
   const port = webUiPort(process.env.OPENCODE_WEBUI_PORT);
 
+  // --restart is a no-op now: build.bat no longer stops the WebUI, so there is
+  // nothing to restart. Kept for backward compatibility with older build.bat.
   if (argv.includes("--restart")) {
-    const restarted = await requestHostRestartWebUi({});
     console.log(
-      restarted
-        ? "[OpenCode WebUI] Asked the tray host to start the WebUI with the new build."
-        : "[OpenCode WebUI] The tray host did not answer the restart request. Start the WebUI from the tray or start-webui.bat.",
+      "[OpenCode WebUI] --restart is a no-op; build.bat no longer stops the WebUI. Start it from the tray or start-webui.bat if needed.",
     );
+    return;
+  }
+
+  // --stop is ignored: the guard never stops the WebUI. A running production
+  // WebUI owns web/.next and building on top of it corrupts the live build, so
+  // refuse and tell the user to stop it first. Backward compatibility only.
+  if (argv.includes("--stop")) {
+    const result = inspectProductionWebUi({ port });
+    if (result.state === "absent") return;
+    console.error(
+      `[OpenCode WebUI] --stop is no longer supported. Stop the running production WebUI (port ${port}) from the tray or start-webui.bat, then re-run build.bat.`,
+    );
+    process.exitCode = 1;
     return;
   }
 
@@ -263,39 +275,9 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  if (!argv.includes("--stop")) {
-    console.error(
-      `[OpenCode WebUI] Production WebUI is running on port ${port} (PID ${result.pid}). Stop it before building.`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(
-    `[OpenCode WebUI] Production WebUI is running on port ${port} (PID ${result.pid}). Stopping it for the build...`,
+  console.error(
+    `[OpenCode WebUI] Production WebUI is running on port ${port} (PID ${result.pid}). Stop it from the tray or start-webui.bat before building.`,
   );
-  // The PID is re-resolved inside stopProductionWebUi so the kill fallback can
-  // never target a listener that changed identity since this check.
-  const outcome = await stopProductionWebUi({ port });
-
-  if (outcome.stopped) {
-    console.log(
-      `[OpenCode WebUI] Production WebUI stopped (${outcome.method}). It will be started again after a successful build.`,
-    );
-    // 10 tells build.bat to restart the WebUI once the build succeeds.
-    process.exitCode = 10;
-    return;
-  }
-
-  if (outcome.reason === "host-outdated") {
-    console.error(
-      "[OpenCode WebUI] The running tray host has no stop endpoint (older version). Stop the WebUI from the tray or restart the host, then try again.",
-    );
-  } else {
-    console.error(
-      `[OpenCode WebUI] Could not stop the production WebUI on port ${port} (${outcome.reason}). Build was cancelled to protect the running production WebUI.`,
-    );
-  }
   process.exitCode = 1;
 }
 
