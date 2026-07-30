@@ -5,6 +5,7 @@ import {
   getWebLaunchPlan,
   getPostBuildLaunchPlan,
   isWebBuildStale,
+  decideWebReuseOnStale,
   webRestartDelay,
   webRestartSchedule,
 } from './web-runtime.js';
@@ -198,3 +199,47 @@ test('isWebBuildStale is false when sources are older than BUILD_ID', () => {
     false,
   );
 });
+
+
+test('decideWebReuseOnStale: no reuse means start fresh (spawnWeb rebuilds)', () => {
+  assert.deepEqual(
+    decideWebReuseOnStale({ reuse: false, mode: 'prod', hasBuild: true, buildStale: true, ownedListenerPids: [123] }),
+    { reuse: false },
+  );
+});
+
+test('decideWebReuseOnStale: reuse a current (non-stale) prod build as-is', () => {
+  assert.deepEqual(
+    decideWebReuseOnStale({ reuse: true, mode: 'prod', hasBuild: true, buildStale: false, ownedListenerPids: [123] }),
+    { reuse: true },
+  );
+});
+
+test('decideWebReuseOnStale: take over a stale build only when the listener is ours', () => {
+  assert.deepEqual(
+    decideWebReuseOnStale({ reuse: true, mode: 'prod', hasBuild: true, buildStale: true, ownedListenerPids: [42612] }),
+    { reuse: false, takeover: [42612] },
+  );
+});
+
+test('decideWebReuseOnStale: never take over an unknown listener, even when stale', () => {
+  assert.deepEqual(
+    decideWebReuseOnStale({ reuse: true, mode: 'prod', hasBuild: true, buildStale: true, ownedListenerPids: [] }),
+    { reuse: true, reason: 'unknown-listener' },
+  );
+});
+
+test('decideWebReuseOnStale: rebuild a missing build by taking over our listener', () => {
+  assert.deepEqual(
+    decideWebReuseOnStale({ reuse: true, mode: 'prod', hasBuild: false, buildStale: false, ownedListenerPids: [99] }),
+    { reuse: false, takeover: [99] },
+  );
+});
+
+test('decideWebReuseOnStale: dev mode never takes over (no build needed)', () => {
+  assert.deepEqual(
+    decideWebReuseOnStale({ reuse: true, mode: 'dev', hasBuild: true, buildStale: true, ownedListenerPids: [1] }),
+    { reuse: true },
+  );
+});
+

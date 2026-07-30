@@ -18,6 +18,7 @@ import {
   getWebLaunchPlan,
   getPostBuildLaunchPlan,
   isWebBuildStale,
+  decideWebReuseOnStale,
   webRestartDelay,
   webRestartSchedule,
 } from './web-runtime.js';
@@ -1622,8 +1623,40 @@ async function resolvePortPlan() {
     process.env.OPENCODE_WEBUI_PORT = String(WEBUI_PORT);
   }
   if (webui.reuse) {
-    log(`Reusing existing WebUI on :${WEBUI_PORT}`);
-    plan.startWeb = false;
+    // Reusing a responsive WebUI is usually right, but a stale/missing build
+    // (typically an orphaned `next start` from a previous host that exited
+    // without reaping its WebUI child) must be rebuilt, not trusted. Take over
+    // only when we can positively identify the listener as our own `next
+    // start`; never kill an unknown process on the port.
+    const hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
+    const buildStale = hasBuild && isWebBuildStale(WEB_DIR);
+    const listenerPids = getListeningPids(WEBUI_PORT);
+    const isOurs = makeOwnedWebListenerPredicate(listenerPids);
+    const ownedListenerPids = listenerPids.filter(isOurs);
+    const decision = decideWebReuseOnStale({
+      reuse: true,
+      mode: process.env.OPENCODE_WEBUI_MODE,
+      hasBuild,
+      buildStale,
+      ownedListenerPids,
+    });
+    if (decision.reuse) {
+      log(
+        decision.reason === 'unknown-listener'
+          ? `WebUI build is stale but :${WEBUI_PORT} is held by an unknown process; reusing it as-is`
+          : `Reusing existing WebUI on :${WEBUI_PORT}`,
+      );
+      plan.startWeb = false;
+    } else if (decision.takeover) {
+      log(`Existing WebUI on :${WEBUI_PORT} is stale; stopping it to rebuild`);
+      for (const pid of decision.takeover) killProcessTree(pid);
+      const freed = await waitForPortFree(WEBUI_PORT, 40);
+      if (!freed) {
+        log(`Could not free :${WEBUI_PORT} after stopping the stale WebUI; reusing it as-is`);
+        plan.startWeb = false;
+      }
+      // else: plan.startWeb stays true → spawnWeb runs the stale check + rebuild
+    }
   }
 
   return plan;

@@ -57,6 +57,42 @@ export function getWebLaunchPlan(mode, hasBuild, buildStale = false) {
 }
 
 /**
+ * Decide whether a host starting up should reuse an existing responsive
+ * WebUI on its port or take it over and rebuild.
+ *
+ * Background: `resolveOccupiedPort` reports `reuse: true` whenever something
+ * answers HTTP on the WebUI port. That is usually the right call (don't
+ * disrupt a healthy running WebUI), but it also reuses a *stale* build — most
+ * often an orphaned `next start` left by a previous host that exited without
+ * reaping its WebUI child. The user then launches the app and never gets the
+ * rebuild, because the host trusts the stale listener.
+ *
+ * This pure helper mirrors `getWebLaunchPlan`'s `needsBuild` decision: when a
+ * rebuild is needed AND we can positively identify the listener as our own
+ * `next start` (via `ownedListenerPids`), take it over so `spawnWeb` can
+ * rebuild. When the listener is not identifiably ours, never kill an unknown
+ * process — reuse it and defer the rebuild to the next clean start.
+ *
+ * @param {{
+ *   reuse: boolean,
+ *   mode: string | undefined,
+ *   hasBuild: boolean,
+ *   buildStale: boolean,
+ *   ownedListenerPids: number[],
+ * }} input
+ * @returns {{ reuse: boolean, takeover?: number[], reason?: 'unknown-listener' }}
+ */
+export function decideWebReuseOnStale({ reuse, mode, hasBuild, buildStale, ownedListenerPids }) {
+  if (!reuse) return { reuse: false };
+  const { needsBuild } = getWebLaunchPlan(mode, hasBuild, buildStale);
+  if (!needsBuild) return { reuse: true };
+  if (ownedListenerPids.length > 0) {
+    return { reuse: false, takeover: ownedListenerPids };
+  }
+  return { reuse: true, reason: 'unknown-listener' };
+}
+
+/**
  * Plan for the retry that follows a rebuild. A freshly built tree must never be
  * rejected just because a source file changed while the build ran (parallel
  * agent edits / OneDrive sync touch mtimes mid-build). Only a missing BUILD_ID
