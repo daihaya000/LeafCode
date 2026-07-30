@@ -117,6 +117,30 @@ MCP を有効化する前にこの手順を一度実行してください。
 
 OpenCode の設定ファイル（`opencode.json` / `opencode.jsonc`）に Browser Bridge MCP を追加します。
 
+### 自動インストール（推奨）
+
+`browser-bridge/scripts/install-mcp.mjs` が、設定ファイル内の**既存コメントや他の設定を一切壊さずに** `mcp.browser-bridge` エントリだけを追加・更新・削除します（VS Code の設定編集と同じ仕組みの `jsonc-parser` を利用）。
+
+```bat
+scripts\install-browser-bridge-mcp.bat
+```
+
+または:
+
+```bat
+npm run install:browser-bridge-mcp
+```
+
+- 既定ではグローバル設定（`~/.config/opencode/opencode.jsonc`、無ければ新規作成）を対象にします
+- 既に別内容の `browser-bridge` エントリがある場合は上書きせず終了します（`--force` を付けると上書き）
+- 主なオプション: `--scope=project`（カレントディレクトリの `opencode.json`/`opencode.jsonc` を対象）、`--path=<file>`（対象ファイルを直接指定）、`--dry-run`（書き込まずに変更内容だけ表示）、`--uninstall`（エントリを削除）
+- 対象ファイルの JSONC 構文が壊れている場合は何も書き込まずにエラー終了します
+- 実行後は OpenCode の再起動が必要です（下記手順6）
+
+### 手動設定
+
+自動インストールを使わない場合は、設定例を手動で追記できます。
+
 ### 設定例
 
 ```jsonc
@@ -148,10 +172,10 @@ OpenCode の設定ファイル（`opencode.json` / `opencode.jsonc`）に Browse
 
 | スコープ | パス |
 |----------|------|
-| グローバル | `%APPDATA%\opencode\opencode.jsonc` または `~/.config/opencode/opencode.jsonc` |
+| グローバル | `~/.config/opencode/opencode.jsonc`（Windows では `%USERPROFILE%\.config\opencode\opencode.jsonc`） |
 | プロジェクト | リポジトリルートの `opencode.json` / `opencode.jsonc` |
 
-> **注意:** 本セットアップ手順は設定ファイルを自動変更しません。上記の設定例をコピーして手動で追加してください。
+> **注意:** 手動設定の場合、設定ファイルは自動変更されません。上記の設定例をコピーして手動で追加してください（自動インストールを使う場合は不要です）。
 
 ## 6. OpenCode 再起動
 
