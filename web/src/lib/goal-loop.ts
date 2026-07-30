@@ -618,7 +618,7 @@ export async function updateGoalLoopStatus(
     getDb()
       .prepare(
         `UPDATE goal_loops
-         SET status = ?, error = '', pause_reason = '', rejected_claims = ?, last_message_id = ?,
+         SET status = ?, error = '', pause_reason = '', pause_requested = 0, rejected_claims = ?, last_message_id = ?,
              revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status = 'paused'`,
       )

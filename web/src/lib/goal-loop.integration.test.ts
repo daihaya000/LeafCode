@@ -300,6 +300,36 @@ describe("goal loop integration", () => {
     expect(loop?.status).toBe("paused");
     expect(loop?.lastMessageId).toBe("manual-reply");
   });
+
+  it("resume clears pause_requested so a user pause does not re-trigger after re-running", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    // Drive one goal turn to running, then request a pause (18b records
+    // pause_requested=1 without aborting the in-flight turn).
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const running = getGoalLoop("ws-1")!;
+    expect(running.status).toBe("running");
+    await updateGoalLoopStatus("ws-1", "pause");
+    expect(getGoalLoop("ws-1")?.pauseRequested).toBe(true);
+
+    // The in-flight turn resolves while pause_requested is still set. 18c
+    // applies the result and transitions to `paused` (user).
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user", undefined, "<!-- webui-goal-loop-prompt -->\n\nwork"),
+      msg("loop-reply", "assistant", { status: "progress", summary: "step", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const paused = getGoalLoop("ws-1")!;
+    expect(paused.status).toBe("paused");
+    expect(paused.pauseReason).toBe("user");
+
+    // Resume must clear `pause_requested`; otherwise the next applyAssistantResult
+    // would see the stale flag and re-pause immediately, trapping the loop.
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+    expect(resumed?.pauseRequested).toBe(false);
+    expect(resumed?.status).toBe("queued");
+  });
 });
 
 describe("goal loop verification turn", () => {
