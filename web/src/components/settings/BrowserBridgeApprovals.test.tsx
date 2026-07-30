@@ -19,9 +19,9 @@ describe("BrowserBridgeApprovals", () => {
   });
 
   it("stays hidden when the local Broker is unavailable", async () => {
-    timedFetch.mockResolvedValue(response({ approvals: [], available: false }));
+    timedFetch.mockResolvedValue(response({ approvals: [], requests: [], available: false }));
     render(<BrowserBridgeApprovals />);
-    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole("region", { name: "Browser Bridge 承認" })).toBeNull();
   });
 
@@ -33,9 +33,13 @@ describe("BrowserBridgeApprovals", () => {
   });
 
   it("recovers from a transient refresh failure on the next poll", async () => {
+    // Each refresh does two parallel fetches (approvals, then pairing) in
+    // that order, so mocks must be queued in pairs per refresh cycle.
     timedFetch
-      .mockRejectedValueOnce(new Error("Browser Bridgeに接続できません"))
-      .mockResolvedValueOnce(response({ available: true, approvals: [] }));
+      .mockRejectedValueOnce(new Error("Browser Bridgeに接続できません")) // refresh 1: approvals
+      .mockResolvedValueOnce(response({ available: true, requests: [] })) // refresh 1: pairing
+      .mockResolvedValueOnce(response({ available: true, approvals: [] })) // refresh 2: approvals
+      .mockResolvedValueOnce(response({ available: true, requests: [] })); // refresh 2: pairing
     render(<BrowserBridgeApprovals />);
     expect(await screen.findByText("Browser Bridgeに接続できません")).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
@@ -46,8 +50,10 @@ describe("BrowserBridgeApprovals", () => {
   it("renders approval metadata and forwards an allow decision", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }))
       .mockResolvedValueOnce(response({ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", decision: "allow" }))
-      .mockResolvedValueOnce(response({ available: true, approvals: [] }));
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }));
     render(<BrowserBridgeApprovals />);
     expect(await screen.findByText("browser_click")).toBeTruthy();
     expect(screen.getByText("https://example.test")).toBeTruthy();
@@ -62,8 +68,10 @@ describe("BrowserBridgeApprovals", () => {
   it("forwards a deny decision and refreshes the expired card to empty state", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_navigate", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }))
       .mockResolvedValueOnce(response({ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", decision: "deny" }))
-      .mockResolvedValueOnce(response({ available: true, approvals: [] }));
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }));
     render(<BrowserBridgeApprovals />);
     fireEvent.click(await screen.findByRole("button", { name: "拒否" }));
     await waitFor(() => expect(timedFetch).toHaveBeenCalledWith(
@@ -76,6 +84,7 @@ describe("BrowserBridgeApprovals", () => {
   it("shows a decision error and re-enables the approval actions", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }))
       .mockResolvedValueOnce(response({ error: "unavailable" }, false));
     render(<BrowserBridgeApprovals />);
     const allow = await screen.findByRole("button", { name: "許可" });
@@ -85,26 +94,53 @@ describe("BrowserBridgeApprovals", () => {
     expect((screen.getByRole("button", { name: "拒否" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("generates a one-time pairing code without exposing broker credentials", async () => {
+  it("shows a pending pairing request and forwards an allow decision without any code to type", async () => {
+    const requestId = "pairing_request_abcdefghijklmnopqrstuvwxyz";
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [] }))
-      .mockResolvedValueOnce(response({ code: "pairing_code_1234567890" }));
+      .mockResolvedValueOnce(response({ available: true, requests: [{ requestId, origin: "chrome-extension://abcdefghijklmno", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ requestId, decision: "allow" }))
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }));
     render(<BrowserBridgeApprovals />);
-    await screen.findByText("保留中の承認はありません。");
-    fireEvent.click(screen.getByRole("button", { name: "ペアリングコードを生成" }));
-    expect((await screen.findByLabelText("ペアリングコード")).textContent).toBe("pairing_code_1234567890");
-    expect(timedFetch).toHaveBeenCalledWith("/api/host/browser-bridge/pairing", expect.objectContaining({ method: "POST" }));
+    expect(await screen.findByText("拡張機能のペアリング要求")).toBeTruthy();
+    expect(screen.getByText("chrome-extension://abcdefghijklmno")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "許可" }));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledWith(
+      `/api/host/browser-bridge/pairing/${requestId}`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "allow" }) }),
+    ));
+    expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
   });
 
-  it("shows a pairing generation error without rendering a code", async () => {
+  it("forwards a deny decision for a pairing request", async () => {
+    const requestId = "pairing_request_abcdefghijklmnopqrstuvwxyz";
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [{ requestId, origin: "chrome-extension://abcdefghijklmno", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ requestId, decision: "deny" }))
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }));
+    render(<BrowserBridgeApprovals />);
+    fireEvent.click(await screen.findByRole("button", { name: "拒否" }));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledWith(
+      `/api/host/browser-bridge/pairing/${requestId}`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "deny" }) }),
+    ));
+    expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
+  });
+
+  it("shows a pairing decision error and re-enables its actions", async () => {
+    const requestId = "pairing_request_abcdefghijklmnopqrstuvwxyz";
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [{ requestId, origin: "chrome-extension://abcdefghijklmno", createdAt: 1 }] }))
       .mockResolvedValueOnce(response({ error: "unavailable" }, false));
     render(<BrowserBridgeApprovals />);
-    await screen.findByText("保留中の承認はありません。");
-    fireEvent.click(screen.getByRole("button", { name: "ペアリングコードを生成" }));
-    expect(await screen.findByText("ペアリングコードを生成できません")).toBeTruthy();
-    expect(screen.queryByLabelText("ペアリングコード")).toBeNull();
-    expect(screen.getByRole("button", { name: "ペアリングコードを生成" })).toBeTruthy();
+    const allow = await screen.findByRole("button", { name: "許可" });
+    fireEvent.click(allow);
+    expect(await screen.findByText("ペアリング要求の更新に失敗しました")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "許可" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "拒否" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

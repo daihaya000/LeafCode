@@ -7,7 +7,8 @@ vi.mock("@/lib/browser-bridge", () => ({ browserBrokerFetch }));
 
 import { GET as listApprovals } from "./approvals/route";
 import { POST as decideApproval } from "./approvals/[id]/route";
-import { POST as createPairing } from "./pairing/route";
+import { GET as listPairingRequests } from "./pairing/route";
+import { POST as decidePairingRequest } from "./pairing/[id]/route";
 
 const local = (url: string, init?: RequestInit) =>
   new Request(url, {
@@ -20,6 +21,7 @@ const remote = (url: string, init?: RequestInit) =>
     headers: { host: "192.168.1.5:3000", ...init?.headers },
   });
 const approvalId = "approval_abcdefghijklmnopqrstuvwxyz";
+const pairingRequestId = "pairing_request_abcdefghijklmnopqrstuvwxyz";
 
 describe("Browser Bridge host-only routes", () => {
   beforeEach(() => browserBrokerFetch.mockReset());
@@ -34,10 +36,19 @@ describe("Browser Bridge host-only routes", () => {
     ).toBe(403);
     expect(
       (
-        await createPairing(
-          remote("http://example.test/api/host/browser-bridge/pairing", {
-            method: "POST",
-          }),
+        await listPairingRequests(
+          remote("http://example.test/api/host/browser-bridge/pairing"),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await decidePairingRequest(
+          remote(
+            `http://example.test/api/host/browser-bridge/pairing/${pairingRequestId}`,
+            { method: "POST", body: JSON.stringify({ decision: "allow" }) },
+          ),
+          { params: Promise.resolve({ id: pairingRequestId }) },
         )
       ).status,
     ).toBe(403);
@@ -83,6 +94,69 @@ describe("Browser Bridge host-only routes", () => {
     );
   });
 
+  it("forwards a valid local pairing decision without exposing the Broker token", async () => {
+    browserBrokerFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({ requestId: pairingRequestId, decision: "allow" }),
+        { status: 200 },
+      ),
+    );
+    const res = await decidePairingRequest(
+      local(
+        `http://127.0.0.1:3000/api/host/browser-bridge/pairing/${pairingRequestId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision: "allow" }),
+        },
+      ),
+      { params: Promise.resolve({ id: pairingRequestId }) },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      requestId: pairingRequestId,
+      decision: "allow",
+    });
+    expect(browserBrokerFetch).toHaveBeenCalledWith(
+      `/internal/pairing-requests/${pairingRequestId}`,
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ decision: "allow" }),
+      }),
+    );
+  });
+
+  it("lists pending pairing requests from the Broker", async () => {
+    browserBrokerFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          requests: [
+            {
+              requestId: pairingRequestId,
+              origin: "chrome-extension://abcdefghijklmno",
+              createdAt: 1234,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const res = await listPairingRequests(
+      local("http://127.0.0.1:3000/api/host/browser-bridge/pairing"),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      requests: [
+        {
+          requestId: pairingRequestId,
+          origin: "chrome-extension://abcdefghijklmno",
+          createdAt: 1234,
+        },
+      ],
+      available: true,
+    });
+  });
+
   it("generalizes unavailable and malformed Broker approval-list responses", async () => {
     browserBrokerFetch.mockResolvedValueOnce(
       new Response("unavailable", { status: 503 }),
@@ -109,15 +183,28 @@ describe("Browser Bridge host-only routes", () => {
 
   it("generalizes malformed and failed mutable Broker responses", async () => {
     browserBrokerFetch.mockResolvedValueOnce(
+      new Response("not json", { status: 200 }),
+    );
+    const malformedPairingList = await listPairingRequests(
+      local("http://127.0.0.1:3000/api/host/browser-bridge/pairing"),
+    );
+    expect(malformedPairingList.status).toBe(502);
+    expect(await malformedPairingList.json()).toEqual({
+      error: "browser broker unavailable",
+    });
+
+    browserBrokerFetch.mockResolvedValueOnce(
       new Response("not json", { status: 201 }),
     );
-    const malformedPairing = await createPairing(
-      local("http://127.0.0.1:3000/api/host/browser-bridge/pairing", {
-        method: "POST",
-      }),
+    const malformedPairingDecision = await decidePairingRequest(
+      local(
+        `http://127.0.0.1:3000/api/host/browser-bridge/pairing/${pairingRequestId}`,
+        { method: "POST", body: JSON.stringify({ decision: "allow" }) },
+      ),
+      { params: Promise.resolve({ id: pairingRequestId }) },
     );
-    expect(malformedPairing.status).toBe(502);
-    expect(await malformedPairing.json()).toEqual({
+    expect(malformedPairingDecision.status).toBe(502);
+    expect(await malformedPairingDecision.json()).toEqual({
       error: "browser broker unavailable",
     });
 
