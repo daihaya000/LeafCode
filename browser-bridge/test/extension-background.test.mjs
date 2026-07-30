@@ -56,7 +56,7 @@ test('shares only an explicitly selected active HTTPS tab and never exposes its 
     permissions: { request: async ({ origins }) => origins[0] === 'https://example.test/*' },
     scripting: { executeScript: async (options) => injected.push(options) },
   };
-  class FakeSocket { static OPEN = 1; }
+  class FakeSocket { static OPEN = 1; addEventListener() {} close() {} send() {} }
   const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
   await controller.load();
   const state = await controller.shareActiveTab();
@@ -136,15 +136,20 @@ test('forgets a stale pairing when the Broker rejects it as NOT_PAIRED instead o
   socket.emit('message', { data: JSON.stringify({ type: 'error', error: 'NOT_PAIRED' }) });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(controller.publicState().paired, false);
-  assert.equal(controller.publicState().connected, false);
   assert.equal(stored.browserBridge.deviceKey, null);
-  // No reconnect attempt should be scheduled with the now-cleared deviceKey.
-  assert.equal(FakeSocket.instances.length, 1);
+  // Rather than looping "reconnecting" forever with a stale key, forgetPairing()
+  // immediately offers a fresh pairing request on a brand-new socket so
+  // re-approving from the WebUI is the only step needed to recover.
+  assert.equal(FakeSocket.instances.length, 2);
+  const freshSocket = FakeSocket.instances[1];
+  freshSocket.emit('open');
+  assert.deepEqual(freshSocket.sent, [{ type: 'request_pairing' }]);
+  assert.equal(controller.publicState().pairingRequested, true);
 });
 
 test('does not auto-share tabs until the user explicitly enables auto-share', async () => {
   const { chromeApi, listeners, tabsById } = createAutoShareChromeApi();
-  class FakeSocket { static OPEN = 1; }
+  class FakeSocket { static OPEN = 1; addEventListener() {} close() {} send() {} }
   const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
   await controller.load();
   listeners.updated(42, { status: 'complete' }, tabsById[42]);
@@ -155,7 +160,7 @@ test('does not auto-share tabs until the user explicitly enables auto-share', as
 
 test('auto-shares the active tab once enabled, and again when switching to another eligible tab', async () => {
   const { chromeApi, listeners, requests } = createAutoShareChromeApi();
-  class FakeSocket { static OPEN = 1; }
+  class FakeSocket { static OPEN = 1; addEventListener() {} close() {} send() {} }
   let counter = 0;
   const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => `opaque${counter++}` });
   await controller.load();
@@ -174,7 +179,7 @@ test('auto-shares the active tab once enabled, and again when switching to anoth
 
 test('auto-share fails safe when the granted broad permission does not cover the active tab origin', async () => {
   const { chromeApi, requests } = createAutoShareChromeApi({ containsResult: false });
-  class FakeSocket { static OPEN = 1; }
+  class FakeSocket { static OPEN = 1; addEventListener() {} close() {} send() {} }
   const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
   await controller.load();
   const state = await controller.enableAutoShare();
@@ -185,7 +190,7 @@ test('auto-share fails safe when the granted broad permission does not cover the
 
 test('disabling auto-share stops further automatic sharing but keeps already-shared tabs', async () => {
   const { chromeApi, listeners } = createAutoShareChromeApi();
-  class FakeSocket { static OPEN = 1; }
+  class FakeSocket { static OPEN = 1; addEventListener() {} close() {} send() {} }
   const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket, randomId: () => 'opaque' });
   await controller.load();
   await controller.enableAutoShare();
@@ -224,17 +229,19 @@ test('does not nuke a fresh socket when the previous intentionally-closed socket
   await controller.load();
   createdSockets[0].emit('open');
 
+  // revoke() clears the device key and immediately reconnects, offering a
+  // fresh pairing request on the new socket without any explicit pair() call.
   await controller.revoke();
-  const pairPromise = controller.pair({ code: 'pairing_code_long_enough_for_test' });
-  await new Promise((resolve) => setImmediate(resolve));
-  createdSockets[1].emit('open');
-  createdSockets[1].emit('message', { data: JSON.stringify({ type: 'paired', deviceKey: 'new_device_key' }) });
-  await pairPromise;
 
-  // At this point the controller should hold the third (permanent) socket.
-  assert.equal(createdSockets.length, 3);
-  const permanentSocket = createdSockets[2];
+  // At this point the controller should hold the second (permanent) socket:
+  // no separate "pairing" socket is opened anymore, the same connection is
+  // reused for request_pairing -> paired -> authenticate.
+  assert.equal(createdSockets.length, 2);
+  const permanentSocket = createdSockets[1];
   permanentSocket.emit('open');
+  assert.deepEqual(permanentSocket.sent, [{ type: 'request_pairing' }]);
+  permanentSocket.emit('message', { data: JSON.stringify({ type: 'paired', deviceKey: 'new_device_key' }) });
+  await new Promise((resolve) => setImmediate(resolve));
   permanentSocket.emit('message', { data: JSON.stringify({ type: 'authenticated', connectionGeneration: 7 }) });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(controller.publicState().connected, true);

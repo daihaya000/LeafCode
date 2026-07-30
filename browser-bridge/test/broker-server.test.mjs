@@ -74,47 +74,101 @@ test('rejects oversized approval decisions without leaving an unhandled request 
   assert.deepEqual(await response.json(), { error: { code: 'PAYLOAD_TOO_LARGE' } });
 });
 
-test('pairs only a Chrome extension origin and uses one-time pairing codes', async (t) => {
+test('offers no code: an unpaired extension requests pairing and only the WebUI-approved decision grants a device key', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
-  const response = await fetch(`${broker.url}/internal/pairing`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${broker.internalToken}` },
-  });
-  assert.equal(response.status, 201);
-  const pairing = await response.json();
-  assert.match(pairing.code, /^[A-Za-z0-9_-]{20,}$/);
+  const origin = 'chrome-extension://abcdefghijklmno';
+  const socket = await connectSocket(broker.wsUrl, origin);
+  const requested = await nextMessage(socket, () => socket.send(JSON.stringify({ type: 'request_pairing' })));
+  assert.equal(requested.type, 'pairing_requested');
+  assert.match(requested.requestId, /^pairing_request_[A-Za-z0-9_-]+$/);
 
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', {
-    type: 'pair',
-    code: pairing.code,
+  const list = await fetch(`${broker.url}/internal/pairing-requests`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(list.requests.map(({ requestId, origin: requestOrigin }) => ({ requestId, origin: requestOrigin })), [
+    { requestId: requested.requestId, origin },
+  ]);
+
+  let decision;
+  const paired = await nextMessage(socket, () => {
+    decision = fetch(`${broker.url}/internal/pairing-requests/${requested.requestId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'allow' }),
+    });
   });
+  decision = await decision;
+  assert.equal(decision.status, 200);
+  assert.deepEqual(await decision.json(), { requestId: requested.requestId, decision: 'allow' });
   assert.equal(paired.type, 'paired');
   assert.match(paired.deviceKey, /^[A-Za-z0-9_-]{20,}$/);
 
-  const reused = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', {
-    type: 'pair',
-    code: pairing.code,
+  // The decision consumes the request; re-deciding the same id is a 404, and
+  // it no longer appears in the pending list.
+  const reused = await fetch(`${broker.url}/internal/pairing-requests/${requested.requestId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'allow' }),
   });
-  assert.equal(reused.type, 'error');
+  assert.equal(reused.status, 404);
 
   const status = await fetch(`${broker.url}/internal/status`, {
     headers: { Authorization: `Bearer ${broker.internalToken}` },
   }).then((res) => res.json());
   assert.deepEqual(status.extension, { connected: false, paired: true });
+  socket.close();
+});
+
+test('denying a pairing request tells the extension without granting a device key', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const origin = 'chrome-extension://abcdefghijklmno';
+  const socket = await connectSocket(broker.wsUrl, origin);
+  const requested = await nextMessage(socket, () => socket.send(JSON.stringify({ type: 'request_pairing' })));
+
+  const closed = new Promise((resolve) => socket.once('close', resolve));
+  const denied = await nextMessage(socket, () => fetch(`${broker.url}/internal/pairing-requests/${requested.requestId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'deny' }),
+  }));
+  assert.deepEqual(denied, { type: 'pairing_denied' });
+  await closed;
+
+  const status = await fetch(`${broker.url}/internal/status`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(status.extension, { connected: false, paired: false });
+});
+
+test('expires an undecided pairing request and drops it from the pending list when the extension disconnects first', async (t) => {
+  const broker = await startBroker({ pairingTtlMs: 20 });
+  t.after(() => broker.close());
+  const origin = 'chrome-extension://abcdefghijklmno';
+  const expiring = await connectSocket(broker.wsUrl, origin);
+  const closedByExpiry = new Promise((resolve) => expiring.once('close', resolve));
+  await nextMessage(expiring, () => expiring.send(JSON.stringify({ type: 'request_pairing' })));
+  await closedByExpiry;
+  const afterExpiry = await fetch(`${broker.url}/internal/pairing-requests`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(afterExpiry.requests, []);
+
+  const disconnecting = await connectSocket(broker.wsUrl, origin);
+  await nextMessage(disconnecting, () => disconnecting.send(JSON.stringify({ type: 'request_pairing' })));
+  disconnecting.close();
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  const afterDisconnect = await fetch(`${broker.url}/internal/pairing-requests`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(afterDisconnect.requests, []);
 });
 
 test('pins reconnect authentication to the paired extension origin and device key', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
-  const pairing = await fetch(`${broker.url}/internal/pairing`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${broker.internalToken}` },
-  }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', {
-    type: 'pair',
-    code: pairing.code,
-  });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
 
   const rejected = await openSocket(broker.wsUrl, 'chrome-extension://differentextension', {
     type: 'authenticate',
@@ -150,10 +204,7 @@ test('restores a local pairing across Broker restart and clears it on extension 
 test('closes an authenticated extension that exceeds the WebSocket message limit', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
-  const pairing = await fetch(`${broker.url}/internal/pairing`, {
-    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
-  }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   const closed = new Promise((resolve) => socket.once('close', (code) => resolve(code)));
   socket.send('x'.repeat(MAX_MESSAGE_BYTES + 1));
@@ -168,10 +219,7 @@ test('closes an authenticated extension that exceeds the WebSocket message limit
 test('returns COMMAND_TIMEOUT when an extension does not answer a snapshot request', async (t) => {
   const broker = await startBroker({ snapshotRequestTimeoutMs: 20 });
   t.after(() => broker.close());
-  const pairing = await fetch(`${broker.url}/internal/pairing`, {
-    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
-  }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   t.after(() => socket.close());
   socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
@@ -189,8 +237,7 @@ test('settles a pending snapshot as COMMAND_TIMEOUT when the extension disconnec
   const broker = await startBroker({ snapshotRequestTimeoutMs: 5_000 });
   t.after(() => broker.close());
   const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
-  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
   await new Promise((resolve) => setImmediate(resolve));
@@ -216,10 +263,7 @@ test('settles a pending snapshot as COMMAND_TIMEOUT when the extension disconnec
 test('lists only opaque tab metadata announced by an authenticated extension', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
-  const pairing = await fetch(`${broker.url}/internal/pairing`, {
-    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
-  }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   t.after(() => socket.close());
   socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
@@ -324,8 +368,7 @@ test('rejects a command result from a stale connection generation', async (t) =>
   const broker = await startBroker();
   t.after(() => broker.close());
   const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
-  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
   await new Promise((resolve) => setImmediate(resolve));
@@ -357,8 +400,7 @@ test('drops a late result after the dispatched command expires', async (t) => {
   const broker = await startBroker({ commandTimeoutMs: 20 });
   t.after(() => broker.close());
   const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
-  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   t.after(() => socket.close());
   socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
@@ -384,8 +426,7 @@ test('expires an unapproved action without dispatching it later', async (t) => {
   const broker = await startBroker({ approvalTimeoutMs: 20 });
   t.after(() => broker.close());
   const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
-  const pairing = await fetch(`${broker.url}/internal/pairing`, { method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` } }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', { type: 'pair', code: pairing.code });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   t.after(() => socket.close());
   socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
@@ -417,6 +458,45 @@ function openSocket(url, origin, message) {
       resolve(JSON.parse(data.toString()));
     });
   });
+}
+
+function connectSocket(url, origin) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { origin });
+    socket.once('error', reject);
+    socket.once('open', () => resolve(socket));
+  });
+}
+
+function nextMessage(socket, beforeWaiting) {
+  const promise = new Promise((resolve, reject) => {
+    socket.once('error', reject);
+    socket.once('message', (data) => resolve(JSON.parse(data.toString())));
+  });
+  if (beforeWaiting) beforeWaiting();
+  return promise;
+}
+
+/**
+ * Requests pairing on a fresh socket, immediately allows it through the
+ * internal API (as the WebUI's one-click "許可" would), and resolves with
+ * the resulting `{type: 'paired', deviceKey}` message. The socket is closed
+ * afterwards so callers can open a normal `authenticate`-only reconnect via
+ * `authenticateSocket`, matching how a real extension re-connects later.
+ */
+async function pairOnly(broker, origin) {
+  const socket = await connectSocket(broker.wsUrl, origin);
+  const requested = await nextMessage(socket, () => socket.send(JSON.stringify({ type: 'request_pairing' })));
+  if (requested.type !== 'pairing_requested') throw new Error('expected pairing_requested');
+  const paired = await nextMessage(socket, () => {
+    void fetch(`${broker.url}/internal/pairing-requests/${requested.requestId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'allow' }),
+    });
+  });
+  socket.close();
+  return paired;
 }
 
 function authenticateSocket(url, origin, deviceKey) {

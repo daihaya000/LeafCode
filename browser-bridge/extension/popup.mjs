@@ -15,6 +15,9 @@ export function render(state) {
   } else if (state.paired) {
     dot.className = 'status-dot is-pending';
     text.textContent = 'ペアリング済み・再接続中…';
+  } else if (state.pairingRequested) {
+    dot.className = 'status-dot is-pending';
+    text.textContent = 'WebUI での承認を待っています…';
   } else {
     dot.className = 'status-dot is-disconnected';
     text.textContent = '未ペアリング';
@@ -52,7 +55,7 @@ export function showError(error) {
 }
 
 function wire() {
-  $('pair').onclick = () => call('pair', { brokerUrl: $('broker-url').value, code: $('pairing-code').value }).then(render).catch(showError);
+  $('apply-broker-url').onclick = () => call('setBrokerUrl', { brokerUrl: $('broker-url').value }).then(render).catch(showError);
   $('share').onclick = () => call('share').then(render).catch(showError);
   $('auto-share').onchange = (event) => {
     const enabling = event.target.checked;

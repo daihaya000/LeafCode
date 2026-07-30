@@ -77,6 +77,16 @@ test('render shows a reconnecting state once paired but not yet connected, and h
   assert.equal(document.getElementById('connect-section').hidden, true);
 });
 
+test('render shows a waiting-for-approval state while a pairing request is pending in the WebUI, with no code to type', () => {
+  const document = setup();
+  render({ connected: false, paired: false, pairingRequested: true, autoShareEnabled: false, sharedTabs: [] });
+  assert.equal(document.getElementById('status-text').textContent, 'WebUI での承認を待っています…');
+  assert.equal(document.getElementById('status-dot').className, 'status-dot is-pending');
+  assert.equal(document.getElementById('connect-section').hidden, false);
+  assert.equal(document.getElementById('share').disabled, true);
+  assert.equal(document.getElementById('revoke').disabled, true);
+});
+
 test('each shared tab row shows its title (falling back to origin) with a short stop button carrying the full context as an aria-label', () => {
   const document = setup();
   render({ connected: true, paired: true, autoShareEnabled: false, sharedTabs: [{ id: 'tab_1', origin: 'https://a.test', title: 'A' }, { id: 'tab_2', origin: 'https://b.test', title: '' }] });

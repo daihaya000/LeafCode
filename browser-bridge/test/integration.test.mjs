@@ -15,16 +15,41 @@ async function startBroker() {
   return broker;
 }
 
-function openSocket(url, origin, message) {
+function connectSocket(url, origin) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { origin });
     socket.once('error', reject);
-    socket.once('open', () => socket.send(JSON.stringify(message)));
-    socket.once('message', (data) => {
-      socket.close();
-      resolve(JSON.parse(data.toString()));
+    socket.once('open', () => resolve(socket));
+  });
+}
+
+function nextMessage(socket, beforeWaiting) {
+  const promise = new Promise((resolve, reject) => {
+    socket.once('error', reject);
+    socket.once('message', (data) => resolve(JSON.parse(data.toString())));
+  });
+  if (beforeWaiting) beforeWaiting();
+  return promise;
+}
+
+/**
+ * Requests pairing on a fresh socket, immediately allows it through the
+ * internal API (as the WebUI's one-click "許可" would), and resolves with
+ * the resulting `{type: 'paired', deviceKey}` message.
+ */
+async function pairOnly(broker, origin) {
+  const socket = await connectSocket(broker.wsUrl, origin);
+  const requested = await nextMessage(socket, () => socket.send(JSON.stringify({ type: 'request_pairing' })));
+  if (requested.type !== 'pairing_requested') throw new Error('expected pairing_requested');
+  const paired = await nextMessage(socket, () => {
+    void fetch(`${broker.url}/internal/pairing-requests/${requested.requestId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'allow' }),
     });
   });
+  socket.close();
+  return paired;
 }
 
 function authenticateSocket(url, origin, deviceKey) {
@@ -48,12 +73,7 @@ test('MCP client reads status and explicitly shared tabs through the live Broker
     extension: { connected: false, paired: false }, pendingApprovals: 0,
   });
 
-  const pairing = await fetch(`${broker.url}/internal/pairing`, {
-    method: 'POST', headers: { Authorization: `Bearer ${broker.internalToken}` },
-  }).then((res) => res.json());
-  const paired = await openSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', {
-    type: 'pair', code: pairing.code,
-  });
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
   const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
   t.after(() => socket.close());
   socket.send(JSON.stringify({

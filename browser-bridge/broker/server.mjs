@@ -89,11 +89,15 @@ export function createBrowserBridgeBroker({
   if (typeof onPairingChanged !== 'function') throw new TypeError('Invalid Broker pairing callback');
   if (persistedPairing !== null && !validPersistedPairing(persistedPairing)) throw new TypeError('Invalid persisted pairing');
 
-  let pairing = null;
   let pairedOrigin = persistedPairing?.origin ?? null;
   let deviceKey = persistedPairing?.deviceKey ?? null;
   let extensionSocket = null;
   let connectionGeneration = 0;
+  // A pairing request is created when an unauthenticated extension socket
+  // asks to be paired. It stays pending until a human explicitly allows or
+  // denies it from the local WebUI (no code to copy/type).
+  const pendingPairingRequests = new Map();
+  const socketPairingRequestId = new WeakMap();
   const sharedTabs = new Map();
   const snapshots = new Map();
   const pendingSnapshots = new Map();
@@ -128,9 +132,46 @@ export function createBrowserBridgeBroker({
       json(res, 200, status());
       return;
     }
-    if (req.method === 'POST' && url.pathname === '/internal/pairing') {
-      pairing = { code: createSecret(), expiresAt: now() + pairingTtlMs };
-      json(res, 201, { code: pairing.code, expiresAt: pairing.expiresAt });
+    if (req.method === 'GET' && url.pathname === '/internal/pairing-requests') {
+      json(res, 200, {
+        requests: [...pendingPairingRequests.values()].map(({ requestId, origin: requestOrigin, createdAt }) => ({ requestId, origin: requestOrigin, createdAt })),
+      });
+      return;
+    }
+    const pairingMatch = /^\/internal\/pairing-requests\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
+    if (req.method === 'POST' && pairingMatch) {
+      const request = pendingPairingRequests.get(pairingMatch[1]);
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const code = error?.message === 'payload_too_large'
+          ? BrowserBridgeErrorCode.PAYLOAD_TOO_LARGE
+          : BrowserBridgeErrorCode.INVALID_REQUEST;
+        json(res, code === BrowserBridgeErrorCode.PAYLOAD_TOO_LARGE ? 413 : 400, { error: { code } });
+        return;
+      }
+      if (!request) {
+        json(res, 404, { error: 'not_found' });
+      } else if (!body || !['allow', 'deny'].includes(body.decision)) {
+        json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
+      } else {
+        pendingPairingRequests.delete(request.requestId);
+        clearTimeout(request.timer);
+        socketPairingRequestId.delete(request.socket);
+        if (request.socket.readyState === 1) {
+          if (body.decision === 'allow') {
+            pairedOrigin = request.origin;
+            deviceKey = createSecret();
+            persistPairing();
+            request.socket.send(JSON.stringify({ type: 'paired', deviceKey }));
+          } else {
+            request.socket.send(JSON.stringify({ type: 'pairing_denied' }));
+            request.socket.close(1000, 'pairing_denied');
+          }
+        }
+        json(res, 200, { requestId: request.requestId, decision: body.decision });
+      }
       return;
     }
     if (req.method === 'GET' && url.pathname === '/internal/approvals') {
@@ -286,13 +327,21 @@ export function createBrowserBridgeBroker({
 
   wss.on('connection', (socket, _req, origin) => {
     let authenticated = false;
+    socket.on('close', () => {
+      const requestId = socketPairingRequestId.get(socket);
+      if (requestId) {
+        const request = pendingPairingRequests.get(requestId);
+        clearTimeout(request?.timer);
+        pendingPairingRequests.delete(requestId);
+        socketPairingRequestId.delete(socket);
+      }
+    });
     socket.on('message', (raw, isBinary) => {
       if (isBinary) return rejectSocket(socket, 'invalid_message');
       const message = parseMessage(raw.toString());
       if (!message) return rejectSocket(socket, 'invalid_message');
       if (authenticated) {
         if (message.type === 'unpair' && Object.keys(message).length === 1) {
-          pairing = null;
           pairedOrigin = null;
           deviceKey = null;
           persistPairing();
@@ -351,15 +400,21 @@ export function createBrowserBridgeBroker({
         return rejectSocket(socket, 'invalid_message');
       }
 
-      if (message.type === 'pair' && Object.keys(message).length === 2 && typeof message.code === 'string') {
-        if (!pairing || now() > pairing.expiresAt || !constantTimeEquals(message.code, pairing.code)) {
-          return rejectSocket(socket, 'invalid_pairing');
+      if (message.type === 'request_pairing' && Object.keys(message).length === 1) {
+        const existingRequestId = socketPairingRequestId.get(socket);
+        if (existingRequestId) {
+          socket.send(JSON.stringify({ type: 'pairing_requested', requestId: existingRequestId }));
+          return;
         }
-        pairing = null;
-        pairedOrigin = origin;
-        deviceKey = createSecret();
-        persistPairing();
-        socket.send(JSON.stringify({ type: 'paired', deviceKey }));
+        const requestId = `pairing_request_${createSecret()}`;
+        const timer = setTimeout(() => {
+          pendingPairingRequests.delete(requestId);
+          socketPairingRequestId.delete(socket);
+          rejectSocket(socket, 'pairing_request_expired');
+        }, pairingTtlMs);
+        pendingPairingRequests.set(requestId, { requestId, origin, socket, createdAt: now(), timer });
+        socketPairingRequestId.set(socket, requestId);
+        socket.send(JSON.stringify({ type: 'pairing_requested', requestId }));
         return;
       }
 
@@ -427,6 +482,8 @@ export function createBrowserBridgeBroker({
       if (!listening) return;
       extensionSocket?.close(1001, 'broker_shutdown');
       extensionSocket = null;
+      for (const request of pendingPairingRequests.values()) clearTimeout(request.timer);
+      pendingPairingRequests.clear();
       for (const approval of pendingApprovals.values()) clearTimeout(approval.timer);
       pendingApprovals.clear();
       for (const command of dispatchedCommands.values()) clearTimeout(command.timer);

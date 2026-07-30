@@ -31,6 +31,10 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let reconnectDelay = 500;
   let nextSnapshotGeneration = 1;
   let handledCommandIds = new Set();
+  // Transient (non-persisted) flag: true while a 'request_pairing' has been
+  // sent on the current socket and we're waiting for the WebUI to allow or
+  // deny it. Reset whenever the socket closes/reconnects or pairing succeeds.
+  let pairingRequested = false;
   let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
   const intentionalCloses = new WeakSet();
 
@@ -42,25 +46,46 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   async function load() {
     const stored = await chromeApi.storage.local.get(STORAGE_KEY);
     state = { ...state, ...(stored[STORAGE_KEY] ?? {}), sharedTabs: stored[STORAGE_KEY]?.sharedTabs ?? {} };
-    if (state.deviceKey) connect();
+    connect();
     return publicState();
   }
 
   function connect() {
-    if (!state.deviceKey || !isSafeBrokerSocketUrl(state.brokerUrl)) return;
+    if (!isSafeBrokerSocketUrl(state.brokerUrl)) return;
     if (socket) {
       intentionalCloses.add(socket);
       socket.close();
     }
+    pairingRequested = false;
     socket = new WebSocketImpl(state.brokerUrl);
-    socket.addEventListener('open', () => send({ type: 'authenticate', deviceKey: state.deviceKey }));
+    socket.addEventListener('open', () => {
+      // No pairing code to type: an unpaired extension just announces itself
+      // and waits for a human to allow it from the local WebUI.
+      if (state.deviceKey) {
+        send({ type: 'authenticate', deviceKey: state.deviceKey });
+      } else {
+        send({ type: 'request_pairing' });
+        pairingRequested = true;
+      }
+    });
     socket.addEventListener('message', async (event) => {
       const message = JSON.parse(event.data);
       if (message.type === 'authenticated') {
         connectionGeneration = message.connectionGeneration;
         handledCommandIds = new Set();
         reconnectDelay = 500;
+        pairingRequested = false;
         for (const tab of Object.values(state.sharedTabs)) send({ type: 'tab_shared', tab });
+      } else if (message.type === 'paired' && typeof message.deviceKey === 'string') {
+        // The WebUI allowed our pairing request. Persist the device key and
+        // authenticate on the same still-open socket (no reconnect needed).
+        state.deviceKey = message.deviceKey;
+        await persist();
+        send({ type: 'authenticate', deviceKey: message.deviceKey });
+      } else if (message.type === 'pairing_requested') {
+        pairingRequested = true;
+      } else if (message.type === 'pairing_denied') {
+        pairingRequested = false;
       } else if (message.type === 'snapshot_request' && typeof message.tabId === 'string') {
         void collectSnapshot(message.tabId).catch(() => {});
       } else if (message.type === 'command') {
@@ -80,8 +105,11 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       // Only clear `socket` if this event belongs to the currently held socket.
       // If connect() replaced the socket (intentional close before reconnect),
       // the new socket must not be nulled by the old one's close event.
-      if (socket === closedSocket) socket = null;
-      if (state.deviceKey && !reconnectTimer && !wasIntentional) {
+      if (socket === closedSocket) {
+        socket = null;
+        pairingRequested = false;
+      }
+      if (!reconnectTimer && !wasIntentional) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           connect();
@@ -104,23 +132,14 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     reconnectDelay = 500;
     state = { ...state, deviceKey: null };
     await persist();
+    // Immediately offer a fresh pairing request so re-approving from the
+    // WebUI is the only step needed to recover (no popup interaction).
+    connect();
   }
 
-  async function pair({ brokerUrl = DEFAULT_BROKER_URL, code }) {
-    if (!isSafeBrokerSocketUrl(brokerUrl) || typeof code !== 'string' || code.length < 20) throw new Error('ペアリング情報が不正です');
-    state.brokerUrl = brokerUrl;
-    const pairingSocket = new WebSocketImpl(brokerUrl);
-    const paired = await new Promise((resolve, reject) => {
-      pairingSocket.addEventListener('open', () => pairingSocket.send(JSON.stringify({ type: 'pair', code })));
-      pairingSocket.addEventListener('message', (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === 'paired' && typeof message.deviceKey === 'string') resolve(message.deviceKey);
-        else reject(new Error('Pairing rejected'));
-      });
-      pairingSocket.addEventListener('error', () => reject(new Error('Broker unavailable')));
-    });
-    pairingSocket.close();
-    state.deviceKey = paired;
+  async function setBrokerUrl(url) {
+    if (!isSafeBrokerSocketUrl(url)) throw new Error('Broker URL が不正です');
+    state.brokerUrl = url;
     await persist();
     connect();
     return publicState();
@@ -244,11 +263,21 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
+    // Immediately offer a fresh pairing request; the WebUI must still
+    // explicitly allow it before any access is granted again.
+    connect();
     return publicState();
   }
 
   function publicState() {
-    return { paired: Boolean(state.deviceKey), connected: socket?.readyState === WebSocketImpl.OPEN, connectionGeneration, autoShareEnabled: Boolean(state.autoShareEnabled), sharedTabs: Object.values(state.sharedTabs).map(({ browserTabId, ...tab }) => tab) };
+    return {
+      paired: Boolean(state.deviceKey),
+      connected: socket?.readyState === WebSocketImpl.OPEN,
+      pairingRequested,
+      connectionGeneration,
+      autoShareEnabled: Boolean(state.autoShareEnabled),
+      sharedTabs: Object.values(state.sharedTabs).map(({ browserTabId, ...tab }) => tab),
+    };
   }
 
   chromeApi.tabs.onRemoved.addListener((browserTabId) => {
@@ -270,14 +299,14 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
       if (tab?.status === 'complete') await autoShareTab(tab);
     })();
   });
-  return { load, pair, shareActiveTab, enableAutoShare, disableAutoShare, collectSnapshot, captureScreenshot, unshare, revoke, publicState };
+  return { load, setBrokerUrl, shareActiveTab, enableAutoShare, disableAutoShare, collectSnapshot, captureScreenshot, unshare, revoke, publicState };
 }
 
 if (globalThis.chrome?.runtime?.onMessage) {
   const controller = createBackgroundController({ chromeApi: globalThis.chrome, WebSocketImpl: globalThis.WebSocket });
   void controller.load();
   globalThis.chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    const handlers = { status: controller.publicState, pair: () => controller.pair(message), share: controller.shareActiveTab, enableAutoShare: controller.enableAutoShare, disableAutoShare: controller.disableAutoShare, snapshot: () => controller.collectSnapshot(message.tabId), unshare: () => controller.unshare(message.tabId), revoke: controller.revoke };
+    const handlers = { status: controller.publicState, setBrokerUrl: () => controller.setBrokerUrl(message.brokerUrl), share: controller.shareActiveTab, enableAutoShare: controller.enableAutoShare, disableAutoShare: controller.disableAutoShare, snapshot: () => controller.collectSnapshot(message.tabId), unshare: () => controller.unshare(message.tabId), revoke: controller.revoke };
     const handler = handlers[message?.action];
     if (!handler) return false;
     Promise.resolve(handler()).then((value) => sendResponse({ ok: true, value }), (error) => sendResponse({ ok: false, error: error.message }));
