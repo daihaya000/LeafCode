@@ -40,8 +40,10 @@ export function PtyPanel({ directory }: { directory: string }) {
         apiUrl("/api/pty-session", { directory }),
         { cache: "no-store" },
       );
-      const data = (await res.json()) as { sessions?: PtyInfo[] };
-      if (!res.ok) throw new Error(data.sessions ? "list failed" : "list failed");
+      const data = (await res.json()) as { sessions?: PtyInfo[]; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `list failed: ${res.status}`);
+      }
       setSessions(Array.isArray(data?.sessions) ? data.sessions : []);
       setError(null);
     } catch (err) {
@@ -101,7 +103,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         body: JSON.stringify({ directory }),
       });
       const created = (await res.json()) as { id?: string; error?: string };
-      if (!res.ok) throw new Error(created?.error ?? "create failed");
+      if (!res.ok) throw new Error(created.error ?? `create failed: ${res.status}`);
       await refresh();
       if (created.id) {
         setActiveId(created.id);
