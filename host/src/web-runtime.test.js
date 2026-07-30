@@ -6,6 +6,7 @@ import {
   getPostBuildLaunchPlan,
   isWebBuildStale,
   webRestartDelay,
+  webRestartSchedule,
 } from './web-runtime.js';
 
 test('prod mode rebuilds when BUILD_ID is absent', () => {
@@ -99,6 +100,35 @@ test('restart backoff is bounded', () => {
   assert.equal(webRestartDelay(1), 1000);
   assert.equal(webRestartDelay(3), 3000);
   assert.equal(webRestartDelay(99), 5000);
+});
+
+test('webRestartSchedule uses fast backoff within the burst limit', () => {
+  assert.deepEqual(webRestartSchedule(1), { delayMs: 1000, coolingDown: false });
+  assert.deepEqual(webRestartSchedule(2), { delayMs: 2000, coolingDown: false });
+  assert.deepEqual(webRestartSchedule(5), { delayMs: 5000, coolingDown: false });
+});
+
+test('webRestartSchedule switches to a 60s cool-down just past the burst limit', () => {
+  const result = webRestartSchedule(6);
+  assert.equal(result.delayMs, 60_000);
+  assert.equal(result.coolingDown, true);
+});
+
+test('webRestartSchedule keeps the same 60s cool-down far past the burst limit (never gives up)', () => {
+  const result = webRestartSchedule(1000);
+  assert.equal(result.delayMs, 60_000);
+  assert.equal(result.coolingDown, true);
+});
+
+test('webRestartSchedule respects a custom maxBurst', () => {
+  assert.deepEqual(webRestartSchedule(3, 3), { delayMs: 3000, coolingDown: false });
+  assert.deepEqual(webRestartSchedule(4, 3), { delayMs: 60_000, coolingDown: true });
+});
+
+test('webRestartSchedule clamps invalid attempt to 1', () => {
+  assert.deepEqual(webRestartSchedule(0), { delayMs: 1000, coolingDown: false });
+  assert.deepEqual(webRestartSchedule(-5), { delayMs: 1000, coolingDown: false });
+  assert.deepEqual(webRestartSchedule(NaN), { delayMs: 1000, coolingDown: false });
 });
 
 test('isWebBuildStale is false when BUILD_ID is missing', () => {

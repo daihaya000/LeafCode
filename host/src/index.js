@@ -19,6 +19,7 @@ import {
   getPostBuildLaunchPlan,
   isWebBuildStale,
   webRestartDelay,
+  webRestartSchedule,
 } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
 import {
@@ -28,6 +29,7 @@ import {
 } from './control-server.js';
 import { resolveKillPids, resolveWebKillPids } from './restart-targets.js';
 import { getLogEntries, pushLogEntry } from './log-buffer.js';
+import { createLogFileWriter } from './log-file.js';
 import {
   disposeOpencodeServer,
   hardKillTree,
@@ -59,6 +61,15 @@ const HOST_DIR = join(__dirname, '..');
 const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
+/** Host package version, read from host/package.json for the log header. */
+const HOST_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(join(HOST_DIR, 'package.json'), 'utf8'));
+    return typeof pkg?.version === 'string' ? pkg.version : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 const LOCK_FILE = join(DATA_DIR, 'host.lock');
 const CONTROL_FILE = join(DATA_DIR, 'host-control.json');
 const BROWSER_BRIDGE_PAIRING_FILE = join(DATA_DIR, 'browser-bridge-pairing.json');
@@ -336,6 +347,9 @@ let restartingServices = false;
 /** WebUI self-healing. Expected exits (manual restart/quit) never consume it. */
 const MAX_WEB_RESTARTS = 5;
 let webRestarts = 0;
+/** True once we have logged the transition into the 60s cool-down retry loop,
+ *  so the message is emitted only on the burst->cool-down boundary. */
+let webCoolDownAnnounced = false;
 /** @type {NodeJS.Timeout | null} */
 let webRestartTimer = null;
 /** @type {NodeJS.Timeout | null} */
@@ -404,14 +418,61 @@ const statusCaddyItem = {
   enabled: false,
 };
 
+/**
+ * Disk-persisted log writer (host.log under DATA_DIR, rotated). Lazily created
+ * on first use so unit tests that import this module never touch the disk.
+ * All write failures are swallowed inside the writer — it can never take the
+ * host down. See host/src/log-file.js.
+ */
+let logFileWriter = null;
+
+function getLogFileWriter() {
+  if (logFileWriter) return logFileWriter;
+  try {
+    logFileWriter = createLogFileWriter({ dir: DATA_DIR });
+  } catch {
+    logFileWriter = null;
+  }
+  return logFileWriter;
+}
+
+/**
+ * Write a one-line header to the disk log at startup so each run is
+ * identifiable later (host version / PID / start time / mode). Uses writeRaw
+ * so the header is not duplicated into the in-memory ring buffer.
+ */
+function writeLogFileHeader() {
+  const writer = getLogFileWriter();
+  if (!writer) return;
+  const mode =
+    process.env.OPENCODE_WEBUI_MODE ||
+    (process.env.NODE_ENV === 'production' ? 'prod' : 'auto');
+  const header = `=== opencode-webui-host start version=${HOST_VERSION} pid=${process.pid} mode=${mode} ts=${new Date().toISOString()} ===`;
+  writer.writeRaw(header);
+}
+
+/**
+ * Tee a log entry into both the in-memory ring buffer and the disk log file.
+ * Every pushLogEntry call site in this module goes through here so the disk
+ * log stays in sync with the buffer without duplicating the console output.
+ * @param {import('./log-buffer.js').LogSource} source
+ * @param {import('./log-buffer.js').LogLevel} level
+ * @param {string} text
+ */
+function recordLog(source, level, text) {
+  const entry = pushLogEntry(source, level, text);
+  const writer = getLogFileWriter();
+  if (writer) writer.write(entry);
+}
+
 function log(message) {
   console.log(`[opencode-webui-host] ${message}`);
-  pushLogEntry('host', 'log', message);
+  recordLog('host', 'log', message);
 }
 
 function error(message) {
   console.error(`[opencode-webui-host] ${message}`);
-  pushLogEntry('host', 'error', message);
+  recordLog('host', 'error', message);
 }
 
 function isProcessAlive(pid) {
@@ -857,11 +918,11 @@ function spawnOpencode(opencodePath) {
 
   child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[opencode] ${chunk}`);
-    pushLogEntry('opencode', 'log', chunk.toString());
+    recordLog('opencode', 'log', chunk.toString());
   });
   child.stderr?.on('data', (chunk) => {
     process.stderr.write(`[opencode] ${chunk}`);
-    pushLogEntry('opencode', 'error', chunk.toString());
+    recordLog('opencode', 'error', chunk.toString());
   });
   child.on('exit', (code, signal) => {
     const exitedPid = child.pid;
@@ -995,11 +1056,11 @@ function spawnCaddy() {
   });
   caddyProc.stdout?.on('data', (chunk) => {
     process.stdout.write(`[caddy] ${chunk}`);
-    pushLogEntry('caddy', 'log', chunk.toString());
+    recordLog('caddy', 'log', chunk.toString());
   });
   caddyProc.stderr?.on('data', (chunk) => {
     process.stderr.write(`[caddy] ${chunk}`);
-    pushLogEntry('caddy', 'error', chunk.toString());
+    recordLog('caddy', 'error', chunk.toString());
   });
   caddyProc.on('exit', (code, signal) => {
     const abnormal = !quitting && code !== 0 && code !== null;
@@ -1188,11 +1249,11 @@ function buildWebProductionInternal(reason = 'missing') {
     };
     child.stdout?.on('data', (chunk) => {
       process.stdout.write(`[web-build] ${chunk}`);
-      pushLogEntry('web-build', 'log', chunk.toString());
+      recordLog('web-build', 'log', chunk.toString());
     });
     child.stderr?.on('data', (chunk) => {
       process.stderr.write(`[web-build] ${chunk}`);
-      pushLogEntry('web-build', 'error', chunk.toString());
+      recordLog('web-build', 'error', chunk.toString());
     });
     child.on('error', (err) => finish(err));
     child.on('close', (code) => {
@@ -1213,7 +1274,10 @@ function buildWebProductionInternal(reason = 'missing') {
 function armWebStableReset(child) {
   if (webStableTimer) clearTimeout(webStableTimer);
   webStableTimer = setTimeout(() => {
-    if (webProc === child && procRunning(child)) webRestarts = 0;
+    if (webProc === child && procRunning(child)) {
+      webRestarts = 0;
+      webCoolDownAnnounced = false;
+    }
   }, 60000);
   webStableTimer.unref?.();
 }
@@ -1275,11 +1339,11 @@ async function spawnWeb() {
 
   child.stdout?.on('data', (chunk) => {
     process.stdout.write(`[webui] ${chunk}`);
-    pushLogEntry('webui', 'log', chunk.toString());
+    recordLog('webui', 'log', chunk.toString());
   });
   child.stderr?.on('data', (chunk) => {
     process.stderr.write(`[webui] ${chunk}`);
-    pushLogEntry('webui', 'error', chunk.toString());
+    recordLog('webui', 'error', chunk.toString());
   });
   child.on('close', (code, signal) => {
     const expected = child.pid ? expectedWebExitPids.delete(child.pid) : false;
@@ -1301,19 +1365,31 @@ async function spawnWeb() {
 
 function scheduleWebRestart() {
   if (quitting || webRestartTimer || procRunning(webProc)) return;
-  if (webRestarts >= MAX_WEB_RESTARTS) {
-    error(`WebUI restart limit reached (${MAX_WEB_RESTARTS})`);
-    return;
-  }
   webRestarts += 1;
-  const delay = webRestartDelay(webRestarts);
-  log(`Restarting WebUI in ${delay}ms (attempt ${webRestarts}/${MAX_WEB_RESTARTS})…`);
+  const { delayMs: delay, coolingDown } = webRestartSchedule(
+    webRestarts,
+    MAX_WEB_RESTARTS,
+  );
+  // Log the transition into cool-down only once to avoid spamming the same
+  // message every 60s while the WebUI stays broken. The tray host is the only
+  // thing that can bring the WebUI back, so we never give up.
+  if (coolingDown && !webCoolDownAnnounced) {
+    log(
+      `WebUI restart burst exhausted (${MAX_WEB_RESTARTS}); entering 60s cool-down retry loop (never gives up)`,
+    );
+    webCoolDownAnnounced = true;
+  } else if (!coolingDown) {
+    log(`Restarting WebUI in ${delay}ms (attempt ${webRestarts}/${MAX_WEB_RESTARTS})…`);
+  }
   webRestartTimer = setTimeout(() => {
     webRestartTimer = null;
     void (async () => {
       if (quitting || procRunning(webProc)) return;
       if (await isHttpUp(WEBUI_URL)) {
+        // WebUI is healthy again — reset the counter and clear the cool-down
+        // announcement so a future failure burst starts fresh.
         webRestarts = 0;
+        webCoolDownAnnounced = false;
         await refreshStatusMenu();
         return;
       }
@@ -1625,6 +1701,7 @@ async function stopWebOnly() {
     webStableTimer = null;
   }
   webRestarts = 0;
+  webCoolDownAnnounced = false;
 
   if (webBuildProc?.pid) {
     killProcessTree(webBuildProc.pid);
@@ -1670,6 +1747,7 @@ async function stopChildren() {
     webStableTimer = null;
   }
   webRestarts = 0;
+  webCoolDownAnnounced = false;
   if (webProc?.pid) expectedWebExitPids.add(webProc.pid);
 
   const opencodePids = resolveKillPids({
@@ -2242,6 +2320,11 @@ async function main() {
 
   ensureDataDir();
   await acquireLock();
+
+  // Write a header line to the disk log so each host run is identifiable in
+  // post-mortem analysis (version / PID / start time / mode). Goes through the
+  // writer's writeRaw so it is not also pushed into the ring buffer.
+  writeLogFileHeader();
 
   process.on('SIGINT', () => {
     quit().catch(() => process.exit(1));

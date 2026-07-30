@@ -1,6 +1,11 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { getLogEntries, pushLogEntry, resetLogBuffer } from './log-buffer.js';
+import {
+  getLogEntries,
+  pickEvictionIndex,
+  pushLogEntry,
+  resetLogBuffer,
+} from './log-buffer.js';
 
 describe('log-buffer', () => {
   beforeEach(() => {
@@ -81,5 +86,61 @@ describe('log-buffer', () => {
     assert.equal(nextSeq, 0);
     const next = pushLogEntry('host', 'log', 'c');
     assert.equal(next.seq, 1);
+  });
+
+  test('pickEvictionIndex returns -1 for an empty list', () => {
+    assert.equal(pickEvictionIndex([]), -1);
+  });
+
+  test('pickEvictionIndex evicts the global oldest when no source dominates', () => {
+    const list = [
+      { source: 'host', text: 'a' },
+      { source: 'webui', text: 'b' },
+      { source: 'caddy', text: 'c' },
+    ];
+    assert.equal(pickEvictionIndex(list), 0);
+  });
+
+  test('pickEvictionIndex evicts the largest source oldest entry when one source dominates', () => {
+    const list = [
+      { source: 'host', text: 'h1' },
+      { source: 'caddy', text: 'c1' },
+      { source: 'caddy', text: 'c2' },
+      { source: 'caddy', text: 'c3' },
+      { source: 'webui', text: 'w1' },
+    ];
+    // caddy has 3/5 = 0.6 > 0.5 threshold -> evict oldest caddy (index 1)
+    assert.equal(pickEvictionIndex(list), 1);
+  });
+
+  test('a flood of caddy entries does not evict all webui/host entries', () => {
+    // Seed a few high-signal entries from other sources.
+    pushLogEntry('host', 'log', 'host-line');
+    pushLogEntry('webui', 'error', 'webui-crash');
+    pushLogEntry('opencode', 'log', 'opencode-line');
+    // Now flood with caddy entries to fill the buffer past MAX_ENTRIES.
+    for (let i = 0; i < 600; i += 1) {
+      pushLogEntry('caddy', 'error', `caddy-spam-${i}`);
+    }
+    const { entries } = getLogEntries(0);
+    const sources = new Set(entries.map((e) => e.source));
+    // The high-signal sources must still be represented — fairness keeps the
+    // largest source from starving the minority sources during eviction.
+    assert.ok(sources.has('host'), 'host entry should survive caddy flood');
+    assert.ok(sources.has('webui'), 'webui entry should survive caddy flood');
+    assert.ok(
+      sources.has('opencode'),
+      'opencode entry should survive caddy flood',
+    );
+    // Total still bounded.
+    assert.equal(entries.length, 500);
+  });
+
+  test('buffer still caps at 500 entries under a mixed-source flood', () => {
+    for (let i = 0; i < 700; i += 1) {
+      pushLogEntry(i % 2 === 0 ? 'caddy' : 'webui', 'log', `line-${i}`);
+    }
+    const { entries } = getLogEntries(0);
+    assert.equal(entries.length, 500);
   });
 });

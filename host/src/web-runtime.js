@@ -82,6 +82,27 @@ export function webRestartDelay(attempt) {
 }
 
 /**
+ * Decide the next WebUI restart delay. Short backoff while under the burst
+ * limit, then a long cool-down retry forever — never give up, because the
+ * failure is often a transient rebuild failure and the tray host is the only
+ * thing that can bring the WebUI back.
+ *
+ * @param {number} attempt 1-based restart attempt counter.
+ * @param {number} [maxBurst=5] Number of fast retries before cool-down.
+ * @returns {{ delayMs: number, coolingDown: boolean }}
+ */
+export function webRestartSchedule(attempt, maxBurst = 5) {
+  const n =
+    Number.isFinite(attempt) && attempt > 0 ? Math.trunc(attempt) : 1;
+  const burst = Number.isFinite(maxBurst) && maxBurst > 0 ? Math.trunc(maxBurst) : 5;
+  if (n <= burst) {
+    return { delayMs: webRestartDelay(n), coolingDown: false };
+  }
+  // Past the burst budget: keep retrying at a calm 60s cadence forever.
+  return { delayMs: 60_000, coolingDown: true };
+}
+
+/**
  * True when a production BUILD_ID exists but watched sources are newer.
  * Missing BUILD_ID is not "stale" — callers treat absence via hasBuild.
  *

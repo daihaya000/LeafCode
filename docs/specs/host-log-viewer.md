@@ -17,9 +17,31 @@ WebUI の設定画面「全般」タブから、トレイホストの直近ロ�
 
 - 対象: host プロセス自身のログ（`log()`/`error()`）、および tee 済みの子プロセス出力
   （opencode / webui / web-build / caddy）。
-- 非対象: ログの永続化（ディスク保存・ローテーション）。バッファは host プロセスのメモリ上のみで、
-  host 再起動で消える。
 - 非対象: ログレベルフィルタ・検索・ダウンロード機能（将来拡張）。
+
+## 永続化（ディスクログ）
+
+メモリ上のリングバッファは高頻度ソース（例: Caddy のエラーが実測 4 件/秒）に
+押し出されやすく、WebUI のクラッシュ原因が数分で消える問題があった。そのため
+host はバッファとは別に `host/src/log-file.js` 経由でディスクへも追記する。
+
+- 出力先: `DATA_DIR`（`%APPDATA%\opencode-webui`）配下の `host.log`。
+- ローテーション: `host.log` が `maxBytes`（既定 2MB）に達すると
+  `host.log` → `host.log.1` → `host.log.2` … と `maxFiles`（既定 3）世代まで
+  退避し、最古を削除する。`maxFiles` は退避世代数なので、ディスク使用量の上限は
+  アクティブ分を含めて `maxBytes * (maxFiles + 1)`（既定 8MB）。
+- 起動時に1行のヘッダ（host バージョン / PID / 起動時刻 / モード）を書く。
+- ファイル書き込みの失敗は絶対に host を落とさない（writer 内で握り潰す）。
+- 既存の console 出力とリングバッファは変更せず、追加でファイルにも書く
+  （`index.js` 内の `recordLog()` ラッパーが両方を兼ねる）。
+
+## バッファの公平性
+
+1つの source がバッファの一定割合（`MAX_SHARE_PER_SOURCE = 0.5`）を超えている
+場合、退避対象を「最もエントリ数の多い source の最古エントリ」にする。そうで
+なければ従来どおり全体の最古を捨てる。これにより Caddy のエラー洪水でも
+`webui` / `host` / `web-build` のエントリが残る。`MAX_ENTRIES` / `MAX_BYTES` の
+総量制約は維持し、メモリ使用量は増やさない。
 
 ## 設計
 
@@ -28,10 +50,14 @@ WebUI の設定画面「全般」タブから、トレイホストの直近ロ�
 - 各エントリ: `{ seq: number, ts: number, source: 'host' | 'opencode' | 'webui' | 'web-build' | 'caddy', level: 'log' | 'error', text: string }`
 - `seq` はプロセス内で単調増加する連番（ポーリングの `since` カーソルに使う）。
 - 容量上限: 最大 500 件 かつ 256KB（先に到達した方で古いエントリから破棄）。
+  ただし1つの source がバッファの 50% を超えている場合は、その source の最古
+  エントリを優先して破棄する（公平性、上記「バッファの公平性」参照）。
 - 1エントリのテキストは 4000 文字で切り詰める（巨大出力によるメモリ膨張防止）。
 - 既存の `log()` / `error()`、および opencode/webui/web-build/caddy の
   `stdout`/`stderr` `data` ハンドラに **追記** する形でバッファへ push する
   （既存の `process.stdout.write` / `console.log` 出力はそのまま維持し、tee するだけ）。
+  あわせて `host/src/log-file.js` のライターが `host.log` へ追記する
+  （`index.js` の `recordLog()` ラッパーが両方を兼ねる）。
 
 ### 2. control-server の新ルート（`host/src/control-server.js`）
 
@@ -64,7 +90,8 @@ WebUI の設定画面「全般」タブから、トレイホストの直近ロ�
 
 ## 安全性
 
-- ログはメモリ上のみで、ディスクにもリポジトリにも書かない。
+- ログはメモリ上のリングバッファに加え、`DATA_DIR/host.log`（ローテーション付き）
+  にも追記される。ディスク書き込みの失敗は host を落とさない。
 - API はホスト機外からのアクセスを `rejectUnlessLocal` で拒否する。
 - 秘密情報（APIキー等）は既存ログ出力の慣行としてそもそも出力しない前提を変えない
   （本機能は既存の console 出力を tee するだけで、新たな機密出力を増やさない）。
