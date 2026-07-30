@@ -141,6 +141,7 @@ function makeDb(): Database.Database {
       turn_kind TEXT NOT NULL DEFAULT 'goal',
       pause_reason TEXT NOT NULL DEFAULT '',
       rejected_claims INTEGER NOT NULL DEFAULT 0,
+      pause_requested INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -637,7 +638,14 @@ describe("goal loop failure recovery", () => {
     );
 
     const after = getGoalLoop("ws-1")!;
-    expect(after.status).toBe(action === "pause" ? "paused" : "stopped");
+    // Per docs/specs/goal-loop.md transition 18b: pause on a `running` loop
+    // does NOT overwrite `status` — it sets `pause_requested = 1` and lets the
+    // in-flight turn finish, then `applyAssistantResult` flips it to `paused`.
+    // Here the stale `applyAssistantResult` call is rejected by the revision
+    // CAS (pause bumped revision), so the loop stays in its pre-pause `running`
+    // state and the late result is not recorded. Stop, by contrast, is an
+    // immediate terminal transition (18 -> stopped).
+    expect(after.status).toBe(action === "pause" ? "running" : "stopped");
     expect(after.progress.some((progress) => progress.summary === "late")).toBe(false);
     },
   );
@@ -739,7 +747,13 @@ describe("goal loop failure recovery", () => {
     expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
 
     const paused = await updateGoalLoopStatus("ws-1", "pause");
-    expect(paused?.status).toBe("paused");
+    // Per docs/specs/goal-loop.md transition 18b: pausing a
+    // `verifying_completed` loop keeps `status` and records `pause_requested`
+    // (folded into `turn_kind = 'verification'` so resume restores it). The
+    // loop only reaches `paused` once the in-flight verification turn resolves.
+    expect(paused?.status).toBe("verifying_completed");
+    expect(paused?.pauseRequested).toBe(true);
+    expect(paused?.turnKind).toBe("verification");
   });
 
   it("truncates a fractional maxTurns at create time (consistent with update)", async () => {
