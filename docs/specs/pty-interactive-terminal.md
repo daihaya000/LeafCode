@@ -72,11 +72,12 @@ if (m === "POST" && /^\/pty\/[^/]+\/connect-token$/.test(p)) return true;
 ```
 Browser (xterm.js)
   → PTY 専用 API (api/pty-session/**, host-only)
-      - POST   /api/pty-session            PTY 作成 + WS ticket 発行を一括代行
-      - GET    /api/pty-session            一覧（既存 PtyPanel の GET /pty を置換 or 併用）
-      - POST   /api/pty-session/:id/resize  size 更新（Engine PUT /pty/:id を代行）
+      - POST   /api/pty-session            PTY 作成（Engine POST /pty を代行）
+      - GET    /api/pty-session            一覧（Engine GET /pty を代行）
+      - POST   /api/pty-session/:id/resize size 更新（Engine PUT /pty/:id を代行）
       - DELETE /api/pty-session/:id         終了（Engine DELETE /pty/:id を代行）
-      - WS     /api/pty-session/:id/stream  ブラウザ WebSocket ⇄ Engine WebSocket の中継
+      - GET    /api/pty-session/:id/stream  SSE 出力ストリーム（Engine WS → BFF → ブラウザ）
+      - POST   /api/pty-session/:id/input   入力送信（ブラウザ → BFF → Engine WS）
   → Engine PTY API（127.0.0.1、BFF からのみ到達）
 ```
 
@@ -84,44 +85,45 @@ Browser (xterm.js)
   ルート内部で Engine の `pty.create` / `pty.update` / `pty.remove` / `pty.connectToken` を直接呼ぶ。
   汎用プロキシのブロックは変更しないため、既存の `/api/opencode/pty` 系リクエストは
   引き続き 403 のままになる。
-- ブラウザは Engine が発行する `ticket` を直接使わず、BFF が仲介する WebSocket
-  （`/api/pty-session/:id/stream`）にだけ接続する。Engine の `ticket` と WS URL は
-  ブラウザに渡さない。BFF はサーバー間で `ticket` を使って Engine WebSocket を開き、
+- Next.js Route Handlers は HTTP Upgrade（WebSocket ハンドシェイク）を直接扱えないため、
+  ブラウザ ⇄ BFF 間は **SSE 出力 + POST 入力**の擬似双方向で表現する。
+  BFF ⇄ Engine 間は Node.js グローバル `WebSocket` で `/api/pty/{id}/connect` に接続し、
   フレームを相互中継する。
-  - 理由: Engine の `ticket` がブラウザの JS に渡ると、XSS 等で盗まれた場合に
-    Engine への直結を許してしまう。BFF 仲介にすることで、ブラウザ ⇔ BFF 間は
-    同一オリジンの Cookie/セッション認証、BFF ⇔ Engine 間は loopback 限定にできる。
+- ブラウザは Engine が発行する `ticket` を直接使わない。BFF が connect-token を発行し、
+  サーバー間 WebSocket を開くだけに使う。
 
 ## API 契約
 
 | API | 制限 | 入力 | レスポンス |
 |-----|------|------|------------|
-| `POST /api/pty-session` | host-only | `{ directory, command?, args?, cwd?, size?: { rows, cols } }` | `{ id, title }` |
-| `GET /api/pty-session?directory=` | host-only | なし | `{ sessions: [{ id, title, size }] }` |
+| `POST /api/pty-session` | host-only | `{ directory, cwd?, title? }` | `{ id, title, cwd, status }` |
+| `GET /api/pty-session?directory=` | host-only | なし | `{ sessions: [{ id, title, cwd, status }] }` |
 | `POST /api/pty-session/:id/resize` | host-only | `{ rows, cols }` | `{ ok: true }` |
 | `DELETE /api/pty-session/:id` | host-only | なし | `{ ok: true }` |
-| `WS /api/pty-session/:id/stream` | host-only | 入力: バイナリ/テキストフレーム（keystroke） | 出力: PTY 標準出力フレーム |
+| `GET /api/pty-session/:id/stream` | host-only | `?id=&directory=` | 出力: `text/event-stream` (`data: {t:"o",d:"..."}`) |
+| `POST /api/pty-session/:id/input` | host-only | `{ data: string }` | `{ ok: true }` |
 
 - `directory` は既存の `directoryHeaders` / `withDirectoryQuery` の慣例に従い、
   プロジェクトディレクトリのスコープ内であることを検証してから Engine へ渡す。
-- `command` / `args` / `cwd` / `env` を未指定にした場合は Engine 既定シェルを使う。
-  任意 `command` を許すかどうかは実装フェーズで確定する（既定は `pty.shells` の
-  `acceptable: true` な候補のみ許可する案を優先）。
-- host-only 判定は `remote-authz.md` の `host-only API` 定義と同じ実装
+- `POST /api/pty-session` は `command` / `args` / `env` を受け取らない。
+  任意実行可能ファイルの選択を防ぎ、Engine 既定シェルを使用する。
+- host-only 判定は `remote-authz.md` の host-only API 定義と同じ実装
   （loopback 由来リクエストのみ許可、`X-Forwarded-*` を信頼しない）を再利用する。
 
-## WebSocket 中継の要件
+## WebSocket/SSE 中継の要件
 
-- BFF は `WS /api/pty-session/:id/stream` の接続確立時に、対象 `id` の PTY セッションが
-  同一 BFF プロセスが直前に作成したものであることを検証する（他セッションの `id` を
+- BFF は `GET /api/pty-session/:id/stream` 接続時に、対象 `id` の PTY セッションが
+  同一 BFF プロセスで既に作成されたものであることを検証する（他セッションの `id` を
   推測して繋がせない）。
 - BFF ⇔ Engine 間の WebSocket は `ticket`（短命トークン）で 1 回だけ確立し、
   ブラウザ切断時は Engine 側 WebSocket も必ず close する。
-- 中継はバイナリセーフに行い、フレームの分割・結合や文字コード変換をしない
-  （xterm.js 側での UTF-8 デコードに委ねる）。
+- ブラウザ ⇄ BFF 間は SSE（長時間 `ReadableStream`）で PTY 出力を配信し、
+  `POST /api/pty-session/:id/input` でキー入力を受け取る。
+  SSE フレームは `data: {t:"o",d:"..."}` という JSON 形式で、改行やバイナリデータも
+  テキスト安全に中継できる。
 - resize は WebSocket フレームではなく `POST /api/pty-session/:id/resize` を使う
   （Engine の `pty.update` は HTTP PUT のため、専用チャンネルを分けない）。
-
+- 中継は UTF-8 テキストで行い、xterm.js 側でのエスケープシーケンス解釈に委ねる。
 ## UI 要件
 
 - `PtyPanel.tsx` を拡張し、一覧表示に加えて「新規ターミナル」導線を追加する。
@@ -141,12 +143,16 @@ Browser (xterm.js)
   ディレクトリ脱出を拒否する（`remote-project-picker.md` の実装を参考にする）。
 - 監査ログ（作成・終了・異常切断）は既存のログ永続化方針
   （`docs/specs/host-log-viewer.md`）に合わせて記録する。
+- 将来的なリモート対応では、ブラウザ ⇄ BFF 間の SSE を認証プロキシ経由の
+  `X-OCW-Auth-Assertion` + CSRF 境界の内側に置き、`remote-authz.md` の
+  権限モデルに `pty:use` を追加してから開く。
 
 ## 段階的実装案
 
 1. **Phase A**: host-only PTY 専用 API（作成・一覧・終了・resize）を実装し、
-   WebSocket 中継なしで動作確認（curl / wscat 等での疎通確認）。
-2. **Phase B**: BFF 仲介 WebSocket 中継を実装し、`PtyPanel.tsx` に xterm.js を統合。
+   検証（tsc/eslint/vitest）を通す。
+2. **Phase B**: BFF 仲介 SSE/WS ストリーム（`stream` + `input`）を実装し、
+   `PtyPanel.tsx` に xterm.js を統合。
 3. **Phase C**: UI レビュー（`ui-ux-reviewer`）、E2E 検証、ドキュメント更新。
 4. **Phase D（別仕様）**: リモート公開が必要になった場合のみ、`remote-authz.md` の
    権限モデルに `pty:use` 等を追加する仕様を別途起票する。
@@ -155,6 +161,5 @@ Browser (xterm.js)
 
 1. 初期リリースを Phase A + B（host-only のみ）に限定し、リモート公開は明確に
    別仕様（Phase D）へ切り出す方針でよいか。
-2. `command` を利用者が自由指定できるようにするか、`pty.shells` の
-   `acceptable: true` 候補のみに絞るか（後者を既定案として提示）。
-3. xterm.js 相当ライブラリの新規依存追加を許容するか（既存 `package.json` への影響）。
+2. ブラウザ ⇄ BFF 間を SSE + POST 擬似双方向にし、カスタムサーバー導入を回避する設計でよいか。
+3. `POST /api/pty-session` で `command` / `args` / `env` を完全拒否（Engine 既定シェルのみ）する方針でよいか。
