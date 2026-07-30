@@ -26,7 +26,7 @@ import { isTaskToolName } from "@/lib/match-child-session";
 import { isImageFilePart } from "@/lib/message-parts";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
-import { stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
+import { formatElapsed, stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
 import { ProviderIcon } from "./ProviderIcon";
@@ -58,6 +58,14 @@ function shortAgentName(raw: string): string {
     return parts.slice(1, 3).join("-");
   }
   return raw.length > 36 ? raw.slice(0, 34) + "…" : raw;
+}
+
+function elapsedForTool(state: ToolState | undefined): number | null {
+  const start = state?.time?.start;
+  if (typeof start !== "number") return null;
+  const end = state?.time?.end;
+  if (typeof end === "number") return Math.max(0, Math.round((end - start) / 1_000));
+  return Math.max(0, Math.round((Date.now() - start) / 1_000));
 }
 
 function toolSummary(tool: string, state: ToolState | undefined): string {
@@ -295,6 +303,12 @@ const ToolPartView = memo(function ToolPartView({
           {preview && !open && (
             <p className="mt-0.5 truncate text-[11px] text-faint">{preview}</p>
           )}
+          {(status === "running" || status === "pending") &&
+            state?.time?.start != null && (
+              <p className="mt-0.5 text-[11px] text-faint">
+                {formatElapsed(elapsedForTool(state) ?? 0)}
+              </p>
+            )}
         </div>
         {status === "running" || status === "pending" ? (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-working" />

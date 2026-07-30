@@ -30,6 +30,10 @@ export type StreamState = {
   connection: ConnectionState;
   sessionError: string | null;
   loaded: boolean;
+  /** Start timestamp of the in-flight sendCommand/sendPrompt, for elapsed UI. */
+  mutationStartedAt: number | null;
+  /** Last published elapsed ms for display/warning thresholds. */
+  mutationElapsedMs: number | null;
 };
 
 export type StreamAction =
@@ -58,7 +62,9 @@ export type StreamAction =
   | { kind: "todos"; todos: Todo[] }
   | { kind: "revert"; revert: SessionRevert | null }
   | { kind: "connection"; connection: ConnectionState }
-  | { kind: "sessionError"; message: string | null };
+  | { kind: "sessionError"; message: string | null }
+  | { kind: "mutationStarted"; startedAt: number }
+  | { kind: "mutationElapsed"; elapsedMs: number };
 
 /** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
@@ -73,7 +79,14 @@ export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
  * 300s `maxDuration`) so the BFF—not the client—produces the terminal
  * (Japanese 408) response when the upstream truly times out.
  */
-export const SESSION_COMMAND_TIMEOUT_MS = 295_000;
+/**
+ * `session.command` is proxied by the BFF with a shorter timeout (see
+ * LONG_RUNNING_UPSTREAM_TIMEOUT_MS in app/api/opencode/[...path]/route.ts).
+ * Keep the client timeout just above the BFF timeout so the BFF produces the
+ * terminal (Japanese 408) response, but short enough that a hung command does
+ * not leave the session unresponsive for many minutes.
+ */
+export const SESSION_COMMAND_TIMEOUT_MS = 125_000;
 
 /**
  * While a visible session is busy, periodically reconcile from REST. Some
@@ -189,6 +202,8 @@ export function createInitialStreamState(scopeKey = ""): StreamState {
     connection: "connecting",
     sessionError: null,
     loaded: false,
+    mutationStartedAt: null,
+    mutationElapsedMs: null,
   };
 }
 
@@ -571,6 +586,14 @@ export function sessionStreamReducer(
       return { ...state, connection: action.connection };
     case "sessionError":
       return { ...state, sessionError: action.message };
+    case "mutationStarted":
+      return {
+        ...state,
+        mutationStartedAt: action.startedAt,
+        mutationElapsedMs: 0,
+      };
+    case "mutationElapsed":
+      return { ...state, mutationElapsedMs: action.elapsedMs };
     default:
       return state;
   }
@@ -599,6 +622,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const sessionActivityAtRef = useRef(Date.now());
   /** Track safety net timers to clear on unmount/session change */
   const safetyNetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Tracks elapsed-time tick for the in-flight mutation. */
+  const mutationElapsedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Stable ref to the latest abort() so sendPrompt/sendCommand can call it without a circular dep. */
+  const abortRef = useRef<(reason?: string) => Promise<void>>(async () => {});
   const messageCountRef = useRef(state.messages.length);
   sessionRef.current = sessionId;
   scopeRef.current = scopeKey;
@@ -606,31 +633,36 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   connectionRef.current = state.connection;
   messageCountRef.current = state.messages.length;
 
+  const clearMutationTimers = useCallback(() => {
+    if (mutationElapsedTimerRef.current) {
+      clearTimeout(mutationElapsedTimerRef.current);
+      mutationElapsedTimerRef.current = null;
+    }
+    if (safetyNetTimerRef.current) {
+      clearTimeout(safetyNetTimerRef.current);
+      safetyNetTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey, cached: readCachedSessionState(scopeKey) });
     pendingMutationRef.current = false;
     preferRestStatusRef.current = false;
     idleStreakRef.current = 0;
     sessionActivityAtRef.current = Date.now();
-    // Clear safety net timer on session change to prevent cross-session resync
-    if (safetyNetTimerRef.current) {
-      clearTimeout(safetyNetTimerRef.current);
-      safetyNetTimerRef.current = null;
-    }
-  }, [scopeKey]);
+    clearMutationTimers();
+  }, [scopeKey, clearMutationTimers]);
 
   useEffect(() => {
     rememberSessionState(state);
   }, [state]);
 
-  // Cleanup safety net timer on unmount
+  // Cleanup safety net + elapsed timers on unmount
   useEffect(() => {
     return () => {
-      if (safetyNetTimerRef.current) {
-        clearTimeout(safetyNetTimerRef.current);
-      }
+      clearMutationTimers();
     };
-  }, []);
+  }, [clearMutationTimers]);
 
   const resync = useCallback(async () => {
     const sid = sessionRef.current;
@@ -705,6 +737,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           // message fetch must not hide session.error while status is still busy.
           if (next.type === "idle") {
             dispatch({ kind: "sessionError", message: null });
+            // The turn is over: stop the elapsed ticker and clear its display.
+            clearMutationTimers();
+            dispatch({ kind: "mutationStarted", startedAt: 0 });
           }
         }
       }
@@ -886,7 +921,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             : "読み込みに失敗しました",
       });
     }
-  }, [directory]);
+  }, [directory, clearMutationTimers]);
 
   useEffect(() => {
     if (!directory || !sessionId) return;
@@ -1475,6 +1510,26 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     };
   }, [directory, sessionId, resync]);
 
+  /**
+   * Start an elapsed-time ticker for the in-flight mutation.
+   * Returns a function that stops the ticker.
+   */
+  const startMutationElapsed = useCallback(
+    (startedAt: number, onTick?: (elapsedMs: number) => void) => {
+      clearMutationTimers();
+      dispatch({ kind: "mutationStarted", startedAt });
+      const tick = () => {
+        const elapsedMs = Date.now() - startedAt;
+        dispatch({ kind: "mutationElapsed", elapsedMs });
+        onTick?.(elapsedMs);
+        mutationElapsedTimerRef.current = setTimeout(tick, 1_000);
+      };
+      mutationElapsedTimerRef.current = setTimeout(tick, 1_000);
+      return clearMutationTimers;
+    },
+    [clearMutationTimers],
+  );
+
   const sendPrompt = useCallback(
     async (
       text: string,
@@ -1497,6 +1552,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       idleStreakRef.current = 0;
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
+      const startedAt = Date.now();
+      const HANG_TIMEOUT_MS = 120_000;
+      const stopMutationElapsed = startMutationElapsed(startedAt, (elapsedMs) => {
+        if (elapsedMs >= HANG_TIMEOUT_MS && statusRef.current?.type !== "idle") {
+          void abortRef.current(
+            `コマンドがタイムアウトしました（${HANG_TIMEOUT_MS / 1_000}秒経過）`,
+          );
+        }
+      });
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
       if (opts?.files && opts.files.length > 0) {
         for (const f of opts.files) {
@@ -1529,16 +1593,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         preferRestStatusRef.current = true;
         void resync();
         throw err;
+      } finally {
+        stopMutationElapsed();
+        // safety net: events normally arrive first, resync fills any gap
+        if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
+        safetyNetTimerRef.current = setTimeout(() => {
+          safetyNetTimerRef.current = null;
+          void resync();
+        }, 800);
       }
-      // safety net: events normally arrive first, resync fills any gap
-      // Clear any existing timer and track the new one for cleanup
-      if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
-      safetyNetTimerRef.current = setTimeout(() => {
-        safetyNetTimerRef.current = null;
-        void resync();
-      }, 800);
     },
-    [directory, resync],
+    [directory, resync, startMutationElapsed],
   );
 
   const sendCommand = useCallback(
@@ -1562,6 +1627,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       idleStreakRef.current = 0;
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
+      const startedAt = Date.now();
+      const HANG_TIMEOUT_MS = 120_000;
+      const stopMutationElapsed = startMutationElapsed(startedAt, (elapsedMs) => {
+        if (elapsedMs >= HANG_TIMEOUT_MS && statusRef.current?.type !== "idle") {
+          void abortRef.current(
+            `コマンドがタイムアウトしました（${HANG_TIMEOUT_MS / 1_000}秒経過）`,
+          );
+        }
+      });
       const body: Record<string, unknown> = {
         command,
         arguments: args,
@@ -1591,16 +1665,17 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         preferRestStatusRef.current = true;
         void resync();
         throw err;
+      } finally {
+        stopMutationElapsed();
+        // safety net: events normally arrive first, resync fills any gap
+        if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
+        safetyNetTimerRef.current = setTimeout(() => {
+          safetyNetTimerRef.current = null;
+          void resync();
+        }, 800);
       }
-      // safety net: events normally arrive first, resync fills any gap
-      // Clear any existing timer and track the new one for cleanup
-      if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
-      safetyNetTimerRef.current = setTimeout(() => {
-        safetyNetTimerRef.current = null;
-        void resync();
-      }, 800);
     },
-    [directory, resync],
+    [directory, resync, startMutationElapsed],
   );
 
   // Re-fetch the todo list on demand. The engine occasionally skips the final
@@ -1623,31 +1698,39 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     }
   }, [directory]);
 
-  const abort = useCallback(async () => {
-    const sid = sessionRef.current;
-    if (!directory || !sid) return;
-    // Unlock immediately so a hung/failed abort POST cannot freeze the composer.
-    pendingMutationRef.current = false;
-    statusRef.current = { type: "idle" };
-    dispatch({ kind: "status", status: { type: "idle" } });
-    // If abort fails and the session is still busy, REST must re-lock.
-    preferRestStatusRef.current = true;
-    try {
-      await ocJson(`/session/${sid}/abort`, directory, {
-        method: "POST",
-        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
-      });
-    } finally {
-      // Reset preferRestStatus immediately after abort completes so that
-      // subsequent sends are not affected by the stale idle guard (R17).
-      preferRestStatusRef.current = false;
-      try {
-        if (sessionRef.current === sid) await resync();
-      } catch {
-        /* non-fatal */
+  const abort = useCallback(
+    async (reason?: string) => {
+      const sid = sessionRef.current;
+      if (!directory || !sid) return;
+      // Unlock immediately so a hung/failed abort POST cannot freeze the composer.
+      pendingMutationRef.current = false;
+      statusRef.current = { type: "idle" };
+      dispatch({ kind: "status", status: { type: "idle" } });
+      clearMutationTimers();
+      if (reason) {
+        dispatch({ kind: "sessionError", message: reason });
       }
-    }
-  }, [directory, resync]);
+      // If abort fails and the session is still busy, REST must re-lock.
+      preferRestStatusRef.current = true;
+      try {
+        await ocJson(`/session/${sid}/abort`, directory, {
+          method: "POST",
+          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+        });
+      } finally {
+        // Reset preferRestStatus immediately after abort completes so that
+        // subsequent sends are not affected by the stale idle guard (R17).
+        preferRestStatusRef.current = false;
+        try {
+          if (sessionRef.current === sid) await resync();
+        } catch {
+          /* non-fatal */
+        }
+      }
+    },
+    [directory, resync, clearMutationTimers],
+  );
+  abortRef.current = abort;
 
   const replyPermission = useCallback(
     async (request: PermissionRequest, response: "once" | "always" | "reject") => {
@@ -1772,4 +1855,15 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     replyQuestion,
     rejectQuestion,
   };
+}
+
+/** Format elapsed seconds as a compact human-readable string. */
+export function formatElapsed(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m < 60) return `${m}m ${String(s).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h ${String(remM).padStart(2, "0")}m`;
 }

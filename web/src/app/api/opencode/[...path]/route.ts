@@ -21,12 +21,12 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
 
 /**
  * Synchronous mutations (session.command / session.prompt) block until the
- * engine finishes running the command, which can far exceed the default proxy
- * timeout (e.g. `/loop 2m`). Give them room up to maxDuration so a legitimately
- * long-running command is not aborted mid-flight. Kept just under maxDuration
- * (300s) so the abort—not the platform—produces the response.
+ * engine finishes running the command. Previously this was 290s under
+ * maxDuration 300s, which left hung commands (e.g. detached `start` processes)
+ * visible as "working" for 5+ minutes. Shorten to 2 minutes so the BFF returns
+ * a clear Japanese 408 before the user perceives the session as frozen.
  */
-const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
+const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 120_000;
 
 /**
  * A prompt/command written straight into a session. Any of these is a "manual

@@ -152,7 +152,10 @@ import {
   parseCommandSubmit,
   parseSlashQuery,
 } from "@/lib/slash-command";
-import { useSessionStream } from "@/lib/useSessionStream";
+import {
+  formatElapsed,
+  useSessionStream,
+} from "@/lib/useSessionStream";
 import { useSlashCommands } from "@/lib/useSlashCommands";
 import { useVoiceInput } from "@/lib/use-voice-input";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
@@ -2777,6 +2780,20 @@ export function TaskView({ taskId }: { taskId: string }) {
                 {currentTool}
               </span>
             )}
+            {working && stream.mutationElapsedMs != null && stream.mutationElapsedMs > 0 && (
+              <span
+                className={cx(
+                  "shrink-0",
+                  stream.mutationElapsedMs >= 60_000
+                    ? "text-danger"
+                    : stream.mutationElapsedMs >= 30_000
+                      ? "text-warning"
+                      : "text-faint",
+                )}
+              >
+                ({formatElapsed(Math.floor(stream.mutationElapsedMs / 1_000))})
+              </span>
+            )}
             {todoBadge && (
               <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">
                 <ListTodo className="h-3 w-3" />
@@ -3240,6 +3257,20 @@ export function TaskView({ taskId }: { taskId: string }) {
                       : currentTool
                         ? `${currentTool}…`
                         : "作業中…"}
+                    {stream.mutationElapsedMs != null && stream.mutationElapsedMs > 0 && (
+                      <span
+                        className={cx(
+                          "text-xs",
+                          stream.mutationElapsedMs >= 60_000
+                            ? "text-danger"
+                            : stream.mutationElapsedMs >= 30_000
+                              ? "text-warning"
+                              : "text-faint",
+                        )}
+                      >
+                        ({formatElapsed(Math.floor(stream.mutationElapsedMs / 1_000))})
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

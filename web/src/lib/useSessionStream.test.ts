@@ -21,11 +21,11 @@ describe("SESSION_COMMAND_TIMEOUT_MS", () => {
     expect(ACTIVE_SESSION_RECONCILE_MS).toBeLessThanOrEqual(5_000);
   });
 
-  it("stays above the BFF's 290s long-running upstream timeout", () => {
+  it("stays above the BFF's 120s long-running upstream timeout", () => {
     // Kept just above LONG_RUNNING_UPSTREAM_TIMEOUT_MS in
     // app/api/opencode/[...path]/route.ts so the BFF—not the client—produces
-    // the terminal response for a legitimately long `session.command`.
-    expect(SESSION_COMMAND_TIMEOUT_MS).toBeGreaterThan(290_000);
+    // the terminal response for a hung `session.command`.
+    expect(SESSION_COMMAND_TIMEOUT_MS).toBeGreaterThan(120_000);
   });
 
   it("stays within the route's 300s maxDuration", () => {
