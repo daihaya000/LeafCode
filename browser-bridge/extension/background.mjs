@@ -65,6 +65,12 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         void collectSnapshot(message.tabId).catch(() => {});
       } else if (message.type === 'command') {
         void executeCommand(message);
+      } else if (message.type === 'error' && message.error === 'NOT_PAIRED') {
+        // The Broker no longer recognizes this device (e.g. its pairing state
+        // was lost, typically after a Broker restart without persisted
+        // pairing). Retrying forever with the stale deviceKey would just loop
+        // silently as "reconnecting" without ever telling the user to re-pair.
+        void forgetPairing();
       }
     });
     socket.addEventListener('close', (event) => {
@@ -83,6 +89,21 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
       }
     });
+  }
+
+  async function forgetPairing() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (socket) {
+      intentionalCloses.add(socket);
+      socket.close();
+      socket = null;
+    }
+    reconnectDelay = 500;
+    state = { ...state, deviceKey: null };
+    await persist();
   }
 
   async function pair({ brokerUrl = DEFAULT_BROKER_URL, code }) {

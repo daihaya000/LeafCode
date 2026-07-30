@@ -114,6 +114,34 @@ test('resyncs shared tabs and resets command dedupe on a new connection generati
   assert.equal(socket.sent.filter((message) => message.type === 'tab_shared').length, 2);
 });
 
+test('forgets a stale pairing when the Broker rejects it as NOT_PAIRED instead of looping "reconnecting" forever', async () => {
+  const stored = { browserBridge: { brokerUrl: 'ws://127.0.0.1:18766/extension', deviceKey: 'stale_device_key', sharedTabs: {} } };
+  class FakeSocket {
+    static OPEN = 1;
+    static instances = [];
+    constructor() { this.readyState = FakeSocket.OPEN; this.listeners = {}; this.sent = []; FakeSocket.instances.push(this); }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    send(message) { this.sent.push(JSON.parse(message)); }
+    close() {}
+    emit(type, event = {}) { for (const listener of this.listeners[type] ?? []) listener(event); }
+  }
+  const chromeApi = {
+    storage: { local: { get: async () => stored, set: async (value) => Object.assign(stored, value), remove: async (key) => delete stored[key] } },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket });
+  await controller.load();
+  const socket = FakeSocket.instances[0];
+  socket.emit('open');
+  socket.emit('message', { data: JSON.stringify({ type: 'error', error: 'NOT_PAIRED' }) });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.publicState().paired, false);
+  assert.equal(controller.publicState().connected, false);
+  assert.equal(stored.browserBridge.deviceKey, null);
+  // No reconnect attempt should be scheduled with the now-cleared deviceKey.
+  assert.equal(FakeSocket.instances.length, 1);
+});
+
 test('does not auto-share tabs until the user explicitly enables auto-share', async () => {
   const { chromeApi, listeners, tabsById } = createAutoShareChromeApi();
   class FakeSocket { static OPEN = 1; }
