@@ -16,17 +16,5 @@ jobs:
         run: npm run test:encoding
       - name: Install host dependencies
         run: npm ci --prefix host
-      - name: Diagnose host dependency install (temporary; remove once CI is green)
-        if: always()
-        run: |
-          node --version
-          Write-Output "::notice::node_modules exists: $(Test-Path 'host/node_modules')"
-          Write-Output "::notice::systray2 exists: $(Test-Path 'host/node_modules/systray2')"
-          Write-Output "::notice::ws exists: $(Test-Path 'host/node_modules/ws')"
       - name: Host tests (includes scripts/start-webui.bat code-page matrix)
-        run: npm --prefix host test 2>&1 | Tee-Object -FilePath host-test-output.txt; exit $LASTEXITCODE
-      - name: Show failing host test output (temporary; remove once CI is green)
-        if: failure()
-        run: |
-          $lines = Get-Content host-test-output.txt -Tail 80
-          foreach ($l in $lines) { Write-Output "::error::$l" }
+        run: npm --prefix host test

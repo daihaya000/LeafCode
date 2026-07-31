@@ -6,7 +6,7 @@
   "description": "Windows system tray host for OpenCode WebUI",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/*.test.js",
+    "test": "node --test",
     "test:encoding": "node --test src/bat-encoding.test.js"
   },
   "dependencies": {
