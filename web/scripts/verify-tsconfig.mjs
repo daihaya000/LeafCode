@@ -68,10 +68,22 @@ export async function cleanTsconfigIncludes(options = {}) {
   return { changed };
 }
 
+/**
+ * True for entries that are machine-specific: either already an absolute
+ * path, or a relative path that escapes the web dir with a leading ".."
+ * segment (e.g. "..(5x)..\AppData\Roaming\opencode-webui\web-build\types\
+ * all files under it", which is what Next.js 15/16 actually writes when
+ * distDir is external -- it is syntactically relative, but not portable).
+ * Combined with the isTypeGenDir + isInsideOrEqual(distDir) checks at each
+ * call site, this only flags entries that both look like this and resolve
+ * inside the configured distDir, so normal in-repo entries (the standard
+ * ".next" types glob) are never touched.
+ */
 function isAbsolutePathEntry(entry) {
   if (/^[a-zA-Z]:[\\\/]/.test(entry)) return true;
   if (entry.startsWith("/") || entry.startsWith("\\")) return true;
-  return /^[\\\/]/.test(entry);
+  if (/^[\\\/]/.test(entry)) return true;
+  return /^\.\.[\\\/]/.test(entry);
 }
 
 function isInsideOrEqual(child, parent) {
@@ -103,6 +115,11 @@ export async function detectAbsoluteDistIncludes(options = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(join(__dirname, "verify-tsconfig.mjs"))) {
+  // Auto-fix first (this runs as `postbuild`, right after `next build` may
+  // have written a machine-specific distDir include), then verify: if
+  // anything is still unresolved after cleaning, fail loudly instead of
+  // silently leaving the file dirty.
+  const { changed } = await cleanTsconfigIncludes();
   const offenders = await detectAbsoluteDistIncludes();
   if (offenders.length > 0) {
     console.error(
@@ -110,6 +127,8 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(join(__dirname, "ver
     );
     for (const p of offenders) console.error("  - " + p);
     process.exitCode = 1;
+  } else if (changed) {
+    console.log("[verify-tsconfig] tsconfig.json cleaned (removed machine-specific distDir include).");
   } else {
     console.log("[verify-tsconfig] tsconfig.json is clean.");
   }
