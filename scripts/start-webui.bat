@@ -55,6 +55,14 @@ call :restore_code_page
 goto :start_host
 
 :start_host
+rem npm (via its internal progress/gauge display while running `npm ci`,
+rem `npm ls`, or `npm run build` above) can overwrite this console's title
+rem with its own transient status text (e.g. "npm ls") and never restore it,
+rem so the window is left showing that stale text through verify-tsconfig
+rem and the host's own "Starting..."/"Production" log lines. Reassert the
+rem app title here, right before the host tail, regardless of which path
+rem (fresh install vs. OPENCODE_WEBUI_SETUP_COMPLETE fast path) got here.
+title OpenCode WebUI
 set OPENCODE_WEBUI_MODE=prod
 rem The launcher is the normal VPN/LAN entry point, so manage Caddy by default.
 rem Set OPENCODE_WEBUI_CADDY=0 before launch to use the raw WebUI URL only.
