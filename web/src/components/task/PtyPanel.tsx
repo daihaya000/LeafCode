@@ -74,15 +74,6 @@ export function PtyPanel({ directory }: { directory: string }) {
     void refresh();
   }, [refresh]);
 
-  /** Read a CSS variable at runtime so xterm's theme matches the app theme. */
-  const cssVar = useCallback((name: string, fallback: string): string => {
-    if (typeof window === "undefined") return fallback;
-    const v = getComputedStyle(document.documentElement)
-      .getPropertyValue(name)
-      .trim();
-    return v || fallback;
-  }, []);
-
   /** Attach a new xterm instance to the container. */
   const mountTerminal = useCallback(() => {
     if (!containerRef.current) return;
@@ -94,10 +85,16 @@ export function PtyPanel({ directory }: { directory: string }) {
       fontFamily:
         'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
       allowProposedApi: true,
+      // Terminal convention: a black canvas + white ink regardless of the app
+      // theme. DESIGN.md has no terminal-specific dark token, and reading the
+      // theme variables at runtime would yield a white background in light
+      // mode — so this is an intentional fixed palette. ANSI colour output
+      // (vim/htop/ls --color) still reads correctly against pure black.
       theme: {
-        background: cssVar("--surface", "#ffffff"),
-        foreground: cssVar("--text", "#18181b"),
-        cursor: cssVar("--muted", "#71717a"),
+        background: "#000000",
+        foreground: "#ffffff",
+        cursor: "#ffffff",
+        selectionBackground: "rgba(255,255,255,0.25)",
       },
     });
     const fit = new FitAddon();
@@ -116,7 +113,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         /* container detached before the frame ran */
       }
     });
-  }, [cssVar]);
+  }, []);
 
   /** Create a new PTY and switch to it. */
   const createSession = useCallback(async () => {
@@ -341,7 +338,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         <div
           ref={containerRef}
           data-testid="pty-terminal"
-          className="min-h-[8rem] w-full min-w-0 flex-1 overflow-hidden rounded-md bg-surface"
+          className="min-h-[8rem] w-full min-w-0 flex-1 overflow-hidden rounded-md bg-black"
         />
       ) : (
         !error &&
