@@ -6,6 +6,7 @@
     "sync:addons": "node scripts/sync-addon-assets.mjs",
     "predev": "npm run sync:addons",
     "prebuild": "npm run sync:addons && node ../scripts/production-webui-build-guard.mjs",
+    "postbuild": "node scripts/verify-tsconfig.mjs",
     "prestart": "npm run sync:addons",
     "pretest": "npm run sync:addons",
     "pretypecheck": "npm run sync:addons",
