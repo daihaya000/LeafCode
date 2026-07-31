@@ -3,7 +3,7 @@ import {
   readdirSync as defaultReaddirSync,
   statSync as defaultStatSync,
 } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 /** Source roots and config files that invalidate a production `.next` build. */
 const WATCHED_ROOT_FILES = [
@@ -143,18 +143,19 @@ export function webRestartSchedule(attempt, maxBurst = 5) {
  * Missing BUILD_ID is not "stale" — callers treat absence via hasBuild.
  *
  * @param {string} webDir
+ * @param {string} distDir production build output directory containing BUILD_ID
  * @param {{
  *   existsSync?: (path: string) => boolean,
  *   statSync?: (path: string) => { isDirectory(): boolean, isFile(): boolean, mtimeMs: number },
  *   readdirSync?: (path: string) => string[],
  * }} [fsApi]
  */
-export function isWebBuildStale(webDir, fsApi = {}) {
+export function isWebBuildStale(webDir, distDir, fsApi = {}) {
   const existsSync = fsApi.existsSync ?? defaultExistsSync;
   const statSync = fsApi.statSync ?? defaultStatSync;
   const readdirSync = fsApi.readdirSync ?? defaultReaddirSync;
 
-  const buildIdPath = join(webDir, '.next', 'BUILD_ID');
+  const buildIdPath = join(distDir, 'BUILD_ID');
   if (!existsSync(buildIdPath)) return false;
 
   let buildMtimeMs;
@@ -177,7 +178,7 @@ export function isWebBuildStale(webDir, fsApi = {}) {
   for (const dirName of WATCHED_DIRS) {
     const root = join(webDir, dirName);
     if (!existsSync(root)) continue;
-    if (hasNewerFile(root, buildMtimeMs, { existsSync, statSync, readdirSync })) {
+    if (hasNewerFile(root, buildMtimeMs, distDir, { existsSync, statSync, readdirSync })) {
       return true;
     }
   }
@@ -185,7 +186,7 @@ export function isWebBuildStale(webDir, fsApi = {}) {
   for (const dirName of WATCHED_SIBLING_DIRS) {
     const root = join(webDir, '..', dirName);
     if (!existsSync(root)) continue;
-    if (hasNewerFile(root, buildMtimeMs, { existsSync, statSync, readdirSync })) {
+    if (hasNewerFile(root, buildMtimeMs, distDir, { existsSync, statSync, readdirSync })) {
       return true;
     }
   }
@@ -193,7 +194,7 @@ export function isWebBuildStale(webDir, fsApi = {}) {
   return false;
 }
 
-function hasNewerFile(dir, buildMtimeMs, fsApi) {
+function hasNewerFile(dir, buildMtimeMs, distDir, fsApi) {
   let entries;
   try {
     entries = fsApi.readdirSync(dir);
@@ -204,6 +205,9 @@ function hasNewerFile(dir, buildMtimeMs, fsApi) {
   for (const name of entries) {
     if (name === 'node_modules' || name === '.next' || name.startsWith('.')) continue;
     const path = join(dir, name);
+    // Protect against OPENCODE_WEBUI_DIST_DIR pointing inside web/: never let
+    // the build output directory invalidate itself (would always read as newer).
+    if (resolve(path) === resolve(distDir)) continue;
     let st;
     try {
       st = fsApi.statSync(path);
@@ -211,7 +215,7 @@ function hasNewerFile(dir, buildMtimeMs, fsApi) {
       continue;
     }
     if (st.isDirectory()) {
-      if (hasNewerFile(path, buildMtimeMs, fsApi)) return true;
+      if (hasNewerFile(path, buildMtimeMs, distDir, fsApi)) return true;
       continue;
     }
     if (!st.isFile()) continue;

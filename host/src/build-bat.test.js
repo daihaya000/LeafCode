@@ -61,3 +61,18 @@ test("build.bat tells the user to start the WebUI after a successful build", () 
 test("direct npm builds run the same production WebUI guard", () => {
   assert.match(webPackage.scripts.prebuild, /production-webui-build-guard\.mjs/);
 });
+
+test("build.bat resolves NEXT_DIST_DIR via web-dist-dir.mjs before next build and checks %NEXT_DIST_DIR%\\BUILD_ID", () => {
+  const distDirResolve = source.indexOf("node scripts\\web-dist-dir.mjs");
+  const nextBuild = source.indexOf("call npm run build");
+  assert.ok(distDirResolve >= 0, "build.bat must resolve the dist dir via web-dist-dir.mjs");
+  assert.ok(distDirResolve < nextBuild, "dist dir resolution must run before next build");
+  assert.ok(
+    source.includes('if not exist "%NEXT_DIST_DIR%\\BUILD_ID"'),
+    "final BUILD_ID check must use %NEXT_DIST_DIR%\\BUILD_ID",
+  );
+  assert.ok(
+    !source.includes('if not exist "web\\.next\\BUILD_ID"'),
+    "build.bat must not check web\\.next\\BUILD_ID for the production output",
+  );
+});

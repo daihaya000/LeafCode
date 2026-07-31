@@ -18,6 +18,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem The production build output lives outside the (OneDrive-synced) repo:
+rem by default the "opencode-webui\web-build" directory under AppData roaming.
+rem Override with OPENCODE_WEBUI_DIST_DIR. scripts\web-dist-dir.mjs is the
+rem single source of truth, shared with host\src\index.js.
+for /f "usebackq delims=" %%D in (`node scripts\web-dist-dir.mjs`) do set "NEXT_DIST_DIR=%%D"
+if not defined NEXT_DIST_DIR (
+  echo [OpenCode WebUI] Could not resolve the build output directory.
+  pause
+  exit /b 1
+)
+echo [OpenCode WebUI] Build output: %NEXT_DIST_DIR%
+
 if not exist "web\node_modules\" (
   echo [OpenCode WebUI] Installing web dependencies...
   pushd web
@@ -55,7 +67,7 @@ if errorlevel 1 (
 )
 popd
 
-if not exist "web\.next\BUILD_ID" (
+if not exist "%NEXT_DIST_DIR%\BUILD_ID" (
   echo [OpenCode WebUI] Build finished but BUILD_ID is missing
   pause
   exit /b 1

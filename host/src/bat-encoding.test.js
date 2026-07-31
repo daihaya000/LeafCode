@@ -63,6 +63,20 @@ function listMessageFileNames() {
   return readdirSync(messageDir).filter((name) => name.endsWith(".txt")).sort();
 }
 
+// git archive only ships tracked files, so the distribution-contract test
+// must filter out untracked message files (e.g. a newly added file that the
+// main agent has not committed yet). The on-disk test above still validates
+// every file regardless of tracking status.
+function listTrackedMessageFileNames() {
+  const output = execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" });
+  const prefix = "scripts/setup-messages/";
+  return output
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith(prefix) && line.endsWith(".txt"))
+    .map((line) => line.slice(prefix.length))
+    .sort();
+}
+
 function findLineNumber(bytes, offset) {
   let line = 1;
   for (let i = 0; i < offset; i += 1) {
@@ -287,7 +301,7 @@ test("git archive ships batch files as ASCII + CRLF (distribution contract)", ()
       assertSafeBatchBytes(archived);
     }
 
-    for (const name of listMessageFileNames()) {
+    for (const name of listTrackedMessageFileNames()) {
       const archived = join(extractDir, "scripts", "setup-messages", name);
       assert.ok(existsSync(archived), `git archive missing setup-messages/${name}`);
       const bytes = readFileSync(archived);

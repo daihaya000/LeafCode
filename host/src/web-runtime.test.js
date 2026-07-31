@@ -133,8 +133,9 @@ test('webRestartSchedule clamps invalid attempt to 1', () => {
 });
 
 test('isWebBuildStale is false when BUILD_ID is missing', () => {
+  const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
   assert.equal(
-    isWebBuildStale('/web', {
+    isWebBuildStale('/web', distDir, {
       existsSync: () => false,
     }),
     false,
@@ -143,10 +144,11 @@ test('isWebBuildStale is false when BUILD_ID is missing', () => {
 
 test('isWebBuildStale is true when a watched source is newer than BUILD_ID', () => {
   const webDir = join('C:', 'web');
+  const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
   const buildMs = Date.parse('2026-07-19T06:00:00.000Z');
   const sourceMs = Date.parse('2026-07-19T14:00:00.000Z');
   const files = new Map([
-    [join(webDir, '.next', 'BUILD_ID'), { mtimeMs: buildMs }],
+    [join(distDir, 'BUILD_ID'), { mtimeMs: buildMs }],
     [join(webDir, 'package.json'), { mtimeMs: buildMs }],
     [join(webDir, 'src', 'components', 'shell', 'Sidebar.tsx'), { mtimeMs: sourceMs }],
   ]);
@@ -157,7 +159,7 @@ test('isWebBuildStale is true when a watched source is newer than BUILD_ID', () 
   ]);
 
   assert.equal(
-    isWebBuildStale(webDir, {
+    isWebBuildStale(webDir, distDir, {
       existsSync: (p) => files.has(p) || dirs.has(p),
       statSync: (p) => {
         if (dirs.has(p)) return { isDirectory: () => true, isFile: () => false, mtimeMs: 0 };
@@ -173,10 +175,11 @@ test('isWebBuildStale is true when a watched source is newer than BUILD_ID', () 
 
 test('isWebBuildStale is false when sources are older than BUILD_ID', () => {
   const webDir = join('C:', 'web');
+  const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
   const buildMs = Date.parse('2026-07-19T14:00:00.000Z');
   const sourceMs = Date.parse('2026-07-19T06:00:00.000Z');
   const files = new Map([
-    [join(webDir, '.next', 'BUILD_ID'), { mtimeMs: buildMs }],
+    [join(distDir, 'BUILD_ID'), { mtimeMs: buildMs }],
     [join(webDir, 'package.json'), { mtimeMs: sourceMs }],
     [join(webDir, 'src', 'app', 'page.tsx'), { mtimeMs: sourceMs }],
   ]);
@@ -186,7 +189,7 @@ test('isWebBuildStale is false when sources are older than BUILD_ID', () => {
   ]);
 
   assert.equal(
-    isWebBuildStale(webDir, {
+    isWebBuildStale(webDir, distDir, {
       existsSync: (p) => files.has(p) || dirs.has(p),
       statSync: (p) => {
         if (dirs.has(p)) return { isDirectory: () => true, isFile: () => false, mtimeMs: 0 };

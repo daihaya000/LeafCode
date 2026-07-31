@@ -2,7 +2,7 @@ OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manag
 
 ## 起動（Windows）
 
-1. リポジトリルートの `OpenCodeWebUI.exe` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `.next/BUILD_ID` の有無で判定する冪等な処理です）。prodでは `.next` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
+1. リポジトリルートの `OpenCodeWebUI.exe` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `%APPDATA%\opencode-webui\web-build\BUILD_ID` の有無で判定する冪等な処理です。出力先は `OPENCODE_WEBUI_DIST_DIR` で上書き可能）。prodでは同ディレクトリの `BUILD_ID` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。
 2. トレイ常駐後、`http://127.0.0.1:3000` を開きます。
 
 既定では WebUI（Next.js BFF）も OpenCode 本体も `127.0.0.1` のみで待ち受け、LAN/VPN への公開は明示的な opt-in です。スマホ/別PC からアクセスする場合は、Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`、推奨）を使うか、`OPENCODE_WEBUI_HOST=0.0.0.0` で全インターフェースにバインドしてください。
@@ -24,7 +24,7 @@ Windows 10 1809 以降はショートカットをスクリプトから自動で�
 
 ### production build
 
-稼働中に `web/.next` を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` とランチャー内部の `scripts/start-webui.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `OpenCodeWebUI.exe` からの起動を案内します）。
+稼働中にproduction buildの出力ディレクトリ（`%APPDATA%\opencode-webui\web-build`、`OPENCODE_WEBUI_DIST_DIR`で上書き可能）を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` とランチャー内部の `scripts/start-webui.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `OpenCodeWebUI.exe` からの起動を案内します）。
 
 停止できない場合はビルドを中止します。
 

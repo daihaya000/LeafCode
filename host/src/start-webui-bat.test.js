@@ -53,8 +53,9 @@ function createSandbox(options = {}) {
 
   if (options.webNodeModules) mkdirSync(join(root, "web", "node_modules"), { recursive: true });
   if (options.webBuildId) {
-    mkdirSync(join(root, "web", ".next"), { recursive: true });
-    writeFileSync(join(root, "web", ".next", "BUILD_ID"), "preexisting-build\r\n");
+    const distDir = join(root, "appdata", "opencode-webui", "web-build");
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(distDir, "BUILD_ID"), "preexisting-build\r\n");
   }
   if (options.hostNodeModules) {
     mkdirSync(join(root, "host", "node_modules", "ws"), { recursive: true });
@@ -92,6 +93,8 @@ function createSandbox(options = {}) {
   if (options.withNode !== false) {
     const nodeScript = [
       'if "%~1"=="scripts\\production-webui-build-guard.mjs" exit /b %SETUP_TEST_GUARD_EXIT%',
+      'if "%~1"=="scripts\\web-dist-dir.mjs" echo %SETUP_TEST_WEB_DIST_DIR%',
+      'if "%~1"=="scripts\\web-dist-dir.mjs" exit /b 0',
       'if "%~1"=="-p" goto :version_query',
       'if "%~1"=="src\\index.js" goto :host_tail',
       "exit /b 0",
@@ -139,8 +142,8 @@ function createSandbox(options = {}) {
     ":build",
     'if not "%SETUP_TEST_NPM_WEB_BUILD_EXIT%"=="0" exit /b %SETUP_TEST_NPM_WEB_BUILD_EXIT%',
     'if "%SETUP_TEST_CREATE_BUILD_ID%"=="0" exit /b 0',
-    "mkdir .next 2>nul",
-    "> .next\\BUILD_ID echo setup-test-build",
+    'mkdir "%SETUP_TEST_WEB_DIST_DIR%" 2>nul',
+    '> "%SETUP_TEST_WEB_DIST_DIR%\\BUILD_ID" echo setup-test-build',
     "exit /b 0",
   ].join("\n"));
 
@@ -150,6 +153,8 @@ function createSandbox(options = {}) {
     ProgramFiles: root,
     PATHEXT: options.standardNodePath ? ".CMD;.EXE;.BAT;.COM" : ".COM;.EXE;.BAT;.CMD",
     OPENCODE_WEBUI_NONINTERACTIVE: "1",
+    APPDATA: join(root, "appdata"),
+    SETUP_TEST_WEB_DIST_DIR: join(root, "appdata", "opencode-webui", "web-build"),
     SETUP_TEST_ROOT: root,
     SETUP_TEST_LOG: log,
     SETUP_TEST_NODE_MAJOR: String(options.nodeMajor ?? 22),
@@ -226,7 +231,7 @@ test("start-webui.bat installs winget/Node.js/OpenCode/deps on a fresh machine, 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), true);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), false);
-    assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
+    assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), true);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
     const log = readFileSync(sandbox.log, "utf8");
     assert.match(log, /install --id OpenJS\.NodeJS\.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
@@ -335,7 +340,7 @@ test("start-webui.bat continues when the guard stopped the running WebUI (exit 1
     assertCompleted(result, "guard stopped the WebUI");
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(`${result.stdout}\n${result.stderr}`, /WebUIをビルドのために停止しました/);
-    assert.equal(existsSync(join(sandbox.root, "web", ".next", "BUILD_ID")), true);
+    assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), true);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
   } finally { sandbox.cleanup(); }
 });

@@ -8,7 +8,7 @@ import {
   unlinkSync,
 } from 'fs';
 import { randomBytes } from 'crypto';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
 import { WebSocketServer } from 'ws';
@@ -45,6 +45,7 @@ import {
 // unrelated app that happens to occupy the port). Import-safe: the guard only
 // runs main() when executed directly.
 import { isThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
+import { resolveProductionDistDir } from '../../scripts/web-dist-dir.mjs';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -62,6 +63,7 @@ const HOST_DIR = join(__dirname, '..');
 const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
+const WEB_DIST_DIR = resolveProductionDistDir(process.env, WEB_DIR);
 /** Host package version, read from host/package.json for the log header. */
 const HOST_VERSION = (() => {
   try {
@@ -1153,7 +1155,7 @@ function stopStrayCaddy() {
 }
 
 function removeBrokenWebBuild() {
-  const buildDir = join(WEB_DIR, '.next');
+  const buildDir = WEB_DIST_DIR;
   if (!existsSync(buildDir) || existsSync(join(buildDir, 'BUILD_ID'))) return;
   log(`Removing incomplete production build: ${buildDir}`);
   rmSync(buildDir, {
@@ -1228,13 +1230,14 @@ function buildWebProductionInternal(reason = 'missing') {
         ? 'Production WebUI build is stale (sources newer than BUILD_ID); rebuilding before start…'
         : 'Production WebUI build is missing; rebuilding before start…';
     log(reasonText);
+    mkdirSync(WEB_DIST_DIR, { recursive: true });
     const child = spawnNpm(['run', 'build'], {
       cwd: WEB_DIR,
       stdio: 'pipe',
       windowsHide: true,
       env: {
         ...process.env,
-        NEXT_DIST_DIR: '.next',
+        NEXT_DIST_DIR: WEB_DIST_DIR,
       },
     });
     webBuildProc = child;
@@ -1262,7 +1265,7 @@ function buildWebProductionInternal(reason = 'missing') {
         finish(new Error(`WebUI production build failed (code=${code})`));
         return;
       }
-      if (!existsSync(join(WEB_DIR, '.next', 'BUILD_ID'))) {
+      if (!existsSync(join(WEB_DIST_DIR, 'BUILD_ID'))) {
         finish(new Error('WebUI production build finished without BUILD_ID'));
         return;
       }
@@ -1284,13 +1287,16 @@ function armWebStableReset(child) {
 }
 
 async function spawnWeb() {
-  let hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
-  let buildStale = hasBuild && isWebBuildStale(WEB_DIR);
+  // Safe here: resolvePortPlan has freed or taken over the WebUI port, so no
+  // server is serving the legacy in-repo build anymore.
+  removeLegacyInRepoBuild();
+  let hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
+  let buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
   let plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
   if (plan.needsBuild) {
     await buildWebProduction(hasBuild && buildStale ? 'stale' : 'missing');
-    hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
-    buildStale = hasBuild && isWebBuildStale(WEB_DIR);
+    hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
+    buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
     plan = getPostBuildLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
     if (plan.staleAfterBuild) {
       log(
@@ -1321,6 +1327,10 @@ async function spawnWeb() {
       OPENCODE_WEBUI_HOST_CONTROL_URL: CONTROL_URL,
       ...browserBridgeEnvironment(),
       PORT: String(WEBUI_PORT),
+      // `next start` must serve the same distDir that was built. Do NOT set it
+      // for dev mode: web/scripts/dev.mjs defaults NEXT_DIST_DIR to .next-dev
+      // and passing the prod dir would break dev.
+      ...(useProd ? { NEXT_DIST_DIR: WEB_DIST_DIR } : {}),
       // When Caddy fronts the WebUI with HTTPS, advertise its public origin so
       // /api/access shows the reachable URL instead of http://IP:3000.
       ...(detectCaddyPublicUrl()
@@ -1409,6 +1419,31 @@ function scheduleWebRestart() {
 function ensureDataDir() {
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+/**
+ * One-time best-effort cleanup of the legacy in-repo `web/.next` production
+ * build output. Dev uses `.next-dev` and e2e uses `.next-e2e`, so `web/.next`
+ * is unambiguously legacy production output once the build lives elsewhere
+ * (default: %APPDATA%\opencode-webui\web-build). Only removed when the new
+ * distDir actually differs from web/.next; errors are swallowed.
+ *
+ * Called from spawnWeb() only: by then resolvePortPlan has either found the
+ * WebUI port free or taken over (killed) a stale listener of our own, so no
+ * server is serving web/.next anymore. Never run it at startup while a
+ * healthy WebUI may be reused in place — deleting its files mid-serve would
+ * cause the very ChunkLoadError the build guard exists to prevent.
+ */
+function removeLegacyInRepoBuild() {
+  const legacy = join(WEB_DIR, '.next');
+  try {
+    if (resolve(WEB_DIST_DIR) === resolve(legacy)) return;
+    if (!existsSync(legacy)) return;
+    rmSync(legacy, { recursive: true, force: true });
+    log(`Production build output moved to ${WEB_DIST_DIR}; removed legacy web/.next`);
+  } catch {
+    // Swallow: best-effort cleanup of the old in-repo .next directory.
   }
 }
 
@@ -1628,8 +1663,8 @@ async function resolvePortPlan() {
     // without reaping its WebUI child) must be rebuilt, not trusted. Take over
     // only when we can positively identify the listener as our own `next
     // start`; never kill an unknown process on the port.
-    const hasBuild = existsSync(join(WEB_DIR, '.next', 'BUILD_ID'));
-    const buildStale = hasBuild && isWebBuildStale(WEB_DIR);
+    const hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
+    const buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
     const listenerPids = getListeningPids(WEBUI_PORT);
     const isOurs = makeOwnedWebListenerPredicate(listenerPids);
     const ownedListenerPids = listenerPids.filter(isOurs);

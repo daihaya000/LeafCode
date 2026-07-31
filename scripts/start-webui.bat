@@ -172,7 +172,9 @@ if errorlevel 1 goto :web_ci_failed
 popd
 
 :install_web_build
-if not exist "web\.next\BUILD_ID" goto :install_web_build_run
+call :resolve_dist_dir
+if errorlevel 1 exit /b 10
+if not exist "%NEXT_DIST_DIR%\BUILD_ID" goto :install_web_build_run
 rem Production rebuild (missing or stale BUILD_ID vs sources) is handled by
 rem host/src/index.js on start and on tray/WebUI restart, so a build that
 rem already exists is left alone here.
@@ -200,7 +202,7 @@ pushd web
 if errorlevel 1 goto :web_build_failed_without_pushd
 call npm run build
 if errorlevel 1 goto :web_build_failed
-if not exist ".next\BUILD_ID" goto :web_build_id_missing
+if not exist "%NEXT_DIST_DIR%\BUILD_ID" goto :web_build_id_missing
 popd
 exit /b 0
 
@@ -274,6 +276,15 @@ exit /b 9
 popd
 call :fail 9 "Browser Bridge dependencies could not be installed." error-9
 exit /b 9
+
+:resolve_dist_dir
+rem Production build output directory (default: under AppData roaming;
+rem override OPENCODE_WEBUI_DIST_DIR). See scripts\web-dist-dir.mjs.
+set "NEXT_DIST_DIR="
+for /f "usebackq delims=" %%D in (`node scripts\web-dist-dir.mjs`) do set "NEXT_DIST_DIR=%%D"
+if defined NEXT_DIST_DIR exit /b 0
+call :fail 10 "the build output directory could not be resolved." error-10
+exit /b 10
 
 :fail
 set "FAIL_CODE=%~1"
