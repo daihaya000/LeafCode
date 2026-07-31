@@ -98,6 +98,11 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         void forgetPairing();
       }
     });
+    // Errors are expected while the Broker is unavailable (e.g. during host
+    // startup or after a network change). The close listener above already
+    // schedules an exponential-backoff reconnect, so we just swallow the
+    // error to avoid noisy unhandled-rejection reports in the extension console.
+    socket.addEventListener('error', () => {});
     socket.addEventListener('close', (event) => {
       const closedSocket = event.target;
       const wasIntentional = intentionalCloses.has(closedSocket);
