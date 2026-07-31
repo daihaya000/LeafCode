@@ -1211,6 +1211,9 @@ describe("TaskView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "再同期" }));
     expect(streamMock.resync).toHaveBeenCalledTimes(1);
+    // DiffPane only renders when sidePanel === "diff"; open it first.
+    fireEvent.click(screen.getByTitle("Diff パネル"));
+    fireEvent.click(screen.getByRole("button", { name: "再同期" }));
     expect(diffPaneRefreshKeys).toContain(1);
 
     fireEvent.click(screen.getByRole("button", { name: "ターミナル" }));
@@ -1276,6 +1279,99 @@ describe("TaskView", () => {
     expect(screen.queryByTitle("Diff パネル")).toBeNull();
     expect(screen.getByRole("button", { name: "再同期" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "ターミナル" })).toBeTruthy();
+  });
+
+  describe("パネルトグル", () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it("defaults to graph panel active on fresh render", async () => {
+      taskStatus = "idle";
+      const streamMock = useSessionStream();
+      useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const graphBtn = screen.getByTitle("グラフ");
+      expect(graphBtn.className.split(/\s+/)).toContain("bg-surface-2");
+      expect(graphBtn.className.split(/\s+/)).toContain("text-text");
+    });
+
+    it("toggles files panel off on second click", async () => {
+      taskStatus = "idle";
+      const streamMock = useSessionStream();
+      useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const filesBtn = screen.getByTitle("ファイルツリー");
+      // First click: open files panel
+      fireEvent.click(filesBtn);
+      expect(filesBtn.className.split(/\s+/)).toContain("bg-surface-2");
+
+      // Second click: close the panel
+      fireEvent.click(filesBtn);
+      expect(filesBtn.className.split(/\s+/)).not.toContain("bg-surface-2");
+    });
+
+    it("toggles graph panel off on second click", async () => {
+      taskStatus = "idle";
+      const streamMock = useSessionStream();
+      useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const graphBtn = screen.getByTitle("グラフ");
+      // Graph starts active (default) but tab is "chat"; first click
+      // switches to diff tab (graph stays active).
+      fireEvent.click(graphBtn);
+      expect(graphBtn.className.split(/\s+/)).toContain("bg-surface-2");
+
+      // Second click: same panel + diff tab → close
+      fireEvent.click(graphBtn);
+      expect(graphBtn.className.split(/\s+/)).not.toContain("bg-surface-2");
+
+      // Third click reopens
+      fireEvent.click(graphBtn);
+      expect(graphBtn.className.split(/\s+/)).toContain("bg-surface-2");
+    });
+
+    it("toggles terminal panel off on second click", async () => {
+      taskStatus = "idle";
+      const streamMock = useSessionStream();
+      useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const termBtn = screen.getByRole("button", { name: "ターミナル" });
+      // First click: open terminal (switches to diff tab)
+      fireEvent.click(termBtn);
+      expect(termBtn.className.split(/\s+/)).toContain("bg-surface-2");
+
+      // Second click: close
+      fireEvent.click(termBtn);
+      expect(termBtn.className.split(/\s+/)).not.toContain("bg-surface-2");
+    });
+
+    it("reopens panel after close on re-click", async () => {
+      taskStatus = "idle";
+      const streamMock = useSessionStream();
+      useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const termBtn = screen.getByRole("button", { name: "ターミナル" });
+      // Open
+      fireEvent.click(termBtn);
+      expect(termBtn.className.split(/\s+/)).toContain("bg-surface-2");
+      // Close
+      fireEvent.click(termBtn);
+      expect(termBtn.className.split(/\s+/)).not.toContain("bg-surface-2");
+      // Reopen
+      fireEvent.click(termBtn);
+      expect(termBtn.className.split(/\s+/)).toContain("bg-surface-2");
+    });
   });
 
   describe("ループ composer", () => {

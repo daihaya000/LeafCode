@@ -12,7 +12,7 @@ export type SidePanelKind = "diff" | "files" | "pty" | "graph";
 export type ChatTab = "chat" | "diff";
 
 export function readSidePanel(): SidePanelKind {
-  if (typeof window === "undefined") return "diff";
+  if (typeof window === "undefined") return "graph";
   try {
     const raw = localStorage.getItem(SIDE_PANEL_KEY);
     if (
@@ -26,7 +26,7 @@ export function readSidePanel(): SidePanelKind {
   } catch {
     /* ignore */
   }
-  return "diff";
+  return "graph";
 }
 
 export function writeSidePanel(kind: SidePanelKind): void {

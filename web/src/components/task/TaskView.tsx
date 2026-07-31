@@ -443,7 +443,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [taskId]);
   const [tab, setTab] = useState<ChatTab>("chat");
   const [showDiff, setShowDiff] = useState(true);
-  const [sidePanel, setSidePanel] = useState<SidePanelKind>("diff");
+  const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);
   const [isLg, setIsLg] = useState(false);
@@ -1003,6 +1003,23 @@ export function TaskView({ taskId }: { taskId: string }) {
     setSidePanel(next);
     writeSidePanel(next);
   }, []);
+
+  /** 現在開いているパネルのアイコンを再クリックすると右ペイン全体を閉じ、
+      別のパネルのアイコンならそのパネルを開く。以前はDiffアイコンだけが
+      閉じられた（バグ）。 */
+  const toggleSidePanel = useCallback(
+    (kind: SidePanelKind) => {
+      if (sidePanel === kind && showDiff && tab === "diff") {
+        changeShowDiff(false);
+        changeTab("chat");
+      } else {
+        changeSidePanel(kind);
+        changeShowDiff(true);
+        changeTab("diff");
+      }
+    },
+    [sidePanel, showDiff, tab, changeShowDiff, changeTab, changeSidePanel],
+  );
 
   const { permissions, replyPermission, replyQuestion, rejectQuestion } = stream;
   const attention = useOptionalGlobalAttention();
@@ -2657,13 +2674,12 @@ export function TaskView({ taskId }: { taskId: string }) {
         <span className="md:hidden">
           <AttentionBadge />
         </span>
-        {/* Right toolbar: outer wrapper (overflow visible) keeps the kebab
-            popup from being clipped. Inner scroll container holds only
-            Zone A / Zone B so horizontal scroll is limited to those ops. */}
+        {/* Right toolbar: direct-action buttons first, then panel toggles
+            (panels gated on isLg; below lg they are not rendered — the
+            mobile tab bar under the header covers them), horizontally
+            scrollable on narrow screens. */}
         <div className="flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1">
           <div className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* Zone A: direct actions are retained at md and above. Mobile has
-              no header stop button and exposes compact through the kebab. */}
           {isMd && working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
@@ -2679,75 +2695,6 @@ export function TaskView({ taskId }: { taskId: string }) {
               />
             </>
           )}
-
-          {/* Zone B: panel toggles shown directly at their breakpoint and
-              demoted into the kebab menu (Zone C) below it. Thresholds:
-              file tree / graph / diff at lg (1024px); terminal stays in Zone C.
-              Rendered conditionally on isLg/isMd (not CSS `hidden lg:...`)
-              because those utility classes lost the display-property
-              cascade to the always-on `inline-flex` base class on Button,
-              leaving the buttons visible below their breakpoint. JS-driven
-              rendering also keeps this in sync with the kebab's group-2
-              conditional so a control never appears in both places. */}
-          {isLg && (
-            <Button
-              variant="ghost"
-              size="icon"
-              title="ファイルツリー"
-              className={cx(
-                showDiff && sidePanel === "files" && "bg-surface-2 text-text",
-              )}
-              onClick={() => {
-                changeShowDiff(true);
-                changeTab("diff");
-                changeSidePanel("files");
-              }}
-            >
-              <FolderTree className="h-4 w-4" />
-            </Button>
-          )}
-          {isLg && (
-            <Button
-              variant="ghost"
-              size="icon"
-              title="グラフ"
-              className={cx(
-                showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
-              )}
-              onClick={() => {
-                changeShowDiff(true);
-                changeTab("diff");
-                changeSidePanel("graph");
-              }}
-            >
-              <GitGraph className="h-4 w-4" />
-            </Button>
-          )}
-          {isLg && (
-            <Button
-              variant="ghost"
-              size="icon"
-              title="Diff パネル"
-              className={cx(
-                showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
-              )}
-              onClick={() => {
-                if (sidePanel === "diff" && showDiff && tab === "diff") {
-                  changeShowDiff(false);
-                  changeTab("chat");
-                } else {
-                  changeSidePanel("diff");
-                  changeShowDiff(true);
-                  changeTab("diff");
-                }
-              }}
-            >
-              <PanelRight className="h-4 w-4" />
-            </Button>
-          )}
-
-          </div>
-          {/* Zone C: resync and terminal only. */}
           <Button
             variant="ghost"
             size="icon"
@@ -2767,14 +2714,51 @@ export function TaskView({ taskId }: { taskId: string }) {
             title="ターミナル"
             aria-label="ターミナル"
             className={cx(showDiff && sidePanel === "pty" && "bg-surface-2 text-text")}
-            onClick={() => {
-              changeShowDiff(true);
-              changeTab("diff");
-              changeSidePanel("pty");
-            }}
+            onClick={() => toggleSidePanel("pty")}
           >
             <Terminal className="h-4 w-4" />
           </Button>
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="ファイルツリー"
+              className={cx(
+                showDiff && sidePanel === "files" && "bg-surface-2 text-text",
+              )}
+              onClick={() => toggleSidePanel("files")}
+            >
+              <FolderTree className="h-4 w-4" />
+            </Button>
+          )}
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="グラフ"
+              className={cx(
+                showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
+              )}
+              onClick={() => toggleSidePanel("graph")}
+            >
+              <GitGraph className="h-4 w-4" />
+            </Button>
+          )}
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Diff パネル"
+              className={cx(
+                showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
+              )}
+              onClick={() => toggleSidePanel("diff")}
+            >
+              <PanelRight className="h-4 w-4" />
+            </Button>
+          )}
+
+          </div>
         </div>
       </header>
 
