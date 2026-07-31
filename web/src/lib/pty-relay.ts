@@ -16,10 +16,15 @@
  * A discriminated union rather than a bare string: PTY output can legitimately
  * be an empty string, so an empty-string "socket closed" sentinel would be
  * ambiguous.
+ *
+ * `close` carries the WebSocket close code so the stream route can
+ * distinguish a permanent PTY exit (Engine code 4404) from a transient
+ * network drop — the former should stop the browser's reconnect backoff,
+ * the latter should let it retry.
  */
 export type PtyRelayEvent =
   | { type: "data"; data: string }
-  | { type: "close" };
+  | { type: "close"; code?: number };
 
 export interface PtyRelay {
   ws: WebSocket;
@@ -82,6 +87,64 @@ export function decodePtyFrame(
  */
 const connecting = new Map<string, Promise<PtyRelay>>();
 
+// ---------------------------------------------------------------------------
+// Cursor cache — survives relay teardown so a reconnecting stream can pass
+// `?cursor=N` to the Engine WS and replay any output produced during the
+// disconnect gap. Without this, a transient network drop silently loses
+// whatever the PTY printed between the drop and the reconnect.
+// ---------------------------------------------------------------------------
+const cursors = new Map<string, number>();
+
+/** Store the last cursor position for a PTY (for replay on reconnect). */
+export function setCursor(ptyId: string, cursor: number): void {
+  cursors.set(ptyId, cursor);
+}
+
+/** Retrieve the cached cursor for replay, or `undefined` if none. */
+export function getCursor(ptyId: string): number | undefined {
+  return cursors.get(ptyId);
+}
+
+/** Clear the cached cursor (e.g. when the PTY is deleted or exits). */
+export function clearCursor(ptyId: string): void {
+  cursors.delete(ptyId);
+}
+
+/**
+ * Extract the cursor from an Engine meta frame (`0x00` + JSON such as
+ * `{"cursor":12}`). Returns `undefined` for non-meta frames or malformed
+ * payloads. Used by the stream route to keep the cursor cache fresh so a
+ * later reconnect replays from the right position.
+ */
+export function parseMetaCursor(data: unknown): number | undefined {
+  if (typeof data === "string") {
+    if (data.charCodeAt(0) !== PTY_META_FRAME_PREFIX) return undefined;
+    try {
+      const json = JSON.parse(data.slice(1)) as { cursor?: unknown };
+      return typeof json.cursor === "number" ? json.cursor : undefined;
+    } catch { return undefined; }
+  }
+
+  let bytes: Uint8Array | null = null;
+  if (ArrayBuffer.isView(data)) {
+    bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  } else {
+    const tag = Object.prototype.toString.call(data);
+    if (tag === "[object ArrayBuffer]" || tag === "[object SharedArrayBuffer]") {
+      bytes = new Uint8Array(data as ArrayBuffer);
+    }
+  }
+  if (!bytes || bytes.length === 0 || bytes[0] !== PTY_META_FRAME_PREFIX) {
+    return undefined;
+  }
+  try {
+    const json = JSON.parse(new TextDecoder().decode(bytes.subarray(1))) as {
+      cursor?: unknown;
+    };
+    return typeof json.cursor === "number" ? json.cursor : undefined;
+  } catch { return undefined; }
+}
+
 /** Accessor for the in-process relay map. */
 export function relayRegistry(): Map<string, PtyRelay> {
   return relays;
@@ -111,6 +174,8 @@ export function releaseRelay(ptyId: string): void {
   if (relay.refcount <= 0) {
     relay.closed = true;
     relays.delete(ptyId);
+    // Keep the cursor: the browser may reopen the stream shortly, and the
+    // cached cursor lets the new relay replay from the right position.
     try { relay.ws.close(); } catch { /* ignore */ }
   }
 }

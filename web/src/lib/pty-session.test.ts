@@ -164,6 +164,16 @@ describe("engineWsUrl", () => {
     const url = new URL(engineWsUrl("pty_a/b", "C:/proj", "t"));
     expect(url.pathname).toBe("/pty/pty_a%2Fb/connect");
   });
+
+  it("appends the cursor when provided", () => {
+    const url = new URL(engineWsUrl("pty_1", "C:/proj", "t", 42));
+    expect(url.searchParams.get("cursor")).toBe("42");
+  });
+
+  it("omits the cursor when undefined", () => {
+    const url = new URL(engineWsUrl("pty_1", "C:/proj", "t"));
+    expect(url.searchParams.get("cursor")).toBeNull();
+  });
 });
 
 describe("createConnectToken", () => {

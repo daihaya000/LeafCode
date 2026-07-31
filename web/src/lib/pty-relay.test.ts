@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acquireRelay,
+  clearCursor,
   decodePtyFrame,
   deleteRelay,
+  getCursor,
   getRelay,
+  parseMetaCursor,
   relayRegistry,
   releaseRelay,
+  setCursor,
   setRelay,
   type PtyRelay,
 } from "./pty-relay";
@@ -200,5 +204,55 @@ describe("decodePtyFrame", () => {
     expect(decodePtyFrame(new ArrayBuffer(0), decoder)).toBeNull();
     expect(decodePtyFrame(null, decoder)).toBeNull();
     expect(decodePtyFrame(undefined, decoder)).toBeNull();
+  });
+});
+
+describe("parseMetaCursor", () => {
+  it("extracts cursor from a binary meta frame", () => {
+    const meta = new Uint8Array([
+      0,
+      ...new TextEncoder().encode(JSON.stringify({ cursor: 42 })),
+    ]).buffer;
+    expect(parseMetaCursor(meta)).toBe(42);
+  });
+
+  it("extracts cursor from a string meta frame", () => {
+    expect(parseMetaCursor("\u0000{\"cursor\":7}")).toBe(7);
+  });
+
+  it("returns undefined for non-meta frames", () => {
+    expect(parseMetaCursor("hello")).toBeUndefined();
+    expect(parseMetaCursor(new TextEncoder().encode("hi").buffer)).toBeUndefined();
+  });
+
+  it("returns undefined for malformed JSON", () => {
+    expect(parseMetaCursor("\u0000{bad")).toBeUndefined();
+  });
+
+  it("returns undefined when cursor is not a number", () => {
+    expect(parseMetaCursor('\u0000{"cursor":"x"}')).toBeUndefined();
+    expect(parseMetaCursor("\u0000{}")).toBeUndefined();
+  });
+});
+
+describe("cursor cache", () => {
+  afterEach(() => {
+    relayRegistry().clear();
+    clearCursor("pty_cursor_test");
+  });
+
+  it("stores and retrieves a cursor", () => {
+    setCursor("pty_cursor_test", 99);
+    expect(getCursor("pty_cursor_test")).toBe(99);
+  });
+
+  it("returns undefined when no cursor is cached", () => {
+    expect(getCursor("pty_cursor_test")).toBeUndefined();
+  });
+
+  it("clears the cursor", () => {
+    setCursor("pty_cursor_test", 5);
+    clearCursor("pty_cursor_test");
+    expect(getCursor("pty_cursor_test")).toBeUndefined();
   });
 });

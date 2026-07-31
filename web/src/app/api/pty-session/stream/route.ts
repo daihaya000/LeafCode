@@ -5,9 +5,13 @@ import { connectPty, PtyError } from "@/lib/pty-session";
 import { logPtyEvent } from "@/lib/pty-audit";
 import {
   acquireRelay,
+  clearCursor,
   decodePtyFrame,
+  getCursor,
+  parseMetaCursor,
   deleteRelay,
   releaseRelay,
+  setCursor,
   type PtyRelay,
   type PtyRelayEvent,
 } from "@/lib/pty-relay";
@@ -60,11 +64,14 @@ export async function GET(req: NextRequest) {
 
   // Open (or reuse) the BFF→Engine WebSocket for this PTY. acquireRelay
   // dedupes concurrent callers so a single PTY never gets two Engine sockets.
+  // The cached cursor lets a reconnecting relay replay output from the
+  // last known position instead of starting from "now".
+  const cursor = getCursor(ptyId);
   let relay: PtyRelay | undefined;
   try {
     relay = await acquireRelay(
       ptyId,
-      () => connectPty(dirCheck.path, ptyId),
+      () => connectPty(dirCheck.path, ptyId, cursor),
       (r) => {
         // One decoder per relay so multi-byte UTF-8 split across frames is
         // reassembled instead of turning into replacement characters.
@@ -76,20 +83,36 @@ export async function GET(req: NextRequest) {
         };
         const onMessage = (ev: MessageEvent) => {
           const text = decodePtyFrame(ev.data, decoder);
-          // `null` = meta/control frame; skip without disturbing the stream.
-          if (text === null) return;
-          emit({ type: "data", data: text });
+          if (text !== null) {
+            emit({ type: "data", data: text });
+            return;
+          }
+          // Meta frame — track the cursor so a later reconnect can replay
+          // from the right position instead of losing the gap's output.
+          const metaCursor = parseMetaCursor(ev.data);
+          if (metaCursor !== undefined) {
+            setCursor(ptyId, metaCursor);
+          }
         };
-        const onClose = () => {
+        const onClose = (ev: CloseEvent) => {
           if (r.closed) return;
           r.closed = true;
           deleteRelay(ptyId);
-          logPtyEvent(ptyId, "disconnect", { directory: dirCheck.path });
-          emit({ type: "close" });
+          const code = ev?.code;
+          // 4404 = Engine "session not found" / "session exited" (permanent).
+          // Clear the cursor so a stale value doesn't cause a 404 replay loop.
+          if (code === 4404) clearCursor(ptyId);
+          logPtyEvent(ptyId, "disconnect", {
+            directory: dirCheck.path,
+            detail: code !== undefined ? `code=${code}` : undefined,
+          });
+          emit({ type: "close", code });
         };
         r.ws.addEventListener("message", onMessage);
+        // Only handle `close`, not `error`: the close event always fires
+        // per the WebSocket spec and carries the close code needed to
+        // distinguish a permanent PTY exit (4404) from a transient drop.
         r.ws.addEventListener("close", onClose);
-        r.ws.addEventListener("error", onClose);
       },
     );
   } catch (err) {
@@ -115,14 +138,23 @@ export async function GET(req: NextRequest) {
 
       const listener = (event: PtyRelayEvent) => {
         if (event.type === "close") {
-          // Sentinel so the client can tell a real PTY exit from a transient
-          // network drop and stop its reconnect backoff accordingly.
           clearInterval(heartbeat);
-          try {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ t: "exit" })}\n\n`),
-            );
-          } catch { /* already closed */ }
+          // Engine close code 4404 = "session not found" / "session exited"
+          // (permanent). Send the exit sentinel so the browser stops its
+          // reconnect backoff and clears the dead session.
+          //
+          // Any other code (1006, 1011, …) is a transient network drop.
+          // Don't send `exit` — just close the controller. The browser's
+          // EventSource will error, trigger backoff reconnection, and the
+          // new relay will replay from the cached cursor, recovering the
+          // gap's output.
+          if (event.code === 4404) {
+            try {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ t: "exit" })}\n\n`),
+              );
+            } catch { /* already closed */ }
+          }
           try { controller.close(); } catch { /* already closed */ }
           return;
         }

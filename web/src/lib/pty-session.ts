@@ -325,11 +325,17 @@ export function createConnectToken(
  * the upgrade with 404 and the browser only sees an opaque WebSocket 1006
  * close. Mixing versions here was the cause of the "terminal never opens /
  * keeps disconnecting" bug.
+ *
+ * `cursor` enables replay: when the BFF reconnects after a transient drop,
+ * passing the last cursor the Engine sent (via a `0x00`-prefixed meta frame)
+ * lets it replay output produced during the disconnect gap instead of
+ * starting from "now".
  */
 export function engineWsUrl(
   ptyId: string,
   directory: string,
   ticket: string,
+  cursor?: number,
 ): string {
   const base = new URL(OPENCODE_BASE_URL);
   // http(s) -> ws(s)
@@ -339,16 +345,27 @@ export function engineWsUrl(
   );
   ws.searchParams.set("ticket", ticket);
   ws.searchParams.set("directory", directory);
+  if (cursor !== undefined) {
+    ws.searchParams.set("cursor", String(cursor));
+  }
   return ws.toString();
 }
 
-/** Open BFF→Engine WebSocket and resolve once open. Rejects on error/timeout. */
+/**
+ * Open BFF→Engine WebSocket and resolve once open. Rejects on error/timeout.
+ *
+ * `cursor` is forwarded to the Engine WS URL for replay: when the BFF
+ * reconnects after a transient drop, the Engine replays output from this
+ * position instead of starting from "now", so the user doesn't lose output
+ * produced during the disconnect gap.
+ */
 export function connectPty(
   directory: string,
   ptyId: string,
+  cursor?: number,
 ): Promise<WebSocket> {
   return createConnectToken(directory, ptyId).then((token) => {
-    const ws = new WebSocket(engineWsUrl(ptyId, directory, token.ticket));
+    const ws = new WebSocket(engineWsUrl(ptyId, directory, token.ticket, cursor));
     // The Engine streams PTY output as binary frames (plus `0x00`-prefixed
     // meta frames). Without this the runtime hands us Blobs, which the relay
     // cannot read synchronously.
