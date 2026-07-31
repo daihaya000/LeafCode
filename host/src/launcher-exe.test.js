@@ -134,6 +134,63 @@ test(
       const run = spawnSync(exePath, [], { encoding: "utf8" });
       assert.equal(run.status, 1);
       assert.match(run.stderr, /scripts\\start-webui\.bat not found/);
+      // The bare "not found" line alone leaves a double-click user with no
+      // actionable next step; this points at the most common real-world
+      // cause (copying only the exe out of the repository).
+      assert.match(run.stderr, /full clone of the OpenCodeWebUI repository/);
+    } finally {
+      rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "Launcher.cs does not hang waiting for input when scripts/start-webui.bat is missing " +
+    "(a double-click launch's own console is never fed input by an automated test, so " +
+    "the pause added for that scenario must not block a piped/closed stdin either)",
+  { skip: !isWindows || !csc },
+  () => {
+    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-missing-pause-"));
+    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+
+    try {
+      const compile = compileLauncher(exePath);
+      assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
+
+      // No input is supplied (spawnSync's default stdin is an already-closed
+      // pipe), simulating what a synchronous test harness sees. Console.In
+      // .ReadLine() must return immediately on EOF rather than block, so this
+      // call must not time out.
+      const run = spawnSync(exePath, [], { encoding: "utf8", timeout: 10_000 });
+      assert.notEqual(run.status, null, "expected the process to exit instead of timing out");
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /scripts\\start-webui\.bat not found/);
+    } finally {
+      rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "Launcher.cs skips the pause when OPENCODE_WEBUI_NONINTERACTIVE=1 is set",
+  { skip: !isWindows || !csc },
+  () => {
+    const fakeRepo = mkdtempSync(join(tmpdir(), "ocwebui-launcher-noninteractive-"));
+    const exePath = join(fakeRepo, "OpenCodeWebUI.exe");
+
+    try {
+      const compile = compileLauncher(exePath);
+      assert.equal(compile.status, 0, `csc failed: ${compile.stderr}\n${compile.stdout}`);
+
+      const run = spawnSync(exePath, [], {
+        encoding: "utf8",
+        timeout: 10_000,
+        env: { ...process.env, OPENCODE_WEBUI_NONINTERACTIVE: "1" },
+      });
+      assert.notEqual(run.status, null, "expected the process to exit instead of timing out");
+      assert.equal(run.status, 1);
+      assert.match(run.stderr, /scripts\\start-webui\.bat not found/);
+      assert.doesNotMatch(run.stderr, /Press Enter to close this window/);
     } finally {
       rmSync(fakeRepo, { recursive: true, force: true });
     }

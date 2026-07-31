@@ -1,5 +1,24 @@
 OpenCode CLI（`opencode serve`）を実行エンジンにした Workspace Manager Web UI。本体はフォークしない。
 
+## exeの動作条件（前提条件）
+
+`OpenCodeWebUI.exe` を実行する前に、以下を満たしていることを確認してください。
+
+- OS: Windows 10 (バージョン 1809 以降) または Windows 11、x64
+- **`OpenCodeWebUI.exe` は単体でコピーせず、`scripts/` `host/` `web/` を含む
+  リポジトリ全体と同じ場所（直下）に置いたまま実行する**こと。
+  exe は薄いランチャーで、同じフォルダの `scripts\start-webui.bat` を実行するだけの
+  仕組みです。exe単体だけをUSBメモリや別PCへコピーすると、起動直後にエラーで
+  停止します（`scripts\start-webui.bat not found` の英語メッセージが表示されます）
+- 初回実行はインターネット接続が必須です（`winget` / npm / OpenCode CLI のダウンロード）
+- `winget` が無い場合はMicrosoft Storeから「アプリ インストーラー」を先に導入してください
+- 通常のダブルクリック実行で失敗した場合、**ウィンドウは自動では閉じず
+  「Press Enter to close this window...」と表示してキー入力を待ちます**
+  （`OPENCODE_WEBUI_NONINTERACTIVE=1` を設定すると待機をスキップします）。
+  表示された英語のエラーメッセージを読んでから対処してください
+- 未署名のexeのため、環境によっては Windows SmartScreen の警告が出ることがあります。
+  「詳細情報」→「実行」を選択すると先へ進めます
+
 ## 起動（Windows）
 
 1. リポジトリルートの `OpenCodeWebUI.exe` をダブルクリックします。初回は `winget`、Node.js 20以上、OpenCode、web/hostの依存関係、production buildを確認・導入し、2回目以降は既に導入済みのステップを自動でスキップして起動だけ行います（`node_modules` / `%APPDATA%\opencode-webui\web-build\BUILD_ID` の有無で判定する冪等な処理です。出力先は `OPENCODE_WEBUI_DIST_DIR` で上書き可能）。prodでは同ディレクトリの `BUILD_ID` が欠落しているかソースより古い場合、起動・トレイ/WebUI再起動時に自動buildします。

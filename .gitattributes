@@ -9,3 +9,10 @@
 
 # Japanese setup messages are printed with `type`, so keep them UTF-8 + CRLF.
 scripts/setup-messages/*.txt text eol=crlf
+
+# The committed launcher exe/icon are binaries produced by
+# scripts/build-launcher.bat. git's content-based auto-detection already
+# treats them as binary, but this makes it explicit so a contributor's
+# core.autocrlf setting can never corrupt them on checkout.
+*.exe binary
+*.ico binary
