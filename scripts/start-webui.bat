@@ -182,19 +182,14 @@ echo [OpenCode WebUI] Existing build found; host will rebuild if sources are new
 exit /b 0
 
 :install_web_build_run
-rem Do not replace web\.next while a production WebUI is serving it: ask the
-rem tray host to stop first (exit 10 = it was stopped, harmless to continue).
-call node scripts\production-webui-build-guard.mjs --stop
-set "WEB_GUARD_EXIT=%ERRORLEVEL%"
-if "%WEB_GUARD_EXIT%"=="0" goto :web_build_guard_passed
-if "%WEB_GUARD_EXIT%"=="10" goto :web_build_guard_stopped
-call :fail 6 "web build was cancelled to protect a running WebUI. Stop the WebUI and run OpenCodeWebUI.exe again." error-6-guard
-exit /b 6
-
-:web_build_guard_stopped
-echo [OpenCode WebUI] The running WebUI was stopped for this build.
-call :say guard-stopped
-goto :web_build_guard_passed
+rem Never build on top of a running production WebUI: replacing the served
+rem build directory mid-flight mixes chunk generations (ChunkLoadError).
+rem When the guard sees a listener (any non-zero exit), skip the first-run
+rem build and continue to the host tail - the tray host reuses a healthy
+rem WebUI as is, or takes over a stale one of its own and rebuilds
+rem (decideWebReuseOnStale in host/src/index.js).
+call node scripts\production-webui-build-guard.mjs
+if errorlevel 1 goto :web_build_skipped
 
 :web_build_guard_passed
 echo [OpenCode WebUI] Building web ^(first run^)...
@@ -204,6 +199,11 @@ call npm run build
 if errorlevel 1 goto :web_build_failed
 if not exist "%NEXT_DIST_DIR%\BUILD_ID" goto :web_build_id_missing
 popd
+exit /b 0
+
+:web_build_skipped
+echo [OpenCode WebUI] A WebUI is already running; skipping the first-run build.
+echo [OpenCode WebUI] The host will reuse it, or take it over and rebuild.
 exit /b 0
 
 :web_ci_failed_without_pushd

@@ -333,26 +333,17 @@ test("start-webui.bat passes through the host's real exit code from the tail", {
   } finally { sandbox.cleanup(); }
 });
 
-test("start-webui.bat continues when the guard stopped the running WebUI (exit 10)", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ webNodeModules: true, hostNodeModules: true, guardExit: 10 });
-  try {
-    const result = sandbox.run();
-    assertCompleted(result, "guard stopped the WebUI");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.match(`${result.stdout}\n${result.stderr}`, /WebUIをビルドのために停止しました/);
-    assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), true);
-    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
-  } finally { sandbox.cleanup(); }
-});
-
-test("start-webui.bat still aborts when the guard cannot free the port", { skip: !isWindows }, () => {
+test("start-webui.bat skips the first-run build when a WebUI is already running (guard fires)", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ webNodeModules: true, hostNodeModules: true, guardExit: 1 });
   try {
     const result = sandbox.run();
-    assertCompleted(result, "guard refused");
-    assert.equal(result.status, 6, `${result.stdout}\n${result.stderr}`);
-    assert.match(`${result.stdout}\n${result.stderr}`, /web build was cancelled/);
-    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), false);
+    assertCompleted(result, "guard reports a running WebUI");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /skipping the first-run build/);
+    // The build is deferred to the host tail (reuse a healthy WebUI / take
+    // over a stale one), so the batch itself must not produce a BUILD_ID.
+    assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), false);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
   } finally { sandbox.cleanup(); }
 });
 
@@ -410,11 +401,14 @@ test("start-webui.bat reports failures as an ASCII code line plus Japanese detai
   } finally { sandbox.cleanup(); }
 });
 
-test("start-webui.bat passes --stop to the production WebUI guard", { skip: !isWindows }, () => {
+test("start-webui.bat runs the production WebUI guard without --stop and skips the build when it fires", { skip: !isWindows }, () => {
   const source = readFileSync(startWebuiSource, "utf8");
-  assert.match(source, /call node scripts\\production-webui-build-guard\.mjs --stop/);
-  assert.match(source, /set "WEB_GUARD_EXIT=%ERRORLEVEL%"/);
-  assert.match(source, /if "%WEB_GUARD_EXIT%"=="10" goto :web_build_guard_stopped/);
+  assert.match(source, /call node scripts\\production-webui-build-guard\.mjs/);
+  // --stop was retired: the guard must never stop a running WebUI here. A
+  // running listener makes the batch skip the first-run build and defer to
+  // the host tail's reuse/takeover logic instead of aborting the launch.
+  assert.doesNotMatch(source, /production-webui-build-guard\.mjs\s+--stop/);
+  assert.match(source, /if errorlevel 1 goto :web_build_skipped/);
 });
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {

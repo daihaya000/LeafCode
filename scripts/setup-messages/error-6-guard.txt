@@ -1,2 +1,0 @@
-[OpenCode WebUI] 稼働中のWebUIを停止できなかったため、webのビルドを中止しました。
-[OpenCode WebUI] 復旧案内: トレイからWebUIを停止するか、hostを再起動してから再実行してください。

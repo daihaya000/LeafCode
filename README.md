@@ -24,13 +24,10 @@ Windows 10 1809 以降はショートカットをスクリプトから自動で�
 
 ### production build
 
-稼働中にproduction buildの出力ディレクトリ（`%APPDATA%\opencode-webui\web-build`、`OPENCODE_WEBUI_DIST_DIR`で上書き可能）を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため、`build.bat` とランチャー内部の `scripts/start-webui.bat` は本番WebUI（`next start`）が同じポートで稼働中なら、**トレイhostに停止を依頼してからビルドを続行**します。`build.bat` はビルド成功後に自動でWebUIを再起動します（ビルド失敗時は再起動せず、トレイまたは `OpenCodeWebUI.exe` からの起動を案内します）。
+稼働中にproduction buildの出力ディレクトリ（`%APPDATA%\opencode-webui\web-build`、`OPENCODE_WEBUI_DIST_DIR`で上書き可能）を上書きすると、配信中のHTMLとチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため:
 
-停止できない場合はビルドを中止します。
-
-- ポートのリスナーの正体を特定できない場合は、無関係なアプリを止めないため何も停止せず中止します。
-- 稼働中のトレイhostが停止エンドポイントを持たない旧バージョンの場合も中止します（強制終了してもhostが自動再起動してしまうため）。トレイからWebUIを停止するか、hostを再起動してから再実行してください。
-- トレイhostが動いていない孤立した `next start` だけは、この repo の `next start` と確認できた場合に限り強制終了します。
+- `build.bat` は、本番WebUI（`next start`）が同じポートで稼働中（またはリスナーの正体が不明）なら**ビルドを中止**します。トレイまたは `OpenCodeWebUI.exe` からWebUIを停止してから再実行してください。
+- ランチャー内部の `scripts/start-webui.bat` は、稼働中のWebUIがあれば**初回ビルドをスキップしてhost本体へ進みます**。トレイhostが健全なWebUIをそのまま再利用するか、古くなった自前の `next start` を引き継いでから `%APPDATA%\opencode-webui\web-build` へリビルドします（孤立した不明プロセスは決して終了させません）。
 
 `npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
 
