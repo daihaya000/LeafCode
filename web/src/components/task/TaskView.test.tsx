@@ -2280,11 +2280,15 @@ describe("TaskView", () => {
       await flushTaskLoad();
 
       // The composer dropdown should remain on Auto, not flip to
-      // anthropic/claude-haiku-4-5. waitFor covers the async provider fetch
-      // and the seeded-model effect that runs once stream + options settle.
+      // anthropic/claude-haiku-4-5. The menu is opened exactly once here: the
+      // trigger is a toggle, and clicking a toggle inside waitFor makes the
+      // retry (which also re-runs on every DOM mutation) flip the menu open
+      // and shut forever, starving the event loop so no timeout can fire.
+      // waitFor then only observes, covering the async provider fetch and the
+      // seeded-model effect that runs once stream + options settle.
+      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
       await waitFor(() => {
-        fireEvent.click(screen.getByRole("button", { name: "モデル" }));
-        const modelMenu = screen.getByRole("listbox", { name: "モデル" });
         const selected = within(modelMenu).getAllByRole("option", {
           selected: true,
         });

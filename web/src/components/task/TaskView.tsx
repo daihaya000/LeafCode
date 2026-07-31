@@ -1226,14 +1226,6 @@ export function TaskView({ taskId }: { taskId: string }) {
               }
             }
           }
-          const usage = await readCodexBarAutoUsage();
-          setAutoInputs({
-            providers: autoProviders,
-            connected: connectedList,
-            disabled: autoDisabled,
-            usage,
-          });
-
           // Prefer user-configured default model, then the last actually-used
           // model (set by HomeView on submission — including "auto" — so an
           // Auto task carries over here), then OpenCode config.model
@@ -1282,6 +1274,20 @@ export function TaskView({ taskId }: { taskId: string }) {
           }
           if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
           setModel((cur) => cur || initial);
+
+          // Awaited last on purpose: no await may split setModelOptions from
+          // the setModel above. React commits the options-only render at such
+          // a split, and the assistant-reply seeding effect then sees a
+          // populated dropdown with the model still unresolved, so it seeds
+          // the concrete reply model before "auto" is restored — silently
+          // dropping the Auto carried over from HomeView.
+          const usage = await readCodexBarAutoUsage();
+          setAutoInputs({
+            providers: autoProviders,
+            connected: connectedList,
+            disabled: autoDisabled,
+            usage,
+          });
         }
 
         if (agentRes.ok) {
