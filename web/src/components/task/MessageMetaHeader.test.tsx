@@ -69,6 +69,39 @@ describe("MessageMetaHeader", () => {
     expect(text.indexOf("GPT-5.6 Luna")).toBeLessThan(text.indexOf("effort high"));
   });
 
+  it("shows thinking time between time and cost when completed exists", () => {
+    render(
+      <MessageMetaHeader
+        info={{
+          modelID: "gpt-5.6-luna",
+          cost: 0.05,
+          time: {
+            created: 0,
+            completed: 65_000,
+          },
+        }}
+        modelLabel="GPT-5.6 Luna"
+        costPrefs={DEFAULT_COST_PREFS}
+      />,
+    );
+
+    const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
+    expect(text).toContain("思考 1m 05s");
+    expect(text.indexOf("思考 1m 05s")).toBeLessThan(text.indexOf("cost"));
+  });
+
+  it("hides thinking time when only created is present", () => {
+    render(
+      <MessageMetaHeader
+        info={{ modelID: "fallback-model", time: { created: 1 } }}
+        costPrefs={DEFAULT_COST_PREFS}
+      />,
+    );
+
+    const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
+    expect(text).not.toContain("思考");
+  });
+
   it("uses a CPU fallback when the provider icon is unknown or broken", () => {
     const { rerender } = render(
       <MessageMetaHeader

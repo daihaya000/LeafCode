@@ -4,12 +4,21 @@ import { Fragment } from "react";
 import { cx, formatMessageTime } from "@/components/ui";
 import { formatCost, type CostDisplayPrefs } from "@/lib/currency";
 import type { MessageInfo } from "@/lib/types";
+import { formatElapsed } from "@/lib/useSessionStream";
 import { ProviderIcon } from "./ProviderIcon";
 
 type MetaInfo = Pick<
   MessageInfo,
   "providerID" | "modelID" | "cost" | "time"
 >;
+
+function thinkingDuration(info: MetaInfo): number | null {
+  const created = info.time?.created;
+  const completed = info.time?.completed;
+  if (typeof created !== "number" || typeof completed !== "number") return null;
+  const seconds = Math.max(0, Math.round((completed - created) / 1000));
+  return seconds > 0 ? seconds : null;
+}
 
 export function MessageMetaHeader({
   info,
@@ -31,10 +40,14 @@ export function MessageMetaHeader({
       ? formatCost(info.cost, costPrefs)
       : "";
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
+  const thinking = thinkingDuration(info);
   const fields = [
     model ? { key: "model", text: model } : null,
     effortLabel ? { key: "effort", text: `effort ${effortLabel}` } : null,
     time ? { key: "time", text: time } : null,
+    thinking != null
+      ? { key: "thinking", text: `思考 ${formatElapsed(thinking)}` }
+      : null,
     cost ? { key: "cost", text: cost } : null,
   ].filter((field): field is { key: string; text: string } => field !== null);
 
