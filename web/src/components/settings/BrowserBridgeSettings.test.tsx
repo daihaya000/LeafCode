@@ -1,0 +1,105 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { BrowserBridgeSettings } from "./BrowserBridgeSettings";
+
+const { timedFetch } = vi.hoisted(() => ({ timedFetch: vi.fn() }));
+vi.mock("@/lib/client", () => ({ timedFetch }));
+
+const response = (body: unknown, ok = true) =>
+  ({ ok, json: async () => body }) as Response;
+
+describe("BrowserBridgeSettings", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    timedFetch.mockReset();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("shows the connection form when no connection is saved", async () => {
+    timedFetch.mockResolvedValue(response({ available: false }));
+    render(<BrowserBridgeSettings />);
+    expect(await screen.findByLabelText("Broker URL")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "この URL で接続" }),
+    ).toBeTruthy();
+  });
+
+  it("collapses the connection form once the Broker reports connected", async () => {
+    timedFetch.mockResolvedValue(
+      response({ available: true, connected: true, paired: true }),
+    );
+    render(<BrowserBridgeSettings />);
+    await waitFor(() =>
+      expect(screen.getByText("接続済み")).toBeTruthy(),
+    );
+    expect(screen.queryByLabelText("Broker URL")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "接続設定を変更" }),
+    ).toBeTruthy();
+  });
+
+  it("expands the form when the edit button is clicked", async () => {
+    timedFetch.mockResolvedValue(
+      response({ available: true, connected: true, paired: true }),
+    );
+    render(<BrowserBridgeSettings />);
+    await waitFor(() =>
+      expect(screen.getByText("接続済み")).toBeTruthy(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "接続設定を変更" }),
+    );
+    expect(await screen.findByLabelText("Broker URL")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "接続設定を折りたたむ" }),
+    ).toBeTruthy();
+  });
+
+  it("shows an error and re-enables the connect button on failure", async () => {
+    timedFetch.mockRejectedValue(new Error("Broker に接続できません"));
+    render(<BrowserBridgeSettings />);
+    fireEvent.click(screen.getByRole("button", { name: "この URL で接続" }));
+    expect(
+      await screen.findByText("Broker に接続できません"),
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "この URL で接続" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("disables the connect button while submitting", async () => {
+    let resolveStatus: (r: Response) => void = () => {};
+    timedFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStatus = resolve;
+        }),
+    );
+    render(<BrowserBridgeSettings />);
+    const connect = screen.getByRole("button", { name: "この URL で接続" }) as HTMLButtonElement;
+    fireEvent.click(connect);
+    await waitFor(() => expect(connect.disabled).toBe(true));
+    resolveStatus(response({ available: true, connected: true, paired: true }));
+    await waitFor(() => expect(connect.disabled).toBe(false));
+  });
+
+  it("clears the saved connection when delete is clicked", async () => {
+    timedFetch.mockResolvedValue(
+      response({ available: true, connected: true, paired: true }),
+    );
+    render(<BrowserBridgeSettings />);
+    await waitFor(() =>
+      expect(screen.getByText("接続済み")).toBeTruthy(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "この接続を削除" }),
+    );
+    expect(screen.queryByText("接続済み")).toBeNull();
+    expect(await screen.findByLabelText("Broker URL")).toBeTruthy();
+  });
+});

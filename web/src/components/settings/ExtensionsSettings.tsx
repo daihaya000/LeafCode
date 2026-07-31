@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { Badge, Button, cx } from "@/components/ui";
 import { BrowserBridgeApprovals } from "./BrowserBridgeApprovals";
+import { BrowserBridgeSettings } from "./BrowserBridgeSettings";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import type { McpDto, PluginDto, SkillDto } from "@/lib/extensions";
 import {
@@ -643,6 +644,8 @@ export function ExtensionsSettings({
           )}
         </div>
       )}
+
+      <BrowserBridgeSettings />
 
       <BrowserBridgeApprovals />
 
