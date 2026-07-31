@@ -44,12 +44,12 @@ describe("AddonHost", () => {
   });
 
   it.each(["/settings", "/settings/addons"])(
-    "does not render widgets on %s",
-    (settingsPath) => {
+    "renders widgets on %s in the same sidebar slot as other pages",
+    async (settingsPath) => {
       pathname = settingsPath;
       render(<AddonHost />);
 
-      expect(screen.queryByTestId("addon-host")).toBeNull();
+      expect(await screen.findByText("Addon widget")).toBeTruthy();
     },
   );
 });

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { ADDONS } from "@/lib/addons/registry";
 import {
   isEnabled,
@@ -11,9 +10,13 @@ import {
   type AddonPrefs,
 } from "@/lib/addons/state";
 
-/** Renders every enabled addon widget in the sidebar below project controls. */
+/**
+ * Renders every enabled addon widget in the sidebar below project controls.
+ * Rendered on every page (settings included) so widgets keep the same
+ * sidebar slot everywhere; the old /settings exclusion only existed for the
+ * legacy floating widget, which overlapped the settings toggle.
+ */
 export function AddonHost() {
-  const pathname = usePathname();
   const [prefs, setPrefs] = useState<AddonPrefs>({});
   const [hydrated, setHydrated] = useState(false);
 
@@ -28,13 +31,7 @@ export function AddonHost() {
     return () => window.removeEventListener(ADDONS_CHANGED_EVENT, onChange);
   }, []);
 
-  if (
-    !hydrated ||
-    pathname === "/settings" ||
-    pathname.startsWith("/settings/")
-  ) {
-    return null;
-  }
+  if (!hydrated) return null;
 
   const active = ADDONS.filter((p) => isEnabled(prefs, p.id, p.defaultEnabled));
   if (active.length === 0) return null;

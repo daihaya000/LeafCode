@@ -19,7 +19,6 @@ import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
-import { CodexBarWidget } from "@addons/codexbar";
 import { Badge, Button, cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
@@ -1100,16 +1099,13 @@ export function SettingsView() {
           activeTab === "plugins") && <ExtensionsSettings activeSection={activeTab} />}
 
         {activeTab === "addons" && (
-          <section className="space-y-8">
-            <div>
-              <h2 className="mb-3 text-sm font-semibold text-muted">アドオン</h2>
-              <p className="mb-3 text-xs text-faint">
-                サイドバーに表示するウィジェットの有効/無効を切り替えます。
-                OpenCode 本体のプラグインとは別物です。
-              </p>
-              <AddonSettings />
-            </div>
-            <CodexBarWidget />
+          <section>
+            <h2 className="mb-3 text-sm font-semibold text-muted">アドオン</h2>
+            <p className="mb-3 text-xs text-faint">
+              サイドバーに表示するウィジェットの有効/無効を切り替えます。
+              OpenCode 本体のプラグインとは別物です。
+            </p>
+            <AddonSettings />
           </section>
         )}
 
