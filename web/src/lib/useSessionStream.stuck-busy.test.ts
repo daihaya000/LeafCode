@@ -49,6 +49,8 @@ let statusMap: Record<string, { type: string }> = {};
 function installOcJson() {
   ocJson.mockImplementation(async (path: string) => {
     if (path === "/session/status") return statusMap;
+    if (path.startsWith(`/session/${SESSION}/prompt_async`)) return {};
+    if (path.startsWith(`/session/${SESSION}/command`)) return {};
     if (path === `/session/${SESSION}/message`) return [];
     if (path === `/session/${SESSION}/todo`) return [];
     if (path === `/session/${SESSION}`) return { revert: null };
@@ -160,5 +162,52 @@ describe("useSessionStream stuck-busy recovery", () => {
       await flush(Math.max(ACTIVE_SESSION_RECONCILE_MS, STUCK_BUSY_QUIET_MS / 4));
     }
     expect(result.current.status?.type).toBe("busy");
+  });
+
+  it("unlocks a pending mutation when the engine drops the session and SSE stays silent", async () => {
+    const {
+      useSessionStream,
+      ACTIVE_SESSION_RECONCILE_MS,
+      MUTATION_LOST_EVENT_GRACE_MS,
+    } = await import("./useSessionStream");
+
+    statusMap = {};
+    const { result } = renderHook(() => useSessionStream(DIRECTORY, SESSION));
+    await flush();
+
+    const es = FakeEventSource.instances[0]!;
+    await act(async () => {
+      es.onopen?.();
+    });
+    await flush();
+
+    // User sends a prompt; SSE session.status busy arrives, then terminal idle
+    // is lost (engine drops the session from /session/status before emitting).
+    await act(async () => {
+      es.onmessage?.({
+        data: JSON.stringify({
+          type: "session.status",
+          properties: { sessionID: SESSION, status: { type: "busy" } },
+        }),
+      });
+    });
+    expect(result.current.status?.type).toBe("busy");
+
+    await act(async () => {
+      void result.current.sendPrompt("hello");
+    });
+    // sendPrompt immediately re-broadcasts busy and resets the grace window.
+    await flush();
+    expect(result.current.status?.type).toBe("busy");
+
+    // Before the grace period ends, the engine has dropped the session and no
+    // further SSE events arrive. Reconciles must not unlock early.
+    await flush(MUTATION_LOST_EVENT_GRACE_MS - ACTIVE_SESSION_RECONCILE_MS);
+    expect(result.current.status?.type).toBe("busy");
+
+    // Once the grace has elapsed, the next reconcile sees the missing key and
+    // synthesizes idle, clearing the pending-mutation lock.
+    await flush(ACTIVE_SESSION_RECONCILE_MS * 2);
+    expect(result.current.status?.type).toBe("idle");
   });
 });

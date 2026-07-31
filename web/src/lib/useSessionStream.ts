@@ -208,6 +208,15 @@ export const STUCK_BUSY_IDLE_STREAK = 3;
 export const STUCK_BUSY_QUIET_MS = 12_000;
 
 /**
+ * When a mutation is in flight but the engine has stopped tracking the
+ * session (`/session/status` omits it), wait this long before assuming the
+ * terminal SSE event was lost and synthesizing idle. This preserves the lock
+ * while the engine is still registering the turn, but unlocks the composer
+ * when the event was genuinely dropped.
+ */
+export const MUTATION_LOST_EVENT_GRACE_MS = 20_000;
+
+/**
  * Decide whether a REST `/session/status` snapshot should replace local status.
  * After sendPrompt/sendCommand we hold `pendingMutation` until SSE busy/idle; if
  * those events are missed, REST must still unlock the composer and clear the flag.
@@ -800,12 +809,18 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         statusRef.current?.type === "busy" ||
         statusRef.current?.type === "retry";
       // `/session/status` omits sessions the engine is no longer tracking, so a
-      // missing entry means "not running" (the server-side task-status
-      // derivation treats it the same). Synthesize idle only when a local busy
-      // state would otherwise never clear, so a just-sent prompt keeps its lock.
+      // missing entry means "not running" (server-side `task-status.ts` derives
+      // the same). Synthesize idle only when a local busy state would otherwise
+      // never clear, so a just-sent prompt keeps its lock. While a mutation is
+      // pending we wait a short grace period for the engine to emit status; once
+      // that grace has passed the terminal SSE event is treated as lost.
+      const quietSinceMutation =
+        Date.now() - sessionActivityAtRef.current >= MUTATION_LOST_EVENT_GRACE_MS;
+      const canSynthesizeIdle =
+        localBusy &&
+        (!pendingMutationRef.current || quietSinceMutation);
       const next: SessionStatus | undefined =
-        restStatus ??
-        (localBusy && !pendingMutationRef.current ? { type: "idle" } : undefined);
+        restStatus ?? (canSynthesizeIdle ? { type: "idle" } : undefined);
       if (next) {
         if (next.type === "idle" && localBusy) idleStreakRef.current += 1;
         else idleStreakRef.current = 0;
