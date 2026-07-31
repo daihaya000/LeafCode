@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acquireRelay,
+  decodePtyFrame,
   deleteRelay,
   getRelay,
   relayRegistry,
@@ -146,5 +147,58 @@ describe("deleteRelay", () => {
 
     expect(getRelay("pty_1")).toBeUndefined();
     expect(ws.close).not.toHaveBeenCalled();
+  });
+});
+
+describe("decodePtyFrame", () => {
+  const bytes = (...n: number[]) => new Uint8Array(n).buffer;
+
+  // Regression: the stream route used `typeof ev.data === "string" ? ev.data : ""`,
+  // which silently dropped every binary frame. The Engine sends PTY output as
+  // binary, so the terminal received nothing and rendered blank.
+  it("decodes binary output frames to text", () => {
+    const decoder = new TextDecoder("utf-8");
+    const frame = new TextEncoder().encode("hello").buffer;
+    expect(decodePtyFrame(frame, decoder)).toBe("hello");
+  });
+
+  it("decodes ArrayBufferView frames", () => {
+    const decoder = new TextDecoder("utf-8");
+    expect(decodePtyFrame(new TextEncoder().encode("hi"), decoder)).toBe("hi");
+  });
+
+  // Regression: meta frames are `0x00` + JSON bookkeeping. Writing them to
+  // xterm dumped raw `{"cursor":0}` text into the terminal.
+  it("skips 0x00-prefixed meta frames", () => {
+    const decoder = new TextDecoder("utf-8");
+    const meta = new Uint8Array([
+      0,
+      ...new TextEncoder().encode(JSON.stringify({ cursor: 12 })),
+    ]).buffer;
+    expect(decodePtyFrame(meta, decoder)).toBeNull();
+  });
+
+  it("skips meta frames delivered as strings", () => {
+    const decoder = new TextDecoder("utf-8");
+    expect(decodePtyFrame("\u0000{\"cursor\":1}", decoder)).toBeNull();
+  });
+
+  it("passes plain string frames through", () => {
+    const decoder = new TextDecoder("utf-8");
+    expect(decodePtyFrame("plain", decoder)).toBe("plain");
+  });
+
+  it("reassembles a multi-byte UTF-8 sequence split across frames", () => {
+    const decoder = new TextDecoder("utf-8");
+    // "あ" is E3 81 82; deliver it as two frames.
+    expect(decodePtyFrame(bytes(0xe3, 0x81), decoder)).toBe("");
+    expect(decodePtyFrame(bytes(0x82), decoder)).toBe("あ");
+  });
+
+  it("returns null for empty and unsupported frames", () => {
+    const decoder = new TextDecoder("utf-8");
+    expect(decodePtyFrame(new ArrayBuffer(0), decoder)).toBeNull();
+    expect(decodePtyFrame(null, decoder)).toBeNull();
+    expect(decodePtyFrame(undefined, decoder)).toBeNull();
   });
 });

@@ -8,7 +8,12 @@ vi.mock("@/lib/opencode", () => ({
   OPENCODE_BASE_URL: "http://127.0.0.1:4096",
 }));
 
-import { createPtyWithShellCheck, PtyError } from "./pty-session";
+import {
+  createConnectToken,
+  createPtyWithShellCheck,
+  engineWsUrl,
+  PtyError,
+} from "./pty-session";
 
 function mockFetchResponse(status: number, body: unknown) {
   fetchMock.mockResolvedValueOnce({
@@ -132,5 +137,69 @@ describe("createPtyWithShellCheck", () => {
 
     const pty = await createPtyWithShellCheck("C:/proj", { cwd: "C:/proj" });
     expect(pty.id).toBe("pty_4");
+  });
+});
+
+describe("engineWsUrl", () => {
+  // Regression: the WS URL used to point at the v2 surface
+  // (`/api/pty/{id}/connect` + `location[directory]`) while create/token used
+  // v1 (`/pty` + `directory`). The Engine scopes PTY sessions per API version,
+  // so the v2 handler answered the upgrade with 404 and the browser only saw
+  // an opaque 1006 close — the terminal stayed blank and looked like it kept
+  // disconnecting.
+  it("stays on the v1 surface used by create/token/remove", () => {
+    const url = new URL(engineWsUrl("pty_1", "C:/proj", "tk-123"));
+    expect(url.pathname).toBe("/pty/pty_1/connect");
+    expect(url.pathname.startsWith("/api/")).toBe(false);
+    expect(url.searchParams.get("ticket")).toBe("tk-123");
+    expect(url.searchParams.get("directory")).toBe("C:/proj");
+    expect(url.searchParams.get("location[directory]")).toBeNull();
+  });
+
+  it("upgrades the scheme to ws", () => {
+    expect(engineWsUrl("pty_1", "C:/proj", "t").startsWith("ws://")).toBe(true);
+  });
+
+  it("encodes the pty id into the path", () => {
+    const url = new URL(engineWsUrl("pty_a/b", "C:/proj", "t"));
+    expect(url.pathname).toBe("/pty/pty_a%2Fb/connect");
+  });
+});
+
+describe("createConnectToken", () => {
+  // Regression: without `x-opencode-ticket: 1` the Engine rejects the request
+  // with 403 PtyForbiddenError ("Invalid PTY connect token request"), so no
+  // ticket is ever issued and the WebSocket can never be opened.
+  it("sends the x-opencode-ticket header the Engine requires", async () => {
+    mockFetchResponse(200, { ticket: "tk", expires_in: 60 });
+
+    await createConnectToken("C:/proj", "pty_1");
+
+    const [, init] = fetchMock.mock.calls.at(-1)!;
+    const { headers, method } = init as {
+      headers: Record<string, string>;
+      method: string;
+    };
+    expect(headers["x-opencode-ticket"]).toBe("1");
+    expect(method).toBe("POST");
+  });
+
+  it("normalizes the v2 `{ data: { ticket } }` envelope", async () => {
+    mockFetchResponse(200, {
+      location: {},
+      data: { ticket: "tk2", expires_in: 30 },
+    });
+
+    const token = await createConnectToken("C:/proj", "pty_1");
+    expect(token.ticket).toBe("tk2");
+    expect(token.expires_in).toBe(30);
+  });
+
+  it("throws when the Engine returns no ticket", async () => {
+    mockFetchResponse(200, { nope: true });
+
+    await expect(
+      createConnectToken("C:/proj", "pty_1"),
+    ).rejects.toBeInstanceOf(PtyError);
   });
 });

@@ -111,11 +111,13 @@ async function engineFetch<T>(
     directory: string | null;
     body?: unknown;
     timeoutMs?: number;
+    headers?: Record<string, string>;
   },
 ): Promise<T> {
   const url = engineUrl(ptyPath, init.directory);
   const headers: Record<string, string> = {
     ...directoryHeaders(init.directory),
+    ...init.headers,
   };
   if (init.body !== undefined) headers["content-type"] = "application/json";
 
@@ -275,6 +277,17 @@ export interface PtyConnectToken {
 }
 
 /**
+ * Header the Engine requires on connect-token requests.
+ *
+ * The Engine rejects the request with `403 PtyForbiddenError: "Invalid PTY
+ * connect token request"` unless `x-opencode-ticket: 1` is present. It is a
+ * CSRF guard: a browser `fetch` cannot set this header cross-origin without a
+ * preflight, so a drive-by page cannot mint a PTY ticket. The BFF is a
+ * same-process server-side caller, so setting it here is correct.
+ */
+const TICKET_REQUEST_HEADER = { "x-opencode-ticket": "1" } as const;
+
+/**
  * Issue a short-lived WebSocket connect ticket from the Engine for `ptyId`.
  * Uses the v1 endpoint; the ticket is forwarded to the WS URL by `connectPty`.
  */
@@ -286,7 +299,7 @@ export function createConnectToken(
   // normalize both v1 and v2 shapes.
   return engineFetch<unknown>(
     `/pty/${encodeURIComponent(ptyId)}/connect-token`,
-    { method: "POST", directory },
+    { method: "POST", directory, headers: { ...TICKET_REQUEST_HEADER } },
   ).then((raw) => {
     const r = raw as Partial<PtyConnectToken> & {
       data?: Partial<PtyConnectToken>;
@@ -305,23 +318,28 @@ export function createConnectToken(
 /**
  * Build the Engine WebSocket URL for `/pty/{id}/connect`.
  *
- * The v1 connect endpoint declares no query params, so the ticket is passed
- * via the `Sec-WebSocket-Protocol` subprotocol (`ticket.<value>`). The v2
- * endpoint accepts `?ticket=` as a query param. We try v2 first (cleaner),
- * falling back is unnecessary because the Engine accepts both forms here.
+ * Must stay on the **v1** API surface (`/pty/...` + `?directory=`), matching
+ * `createPty` / `createConnectToken` / `removePty`. The Engine scopes PTY
+ * sessions per API version + location: a PTY created via v1 `POST /pty` is
+ * invisible to the v2 handler at `/api/pty/{id}/connect`, which then answers
+ * the upgrade with 404 and the browser only sees an opaque WebSocket 1006
+ * close. Mixing versions here was the cause of the "terminal never opens /
+ * keeps disconnecting" bug.
  */
-function engineWsUrl(
+export function engineWsUrl(
   ptyId: string,
   directory: string,
   ticket: string,
-): { url: string; protocols: string[] } {
+): string {
   const base = new URL(OPENCODE_BASE_URL);
   // http(s) -> ws(s)
   const wsProto = base.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new URL(`${wsProto}//${base.host}/api/pty/${encodeURIComponent(ptyId)}/connect`);
+  const ws = new URL(
+    `${wsProto}//${base.host}/pty/${encodeURIComponent(ptyId)}/connect`,
+  );
   ws.searchParams.set("ticket", ticket);
-  ws.searchParams.set("location[directory]", directory);
-  return { url: ws.toString(), protocols: [] };
+  ws.searchParams.set("directory", directory);
+  return ws.toString();
 }
 
 /** Open BFF→Engine WebSocket and resolve once open. Rejects on error/timeout. */
@@ -330,8 +348,11 @@ export function connectPty(
   ptyId: string,
 ): Promise<WebSocket> {
   return createConnectToken(directory, ptyId).then((token) => {
-    const { url, protocols } = engineWsUrl(ptyId, directory, token.ticket);
-    const ws = new WebSocket(url, protocols);
+    const ws = new WebSocket(engineWsUrl(ptyId, directory, token.ticket));
+    // The Engine streams PTY output as binary frames (plus `0x00`-prefixed
+    // meta frames). Without this the runtime hands us Blobs, which the relay
+    // cannot read synchronously.
+    ws.binaryType = "arraybuffer";
     return new Promise<WebSocket>((resolve, reject) => {
       let settled = false;
       const timer = setTimeout(() => {

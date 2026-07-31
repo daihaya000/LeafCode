@@ -5,9 +5,11 @@ import { connectPty, PtyError } from "@/lib/pty-session";
 import { logPtyEvent } from "@/lib/pty-audit";
 import {
   acquireRelay,
+  decodePtyFrame,
   deleteRelay,
   releaseRelay,
   type PtyRelay,
+  type PtyRelayEvent,
 } from "@/lib/pty-relay";
 
 export const runtime = "nodejs";
@@ -20,8 +22,8 @@ const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
  * GET /api/pty-session/stream?id=&directory= — SSE stream of PTY output.
  *
  * The browser opens this as a long-lived SSE connection. The BFF opens a real
- * WebSocket to the Engine (`/api/pty/{id}/connect`) and forwards each received
- * message as an SSE `data:` event. Browser input goes through the sibling
+ * WebSocket to the Engine (`/pty/{id}/connect`) and forwards each received
+ * output frame as an SSE `data:` event. Browser input goes through the sibling
  * `input` POST route, which shares the same in-process WebSocket via
  * `pty-relay.ts`.
  *
@@ -64,19 +66,26 @@ export async function GET(req: NextRequest) {
       ptyId,
       () => connectPty(dirCheck.path, ptyId),
       (r) => {
-        const onMessage = (ev: MessageEvent) => {
-          const data = typeof ev.data === "string" ? ev.data : "";
+        // One decoder per relay so multi-byte UTF-8 split across frames is
+        // reassembled instead of turning into replacement characters.
+        const decoder = new TextDecoder("utf-8");
+        const emit = (event: PtyRelayEvent) => {
           for (const listener of r.listeners) {
-            try { listener(data); } catch { /* ignore listener errors */ }
+            try { listener(event); } catch { /* ignore listener errors */ }
           }
         };
+        const onMessage = (ev: MessageEvent) => {
+          const text = decodePtyFrame(ev.data, decoder);
+          // `null` = meta/control frame; skip without disturbing the stream.
+          if (text === null) return;
+          emit({ type: "data", data: text });
+        };
         const onClose = () => {
+          if (r.closed) return;
           r.closed = true;
           deleteRelay(ptyId);
           logPtyEvent(ptyId, "disconnect", { directory: dirCheck.path });
-          for (const listener of r.listeners) {
-            try { listener(""); } catch { /* ignore */ }
-          }
+          emit({ type: "close" });
         };
         r.ws.addEventListener("message", onMessage);
         r.ws.addEventListener("close", onClose);
@@ -96,9 +105,8 @@ export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const listener = (data: string) => {
-        // Empty data signals the Engine socket closed; end the SSE stream.
-        if (data === "" && relay!.closed) {
+      const listener = (event: PtyRelayEvent) => {
+        if (event.type === "close") {
           // Sentinel so the client can tell a real PTY exit from a transient
           // network drop and stop its reconnect backoff accordingly.
           try {
@@ -112,7 +120,7 @@ export async function GET(req: NextRequest) {
         // SSE frame: `data: <json>\n\n`. Payload is kept as a raw string;
         // xterm.js writes/reads UTF-8 strings so no base64 wrapping is needed
         // for typical terminal output.
-        const payload = { t: "o", d: data };
+        const payload = { t: "o", d: event.data };
         const frame = `data: ${JSON.stringify(payload)}\n\n`;
         try {
           controller.enqueue(encoder.encode(frame));

@@ -10,14 +10,69 @@
  * tab is multiplexed onto the same socket.
  */
 
+/**
+ * What a relay pushes to its SSE listeners.
+ *
+ * A discriminated union rather than a bare string: PTY output can legitimately
+ * be an empty string, so an empty-string "socket closed" sentinel would be
+ * ambiguous.
+ */
+export type PtyRelayEvent =
+  | { type: "data"; data: string }
+  | { type: "close" };
+
 export interface PtyRelay {
   ws: WebSocket;
   refcount: number;
-  listeners: Set<(data: string) => void>;
+  listeners: Set<(event: PtyRelayEvent) => void>;
   closed: boolean;
 }
 
 const relays = new Map<string, PtyRelay>();
+
+/**
+ * First byte of an Engine *meta* frame (`0x00` followed by JSON such as
+ * `{"cursor":12}`). Meta frames carry replay bookkeeping, not terminal output,
+ * and must never be written to xterm — otherwise the raw JSON shows up in the
+ * terminal.
+ */
+const PTY_META_FRAME_PREFIX = 0x00;
+
+/**
+ * Decode one Engine WebSocket frame into terminal output text.
+ *
+ * Returns `null` for meta frames and for frame types that carry no output, so
+ * callers can skip them. `decoder` must be reused across calls for a given
+ * relay: PTY output is chunked arbitrarily and a multi-byte UTF-8 sequence can
+ * straddle two frames, which `{ stream: true }` buffers correctly.
+ */
+export function decodePtyFrame(
+  data: unknown,
+  decoder: TextDecoder,
+): string | null {
+  if (typeof data === "string") {
+    return data.charCodeAt(0) === PTY_META_FRAME_PREFIX ? null : data;
+  }
+
+  // Realm-safe buffer detection. `instanceof ArrayBuffer` returns false when
+  // the buffer was created in another realm (Node's WebSocket vs. the route's
+  // globals), which would silently drop every output frame. `isView` and the
+  // internal-slot brand check are both realm-independent.
+  let bytes: Uint8Array | null = null;
+  if (ArrayBuffer.isView(data)) {
+    bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  } else {
+    const tag = Object.prototype.toString.call(data);
+    if (tag === "[object ArrayBuffer]" || tag === "[object SharedArrayBuffer]") {
+      bytes = new Uint8Array(data as ArrayBuffer);
+    }
+  }
+  if (!bytes) return null;
+  if (bytes.length === 0) return null;
+  if (bytes[0] === PTY_META_FRAME_PREFIX) return null;
+
+  return decoder.decode(bytes, { stream: true });
+}
 
 /**
  * In-flight connection promises keyed by ptyId. Two concurrent callers that
