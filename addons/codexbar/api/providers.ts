@@ -97,6 +97,10 @@ async function readConfig(): Promise<{ text: string; config: ConfigFile; enabled
       throw new ConfigError("CodexBar の設定ファイルを安全に読み込めません");
     }
     text = await fs.readFile(file, "utf8");
+    // CodexBar (native app) may write config.json with a UTF-8 BOM (observed via
+    // PowerShell's ConvertTo-Json/Out-File). Node's utf8 decoder keeps the BOM
+    // as U+FEFF, which JSON.parse rejects. Strip it so both apps' writes parse.
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   } catch (error) {
     if (error instanceof ConfigError) throw error;
     throw new ConfigError("CodexBar の設定ファイルを読み込めません");

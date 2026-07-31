@@ -22,6 +22,8 @@ export async function GET() {
   let text: string;
   try {
     text = await fs.readFile(file, "utf8");
+    // CodexBar may write JSON exports with a UTF-8 BOM; strip it before parsing.
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     const reason =

@@ -106,4 +106,20 @@ describe("CodexBar provider settings API", () => {
     expect(response.status).toBe(503);
     expect(await fs.readFile(file, "utf8")).toBe("{broken secret-looking text");
   });
+
+  it("parses config.json written with a UTF-8 BOM (native CodexBar app export)", async () => {
+    const file = path.join(appData, "CodexBar", "config.json");
+    const bom = "\ufeff";
+    await fs.writeFile(file, bom + JSON.stringify({ enabledProviders: ["codex", "claude"] }), "utf8");
+
+    const response = await GET();
+    const body = await responseJson(response);
+
+    expect(response.status).toBe(200);
+    expect(body.providers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "codex", enabled: true }),
+      expect.objectContaining({ id: "claude", enabled: true }),
+      expect.objectContaining({ id: "cursor", enabled: false }),
+    ]));
+  });
 });
