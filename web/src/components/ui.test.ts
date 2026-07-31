@@ -67,4 +67,40 @@ describe("GhostSelect", () => {
       true,
     );
   });
+
+  it("still runs the action's own click handler on a real pointerdown-then-click sequence", () => {
+    // A real mouse click dispatches pointerdown before click. The action
+    // footer used to close this menu on pointerdown, which unmounted the
+    // action (and its click handler) before the click event could reach it -
+    // so clicking e.g. "add project" silently did nothing. fireEvent.click
+    // alone does not reproduce this because it never fires a preceding
+    // pointerdown, which is why this regressed unnoticed; see AddProjectButton.
+    const onActionClick = vi.fn();
+    render(
+      createElement(
+        GhostSelect,
+        {
+          "aria-label": "プロジェクト",
+          icon: createElement("span", null, "P"),
+          valueLabel: "プロジェクトなし",
+          value: "",
+          onChange: vi.fn(),
+          action: createElement(
+            "button",
+            { type: "button", onClick: onActionClick },
+            "プロジェクトを追加",
+          ),
+        },
+        createElement("option", { value: "" }, "プロジェクトなし"),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "プロジェクト" }));
+    const actionButton = screen.getByRole("button", { name: "プロジェクトを追加" });
+
+    fireEvent.pointerDown(actionButton);
+    fireEvent.click(actionButton);
+
+    expect(onActionClick).toHaveBeenCalledTimes(1);
+  });
 });

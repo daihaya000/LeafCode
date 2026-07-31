@@ -220,12 +220,15 @@ export function GhostSelect({
         ))}
       </div>
       {action && (
-        <div
-          className="border-t border-border p-1"
-          onPointerDown={() => setOpen(false)}
-        >
-          {action}
-        </div>
+        // No pointerdown-based auto-close here: pointerdown fires before the
+        // action's own click handler (e.g. AddProjectButton's "add project"
+        // button), so closing this menu on pointerdown unmounts the action
+        // subtree before its click ever runs - the action silently does
+        // nothing. The action's own overlay (when it opens one) already
+        // covers this menu visually, and the document-level outside-pointerdown
+        // listener above still closes this menu once the user clicks
+        // somewhere outside both the trigger and this portaled menu.
+        <div className="border-t border-border p-1">{action}</div>
       )}
     </div>
   );
