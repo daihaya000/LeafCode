@@ -1244,7 +1244,7 @@ describe("TaskView", () => {
     expect(screen.getAllByText("cost $0.2500")).toHaveLength(1);
   });
 
-  it("moves copy, resync, session switching, and terminal into the kebab menu", async () => {
+  it("moves copy and session switching into the kebab menu", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();
     useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
@@ -1264,9 +1264,9 @@ describe("TaskView", () => {
     fireEvent.click(trigger);
     const menu = screen.getByRole("menu", { name: "タスクその他操作" });
     expect(within(menu).getByRole("menuitem", { name: "作業パスをコピー" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "再同期" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "セッションを切り替え・追加" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
+    expect(within(menu).queryByRole("menuitem", { name: "再同期" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "ターミナル" })).toBeNull();
     expect(within(menu).queryByRole("combobox")).toBeNull();
     expect(within(menu).queryByRole("button")).toBeNull();
     expect(within(menu).queryByRole("dialog")).toBeNull();
@@ -1292,16 +1292,6 @@ describe("TaskView", () => {
     await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/tasks/ws1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
-
-    fireEvent.click(trigger);
-    const resync = screen.getByRole("menuitem", { name: "再同期" });
-    fireEvent.click(resync);
-    expect(streamMock.resync).toHaveBeenCalledTimes(1);
-    expect(diffPaneRefreshKeys).toContain(1);
-
-    fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "ターミナル" }));
-    expect(screen.getByTestId("pty-panel")).toBeTruthy();
   });
 
   it("closes the session dialog with Escape or a backdrop click and restores trigger focus", async () => {
@@ -1338,19 +1328,7 @@ describe("TaskView", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("disables resync while the stream is working", async () => {
-    taskStatus = "idle";
-    const streamMock = useSessionStream();
-    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "busy" } });
-    render(<TaskView taskId="ws1" />);
-    await flushTaskLoad();
 
-    fireEvent.click(screen.getByRole("button", { name: "メニューを開く" }));
-    const resync = screen.getByRole("menuitem", { name: "再同期" });
-    expect(resync.getAttribute("aria-disabled")).toBe("true");
-    fireEvent.click(resync);
-    expect(streamMock.resync).not.toHaveBeenCalled();
-  });
 
   it("shows the copied check icon from the kebab for 1.5 seconds", async () => {
     taskStatus = "idle";
@@ -1469,9 +1447,7 @@ describe("TaskView", () => {
     expect(within(menu).getByRole("menuitem", { name: "ファイルツリー" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "グラフ" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "Diff パネル" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "ターミナル" })).toBeTruthy();
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "ターミナル" }));
-    expect(screen.getByTestId("pty-panel")).toBeTruthy();
+    expect(within(menu).queryByRole("menuitem", { name: "ターミナル" })).toBeNull();
   });
 
   describe("ループ composer", () => {

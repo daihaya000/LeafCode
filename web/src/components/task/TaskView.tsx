@@ -25,12 +25,10 @@ import {
   ListTodo,
   Loader2,
   PanelRight,
-  RefreshCw,
   RotateCcw,
   RotateCw,
   Shrink,
   Square,
-  Terminal,
   Trash2,
   X,
 } from "lucide-react";
@@ -2487,16 +2485,6 @@ export function TaskView({ taskId }: { taskId: string }) {
         icon: copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />,
         onSelect: () => void copyPath(),
       },
-      {
-        id: "resync",
-        label: "再同期",
-        icon: <RefreshCw className="h-4 w-4" />,
-        onSelect: () => {
-          void stream.resync();
-          setDiffKey((key) => key + 1);
-        },
-        disabled: working,
-      },
     ];
 
     const panelItems: KebabItem[] = [];
@@ -2523,19 +2511,6 @@ export function TaskView({ taskId }: { taskId: string }) {
           changeSidePanel("graph");
         },
       });
-    }
-    panelItems.push({
-      id: "panel-terminal",
-      label: "ターミナル",
-      icon: <Terminal className="h-4 w-4" />,
-      active: showDiff && sidePanel === "pty",
-      onSelect: () => {
-        changeShowDiff(true);
-        changeTab("diff");
-        changeSidePanel("pty");
-      },
-    });
-    if (!isLg) {
       panelItems.push({
         id: "panel-diff",
         label: "Diff パネル",
