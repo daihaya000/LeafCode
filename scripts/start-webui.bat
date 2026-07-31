@@ -282,7 +282,18 @@ rem Production build output directory (default: under AppData roaming;
 rem override OPENCODE_WEBUI_DIST_DIR). See scripts\web-dist-dir.mjs.
 set "NEXT_DIST_DIR="
 for /f "usebackq delims=" %%D in (`node scripts\web-dist-dir.mjs`) do set "NEXT_DIST_DIR=%%D"
-if defined NEXT_DIST_DIR exit /b 0
+if not defined NEXT_DIST_DIR goto :resolve_dist_dir_failed
+rem Server files emitted under the external distDir require bare modules
+rem (next, react, ...); Node's upward search never reaches web\node_modules
+rem from AppData, so expose it as a NODE_PATH fallback search path.
+if defined NODE_PATH (
+  set "NODE_PATH=%NODE_PATH%;%CD%\web\node_modules"
+) else (
+  set "NODE_PATH=%CD%\web\node_modules"
+)
+exit /b 0
+
+:resolve_dist_dir_failed
 call :fail 10 "the build output directory could not be resolved." error-10
 exit /b 10
 

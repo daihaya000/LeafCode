@@ -29,6 +29,8 @@ Windows 10 1809 以降はショートカットをスクリプトから自動で�
 - `build.bat` は、本番WebUI（`next start`）が同じポートで稼働中（またはリスナーの正体が不明）なら**ビルドを中止**します。トレイまたは `OpenCodeWebUI.exe` からWebUIを停止してから再実行してください。
 - ランチャー内部の `scripts/start-webui.bat` は、稼働中のWebUIがあれば**初回ビルドをスキップしてhost本体へ進みます**。トレイhostが健全なWebUIをそのまま再利用するか、古くなった自前の `next start` を引き継いでから `%APPDATA%\opencode-webui\web-build` へリビルドします（孤立した不明プロセスは決して終了させません）。
 
+出力ディレクトリ配下のサーバーファイルは `next` 等のモジュールを `NODE_PATH`（`web\node_modules`）経由で解決します（host/batが自動設定）。手動で `npm run build` / `npm run start` する場合は `NEXT_DIST_DIR`（絶対パス）と `NODE_PATH=<リポジトリ>\web\node_modules` の両方を指定してください。
+
 `npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
 
 ランチャー（内部の `scripts/start-webui.bat`）は各エラーを `[OpenCode WebUI] ERROR <code>: <english summary>` の英語行として表示します。下記のコード表と対応します。

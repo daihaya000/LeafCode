@@ -30,6 +30,16 @@ if not defined NEXT_DIST_DIR (
 )
 echo [OpenCode WebUI] Build output: %NEXT_DIST_DIR%
 
+rem Server files emitted under the external distDir require bare modules
+rem (next, react, better-sqlite3, ...). Node finds them by walking up from
+rem the requiring file, which never reaches web\node_modules when the output
+rem lives under AppData, so expose it as a NODE_PATH fallback search path.
+if defined NODE_PATH (
+  set "NODE_PATH=%NODE_PATH%;%CD%\web\node_modules"
+) else (
+  set "NODE_PATH=%CD%\web\node_modules"
+)
+
 if not exist "web\node_modules\" (
   echo [OpenCode WebUI] Installing web dependencies...
   pushd web

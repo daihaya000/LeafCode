@@ -409,6 +409,8 @@ test("start-webui.bat runs the production WebUI guard without --stop and skips t
   // the host tail's reuse/takeover logic instead of aborting the launch.
   assert.doesNotMatch(source, /production-webui-build-guard\.mjs\s+--stop/);
   assert.match(source, /if errorlevel 1 goto :web_build_skipped/);
+  // Bare-module resolution from the external distDir needs NODE_PATH.
+  assert.match(source, /set "NODE_PATH=%CD%\\web\\node_modules"/);
 });
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {

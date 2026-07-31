@@ -75,4 +75,12 @@ test("build.bat resolves NEXT_DIST_DIR via web-dist-dir.mjs before next build an
     !source.includes('if not exist "web\\.next\\BUILD_ID"'),
     "build.bat must not check web\\.next\\BUILD_ID for the production output",
   );
+  // Emitted server files under the external distDir resolve bare modules via
+  // NODE_PATH (web\node_modules is not an ancestor of %APPDATA%).
+  assert.ok(
+    source.includes('set "NODE_PATH=%CD%\\web\\node_modules"'),
+    "build.bat must expose web\\node_modules via NODE_PATH",
+  );
+  const nodePathSet = source.indexOf('set "NODE_PATH=');
+  assert.ok(nodePathSet >= 0 && nodePathSet < nextBuild, "NODE_PATH must be set before next build");
 });

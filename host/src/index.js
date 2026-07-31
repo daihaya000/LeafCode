@@ -64,6 +64,18 @@ const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
 const WEB_DIST_DIR = resolveProductionDistDir(process.env, WEB_DIR);
+/**
+ * Server files emitted under the external distDir require bare modules
+ * (`next`, `react`, `better-sqlite3`, …). Node resolves them by walking up
+ * from the requiring file, which never reaches web/node_modules when the
+ * build output lives under %APPDATA% — so expose it via NODE_PATH (a
+ * fallback search path, appended to any existing value). Needed for both
+ * `next build` (page-data collection) and `next start` (request handling).
+ */
+const WEB_NODE_MODULES = join(WEB_DIR, 'node_modules');
+function withWebNodeModulesPath(baseNodePath = process.env.NODE_PATH) {
+  return baseNodePath ? `${baseNodePath};${WEB_NODE_MODULES}` : WEB_NODE_MODULES;
+}
 /** Host package version, read from host/package.json for the log header. */
 const HOST_VERSION = (() => {
   try {
@@ -1238,6 +1250,7 @@ function buildWebProductionInternal(reason = 'missing') {
       env: {
         ...process.env,
         NEXT_DIST_DIR: WEB_DIST_DIR,
+        NODE_PATH: withWebNodeModulesPath(),
       },
     });
     webBuildProc = child;
@@ -1331,6 +1344,8 @@ async function spawnWeb() {
       // for dev mode: web/scripts/dev.mjs defaults NEXT_DIST_DIR to .next-dev
       // and passing the prod dir would break dev.
       ...(useProd ? { NEXT_DIST_DIR: WEB_DIST_DIR } : {}),
+      // Bare-module resolution from the external distDir (see WEB_NODE_MODULES).
+      ...(useProd ? { NODE_PATH: withWebNodeModulesPath() } : {}),
       // When Caddy fronts the WebUI with HTTPS, advertise its public origin so
       // /api/access shows the reachable URL instead of http://IP:3000.
       ...(detectCaddyPublicUrl()
