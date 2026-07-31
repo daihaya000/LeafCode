@@ -42,6 +42,8 @@ export function PtyPanel({ directory }: { directory: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  /** True while the SSE stream is attempting to reconnect after a drop. */
+  const [reconnecting, setReconnecting] = useState(false);
 
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -172,6 +174,7 @@ export function PtyPanel({ directory }: { directory: string }) {
 
       source.onopen = () => {
         retries = 0;
+        setReconnecting(false);
       };
       source.onmessage = (ev) => {
         try {
@@ -181,6 +184,7 @@ export function PtyPanel({ directory }: { directory: string }) {
           } else if (payload?.t === "exit") {
             terminated = true;
             source.close();
+            setActiveId(null);
             void refresh();
           }
         } catch {
@@ -193,9 +197,11 @@ export function PtyPanel({ directory }: { directory: string }) {
         const delay = ptyReconnectDelayMs(retries);
         if (delay === null) {
           setError("ターミナル接続が切断されました。セッションを開き直してください。");
+          setReconnecting(false);
           return;
         }
         retries += 1;
+        setReconnecting(true);
         reconnectTimer = setTimeout(connect, delay);
       };
     };
@@ -239,6 +245,7 @@ export function PtyPanel({ directory }: { directory: string }) {
       es?.close();
       disposable.dispose();
       resizeDisposable.dispose();
+      setReconnecting(false);
     };
   }, [activeId, directory, mountTerminal, refresh]);
 
@@ -335,11 +342,20 @@ export function PtyPanel({ directory }: { directory: string }) {
       )}
 
       {activeId ? (
-        <div
-          ref={containerRef}
-          data-testid="pty-terminal"
-          className="min-h-[8rem] w-full min-w-0 flex-1 overflow-hidden rounded-md bg-black"
-        />
+        <div className="relative min-h-[8rem] w-full min-w-0 flex-1">
+          <div
+            ref={containerRef}
+            data-testid="pty-terminal"
+            className="h-full w-full overflow-hidden rounded-md bg-black"
+          />
+          {reconnecting && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/60">
+              <span className="animate-pulse text-xs text-white/80">
+                再接続中…
+              </span>
+            </div>
+          )}
+        </div>
       ) : (
         !error &&
         sessions.length === 0 && (

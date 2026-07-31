@@ -105,10 +105,19 @@ export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      // Heartbeat to keep the connection alive through proxies. Created
+      // before the listener so the close handler can clear it.
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(": heartbeat\n\n"));
+        } catch { /* closed */ }
+      }, 15_000);
+
       const listener = (event: PtyRelayEvent) => {
         if (event.type === "close") {
           // Sentinel so the client can tell a real PTY exit from a transient
           // network drop and stop its reconnect backoff accordingly.
+          clearInterval(heartbeat);
           try {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ t: "exit" })}\n\n`),
@@ -127,13 +136,6 @@ export async function GET(req: NextRequest) {
         } catch { /* controller already closed */ }
       };
       relay!.listeners.add(listener);
-
-      // Heartbeat to keep the connection alive through proxies.
-      const heartbeat = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(": heartbeat\n\n"));
-        } catch { /* closed */ }
-      }, 15_000);
 
       // Cleanup when the browser disconnects.
       req.signal.addEventListener("abort", () => {
