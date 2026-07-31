@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { resolveNextDistDir } from "./src/lib/dist-dir";
 
 function resolveBuildCommit(): string {
@@ -43,6 +44,20 @@ const nextConfig: NextConfig = {
   // dir and chokes on absolute Windows paths ("web\C:\…" → ENOENT). Also
   // keeps `next dev` (.next-dev) from clobbering the production build.
   distDir: resolveNextDistDir(process.env, __dirname),
+  // Pin the file-tracing root to the repo root (one level up: addons/ lives
+  // there and is imported via `@addons/*`, see externalDir below). Without
+  // this, Next.js's own heuristic walks up from this directory looking for
+  // ANY package-lock.json/yarn.lock/pnpm-lock.yaml to guess a monorepo root.
+  // The repo root has a package.json but no lockfile of its own, so on a
+  // machine where an unrelated lockfile happens to sit further up (observed:
+  // a stray `package-lock.json` directly in the user's home directory), Next
+  // picks that as the root instead and traces the entire user profile during
+  // `next build`, including permission-restricted folders such as
+  // `AppData\Roaming\Microsoft\Windows\Start Menu\...` - failing the build
+  // with EPERM on scandir. Pinning the root here makes the build's traced
+  // scope deterministic regardless of what other lockfiles a machine's user
+  // profile happens to contain above the repository.
+  outputFileTracingRoot: join(__dirname, ".."),
   // Compile repo-root `addons/` imported via `@addons/*`
   experimental: {
     externalDir: true,
