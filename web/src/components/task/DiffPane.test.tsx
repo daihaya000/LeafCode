@@ -105,6 +105,41 @@ describe("DiffPane directory race", () => {
     expect(screen.getByText("new.ts")).toBeTruthy();
   });
 
+  it("flags a file not touched by this session's tool calls when touchedPaths is non-empty", async () => {
+    mockMetaApis();
+    render(
+      <DiffPane
+        directory="/repo-a"
+        workspaceId="ws-a"
+        refreshKey={0}
+        touchedPaths={new Set(["src/other.ts"])}
+      />,
+    );
+    await screen.findByText("file.ts");
+    expect(screen.getByText("セッション外?")).toBeTruthy();
+  });
+
+  it("does not flag files as external when touchedPaths includes them", async () => {
+    mockMetaApis();
+    render(
+      <DiffPane
+        directory="/repo-a"
+        workspaceId="ws-a"
+        refreshKey={0}
+        touchedPaths={new Set(["src/file.ts"])}
+      />,
+    );
+    await screen.findByText("file.ts");
+    expect(screen.queryByText("セッション外?")).toBeNull();
+  });
+
+  it("does not flag anything as external when touchedPaths is omitted or empty", async () => {
+    mockMetaApis();
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    await screen.findByText("file.ts");
+    expect(screen.queryByText("セッション外?")).toBeNull();
+  });
+
   it("does not commit via Enter when no paths are selected", async () => {
     mockMetaApis();
     render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);

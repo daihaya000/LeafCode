@@ -39,6 +39,7 @@ function FileDiffBlock({
   onToggle,
   onSelect,
   anchorRef,
+  externalChange,
 }: {
   file: DiffFile;
   expanded: boolean;
@@ -47,6 +48,10 @@ function FileDiffBlock({
   onToggle: () => void;
   onSelect: (v: boolean) => void;
   anchorRef?: (el: HTMLDivElement | null) => void;
+  /** True when this file changed without this session's own tool calls
+   * touching it — a possible parallel-session edit (AGENTS.md "並列セッション
+   * 前提"). */
+  externalChange?: boolean;
 }) {
   const dir = file.path.includes("/")
     ? file.path.slice(0, file.path.lastIndexOf("/") + 1)
@@ -92,6 +97,14 @@ function FileDiffBlock({
           {file.binary && (
             <span className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-[10px] text-muted">
               バイナリ
+            </span>
+          )}
+          {externalChange && (
+            <span
+              className="shrink-0 rounded-full border border-warning/30 bg-warning-bg px-2 py-0.5 text-[10px] text-warning"
+              title="このセッションの編集操作では変更していません（並行編集の可能性）"
+            >
+              セッション外?
             </span>
           )}
           <span className="flex-1" />
@@ -184,6 +197,7 @@ export function DiffPane({
   focusFile,
   onFocusHandled,
   onMutated,
+  touchedPaths,
 }: {
   directory: string;
   workspaceId: string;
@@ -192,6 +206,10 @@ export function DiffPane({
   focusFile?: string | null;
   onFocusHandled?: () => void;
   onMutated?: () => void;
+  /** File paths (relative to `directory`) touched by this session's own
+   * tool calls. Files changed outside this set are flagged as a possible
+   * parallel-session edit. Omit or leave empty to skip the check. */
+  touchedPaths?: Set<string>;
 }) {
   const [payload, setPayload] = useState<DiffFilesPayload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -704,6 +722,11 @@ export function DiffPane({
               if (el) fileRefs.current.set(f.path, el);
               else fileRefs.current.delete(f.path);
             }}
+            externalChange={
+              touchedPaths !== undefined &&
+              touchedPaths.size > 0 &&
+              !touchedPaths.has(f.path)
+            }
           />
         ))}
       </div>

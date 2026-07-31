@@ -371,6 +371,70 @@ describe("TaskView", () => {
     expect(screen.queryByText("実装する")).toBeNull();
   });
 
+  it("warns when the last assistant message is a 完了報告 with incomplete todos and uncommitted files", async () => {
+    taskStatus = "idle";
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/files/content") {
+        return Promise.resolve({ name: "plan.md", content: "計画本文" });
+      }
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      return Promise.resolve({ task: { ...task(0.2), filesChanged: 3 } });
+    });
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+      todos: [{ id: "todo-1", content: "実装する", status: "in_progress" }],
+      messages: [
+        {
+          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "お願いします" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [
+            {
+              id: "p2",
+              messageID: "m2",
+              type: "text",
+              text: "# 完了報告\n\nやったこと",
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByText("未完了のまま終了")).toBeTruthy();
+    expect(
+      screen.getByText(/未コミットの変更が3件残っています/),
+    ).toBeTruthy();
+  });
+
+  it("does not warn when todos are incomplete but the assistant has not finished (not idle)", async () => {
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "busy" },
+      todos: [{ id: "todo-1", content: "実装する", status: "in_progress" }],
+      messages: [
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [
+            { id: "p2", messageID: "m2", type: "text", text: "# 完了報告\n\nやったこと" },
+          ],
+        },
+      ],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByText("未完了のまま終了")).toBeNull();
+  });
+
 
 
   it("refreshes the header cost while the current task is working", async () => {

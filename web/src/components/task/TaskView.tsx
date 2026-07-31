@@ -147,6 +147,8 @@ import {
   PLAN_APPROVAL_PROMPT,
 } from "@/lib/plan-document";
 import { collectTaskCallIds } from "@/lib/match-child-session";
+import { lastAssistantText, looksLikeCompletionReport } from "@/lib/completion-report";
+import { extractSessionTouchedPaths } from "@/lib/session-touched-files";
 import {
   applySlashCompletion,
   filterCommands,
@@ -316,9 +318,15 @@ function normalizedPlanPath(value: string | undefined) {
 function TodoPanel({
   todos,
   forceOpen,
+  warn,
 }: {
   todos: Todo[];
   forceOpen?: boolean;
+  /** True when the assistant looks finished (完了報告) while todos remain
+   * pending/in_progress. Renders the panel in a warning tone and forces it
+   * open so an incomplete plan is not missed at completion (AGENTS.md "ToDo
+   * 完了チェック"). */
+  warn?: boolean;
 }) {
   const [open, setOpen] = useState(Boolean(forceOpen));
   useEffect(() => {
@@ -328,18 +336,35 @@ function TodoPanel({
   const active = todos.filter((t) => t.status === "in_progress").length;
   if (todos.length === 0) return null;
   return (
-    <div className="rounded-xl border border-border bg-surface">
+    <div
+      className={cx(
+        "rounded-xl border",
+        warn ? "border-warning/40 bg-warning-bg" : "border-border bg-surface",
+      )}
+    >
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs text-muted"
+        className={cx(
+          "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-xs",
+          warn ? "text-warning" : "text-muted",
+        )}
       >
-        <ListTodo className="h-3.5 w-3.5" />
+        {warn ? (
+          <CircleAlert className="h-3.5 w-3.5" />
+        ) : (
+          <ListTodo className="h-3.5 w-3.5" />
+        )}
         プラン {done}/{todos.length}
         {active > 0 && (
           <span className="rounded-full bg-working/15 px-1.5 py-0.5 text-[10px] text-working">
             進行中 {active}
+          </span>
+        )}
+        {warn && (
+          <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[10px] text-warning">
+            未完了のまま終了
           </span>
         )}
         <ChevronRight
@@ -1778,6 +1803,27 @@ export function TaskView({ taskId }: { taskId: string }) {
     return `${done}/${stream.todos.length}`;
   }, [stream.todos]);
 
+  // Scope the "finished but ToDo/git left dirty" warnings to the moment the
+  // assistant claims to be done (完了報告), not every idle turn — see
+  // AGENTS.md "終了チェック" / "ToDo完了チェック".
+  const finishedReportText = useMemo(
+    () => (working ? "" : lastAssistantText(stream.messages)),
+    [working, stream.messages],
+  );
+  const looksFinishedReport = !working && looksLikeCompletionReport(finishedReportText);
+  const todosIncompleteAtFinish =
+    looksFinishedReport &&
+    stream.todos.some((t) => t.status === "pending" || t.status === "in_progress");
+  const gitDirtyAtFinish = looksFinishedReport && (task?.filesChanged ?? 0) > 0;
+
+  // Files touched by this session's own edit/write/patch tool calls, used by
+  // DiffPane to flag files changed outside this session (parallel session
+  // detection — AGENTS.md "並列セッション前提").
+  const sessionTouchedPaths = useMemo(
+    () => extractSessionTouchedPaths(stream.messages, task?.directory ?? ""),
+    [stream.messages, task?.directory],
+  );
+
   // Context window usage, derived from the most recent assistant turn's
   // token usage against that model's known context limit (see
   // computeContextUsage for why this uses the last turn, not a sum).
@@ -2783,8 +2829,20 @@ export function TaskView({ taskId }: { taskId: string }) {
               </span>
             )}
             {todoBadge && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">
-                <ListTodo className="h-3 w-3" />
+              <span
+                className={cx(
+                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]",
+                  todosIncompleteAtFinish
+                    ? "border-warning/40 bg-warning-bg text-warning"
+                    : "border-border text-muted",
+                )}
+                title={todosIncompleteAtFinish ? "未完了のToDoが残っています" : undefined}
+              >
+                {todosIncompleteAtFinish ? (
+                  <CircleAlert className="h-3 w-3" />
+                ) : (
+                  <ListTodo className="h-3 w-3" />
+                )}
                 {todoBadge}
               </span>
             )}
@@ -3307,7 +3365,21 @@ export function TaskView({ taskId }: { taskId: string }) {
           {/* Composer */}
           <div className="shrink-0 border-t border-border bg-surface px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-5xl">
-              <TodoPanel todos={stream.todos} forceOpen={working && isMd} />
+              <TodoPanel
+                todos={stream.todos}
+                forceOpen={(working && isMd) || todosIncompleteAtFinish}
+                warn={todosIncompleteAtFinish}
+              />
+              {gitDirtyAtFinish && (
+                <div
+                  role="alert"
+                  className="mt-2 mb-2 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning"
+                >
+                  <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+                  未コミットの変更が{task.filesChanged}件残っています（完了報告前に git
+                  status を確認してください）
+                </div>
+              )}
               {showNextAction && (
                 <NextAction
                   taskId={taskId}
@@ -3613,6 +3685,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                 focusFile={focusFile}
                 onFocusHandled={() => setFocusFile(null)}
                 onMutated={() => void refreshTask()}
+                touchedPaths={sessionTouchedPaths}
               />
             </div>
           )}
