@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { execFileSync } from "node:child_process";
+import { resolveNextDistDir } from "./src/lib/dist-dir";
 
 function resolveBuildCommit(): string {
   const fromEnv = process.env.GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA;
@@ -35,8 +36,13 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_COMMIT_DATE: buildCommitDate,
   },
   serverExternalPackages: ["better-sqlite3"],
-  // Keep `next dev` from clobbering the production build the tray host serves
-  distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Production output lives outside the (OneDrive-synced) repo by default
+  // (scripts/web-dist-dir.mjs → %APPDATA%\opencode-webui\web-build). Callers
+  // pass an absolute NEXT_DIST_DIR; resolveNextDistDir converts it to a path
+  // relative to this app directory because Next.js joins distDir with the app
+  // dir and chokes on absolute Windows paths ("web\C:\…" → ENOENT). Also
+  // keeps `next dev` (.next-dev) from clobbering the production build.
+  distDir: resolveNextDistDir(process.env, __dirname),
   // Compile repo-root `addons/` imported via `@addons/*`
   experimental: {
     externalDir: true,
