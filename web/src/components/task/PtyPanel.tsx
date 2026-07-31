@@ -103,9 +103,19 @@ export function PtyPanel({ directory }: { directory: string }) {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
-    fit.fit();
     termRef.current = term;
     fitRef.current = fit;
+    // Fit on the next frame: right after `open()` the container may still be
+    // mid-layout (0x0), and fitting then locks the terminal to a 1-column
+    // grid that never recovers, which renders as a blank panel.
+    requestAnimationFrame(() => {
+      try {
+        fit.fit();
+        term.focus();
+      } catch {
+        /* container detached before the frame ran */
+      }
+    });
   }, [cssVar]);
 
   /** Create a new PTY and switch to it. */
@@ -281,7 +291,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   }, []);
 
   return (
-    <div className="flex h-full min-w-0 flex-col border-border bg-surface p-3 lg:border-l">
+    <div className="flex h-full w-full min-w-0 flex-1 flex-col border-border bg-surface p-3 lg:border-l">
       <div className="mb-2 flex min-w-0 items-center gap-2 text-xs font-medium text-muted">
         <TerminalIcon className="h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 truncate">ターミナル</span>
@@ -330,7 +340,8 @@ export function PtyPanel({ directory }: { directory: string }) {
       {activeId ? (
         <div
           ref={containerRef}
-          className="min-h-0 flex-1 overflow-hidden rounded-md bg-surface"
+          data-testid="pty-terminal"
+          className="min-h-[8rem] w-full min-w-0 flex-1 overflow-hidden rounded-md bg-surface"
         />
       ) : (
         !error &&
