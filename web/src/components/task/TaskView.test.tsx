@@ -1259,7 +1259,7 @@ describe("TaskView", () => {
     expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
   });
 
-  it("keeps files, graph, and diff below lg while resync and terminal stay visible", async () => {
+  it("keeps files, graph, diff, and terminal below md while resync stays visible and terminal moves into the kebab menu", async () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       value: vi.fn(() => ({
@@ -1278,7 +1278,10 @@ describe("TaskView", () => {
     expect(screen.queryByTitle("グラフ")).toBeNull();
     expect(screen.queryByTitle("Diff パネル")).toBeNull();
     expect(screen.getByRole("button", { name: "再同期" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "ターミナル" })).toBeTruthy();
+    // Below md the terminal button is no longer a standalone header icon —
+    // it moves into the mobile kebab menu alongside the other panel toggles.
+    expect(screen.queryByRole("button", { name: "ターミナル" })).toBeNull();
+    expect(screen.getByRole("button", { name: "メニューを開く" })).toBeTruthy();
   });
 
   describe("パネルトグル", () => {

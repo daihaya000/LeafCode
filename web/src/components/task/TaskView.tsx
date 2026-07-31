@@ -17,15 +17,20 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
+  Copy,
   FolderTree,
   GitBranch,
   GitGraph,
+  Layers,
   ListTodo,
   Loader2,
   PanelRight,
   RefreshCw,
+  RotateCcw,
+  Shrink,
   Square,
   Terminal,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -114,6 +119,7 @@ import {
   type AutoTaskRecord,
 } from "@/lib/auto-task-record";
 
+import { copyText } from "@/lib/clipboard";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
@@ -173,6 +179,8 @@ import {
   useSessionActions,
 } from "./SessionActions";
 import { NextAction } from "./NextAction";
+import { HeaderKebabMenu, type KebabGroup, type KebabItem } from "./HeaderKebabMenu";
+import { SessionSwitcherDialog } from "./SessionSwitcherDialog";
 
 type ProviderResponse = {
   all: {
@@ -458,6 +466,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const modelLabels = useMemo<Readonly<Record<string, string>>>(
     () =>
@@ -1604,6 +1614,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const prevStreamScopeKeyRef = useRef(streamScopeKey);
   const refreshTodos = stream.refreshTodos;
   const resync = stream.resync;
+  const streamAbort = stream.abort;
   useEffect(() => {
     if (prevStreamScopeKeyRef.current !== streamScopeKey) {
       prevStreamScopeKeyRef.current = streamScopeKey;
@@ -2251,6 +2262,28 @@ export function TaskView({ taskId }: { taskId: string }) {
     setAutoReplyFailedIds(new Set());
   }, [streamScopeKey]);
 
+  const copyPath = useCallback(async () => {
+    if (!task) return;
+    const ok = await copyText(task.directory);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }, [task]);
+
+  const closeSessionDialog = useCallback(() => {
+    setSessionDialogOpen(false);
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLButtonElement>('button[aria-label="メニューを開く"]')
+        ?.focus();
+    }, 0);
+  }, []);
+
+  const handleSessionSwitch = useCallback(async () => {
+    await refreshTask();
+    closeSessionDialog();
+  }, [refreshTask, closeSessionDialog]);
+
   const removeTask = useCallback(async () => {
     if (!task) return;
     const label =
@@ -2417,6 +2450,148 @@ export function TaskView({ taskId }: { taskId: string }) {
           },
         },
   );
+
+  /**
+   * Mobile-only kebab menu groups. On md and above every action is surfaced
+   * directly in the header; below md the header is too narrow, so we collect
+   * session/task/panel/danger actions into a single "その他の操作" menu.
+   * Panel toggles still exist in the mobile tab bar, but including them here
+   * gives users a second path and keeps the menu a complete inventory.
+   */
+  const mobileKebabGroups = useMemo<KebabGroup[]>(() => {
+    if (isMd) return [];
+    const hasSession = !!task?.sessionId;
+
+    const sessionItems: KebabItem[] = [];
+    if (working) {
+      sessionItems.push({
+        id: "abort",
+        label: "停止",
+        icon: <Square className="h-4 w-4 fill-current" />,
+        onSelect: () => void streamAbort(),
+        disabled: sessionActions.busy !== null,
+        danger: true,
+      });
+    }
+    sessionItems.push({
+      id: "compact",
+      label: "コンテキスト圧縮",
+      icon: <Shrink className="h-4 w-4" />,
+      onSelect: sessionActions.compact,
+      disabled: !hasSession || sessionActions.busy !== null,
+      busy: sessionActions.busy === "compact",
+    });
+    if (hasSession) {
+      sessionItems.push({
+        id: "revert",
+        label: "巻き戻す (undo)",
+        icon: <RotateCcw className="h-4 w-4" />,
+        onSelect: sessionActions.revert,
+        disabled: !lastRevertMessageId || sessionActions.busy !== null,
+        busy: sessionActions.busy === "revert",
+      });
+      sessionItems.push({
+        id: "unrevert",
+        label: "巻き戻しを取消",
+        icon: <RotateCcw className="h-4 w-4" />,
+        onSelect: sessionActions.unrevert,
+        disabled: sessionActions.busy !== null,
+        busy: sessionActions.busy === "unrevert",
+      });
+    }
+
+    const taskItems: KebabItem[] = [
+      {
+        id: "copy-path",
+        label: copied ? "コピーしました" : "作業パスをコピー",
+        icon: copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />,
+        onSelect: () => void copyPath(),
+      },
+    ];
+
+    const panelItems: KebabItem[] = [
+      {
+        id: "panel-files",
+        label: "ファイルツリー",
+        icon: <FolderTree className="h-4 w-4" />,
+        active: showDiff && sidePanel === "files",
+        onSelect: () => toggleSidePanel("files"),
+      },
+      {
+        id: "panel-graph",
+        label: "グラフ",
+        icon: <GitGraph className="h-4 w-4" />,
+        active: showDiff && sidePanel === "graph",
+        onSelect: () => toggleSidePanel("graph"),
+      },
+      {
+        id: "panel-diff",
+        label: "Diff",
+        icon: <PanelRight className="h-4 w-4" />,
+        active: showDiff && sidePanel === "diff",
+        onSelect: () => toggleSidePanel("diff"),
+      },
+      {
+        id: "panel-pty",
+        label: "ターミナル",
+        icon: <Terminal className="h-4 w-4" />,
+        active: showDiff && sidePanel === "pty",
+        onSelect: () => toggleSidePanel("pty"),
+      },
+    ];
+
+    const groups: KebabGroup[] = [];
+    if (sessionItems.length) {
+      groups.push({ id: "session", label: "セッション操作", items: sessionItems });
+    }
+    groups.push({ id: "task", label: "タスク操作", items: taskItems });
+    if (hasSession) {
+      groups.push({
+        id: "session-switcher",
+        label: "セッション切替",
+        items: [
+          {
+            id: "open-session-switcher",
+            label: "セッションを切り替え・追加",
+            icon: <Layers className="h-4 w-4" />,
+            onSelect: () => setSessionDialogOpen(true),
+          },
+        ],
+      });
+    }
+    groups.push({ id: "panels", label: "パネル切替", items: panelItems });
+    groups.push({
+      id: "danger",
+      label: "危険操作",
+      items: [
+        {
+          id: "delete",
+          label: "タスクを削除",
+          icon: <Trash2 className="h-4 w-4" />,
+          onSelect: () => void removeTask(),
+          disabled: working || sessionActions.busy !== null,
+          danger: true,
+        },
+      ],
+    });
+    return groups;
+  }, [
+    isMd,
+    task?.sessionId,
+    working,
+    copied,
+    showDiff,
+    sidePanel,
+    sessionActions.busy,
+    sessionActions.compact,
+    sessionActions.revert,
+    sessionActions.unrevert,
+    streamAbort,
+    copyPath,
+    toggleSidePanel,
+    removeTask,
+    lastRevertMessageId,
+  ]);
 
   const openFileInDiff = useCallback(
     (path: string) => {
@@ -2708,16 +2883,18 @@ export function TaskView({ taskId }: { taskId: string }) {
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="ターミナル"
-            aria-label="ターミナル"
-            className={cx(showDiff && sidePanel === "pty" && "bg-surface-2 text-text")}
-            onClick={() => toggleSidePanel("pty")}
-          >
-            <Terminal className="h-4 w-4" />
-          </Button>
+          {isMd && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="ターミナル"
+              aria-label="ターミナル"
+              className={cx(showDiff && sidePanel === "pty" && "bg-surface-2 text-text")}
+              onClick={() => toggleSidePanel("pty")}
+            >
+              <Terminal className="h-4 w-4" />
+            </Button>
+          )}
           {isLg && (
             <Button
               variant="ghost"
@@ -2757,8 +2934,13 @@ export function TaskView({ taskId }: { taskId: string }) {
               <PanelRight className="h-4 w-4" />
             </Button>
           )}
-
           </div>
+          {!isMd && mobileKebabGroups.length > 0 && (
+            <HeaderKebabMenu
+              groups={mobileKebabGroups}
+              triggerLabel="メニューを開く"
+            />
+          )}
         </div>
       </header>
 
@@ -3460,6 +3642,16 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
         </div>
       </div>
+
+      {sessionDialogOpen && task.sessionId && (
+        <SessionSwitcherDialog
+          workspaceId={task.id}
+          directory={task.directory}
+          currentSessionId={task.sessionId}
+          onSwitch={handleSessionSwitch}
+          onClose={closeSessionDialog}
+        />
+      )}
     </div>
   );
 }
