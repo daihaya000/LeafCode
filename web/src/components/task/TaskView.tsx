@@ -17,21 +17,18 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  Copy,
   FolderTree,
   GitBranch,
   GitGraph,
-  Layers,
   ListTodo,
   Loader2,
   PanelRight,
-  RotateCcw,
-  RotateCw,
-  Shrink,
+  RefreshCw,
   Square,
-  Trash2,
+  Terminal,
   X,
 } from "lucide-react";
+
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { Composer, type ComposerAttachment } from "@/components/Composer";
 import { GoalLoopOptions, GoalLoopToggle } from "@/components/GoalLoopComposer";
@@ -116,7 +113,7 @@ import {
   writeAutoTaskRecord,
   type AutoTaskRecord,
 } from "@/lib/auto-task-record";
-import { copyText } from "@/lib/clipboard";
+
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
@@ -175,13 +172,7 @@ import {
   MessageRevertButton,
   useSessionActions,
 } from "./SessionActions";
-import { SessionSwitcherDialog } from "./SessionSwitcherDialog";
 import { NextAction } from "./NextAction";
-import {
-  HeaderKebabMenu,
-  type KebabGroup,
-  type KebabItem,
-} from "./HeaderKebabMenu";
 
 type ProviderResponse = {
   all: {
@@ -467,8 +458,6 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const modelLabels = useMemo<Readonly<Record<string, string>>>(
     () =>
@@ -1518,19 +1507,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     [taskId],
   );
 
-  const closeSessionDialog = useCallback(() => {
-    setSessionDialogOpen(false);
-    window.setTimeout(() => {
-      document
-        .querySelector<HTMLButtonElement>('button[aria-label="メニューを開く"]')
-        ?.focus();
-    }, 0);
-  }, []);
 
-  const handleSessionSwitch = useCallback(async () => {
-    await refreshTask();
-    closeSessionDialog();
-  }, [refreshTask, closeSessionDialog]);
 
   useEffect(() => {
     void refreshTask();
@@ -2257,14 +2234,6 @@ export function TaskView({ taskId }: { taskId: string }) {
     setAutoReplyFailedIds(new Set());
   }, [streamScopeKey]);
 
-  const copyPath = useCallback(async () => {
-    if (!task) return;
-    const ok = await copyText(task.directory);
-    if (!ok) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [task]);
-
   const removeTask = useCallback(async () => {
     if (!task) return;
     const label =
@@ -2431,160 +2400,6 @@ export function TaskView({ taskId }: { taskId: string }) {
           },
         },
   );
-
-  // Zone C data: kebab groups. On mobile, compact is available here because
-  // the header does not have room for a direct action. Files/graph/diff stay
-  // in Zone B at lg, while task, session, panels, and danger actions are
-  // available from the kebab.
-  const headerKebabGroups = useMemo<KebabGroup[]>(() => {
-    const hasSession = !!task?.sessionId;
-    const sessionItems: KebabItem[] = [
-      {
-        id: "revert",
-        label: "巻き戻す (undo)",
-        icon: <RotateCcw className="h-4 w-4" />,
-        onSelect: sessionActions.revert,
-        disabled: !hasSession || !lastRevertMessageId || sessionActions.busy !== null,
-        busy: sessionActions.busy === "revert",
-      },
-      {
-        id: "unrevert",
-        label: "巻き戻しを取消す (redo)",
-        icon: <RotateCw className="h-4 w-4" />,
-        onSelect: sessionActions.unrevert,
-        disabled: !hasSession || sessionActions.busy !== null,
-        busy: sessionActions.busy === "unrevert",
-      },
-    ];
-    if (!isMd && hasSession) {
-      sessionItems.unshift({
-        id: "compact",
-        label: "コンテキスト圧縮",
-        icon: <Shrink className="h-4 w-4" />,
-        onSelect: sessionActions.compact,
-        disabled: sessionActions.busy !== null,
-        busy: sessionActions.busy === "compact",
-      });
-    }
-    // Mobile: expose stop in kebab since the header button is hidden below md.
-    if (!isMd && working) {
-      sessionItems.unshift({
-        id: "abort",
-        label: "停止",
-        icon: <Square className="h-4 w-4 fill-current" />,
-        onSelect: () => void stream.abort(),
-        disabled: sessionActions.busy !== null,
-        danger: true,
-      });
-    }
-
-    const taskItems: KebabItem[] = [
-      {
-        id: "copy-path",
-        label: "作業パスをコピー",
-        icon: copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />,
-        onSelect: () => void copyPath(),
-      },
-    ];
-
-    const panelItems: KebabItem[] = [];
-    if (!isLg) {
-      panelItems.push({
-        id: "panel-files",
-        label: "ファイルツリー",
-        icon: <FolderTree className="h-4 w-4" />,
-        active: showDiff && sidePanel === "files",
-        onSelect: () => {
-          changeShowDiff(true);
-          changeTab("diff");
-          changeSidePanel("files");
-        },
-      });
-      panelItems.push({
-        id: "panel-graph",
-        label: "グラフ",
-        icon: <GitGraph className="h-4 w-4" />,
-        active: showDiff && sidePanel === "graph",
-        onSelect: () => {
-          changeShowDiff(true);
-          changeTab("diff");
-          changeSidePanel("graph");
-        },
-      });
-      panelItems.push({
-        id: "panel-diff",
-        label: "Diff パネル",
-        icon: <PanelRight className="h-4 w-4" />,
-        active: showDiff && sidePanel === "diff",
-        onSelect: () => {
-          if (sidePanel === "diff" && showDiff && tab === "diff") {
-            changeShowDiff(false);
-            changeTab("chat");
-          } else {
-            changeSidePanel("diff");
-            changeShowDiff(true);
-            changeTab("diff");
-          }
-        },
-      });
-    }
-
-    const dangerItems: KebabItem[] = [
-      {
-        id: "delete",
-        label: "タスクを削除",
-        icon: <Trash2 className="h-4 w-4" />,
-        onSelect: () => void removeTask(),
-        disabled: working || sessionActions.busy !== null,
-        danger: true,
-      },
-    ];
-
-    const groups: KebabGroup[] = [];
-    if (sessionItems.length) {
-      groups.push({ id: "session", label: "セッション操作", items: sessionItems });
-    }
-    groups.push({ id: "task", label: "タスク操作", items: taskItems });
-    if (task?.sessionId) {
-      groups.push({
-        id: "session-switcher",
-        label: "セッション切替",
-        items: [
-          {
-            id: "open-session-switcher",
-            label: "セッションを切り替え・追加",
-            icon: <Layers className="h-4 w-4" />,
-            onSelect: () => setSessionDialogOpen(true),
-          },
-        ],
-      });
-    }
-    if (panelItems.length) {
-      groups.push({ id: "panels", label: "パネル切替", items: panelItems });
-    }
-    groups.push({ id: "danger", label: "危険操作", items: dangerItems });
-    return groups;
-  }, [
-    task?.sessionId,
-    copied,
-    copyPath,
-    working,
-    stream,
-    sessionActions.busy,
-    sessionActions.compact,
-    sessionActions.revert,
-    sessionActions.unrevert,
-    lastRevertMessageId,
-    isMd,
-    isLg,
-    showDiff,
-    sidePanel,
-    tab,
-    changeShowDiff,
-    changeTab,
-    changeSidePanel,
-    removeTask,
-  ]);
 
   const openFileInDiff = useCallback(
     (path: string) => {
@@ -2932,11 +2747,34 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
 
           </div>
-          {/* Zone C: session, task, session-switcher, panels, and danger. */}
-          <HeaderKebabMenu
-            groups={headerKebabGroups}
-            triggerLabel="メニューを開く"
-          />
+          {/* Zone C: resync and terminal only. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            title="再同期"
+            aria-label="再同期"
+            disabled={working}
+            onClick={() => {
+              void stream.resync();
+              setDiffKey((key) => key + 1);
+            }}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="ターミナル"
+            aria-label="ターミナル"
+            className={cx(showDiff && sidePanel === "pty" && "bg-surface-2 text-text")}
+            onClick={() => {
+              changeShowDiff(true);
+              changeTab("diff");
+              changeSidePanel("pty");
+            }}
+          >
+            <Terminal className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
@@ -3638,15 +3476,6 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
         </div>
       </div>
-      {sessionDialogOpen && task.sessionId && (
-        <SessionSwitcherDialog
-          workspaceId={task.id}
-          directory={task.directory}
-          currentSessionId={task.sessionId}
-          onSwitch={handleSessionSwitch}
-          onClose={closeSessionDialog}
-        />
-      )}
     </div>
   );
 }
