@@ -4,7 +4,12 @@ import type { MessageWithParts } from "./types";
 
 const DIR = "C:\\repo\\project";
 
-function toolMsg(id: string, input: Record<string, unknown>): MessageWithParts {
+function toolMsg(
+  id: string,
+  input: Record<string, unknown>,
+  tool = "edit",
+  status: "completed" | "error" = "completed",
+): MessageWithParts {
   return {
     info: { id, role: "assistant" },
     parts: [
@@ -12,8 +17,8 @@ function toolMsg(id: string, input: Record<string, unknown>): MessageWithParts {
         id: `${id}-p1`,
         messageID: id,
         type: "tool",
-        tool: "edit",
-        state: { status: "completed", input },
+        tool,
+        state: { status, input },
       },
     ],
   };
@@ -56,5 +61,27 @@ describe("extractSessionTouchedPaths", () => {
     ];
     const touched = extractSessionTouchedPaths(messages, DIR);
     expect([...touched].sort()).toEqual(["a.ts", "sub/b.ts"]);
+  });
+
+  it("ignores read-only tools that also carry a path field (regression)", () => {
+    const messages = [toolMsg("m1", { filePath: `${DIR}\\a.ts` }, "read")];
+    expect(extractSessionTouchedPaths(messages, DIR).size).toBe(0);
+  });
+
+  it("ignores a failed edit tool call", () => {
+    const messages = [toolMsg("m1", { filePath: `${DIR}\\a.ts` }, "edit", "error")];
+    expect(extractSessionTouchedPaths(messages, DIR).size).toBe(0);
+  });
+
+  it("bails out to an empty set when a task (subagent delegation) call is present (regression)", () => {
+    const messages = [
+      toolMsg("m1", { filePath: `${DIR}\\a.ts` }, "edit"),
+      toolMsg("m2", { description: "lead-programmer へ委任" }, "task"),
+    ];
+    // The parent session touched a.ts directly, but because a subagent was
+    // also delegated (whose own edits are invisible here), the whole diff's
+    // attribution becomes unreliable — expect no signal at all, not a
+    // partial one that could mislabel the subagent's edits as external.
+    expect(extractSessionTouchedPaths(messages, DIR).size).toBe(0);
   });
 });

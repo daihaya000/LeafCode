@@ -25,6 +25,17 @@ describe("messageText", () => {
     };
     expect(messageText(m)).toBe("line1\nline2");
   });
+
+  it("skips synthetic text parts (echoed prompts etc.)", () => {
+    const m: MessageWithParts = {
+      info: { id: "a1", role: "assistant" },
+      parts: [
+        { id: "p1", messageID: "a1", type: "text", text: "# 完了報告", synthetic: true },
+        { id: "p2", messageID: "a1", type: "text", text: "実際の返信" },
+      ],
+    };
+    expect(messageText(m)).toBe("実際の返信");
+  });
 });
 
 describe("lastAssistantText", () => {
@@ -58,5 +69,19 @@ describe("looksLikeCompletionReport", () => {
 
   it("does not match empty text", () => {
     expect(looksLikeCompletionReport("")).toBe(false);
+  });
+
+  it("does not match a passing mention of the phrase in prose (regression)", () => {
+    expect(
+      looksLikeCompletionReport(
+        "「完了報告」というルールを追加しました。作業はまだ続きます。",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches a heading line even with surrounding paragraphs", () => {
+    expect(
+      looksLikeCompletionReport("前置き\n\n# 完了報告\n\nやったこと\n- 修正した"),
+    ).toBe(true);
   });
 });

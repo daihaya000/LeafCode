@@ -9,10 +9,12 @@
 
 import type { MessageWithParts } from "./types";
 
-/** Concatenated text of a message's text parts, in part order. */
+/** Concatenated text of a message's text parts, in part order. Skips
+ * synthetic parts (echoed prompts etc.), matching session-title.ts's
+ * buildTranscript convention. */
 export function messageText(message: MessageWithParts): string {
   return message.parts
-    .filter((p) => p.type === "text" && typeof p.text === "string")
+    .filter((p) => p.type === "text" && !p.synthetic && typeof p.text === "string")
     .map((p) => p.text as string)
     .join("\n");
 }
@@ -26,7 +28,14 @@ export function lastAssistantText(messages: MessageWithParts[]): string {
   return "";
 }
 
-/** True when `text` looks like a completion report ("完了報告" heading). */
+/**
+ * True when `text` looks like a completion report — i.e. it contains a
+ * "完了報告" heading line on its own (optionally prefixed with Markdown `#`
+ * marks), not merely a passing mention of the phrase in prose. Anchoring to
+ * a standalone line avoids false positives when the assistant discusses this
+ * very convention (e.g. "「完了報告」というルールを追加しました") without
+ * actually delivering one.
+ */
 export function looksLikeCompletionReport(text: string): boolean {
-  return /完了報告/.test(text);
+  return /^\s*#{0,6}\s*完了報告\s*$/m.test(text);
 }
