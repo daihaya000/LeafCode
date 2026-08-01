@@ -348,6 +348,27 @@ describe("AddProjectButton validation + errors", () => {
   });
 });
 
+describe("AddProjectButton refresh resilience", () => {
+  it("keeps the current folder entries visible when navigation fails", async () => {
+    getJson.mockImplementation((path: string, params?: Record<string, string | undefined>) => {
+      if (path !== "/api/browse/dirs") {
+        return Promise.reject(new Error(`Unexpected request: ${path}`));
+      }
+      const dir = params?.path ?? null;
+      if (dir === null) return Promise.resolve(makeDirList(ROOT, "C:\\Users\\Daichi", [{ name: "OpenCode", path: CHILD }]));
+      if (dir === CHILD) return Promise.reject(new Error("フォルダを読み込めません"));
+      return Promise.reject(new Error(`Unexpected browse dir: ${dir}`));
+    });
+
+    render(<AddProjectButton />);
+    openDialog();
+    fireEvent.click(await findEntryButton("OpenCode"));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("フォルダを読み込めません");
+    expect(screen.getByRole("button", { name: "OpenCode を開く" })).toBeTruthy();
+  });
+});
+
 describe("AddProjectButton concurrency + UX", () => {
   it("prevents concurrent load race (newer response wins)", async () => {
     let resolveFirst: ((v: ReturnType<typeof makeDirList>) => void) | undefined;

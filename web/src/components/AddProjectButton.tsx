@@ -168,8 +168,6 @@ export function AddProjectButton({
       if (id !== reqIdRef.current) return;
       // H4: translate API errors to Japanese.
       setError(apiErrorMessage(err, "一覧取得に失敗しました"));
-      setEntries([]);
-      setQuickAccess([]);
     } finally {
       if (id === reqIdRef.current) setLoading(false);
     }
@@ -451,7 +449,11 @@ export function AddProjectButton({
                 }}
               />
               {error && (
-                <p className="rounded-lg border border-danger/30 bg-danger-bg px-2 py-1.5 text-xs text-danger">
+                <p
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-lg border border-danger/30 bg-danger-bg px-2 py-1.5 text-xs text-danger"
+                >
                   {error}
                 </p>
               )}

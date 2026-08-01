@@ -3315,3 +3315,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: SessionSwitcherDialog now captures the actual focused opener and restores it after the parent unmounts the dialog; removed the brittle TaskView selector.
 - Verification: SessionSwitcherDialog and SessionSwitcher tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: modal focus restoration should follow the actual opener element, not a global label or a guessed control location.
+
+## 2026-08-01: Folder picker refresh resilience
+
+- Found: when browsing into a folder failed, AddProjectButton cleared the current entries, making the previous location look empty; the error was also not exposed as an alert to assistive technology.
+- Fixed: retain the last known folder entries while showing the navigation error, and mark the error with `role="alert"`/assertive live announcement.
+- Verification: AddProjectButton tests passed (17/17); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: navigation errors should preserve the last usable view and explain the failure, instead of replacing it with an indistinguishable empty state.
