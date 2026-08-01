@@ -61,7 +61,7 @@ export function BrowserBridgeApprovals() {
     const busyKey = `approval:${approvalId}`;
     if (busyRef.current) return;
     busyRef.current = busyKey;
-    setBusy(approvalId);
+    setBusy(busyKey);
     try {
       const res = await timedFetch(`/api/host/browser-bridge/approvals/${approvalId}`, {
         method: "POST",
@@ -85,7 +85,7 @@ export function BrowserBridgeApprovals() {
     const busyKey = `pairing:${requestId}`;
     if (busyRef.current) return;
     busyRef.current = busyKey;
-    setBusy(requestId);
+    setBusy(busyKey);
     try {
       const res = await timedFetch(`/api/host/browser-bridge/pairing/${requestId}`, {
         method: "POST",
@@ -109,11 +109,11 @@ export function BrowserBridgeApprovals() {
     {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
     {pairingRequests.map((request) => <div key={request.requestId} className="mt-3 rounded-md bg-muted p-3">
       <p className="text-sm font-medium">拡張機能のペアリング要求</p><p className="mt-1 break-all text-xs text-muted-foreground">{request.origin}</p>
-      <div className="mt-3 flex gap-2"><Button size="sm" disabled={busy === request.requestId} onClick={() => void decidePairing(request.requestId, "allow")}>許可</Button><Button size="sm" variant="outline" disabled={busy === request.requestId} onClick={() => void decidePairing(request.requestId, "deny")}>拒否</Button></div>
+      <div className="mt-3 flex gap-2"><Button size="sm" busy={busy === `pairing:${request.requestId}`} disabled={busy !== null} onClick={() => void decidePairing(request.requestId, "allow")}>許可</Button><Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void decidePairing(request.requestId, "deny")}>拒否</Button></div>
     </div>)}
     {approvals.map((approval) => <div key={approval.approvalId} className="mt-3 rounded-md bg-muted p-3">
       <p className="text-sm font-medium">{approval.tool}</p><p className="mt-1 break-all text-xs text-muted-foreground">{approval.origin}</p>
-      <div className="mt-3 flex gap-2"><Button size="sm" disabled={busy === approval.approvalId} onClick={() => void decide(approval.approvalId, "allow")}>許可</Button><Button size="sm" variant="outline" disabled={busy === approval.approvalId} onClick={() => void decide(approval.approvalId, "deny")}>拒否</Button></div>
+      <div className="mt-3 flex gap-2"><Button size="sm" busy={busy === `approval:${approval.approvalId}`} disabled={busy !== null} onClick={() => void decide(approval.approvalId, "allow")}>許可</Button><Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void decide(approval.approvalId, "deny")}>拒否</Button></div>
     </div>)}
     {available && !error && approvals.length === 0 && pairingRequests.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">保留中の承認はありません。</p> : null}
   </section>;

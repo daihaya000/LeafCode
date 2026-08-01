@@ -155,6 +155,26 @@ describe("BrowserBridgeApprovals", () => {
     resolveDecision(response({ approvalId: "approval_duplicate", decision: "allow" }));
   });
 
+  it("disables every approval action while another decision is pending", async () => {
+    let resolveDecision!: (value: Response) => void;
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_a", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [{ requestId: "pairing_b", origin: "chrome-extension://example", createdAt: 1 }] }))
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveDecision = resolve; }));
+
+    render(<BrowserBridgeApprovals />);
+    const allowButtons = await screen.findAllByRole("button", { name: "許可" });
+    expect(allowButtons).toHaveLength(2);
+    fireEvent.click(allowButtons[0]);
+
+    await waitFor(() => {
+      expect((allowButtons[0] as HTMLButtonElement).disabled).toBe(true);
+      expect((allowButtons[1] as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getAllByRole("button", { name: "拒否" }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    });
+    resolveDecision(response({ decision: "allow" }));
+  });
+
   it("shows a pending pairing request and forwards an allow decision without any code to type", async () => {
     const requestId = "pairing_request_abcdefghijklmnopqrstuvwxyz";
     timedFetch

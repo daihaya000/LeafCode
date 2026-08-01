@@ -3924,3 +3924,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: focus the close control on open, wrap Tab/Shift+Tab inside the lightbox, close on Escape, and restore focus to the originating thumbnail.
 - Verification: PartView tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: every custom lightbox needs the same modal focus lifecycle as a full confirmation dialog, even when it contains only an image.
+
+## 2026-08-01: Browser Bridge approval action locking
+
+- Found: Browser Bridge approval and pairing cards shared one mutation lock, but only the currently clicked card's buttons were disabled; other visible actions looked usable and silently no-op'd.
+- Fixed: use namespaced busy keys, disable all approval actions while any decision is pending, and show a busy indicator on the active allow action.
+- Verification: BrowserBridgeApprovals tests passed (12/12); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: when a mutation lock is global, the UI must communicate that global lock consistently across every competing action.
