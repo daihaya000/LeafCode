@@ -3490,3 +3490,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: serialize background polls, add latest-request-wins checks, and invalidate requests during cleanup.
 - Verification: BrowserBridgeSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: status panels need the same request-generation discipline as action queues when manual refresh and periodic refresh share one state store.
+
+## 2026-08-01: Session switch re-entry guard
+
+- Found: rapid `select` changes could enter multiple session-bind requests before React rendered the disabled state, allowing the UI selection and active session to diverge.
+- Fixed: add a synchronous busy ref shared by session creation and switching, while retaining the visible busy/disabled state.
+- Verification: SessionSwitcher tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: for native controls such as `select`, visual disabling is not sufficient protection against same-tick event re-entry; guard the handler itself.

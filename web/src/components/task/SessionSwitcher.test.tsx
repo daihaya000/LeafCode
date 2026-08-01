@@ -48,6 +48,36 @@ describe("SessionSwitcher controlled snap-back", () => {
     expect(onSwitch).toHaveBeenCalled();
   });
 
+  it("ignores a second session switch while the first is pending", async () => {
+    getJson.mockResolvedValue({
+      sessions: [
+        { opencodeSessionId: "ses_1", title: "Session 1", updatedAt: "t1" },
+        { opencodeSessionId: "ses_2", title: "Session 2", updatedAt: "t2" },
+        { opencodeSessionId: "ses_3", title: "Session 3", updatedAt: "t3" },
+      ],
+    });
+    let resolveBind: (value: unknown) => void = () => {};
+    sendJson.mockImplementation(
+      () => new Promise((resolve) => { resolveBind = resolve; }),
+    );
+
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="ses_1"
+        onSwitch={vi.fn()}
+      />,
+    );
+    const select = await screen.findByRole("combobox");
+    fireEvent.change(select, { target: { value: "ses_2" } });
+    fireEvent.change(select, { target: { value: "ses_3" } });
+
+    expect(sendJson).toHaveBeenCalledTimes(1);
+    resolveBind({});
+    await waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
+  });
+
   it("keeps the existing session choices visible when a refresh fails", async () => {
     getJson
       .mockResolvedValueOnce({

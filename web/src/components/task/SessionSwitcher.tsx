@@ -30,6 +30,7 @@ export function SessionSwitcher({
   const [switchError, setSwitchError] = useState<string | null>(null);
   // Keep the user's selection while the parent catches up with onSwitch.
   const [localSelection, setLocalSelection] = useState<string | null>(null);
+  const busyRef = useRef(false);
   const refreshIdRef = useRef(0);
 
   useEffect(() => {
@@ -76,7 +77,8 @@ export function SessionSwitcher({
   );
 
   const create = async () => {
-    if (busy) return;
+    if (busy || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setCreateError(null);
     try {
@@ -95,6 +97,7 @@ export function SessionSwitcher({
         err instanceof Error ? err.message : "セッションを作成できませんでした",
       );
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -147,7 +150,8 @@ export function SessionSwitcher({
         value={localSelection ?? currentSessionId ?? ""}
         onChange={async (e) => {
           const id = e.target.value;
-          if (!id || id === currentSessionId) return;
+          if (!id || id === currentSessionId || busyRef.current) return;
+          busyRef.current = true;
           setLocalSelection(id);
           setSwitchError(null);
           setBusy(true);
@@ -163,6 +167,7 @@ export function SessionSwitcher({
             await refresh();
             setLocalSelection(currentSessionId);
           } finally {
+            busyRef.current = false;
             setBusy(false);
           }
         }}
