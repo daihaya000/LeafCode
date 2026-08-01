@@ -3750,6 +3750,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: AddProjectButton tests passed (17/17); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: dialogs that bridge to native APIs need independent locks for the picker and submit phases; one rendered `busy` flag cannot cover both same-turn entry points.
 
+## 2026-08-01: Session switcher workspace lifecycle
+
+- Found: SessionSwitcher already rejected stale list refreshes, but create and switch completion callbacks could still notify the parent after the workspace changed or the component unmounted.
+- Fixed: add a mounted/workspace generation boundary to refresh, session creation, and selection binding; late errors no longer overwrite the new workspace's UI.
+- Verification: SessionSwitcher tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: a refresh request id protects data ordering, while an explicit workspace generation protects user actions that outlive the view context.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.

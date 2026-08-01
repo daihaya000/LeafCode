@@ -32,34 +32,43 @@ export function SessionSwitcher({
   const [localSelection, setLocalSelection] = useState<string | null>(null);
   const busyRef = useRef(false);
   const refreshIdRef = useRef(0);
+  const mountedRef = useRef(false);
+  const workspaceGenerationRef = useRef(0);
 
   useEffect(() => {
     setLocalSelection(currentSessionId);
   }, [currentSessionId]);
 
   const refresh = useCallback(async () => {
+    if (!mountedRef.current) return;
     const requestId = ++refreshIdRef.current;
     setSessionsLoading(true);
     try {
       const data = await getJson<{
         sessions?: { opencodeSessionId: string; title: string; updatedAt: string }[];
       }>(`/api/workspaces/${workspaceId}/sessions`);
-      if (requestId !== refreshIdRef.current) return;
+      if (!mountedRef.current || requestId !== refreshIdRef.current) return;
       setSessions(data.sessions ?? []);
       setSessionsError(null);
     } catch (err) {
-      if (requestId !== refreshIdRef.current) return;
+      if (!mountedRef.current || requestId !== refreshIdRef.current) return;
       setSessionsError(
         err instanceof Error ? err.message : "セッション一覧を取得できませんでした",
       );
     } finally {
-      if (requestId === refreshIdRef.current) setSessionsLoading(false);
+      if (mountedRef.current && requestId === refreshIdRef.current) setSessionsLoading(false);
     }
   }, [workspaceId]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    workspaceGenerationRef.current += 1;
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      mountedRef.current = false;
+      refreshIdRef.current += 1;
+      workspaceGenerationRef.current += 1;
+    };
   }, [workspaceId]);
 
   // Rebind only bumps updated_at server-side; the visible list stays valid.
@@ -78,6 +87,7 @@ export function SessionSwitcher({
 
   const create = async () => {
     if (busy || busyRef.current) return;
+    const generation = workspaceGenerationRef.current;
     busyRef.current = true;
     setBusy(true);
     setCreateError(null);
@@ -91,14 +101,16 @@ export function SessionSwitcher({
         title: `Session ${sessions.length + 1}`,
       });
       await refresh();
+      if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
       onSwitch();
     } catch (err) {
+      if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
       setCreateError(
         err instanceof Error ? err.message : "セッションを作成できませんでした",
       );
     } finally {
       busyRef.current = false;
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -151,14 +163,17 @@ export function SessionSwitcher({
         onChange={async (e) => {
           const id = e.target.value;
           if (!id || id === currentSessionId || busyRef.current) return;
+          const generation = workspaceGenerationRef.current;
           busyRef.current = true;
           setLocalSelection(id);
           setSwitchError(null);
           setBusy(true);
           try {
             await updateSessionOrder(id);
+            if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
             onSwitch();
           } catch (err) {
+            if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
             // Bind failed (engine down, etc.): resync the dropdown to real state
             // instead of leaving an unhandled rejection and a lying selection.
             setSwitchError(
@@ -168,7 +183,7 @@ export function SessionSwitcher({
             setLocalSelection(currentSessionId);
           } finally {
             busyRef.current = false;
-            setBusy(false);
+            if (mountedRef.current) setBusy(false);
           }
         }}
         onFocus={() => void refresh()}
