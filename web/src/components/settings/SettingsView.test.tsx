@@ -416,7 +416,7 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
 
-    await screen.findByText("ホスト接続中");
+    await screen.findByText("トレイホスト接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
     expect(
@@ -448,7 +448,7 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
 
-    await screen.findByText("ホスト接続中");
+    await screen.findByText("トレイホスト接続中");
     fireEvent.click(screen.getByRole("button", { name: "WebUI を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
     expect(
@@ -486,7 +486,7 @@ describe("SettingsView", () => {
     });
 
     render(<SettingsView />);
-    await screen.findByText("ホスト接続中");
+    await screen.findByText("トレイホスト接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
     fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
 

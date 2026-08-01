@@ -606,10 +606,10 @@ export function SettingsView() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={health?.opencode.ok ? "success" : "danger"}>
-                      {health?.opencode.ok ? "接続中" : "停止"}
+                      {health?.opencode.ok ? "OpenCode 接続中" : "OpenCode 停止"}
                     </Badge>
                     <Badge tone={hostOk ? "success" : "warning"}>
-                      {hostOk ? "ホスト接続中" : "ホスト未検出"}
+                      {hostOk ? "トレイホスト接続中" : "トレイホスト未検出"}
                     </Badge>
                   </div>
                 </div>
