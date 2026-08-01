@@ -3413,3 +3413,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: track per-commit detail requests, expose row busy state and disable its file actions, lock refresh while loading, and mark errors as alerts.
 - Verification: GraphPanel tests passed (9/9); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: expandable data panels need request-level locks independent of the visible spinner, especially when the trigger remains mounted during loading.
+
+## 2026-08-01: Voice input stop feedback
+
+- Found: a rejected voice stop was only logged to the console, so the user could lose the final transcript without a visible explanation; Windows voice launch also lacked an internal duplicate guard.
+- Fixed: show stop failures as an inline alert, clear stale errors on retry, and guard native launch inside the handler.
+- Verification: VoiceInputButton tests passed (14/14); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: input-device failures must be surfaced beside the input control, not only in diagnostics, because the user needs a clear retry path.

@@ -44,6 +44,7 @@ export function VoiceInputButton({
   disabled = false,
 }: VoiceInputButtonProps) {
   const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [mode, setMode] = useState<VoiceInputMode>("web-speech");
   const [nativeBusy, setNativeBusy] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export function VoiceInputButton({
   if (!isWindowsNative && !voice.supported) return null;
 
   const handleWindowsVoiceInput = () => {
+    if (nativeBusy) return;
     setNativeBusy(true);
     setNativeError(null);
     void (async () => {
@@ -102,12 +104,18 @@ export function VoiceInputButton({
         try {
           onTranscript(await voice.stop());
         } catch (error) {
-          console.error("音声入力の停止に失敗しました。", error);
+          setStopError(
+            error instanceof Error
+              ? error.message
+              : "音声入力を停止できませんでした。もう一度お試しください。",
+          );
         } finally {
           setStopping(false);
         }
       })();
     } else {
+      setStopError(null);
+      voice.clearError();
       voice.start();
     }
   };
@@ -117,7 +125,7 @@ export function VoiceInputButton({
     : voice.listening
       ? "音声入力を停止"
       : "音声入力";
-  const error = isWindowsNative ? nativeError : voice.error;
+  const error = isWindowsNative ? nativeError : stopError ?? voice.error;
 
   return (
     <div className="relative">

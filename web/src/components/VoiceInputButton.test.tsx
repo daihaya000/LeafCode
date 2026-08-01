@@ -112,6 +112,20 @@ describe("VoiceInputButton", () => {
     expect(onTranscript).toHaveBeenCalledWith("hello");
   });
 
+  it("shows a retryable error when stopping voice input fails", async () => {
+    const voice = mockVoice({
+      listening: true,
+      stop: vi.fn(() => Promise.reject(new Error("停止に失敗しました"))),
+    });
+    render(<VoiceInputButton voice={voice} onTranscript={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "音声入力を停止" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "停止に失敗しました",
+    );
+  });
+
   it("does nothing when disabled and not listening", () => {
     const voice = mockVoice();
     render(
