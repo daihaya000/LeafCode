@@ -3833,3 +3833,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add an explicit mounted boundary and invalidate the generation during cleanup.
 - Verification: NextAction tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: context generations must be paired with a component lifetime; either guard alone is incomplete.
+
+## 2026-08-01: Profiles settings mutation lifecycle
+
+- Found: ProfilesSettings protected list loading and job polling, but profile switch/restart, migration, creation, setup changes, rename, unregister, and dependency actions still had late state updates after navigation.
+- Fixed: guard mutation completions, errors, and Busy cleanup with the existing mounted boundary while preserving synchronous operation locks.
+- Verification: ProfilesSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: a settings page with many independent mutations needs lifecycle checks on every operation, not only its shared list loader.

@@ -172,22 +172,27 @@ export function ProfilesSettings() {
       setRestartError(null);
       try {
         await sendJson("POST", `/api/profiles/${profile.id}/activate`, {});
+        if (!mountedRef.current) return;
         // Unknown host status should not silently skip the required restart;
         // only a confirmed unavailable host falls back to manual restart.
         if (hostOk !== false) {
           setRestarting(true);
           await restartOpencodeAndWait();
+          if (!mountedRef.current) return;
         }
         await load();
       } catch (err) {
+        if (!mountedRef.current) return;
         setRestartError(
           err instanceof Error ? err.message : "切り替えに失敗しました",
         );
       } finally {
         if (busyIdRef.current === profile.id) {
           busyIdRef.current = null;
-          setBusyId(null);
-          setRestarting(false);
+          if (mountedRef.current) {
+            setBusyId(null);
+            setRestarting(false);
+          }
         }
       }
     },
@@ -201,14 +206,16 @@ export function ProfilesSettings() {
     setActionError(null);
     try {
       const res = await sendJson<{ jobId: string }>("POST", "/api/profiles/migrate", {});
+      if (!mountedRef.current) return;
       setJobId(res.jobId);
       setJob({ state: "running", copied: 0, total: 0 });
     } catch (err) {
+      if (!mountedRef.current) return;
       setActionError(err instanceof Error ? err.message : "移行を開始できませんでした");
     } finally {
       if (actionBusyRef.current === "migrate") {
         actionBusyRef.current = null;
-        setActionBusy(null);
+        if (mountedRef.current) setActionBusy(null);
       }
     }
   }, [actionBusy, busyId]);
@@ -224,6 +231,7 @@ export function ProfilesSettings() {
         "/api/profiles",
         { name: createName, from: createFrom },
       );
+      if (!mountedRef.current) return;
       setCreateOpen(false);
       setCreateName("");
       setCreateFrom("empty");
@@ -234,11 +242,12 @@ export function ProfilesSettings() {
         await load();
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       setActionError(err instanceof Error ? err.message : "作成に失敗しました");
     } finally {
       if (actionBusyRef.current === "create") {
         actionBusyRef.current = null;
-        setActionBusy(null);
+        if (mountedRef.current) setActionBusy(null);
       }
     }
   }, [actionBusy, busyId, createFrom, createName, load]);
@@ -258,8 +267,10 @@ export function ProfilesSettings() {
           "/api/profiles/settings",
           next,
         );
+        if (!mountedRef.current) return;
         setSetupSettings(saved);
       } catch (err) {
+        if (!mountedRef.current) return;
         setSetupSettings(setupSettings);
         setActionError(
           err instanceof Error ? err.message : "自動セットアップ設定を保存できませんでした",
@@ -267,7 +278,7 @@ export function ProfilesSettings() {
       } finally {
         if (actionBusyRef.current === operation) {
           actionBusyRef.current = null;
-          setActionBusy(null);
+          if (mountedRef.current) setActionBusy(null);
         }
       }
     },
@@ -283,15 +294,17 @@ export function ProfilesSettings() {
       setActionError(null);
       try {
         await sendJson("PATCH", `/api/profiles/${id}`, { name: renameValue });
+        if (!mountedRef.current) return;
         setRenameId(null);
         setRenameValue("");
         await load();
       } catch (err) {
+        if (!mountedRef.current) return;
         setActionError(err instanceof Error ? err.message : "名前変更に失敗しました");
       } finally {
         if (actionBusyRef.current === operation) {
           actionBusyRef.current = null;
-          setActionBusy(null);
+          if (mountedRef.current) setActionBusy(null);
         }
       }
     },
@@ -308,13 +321,15 @@ export function ProfilesSettings() {
       setActionError(null);
       try {
         await sendJson("DELETE", `/api/profiles/${profile.id}`, {});
+        if (!mountedRef.current) return;
         await load();
       } catch (err) {
+        if (!mountedRef.current) return;
         setActionError(err instanceof Error ? err.message : "除外に失敗しました");
       } finally {
         if (actionBusyRef.current === operation) {
           actionBusyRef.current = null;
-          setActionBusy(null);
+          if (mountedRef.current) setActionBusy(null);
         }
       }
     },
@@ -329,15 +344,17 @@ export function ProfilesSettings() {
     setActionError(null);
     try {
       const result = await sendJson<{ installed: string[] }>("POST", `/api/profiles/${profile.id}/dependencies`, {});
+      if (!mountedRef.current) return;
       if (result.installed.length > 0) {
         setActionError(profile.active ? "WebUI依存を追加しました。OpenCode hostを再起動してください。" : "WebUI依存を追加しました。");
       }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
+      } catch (err) {
+        if (!mountedRef.current) return;
+        setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
     } finally {
       if (actionBusyRef.current === operation) {
         actionBusyRef.current = null;
-        setActionBusy(null);
+        if (mountedRef.current) setActionBusy(null);
       }
     }
   }, []);
