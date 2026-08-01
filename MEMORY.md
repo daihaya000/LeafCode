@@ -3518,3 +3518,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: serialize all Goal Loop mutations with one ref-backed lock while keeping the existing visible busy state and disabled controls.
 - Verification: TaskView tests passed (102/102), including duplicate-start coverage; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: long-running state machines need one mutation gate across every transition, not separate visual guards per button.
+
+## 2026-08-01: Composer send scope serialization
+
+- Found: the composer relied on React's `sending` state, so two same-tick clicks could pass the visual lock before the re-render and submit the same prompt twice.
+- Fixed: add a synchronous lock keyed by the composer session scope; switching to another session scope remains independent, and both normal sends and Goal Loop starts release the lock correctly.
+- Verification: TaskView tests passed (103/103); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: shared task views need lock keys aligned with their concurrency boundary; a global lock would unnecessarily block a newly selected session.

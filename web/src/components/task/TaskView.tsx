@@ -1615,6 +1615,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sending, setSending] = useState(false);
   /** Scope that owns the in-flight send — other sessions must stay editable. */
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
+  const sendingScopeRef = useRef<string | null>(null);
   const composerLocked =
     working || (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
   const voiceDisabled = composerLocked || !task?.sessionId;
@@ -1888,6 +1889,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     const text = input.trim();
     if ((!text && attachments.length === 0) || composerLocked) return;
     const sendScopeKey = composerScopeKey;
+    if (sendingScopeRef.current === sendScopeKey) return;
     const sendSessionId = taskRef.current?.sessionId;
     const sendTaskId = taskRef.current?.id;
     if (!sendSessionId || !sendTaskId || !sendScopeKey) return;
@@ -1901,6 +1903,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         return;
       }
       if (!text) return;
+      sendingScopeRef.current = sendScopeKey;
       rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
       setInput("");
       setSendError(null);
@@ -1911,6 +1914,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         rememberComposerDraft(sendScopeKey, { input: text, attachments });
         if (composerScopeRef.current === sendScopeKey) setInput(text);
       }
+      if (sendingScopeRef.current === sendScopeKey) sendingScopeRef.current = null;
       return;
     }
     // Block sending images to a model that cannot accept them. The effective
@@ -1980,6 +1984,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       ...(a.name ? { name: a.name } : {}),
     }));
     const snapshotAttachments = attachments;
+    sendingScopeRef.current = sendScopeKey;
     rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
     setInput("");
     setAttachments([]);
@@ -2071,6 +2076,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         setAttachments(snapshotAttachments);
       }
     } finally {
+      if (sendingScopeRef.current === sendScopeKey) sendingScopeRef.current = null;
       setSending(false);
       setSendingScopeKey(null);
       notifyTasksChanged();

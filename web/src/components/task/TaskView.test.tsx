@@ -870,6 +870,27 @@ describe("TaskView", () => {
     },
   );
 
+  it("does not send the same composer scope twice from rapid clicks", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    const pendingSend = deferred<void>();
+    streamMock.sendPrompt.mockReturnValue(pendingSend.promise);
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    const textarea = screen
+      .getAllByRole("combobox")
+      .find((element) => element.tagName === "TEXTAREA")!;
+    fireEvent.change(textarea, { target: { value: "rapid send" } });
+    const sendButton = screen.getAllByRole("button").at(-1)!;
+    fireEvent.click(sendButton);
+    fireEvent.click(sendButton);
+
+    await waitFor(() => expect(streamMock.sendPrompt).toHaveBeenCalledTimes(1));
+    pendingSend.resolve(undefined);
+  });
+
   it("does not block sending for more than 5 seconds when activity hangs", async () => {
     taskStatus = "idle";
     vi.useFakeTimers();
