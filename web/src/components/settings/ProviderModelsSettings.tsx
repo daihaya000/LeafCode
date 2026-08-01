@@ -223,7 +223,16 @@ function ProviderGroup({
             </Badge>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={onEditProvider}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={
+            provider.editable
+              ? `${provider.name}を編集`
+              : `${provider.name}のアイコンを編集`
+          }
+          onClick={onEditProvider}
+        >
           {provider.editable ? "編集" : "アイコン編集"}
         </Button>
         {provider.editable && (

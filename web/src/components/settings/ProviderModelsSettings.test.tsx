@@ -451,7 +451,7 @@ describe("ProviderModelsSettings", () => {
     });
     render(<ProviderModelsSettings />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "編集" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Custom AIを編集" }));
     expect(screen.getByLabelText("プロバイダーID")).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("表示名"), {
       target: { value: "Custom AI Updated" },
@@ -585,7 +585,7 @@ describe("ProviderModelsSettings", () => {
     });
     render(<ProviderModelsSettings />);
     const deleteButton = await screen.findByRole("button", {
-      name: /Custom AI/,
+      name: "Custom AI を削除",
     });
 
     fireEvent.click(deleteButton);
@@ -656,7 +656,7 @@ describe("ProviderModelsSettings", () => {
 
     await screen.findByRole("switch", { name: "OpenAI を無効化" });
     const iconEditButtons = screen.getAllByRole("button", {
-      name: "アイコン編集",
+      name: /のアイコンを編集$/,
     });
     // OpenAI is the first provider in the mocked list.
     fireEvent.click(iconEditButtons[0]);

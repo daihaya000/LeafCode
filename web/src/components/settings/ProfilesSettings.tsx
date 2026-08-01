@@ -604,6 +604,7 @@ export function ProfilesSettings() {
                         <Button
                           variant="secondary"
                           size="sm"
+                          aria-label={`${p.name}に切り替え`}
                           disabled={busy || jobRunning || restarting || actionBusy !== null}
                           onClick={() => setSwitchConfirm(p)}
                         >
@@ -614,6 +615,7 @@ export function ProfilesSettings() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`${p.name}にWebUI依存を適用`}
                           busy={actionBusy === `dependencies:${p.id}`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => void applyDependencies(p)}
@@ -624,6 +626,7 @@ export function ProfilesSettings() {
                       {renameId === p.id ? (
                         <Button
                           size="sm"
+                          aria-label={`${p.name}の名前を保存`}
                           busy={actionBusy === `rename:${p.id}`}
                           disabled={actionBusy !== null || busyId !== null || !renameValue.trim()}
                           onClick={() => void doRename(p.id)}
@@ -634,6 +637,7 @@ export function ProfilesSettings() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`${p.name}の名前を変更`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => {
                             setRenameId(p.id);
@@ -647,6 +651,7 @@ export function ProfilesSettings() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`${p.name}をプロファイルから除外`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => setUnregisterConfirm(p)}
                         >
@@ -680,6 +685,7 @@ export function ProfilesSettings() {
                   <Button
                     variant="secondary"
                     size="sm"
+                    aria-label={`${p.name}に切り替え`}
                     disabled={busy || jobRunning || restarting || actionBusy !== null}
                     onClick={() => setSwitchConfirm(p)}
                   >
@@ -690,6 +696,7 @@ export function ProfilesSettings() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={`${p.name}にWebUI依存を適用`}
                     busy={actionBusy === `dependencies:${p.id}`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => void applyDependencies(p)}
@@ -700,6 +707,7 @@ export function ProfilesSettings() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  aria-label={`${p.name}の名前を変更`}
                   disabled={jobRunning || actionBusy !== null || busyId !== null}
                   onClick={() => {
                     setRenameId(p.id);
@@ -712,6 +720,7 @@ export function ProfilesSettings() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={`${p.name}をプロファイルから除外`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => setUnregisterConfirm(p)}
                   >
