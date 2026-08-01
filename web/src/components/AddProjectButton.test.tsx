@@ -463,6 +463,14 @@ describe("AddProjectButton concurrency + UX", () => {
     document.body.style.overflow = prev;
   });
 
+  it("moves focus into the dialog when it opens", async () => {
+    render(<AddProjectButton />);
+    openDialog();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
   it("uses unique aria-labelledby id via useId", async () => {
     const { unmount: unmountA } = render(<AddProjectButton />);
     openDialog();

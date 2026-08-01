@@ -131,6 +131,10 @@ export function AddProjectButton({
       return;
     }
     prevFocusRef.current = document.activeElement as HTMLElement | null;
+    const first = panelRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    first?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (!busy) setOpen(false);

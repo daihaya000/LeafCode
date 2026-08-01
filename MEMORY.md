@@ -3875,3 +3875,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add roving `tabIndex`, Arrow/Home/End navigation with focus movement, `aria-controls`, and an associated `tabpanel`.
 - Verification: SettingsView tests passed (23/23); typecheck, ESLint, and `git diff --check` passed. ESLint still reports 12 pre-existing warnings.
 - Lesson: horizontally scrollable category navigation should retain full keyboard parity with desktop tab interfaces.
+
+## 2026-08-01: Add-project dialog initial focus
+
+- Found: opening the folder/project picker left focus on the trigger behind the modal, forcing keyboard users to tab into the dialog manually and risking interaction with obscured content.
+- Fixed: focus the first usable control inside the dialog when it opens; focus restoration on close remains intact.
+- Verification: AddProjectButton tests passed (18/18); typecheck, ESLint, and `git diff --check` passed. ESLint still reports 12 pre-existing warnings.
+- Lesson: modal focus management needs both entry focus and exit restoration, not only a focus trap.
