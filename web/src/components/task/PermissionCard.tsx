@@ -150,7 +150,7 @@ export function PermissionCard({
             e.target.value = "";
             void onExtra(v);
           }}
-          className="h-10 cursor-pointer rounded-lg border border-border bg-surface px-2.5 text-sm text-muted outline-none hover:text-text disabled:opacity-50"
+          className="h-10 cursor-pointer rounded-lg border border-border bg-surface px-2.5 text-sm text-muted outline-none hover:text-text disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
         >
           <option value="" disabled>
             オプション…

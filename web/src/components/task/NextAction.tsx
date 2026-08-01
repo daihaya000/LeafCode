@@ -87,7 +87,7 @@ function CountSelect({
         const n = Number(e.target.value);
         if (Number.isFinite(n)) onChange(n);
       }}
-      className="h-8 shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs text-text outline-none"
+      className="h-8 shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs text-text outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
     >
       {options.map((n) => (
         <option key={n} value={n}>

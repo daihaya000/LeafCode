@@ -481,7 +481,7 @@ export function DiffPane({
             title="比較の基準（選択したブランチとの分岐点から比較）"
             aria-label="比較の基準ブランチ"
             className={cx(
-              "h-8 min-w-0 max-w-full flex-[1_1_9rem] cursor-pointer rounded-lg border px-2 text-[11px] outline-none sm:max-w-[11rem]",
+              "h-8 min-w-0 max-w-full flex-[1_1_9rem] cursor-pointer rounded-lg border px-2 text-[11px] outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary sm:max-w-[11rem]",
               baseCompare
                 ? "border-border-strong bg-surface text-fg"
                 : "border-border bg-surface-2 text-muted",
@@ -504,7 +504,7 @@ export function DiffPane({
           }
           title="表示する変更の種類"
           aria-label="表示する変更の種類"
-          className="h-8 min-w-0 max-w-full flex-[1_1_8rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none sm:max-w-[9.5rem]"
+          className="h-8 min-w-0 max-w-full flex-[1_1_8rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary sm:max-w-[9.5rem]"
         >
           <option value="all">すべての変更</option>
           <option value="tracked">既存の変更</option>
@@ -643,7 +643,7 @@ export function DiffPane({
             value={mergeTarget}
             onChange={(e) => setMergeTarget(e.target.value)}
             aria-label="マージ先ブランチ"
-            className="h-9 min-w-32 flex-1 cursor-pointer rounded-lg border border-border bg-bg px-2 text-sm outline-none"
+            className="h-9 min-w-32 flex-1 cursor-pointer rounded-lg border border-border bg-bg px-2 text-sm outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
             <option value="">ブランチを選択</option>
             {(branches?.branches ?? [])

@@ -270,7 +270,7 @@ export function CommandPalette({
             placeholder={
               directory ? "タスク・ファイル・アクションを検索…" : "タスク・アクションを検索…"
             }
-            className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+            className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
