@@ -47,9 +47,10 @@ export function BrowserBridgeSettings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [connectionDismissed, setConnectionDismissed] = useState(false);
   const hintId = useId();
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (): Promise<Status | null> => {
     try {
       const res = await timedFetch("/api/host/browser-bridge/status", {
         timeoutMs: 3000,
@@ -57,9 +58,11 @@ export function BrowserBridgeSettings() {
       const data = (await res.json().catch(() => ({}))) as Status;
       setStatus(data);
       setError(null);
+      return data;
     } catch (err) {
       setStatus({ available: false });
       setError(err instanceof Error ? err.message : "接続状態を取得できません");
+      return null;
     }
   }, []);
 
@@ -76,16 +79,20 @@ export function BrowserBridgeSettings() {
 
   // Once we know the Broker is reachable and paired, treat us as connected.
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected && !connectionDismissed) {
       setConnection({
         brokerUrl: urlDraft,
         paired: status?.paired === true,
         connected: status?.connected === true,
       });
+    } else if (!isConnected) {
+      setConnection(null);
+      setConnectionDismissed(false);
     }
-  }, [isConnected, status, urlDraft]);
+  }, [connectionDismissed, isConnected, status, urlDraft]);
 
   const handleConnect = async () => {
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
@@ -97,11 +104,11 @@ export function BrowserBridgeSettings() {
       // initiated by the browser extension; the WebUI only needs to know the
       // Broker is reachable and whether a paired extension exists.
       writeSavedUrl(trimmed);
-      await fetchStatus();
-      const next = status;
+      const next = await fetchStatus();
       if (next?.available !== true) {
         throw new Error("Broker に接続できません");
       }
+      setConnectionDismissed(false);
       setConnection({
         brokerUrl: trimmed,
         paired: next.paired === true,
@@ -118,6 +125,7 @@ export function BrowserBridgeSettings() {
   const handleDisconnect = () => {
     // TODO: call a server-side disconnect/revoke endpoint when Task 8 adds it.
     setConnection(null);
+    setConnectionDismissed(true);
     setExpanded(false);
   };
 

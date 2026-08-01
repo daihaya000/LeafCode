@@ -3420,3 +3420,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: show stop failures as an inline alert, clear stale errors on retry, and guard native launch inside the handler.
 - Verification: VoiceInputButton tests passed (14/14); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: input-device failures must be surfaced beside the input control, not only in diagnostics, because the user needs a clear retry path.
+
+## 2026-08-01: Browser Bridge connection state
+
+- Found: connecting used the stale `status` closure after fetching a fresh Broker status, causing successful connections to be reported as unavailable; dismissing a connection was also undone by the next polling response.
+- Fixed: return fresh status data from `fetchStatus`, guard duplicate connect actions, and persist a local dismissal until the Broker is actually unavailable or the user reconnects.
+- Verification: BrowserBridgeSettings tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: connection actions must consume the response they just awaited, while background polling must respect explicit user dismissal.

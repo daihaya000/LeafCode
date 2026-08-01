@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserBridgeSettings } from "./BrowserBridgeSettings";
 
 const { timedFetch } = vi.hoisted(() => ({ timedFetch: vi.fn() }));
@@ -72,6 +72,19 @@ describe("BrowserBridgeSettings", () => {
     ).toBe(false);
   });
 
+  it("uses the fresh status response when connecting", async () => {
+    timedFetch
+      .mockResolvedValueOnce(response({ available: false }))
+      .mockResolvedValueOnce(response({ available: true, connected: true, paired: true }));
+    render(<BrowserBridgeSettings />);
+    await screen.findByLabelText("Broker URL");
+
+    fireEvent.click(screen.getByRole("button", { name: "この URL で接続" }));
+
+    await waitFor(() => expect(screen.getByText("接続済み")).toBeTruthy());
+    expect(screen.queryByText("Broker に接続できません")).toBeNull();
+  });
+
   it("disables the connect button while submitting", async () => {
     let resolveStatus: (r: Response) => void = () => {};
     timedFetch.mockImplementation(
@@ -85,7 +98,7 @@ describe("BrowserBridgeSettings", () => {
     fireEvent.click(connect);
     await waitFor(() => expect(connect.disabled).toBe(true));
     resolveStatus(response({ available: true, connected: true, paired: true }));
-    await waitFor(() => expect(connect.disabled).toBe(false));
+    await waitFor(() => expect(screen.getByText("接続済み")).toBeTruthy());
   });
 
   it("clears the saved connection when delete is clicked", async () => {
@@ -101,5 +114,18 @@ describe("BrowserBridgeSettings", () => {
     );
     expect(screen.queryByText("接続済み")).toBeNull();
     expect(await screen.findByLabelText("Broker URL")).toBeTruthy();
+  });
+
+  it("does not restore a dismissed connection from the next status poll", async () => {
+    timedFetch.mockResolvedValue(response({ available: true, connected: true, paired: true }));
+    render(<BrowserBridgeSettings />);
+    await waitFor(() => expect(screen.getByText("接続済み")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "この接続を削除" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(screen.queryByText("接続済み")).toBeNull();
   });
 });
