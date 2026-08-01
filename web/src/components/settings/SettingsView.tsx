@@ -211,6 +211,23 @@ export function SettingsView() {
     | { kind: "error" }
   >({ kind: "idle" });
   const autoRateRequestGeneration = useRef(0);
+  const mountedRef = useRef(false);
+  const refreshRequestRef = useRef(0);
+  const restartingRef = useRef(false);
+  const updatingRef = useRef<UpdateTarget | null>(null);
+  const busyRef = useRef(false);
+  const deletingRootRef = useRef<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      refreshRequestRef.current += 1;
+      autoRateRequestGeneration.current += 1;
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
   useEffect(() => {
     const prefs = readCostDisplayPrefs();
     setCostPrefs(prefs);
@@ -279,6 +296,7 @@ export function SettingsView() {
   }, [refreshAutoRate]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     const [h, p, r, o, a, host] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
@@ -293,6 +311,7 @@ export function SettingsView() {
         return { ok: res.ok && Boolean(body.ok) };
       }),
     ]);
+    if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
     if (h.status === "fulfilled") setHealth(h.value);
     if (p.status === "fulfilled") setProjects(p.value.projects ?? []);
     if (r.status === "fulfilled") setRoots(r.value.roots ?? []);
@@ -315,6 +334,8 @@ export function SettingsView() {
   };
 
   const restartService = async (target: "webui" | "opencode" | "all") => {
+    if (restartingRef.current) return;
+    restartingRef.current = true;
     setPendingRestart(null);
     setRestarting(target);
     setError(null);
@@ -339,6 +360,7 @@ export function SettingsView() {
       let lastHealth: HealthDto | null = null;
       for (let i = 0; i < RESTART_HEALTH_MAX_ATTEMPTS; i += 1) {
         await new Promise((r) => setTimeout(r, RESTART_HEALTH_INTERVAL_MS));
+        if (!mountedRef.current) return;
         try {
           const h = await timedFetch(`/api/health?restart=${Date.now()}`, {
             timeoutMs: RESTART_HEALTH_TIMEOUT_MS,
@@ -359,13 +381,18 @@ export function SettingsView() {
       }
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "再起動に失敗しました");
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "再起動に失敗しました");
+      }
     } finally {
-      setRestarting(null);
+      restartingRef.current = false;
+      if (mountedRef.current) setRestarting(null);
     }
   };
 
   const updateService = async (target: UpdateTarget) => {
+    if (updatingRef.current !== null) return;
+    updatingRef.current = target;
     setUpdating(target);
     setUpdateState({ target, kind: "running" });
     setError(null);
@@ -385,6 +412,7 @@ export function SettingsView() {
         throw new Error(data.error || "アップデートに失敗しました");
       }
       const detail = [data.stdout, data.stderr].filter(Boolean).join("\n").trim();
+      if (!mountedRef.current) return;
       setUpdateState({
         target,
         kind: "success",
@@ -396,19 +424,21 @@ export function SettingsView() {
       });
       await refresh();
     } catch (err) {
-      setUpdateState({
+      if (mountedRef.current) setUpdateState({
         target,
         kind: "error",
         message: err instanceof Error ? err.message : "アップデートに失敗しました",
       });
     } finally {
-      setUpdating(null);
+      updatingRef.current = null;
+      if (mountedRef.current) setUpdating(null);
     }
   };
 
   const guard = useCallback(
     async (fn: () => Promise<void>) => {
-      if (busy) return;
+      if (busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       setError(null);
       try {
@@ -416,12 +446,14 @@ export function SettingsView() {
         await refresh();
         notifyTasksChanged();
       } catch (err) {
+        if (!mountedRef.current) return;
         setError(err instanceof Error ? err.message : "操作に失敗しました");
       } finally {
-        setBusy(false);
+        busyRef.current = false;
+        if (mountedRef.current) setBusy(false);
       }
     },
-    [busy, refresh],
+    [refresh],
   );
 
   const toggleFavorite = (p: ProjectDto) =>
@@ -449,9 +481,11 @@ export function SettingsView() {
     });
 
   const removeRoot = async (r: string) => {
-    if (busy || deletingRoot !== null) return;
+    if (busyRef.current || deletingRootRef.current !== null) return;
     if (!window.confirm(`許可ルート「${r}」を削除しますか？`)) return;
+    busyRef.current = true;
     setBusy(true);
+    deletingRootRef.current = r;
     setDeletingRoot(r);
     setError(null);
     try {
@@ -471,10 +505,16 @@ export function SettingsView() {
       await refresh();
       notifyTasksChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "操作に失敗しました");
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "操作に失敗しました");
+      }
     } finally {
-      setDeletingRoot(null);
-      setBusy(false);
+      deletingRootRef.current = null;
+      busyRef.current = false;
+      if (mountedRef.current) {
+        setDeletingRoot(null);
+        setBusy(false);
+      }
     }
   };
 
@@ -498,8 +538,12 @@ export function SettingsView() {
   const copyUrl = async (url: string) => {
     const ok = await copyText(url);
     if (!ok) return;
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     setCopied(url);
-    setTimeout(() => setCopied(null), 1500);
+    copiedTimerRef.current = setTimeout(() => {
+      copiedTimerRef.current = null;
+      if (mountedRef.current) setCopied(null);
+    }, 1500);
   };
 
   const kindLabel = (kind: string) =>

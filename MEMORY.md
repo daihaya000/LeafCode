@@ -3701,6 +3701,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: shared settings pages need separate lifecycle boundaries for reusable section hooks and page-level mutations.
 
+## 2026-08-01: Settings view operation lifecycle
+
+- Found: SettingsView's shared refresh, service restart/update, project/root mutations, and copy timeout relied on rendered state or had no unmount boundary; same-turn root deletion could also race the visible busy state.
+- Fixed: add request invalidation, synchronous operation locks, restart/update polling guards, mounted checks for mutation feedback, and timer cleanup for copy notices.
+- Verification: SettingsView tests passed (22/22), including root busy-state regression; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: when adding ref-level locks, preserve the state setter that drives the user's visible busy feedback; refs protect correctness, state communicates it.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.
@@ -3714,3 +3721,4 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - やったこと: Claude認証の再試行時にOpenCodeの `/provider/auth` を実測し、Anthropicの認証方式自体が応答から消えていることを確認した。デバッグ計装は診断後に除去した。
 - 判断理由: WebUIのOAuth APIではなく、Claude Authプラグイン削除によりOpenCode側のOAuth提供元がなくなっていたため。プラグインを再登録・再有効化してOpenCode hostを再起動するのが復旧手順。
 - 教訓: 認証UIのエラーは画面側だけで判断せず、上流の認証方式一覧に対象プロバイダーと方式が存在するかを先に確認する。
+\n## 2026-08-01: 接続状態バッジの対象を明示\n\n- やったこと: SettingsView の2つの接続状態バッジを「OpenCode 接続中」「トレイホスト接続中」のように対象付きへ変更し、テストの期待値も更新。\n- 判断理由: 旧表示は「接続中」と「ホスト接続中」が並び、どの接続を示すか一目で判別しづらかったため。\n- 教訓: 複数の接続先を同じ画面で示す場合は、状態語だけでなく対象名をラベルに含める。\n
