@@ -466,6 +466,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const refreshSequenceRef = useRef(0);
   const goalLoopRefreshSequenceRef = useRef(0);
   const goalLoopRefreshBusyRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
   if (taskIdRef.current !== taskId) {
     taskIdRef.current = taskId;
     taskRef.current = readCachedTaskSummary(taskId);
@@ -476,7 +477,21 @@ export function TaskView({ taskId }: { taskId: string }) {
     taskRef.current = cached;
     setTask(cached);
     setLoadError(null);
+    return () => {
+      refreshSequenceRef.current += 1;
+      goalLoopRefreshSequenceRef.current += 1;
+      goalLoopRefreshBusyRef.current = null;
+    };
   }, [taskId]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      refreshSequenceRef.current += 1;
+      goalLoopRefreshSequenceRef.current += 1;
+      goalLoopRefreshBusyRef.current = null;
+    };
+  }, []);
   const [tab, setTab] = useState<ChatTab>("chat");
   const [showDiff, setShowDiff] = useState(true);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
@@ -1364,6 +1379,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, []);
 
   const refreshTask = useCallback(async () => {
+    if (!mountedRef.current) return;
     const sequence = ++refreshSequenceRef.current;
     const requestedTaskId = taskId;
     try {
@@ -1372,6 +1388,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         goalLoop?: GoalLoopDto | null;
       }>(`/api/tasks/${taskId}`);
       if (
+        !mountedRef.current ||
         sequence !== refreshSequenceRef.current ||
         taskIdRef.current !== requestedTaskId
       ) {
@@ -1384,6 +1401,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       setLoadError(null);
     } catch (err) {
       if (
+        !mountedRef.current ||
         sequence !== refreshSequenceRef.current ||
         taskIdRef.current !== requestedTaskId
       ) {
@@ -1395,6 +1413,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [taskId]);
 
   const refreshGoalLoop = useCallback(async () => {
+    if (!mountedRef.current) return;
     const requestedTaskId = taskId;
     if (goalLoopRefreshBusyRef.current === requestedTaskId) return;
     goalLoopRefreshBusyRef.current = requestedTaskId;
@@ -1404,6 +1423,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         `/api/tasks/${taskId}/goal-loop`,
       );
       if (
+        !mountedRef.current ||
         sequence !== goalLoopRefreshSequenceRef.current ||
         taskIdRef.current !== requestedTaskId
       ) {
@@ -1413,6 +1433,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       setGoalLoopError(null);
     } catch (err) {
       if (
+        !mountedRef.current ||
         sequence !== goalLoopRefreshSequenceRef.current ||
         taskIdRef.current !== requestedTaskId
       ) {

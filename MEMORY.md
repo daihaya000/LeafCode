@@ -3652,6 +3652,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: Sidebar tests passed (37/37), including overlapping-poll coverage; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: multiple polling triggers should share one backpressure gate and retain one trailing refresh so recovery signals are not lost.
 
+## 2026-08-01: TaskView async lifecycle isolation
+
+- Found: TaskView task and goal-loop requests were sequence-scoped for task switching, but a response arriving after the view unmounted could still pass the same-task check and update state.
+- Fixed: add mounted guards and invalidate both task and goal-loop generations on task changes and unmount.
+- Verification: TaskView tests passed (104/104); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: request sequence identity must be paired with a component lifecycle boundary; same-task late responses are still invalid after unmount.
+
 ## 2026-08-01: Claude OAuth plugin removal diagnosis
 
 - やったこと: Claude認証の再試行時にOpenCodeの `/provider/auth` を実測し、Anthropicの認証方式自体が応答から消えていることを確認した。デバッグ計装は診断後に除去した。

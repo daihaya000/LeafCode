@@ -1192,6 +1192,28 @@ describe("TaskView", () => {
     expect(taskCalls).toBe(2);
   });
 
+  it("ignores a task refresh that resolves after unmount", async () => {
+    let resolveTaskRequest!: (value: { task: TaskSummary }) => void;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      return new Promise<{ task: TaskSummary }>((resolve) => {
+        resolveTaskRequest = resolve;
+      });
+    });
+    const view = render(<TaskView taskId="ws1" />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    view.unmount();
+
+    await act(async () => {
+      resolveTaskRequest({ task: task(0.2) });
+      await Promise.resolve();
+    });
+  });
+
   it("ignores an older task refresh after a newer refresh completes", async () => {
     let resolveInitial: ((value: { task: TaskSummary }) => void) | undefined;
     let taskCalls = 0;
