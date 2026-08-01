@@ -16,7 +16,7 @@ function isConnected(value: unknown): boolean {
   return Array.isArray(value) && value.includes("anthropic");
 }
 
-export function ClaudeSubscriptionAuth() {
+export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: boolean }) {
   const [state, setState] = useState<State>("loading");
   const [connected, setConnected] = useState(false);
   const [methodIndex, setMethodIndex] = useState<number | null>(null);
@@ -100,8 +100,11 @@ export function ClaudeSubscriptionAuth() {
   };
 
   return (
-    <section aria-labelledby="claude-subscription-heading">
-      <h2 id="claude-subscription-heading" className="mb-3 text-sm font-semibold text-muted">Claude サブスクリプション</h2>
+    <section
+      aria-label={showHeading ? undefined : "Claude サブスクリプション"}
+      aria-labelledby={showHeading ? "claude-subscription-heading" : undefined}
+    >
+      {showHeading && <h2 id="claude-subscription-heading" className="mb-3 text-sm font-semibold text-muted">Claude サブスクリプション</h2>}
       <div className="rounded-xl border border-border bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">

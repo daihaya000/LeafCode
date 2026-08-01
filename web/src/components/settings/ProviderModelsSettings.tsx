@@ -958,11 +958,24 @@ export function ProviderModelsSettings() {
           ))}
       </section>
 
-      {providers.some((provider) => provider.id === "openai") && (
-        <OpenAISubscriptionAuth />
-      )}
-      {providers.some((provider) => provider.id === "anthropic") && (
-        <ClaudeSubscriptionAuth />
+      {(providers.some((provider) => provider.id === "openai") ||
+        providers.some((provider) => provider.id === "anthropic")) && (
+        <section aria-labelledby="subscriptions-heading">
+          <h2
+            id="subscriptions-heading"
+            className="mb-3 text-sm font-semibold text-muted"
+          >
+            サブスクリプション
+          </h2>
+          <div className="space-y-3">
+            {providers.some((provider) => provider.id === "openai") && (
+              <OpenAISubscriptionAuth showHeading={false} />
+            )}
+            {providers.some((provider) => provider.id === "anthropic") && (
+              <ClaudeSubscriptionAuth showHeading={false} />
+            )}
+          </div>
+        </section>
       )}
     </div>
   );
