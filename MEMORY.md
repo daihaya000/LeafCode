@@ -3743,6 +3743,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SessionActions tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: action locks must be scoped to the current session generation, otherwise a stale command can block or mutate the newly displayed session.
 
+## 2026-08-01: Add project picker lifecycle
+
+- Found: AddProjectButton protected directory responses by request id, but native folder-picker and project-submit operations still relied on rendered busy state and could update a closed/unmounted dialog.
+- Fixed: add mounted/request guards, synchronous submit and picker locks, and safe cleanup for loading/busy feedback across the in-app and native picker flows.
+- Verification: AddProjectButton tests passed (17/17); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: dialogs that bridge to native APIs need independent locks for the picker and submit phases; one rendered `busy` flag cannot cover both same-turn entry points.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.

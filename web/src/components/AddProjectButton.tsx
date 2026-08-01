@@ -96,6 +96,17 @@ export function AddProjectButton({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const reqIdRef = useRef(0);
+  const mountedRef = useRef(false);
+  const busyRef = useRef(false);
+  const pickerBusyRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      reqIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (attentionOpen && open) setOpen(false);
@@ -148,6 +159,7 @@ export function AddProjectButton({
 
   const load = useCallback(async (dir: string | null) => {
     // H3: invalidate any in-flight request before starting a new one.
+    if (!mountedRef.current) return;
     const id = ++reqIdRef.current;
     setLoading(true);
     setError(null);
@@ -155,7 +167,7 @@ export function AddProjectButton({
       const q = dir ? { path: dir } : undefined;
       const data = await getJson<DirList>("/api/browse/dirs", q);
       // H3: drop the response if a newer request superseded this one.
-      if (id !== reqIdRef.current) return;
+      if (!mountedRef.current || id !== reqIdRef.current) return;
       setCwd(data.path);
       setParent(data.parent);
       setEntries(data.entries ?? []);
@@ -165,11 +177,11 @@ export function AddProjectButton({
       // standard explorer UX: clicking a folder opens it and selects it.
       if (data.path) setManualPath(data.path);
     } catch (err) {
-      if (id !== reqIdRef.current) return;
+      if (!mountedRef.current || id !== reqIdRef.current) return;
       // H4: translate API errors to Japanese.
       setError(apiErrorMessage(err, "一覧取得に失敗しました"));
     } finally {
-      if (id === reqIdRef.current) setLoading(false);
+      if (mountedRef.current && id === reqIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -194,7 +206,7 @@ export function AddProjectButton({
   const confirm = useCallback(
     async (rootPath: string) => {
       // A4: guard against double-submit while a request is in flight.
-      if (busy) return;
+      if (busyRef.current) return;
       const p = rootPath.trim();
       if (!p) return;
       // H2: lightweight client-side path shape validation.
@@ -202,27 +214,31 @@ export function AddProjectButton({
         setError("パスの形式が正しくありません");
         return;
       }
+      busyRef.current = true;
       setBusy(true);
       setError(null);
       try {
         const data = await sendJson<{ project: ProjectDto }>("POST", "/api/projects", {
           rootPath: p,
         });
+        if (!mountedRef.current) return;
         notifyTasksChanged();
         onAdded?.(data.project);
         setOpen(false);
       } catch (err) {
+        if (!mountedRef.current) return;
         // H4: translate API errors to Japanese.
         setError(apiErrorMessage(err, "追加に失敗しました"));
       } finally {
-        setBusy(false);
+        busyRef.current = false;
+        if (mountedRef.current) setBusy(false);
       }
     },
-    [busy, onAdded],
+    [onAdded],
   );
 
   const openPicker = useCallback(async () => {
-    if (attentionOpen || pickerBusy || busy) return;
+    if (attentionOpen || pickerBusyRef.current || busyRef.current) return;
     setError(null);
     setNotice(null);
 
@@ -235,6 +251,7 @@ export function AddProjectButton({
     // the request comes from the same machine (direct loopback, or a trusted
     // local reverse proxy such as Caddy). When denied, fall back to the
     // cross-platform in-app picker and show the reason in a banner.
+    pickerBusyRef.current = true;
     setPickerBusy(true);
     try {
       const selected = await sendJson<NativeFolderPickerResult>(
@@ -247,9 +264,11 @@ export function AddProjectButton({
         undefined,
         { timeoutMs: 300_000 },
       );
+      if (!mountedRef.current) return;
       if (selected.cancelled || !selected.path) return;
       await confirm(selected.path);
     } catch (err) {
+      if (!mountedRef.current) return;
       // If the host cannot show the native dialog, keep the project add flow
       // usable by falling back to the cross-platform in-app picker.
       const message = apiErrorMessage(err, "フォルダ選択に失敗しました");
@@ -262,9 +281,10 @@ export function AddProjectButton({
       }
       setOpen(true);
     } finally {
-      setPickerBusy(false);
+      pickerBusyRef.current = false;
+      if (mountedRef.current) setPickerBusy(false);
     }
-  }, [attentionOpen, busy, confirm, cwd, manualPath, pickerBusy]);
+  }, [attentionOpen, confirm, cwd, manualPath]);
 
   // The add target: the path field (synced to the current folder on every
   // navigation), falling back to the current directory.
