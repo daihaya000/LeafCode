@@ -4128,3 +4128,15 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: abort the previous approval refresh before starting the next poll, ignore aborted/stale results, expose an alert with a manual retry action, and add the same retry affordance to host logs.
 - Verification: Browser Bridge approval and host-log tests passed (21/21); full suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: polling should have an explicit cancellation policy, and background retries should not replace a visible recovery action.
+
+## 2026-08-01: Keyboard focus visibility audit
+
+- Found: several native selects and the command-palette search input used `outline-none` without a replacement `focus-visible` style, so keyboard users could lose the active-control indicator.
+- Fixed: add consistent accent-colored focus-visible outlines to Diff filters and branch selectors, session switching, permission options, Next Action count selection, and command search.
+- Verification: focused UI tests passed (45/45); full suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: a global focus rule cannot recover controls whose utility classes have stronger `outline-none` specificity; every custom-styled native control needs an explicit visible focus state.
+
+## 2026-08-01: AIハーネス改善計画のレビュー
+- やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
+- 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。
+- 教訓: 改善計画はコード上の既実装を再確認し、既済項目を重複計画しない。OS Job Objectはプロセス回収には有効だがセキュリティ境界ではないため、隔離強化とは分けて扱う。
