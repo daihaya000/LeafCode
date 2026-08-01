@@ -3497,3 +3497,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a synchronous busy ref shared by session creation and switching, while retaining the visible busy/disabled state.
 - Verification: SessionSwitcher tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: for native controls such as `select`, visual disabling is not sufficient protection against same-tick event re-entry; guard the handler itself.
+
+## 2026-08-01: PTY creation re-entry guard
+
+- Found: rapid clicks on the PTY "new session" control could issue multiple POST requests before the disabled state re-rendered, potentially creating duplicate terminals.
+- Fixed: add a synchronous creation ref guard alongside the existing visible loading state.
+- Verification: PtyPanel tests passed (11/11), including SSE reconnect/exit and directory-switch cases; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: resource-creating controls need an immediate in-handler lock, especially when creation has side effects outside the browser.

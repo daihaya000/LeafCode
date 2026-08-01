@@ -156,6 +156,29 @@ describe("PtyPanel", () => {
     expect(JSON.parse(createCall![1].body)).toEqual({ directory: "C:/proj" });
   });
 
+  it("does not create duplicate sessions from rapid clicks", async () => {
+    mockFetchJson(200, { sessions: [] });
+    let resolveCreate: ((value: unknown) => void) | undefined;
+    fetchMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveCreate = resolve; }),
+    );
+    mockFetchJson(200, { sessions: [] });
+
+    render(<PtyPanel directory="C:/proj" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const createButton = screen.getAllByRole("button")[0]!;
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    resolveCreate?.({
+      ok: true,
+      status: 200,
+      json: vi.fn(() => Promise.resolve({ id: "pty_2" })),
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  });
+
   it("opens the SSE stream when a session tab is clicked", async () => {
     mockFetchJson(200, {
       sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],

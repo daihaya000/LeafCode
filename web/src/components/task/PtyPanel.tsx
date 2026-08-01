@@ -52,6 +52,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sseRef = useRef<EventSource | null>(null);
   const refreshRequestRef = useRef(0);
+  const creatingRef = useRef(false);
 
   /** Refresh the PTY session list from the BFF. */
   const refresh = useCallback(async () => {
@@ -137,6 +138,8 @@ export function PtyPanel({ directory }: { directory: string }) {
 
   /** Create a new PTY and switch to it. */
   const createSession = useCallback(async () => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
     try {
       const res = await fetch(apiUrl("/api/pty-session", { directory }), {
@@ -155,6 +158,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         err instanceof Error ? err.message : "PTY セッションを作成できません",
       );
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   }, [directory, refresh]);
