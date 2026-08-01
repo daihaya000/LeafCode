@@ -3016,6 +3016,16 @@ export function TaskView({ taskId }: { taskId: string }) {
         </div>
       </header>
 
+      {sessionActions.error && (
+        <p
+          role="alert"
+          aria-live="assertive"
+          className="shrink-0 border-b border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
+        >
+          セッション操作に失敗しました: {sessionActions.error}
+        </p>
+      )}
+
       {/* Mobile tabs */}
       <div className="flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
         {(

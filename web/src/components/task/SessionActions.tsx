@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ocJson } from "@/lib/client";
@@ -78,6 +78,10 @@ export function useSessionActions({
   const [busy, setBusy] = useState<SessionActionKey | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setError(null);
+  }, [directory, sessionId]);
+
   const run = useCallback(
     async (key: SessionActionKey, fn: () => Promise<"ok" | "cancelled">) => {
       setBusy(key);
@@ -88,14 +92,6 @@ export function useSessionActions({
       } catch (err) {
         const msg = err instanceof Error ? err.message : "失敗しました";
         setError(msg);
-        // Use action-specific error messages instead of always showing "巻き戻し失敗" (R25).
-        const actionLabel =
-          key === "compact"
-            ? "コンテキスト圧縮"
-            : key === "unrevert"
-              ? "巻き戻し取消"
-              : "巻き戻し";
-        window.alert(`${actionLabel}に失敗: ${msg}`);
       } finally {
         setBusy(null);
       }
@@ -190,44 +186,54 @@ export function MessageRevertButton({
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
-    <button
-      type="button"
-      disabled={disabled || busy}
-      title="このコメントを入力欄に戻して巻き戻す"
-      onClick={() => {
-        void (async () => {
-          if (
-            !window.confirm(
-              "このコメントを下の入力欄に戻し、ここ以降を巻き戻しますか？",
-            )
-          ) {
-            return;
-          }
-          setBusy(true);
-          try {
-            const text = await revertUserMessageToComposer(
-              directory,
-              sessionId,
-              messageId,
-              messages,
-            );
-            onRestoreText?.(text);
-            onDone?.();
-          } catch (err) {
-            window.alert(
-              err instanceof Error ? err.message : "巻き戻しに失敗しました",
-            );
-          } finally {
-            setBusy(false);
-          }
-        })();
-      }}
-      className={REVERT_BUTTON_BASE}
-    >
-      <RotateCcw className={busy ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
-      入力欄に戻す
-    </button>
+    <div className="flex max-w-full flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={disabled || busy}
+        aria-busy={busy || undefined}
+        title="このコメントを入力欄に戻して巻き戻す"
+        onClick={() => {
+          void (async () => {
+            if (
+              !window.confirm(
+                "このコメントを下の入力欄に戻し、ここ以降を巻き戻しますか？",
+              )
+            ) {
+              return;
+            }
+            setBusy(true);
+            setError(null);
+            try {
+              const text = await revertUserMessageToComposer(
+                directory,
+                sessionId,
+                messageId,
+                messages,
+              );
+              onRestoreText?.(text);
+              onDone?.();
+            } catch (err) {
+              setError(
+                err instanceof Error ? err.message : "巻き戻しに失敗しました",
+              );
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+        className={REVERT_BUTTON_BASE}
+      >
+        <RotateCcw className={busy ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
+        入力欄に戻す
+      </button>
+      {error && (
+        <p role="alert" className="max-w-[min(22rem,80vw)] break-words text-right text-[11px] text-danger">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

@@ -3371,3 +3371,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add request-generation guards, expose a project loading label/lock, and only select the newly added project after a successful refresh.
 - Verification: HomeView tests passed (50/50); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: selection state should only point at data confirmed in the currently visible collection; refresh helpers should report success when callers need to make a follow-up selection.
+
+## 2026-08-01: Session action error feedback
+
+- Found: compact/revert/unrevert failures used `window.alert`, blocking the entire page, while the hook's error state was not rendered; message-level revert failures had the same blocking behavior.
+- Fixed: remove blocking alerts, render session-action failures as an assertive header alert, show message-revert failures inline, and expose the revert button's busy state with `aria-busy`.
+- Verification: SessionActions and TaskView tests passed (102/102); dedicated SessionActions error tests passed (2/2); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: action errors should remain in the task context and preserve interaction, especially for operations that may require a retry or composer recovery.
