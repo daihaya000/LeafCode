@@ -527,6 +527,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
+  const [manualResyncing, setManualResyncing] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const taskDeleteConfirmRef = useRef<HTMLDivElement | null>(null);
   const taskDeleteTriggerRef = useRef<HTMLElement | null>(null);
@@ -2436,6 +2437,17 @@ export function TaskView({ taskId }: { taskId: string }) {
     }, 1500);
   }, [task]);
 
+  const manualResync = useCallback(async () => {
+    if (working || manualResyncing) return;
+    setManualResyncing(true);
+    try {
+      await resync();
+      setDiffKey((key) => key + 1);
+    } finally {
+      if (mountedRef.current) setManualResyncing(false);
+    }
+  }, [manualResyncing, resync, working]);
+
   useEffect(() => {
     setCopied(false);
     if (copiedTimerRef.current !== null) {
@@ -3176,12 +3188,10 @@ export function TaskView({ taskId }: { taskId: string }) {
             variant="ghost"
             size="icon"
             title="再同期"
-            aria-label="再同期"
-            disabled={working}
-            onClick={() => {
-              void stream.resync();
-              setDiffKey((key) => key + 1);
-            }}
+            aria-label={manualResyncing ? "再同期中" : "再同期"}
+            busy={manualResyncing}
+            disabled={working || manualResyncing}
+            onClick={() => void manualResync()}
           >
             <RefreshCw className="h-4 w-4" />
           </Button>

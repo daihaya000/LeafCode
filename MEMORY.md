@@ -4206,6 +4206,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: PTY and PartView tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: touch sizing should be applied to every interaction surface, including transient overlays and embedded terminal controls, not only primary navigation.
 
+## 2026-08-01: Manual resync feedback
+
+- Found: the task-header manual `再同期` action was disabled while working but had no busy state, so an idle resync could appear unresponsive and be clicked repeatedly.
+- Fixed: serialize the manual action at the UI level, expose `再同期中`, show the shared busy spinner, and refresh the diff after the resync completes; updated the TaskView regression flow.
+- Verification: TaskView tests passed (105/105); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: a transport-level deduplication guard should be paired with immediate visual feedback at every user-triggered entry point.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

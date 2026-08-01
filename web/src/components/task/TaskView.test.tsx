@@ -1338,8 +1338,9 @@ describe("TaskView", () => {
     expect(streamMock.resync).toHaveBeenCalledTimes(1);
     // DiffPane only renders when sidePanel === "diff"; open it first.
     fireEvent.click(within(headerActions).getByRole("button", { name: "Diff パネル" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "再同期" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "再同期" }));
-    expect(diffPaneRefreshKeys).toContain(1);
+    await waitFor(() => expect(diffPaneRefreshKeys).toContain(1));
 
     fireEvent.click(screen.getByRole("button", { name: "ターミナル" }));
     expect(screen.getByTestId("pty-panel")).toBeTruthy();
