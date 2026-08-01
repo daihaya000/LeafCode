@@ -3995,6 +3995,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: path and access-control mutations need the same contextual confirmation treatment as task and provider mutations.
 
+## 2026-08-01: Project deletion confirmation UX
+
+- Found: SettingsView project deletion still used a native confirmation, leaving the related task/worktree deletion scope outside the page and without a predictable keyboard focus lifecycle.
+- Fixed: add an inline alert dialog with the project name and impact, focus the primary action on open, support Escape cancellation and trigger focus restoration, and preserve the guarded asynchronous deletion flow.
+- Verification: SettingsView tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: destructive project operations need contextual confirmation at the point where the project list is managed.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.

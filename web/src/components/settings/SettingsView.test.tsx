@@ -95,13 +95,19 @@ type AccessPayload = {
 };
 
 function mockGetJson(
-  overrides?: Partial<{ orphans: OrphansPayload; access: AccessPayload }>,
+  overrides?: Partial<{
+    orphans: OrphansPayload;
+    access: AccessPayload;
+    projects: unknown[];
+  }>,
 ) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/health") {
       return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
     }
-    if (path === "/api/projects") return Promise.resolve({ projects: [] });
+    if (path === "/api/projects") {
+      return Promise.resolve({ projects: overrides?.projects ?? [] });
+    }
     if (path === "/api/roots") return Promise.resolve({ roots: [] });
     if (path === "/api/extensions/agents") {
       return Promise.resolve({ agents: [AGENT_FIXTURE] });
@@ -534,6 +540,44 @@ describe("SettingsView", () => {
       );
     }, { timeout: 3000 });
     expect(healthPolls).toBe(2);
+  });
+
+  it("shows an inline confirmation before deleting a project", async () => {
+    const projects = [
+      {
+        id: "prj1",
+        name: "Repo",
+        rootPath: "C:\\repo",
+        favorite: false,
+        lastOpenedAt: null,
+      },
+    ];
+    mockGetJson({ projects });
+    sendJson.mockImplementation(async () => {
+      projects.splice(0, 1);
+      return {};
+    });
+
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+    fireEvent.click(screen.getByRole("tab", { name: /プロジェクト/ }));
+
+    const deleteButton = await screen.findByRole("button", { name: "Repoを削除" });
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Repo");
+    expect(document.activeElement).toBe(dialog.querySelector("button"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    fireEvent.click(deleteButton);
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/projects", undefined, {
+        id: "prj1",
+      });
+    });
   });
 
   it("confirms the root path and removes the row after a successful delete", async () => {

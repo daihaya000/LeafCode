@@ -203,6 +203,8 @@ export function SettingsView() {
   const [busy, setBusy] = useState(false);
   const [deletingRoot, setDeletingRoot] = useState<string | null>(null);
   const [pendingRootDelete, setPendingRootDelete] = useState<string | null>(null);
+  const [pendingProjectDelete, setPendingProjectDelete] =
+    useState<ProjectDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
@@ -226,6 +228,8 @@ export function SettingsView() {
   const deletingRootRef = useRef<string | null>(null);
   const rootConfirmRef = useRef<HTMLDivElement | null>(null);
   const rootTriggerRef = useRef<HTMLElement | null>(null);
+  const projectConfirmRef = useRef<HTMLDivElement | null>(null);
+  const projectTriggerRef = useRef<HTMLElement | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -254,6 +258,23 @@ export function SettingsView() {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [pendingRootDelete]);
+
+  useEffect(() => {
+    if (!pendingProjectDelete) {
+      if (projectTriggerRef.current?.isConnected) projectTriggerRef.current.focus();
+      projectTriggerRef.current = null;
+      return;
+    }
+
+    projectConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPendingProjectDelete(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pendingProjectDelete]);
   useEffect(() => {
     const prefs = readCostDisplayPrefs();
     setCostPrefs(prefs);
@@ -490,14 +511,19 @@ export function SettingsView() {
       });
     });
 
-  const removeProject = (p: ProjectDto) =>
-    guard(async () => {
-      const ok = window.confirm(
-        `プロジェクト「${p.name}」を削除しますか？\n関連タスク / worktree も削除されます。`,
-      );
-      if (!ok) return;
+  const removeProject = (p: ProjectDto, confirmed = false) => {
+    if (!confirmed) {
+      projectTriggerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      setPendingProjectDelete(p);
+      return;
+    }
+    void guard(async () => {
       await sendJson("DELETE", "/api/projects", undefined, { id: p.id });
     });
+  };
 
   const addRoot = () =>
     guard(async () => {
@@ -980,6 +1006,43 @@ export function SettingsView() {
               <div className="mb-3">
                 <AddProjectButton onAdded={() => void refresh()} />
               </div>
+              {pendingProjectDelete && (
+                <div
+                  ref={projectConfirmRef}
+                  role="alertdialog"
+                  aria-label="プロジェクト削除の確認"
+                  aria-describedby="project-delete-confirm-description"
+                  className="mb-3 rounded-xl border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
+                >
+                  <p id="project-delete-confirm-description">
+                    プロジェクト「{pendingProjectDelete.name}」を削除しますか？
+                    <br />
+                    関連タスクとworktreeも削除されます。
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      busy={busy}
+                      onClick={() => {
+                        const project = pendingProjectDelete;
+                        projectTriggerRef.current = null;
+                        setPendingProjectDelete(null);
+                        removeProject(project, true);
+                      }}
+                    >
+                      削除する
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPendingProjectDelete(null)}
+                    >
+                      キャンセル
+                    </Button>
+                  </div>
+                </div>
+              )}
               <ul className="space-y-2">
                 {projects.map((p) => (
                   <li
@@ -1015,6 +1078,7 @@ export function SettingsView() {
                     <button
                       type="button"
                       disabled={busy}
+                      aria-label={`${p.name}を削除`}
                       title="プロジェクトを削除"
                       onClick={() => void removeProject(p)}
                       className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
