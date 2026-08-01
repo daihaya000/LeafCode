@@ -44,6 +44,7 @@ export function CommandPalette({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -107,12 +108,16 @@ export function CommandPalette({
     let cancelled = false;
     setQuery("");
     setActive(0);
+    setTasksLoading(true);
     getJson<{ tasks: TaskSummary[] }>("/api/tasks")
       .then((d) => {
         if (!cancelled) setTasks(d.tasks ?? []);
       })
       .catch(() => {
         if (!cancelled) setTasks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTasksLoading(false);
       });
     return () => {
       cancelled = true;
@@ -213,6 +218,15 @@ export function CommandPalette({
     setActive((cur) => Math.min(cur, Math.max(0, items.length - 1)));
   }, [items]);
 
+  useEffect(() => {
+    const activeItem = listRef.current?.querySelector<HTMLElement>(
+      `[data-command-index="${active}"]`,
+    );
+    if (activeItem && typeof activeItem.scrollIntoView === "function") {
+      activeItem.scrollIntoView({ block: "nearest" });
+    }
+  }, [active, items]);
+
   const select = useCallback(
     (item: Item) => {
       close();
@@ -266,16 +280,23 @@ export function CommandPalette({
             esc
           </kbd>
         </div>
-        <div ref={listRef} className="max-h-[50vh] overflow-y-auto p-1.5">
+        <div
+          ref={listRef}
+          className="max-h-[50vh] overflow-y-auto p-1.5"
+          role="list"
+          aria-busy={tasksLoading || undefined}
+        >
           {items.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-faint">
-              一致する項目がありません
+            <p className="px-3 py-6 text-center text-sm text-faint" role="status" aria-live="polite">
+              {tasksLoading ? "検索中…" : "一致する項目がありません"}
             </p>
           )}
           {items.map((item, i) => (
             <button
               key={item.id}
               type="button"
+              data-command-index={i}
+              aria-current={i === active ? "true" : undefined}
               onMouseEnter={() => setActive(i)}
               onClick={() => select(item)}
               className={cx(

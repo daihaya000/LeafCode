@@ -3294,3 +3294,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: focus the current option on open, support ArrowUp/ArrowDown/Home/End and Enter/Space selection, and return focus to the trigger after selection or Escape.
 - Verification: `ui.test.ts` passed (5/5); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: portaled custom controls must implement the complete keyboard lifecycle, including opening, navigation, dismissal, and focus restoration.
+
+## 2026-08-01: Command palette search feedback
+
+- Found: while the task list request was still pending, a filtered palette could show "一致する項目がありません", and keyboard selection could move beyond the visible portion of a long result list.
+- Fixed: added a polite loading status and busy state, marked the active result, and scrolls the active result into view as ArrowUp/ArrowDown changes it.
+- Verification: CommandPalette tests passed (2/2); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: asynchronous search surfaces must distinguish loading from empty results and keep keyboard selection visibly synchronized with the scroll viewport.
