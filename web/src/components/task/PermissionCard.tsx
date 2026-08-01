@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui";
 import {
@@ -25,9 +25,11 @@ export function PermissionCard({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
 
   const reply = async (response: "once" | "always" | "reject") => {
-    if (busy !== null) return;
+    if (busy !== null || busyRef.current) return;
+    busyRef.current = true;
     setBusy(response);
     setError(null);
     try {
@@ -35,12 +37,13 @@ export function PermissionCard({
     } catch (err) {
       setError(err instanceof Error ? err.message : "応答に失敗しました");
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };
 
   const onExtra = async (value: string) => {
-    if (!value || busy !== null) return;
+    if (!value || busy !== null || busyRef.current) return;
     if (value === "always") {
       const action = permissionAutoAction({
         permission: request.permission,
@@ -52,6 +55,7 @@ export function PermissionCard({
       return;
     }
     if (value === "full") {
+      busyRef.current = true;
       setBusy("full");
       setError(null);
       try {
@@ -69,6 +73,7 @@ export function PermissionCard({
       } catch (err) {
         setError(err instanceof Error ? err.message : "応答に失敗しました");
       } finally {
+        busyRef.current = false;
         setBusy(null);
       }
     }

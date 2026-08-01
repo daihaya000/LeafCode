@@ -3504,3 +3504,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a synchronous creation ref guard alongside the existing visible loading state.
 - Verification: PtyPanel tests passed (11/11), including SSE reconnect/exit and directory-switch cases; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: resource-creating controls need an immediate in-handler lock, especially when creation has side effects outside the browser.
+
+## 2026-08-01: Permission response re-entry guard
+
+- Found: permission cards could receive multiple same-tick responses through the select-based auto-action path before the busy state rendered.
+- Fixed: share an immediate busy ref across direct replies, auto-actions, and full-access approval; preserve the existing disabled/busy feedback.
+- Verification: PermissionCard test passed (1/1); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: every permission response entry point must share one synchronous lock, including controls that internally delegate to the main reply handler.
