@@ -58,6 +58,9 @@ export function CommandPalette({
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         if (attentionOpen) return;
+        if (!open) {
+          previousFocusRef.current = document.activeElement as HTMLElement | null;
+        }
         setOpen((v) => !v);
       }
       // R8#3: Only respond to Escape when the palette is open
@@ -73,13 +76,15 @@ export function CommandPalette({
 
   useEffect(() => {
     if (!open) {
-      if (previousFocusRef.current) {
+      if (
+        previousFocusRef.current?.isConnected &&
+        (document.activeElement === document.body || document.activeElement === null)
+      ) {
         previousFocusRef.current.focus();
-        previousFocusRef.current = null;
       }
+      previousFocusRef.current = null;
       return;
     }
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || !panelRef.current) return;
       const focusables = Array.from(

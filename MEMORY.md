@@ -3791,3 +3791,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a flattened keyboard option model, active descendant semantics, highlighted navigation, Escape handling, and focus return to the trigger after selection.
 - Verification: ModelSelect tests passed (4/4); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: portaled listboxes need explicit keyboard state and focus ownership; visual hover behavior alone is not a complete picker interaction.
+
+## 2026-08-01: CommandPalette focus restoration
+
+- Found: the palette recorded `document.activeElement` after its `autoFocus` input had already mounted, so closing could attempt to focus the removed search field instead of the shortcut opener.
+- Fixed: capture the opener before opening and restore it only when focus is still body/unfocused; added a regression test.
+- Verification: CommandPalette tests passed (4/4); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: focus origin must be captured before rendering an auto-focused overlay, not during its open effect.

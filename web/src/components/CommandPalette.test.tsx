@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "./CommandPalette";
 import { getJson } from "@/lib/client";
@@ -82,5 +82,24 @@ describe("CommandPalette", () => {
     expect(screen.getByText("new-result.ts")).toBeTruthy();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("restores focus to the opener after closing", async () => {
+    cleanup();
+    vi.mocked(getJson).mockResolvedValue({ tasks: [] });
+    render(
+      <>
+        <button type="button">Opener</button>
+        <CommandPalette />
+      </>,
+    );
+    const opener = screen.getByRole("button", { name: "Opener" });
+    opener.focus();
+
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 });
