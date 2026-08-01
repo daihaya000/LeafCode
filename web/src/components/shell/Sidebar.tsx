@@ -1182,8 +1182,8 @@ export function Sidebar({
                                 <div className="absolute right-0.5 bottom-1 flex shrink-0 items-center">
                                   <button
                                     type="button"
-                                    aria-label="タスクをアーカイブ"
-                                    title="タスクをアーカイブ"
+                                    aria-label={`「${task.title}」をアーカイブ`}
+                                    title={`「${task.title}」をアーカイブ`}
                                     aria-busy={actionBusyKey === `archive:${task.id}`}
                                     disabled={actionBusyKey !== null}
                                     onClick={(e) => void archiveTask(task, e)}
@@ -1292,8 +1292,8 @@ export function Sidebar({
                       <div className="flex shrink-0 items-center pt-0.5 pr-0.5">
                         <button
                           type="button"
-                          aria-label="タスクを復元"
-                          title="タスクを復元"
+                          aria-label={`「${task.title}」を復元`}
+                          title={`「${task.title}」を復元`}
                           aria-busy={actionBusyKey === `restore:${task.id}`}
                           disabled={actionBusyKey !== null}
                           onClick={(e) => void restoreArchivedTask(task, e)}
@@ -1306,8 +1306,8 @@ export function Sidebar({
                         </button>
                         <button
                           type="button"
-                          aria-label="タスクを完全に削除"
-                          title="タスクを完全に削除"
+                          aria-label={`「${task.title}」を完全に削除`}
+                          title={`「${task.title}」を完全に削除`}
                           aria-busy={actionBusyKey === `destroy:${task.id}`}
                           disabled={actionBusyKey !== null}
                           onClick={(e) => void destroyArchivedTask(task, e)}

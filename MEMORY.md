@@ -4036,3 +4036,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: bind the trigger's `value` attribute to the selected model so automation, tests, and consumers can observe the same state as the rendered label and ARIA selection.
 - Verification: full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: custom selector controls should expose both semantic ARIA state and a stable machine-readable current value when the surrounding UI uses value-based state checks.
+
+## 2026-08-01: Sidebar task-action labeling
+
+- Found: every active and archived task row exposed identical archive, restore, and permanent-delete labels, so keyboard and screen-reader users could not identify which task an action would affect.
+- Fixed: include the task title in each row action's accessible name and tooltip; aligned Sidebar regression tests with the task-specific labels.
+- Verification: Sidebar tests passed (37/37); full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: repeated row actions must carry the row's identity in their accessible name, not only in nearby visual text.

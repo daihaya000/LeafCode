@@ -1052,7 +1052,7 @@ describe("Sidebar", () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
     await screen.findByText("Task title");
-    screen.getByLabelText("タスクをアーカイブ").click();
+    screen.getByLabelText("「Task title」をアーカイブ").click();
 
     await vi.waitFor(() => {
       expect(sendJson).toHaveBeenCalledWith("PATCH", "/api/tasks/ws1/archive");
@@ -1102,7 +1102,7 @@ describe("Sidebar", () => {
 
     expect(screen.queryByLabelText("会話からタイトルを再生成")).toBeNull();
 
-    const btn = screen.getByLabelText("タスクをアーカイブ");
+    const btn = screen.getByLabelText("「Task title」をアーカイブ");
     // 44px touch target on phones, 24px box on md+ so the action button does not
     // crowd out the task title inside a 240px sidebar.
     expect(btn.className).toContain("h-11");
@@ -1262,8 +1262,8 @@ describe("Sidebar archived section", () => {
     archiveHeading.click();
 
     await screen.findByText("Archived task");
-    expect(screen.getByLabelText("タスクを復元")).toBeTruthy();
-    expect(screen.getByLabelText("タスクを完全に削除")).toBeTruthy();
+    expect(screen.getByLabelText("「Archived task」を復元")).toBeTruthy();
+    expect(screen.getByLabelText("「Archived task」を完全に削除")).toBeTruthy();
   });
 
   it("groups archived tasks by project order and sorts tasks by update time then id", async () => {
@@ -1349,7 +1349,7 @@ describe("Sidebar archived section", () => {
     archiveHeading.click();
 
     await screen.findByText("Archived task");
-    screen.getByLabelText("タスクを復元").click();
+    screen.getByLabelText("「Archived task」を復元").click();
 
     await vi.waitFor(() => {
       expect(sendJson).toHaveBeenCalledWith(
@@ -1398,7 +1398,7 @@ describe("Sidebar archived section", () => {
     });
     archiveHeading.click();
     await screen.findByText("Archived task");
-    screen.getByLabelText("タスクを復元").click();
+    screen.getByLabelText("「Archived task」を復元").click();
 
     expect((await screen.findByRole("alert")).textContent).toContain("restore denied");
     expect(alertSpy.mock.calls).toHaveLength(0);
@@ -1440,7 +1440,7 @@ describe("Sidebar archived section", () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
     (await screen.findByRole("button", { name: "アーカイブを展開" })).click();
     await screen.findByText("Archived task");
-    const restore = screen.getByLabelText("タスクを復元") as HTMLButtonElement;
+    const restore = screen.getByLabelText("「Archived task」を復元") as HTMLButtonElement;
     fireEvent.click(restore);
     await waitFor(() =>
       expect(
@@ -1496,7 +1496,7 @@ describe("Sidebar archived section", () => {
     archiveHeading.click();
 
     await screen.findByText("Archived task");
-    screen.getByLabelText("タスクを完全に削除").click();
+    screen.getByLabelText("「Archived task」を完全に削除").click();
 
     const deleteButton = screen
       .getAllByRole("button")
