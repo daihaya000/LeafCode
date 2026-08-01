@@ -528,6 +528,55 @@ describe("ProviderModelsSettings", () => {
     }
   });
 
+  it("does not delete a provider twice while the first request is pending", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [
+            {
+              id: "custom",
+              name: "Custom AI",
+              enabled: true,
+              editable: true,
+              models: [],
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    let resolveDelete!: (value: unknown) => void;
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "DELETE" && path === "/api/extensions/provider-models/custom") {
+        return new Promise((resolve) => {
+          resolveDelete = resolve;
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<ProviderModelsSettings />);
+      const deleteButton = await screen.findByRole("button", {
+        name: /Custom AI/,
+      });
+
+      fireEvent.click(deleteButton);
+      await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+      fireEvent.click(deleteButton);
+      expect(sendJson).toHaveBeenCalledTimes(1);
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+      resolveDelete({ ok: true });
+      await waitFor(() => expect(screen.queryByText("Custom AI")).toBeNull());
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("does not send DELETE when provider deletion is cancelled", async () => {
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/default-model") {

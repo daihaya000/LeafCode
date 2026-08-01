@@ -3525,3 +3525,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a synchronous lock keyed by the composer session scope; switching to another session scope remains independent, and both normal sends and Goal Loop starts release the lock correctly.
 - Verification: TaskView tests passed (103/103); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: shared task views need lock keys aligned with their concurrency boundary; a global lock would unnecessarily block a newly selected session.
+
+## 2026-08-01: Provider model mutation re-entry
+
+- Found: provider save/delete handlers relied on React state-driven disabled buttons, so same-tick repeated events could start overlapping mutations.
+- Fixed: add one synchronous mutation ref shared by provider save and delete flows, preserving the existing visible busy states.
+- Verification: ProviderModelsSettings tests passed (29/29); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: settings mutations that affect external configuration should serialize at the handler boundary, not only through rendered button state.

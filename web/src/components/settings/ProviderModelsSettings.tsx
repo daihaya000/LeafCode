@@ -319,6 +319,7 @@ export function ProviderModelsSettings() {
   const [addMessage, setAddMessage] = useState<string | null>(null);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [deletingProviderId, setDeletingProviderId] = useState<string | null>(null);
+  const providerMutationRef = useRef(false);
   const loadRequestRef = useRef(0);
   const orderQueueRef = useRef(Promise.resolve());
   const orderPendingRef = useRef(0);
@@ -576,6 +577,7 @@ export function ProviderModelsSettings() {
 
   const deleteProvider = useCallback(
     async (provider: ProviderDto) => {
+      if (providerMutationRef.current) return;
       if (
         !window.confirm(
           `プロバイダー「${provider.name}」を削除しますか？\nopencode.jsonc から削除され、OpenCode の再起動後に反映されます。`,
@@ -583,6 +585,7 @@ export function ProviderModelsSettings() {
       ) {
         return;
       }
+      providerMutationRef.current = true;
       setDeletingProviderId(provider.id);
       setActionError(null);
       try {
@@ -595,6 +598,7 @@ export function ProviderModelsSettings() {
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "削除に失敗しました");
       } finally {
+        providerMutationRef.current = false;
         setDeletingProviderId(null);
       }
     },
@@ -610,6 +614,8 @@ export function ProviderModelsSettings() {
   const iconOnlyEdit = editingProvider !== null && !editingProvider.editable;
 
   const saveProvider = useCallback(async () => {
+    if (providerMutationRef.current) return;
+    providerMutationRef.current = true;
     if (editingProviderId && iconOnlyEdit) {
       setAddBusy(true);
       setActionError(null);
@@ -626,6 +632,7 @@ export function ProviderModelsSettings() {
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "保存に失敗しました");
       } finally {
+        providerMutationRef.current = false;
         setAddBusy(false);
       }
       return;
@@ -670,6 +677,7 @@ export function ProviderModelsSettings() {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "保存に失敗しました");
     } finally {
+      providerMutationRef.current = false;
       setAddBusy(false);
     }
   }, [editingProviderId, iconOnlyEdit, load, newProvider, resetProviderForm]);
