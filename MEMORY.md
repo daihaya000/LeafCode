@@ -3357,3 +3357,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: track an aborting state, ignore repeated abort requests, keep TaskView controls locked, and show `停止中…` until abort and resync settle.
 - Verification: useSessionStream and TaskView tests passed (104/104); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: cancellation can unlock the underlying state quickly for recovery, but UI controls need a separate in-flight cancellation guard.
+
+## 2026-08-01: PTY panel state and accessibility
+
+- Found: PTY loading briefly looked like an empty state, an old directory request could overwrite the current session list, failed DELETE responses were treated as success, and the session close icon was not keyboard-operable.
+- Fixed: add an explicit loading status, request-generation protection, HTTP failure handling with an alert, directory-scoped terminal cleanup, `aria-pressed` session selection, and a real accessible close button with duplicate-action protection.
+- Verification: PTY/Graph/TaskView tests passed (118/118); typecheck and ESLint passed.
+- Lesson: terminal/session lists need both lifecycle isolation and fully semantic controls because their data and connection state change independently.

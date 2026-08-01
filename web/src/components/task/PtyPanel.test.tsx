@@ -114,6 +114,27 @@ describe("PtyPanel", () => {
     expect(await screen.findByText("bash")).toBeTruthy();
   });
 
+  it("announces the initial loading state instead of showing an empty state", async () => {
+    let resolveList: ((value: unknown) => void) | undefined;
+    fetchMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+
+    render(<PtyPanel directory="C:/proj" />);
+
+    expect(screen.getByRole("status").getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByText("遞ｼ蜒堺ｸｭ縺ｮ PTY 縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲ゅ梧眠隕上阪〒繧ｿ繝ｼ繝溘リ繝ｫ繧帝幕蟋九〒縺阪∪縺吶・")).toBeNull();
+
+    resolveList?.({
+      ok: true,
+      status: 200,
+      json: vi.fn(() => Promise.resolve({ sessions: [] })),
+    });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
   it("creates a new session when the new button is clicked", async () => {
     mockFetchJson(200, { sessions: [] }); // initial list
     mockFetchJson(200, { id: "pty_2" });   // create
@@ -224,6 +245,52 @@ describe("PtyPanel", () => {
       expect(deleteCall).toBeTruthy();
     });
     expect(disposeMock).toHaveBeenCalled();
+    expect(closeButton.getAttribute("aria-label")).toBeTruthy();
+  });
+
+  it("does not close a session when the server rejects the delete", async () => {
+    mockFetchJson(200, {
+      sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
+    });
+    mockFetchJson(500, { error: "delete denied" });
+
+    render(<PtyPanel directory="C:/proj" />);
+    const closeButton = await screen.findByTestId("close-pty-pty_1");
+    fireEvent.click(closeButton);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("delete denied");
+    expect(screen.getByText("bash")).toBeTruthy();
+  });
+
+  it("drops a stale session list after switching directories", async () => {
+    let resolveOld: ((value: unknown) => void) | undefined;
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes("C%3A%2Fold")) {
+        return new Promise((resolve) => {
+          resolveOld = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: vi.fn(() => Promise.resolve({
+          sessions: [{ id: "pty_new", title: "new", cwd: "/new", status: "running" }],
+        })),
+      });
+    });
+
+    const { rerender } = render(<PtyPanel directory="C:/old" />);
+    rerender(<PtyPanel directory="C:/new" />);
+
+    expect(await screen.findByText("new")).toBeTruthy();
+    resolveOld?.({
+      ok: true,
+      status: 200,
+      json: vi.fn(() => Promise.resolve({
+        sessions: [{ id: "pty_old", title: "old", cwd: "/old", status: "running" }],
+      })),
+    });
+    await waitFor(() => expect(screen.queryByText("old")).toBeNull());
   });
 });
 

@@ -42,6 +42,8 @@ export function PtyPanel({ directory }: { directory: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [closingId, setClosingId] = useState<string | null>(null);
   /** True while the SSE stream is attempting to reconnect after a drop. */
   const [reconnecting, setReconnecting] = useState(false);
 
@@ -49,9 +51,12 @@ export function PtyPanel({ directory }: { directory: string }) {
   const fitRef = useRef<FitAddon | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sseRef = useRef<EventSource | null>(null);
+  const refreshRequestRef = useRef(0);
 
   /** Refresh the PTY session list from the BFF. */
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
+    setRefreshing(true);
     try {
       const res = await fetch(
         apiUrl("/api/pty-session", { directory }),
@@ -61,20 +66,33 @@ export function PtyPanel({ directory }: { directory: string }) {
       if (!res.ok) {
         throw new Error(data.error ?? `list failed: ${res.status}`);
       }
+      if (requestId !== refreshRequestRef.current) return;
       setSessions(Array.isArray(data?.sessions) ? data.sessions : []);
       setError(null);
     } catch (err) {
+      if (requestId !== refreshRequestRef.current) return;
       setError(
         err instanceof Error
           ? err.message
           : "PTY セッション一覧を取得できません",
       );
+    } finally {
+      if (requestId === refreshRequestRef.current) setRefreshing(false);
     }
   }, [directory]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // PTY ids are scoped to a project directory. Never reconnect an old
+  // terminal against the newly selected directory.
+  useEffect(() => {
+    setActiveId(null);
+    sseRef.current?.close();
+    termRef.current?.dispose();
+    termRef.current = null;
+  }, [directory]);
 
   /** Attach a new xterm instance to the container. */
   const mountTerminal = useCallback(() => {
@@ -252,23 +270,31 @@ export function PtyPanel({ directory }: { directory: string }) {
   /** Close a PTY session (BFF → Engine DELETE). */
   const closeSession = useCallback(
     async (ptyId: string) => {
+      if (closingId) return;
+      setClosingId(ptyId);
       try {
-        await fetch(
+        const res = await fetch(
           apiUrl("/api/pty-session", { id: ptyId, directory }),
           { method: "DELETE" },
         );
-      } catch {
-        /* best effort */
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? `close failed: ${res.status}`);
+        if (activeId === ptyId) {
+          sseRef.current?.close();
+          termRef.current?.dispose();
+          termRef.current = null;
+          setActiveId(null);
+        }
+        await refresh();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "PTY 繧ｻ繝・す繝ｧ繝ｳ縺ｮ邨ｭ豁ｳ縺ｫ螟ｱ謨励＠縺ｾ縺励◆",
+        );
+      } finally {
+        setClosingId(null);
       }
-      if (activeId === ptyId) {
-        sseRef.current?.close();
-        termRef.current?.dispose();
-        termRef.current = null;
-        setActiveId(null);
-      }
-      await refresh();
     },
-    [activeId, directory, refresh],
+    [activeId, closingId, directory, refresh],
   );
 
   /** Re-fit the terminal when the container resizes. */
@@ -311,32 +337,42 @@ export function PtyPanel({ directory }: { directory: string }) {
       </div>
 
       {error && (
-        <p className="min-w-0 break-words text-xs text-faint">{error}</p>
+        <p role="alert" className="min-w-0 break-words text-xs text-danger">{error}</p>
+      )}
+
+      {refreshing && (
+        <p role="status" aria-live="polite" aria-busy="true" className="min-w-0 text-xs text-faint">
+          PTY 繧ｻ繝・す繝ｧ繝ｳ繧呈､懈ｴ九＠縺ｾ縺励◆…
+        </p>
       )}
 
       {sessions.length > 0 && (
         <div className="mb-2 flex min-w-0 flex-wrap gap-1">
           {sessions.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => openSession(s.id)}
-              className={`group inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[11px] transition ${
-                activeId === s.id
-                  ? "bg-surface-3 text-muted"
-                  : "bg-surface-2 text-faint hover:bg-surface-3"
-              }`}
-            >
-              <span className="max-w-[8rem] truncate">{s.title || s.id}</span>
-              <X
-                className="h-3 w-3 opacity-0 transition group-hover:opacity-100"
+            <div key={s.id} className="group inline-flex items-center rounded-md bg-surface-2 font-mono text-[11px]">
+              <button
+                type="button"
+                onClick={() => openSession(s.id)}
+                aria-pressed={activeId === s.id}
+                className={`inline-flex min-w-0 items-center rounded-l-md px-2 py-1 transition ${
+                  activeId === s.id
+                    ? "bg-surface-3 text-muted"
+                    : "text-faint hover:bg-surface-3"
+                }`}
+              >
+                <span className="max-w-[8rem] truncate">{s.title || s.id}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`${s.title || s.id} 繧ｻ繝�す繝ｧ繝ｳ繧堤ｵｭ豁ｳ`}
                 data-testid={`close-pty-${s.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void closeSession(s.id);
-                }}
-              />
-            </button>
+                disabled={closingId !== null}
+                onClick={() => void closeSession(s.id)}
+                className="inline-flex min-h-[28px] min-w-[32px] items-center justify-center rounded-r-md text-faint transition hover:bg-surface-3 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -358,6 +394,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         </div>
       ) : (
         !error &&
+        !refreshing &&
         sessions.length === 0 && (
           <p className="min-w-0 break-words text-xs text-faint">
             稼働中の PTY はありません。「新規」でターミナルを開始できます。
