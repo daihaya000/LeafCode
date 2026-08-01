@@ -130,6 +130,15 @@ export function NextAction({
   const panelId = useId();
   const contextRef = useRef({ taskId, sessionId, invalidateKey });
   const generationRef = useRef(0);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+    };
+  }, []);
 
   // Reset to idle when the invalidation key changes (conversation updated,
   // revert, or task switch). Previously shown suggestions belong to the old
@@ -153,6 +162,7 @@ export function NextAction({
   }, [taskId, sessionId, invalidateKey, isMd]);
 
   const generate = useCallback(async () => {
+    if (!mountedRef.current) return;
     const generation = ++generationRef.current;
     setState({ kind: "loading" });
     try {
@@ -177,7 +187,7 @@ export function NextAction({
       if (suggestions.length === 0) {
         throw new Error("empty suggestions");
       }
-      if (generation !== generationRef.current) return;
+      if (!mountedRef.current || generation !== generationRef.current) return;
       // Remember everything shown so far so the next regeneration can
       // exclude all of them (capped to keep the prompt bounded).
       setPreviousSuggestions((prev) => {
@@ -193,7 +203,7 @@ export function NextAction({
       setCollapsed(false);
       setState({ kind: "success", suggestions });
     } catch (err) {
-      if (generation !== generationRef.current) return;
+      if (!mountedRef.current || generation !== generationRef.current) return;
       console.warn("[NextAction] generate failed", err);
       setState({
         kind: "error",

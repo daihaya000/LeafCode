@@ -3826,3 +3826,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add mounted boundaries, request-ID generations, synchronous busy locks, and guarded error/final state updates for every reply path.
 - Verification: PermissionCard and QuestionCard tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: parent-level queue protection is not enough when the actionable card also owns asynchronous UI state; each reusable action card must protect itself.
+
+## 2026-08-01: NextAction generation lifecycle
+
+- Found: NextAction used a generation token for task changes but did not invalidate it on unmount, allowing a late suggestion response to update a removed task view.
+- Fixed: add an explicit mounted boundary and invalidate the generation during cleanup.
+- Verification: NextAction tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: context generations must be paired with a component lifetime; either guard alone is incomplete.
