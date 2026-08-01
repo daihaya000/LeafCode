@@ -3749,7 +3749,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   placeholder: goalLoopEnabled && !goalLoopLive
                     ? "達成したい目標を入力…（Enter で開始）"
                     : "フォローアップを送信…",
-                  className: "max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none placeholder:text-faint",
+                  className: "max-h-40 w-full resize-none bg-transparent py-1.5 text-[0.925rem] outline-none focus-visible:outline-none placeholder:text-faint",
                 }}
                 afterTextarea={
                   goalLoopEnabled && !goalLoopLive ? (

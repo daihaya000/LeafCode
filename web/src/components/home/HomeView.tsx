@@ -1098,7 +1098,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 }
               },
               placeholder: "タスクを説明してください…（Ctrl+Enter で開始）",
-              className: "w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-faint",
+              className: "w-full resize-none bg-transparent py-1.5 text-base outline-none focus-visible:outline-none placeholder:text-faint",
             }}
             afterTextarea={
               goalLoopEnabled ? (
