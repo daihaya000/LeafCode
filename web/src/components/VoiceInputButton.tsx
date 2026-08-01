@@ -1,6 +1,9 @@
 import { Mic, MicOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { timedFetch } from "@/lib/client";
 import type { UseVoiceInputReturn } from "@/lib/use-voice-input";
+
+const WINDOWS_VOICE_INPUT_TIMEOUT_MS = 15_000;
 
 interface VoiceInputButtonProps {
   voice: UseVoiceInputReturn;
@@ -77,9 +80,9 @@ export function VoiceInputButton({
         onNativeVoiceStart?.();
         await new Promise((r) => setTimeout(r, 50));
         onNativeVoiceStart?.();
-        const res = await fetch("/api/host/voice-input", {
+        const res = await timedFetch("/api/host/voice-input", {
           method: "POST",
-          cache: "no-store",
+          timeoutMs: WINDOWS_VOICE_INPUT_TIMEOUT_MS,
         });
         if (!res.ok) {
           const data = (await res.json().catch(() => ({}))) as { error?: string };

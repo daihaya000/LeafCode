@@ -23,6 +23,7 @@ describe("VoiceInputButton", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     Object.defineProperty(window.navigator, "userAgent", {
       value: originalUserAgent,
@@ -212,12 +213,15 @@ describe("VoiceInputButton", () => {
 
     expect(onNativeVoiceStart).toHaveBeenCalled();
     expect(voice.start).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith("/api/host/voice-input", {
-        method: "POST",
-        cache: "no-store",
-      }),
-    );
+    await waitFor(() => {
+      const [input, init] = (fetchMock.mock.calls as unknown as Array<[
+        RequestInfo | URL,
+        RequestInit | undefined,
+      ]>)[0] ?? [];
+      expect(input).toBe("/api/host/voice-input");
+      expect(init).toEqual(expect.objectContaining({ method: "POST" }));
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+    });
     expect(onNativeVoiceStart).toHaveBeenCalledTimes(2);
   });
 
@@ -242,6 +246,36 @@ describe("VoiceInputButton", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     act(() => resolveFetch(new Response(JSON.stringify({ ok: true }))));
+  });
+
+  it("releases the native voice button when the host request times out", async () => {
+    mockUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36");
+    Object.defineProperty(window.navigator, "brave", {
+      value: {},
+      configurable: true,
+    });
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VoiceInputButton voice={mockVoice()} onTranscript={vi.fn()} />);
+
+    const button = await screen.findByRole("button", { name: /Windows/ });
+    vi.useFakeTimers();
+    fireEvent.click(button);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+
+    expect(button.getAttribute("aria-busy")).toBe("false");
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("alert").textContent).toContain("timed out");
   });
 
   it("does not submit a stop transcript after unmount", async () => {

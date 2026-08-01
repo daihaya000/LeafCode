@@ -3995,6 +3995,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: path and access-control mutations need the same contextual confirmation treatment as task and provider mutations.
 
+## 2026-08-01: Voice and PTY request timeout UX
+
+- Found: Windows native voice input and PTY session list/create/close actions used direct `fetch`, so a stalled host/BFF response could leave the corresponding control busy forever.
+- Fixed: route these user-visible requests through `timedFetch`; Windows voice input now has a 15-second bound and returns an inline timeout error while restoring the button.
+- Verification: VoiceInputButton tests passed (17/17); PtyPanel tests passed (14/14); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: every user-triggered request that owns a busy indicator needs a bounded wait and an actionable inline recovery path.
+
 ## 2026-08-01: Model selector accessibility contract
 
 - Found: TaskView unit and composer E2E tests queried the custom model selector as a `button`, while the component correctly exposes the interactive control as an ARIA `combobox`; this caused 31 TaskView failures and made the test contract disagree with the accessible UI.

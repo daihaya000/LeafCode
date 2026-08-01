@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal as TerminalIcon, Plus, X } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { apiUrl } from "@/lib/client";
+import { apiUrl, timedFetch } from "@/lib/client";
 import "@xterm/xterm/css/xterm.css";
 
 interface PtyInfo {
@@ -63,9 +63,8 @@ export function PtyPanel({ directory }: { directory: string }) {
     const requestId = ++refreshRequestRef.current;
     setRefreshing(true);
     try {
-      const res = await fetch(
+      const res = await timedFetch(
         apiUrl("/api/pty-session", { directory }),
-        { cache: "no-store" },
       );
       const data = (await res.json()) as { sessions?: PtyInfo[]; error?: string };
       if (!res.ok) {
@@ -160,7 +159,7 @@ export function PtyPanel({ directory }: { directory: string }) {
     creatingRef.current = true;
     setCreating(true);
     try {
-      const res = await fetch(apiUrl("/api/pty-session", { directory }), {
+      const res = await timedFetch(apiUrl("/api/pty-session", { directory }), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ directory }),
@@ -305,7 +304,7 @@ export function PtyPanel({ directory }: { directory: string }) {
       closingRef.current = ptyId;
       setClosingId(ptyId);
       try {
-        const res = await fetch(
+        const res = await timedFetch(
           apiUrl("/api/pty-session", { id: ptyId, directory }),
           { method: "DELETE" },
         );
