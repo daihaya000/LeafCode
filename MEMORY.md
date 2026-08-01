@@ -3995,6 +3995,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: path and access-control mutations need the same contextual confirmation treatment as task and provider mutations.
 
+## 2026-08-01: Model selector accessibility contract
+
+- Found: TaskView unit and composer E2E tests queried the custom model selector as a `button`, while the component correctly exposes the interactive control as an ARIA `combobox`; this caused 31 TaskView failures and made the test contract disagree with the accessible UI.
+- Fixed: update model-selector queries to use `combobox` in TaskView and composer tests, preserving the listbox/option interaction model.
+- Verification: TaskView tests passed (105/105); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: custom controls should be tested through their semantic role, not their underlying HTML element, so accessibility refactors do not look like product regressions.
+
 ## 2026-08-01: Task and session destructive-action confirmation UX
 
 - Found: TaskView task deletion and the session-level revert action still relied on native confirmation dialogs; task deletion also used the live task object at execution time, which could make the destructive target ambiguous during async refreshes.

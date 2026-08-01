@@ -439,7 +439,7 @@ test.describe("home composer", () => {
     await expect(intelligence).toHaveAttribute("value", "high");
 
     // Switch to a model without variants — selector disappears, state resets
-    const model = page.getByRole("button", { name: "モデル" });
+    const model = page.getByRole("combobox", { name: "モデル" });
     await model.click();
     await pickOption(page, "GPT-4");
     await expect(intelligence).toHaveCount(0);
@@ -504,7 +504,7 @@ test.describe("home composer", () => {
     await mockVariantProvider(page);
 
     await page.goto("/");
-    const model = page.getByRole("button", { name: "モデル" });
+    const model = page.getByRole("combobox", { name: "モデル" });
     // Wait for the provider list to settle before opening the menu.
     // ModelSelect values use the `provider::model` key form.
     await expect(model).toHaveAttribute("value", "openai::gpt-5.6-sol");
@@ -527,7 +527,7 @@ test.describe("home composer", () => {
     });
     await expect(intelligence).toBeVisible();
 
-    const model = page.getByRole("button", { name: "モデル" });
+    const model = page.getByRole("combobox", { name: "モデル" });
     await model.click();
     await pickOption(page, "Auto");
     await expect(model).toHaveAttribute("value", "auto");
@@ -553,7 +553,7 @@ test.describe("home composer", () => {
       "タスクを説明してください…（Ctrl+Enter で開始）",
     );
     await prompt.fill("これは何");
-    const model = page.getByRole("button", { name: "モデル" });
+    const model = page.getByRole("combobox", { name: "モデル" });
     await model.click();
     await pickOption(page, "Auto");
     await expect(model).toHaveAttribute("value", "auto");

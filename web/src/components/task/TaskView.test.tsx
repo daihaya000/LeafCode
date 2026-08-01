@@ -1006,7 +1006,7 @@ describe("TaskView", () => {
     await flushTaskLoad();
 
     expect(await screen.findByRole("button", { name: "画像を添付" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
     fireEvent.click(await screen.findByRole("option", { name: /Text/ }));
 
     expect(
@@ -2070,7 +2070,7 @@ describe("TaskView", () => {
 
     /** Pick Auto in the composer's model dropdown. */
     async function selectAuto() {
-      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
       fireEvent.click(
         await screen.findByRole("option", { name: "Auto" }),
       );
@@ -2107,7 +2107,7 @@ describe("TaskView", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
       const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
       const options = within(modelMenu).getAllByRole("option");
       expect(options[0].textContent).toContain("Auto");
@@ -2119,7 +2119,7 @@ describe("TaskView", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
       const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
       expect(within(modelMenu).getAllByRole("option")).toHaveLength(1);
       fireEvent.click(
@@ -2314,7 +2314,7 @@ describe("TaskView", () => {
       // and shut forever, starving the event loop so no timeout can fire.
       // waitFor then only observes, covering the async provider fetch and the
       // seeded-model effect that runs once stream + options settle.
-      fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
       const modelMenu = await screen.findByRole("listbox", { name: "モデル" });
       await waitFor(() => {
         const selected = within(modelMenu).getAllByRole("option", {
