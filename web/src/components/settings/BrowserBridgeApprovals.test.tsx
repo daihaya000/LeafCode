@@ -47,6 +47,49 @@ describe("BrowserBridgeApprovals", () => {
     expect(screen.queryByText("Browser Bridgeに接続できません")).toBeNull();
   });
 
+  it("ignores an older refresh response after a newer poll completes", async () => {
+    let resolveOldApprovals!: (value: Response) => void;
+    let resolveOldPairing!: (value: Response) => void;
+    const oldApprovals = new Promise<Response>((resolve) => {
+      resolveOldApprovals = resolve;
+    });
+    const oldPairing = new Promise<Response>((resolve) => {
+      resolveOldPairing = resolve;
+    });
+    timedFetch
+      .mockReturnValueOnce(oldApprovals)
+      .mockReturnValueOnce(oldPairing)
+      .mockResolvedValueOnce(response({ available: true, approvals: [] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }));
+
+    render(<BrowserBridgeApprovals />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(await screen.findByText("保留中の承認はありません。")).toBeTruthy();
+
+    await act(async () => {
+      resolveOldApprovals(
+        response({
+          available: true,
+          approvals: [
+            {
+              approvalId: "stale",
+              tool: "stale_tool",
+              origin: "https://stale.example",
+              createdAt: 1,
+            },
+          ],
+        }),
+      );
+      resolveOldPairing(response({ available: true, requests: [] }));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("stale_tool")).toBeNull();
+    expect(screen.getByText("保留中の承認はありません。")).toBeTruthy();
+  });
+
   it("renders approval metadata and forwards an allow decision", async () => {
     timedFetch
       .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_abcdefghijklmnopqrstuvwxyz", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))

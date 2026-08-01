@@ -3469,3 +3469,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: make guard handlers reject re-entry, include root deletion in the shared busy channel, and disable root controls while any settings mutation is active.
 - Verification: SettingsView tests passed (22/22); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: actions triggered by both buttons and keyboard events must share the same in-handler lock and visible busy state.
+
+## 2026-08-01: Browser Bridge approval queue consistency
+
+- Found: polling and post-decision refreshes could overlap, allowing an older approval/pairing response to restore an already-resolved card; same-item decisions also relied only on disabled buttons.
+- Fixed: add refresh request generations and decision handler guards for approval and pairing actions.
+- Verification: BrowserBridgeApprovals tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: approval queues need latest-refresh-wins semantics because stale cards can invite users to repeat an action that has already completed.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 import { timedFetch } from "@/lib/client";
 
@@ -23,7 +23,9 @@ export function BrowserBridgeApprovals() {
   const [available, setAvailable] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const refreshRequestRef = useRef(0);
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     try {
       const [approvalsRes, pairingRes] = await Promise.all([
         timedFetch("/api/host/browser-bridge/approvals", { timeoutMs: 3000 }),
@@ -32,11 +34,13 @@ export function BrowserBridgeApprovals() {
       const approvalsData = (await approvalsRes.json()) as { approvals?: Approval[]; available?: boolean };
       const pairingData = (await pairingRes.json()) as { requests?: PairingRequest[]; available?: boolean };
       if (!approvalsRes.ok || !pairingRes.ok) throw new Error("Browser Bridgeに接続できません");
+      if (requestId !== refreshRequestRef.current) return;
       setApprovals(Array.isArray(approvalsData.approvals) ? approvalsData.approvals : []);
       setPairingRequests(Array.isArray(pairingData.requests) ? pairingData.requests : []);
       setAvailable(approvalsData.available === true || pairingData.available === true);
       setError(null);
     } catch (err) {
+      if (requestId !== refreshRequestRef.current) return;
       setError(err instanceof Error ? err.message : "承認一覧を取得できません");
     }
   }, []);
@@ -46,6 +50,7 @@ export function BrowserBridgeApprovals() {
     return () => window.clearInterval(timer);
   }, [refresh]);
   const decide = async (approvalId: string, decision: "allow" | "deny") => {
+    if (busy === approvalId) return;
     setBusy(approvalId);
     try {
       const res = await timedFetch(`/api/host/browser-bridge/approvals/${approvalId}`, {
@@ -63,6 +68,7 @@ export function BrowserBridgeApprovals() {
     }
   };
   const decidePairing = async (requestId: string, decision: "allow" | "deny") => {
+    if (busy === requestId) return;
     setBusy(requestId);
     try {
       const res = await timedFetch(`/api/host/browser-bridge/pairing/${requestId}`, {
