@@ -147,4 +147,36 @@ describe("OpenAISubscriptionAuth", () => {
       expect(retry.disabled).toBe(false);
     });
   });
+
+  it("pauses authentication polling while the page is hidden", async () => {
+    mockApi(false);
+    vi.spyOn(window, "open").mockReturnValue(null);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    render(<OpenAISubscriptionAuth />);
+    fireEvent.click(await screen.findByRole("button", { name: "ブラウザで認証" }));
+    await screen.findByRole("button", { name: "認証完了を確認" });
+    await waitFor(() => expect(getJson).toHaveBeenCalledTimes(3));
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    const callsWhileVisible = getJson.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(getJson).toHaveBeenCalledTimes(callsWhileVisible);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(getJson.mock.calls.length).toBeGreaterThan(callsWhileVisible));
+    vi.useRealTimers();
+  });
 });

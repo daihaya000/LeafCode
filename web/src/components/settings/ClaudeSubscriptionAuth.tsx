@@ -28,6 +28,9 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
   const mountedRef = useRef(false);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
 
   const refresh = useCallback(async () => {
     if (connectionRequestBusyRef.current) return null;
@@ -62,6 +65,14 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
     };
   }, []);
 
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      setPageVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
   const load = useCallback(async () => {
     setState("loading");
     setError(null);
@@ -87,7 +98,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (state !== "waiting") return;
+    if (state !== "waiting" || !pageVisible) return;
     let cancelled = false;
     attempts.current = 0;
     const poll = async () => {
@@ -105,7 +116,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
     const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
     void poll();
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [refresh, state]);
+  }, [pageVisible, refresh, state]);
 
   const start = async () => {
     if (methodIndex === null || state === "starting" || state === "waiting") return;

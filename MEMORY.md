@@ -4178,6 +4178,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: HostLogPanel tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: copy/export behavior must preserve the visual structure users rely on when diagnosing failures.
 
+## 2026-08-01: OAuth visibility-aware polling
+
+- Found: OpenAI and Claude subscription authentication continued polling every two seconds while the settings tab was hidden.
+- Fixed: pause authentication status polling while hidden and perform an immediate check when the page becomes visible again; added an OpenAI lifecycle regression test.
+- Verification: OpenAI auth tests passed (5/5); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: authentication wait loops are background work too and need the same visibility lifecycle as other settings pollers.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

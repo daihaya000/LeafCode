@@ -49,6 +49,9 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
   const mountedRef = useRef(false);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
 
   const refreshConnection = useCallback(async () => {
     if (connectionRequestBusyRef.current) return null;
@@ -81,6 +84,14 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
       mountedRef.current = false;
       connectionRequestGenerationRef.current += 1;
     };
+  }, []);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      setPageVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
   const load = useCallback(async () => {
@@ -117,7 +128,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
   }, [load]);
 
   useEffect(() => {
-    if (state !== "waiting") return;
+    if (state !== "waiting" || !pageVisible) return;
     let cancelled = false;
     pollAttempts.current = 0;
     const poll = async () => {
@@ -140,7 +151,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [refreshConnection, state]);
+  }, [pageVisible, refreshConnection, state]);
 
   const start = async () => {
     if (methodIndex === null || state === "starting" || state === "waiting") return;
