@@ -68,6 +68,59 @@ describe("GhostSelect", () => {
     );
   });
 
+  it("supports keyboard navigation and restores focus after selection", () => {
+    const onChange = vi.fn();
+    render(
+      createElement(
+        GhostSelect,
+        {
+          "aria-label": "モデル",
+          icon: createElement("span", null, "CPU"),
+          valueLabel: "GPT-5",
+          value: "gpt-5",
+          onChange,
+        },
+        createElement("option", { value: "gpt-5" }, "GPT-5"),
+        createElement("option", { value: "gpt-4.1" }, "GPT-4.1"),
+        createElement("option", { value: "gpt-4o" }, "GPT-4o"),
+      ),
+    );
+
+    const trigger = screen.getByRole("button", { name: "モデル" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+
+    const firstOption = screen.getByRole("option", { name: "GPT-5" });
+    expect(document.activeElement).toBe(firstOption);
+    fireEvent.keyDown(firstOption, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(screen.getByRole("option", { name: "GPT-4.1" }));
+    fireEvent.keyDown(screen.getByRole("option", { name: "GPT-4.1" }), { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("gpt-4.1");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("closes with Escape and returns focus to the trigger", () => {
+    render(
+      createElement(
+        GhostSelect,
+        {
+          "aria-label": "モデル",
+          icon: createElement("span", null, "CPU"),
+          valueLabel: "GPT-5",
+          value: "gpt-5",
+          onChange: vi.fn(),
+        },
+        createElement("option", { value: "gpt-5" }, "GPT-5"),
+      ),
+    );
+
+    const trigger = screen.getByRole("button", { name: "モデル" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("option", { name: "GPT-5" }), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("still runs the action's own click handler on a real pointerdown-then-click sequence", () => {
     // A real mouse click dispatches pointerdown before click. The action
     // footer used to close this menu on pointerdown, which unmounted the

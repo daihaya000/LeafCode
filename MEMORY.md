@@ -3287,3 +3287,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: exposed the categories as a labelled, keyboard-focusable tablist with `aria-selected`, horizontal scrolling on mobile, and a right-edge fade cue; desktop keeps the wrapped layout.
 - Verification: SettingsView tests passed (22/22); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: dense responsive navigation should preserve a compact viewport footprint while remaining discoverable and operable without touch.
+
+## 2026-08-01: GhostSelect keyboard interaction
+
+- Found: the shared custom select opened visually but did not move focus into the selected option or provide arrow-key navigation, so keyboard users could lose context and could not reliably choose an item.
+- Fixed: focus the current option on open, support ArrowUp/ArrowDown/Home/End and Enter/Space selection, and return focus to the trigger after selection or Escape.
+- Verification: `ui.test.ts` passed (5/5); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: portaled custom controls must implement the complete keyboard lifecycle, including opening, navigation, dismissal, and focus restoration.

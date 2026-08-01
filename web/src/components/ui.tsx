@@ -57,6 +57,7 @@ export function GhostSelect({
   } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
   const groupedOptions = useMemo(() => {
     const groups: {
@@ -136,6 +137,13 @@ export function GhostSelect({
     updateMenuPosition();
   }, [open, groupedOptions, updateMenuPosition]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    menuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')
+      ?.focus();
+  }, [open, groupedOptions, value]);
+
   useEffect(() => {
     if (!open) return;
     updateMenuPosition();
@@ -151,7 +159,10 @@ export function GhostSelect({
     }
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     }
 
     document.addEventListener("pointerdown", onPointerDown);
@@ -201,6 +212,36 @@ export function GhostSelect({
                 onClick={() => {
                   onChange(option.value);
                   setOpen(false);
+                  triggerRef.current?.focus();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.currentTarget.click();
+                    return;
+                  }
+                  if (!menuRef.current) return;
+                  const options = Array.from(
+                    menuRef.current.querySelectorAll<HTMLButtonElement>(
+                      '[role="option"]:not(:disabled)',
+                    ),
+                  );
+                  const currentIndex = options.indexOf(event.currentTarget);
+                  if (currentIndex < 0) return;
+                  let nextIndex: number | null = null;
+                  if (event.key === "ArrowDown") nextIndex = currentIndex + 1;
+                  if (event.key === "ArrowUp") nextIndex = currentIndex - 1;
+                  if (event.key === "Home") nextIndex = 0;
+                  if (event.key === "End") nextIndex = options.length - 1;
+                  if (nextIndex === null) return;
+                  event.preventDefault();
+                  options[Math.max(0, Math.min(nextIndex, options.length - 1))]?.focus();
                 }}
                 className={cx(
                   "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
@@ -239,6 +280,7 @@ export function GhostSelect({
       className={cx("relative inline-flex min-w-0", className)}
     >
       <button
+        ref={triggerRef}
         type="button"
         value={value}
         disabled={disabled}
@@ -248,6 +290,17 @@ export function GhostSelect({
         aria-label={ariaLabel}
         title={title}
         onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && open) {
+            event.preventDefault();
+            setOpen(false);
+            return;
+          }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
         className={cx(
           "group inline-flex h-full w-full min-w-0 items-center gap-1.5 rounded-lg border bg-bg px-2 py-1.5 text-xs font-medium shadow-sm transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none",
           tone === "warning"
