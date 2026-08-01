@@ -71,4 +71,42 @@ describe("QuestionCard custom answer", () => {
     expect(markup).toContain("回答する");
     expect(markup).toContain("キャンセル");
   });
+
+  it("defaults to showing the custom input when `custom` is omitted", () => {
+    const request = baseRequest([
+      {
+        question: "仕様書のどの点を修正しますか？",
+        header: "修正箇所",
+        options: [{ label: "A", description: "" }],
+      },
+    ]);
+    const markup = renderToStaticMarkup(
+      createElement(QuestionCard, {
+        request,
+        onReply: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+    expect(markup).toContain("その他（自由入力）");
+    expect(markup).toContain('type="text"');
+  });
+
+  it("hides the custom input when `custom` is explicitly false", () => {
+    const request = baseRequest([
+      {
+        question: "はい/いいえで答えてください",
+        header: "",
+        options: [{ label: "はい", description: "" }],
+        custom: false,
+      },
+    ]);
+    const markup = renderToStaticMarkup(
+      createElement(QuestionCard, {
+        request,
+        onReply: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+    expect(markup).not.toContain('type="text"');
+  });
 });

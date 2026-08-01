@@ -26,18 +26,23 @@ export function QuestionCard({
     request.questions.map(() => null),
   );
 
+  // `custom` is enabled by default unless explicitly disabled (`custom: false`).
+  // Some callers omit the field entirely while still expecting free-text input
+  // (see the question tool's documented default), so undefined must count as on.
+  const isCustomEnabled = (q: QuestionInfo) => q.custom !== false;
+
   const canSubmit = useMemo(() => {
     return request.questions.every((q, i) => {
       const picks = selected[i] ?? [];
       const custom = customs[i]?.trim() ?? "";
       if (picks.length > 0) return true;
-      if (q.custom && custom) return true;
+      if (isCustomEnabled(q) && custom) return true;
       return false;
     });
   }, [request.questions, selected, customs]);
 
   const isOnlyCustom = (q: QuestionInfo) =>
-    q.options.length === 0 && !!q.custom;
+    q.options.length === 0 && isCustomEnabled(q);
 
   const toggle = (qi: number, label: string, multiple?: boolean) => {
     setSelected((prev) => {
@@ -58,7 +63,8 @@ export function QuestionCard({
     request.questions.map((q, i) => {
       const picks = [...(selected[i] ?? [])];
       const custom = customs[i]?.trim() ?? "";
-      if (q.custom && custom && !picks.includes(custom)) picks.push(custom);
+      if (isCustomEnabled(q) && custom && !picks.includes(custom))
+        picks.push(custom);
       return picks;
     });
 
@@ -146,7 +152,7 @@ export function QuestionCard({
 
   const needsSubmitButton =
     request.questions.length > 1 ||
-    request.questions.some((q) => q.multiple || q.custom);
+    request.questions.some((q) => q.multiple || isCustomEnabled(q));
 
   return (
     <div
@@ -196,7 +202,7 @@ export function QuestionCard({
                 );
               })}
             </div>
-            {q.custom && (
+            {isCustomEnabled(q) && (
               <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2 p-2 focus-within:border-border-strong">
                 <input
                   ref={(el) => {
