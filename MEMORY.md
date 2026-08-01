@@ -3441,3 +3441,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add load request generations, serialize order saves through a queue, expose an order-saving status, and recover from order failures via a guarded reload.
 - Verification: ProviderModelsSettings tests passed (28/28); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: reorderable settings need both optimistic local responsiveness and serialized persistence so the last visible arrangement is also the last server write.
+
+## 2026-08-01: Agent settings operation isolation
+
+- Found: another agent could be toggled while a previous toggle was saving, restart could be re-entered programmatically, and overlapping agent loads could apply stale results.
+- Fixed: add request-generation protection, make toggle and restart handlers mutually exclusive, and disable every agent switch while one toggle is pending.
+- Verification: AgentsSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: settings that mutate a shared engine should serialize the whole operation class, not only disable the row that initiated the request.

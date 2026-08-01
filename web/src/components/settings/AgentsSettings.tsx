@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button, cx } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import type { HealthDto } from "@/lib/types";
@@ -158,7 +158,7 @@ function AgentGroupTable({
                         <AgentSwitch
                           name={row.name}
                           enabled={row.enabled}
-                          busy={busy}
+                          busy={busyName !== null}
                           onToggle={() => onToggle(row, !row.enabled)}
                         />
                       )}
@@ -215,7 +215,7 @@ function AgentGroupTable({
                   <AgentSwitch
                     name={row.name}
                     enabled={row.enabled}
-                    busy={busy}
+                    busy={busyName !== null}
                     onToggle={() => onToggle(row, !row.enabled)}
                   />
                 )}
@@ -264,10 +264,12 @@ export function AgentsSettings() {
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
   const hostOk = useHostStatus();
+  const loadRequestRef = useRef(0);
 
   const load = useMemo(
     () =>
     async ({ retry = false }: { retry?: boolean } = {}) => {
+      const requestId = ++loadRequestRef.current;
       if (retry) {
         setRetrying(true);
       } else {
@@ -275,6 +277,7 @@ export function AgentsSettings() {
       }
       try {
         const data = await getJson<{ agents: AgentDto[] }>("/api/extensions/agents");
+        if (requestId !== loadRequestRef.current) return;
         const list = Array.isArray(data.agents) ? data.agents : [];
         setAgents(
           list.map((dto) => ({
@@ -285,9 +288,10 @@ export function AgentsSettings() {
         );
         setState("ready");
       } catch {
+        if (requestId !== loadRequestRef.current) return;
         setState("error");
       } finally {
-        if (retry) setRetrying(false);
+        if (retry && requestId === loadRequestRef.current) setRetrying(false);
       }
     },
     [],
@@ -299,6 +303,7 @@ export function AgentsSettings() {
 
   const toggleAgent = useCallback(
     async (agent: AgentRowModel, enabled: boolean) => {
+      if (busyName !== null || restarting) return;
       setBusyName(agent.name);
       setActionError(null);
       try {
@@ -317,10 +322,11 @@ export function AgentsSettings() {
         setBusyName(null);
       }
     },
-    [load],
+    [busyName, load, restarting],
   );
 
   const restartOpencode = useCallback(async () => {
+    if (restarting || busyName !== null) return;
     setRestarting(true);
     setRestartError(null);
     try {
@@ -367,7 +373,7 @@ export function AgentsSettings() {
     } finally {
       setRestarting(false);
     }
-  }, [load]);
+  }, [busyName, load, restarting]);
 
   const filtered = useMemo(
     () => filterAgents(agents, query),
@@ -427,7 +433,7 @@ export function AgentsSettings() {
               variant="secondary"
               size="sm"
               busy={restarting}
-              disabled={hostOk !== true}
+              disabled={hostOk !== true || busyName !== null}
               onClick={() => void restartOpencode()}
             >
               OpenCode を再起動

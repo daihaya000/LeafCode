@@ -225,6 +225,37 @@ describe("AgentsSettings", () => {
     expect(patchCall).toBeTruthy();
   });
 
+  it("locks every agent switch while one toggle request is pending", async () => {
+    let resolvePatch!: (response: Response) => void;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/extensions/agents/") && !url.endsWith("/agents")) {
+        return new Promise<Response>((resolve) => {
+          resolvePatch = resolve;
+        });
+      }
+      if (url.includes("/api/extensions/agents")) {
+        return new Response(JSON.stringify({ agents: AGENTS }), { status: 200 });
+      }
+      if (url.includes("/api/host")) {
+        return new Response(JSON.stringify(HOST_OK), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+    const switches = screen.getAllByRole("switch") as HTMLButtonElement[];
+    fireEvent.click(switches[0]);
+
+    await waitFor(() => {
+      expect(switches.every((button) => button.disabled)).toBe(true);
+    });
+    resolvePatch(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await waitFor(() => expect(switches.every((button) => !button.disabled)).toBe(true));
+  });
+
   it("keeps the error visible while retrying and recovers", async () => {
     let resolveRetry!: (response: Response) => void;
     const retryResponse = new Promise<Response>((resolve) => {
