@@ -181,6 +181,43 @@ export async function copyTree(
 }
 
 /**
+ * Sum file sizes in a tree without following symlinks.
+ * Used once during migration validation to check available disk space.
+ */
+export async function computeDirSizeBytes(dir: string): Promise<number> {
+  let total = 0;
+  const stack: string[] = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries;
+    try {
+      entries = await fsp.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isSymbolicLink()) {
+        try {
+          total += (await fsp.lstat(full)).size;
+        } catch {
+          /* skip */
+        }
+      } else if (entry.isFile()) {
+        try {
+          total += (await fsp.stat(full)).size;
+        } catch {
+          /* skip */
+        }
+      } else if (entry.isDirectory()) {
+        stack.push(full);
+      }
+    }
+  }
+  return total;
+}
+
+/**
  * Confirm a finished copy is usable before it is published as a profile.
  */
 export async function verifyCopy(
