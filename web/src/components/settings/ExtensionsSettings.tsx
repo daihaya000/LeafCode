@@ -647,7 +647,7 @@ export function ExtensionsSettings({
 
       <BrowserBridgeSettings />
 
-      <BrowserBridgeApprovals />
+      {activeSection === "plugins" && <BrowserBridgeApprovals />}
 
       {activeSection === "skills" && (
         <SectionShell

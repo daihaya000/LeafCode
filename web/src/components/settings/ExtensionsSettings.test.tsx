@@ -148,6 +148,17 @@ afterEach(() => {
 });
 
 describe("ExtensionsSettings", () => {
+  it.each(["skills", "mcp"] as const)(
+    "does not show Browser Bridge approvals on the %s tab",
+    async (activeSection) => {
+      render(<ExtensionsSettings activeSection={activeSection} />);
+
+      await waitFor(() => {
+        expect(screen.queryByRole("region", { name: "Browser Bridge 承認" })).toBeNull();
+      });
+    },
+  );
+
   it("lists skills with accessible switches", async () => {
     render(<ExtensionsSettings activeSection="skills" />);
 
