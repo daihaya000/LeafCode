@@ -834,8 +834,8 @@ export function SettingsView() {
               </div>
             </section>
 
-            <HostLogPanel />
             <ThemeSettings />
+            <HostLogPanel />
           </>
         )}
 

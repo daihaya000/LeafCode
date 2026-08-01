@@ -36,12 +36,11 @@ describe("HostLogPanel", () => {
     vi.useRealTimers();
   });
 
-  it("stays collapsed by default and does not poll", () => {
+  it("is always expanded and starts polling on mount", async () => {
+    timedFetch.mockResolvedValue(jsonResponse({ entries: [], nextSeq: 0 }));
     render(<HostLogPanel />);
-    expect(
-      screen.getByRole("button", { name: /ホストログ/ }).getAttribute("aria-expanded"),
-    ).toBe("false");
-    expect(timedFetch).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "ホストログ" })).toBeTruthy();
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
   });
 
   it("polls and renders entries once expanded", async () => {
@@ -55,7 +54,6 @@ describe("HostLogPanel", () => {
     );
 
     render(<HostLogPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /ホストログ/ }));
 
     await waitFor(() => expect(timedFetch).toHaveBeenCalled());
     await waitFor(() => findLogLine("[caddy] port busy"));
@@ -81,7 +79,6 @@ describe("HostLogPanel", () => {
       );
 
     render(<HostLogPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /ホストログ/ }));
     await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
 
     await vi.advanceTimersByTimeAsync(2000);
@@ -100,24 +97,9 @@ describe("HostLogPanel", () => {
     );
 
     render(<HostLogPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /ホストログ/ }));
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("ホストが見つかりません");
-  });
-
-  it("stops polling once collapsed again", async () => {
-    timedFetch.mockResolvedValue(jsonResponse({ entries: [], nextSeq: 0 }));
-
-    render(<HostLogPanel />);
-    const toggle = screen.getByRole("button", { name: /ホストログ/ });
-    fireEvent.click(toggle);
-    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
-
-    fireEvent.click(toggle); // collapse
-    timedFetch.mockClear();
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(timedFetch).not.toHaveBeenCalled();
   });
 
   it("clears the client-side view without refetching history", async () => {
@@ -129,7 +111,6 @@ describe("HostLogPanel", () => {
     );
 
     render(<HostLogPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /ホストログ/ }));
     expect(await screen.findByText(/line one/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "表示をクリア" }));
