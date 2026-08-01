@@ -263,7 +263,7 @@ export function GraphPanel({
     return () => {
       mountedRef.current = false;
       reqIdRef.current += 1;
-      detailBusyRef.current.clear();
+      detailBusyRef.current = new Set();
     };
   }, []);
 
@@ -469,6 +469,8 @@ export function GraphPanel({
             >
               <button
                 type="button"
+                aria-expanded={open}
+                aria-controls={`graph-files-${row.commit.hash}`}
                 aria-busy={loadingCommits.has(row.commit.hash) || undefined}
                 onClick={() => void toggleExpand(row.commit.hash)}
                 className="flex w-full min-w-0 cursor-pointer items-stretch gap-1 px-1 py-0 text-left hover:bg-surface-2"
@@ -545,7 +547,10 @@ export function GraphPanel({
               </button>
 
               {open && (
-                <div className="border-t border-border/40 bg-bg/40 px-2 py-1.5 pl-6 sm:pl-10">
+                <div
+                  id={`graph-files-${row.commit.hash}`}
+                  className="border-t border-border/40 bg-bg/40 px-2 py-1.5 pl-6 sm:pl-10"
+                >
                   {!files && (
                     <div className="flex justify-center py-3">
                       <Spinner />

@@ -334,7 +334,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         }
       }
     },
-    [activeId, closingId, directory, refresh],
+    [activeId, directory, refresh],
   );
 
   /** Re-fit the terminal when the container resizes. */

@@ -84,6 +84,23 @@ describe("GraphPanel", () => {
     ).toBe("作者: tester <tester@opencode.local>");
   });
 
+  it("exposes expandable commit rows to assistive technology", async () => {
+    getJson.mockImplementation((url: string) =>
+      url === "/api/git/show"
+        ? Promise.resolve({ files: [] })
+        : Promise.resolve(payloadWith(1)),
+    );
+    render(<GraphPanel directory="/repo" />);
+
+    const row = await screen.findByRole("button", { name: /commit 0/ });
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(row.getAttribute("aria-controls")).toBe("graph-files-hash0");
+
+    fireEvent.click(row);
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById("graph-files-hash0")).toBeTruthy();
+  });
+
   it("refetches immediately when refreshKey changes, without touching the visible spinner state", async () => {
     const { rerender } = render(
       <GraphPanel directory="/repo" refreshKey={0} />,

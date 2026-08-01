@@ -3896,3 +3896,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: expose the trigger as a `combobox`, add `aria-autocomplete="none"`, and preserve the existing listbox keyboard behavior and focus return.
 - Verification: ModelSelect tests passed (4/4); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 11 to 10.
 - Lesson: ARIA state must match the widget role; visually correct keyboard behavior is not enough if the semantic contract is invalid.
+
+## 2026-08-01: Graph and PTY lifecycle semantics
+
+- Found: graph commit rows expanded content without exposing `aria-expanded`/`aria-controls`; GraphPanel cleanup read a mutable ref during cleanup, and PtyPanel carried an unused close-state dependency.
+- Fixed: connect each commit row to its file detail region, reset the detail busy set safely on unmount, and stabilize the PTY close callback dependencies.
+- Verification: GraphPanel and PtyPanel tests passed (25/25); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 10 to 8.
+- Lesson: expandable visual rows and async cleanup both need explicit state boundaries that remain valid after rerender or unmount.
