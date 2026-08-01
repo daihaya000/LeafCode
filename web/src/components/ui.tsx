@@ -363,6 +363,7 @@ export const Button = forwardRef<
       ref={ref}
       type="button"
       disabled={disabled || busy}
+      aria-busy={busy || undefined}
       className={cx(
         "inline-flex shrink-0 cursor-pointer items-center justify-center transition-colors select-none disabled:cursor-not-allowed",
         variantClass[variant],

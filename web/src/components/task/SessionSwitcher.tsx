@@ -23,6 +23,8 @@ export function SessionSwitcher({
   onSwitch: () => void;
 }) {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   // Keep the user's selection while the parent catches up with onSwitch.
@@ -33,13 +35,19 @@ export function SessionSwitcher({
   }, [currentSessionId]);
 
   const refresh = useCallback(async () => {
+    setSessionsLoading(true);
     try {
       const data = await getJson<{
         sessions?: { opencodeSessionId: string; title: string; updatedAt: string }[];
       }>(`/api/workspaces/${workspaceId}/sessions`);
       setSessions(data.sessions ?? []);
-    } catch {
-      setSessions([]);
+      setSessionsError(null);
+    } catch (err) {
+      setSessionsError(
+        err instanceof Error ? err.message : "セッション一覧を取得できませんでした",
+      );
+    } finally {
+      setSessionsLoading(false);
     }
   }, [workspaceId]);
 
@@ -87,17 +95,42 @@ export function SessionSwitcher({
 
   if (sessions.length <= 1) {
     return (
-      <Button
-        variant="ghost"
-        size="sm"
-        title={createError ?? "セッションを追加"}
-        aria-label={createError ? `セッション追加失敗: ${createError}` : "セッションを追加"}
-        busy={busy}
-        onClick={() => void create()}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        <Layers className="h-3.5 w-3.5" />
-      </Button>
+      <div className="flex min-w-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          title={
+            sessionsLoading
+              ? "セッション一覧を読み込み中"
+              : sessionsError ?? createError ?? "セッションを追加"
+          }
+          aria-label={
+            sessionsLoading
+              ? "セッション一覧を読み込み中"
+              : sessionsError
+                ? `セッション一覧エラー: ${sessionsError}`
+                : createError
+                  ? `セッション追加失敗: ${createError}`
+                  : "セッションを追加"
+          }
+          busy={busy || sessionsLoading}
+          disabled={sessionsLoading}
+          onClick={() => void create()}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <Layers className="h-3.5 w-3.5" />
+        </Button>
+        {sessionsError && !sessionsLoading && (
+          <span
+            role="status"
+            aria-live="polite"
+            className="max-w-40 truncate text-[11px] text-danger"
+            title={sessionsError}
+          >
+            セッション一覧を取得できません
+          </span>
+        )}
+      </div>
     );
   }
 
@@ -124,6 +157,8 @@ export function SessionSwitcher({
           }
         }}
         onFocus={() => void refresh()}
+        aria-busy={sessionsLoading || undefined}
+        title={sessionsError ?? undefined}
         disabled={busy}
         className={cx(
           "h-8 max-w-[7rem] shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs outline-none sm:max-w-[9rem]",

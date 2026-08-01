@@ -3301,3 +3301,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: added a polite loading status and busy state, marked the active result, and scrolls the active result into view as ArrowUp/ArrowDown changes it.
 - Verification: CommandPalette tests passed (2/2); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: asynchronous search surfaces must distinguish loading from empty results and keep keyboard selection visibly synchronized with the scroll viewport.
+
+## 2026-08-01: Session switcher refresh resilience
+
+- Found: a failed session-list refresh replaced the current choices with an empty array, making a multi-session switcher look like a single-session "add" button; the initial loading window had the same misleading affordance.
+- Fixed: preserve the last known list on refresh failure, expose the error, show a loading/busy state before the first list is available, and add `aria-busy` to the shared Button busy state.
+- Verification: SessionSwitcher and shared UI tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: background refresh failures should keep usable cached choices visible and distinguish unavailable data from genuinely empty data.

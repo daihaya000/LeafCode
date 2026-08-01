@@ -47,4 +47,48 @@ describe("SessionSwitcher controlled snap-back", () => {
     });
     expect(onSwitch).toHaveBeenCalled();
   });
+
+  it("keeps the existing session choices visible when a refresh fails", async () => {
+    getJson
+      .mockResolvedValueOnce({
+        sessions: [
+          { opencodeSessionId: "ses_1", title: "Session 1", updatedAt: "t1" },
+          { opencodeSessionId: "ses_2", title: "Session 2", updatedAt: "t2" },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("接続が切断されました"));
+
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="ses_1"
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    const select = await screen.findByRole("combobox", { name: "セッション切替" });
+    fireEvent.focus(select);
+
+    const status = await screen.findByRole("combobox", { name: "セッション切替" });
+    expect(status.querySelectorAll("option")).toHaveLength(2);
+    expect(status.getAttribute("title")).toBe("接続が切断されました");
+  });
+
+  it("shows a loading state before allowing the first session to be added", async () => {
+    getJson.mockReturnValue(new Promise(() => undefined));
+
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId={null}
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    const button = await screen.findByRole("button", { name: "セッション一覧を読み込み中" });
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
 });
