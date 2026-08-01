@@ -3588,3 +3588,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a synchronous submission ref at the handler boundary while preserving the existing disabled/read-only feedback and failure reset.
 - Verification: HomeView tests passed (52/52); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: task creation is an external side effect and must be guarded independently of the button's render timing.
+
+## 2026-08-01: Question response re-entry
+
+- Found: QuestionCard used only rendered busy state, leaving quick reply, full reply, and reject vulnerable to same-tick duplicate responses.
+- Fixed: share a synchronous busy ref across all three response paths while retaining per-action busy indicators and inline errors.
+- Verification: QuestionCard tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: every response entry point for an interactive request must share one lock, including shortcuts that bypass the primary submit button.

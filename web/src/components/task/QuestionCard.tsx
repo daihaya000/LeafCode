@@ -16,6 +16,7 @@ export function QuestionCard({
 }) {
   const [busy, setBusy] = useState<"reply" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
   const [selected, setSelected] = useState<string[][]>(() =>
     request.questions.map(() => []),
   );
@@ -69,7 +70,8 @@ export function QuestionCard({
     });
 
   const reply = async () => {
-    if (!canSubmit || busy !== null) return;
+    if (!canSubmit || busy !== null || busyRef.current) return;
+    busyRef.current = true;
     setBusy("reply");
     setError(null);
     try {
@@ -77,12 +79,14 @@ export function QuestionCard({
     } catch (err) {
       setError(err instanceof Error ? err.message : "回答に失敗しました");
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };
 
   const reject = async () => {
-    if (busy !== null) return;
+    if (busy !== null || busyRef.current) return;
+    busyRef.current = true;
     setBusy("reject");
     setError(null);
     try {
@@ -90,17 +94,19 @@ export function QuestionCard({
     } catch (err) {
       setError(err instanceof Error ? err.message : "拒否に失敗しました");
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };
 
   const quickReply = async (qi: number, label: string) => {
-    if (busy !== null) return;
+    if (busy !== null || busyRef.current) return;
     const q = request.questions[qi];
     if (!q || q.multiple || request.questions.length !== 1) {
       toggle(qi, label, q?.multiple);
       return;
     }
+    busyRef.current = true;
     setBusy("reply");
     setError(null);
     try {
@@ -111,6 +117,7 @@ export function QuestionCard({
     } catch (err) {
       setError(err instanceof Error ? err.message : "回答に失敗しました");
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };
