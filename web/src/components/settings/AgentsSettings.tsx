@@ -265,6 +265,17 @@ export function AgentsSettings() {
   const [restartError, setRestartError] = useState<string | null>(null);
   const hostOk = useHostStatus();
   const loadRequestRef = useRef(0);
+  const mountedRef = useRef(false);
+  const busyNameRef = useRef<string | null>(null);
+  const restartingRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadRequestRef.current += 1;
+    };
+  }, []);
 
   const load = useMemo(
     () =>
@@ -277,7 +288,7 @@ export function AgentsSettings() {
       }
       try {
         const data = await getJson<{ agents: AgentDto[] }>("/api/extensions/agents");
-        if (requestId !== loadRequestRef.current) return;
+        if (!mountedRef.current || requestId !== loadRequestRef.current) return;
         const list = Array.isArray(data.agents) ? data.agents : [];
         setAgents(
           list.map((dto) => ({
@@ -288,10 +299,12 @@ export function AgentsSettings() {
         );
         setState("ready");
       } catch {
-        if (requestId !== loadRequestRef.current) return;
+        if (!mountedRef.current || requestId !== loadRequestRef.current) return;
         setState("error");
       } finally {
-        if (retry && requestId === loadRequestRef.current) setRetrying(false);
+        if (mountedRef.current && retry && requestId === loadRequestRef.current) {
+          setRetrying(false);
+        }
       }
     },
     [],
@@ -303,7 +316,8 @@ export function AgentsSettings() {
 
   const toggleAgent = useCallback(
     async (agent: AgentRowModel, enabled: boolean) => {
-      if (busyName !== null || restarting) return;
+      if (busyNameRef.current !== null || restartingRef.current) return;
+      busyNameRef.current = agent.name;
       setBusyName(agent.name);
       setActionError(null);
       try {
@@ -313,20 +327,22 @@ export function AgentsSettings() {
           { enabled },
         );
         await load();
-        setRestartNeeded(true);
+        if (mountedRef.current) setRestartNeeded(true);
       } catch (err) {
-        setActionError(
+        if (mountedRef.current) setActionError(
           err instanceof Error ? err.message : "操作に失敗しました",
         );
       } finally {
-        setBusyName(null);
+        busyNameRef.current = null;
+        if (mountedRef.current) setBusyName(null);
       }
     },
-    [busyName, load, restarting],
+    [load],
   );
 
   const restartOpencode = useCallback(async () => {
-    if (restarting || busyName !== null) return;
+    if (restartingRef.current || busyNameRef.current !== null) return;
+    restartingRef.current = true;
     setRestarting(true);
     setRestartError(null);
     try {
@@ -349,6 +365,7 @@ export function AgentsSettings() {
       let success = false;
       for (let i = 0; i < 60; i += 1) {
         await new Promise((r) => setTimeout(r, 1000));
+        if (!mountedRef.current) return;
         try {
           const h = await getJson<HealthDto>("/api/health", undefined, {
             timeoutMs: 1500,
@@ -364,16 +381,19 @@ export function AgentsSettings() {
       if (!success) {
         throw new Error("OpenCode の再起動を確認できませんでした");
       }
-      setRestartNeeded(false);
+      if (mountedRef.current) setRestartNeeded(false);
       await load();
     } catch (err) {
-      setRestartError(
-        err instanceof Error ? err.message : "再起動に失敗しました",
-      );
+      if (mountedRef.current) {
+        setRestartError(
+          err instanceof Error ? err.message : "再起動に失敗しました",
+        );
+      }
     } finally {
-      setRestarting(false);
+      restartingRef.current = false;
+      if (mountedRef.current) setRestarting(false);
     }
-  }, [busyName, load, restarting]);
+  }, [load]);
 
   const filtered = useMemo(
     () => filterAgents(agents, query),

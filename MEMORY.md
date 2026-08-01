@@ -3687,6 +3687,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: HomeView tests passed (53/53), including a late engine response; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: a dashboard's initial parallel requests need one shared lifecycle boundary in addition to per-request de-duplication.
 
+## 2026-08-01: Agents settings operation lifecycle
+
+- Found: agent toggles and the OpenCode restart flow relied on rendered busy state; restart health polling could continue for up to a minute after the settings view disappeared.
+- Fixed: add synchronous toggle/restart locks, invalidate agent loads on unmount, guard mutation errors and success state, and stop restart polling when unmounted.
+- Verification: AgentsSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: long-running settings actions need both a ref-level lock for same-turn input and a lifecycle check inside every polling iteration.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.
