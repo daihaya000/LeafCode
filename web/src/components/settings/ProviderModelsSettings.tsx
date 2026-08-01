@@ -34,6 +34,7 @@ import {
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { OpenAISubscriptionAuth } from "./OpenAISubscriptionAuth";
 import { ClaudeSubscriptionAuth } from "./ClaudeSubscriptionAuth";
+import { CursorAcpAuth } from "./CursorAcpAuth";
 
 type ModelDto = {
   id: string;
@@ -977,6 +978,7 @@ export function ProviderModelsSettings() {
           </div>
         </section>
       )}
+      {providers.some((provider) => provider.id === "cursor-acp") && <CursorAcpAuth />}
     </div>
   );
 }
