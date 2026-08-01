@@ -66,7 +66,6 @@ type AccessInfo = {
 
 type SettingsTab =
   | "general"
-  | "theme"
   | "project"
   | "connectivity"
   | "skills"
@@ -513,7 +512,7 @@ export function SettingsView() {
 
   const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
     { key: "general", label: "全般" },
-    { key: "theme", label: "テーマ" },
+    { key: "profiles", label: "プロファイル" },
     {
       key: "project",
       label: "プロジェクト",
@@ -522,7 +521,6 @@ export function SettingsView() {
     { key: "connectivity", label: "接続" },
     { key: "providers", label: "プロバイダー/モデル" },
     { key: "agents", label: "エージェント" },
-    { key: "profiles", label: "プロファイル" },
     { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
     { key: "plugins", label: "プラグイン" },
@@ -837,10 +835,9 @@ export function SettingsView() {
             </section>
 
             <HostLogPanel />
+            <ThemeSettings />
           </>
         )}
-
-        {activeTab === "theme" && <ThemeSettings />}
 
         {activeTab === "project" && (
           <>

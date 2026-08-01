@@ -243,13 +243,11 @@ describe("SettingsView", () => {
     expect(screen.queryByText("エンジン")).toBeNull();
   });
 
-  it("moves theme switching into the テーマ tab", async () => {
+  it("shows theme switching inside the 全般 tab", async () => {
     render(<SettingsView />);
-    await screen.findByText("エンジン");
-
-    fireEvent.click(screen.getByRole("button", { name: "テーマ" }));
 
     expect(await screen.findByRole("heading", { name: "表示テーマ" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "テーマ" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /ライト/ }));
     expect(setTheme).toHaveBeenCalledWith("light");
   });
@@ -273,7 +271,7 @@ describe("SettingsView", () => {
     ).toEqual(
       expect.arrayContaining([
         "全般",
-        "テーマ",
+        "プロファイル",
         "プロジェクト",
         "接続",
         "プロバイダー/モデル",
@@ -290,7 +288,7 @@ describe("SettingsView", () => {
       .filter((label) =>
         [
           "全般",
-          "テーマ",
+          "プロファイル",
           "プロジェクト",
           "接続",
           "プロバイダー/モデル",
@@ -303,7 +301,7 @@ describe("SettingsView", () => {
       );
     expect(tabLabels).toEqual([
       "全般",
-      "テーマ",
+      "プロファイル",
       "プロジェクト",
       "接続",
       "プロバイダー/モデル",
