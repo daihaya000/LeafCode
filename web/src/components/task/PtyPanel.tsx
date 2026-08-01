@@ -18,6 +18,7 @@ interface PtyInfo {
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 8000;
 const RECONNECT_MAX_ATTEMPTS = 5;
+const PTY_INTERACTION_TIMEOUT_MS = 3000;
 
 /**
  * Backoff delay (ms) for the `attempt`-th reconnect (0-based), or `null` once
@@ -255,15 +256,16 @@ export function PtyPanel({ directory }: { directory: string }) {
     connect();
 
     const disposable = term.onData((data: string) => {
-      void fetch(
+      void timedFetch(
         apiUrl("/api/pty-session/input", { id: activeId, directory }),
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ data }),
           keepalive: true,
+          timeoutMs: PTY_INTERACTION_TIMEOUT_MS,
         },
-      ).catch(() => {
+      ).then((res) => res.text()).catch(() => {
         /* swallow input errors; the stream will surface disconnects */
       });
     });
@@ -273,15 +275,16 @@ export function PtyPanel({ directory }: { directory: string }) {
     // sync; container ResizeObserver-driven fits cover subsequent changes.
     const resizeDisposable = term.onResize(({ cols, rows }) => {
       if (!activeId) return;
-      void fetch(
+      void timedFetch(
         apiUrl("/api/pty-session/resize", { id: activeId, directory }),
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ rows, cols }),
           keepalive: true,
+          timeoutMs: PTY_INTERACTION_TIMEOUT_MS,
         },
-      ).catch(() => {
+      ).then((res) => res.text()).catch(() => {
         /* best effort; resize failures don't surface to the user */
       });
     });

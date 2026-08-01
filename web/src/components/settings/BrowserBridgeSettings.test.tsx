@@ -141,6 +141,15 @@ describe("BrowserBridgeSettings", () => {
 
     expect(screen.queryByText("接続済み")).toBeNull();
   });
+  it("uses a neutral status dot while the broker is unavailable", async () => {
+    timedFetch.mockResolvedValue(response({ available: false }));
+    render(<BrowserBridgeSettings />);
+
+    const region = await screen.findByRole("region", { name: "Browser Bridge" });
+    expect(region.querySelector(".bg-muted")).toBeTruthy();
+    expect(region.querySelector(".bg-success")).toBeNull();
+  });
+
   it("does not overlap background status polls", async () => {
     let resolveFirst: (value: Response) => void = () => {};
     timedFetch

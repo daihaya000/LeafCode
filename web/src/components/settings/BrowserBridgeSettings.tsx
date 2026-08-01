@@ -165,7 +165,17 @@ export function BrowserBridgeSettings() {
       aria-label="Browser Bridge"
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden="true" />
+        <div
+          className={cx(
+            "mt-0.5 h-2 w-2 shrink-0 rounded-full",
+            connection
+              ? "bg-success"
+              : status?.available
+                ? "bg-warning"
+                : "bg-muted",
+          )}
+          aria-hidden="true"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>

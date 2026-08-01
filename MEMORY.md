@@ -4114,3 +4114,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a reference-counted `useBodyScrollLock` hook, use it across these overlays, and migrate the project-add dialog so nested overlays restore the original body overflow only after the final lock is released.
 - Verification: targeted modal and project-dialog tests passed (44/44); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: focus management and background interaction are separate modal responsibilities; a modal audit must verify both keyboard and scroll isolation.
+
+## 2026-08-01: Mobile drawer and async interaction audit
+
+- Found: the mobile sidebar and profile confirmation/restart overlays still allowed background scrolling; PTY input and resize requests had no client-side timeout; Browser Bridge displayed a green status dot even when unavailable.
+- Fixed: extend the shared body-scroll lock to the sidebar and profile overlays, cap PTY interaction requests at three seconds while consuming the response to release the timeout, and make the Browser Bridge dot reflect connected/available/unavailable states.
+- Verification: targeted Sidebar, Profiles, PTY, and Browser Bridge tests passed (75/75); full suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: status indicators must reflect the same state used by the action controls, and fire-and-forget requests still need bounded lifetimes and response cleanup.

@@ -192,9 +192,11 @@ describe("ProfilesSettings", () => {
     await screen.findAllByText("default");
     const switchButton = screen.getAllByText("切替")[0] as HTMLElement;
     switchButton.focus();
+    document.body.style.overflow = "auto";
     fireEvent.click(switchButton);
 
     const dialog = await screen.findByRole("dialog");
+    expect(document.body.style.overflow).toBe("hidden");
     const buttons = Array.from(dialog.querySelectorAll("button")) as HTMLButtonElement[];
     expect(buttons).toHaveLength(2);
     expect(document.activeElement).toBe(buttons[0]);
@@ -206,6 +208,7 @@ describe("ProfilesSettings", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(switchButton);
+    expect(document.body.style.overflow).toBe("auto");
   });
 
   it("shows the create form when 新規作成 is clicked", async () => {

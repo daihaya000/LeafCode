@@ -103,7 +103,8 @@ describe("Sidebar", () => {
   });
 
   it("exposes the mobile drawer with id=mobile-nav when open", async () => {
-    render(<Sidebar mobileOpen onClose={vi.fn()} />);
+    document.body.style.overflow = "auto";
+    const view = render(<Sidebar mobileOpen onClose={vi.fn()} />);
 
     const drawer = document.getElementById("mobile-nav");
     expect(drawer).toBeTruthy();
@@ -117,6 +118,10 @@ describe("Sidebar", () => {
     expect(drawer?.className).toContain("overflow-hidden");
     expect(drawer?.className).toContain("top-0");
     expect(drawer?.className).not.toContain("inset-y-0");
+    expect(document.body.style.overflow).toBe("hidden");
+
+    view.rerender(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    await waitFor(() => expect(document.body.style.overflow).toBe("auto"));
   });
 
   it("gives the mobile header icon links explicit accessible names", async () => {

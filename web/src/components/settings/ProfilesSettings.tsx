@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Button } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import { restartOpencodeAndWait } from "@/lib/opencode-restart";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 // ---------------------------------------------------------------------------
 // types
@@ -108,6 +109,10 @@ export function ProfilesSettings() {
   const busyIdRef = useRef<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useBodyScrollLock(
+    switchConfirm !== null || unregisterConfirm !== null || restarting,
+  );
 
   useEffect(() => {
     const isOpen = switchConfirm !== null || unregisterConfirm !== null;

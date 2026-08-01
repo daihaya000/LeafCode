@@ -20,6 +20,7 @@ import { AddonHost } from "@/components/addons/AddonHost";
 import { cx, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 import { useMobileScrollTarget } from "./MobileScrollTargetContext";
 import {
   getActiveSessionAttention,
@@ -224,6 +225,8 @@ export function Sidebar({
   );
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const mobilePrevFocusRef = useRef<HTMLElement | null>(null);
+
+  useBodyScrollLock(mobileOpen);
 
   useEffect(() => {
     if (!pendingConfirmation) {
