@@ -27,6 +27,11 @@ export function webUiMcpEntry(): Record<string, unknown> {
   };
 }
 
+export type WebUiDependencyOptions = {
+  browserBridge?: boolean;
+  cursorAcp?: boolean;
+};
+
 function configPath(dir: string): string {
   return ["opencode.jsonc", "opencode.json"]
     .map((name) => path.join(dir, name))
@@ -80,7 +85,10 @@ function copyCursorAcpFiles(targetDir: string, sourceDirs: string[]): string[] {
 }
 
 /** Install WebUI MCP and Cursor ACP dependencies without overwriting settings. */
-export function installWebUiDependencies(profileDir: string): string[] {
+export function installWebUiDependencies(
+  profileDir: string,
+  options: WebUiDependencyOptions = {},
+): string[] {
   const targetConfigPath = configPath(profileDir);
   fs.mkdirSync(profileDir, { recursive: true });
   if (!fs.existsSync(targetConfigPath)) fs.writeFileSync(targetConfigPath, CONFIG_SKELETON, "utf8");
@@ -106,16 +114,17 @@ export function installWebUiDependencies(profileDir: string): string[] {
   }
 
   let content = fs.readFileSync(targetConfigPath, "utf8");
-  const installed = copyCursorAcpFiles(profileDir, sourceDirs);
+  const installed = options.cursorAcp === false ? [] : copyCursorAcpFiles(profileDir, sourceDirs);
   const formattingOptions = {
     insertSpaces: true,
     tabSize: 2,
     eol: content.includes("\r\n") ? "\r\n" : "\n",
   };
-  const entries: [string, string, Record<string, unknown>][] = [
-    ["mcp", "browser-bridge", webUiMcpEntry()],
-  ];
-  if (cursorProvider) entries.push(["provider", "cursor-acp", cursorProvider]);
+  const entries: [string, string, Record<string, unknown>][] = [];
+  if (options.browserBridge !== false) {
+    entries.push(["mcp", "browser-bridge", webUiMcpEntry()]);
+  }
+  if (options.cursorAcp !== false && cursorProvider) entries.push(["provider", "cursor-acp", cursorProvider]);
   for (const [parent, name, value] of entries) {
     const root = parse(content) as Record<string, unknown>;
     const current = root[parent];

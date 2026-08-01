@@ -42,6 +42,10 @@ type JobResponse = {
 };
 
 type LoadState = "loading" | "ready" | "error";
+type ProfileSetupSettings = {
+  browserBridge: boolean;
+  cursorAcp: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -80,6 +84,7 @@ function useHostStatus() {
 export function ProfilesSettings() {
   const [state, setState] = useState<LoadState>("loading");
   const [data, setData] = useState<ListResponse | null>(null);
+  const [setupSettings, setSetupSettings] = useState<ProfileSetupSettings | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [switchConfirm, setSwitchConfirm] = useState<ProfileDto | null>(null);
@@ -98,8 +103,12 @@ export function ProfilesSettings() {
 
   const load = useCallback(async () => {
     try {
-      const result = await getJson<ListResponse>("/api/profiles");
+      const [result, settings] = await Promise.all([
+        getJson<ListResponse>("/api/profiles"),
+        getJson<ProfileSetupSettings>("/api/profiles/settings"),
+      ]);
       setData(result);
+      setSetupSettings(settings);
       setState("ready");
     } catch {
       setState("error");
@@ -193,6 +202,29 @@ export function ProfilesSettings() {
       setActionError(err instanceof Error ? err.message : "作成に失敗しました");
     }
   }, [createName, createFrom, load]);
+
+  const updateSetupSetting = useCallback(
+    async (key: keyof ProfileSetupSettings, value: boolean) => {
+      if (!setupSettings) return;
+      const next = { ...setupSettings, [key]: value };
+      setSetupSettings(next);
+      setActionError(null);
+      try {
+        const saved = await sendJson<ProfileSetupSettings>(
+          "PUT",
+          "/api/profiles/settings",
+          next,
+        );
+        setSetupSettings(saved);
+      } catch (err) {
+        setSetupSettings(setupSettings);
+        setActionError(
+          err instanceof Error ? err.message : "自動セットアップ設定を保存できませんでした",
+        );
+      }
+    },
+    [setupSettings],
+  );
 
   const doRename = useCallback(
     async (id: string) => {
@@ -327,6 +359,38 @@ export function ProfilesSettings() {
         <p className="mb-4 text-xs text-faint">
           トレイホストが利用できないため、切替後の OpenCode 自動再起動は行われません。手動で再起動してください。
         </p>
+      )}
+
+      {setupSettings && (
+        <fieldset className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
+          <legend className="px-1 text-sm font-semibold text-text">新規プロファイルの自動セットアップ</legend>
+          <p className="mt-1 text-xs text-muted">
+            新規作成・複製時にWebUI連携用の依存ファイルと設定を自動配置します。
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {([
+              ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
+              ["cursorAcp", "Cursor ACP", "Cursor連携プラグインとプロバイダーを追加"],
+            ] as const).map(([key, label, description]) => (
+              <label
+                key={key}
+                className="flex cursor-pointer items-start gap-3 rounded-lg border border-border px-3 py-2.5 hover:bg-surface-2"
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                  checked={setupSettings[key]}
+                  onChange={(event) => void updateSetupSetting(key, event.target.checked)}
+                  aria-label={`${label}の自動セットアップ`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-text">{label}</span>
+                  <span className="block text-xs text-muted">{description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
       )}
 
       {/* Profile list — desktop table */}
@@ -508,7 +572,7 @@ export function ProfilesSettings() {
               value={createFrom}
               onChange={(e) => setCreateFrom(e.target.value)}
             >
-              <option value="empty">空（opencode.jsonc のみ）</option>
+              <option value="empty">空（自動セットアップ設定を適用）</option>
               {profiles.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} を複製（.git 除外・node_modules 複製）

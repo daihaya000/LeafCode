@@ -27,6 +27,7 @@ import {
 } from "./registry";
 import type { LinkInfo, Profile, ProfileDto, ProfilesState } from "./types";
 import { installWebUiDependencies } from "./webui-dependencies";
+import { readProfileSetupSettings } from "./settings";
 
 // ---------------------------------------------------------------------------
 // list
@@ -187,7 +188,7 @@ export function createProfile(input: {
       '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
       "utf8",
     );
-    installWebUiDependencies(dest);
+    installWebUiDependencies(dest, readProfileSetupSettings());
     const profile = makeProfile(input.name, dest);
     registerProfile(state, profile);
     return {
@@ -223,7 +224,7 @@ export function createProfile(input: {
     });
 
     await verifyCopy(pendingDest, result.copied, total);
-    installWebUiDependencies(pendingDest);
+    installWebUiDependencies(pendingDest, readProfileSetupSettings());
     await fsp.rename(pendingDest, dest);
 
     const profile = makeProfile(input.name, dest);

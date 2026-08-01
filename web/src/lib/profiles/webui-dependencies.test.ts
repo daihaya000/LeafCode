@@ -92,4 +92,13 @@ describe("installWebUiDependencies", () => {
     expect(config.provider["cursor-acp"].name).toBe("Bundled Cursor");
     expect(fs.readFileSync(path.join(target, "plugin", "cursor-acp.js"), "utf8")).toContain("export default");
   });
+
+  it("skips both optional dependencies when disabled", () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false })).toEqual([]);
+    expect(JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"))).toEqual({
+      $schema: "https://opencode.ai/config.json",
+    });
+  });
 });

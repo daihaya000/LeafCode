@@ -7,6 +7,12 @@ const HOST_OK = { ok: true, controlUrl: "http://127.0.0.1:1" };
 function mockFetch(responses: Record<string, unknown>) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.includes("/api/profiles/settings")) {
+      return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     for (const [pattern, body] of Object.entries(responses)) {
       if (url.includes(pattern)) {
         return new Response(JSON.stringify(body), {
@@ -164,6 +170,23 @@ describe("ProfilesSettings", () => {
       expect(screen.getAllByLabelText("名前").length).toBeGreaterThan(0);
       expect(screen.getAllByLabelText("作成元").length).toBeGreaterThan(0);
     });
+  });
+
+  it("renders Browser Bridge and Cursor ACP setup checkboxes", async () => {
+    global.fetch = mockFetch({
+      "/api/profiles": BASE_LIST,
+      "/api/host": HOST_OK,
+    }) as unknown as typeof fetch;
+
+    render(<ProfilesSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Browser Bridgeの自動セットアップ")).toBeTruthy();
+      expect(screen.getByLabelText("Cursor ACPの自動セットアップ")).toBeTruthy();
+    });
+    expect(
+      (screen.getByLabelText("Browser Bridgeの自動セットアップ") as HTMLInputElement).checked,
+    ).toBe(true);
   });
 
   it("shows error state when the API fails", async () => {
