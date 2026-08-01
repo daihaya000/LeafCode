@@ -3854,3 +3854,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: support drag handlers on both form and wrapper paths, add HomeView image drop/drag-over handlers, and use an element type compatible with both containers.
 - Verification: Composer tests passed (5/5); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: shared presentation components need equivalent interaction wiring across every structural rendering branch.
+
+## 2026-08-01: Slash suggestion visibility
+
+- Found: the slash-command list exposed an active descendant but did not scroll the active option into view, so ArrowDown/ArrowUp could move selection outside the visible menu.
+- Fixed: track option elements and scroll the active command with nearest-block behavior when the selection changes.
+- Verification: SlashSuggestMenu and Composer tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: keyboard selection state and visual visibility must be synchronized in bounded suggestion lists.

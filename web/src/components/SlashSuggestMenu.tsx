@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { cx } from "@/components/ui";
 import type { SlashCommand } from "@/lib/slash-command";
@@ -15,6 +16,17 @@ export function SlashSuggestMenu({
   onHover: (index: number) => void;
   onSelect: (command: SlashCommand) => void;
 }) {
+  const itemRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  useEffect(() => {
+    const active = items[activeIndex];
+    if (!active) return;
+    const element = itemRefs.current.get(active.name);
+    if (element && typeof element.scrollIntoView === "function") {
+      element.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeIndex, items]);
+
   if (items.length === 0) return null;
 
   return (
@@ -29,6 +41,10 @@ export function SlashSuggestMenu({
         return (
           <button
             key={item.name}
+            ref={(element) => {
+              if (element) itemRefs.current.set(item.name, element);
+              else itemRefs.current.delete(item.name);
+            }}
             type="button"
             role="option"
             id={`slash-cmd-${item.name}`}
