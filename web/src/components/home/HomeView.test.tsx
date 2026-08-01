@@ -129,6 +129,37 @@ describe("HomeView image attachments", () => {
     expect(sendJson).not.toHaveBeenCalled();
   });
 
+  it("does not submit the same task twice while creation is pending", async () => {
+    let releaseCreation!: (value: unknown) => void;
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/tasks") {
+        return new Promise((resolve) => {
+          releaseCreation = resolve;
+        });
+      }
+      return Promise.resolve({ taskId: "task-1" });
+    });
+    render(<HomeView />);
+    const prompt = screen.getAllByRole("combobox")[0]!;
+    fireEvent.change(prompt, { target: { value: "duplicate guard" } });
+    const submit = screen
+      .getAllByRole("button")
+      .find((button) => button.getAttribute("type") === "submit")!;
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(
+        sendJson.mock.calls.filter(
+          ([method, path]) => method === "POST" && path === "/api/tasks",
+        ),
+      ).toHaveLength(1),
+    );
+
+    releaseCreation({ taskId: "task-1" });
+  });
+
   it("submits an image selected without a text prompt", async () => {
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider") {

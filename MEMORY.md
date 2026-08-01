@@ -3581,3 +3581,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: serialize server persistence writes while keeping localStorage and the visible sidebar state synchronous.
 - Verification: Sidebar tests passed (36/36); sidebar-settings tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: durable UI preferences need the same ordering guarantee as their local optimistic state, especially during drag/resize interactions.
+
+## 2026-08-01: Home task creation re-entry
+
+- Found: Home task creation relied on the delayed `submitting` state, so rapid activation before the disabled render could submit the same task twice.
+- Fixed: add a synchronous submission ref at the handler boundary while preserving the existing disabled/read-only feedback and failure reset.
+- Verification: HomeView tests passed (52/52); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: task creation is an external side effect and must be guarded independently of the button's render timing.

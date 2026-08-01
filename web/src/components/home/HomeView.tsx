@@ -175,6 +175,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const attachmentsRef = useRef(attachments);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [modelCapabilities, setModelCapabilities] = useState<
@@ -608,6 +609,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       (!text && attachments.length === 0) ||
       !projectId ||
       submitting ||
+      submittingRef.current ||
       !engineOk ||
       !branchReady
     ) {
@@ -657,6 +659,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       isolation === "git_worktree" && branchProjectId === projectId
         ? baseBranch
         : "";
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -749,6 +752,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       notifyTasksChanged();
       router.push(`/task/${data.taskId}`);
     } catch (err) {
+      submittingRef.current = false;
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
     }
