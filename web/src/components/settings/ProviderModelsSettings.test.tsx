@@ -138,6 +138,45 @@ describe("ProviderModelsSettings", () => {
     });
   });
 
+  it("keeps a default model chosen while the initial server read is pending", async () => {
+    let releaseServer!: () => void;
+    const serverReady = new Promise<void>((resolve) => {
+      releaseServer = resolve;
+    });
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return serverReady.then(() => ({ value: "anthropic::claude-sonnet-4-20250514" }));
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({ providers: PROVIDERS });
+      }
+      if (path === "/api/settings/auto-optimize" || path === "/api/settings/auto-show-model") {
+        return Promise.resolve({ value: null });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+
+    render(<ProviderModelsSettings />);
+
+    await screen.findByRole("switch", { name: /OpenAI/ });
+    const defaultModelTrigger = screen
+      .getAllByRole("button")
+      .find(
+        (button) =>
+          button.getAttribute("aria-haspopup") === "listbox" &&
+          button.getAttribute("value") === "",
+      );
+    expect(defaultModelTrigger).toBeTruthy();
+    fireEvent.click(defaultModelTrigger!);
+    fireEvent.click(screen.getByRole("option", { name: "GPT-5" }));
+    expect(localStorage.getItem("webui:default-model")).toBe("openai::gpt-5");
+
+    releaseServer();
+    await waitFor(() =>
+      expect(defaultModelTrigger).toHaveProperty("value", "openai::gpt-5"),
+    );
+  });
+
   it("migrates a localStorage-only default model to the server on load", async () => {
     localStorage.setItem("webui:default-model", "local::model");
     sendJson.mockResolvedValue({ ok: true });

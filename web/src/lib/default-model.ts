@@ -18,6 +18,7 @@ import { getJson, sendJson } from "./client";
 
 const STORAGE_KEY = "webui:default-model";
 export const DEFAULT_MODEL_EVENT = "webui:default-model";
+let defaultModelWriteQueue = Promise.resolve();
 
 /**
  * Last used model: the model actually applied to the most recent successful
@@ -82,11 +83,18 @@ export async function writeDefaultModelToServer(
   value: string | null,
 ): Promise<void> {
   if (typeof window === "undefined") return;
-  try {
-    await sendJson("PUT", "/api/settings/default-model", { value });
-  } catch (err) {
-    console.warn("writeDefaultModelToServer failed", err);
-  }
+  const operation = defaultModelWriteQueue.then(async () => {
+    try {
+      await sendJson("PUT", "/api/settings/default-model", { value });
+    } catch (err) {
+      console.warn("writeDefaultModelToServer failed", err);
+    }
+  });
+  defaultModelWriteQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  await operation;
 }
 
 export function readLastUsedModel(): string | null {

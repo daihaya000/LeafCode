@@ -25,6 +25,7 @@ export const AUTO_SHOW_MODEL_EVENT = "webui:auto-show-model";
 /** Server-side `settings` keys, mirrored in the settings route allowlist. */
 export const AUTO_OPTIMIZE_SETTING_KEY = "auto-optimize";
 export const AUTO_SHOW_MODEL_SETTING_KEY = "auto-show-model";
+const autoSettingWriteQueues = new Map<AutoSettingKey, Promise<void>>();
 
 /** Stored form of the boolean toggles: `"1"` on, `""` (or absent) off. */
 const ON = "1";
@@ -163,9 +164,20 @@ export async function writeAutoSettingToServer(
   value: string,
 ): Promise<void> {
   if (typeof window === "undefined") return;
-  try {
-    await sendJson("PUT", `/api/settings/${key}`, { value });
-  } catch (err) {
-    console.warn("writeAutoSettingToServer failed", key, err);
-  }
+  const previous = autoSettingWriteQueues.get(key) ?? Promise.resolve();
+  const operation = previous.then(async () => {
+    try {
+      await sendJson("PUT", `/api/settings/${key}`, { value });
+    } catch (err) {
+      console.warn("writeAutoSettingToServer failed", key, err);
+    }
+  });
+  autoSettingWriteQueues.set(
+    key,
+    operation.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  await operation;
 }

@@ -3532,3 +3532,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add one synchronous mutation ref shared by provider save and delete flows, preserving the existing visible busy states.
 - Verification: ProviderModelsSettings tests passed (29/29); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: settings mutations that affect external configuration should serialize at the handler boundary, not only through rendered button state.
+
+## 2026-08-01: Default and Auto setting race protection
+
+- Found: a default-model server read that started on mount could overwrite a model selected by the user while the read was pending; rapid setting changes could also let an older PUT finish after a newer value.
+- Fixed: track whether the default model was touched during hydration and serialize server writes per setting key for default/Auto preferences.
+- Verification: default-model and auto-settings tests passed (36/36); ProviderModelsSettings tests passed (30/30); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: asynchronous hydration must yield to user intent, and fire-and-forget preference writes need ordering guarantees even when local UI updates are immediate.

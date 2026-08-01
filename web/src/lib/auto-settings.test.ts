@@ -245,6 +245,33 @@ describe("auto settings server sync", () => {
     });
   });
 
+  it("serializes overlapping writes for the same setting", async () => {
+    let releaseFirst!: (value: unknown) => void;
+    sendJson.mockImplementation((_method: string, path: string, body: { value: string }) => {
+      if (path.endsWith("auto-show-model") && body.value === "first") {
+        return new Promise((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
+
+    const first = writeAutoSettingToServer("auto-show-model", "first");
+    await Promise.resolve();
+    const second = writeAutoSettingToServer("auto-show-model", "second");
+    await Promise.resolve();
+    expect(sendJson).toHaveBeenCalledTimes(1);
+
+    releaseFirst({ ok: true });
+    await Promise.all([first, second]);
+    expect(sendJson).toHaveBeenNthCalledWith(
+      2,
+      "PUT",
+      "/api/settings/auto-show-model",
+      { value: "second" },
+    );
+  });
+
   it("swallows a write failure", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     sendJson.mockRejectedValue(new Error("network"));

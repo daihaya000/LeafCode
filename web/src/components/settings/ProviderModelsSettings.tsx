@@ -314,6 +314,7 @@ export function ProviderModelsSettings() {
   );
   const [autoShowModel, setAutoShowModel] = useState(() => readAutoShowModel());
   const autoSettingsTouched = useRef({ mode: false, showModel: false });
+  const defaultModelTouched = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
@@ -334,21 +335,27 @@ export function ProviderModelsSettings() {
   });
 
   useEffect(() => {
+    let active = true;
     void (async () => {
       const serverValue = await readDefaultModelFromServer().catch(() => null);
       const localValue = readDefaultModel();
+      const touched = defaultModelTouched.current;
       // DB優先。DBにあればそれ、なければlocalStorage。
-      const resolved = serverValue ?? localValue ?? "";
+      const resolved = touched ? localValue ?? "" : serverValue ?? localValue ?? "";
+      if (!active) return;
       setDefaultModel(resolved);
       // DB値を localStorage へも反映（他画面/他ブラウザで開いた時の同期源）。
-      if (serverValue && serverValue !== localValue) {
+      if (!touched && serverValue && serverValue !== localValue) {
         writeDefaultModel(serverValue);
       }
       // DBに無くlocalStorageにある場合はDBへ保存（マイグレーション）。
-      if (serverValue == null && localValue) {
+      if (!touched && serverValue == null && localValue) {
         await writeDefaultModelToServer(localValue).catch(() => undefined);
       }
     })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -709,6 +716,7 @@ export function ProviderModelsSettings() {
                 ariaLabel="デフォルトモデル"
                 emptyLabel="選択してください"
                 onChange={(v) => {
+                  defaultModelTouched.current = true;
                   setDefaultModel(v);
                   writeDefaultModel(v || null);
                   void writeDefaultModelToServer(v || null).catch(
@@ -723,6 +731,7 @@ export function ProviderModelsSettings() {
                   size="sm"
                   title="デフォルトをクリア"
                   onClick={() => {
+                    defaultModelTouched.current = true;
                     setDefaultModel("");
                     writeDefaultModel(null);
                     void writeDefaultModelToServer(null).catch(() => undefined);

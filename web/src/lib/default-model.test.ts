@@ -142,6 +142,33 @@ describe("default-model server sync", () => {
     });
   });
 
+  it("serializes overlapping writes so the latest value is sent last", async () => {
+    let releaseFirst!: (value: unknown) => void;
+    sendJson.mockImplementation((_method: string, _path: string, body: { value: string | null }) => {
+      if (body.value === "first") {
+        return new Promise((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
+
+    const first = writeDefaultModelToServer("first");
+    await Promise.resolve();
+    const second = writeDefaultModelToServer("second");
+    await Promise.resolve();
+    expect(sendJson).toHaveBeenCalledTimes(1);
+
+    releaseFirst({ ok: true });
+    await Promise.all([first, second]);
+    expect(sendJson).toHaveBeenNthCalledWith(
+      2,
+      "PUT",
+      "/api/settings/default-model",
+      { value: "second" },
+    );
+  });
+
   it("writeDefaultModelToServer swallows fetch errors", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     sendJson.mockRejectedValue(new Error("network"));
