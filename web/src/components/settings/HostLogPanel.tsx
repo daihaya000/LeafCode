@@ -74,7 +74,7 @@ export function HostLogPanel() {
         setFetchError(null);
       }
     } catch (err) {
-      if (mountedRef.current) setFetchError(
+      if (mountedRef.current && !controller.signal.aborted) setFetchError(
         err instanceof Error ? err.message : "ホストログを取得できません",
       );
     } finally {

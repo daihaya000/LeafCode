@@ -11,6 +11,10 @@ describe("BrowserBridgeApprovals", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     timedFetch.mockReset();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
   });
   afterEach(() => {
     cleanup();
@@ -99,6 +103,21 @@ describe("BrowserBridgeApprovals", () => {
 
     expect(screen.queryByText("stale_tool")).toBeNull();
     expect(screen.getByText("保留中の承認はありません。")).toBeTruthy();
+  });
+
+  it("pauses polling while hidden and resumes when visible", async () => {
+    timedFetch.mockResolvedValue(response({ available: false, approvals: [], requests: [] }));
+    render(<BrowserBridgeApprovals />);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    fireEvent(document, new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(timedFetch).toHaveBeenCalledTimes(2);
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(4));
   });
 
   it("renders approval metadata and forwards an allow decision", async () => {

@@ -23,6 +23,9 @@ export function BrowserBridgeApprovals() {
   const [available, setAvailable] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   const busyRef = useRef<string | null>(null);
   const mountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
@@ -46,14 +49,22 @@ export function BrowserBridgeApprovals() {
       const approvalsData = (await approvalsRes.json()) as { approvals?: Approval[]; available?: boolean };
       const pairingData = (await pairingRes.json()) as { requests?: PairingRequest[]; available?: boolean };
       if (!approvalsRes.ok || !pairingRes.ok) throw new Error("Browser Bridgeに接続できません");
-      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
+      if (
+        !mountedRef.current ||
+        requestId !== refreshRequestRef.current ||
+        abortController.signal.aborted
+      ) return;
       setApprovals(Array.isArray(approvalsData.approvals) ? approvalsData.approvals : []);
       setPairingRequests(Array.isArray(pairingData.requests) ? pairingData.requests : []);
       setAvailable(approvalsData.available === true || pairingData.available === true);
       setError(null);
     } catch (err) {
       if (!mountedRef.current) return;
-      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
+      if (
+        !mountedRef.current ||
+        requestId !== refreshRequestRef.current ||
+        abortController.signal.aborted
+      ) return;
       setError(err instanceof Error ? err.message : "承認一覧を取得できません");
     } finally {
       if (refreshAbortRef.current === abortController) {
@@ -62,7 +73,27 @@ export function BrowserBridgeApprovals() {
     }
   }, []);
   useEffect(() => {
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (!visible) {
+        refreshRequestRef.current += 1;
+        refreshAbortRef.current?.abort();
+        refreshAbortRef.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
     mountedRef.current = true;
+    if (!pageVisible) return () => {
+      mountedRef.current = false;
+      refreshRequestRef.current += 1;
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+    };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 2000);
     return () => {
@@ -72,7 +103,7 @@ export function BrowserBridgeApprovals() {
       refreshRequestRef.current += 1;
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [pageVisible, refresh]);
   const decide = async (approvalId: string, decision: "allow" | "deny") => {
     const busyKey = `approval:${approvalId}`;
     if (busyRef.current) return;
@@ -89,7 +120,6 @@ export function BrowserBridgeApprovals() {
       if (!mountedRef.current) return;
       await refresh();
     } catch (err) {
-      if (!mountedRef.current) return;
       if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "承認の更新に失敗しました");
     } finally {
