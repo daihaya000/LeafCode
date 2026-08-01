@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Layers, Plus } from "lucide-react";
 import { Button, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";
@@ -27,27 +27,32 @@ export function SessionSwitcher({
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [switchError, setSwitchError] = useState<string | null>(null);
   // Keep the user's selection while the parent catches up with onSwitch.
   const [localSelection, setLocalSelection] = useState<string | null>(null);
+  const refreshIdRef = useRef(0);
 
   useEffect(() => {
     setLocalSelection(currentSessionId);
   }, [currentSessionId]);
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshIdRef.current;
     setSessionsLoading(true);
     try {
       const data = await getJson<{
         sessions?: { opencodeSessionId: string; title: string; updatedAt: string }[];
       }>(`/api/workspaces/${workspaceId}/sessions`);
+      if (requestId !== refreshIdRef.current) return;
       setSessions(data.sessions ?? []);
       setSessionsError(null);
     } catch (err) {
+      if (requestId !== refreshIdRef.current) return;
       setSessionsError(
         err instanceof Error ? err.message : "セッション一覧を取得できませんでした",
       );
     } finally {
-      setSessionsLoading(false);
+      if (requestId === refreshIdRef.current) setSessionsLoading(false);
     }
   }, [workspaceId]);
 
@@ -71,6 +76,7 @@ export function SessionSwitcher({
   );
 
   const create = async () => {
+    if (busy) return;
     setBusy(true);
     setCreateError(null);
     try {
@@ -143,13 +149,17 @@ export function SessionSwitcher({
           const id = e.target.value;
           if (!id || id === currentSessionId) return;
           setLocalSelection(id);
+          setSwitchError(null);
           setBusy(true);
           try {
             await updateSessionOrder(id);
             onSwitch();
-          } catch {
+          } catch (err) {
             // Bind failed (engine down, etc.): resync the dropdown to real state
             // instead of leaving an unhandled rejection and a lying selection.
+            setSwitchError(
+              err instanceof Error ? err.message : "セッションを切り替えられませんでした",
+            );
             await refresh();
             setLocalSelection(currentSessionId);
           } finally {
@@ -173,13 +183,29 @@ export function SessionSwitcher({
       <Button
         variant="ghost"
         size="icon"
-        title={createError ?? "新セッション"}
-        aria-label={createError ? `セッション追加失敗: ${createError}` : "新セッション"}
+        title={createError ?? switchError ?? "新セッション"}
+        aria-label={
+          createError
+            ? `セッション追加失敗: ${createError}`
+            : switchError
+              ? `セッション切替失敗: ${switchError}`
+              : "新セッション"
+        }
         busy={busy}
         onClick={() => void create()}
       >
         <Plus className="h-3.5 w-3.5" />
       </Button>
+      {switchError && (
+        <span
+          role="status"
+          aria-live="polite"
+          className="max-w-40 truncate text-[11px] text-danger"
+          title={switchError}
+        >
+          セッション切替に失敗しました
+        </span>
+      )}
     </div>
   );
 }

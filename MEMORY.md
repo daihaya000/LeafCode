@@ -3392,3 +3392,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: route restore failures through the existing inline task error, add a shared action lock with `disabled`/`aria-busy`, and cover duplicate restore clicks with a regression test.
 - Verification: TaskView tests passed (101/101); no `window.alert` remains under `web/src`; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: task-level recovery actions should share one busy channel so users cannot create competing requests while still seeing a retryable, non-blocking error.
+
+## 2026-08-01: Diff and session switch concurrency
+
+- Found: DiffPane action handlers relied on button disabled state alone, so keyboard/event re-entry could start a second commit; SessionSwitcher refreshes could apply an old workspace response, and session switch failures were silent.
+- Fixed: add an in-handler busy guard, disable refresh during write actions, add refresh request generations, and show a retryable session-switch status while restoring the real selection.
+- Verification: DiffPane and SessionSwitcher tests passed (12/12); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: UI disabled state is not sufficient protection for async actions; the handler and the data source both need concurrency boundaries.

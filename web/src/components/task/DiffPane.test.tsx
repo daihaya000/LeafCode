@@ -197,4 +197,36 @@ describe("DiffPane directory race", () => {
 
     expect(sendJson).not.toHaveBeenCalled();
   });
+
+  it("ignores a second commit while the first request is pending", async () => {
+    mockMetaApis();
+    let resolveCommit!: (value: unknown) => void;
+    sendJson.mockImplementation((method: string, url: string) => {
+      if (method === "POST" && url === "/api/git/commit") {
+        return new Promise((resolve) => {
+          resolveCommit = resolve;
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    await screen.findByText("file.ts");
+    fireEvent.click(screen.getByRole("button", { name: /Commit/i }));
+    fireEvent.change(screen.getByPlaceholderText(/コミットメッセージ/), {
+      target: { value: "msg" },
+    });
+
+    const commit = screen.getByRole("button", { name: /コミット \(1\)/ });
+    fireEvent.click(commit);
+    fireEvent.click(commit);
+
+    expect(sendJson).toHaveBeenCalledTimes(1);
+    expect(commit.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => {
+      resolveCommit({});
+      await Promise.resolve();
+    });
+  });
 });

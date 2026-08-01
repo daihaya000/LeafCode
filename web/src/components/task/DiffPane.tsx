@@ -343,6 +343,7 @@ export function DiffPane({
 
   const run = useCallback(
     async (fn: () => Promise<string>) => {
+      if (busy) return;
       setBusy(true);
       setError(null);
       setNotice(null);
@@ -359,7 +360,7 @@ export function DiffPane({
         setBusy(false);
       }
     },
-    [load, loadMergeMeta, onMutated],
+    [busy, load, loadMergeMeta, onMutated],
   );
 
   const commit = () =>
@@ -543,7 +544,14 @@ export function DiffPane({
             <ChevronsUpDown className="h-4 w-4" />
           )}
         </Button>
-        <Button variant="ghost" size="icon" title="更新" onClick={() => void load()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="更新"
+          busy={loading}
+          disabled={busy}
+          onClick={() => void load()}
+        >
           <RefreshCw className={cx("h-4 w-4", loading && "animate-spin")} />
         </Button>
       </div>
