@@ -109,4 +109,31 @@ describe("QuestionCard custom answer", () => {
     );
     expect(markup).not.toContain('type="text"');
   });
+
+  it("exposes single and multiple choices with their selection semantics", () => {
+    const markup = renderToStaticMarkup(
+      createElement(QuestionCard, {
+        request: baseRequest([
+          {
+            question: "単一選択",
+            header: "",
+            options: [{ label: "A", description: "" }],
+            custom: false,
+          },
+          {
+            question: "複数選択",
+            header: "",
+            options: [{ label: "B", description: "" }],
+            multiple: true,
+            custom: false,
+          },
+        ]),
+        onReply: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+    expect(markup).toContain('role="radio"');
+    expect(markup).toContain('role="checkbox"');
+    expect(markup).toContain('aria-checked="false"');
+  });
 });

@@ -3336,3 +3336,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: added an explicit empty-folder status, disabled the parent action when unavailable or loading, exposed loading with `aria-busy`, and marked load failures as alerts.
 - Verification: FileTreePanel tests passed (2/2); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: navigation panels need a meaningful empty state and disabled boundary controls so absence of data is not mistaken for a rendering failure.
+
+## 2026-08-01: Permission and question card semantics
+
+- Found: permission/question action errors were not announced, and question choices were exposed as generic buttons even though they represented radio or checkbox selections.
+- Fixed: announce card errors as assertive alerts and expose single-choice options as `radio`/`aria-checked`, multi-choice options as `checkbox`/`aria-checked`; updated attention-modal tests to use the semantic roles.
+- Verification: QuestionCard and AttentionQueueModal tests passed (18/18); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: approval UI needs both immediate failure feedback and semantics that describe the decision model, not only the visual styling.

@@ -144,7 +144,7 @@ describe("AttentionQueueModal", () => {
 
       render(<AttentionQueueModal />);
 
-      const optionBtn = screen.getByRole("button", { name: "はい" }) as HTMLButtonElement;
+      const optionBtn = screen.getByRole("radio", { name: "はい" }) as HTMLButtonElement;
       expect(optionBtn.disabled).toBe(false);
       act(() => {
         optionBtn.click();
@@ -172,7 +172,7 @@ describe("AttentionQueueModal", () => {
 
       render(<AttentionQueueModal />);
 
-      const optionBtn = screen.getByRole("button", { name: "はい" }) as HTMLButtonElement;
+      const optionBtn = screen.getByRole("radio", { name: "はい" }) as HTMLButtonElement;
       expect(optionBtn.disabled).toBe(false);
       act(() => {
         optionBtn.click();
@@ -204,7 +204,7 @@ describe("AttentionQueueModal", () => {
 
       render(<AttentionQueueModal />);
 
-      const optionBtn = screen.getByRole("button", { name: "はい" });
+      const optionBtn = screen.getByRole("radio", { name: "はい" });
       expect((optionBtn as HTMLButtonElement).disabled).toBe(false);
       act(() => {
         optionBtn.click();

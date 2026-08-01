@@ -135,7 +135,11 @@ export function PermissionCard({
           拒否
         </Button>
       </div>
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {error && (
+        <p className="mt-2 text-xs text-danger" role="alert" aria-live="assertive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

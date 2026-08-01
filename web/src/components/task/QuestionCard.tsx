@@ -183,7 +183,8 @@ export function QuestionCard({
                     key={opt.label}
                     type="button"
                     disabled={busy !== null}
-                    aria-pressed={on}
+                    role={q.multiple ? "checkbox" : "radio"}
+                    aria-checked={on}
                     onClick={() => void quickReply(qi, opt.label)}
                     className={cx(
                       "cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50",
@@ -316,7 +317,11 @@ export function QuestionCard({
           キャンセル
         </Button>
       </div>
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      {error && (
+        <p className="mt-2 text-xs text-danger" role="alert" aria-live="assertive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
