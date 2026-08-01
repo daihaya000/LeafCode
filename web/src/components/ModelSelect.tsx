@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -65,6 +66,7 @@ export function ModelSelect({
   emptyLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [menuPosition, setMenuPosition] = useState<{
     top: number;
     left: number;
@@ -72,6 +74,8 @@ export function ModelSelect({
   } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxId = useId();
   const selected = options.find((option) => option.value === value);
   const groupedOptions = useMemo(
     () =>
@@ -80,6 +84,29 @@ export function ModelSelect({
         options: options.filter((option) => option.group === group),
       })),
     [options],
+  );
+  const flattenedOptions = useMemo(
+    () => groupedOptions.flatMap(({ options: groupOptions }) => groupOptions),
+    [groupedOptions],
+  );
+  const selectedIndex = Math.max(
+    0,
+    flattenedOptions.findIndex((option) => option.value === value),
+  );
+
+  useEffect(() => {
+    setHighlightedIndex((current) =>
+      Math.min(current, Math.max(0, flattenedOptions.length - 1)),
+    );
+  }, [flattenedOptions.length]);
+
+  const chooseOption = useCallback(
+    (option: ModelOption) => {
+      onChange(option.value);
+      setOpen(false);
+      triggerRef.current?.focus();
+    },
+    [onChange],
   );
 
   const updateMenuPosition = useCallback(() => {
@@ -136,7 +163,10 @@ export function ModelSelect({
     }
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     }
 
     document.addEventListener("pointerdown", onPointerDown);
@@ -155,6 +185,7 @@ export function ModelSelect({
     <div
       ref={menuRef}
       role="listbox"
+      id={listboxId}
       aria-label={ariaLabel}
       className="fixed z-50 max-h-80 w-max max-w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-surface p-1 text-xs shadow-xl"
       style={{
@@ -169,19 +200,23 @@ export function ModelSelect({
           <div className="px-2 py-1 text-[11px] font-semibold text-faint">
             {group}
           </div>
-          {groupOptions.map((option) => (
+          {groupOptions.map((option) => {
+            const optionIndex = flattenedOptions.findIndex(
+              (candidate) => candidate.value === option.value,
+            );
+            return (
             <button
               key={option.value}
               type="button"
               role="option"
               aria-selected={option.value === value}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
+              id={`${listboxId}-option-${optionIndex}`}
+              onMouseEnter={() => setHighlightedIndex(optionIndex)}
+              onClick={() => chooseOption(option)}
               className={cx(
                 "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none",
                 option.value === value && "bg-surface-2 text-text",
+                optionIndex === highlightedIndex && "ring-1 ring-primary/40",
               )}
             >
               <ModelProviderIcon value={option.value} />
@@ -196,7 +231,8 @@ export function ModelSelect({
                 <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
               )}
             </button>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>
@@ -205,14 +241,54 @@ export function ModelSelect({
   return (
     <div ref={rootRef} className={cx("relative inline-flex min-w-0", className)}>
       <button
+        ref={triggerRef}
         type="button"
         value={value}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        aria-activedescendant={
+          open && flattenedOptions[highlightedIndex]
+            ? `${listboxId}-option-${highlightedIndex}`
+            : undefined
+        }
         aria-label={ariaLabel}
         title={title ?? selected?.label ?? "モデル"}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() =>
+          setOpen((current) => {
+            if (!current) setHighlightedIndex(selectedIndex);
+            return !current;
+          })
+        }
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && open) {
+            event.preventDefault();
+            setOpen(false);
+            return;
+          }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) {
+              setHighlightedIndex(selectedIndex);
+              setOpen(true);
+              return;
+            }
+            const delta = event.key === "ArrowDown" ? 1 : -1;
+            setHighlightedIndex((current) =>
+              Math.min(
+                Math.max(0, current + delta),
+                Math.max(0, flattenedOptions.length - 1),
+              ),
+            );
+            return;
+          }
+          if ((event.key === "Enter" || event.key === " ") && open) {
+            event.preventDefault();
+            const option = flattenedOptions[highlightedIndex];
+            if (option) chooseOption(option);
+          }
+        }}
         className={cx(
           "group inline-flex h-8 min-w-0 appearance-none items-center gap-1.5 rounded-lg border border-border bg-bg px-2 text-xs font-medium text-muted transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none hover:bg-surface-2 hover:text-text focus:border-border-strong focus:bg-surface-2 focus:text-text",
           disabled && "cursor-not-allowed opacity-40",

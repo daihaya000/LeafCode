@@ -66,4 +66,25 @@ describe("ModelSelect", () => {
       screen.getByRole("button", { name: "モデル" }).querySelector("img")?.getAttribute("src"),
     ).toBe("/icon-192.png");
   });
+
+  it("supports keyboard navigation and returns focus after selection", () => {
+    const onChange = vi.fn();
+    render(
+      <ModelSelect
+        value="openai::gpt-5.5"
+        options={options}
+        onChange={onChange}
+      />,
+    );
+    const trigger = screen.getByRole("button");
+    trigger.focus();
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+
+    expect(onChange).toHaveBeenCalledWith("anthropic::claude");
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
 });

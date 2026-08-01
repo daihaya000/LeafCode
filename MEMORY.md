@@ -3784,3 +3784,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add mounted/synchronous operation guards, document-generation checks, safe busy cleanup, interruption checks during bulk permission handling, and conditional focus restoration.
 - Verification: PlanDocumentCard tests passed (3/3), AttentionQueueModal tests passed (13/13), typecheck, ESLint, and `git diff --check` passed.
 - Lesson: every user-triggered async operation needs both a same-turn lock and a lifecycle/context check, with cleanup in a `finally` path even when local setup fails.
+
+## 2026-08-01: ModelSelect keyboard UX
+
+- Found: the model picker had no arrow-key navigation or Enter selection path, and clicking an option in the portal could leave focus on a removed menu element.
+- Fixed: add a flattened keyboard option model, active descendant semantics, highlighted navigation, Escape handling, and focus return to the trigger after selection.
+- Verification: ModelSelect tests passed (4/4); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: portaled listboxes need explicit keyboard state and focus ownership; visual hover behavior alone is not a complete picker interaction.
