@@ -3889,3 +3889,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: show a refresh affordance and retry the list request when its error state is active; return to the new-session action after recovery.
 - Verification: SessionSwitcher tests passed (7/7); typecheck, ESLint, and `git diff --check` passed. ESLint now reports 11 existing warnings.
 - Lesson: an error state should expose the lowest-risk recovery action before offering a state-changing operation.
+
+## 2026-08-01: ModelSelect combobox semantics
+
+- Found: the model picker used a native button role while exposing `aria-activedescendant`, which is not supported for that role and hid the highlighted option relationship from assistive technology.
+- Fixed: expose the trigger as a `combobox`, add `aria-autocomplete="none"`, and preserve the existing listbox keyboard behavior and focus return.
+- Verification: ModelSelect tests passed (4/4); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 11 to 10.
+- Lesson: ARIA state must match the widget role; visually correct keyboard behavior is not enough if the semantic contract is invalid.

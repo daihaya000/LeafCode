@@ -243,11 +243,12 @@ export function ModelSelect({
       <button
         ref={triggerRef}
         type="button"
-        value={value}
+        role="combobox"
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
+        aria-autocomplete="none"
         aria-activedescendant={
           open && flattenedOptions[highlightedIndex]
             ? `${listboxId}-option-${highlightedIndex}`

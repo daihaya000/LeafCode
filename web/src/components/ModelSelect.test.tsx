@@ -23,7 +23,7 @@ describe("ModelSelect", () => {
       </div>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "モデル" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
 
     const listbox = screen.getByRole("listbox", { name: "モデル" });
     expect(listbox.parentElement).toBe(document.body);
@@ -39,7 +39,7 @@ describe("ModelSelect", () => {
         onChange={vi.fn()}
       />,
     );
-    const trigger = screen.getByRole("button", { name: "モデル" });
+    const trigger = screen.getByRole("combobox", { name: "モデル" });
     trigger.parentElement!.getBoundingClientRect = vi.fn(() => ({
       x: 400,
       y: 500,
@@ -63,7 +63,7 @@ describe("ModelSelect", () => {
     render(<ModelSelect value="auto" options={options} onChange={vi.fn()} />);
 
     expect(
-      screen.getByRole("button", { name: "モデル" }).querySelector("img")?.getAttribute("src"),
+      screen.getByRole("combobox", { name: "モデル" }).querySelector("img")?.getAttribute("src"),
     ).toBe("/icon-192.png");
   });
 
@@ -76,7 +76,7 @@ describe("ModelSelect", () => {
         onChange={onChange}
       />,
     );
-    const trigger = screen.getByRole("button");
+    const trigger = screen.getByRole("combobox");
     trigger.focus();
 
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
