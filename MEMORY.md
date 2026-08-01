@@ -3539,3 +3539,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: track whether the default model was touched during hydration and serialize server writes per setting key for default/Auto preferences.
 - Verification: default-model and auto-settings tests passed (36/36); ProviderModelsSettings tests passed (30/30); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: asynchronous hydration must yield to user intent, and fire-and-forget preference writes need ordering guarantees even when local UI updates are immediate.
+
+## 2026-08-01: Session history action re-entry
+
+- Found: compact/revert/unrevert and message revert depended on React's delayed busy state, allowing same-tick duplicate history mutations.
+- Fixed: add synchronous refs at both the shared session-action runner and message-level revert handler while preserving inline errors and busy feedback.
+- Verification: SessionActions tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: destructive or state-changing task actions need a handler-level lock even when their buttons already render as disabled during the request.

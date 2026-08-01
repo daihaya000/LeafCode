@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
 import { ocJson } from "@/lib/client";
@@ -77,6 +77,7 @@ export function useSessionActions({
 }) {
   const [busy, setBusy] = useState<SessionActionKey | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef<SessionActionKey | null>(null);
 
   useEffect(() => {
     setError(null);
@@ -84,6 +85,8 @@ export function useSessionActions({
 
   const run = useCallback(
     async (key: SessionActionKey, fn: () => Promise<"ok" | "cancelled">) => {
+      if (busyRef.current !== null) return;
+      busyRef.current = key;
       setBusy(key);
       setError(null);
       try {
@@ -93,6 +96,7 @@ export function useSessionActions({
         const msg = err instanceof Error ? err.message : "失敗しました";
         setError(msg);
       } finally {
+        busyRef.current = null;
         setBusy(null);
       }
     },
@@ -187,6 +191,7 @@ export function MessageRevertButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
 
   return (
     <div className="flex max-w-full flex-col items-end gap-1">
@@ -197,6 +202,7 @@ export function MessageRevertButton({
         title="このコメントを入力欄に戻して巻き戻す"
         onClick={() => {
           void (async () => {
+            if (busyRef.current) return;
             if (
               !window.confirm(
                 "このコメントを下の入力欄に戻し、ここ以降を巻き戻しますか？",
@@ -204,6 +210,7 @@ export function MessageRevertButton({
             ) {
               return;
             }
+            busyRef.current = true;
             setBusy(true);
             setError(null);
             try {
@@ -220,6 +227,7 @@ export function MessageRevertButton({
                 err instanceof Error ? err.message : "巻き戻しに失敗しました",
               );
             } finally {
+              busyRef.current = false;
               setBusy(false);
             }
           })();

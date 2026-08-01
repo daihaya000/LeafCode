@@ -39,6 +39,31 @@ describe("SessionActions error UX", () => {
     expect(alert.mock.calls).toHaveLength(0);
   });
 
+  it("does not submit the same session action twice before the first finishes", async () => {
+    let release!: (value: unknown) => void;
+    ocJson.mockImplementation(
+      () => new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const { result } = renderHook(() =>
+      useSessionActions({
+        directory: "/repo",
+        sessionId: "ses-1",
+        messages,
+      }),
+    );
+
+    act(() => {
+      result.current.compact();
+      result.current.compact();
+    });
+    expect(ocJson).toHaveBeenCalledTimes(1);
+
+    release({ ok: true });
+    await waitFor(() => expect(result.current.busy).toBeNull());
+  });
+
   it("renders message revert failures as an accessible inline alert", async () => {
     ocJson.mockRejectedValueOnce(new Error("revert failed"));
     vi.spyOn(window, "confirm").mockReturnValue(true);
