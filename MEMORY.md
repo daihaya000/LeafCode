@@ -3847,3 +3847,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: expose `aria-haspopup="menu"` to match the popup role.
 - Verification: HeaderKebabMenu tests passed (5/5); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: composite popup controls should publish the same role relationship that their rendered overlay implements.
+
+## 2026-08-01: Composer image drag-and-drop
+
+- Found: the shared Composer forwarded drag handlers only on its non-form wrapper; the HomeView form path did not receive drag events, so dragging an image onto the new-task composer was ignored.
+- Fixed: support drag handlers on both form and wrapper paths, add HomeView image drop/drag-over handlers, and use an element type compatible with both containers.
+- Verification: Composer tests passed (5/5); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: shared presentation components need equivalent interaction wiring across every structural rendering branch.

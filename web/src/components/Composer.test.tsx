@@ -107,4 +107,21 @@ describe("Composer", () => {
     fireEvent.submit(screen.getByRole("form", { name: "タスク作成" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
+
+  it("forwards attachment drag events through the home form path", () => {
+    const onDrop = vi.fn();
+    const onDragOver = vi.fn();
+    renderComposer({
+      form: { ariaLabel: "繧ｿ繧ｹ繧ｯ菴懈・", onSubmit: vi.fn() },
+      onDrop,
+      onDragOver,
+    });
+
+    const form = screen.getByRole("form", { name: "繧ｿ繧ｹ繧ｯ菴懈・" });
+    fireEvent.dragOver(form);
+    fireEvent.drop(form);
+
+    expect(onDragOver).toHaveBeenCalledTimes(1);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
 });

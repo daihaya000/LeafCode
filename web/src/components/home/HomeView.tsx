@@ -888,6 +888,19 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     [addImageFiles, submitting],
   );
 
+  const onDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      if (submitting || !event.dataTransfer?.files?.length) return;
+      event.preventDefault();
+      void addImageFiles(event.dataTransfer.files);
+    },
+    [addImageFiles, submitting],
+  );
+
+  const onDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (event.dataTransfer?.types?.includes("Files")) event.preventDefault();
+  }, []);
+
   const removeAttachment = useCallback((index: number) => {
     const next = attachmentsRef.current.filter(
       (_, currentIndex) => currentIndex !== index,
@@ -1018,6 +1031,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               },
             }}
             className="relative mx-auto max-w-5xl rounded-2xl border border-border bg-bg px-3 py-2 shadow-sm focus-within:border-border-strong focus-within:ring-2 focus-within:ring-primary/20"
+            onDrop={onDrop}
+            onDragOver={onDragOver}
             slash={
               slashOpen
                 ? {

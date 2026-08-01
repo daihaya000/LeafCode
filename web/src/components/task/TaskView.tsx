@@ -2272,7 +2272,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   );
 
   const onDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+    (e: React.DragEvent<HTMLElement>) => {
       if (!e.dataTransfer?.files?.length) return;
       e.preventDefault();
       void addImageFiles(e.dataTransfer.files);
@@ -2280,7 +2280,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     [addImageFiles],
   );
 
-  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
     if (e.dataTransfer?.types?.includes(`Files`)) e.preventDefault();
   }, []);
 

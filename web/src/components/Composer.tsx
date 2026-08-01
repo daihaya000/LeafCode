@@ -28,8 +28,8 @@ type ComposerProps = {
     ariaLabel: string;
     onSubmit: FormEventHandler<HTMLFormElement>;
   };
-  onDrop?: DragEventHandler<HTMLDivElement>;
-  onDragOver?: DragEventHandler<HTMLDivElement>;
+  onDrop?: DragEventHandler<HTMLElement>;
+  onDragOver?: DragEventHandler<HTMLElement>;
   slash?: {
     items: SlashCommand[];
     activeIndex: number;
@@ -214,7 +214,13 @@ export function Composer({
 
   if (form) {
     return (
-      <form aria-label={form.ariaLabel} className={className} onSubmit={form.onSubmit}>
+      <form
+        aria-label={form.ariaLabel}
+        className={className}
+        onSubmit={form.onSubmit}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+      >
         {content}
       </form>
     );
