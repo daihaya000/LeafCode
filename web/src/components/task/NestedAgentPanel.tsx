@@ -112,6 +112,7 @@ export function NestedAgentPanel({
   const stickyCallIdRef = useRef<string | undefined>(undefined);
   const genRef = useRef(0);
   const refreshScopeRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const stickBottomRef = useRef(true);
 
@@ -132,7 +133,7 @@ export function NestedAgentPanel({
   }
 
   const refresh = useCallback(async () => {
-    if (!directory || !parentSessionId) return;
+    if (!mountedRef.current || !directory || !parentSessionId) return;
     const scopeKey = `${directory}\u0000${parentSessionId}\u0000${hintCallID}\u0000${hintSiblingsKey}`;
     if (refreshScopeRef.current === scopeKey) return;
     refreshScopeRef.current = scopeKey;
@@ -158,7 +159,7 @@ export function NestedAgentPanel({
       }
 
       const children = await fetchChildren(directory, parentSessionId);
-      if (gen !== genRef.current) return;
+      if (!mountedRef.current || gen !== genRef.current) return;
 
       if (children === null) {
         // Keep showing the last matched feed while /children is unreachable.
@@ -199,7 +200,7 @@ export function NestedAgentPanel({
       } catch {
         /* keep empty; show error below if first load */
       }
-      if (gen !== genRef.current) return;
+      if (!mountedRef.current || gen !== genRef.current) return;
 
       setFeed({
         session,
@@ -210,7 +211,7 @@ export function NestedAgentPanel({
       setMatching(false);
       setError(null);
     } catch (err) {
-      if (gen !== genRef.current) return;
+      if (!mountedRef.current || gen !== genRef.current) return;
       setError(err instanceof Error ? err.message : "子セッション取得失敗");
     } finally {
       if (refreshScopeRef.current === scopeKey) {
@@ -225,6 +226,14 @@ export function NestedAgentPanel({
     hintDescription,
     hintSiblingsKey,
   ]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      genRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (!active) return;

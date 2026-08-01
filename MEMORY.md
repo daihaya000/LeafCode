@@ -3729,6 +3729,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: BrowserBridgeSettings and BrowserBridgeApprovals tests passed (21/21); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: polling-safe components still need separate lifecycle protection around user-triggered mutations that await the same service.
 
+## 2026-08-01: Nested agent panel lifecycle
+
+- Found: NestedAgentPanel already used a generation token for task/child matching, but the token alone did not explicitly represent the component's mounted lifetime.
+- Fixed: add a mounted boundary to child/status/message polling and invalidate the generation on unmount, preventing late nested-agent feeds from updating a removed task view.
+- Verification: NestedAgentPanel tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: child-session identity and component lifetime are separate axes; both are required for reliable live progress UI.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.
