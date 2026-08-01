@@ -2318,11 +2318,6 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const closeSessionDialog = useCallback(() => {
     setSessionDialogOpen(false);
-    window.setTimeout(() => {
-      document
-        .querySelector<HTMLButtonElement>('button[aria-label="メニューを開く"]')
-        ?.focus();
-    }, 0);
   }, []);
 
   const handleSessionSwitch = useCallback(async () => {

@@ -3308,3 +3308,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: preserve the last known list on refresh failure, expose the error, show a loading/busy state before the first list is available, and add `aria-busy` to the shared Button busy state.
 - Verification: SessionSwitcher and shared UI tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: background refresh failures should keep usable cached choices visible and distinguish unavailable data from genuinely empty data.
+
+## 2026-08-01: Session dialog focus restoration
+
+- Found: TaskView restored focus by searching for a hard-coded `aria-label`, coupling the dialog to one mobile header implementation and allowing focus to disappear when that trigger was absent or renamed.
+- Fixed: SessionSwitcherDialog now captures the actual focused opener and restores it after the parent unmounts the dialog; removed the brittle TaskView selector.
+- Verification: SessionSwitcherDialog and SessionSwitcher tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: modal focus restoration should follow the actual opener element, not a global label or a guessed control location.

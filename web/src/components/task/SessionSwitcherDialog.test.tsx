@@ -81,6 +81,37 @@ describe("SessionSwitcherDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("restores focus to the opener when the parent removes the dialog", async () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "セッションメニュー";
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const view = render(<button type="button">起点</button>);
+    view.rerender(
+      <>
+        <button type="button">起点</button>
+        <SessionSwitcherDialog
+          workspaceId="ws1"
+          directory="/repo"
+          currentSessionId="sess1"
+          onSwitch={vi.fn().mockResolvedValue(undefined)}
+          onClose={vi.fn()}
+        />
+      </>,
+    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("combobox", { name: "セッション切替" }),
+      );
+    });
+
+    view.rerender(<button type="button">起点</button>);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    opener.remove();
+  });
+
   it("delegates successful session actions without closing or refreshing itself", () => {
     const { onClose, onSwitch } = renderDialog();
 

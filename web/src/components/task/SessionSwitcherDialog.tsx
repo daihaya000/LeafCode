@@ -20,6 +20,7 @@ export function SessionSwitcherDialog({
   onClose,
 }: SessionSwitcherDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const getFocusableElements = () =>
     Array.from(
@@ -27,8 +28,17 @@ export function SessionSwitcherDialog({
     ).filter((element) => !element.matches(":disabled"));
 
   useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
     const firstFocusable = getFocusableElements()[0];
     (firstFocusable ?? dialogRef.current)?.focus();
+
+    return () => {
+      const previousFocus = previousFocusRef.current;
+      if (!previousFocus) return;
+      window.setTimeout(() => {
+        if (previousFocus.isConnected) previousFocus.focus();
+      }, 0);
+    };
   }, []);
 
   return (
