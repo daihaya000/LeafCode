@@ -3273,3 +3273,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed globally: added a consistent `:focus-visible` outline for keyboard navigation across custom controls.
 - Verification: `web` typecheck passed; Composer and HomeView tests passed (53/53); ESLint and `git diff --check` passed.
 - Lesson: responsive horizontal toolbars need both a visual overflow cue and a keyboard-accessible scroll surface.
+
+## 2026-08-01: Task header action discoverability
+
+- Found: the task detail header's mobile action strip (stop, resync, terminal/panel actions) used horizontal scrolling but had no semantic group, keyboard focus target, or overflow cue.
+- Fixed: added the labelled `タスク操作` focusable group and a mobile edge fade, while preserving the existing responsive visibility and scroll behavior.
+- Verification: TaskView tests passed (100/100); typecheck, ESLint, and diff checks passed.
+- Lesson: repeated responsive interaction patterns should share the same accessibility and overflow affordances across Composer and task headers.

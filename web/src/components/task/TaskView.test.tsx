@@ -1263,6 +1263,10 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
+    const headerActions = screen.getByRole("group", { name: "タスク操作" });
+    expect(headerActions.getAttribute("tabindex")).toBe("0");
+    expect(headerActions.className).toContain("overflow-x-auto");
+
     expect(screen.queryByRole("button", { name: "メニューを開く" })).toBeNull();
     expect(screen.queryByTitle("作業パスをコピー")).toBeNull();
     expect(screen.queryByTestId("session-switcher")).toBeNull();

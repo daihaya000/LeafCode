@@ -2914,8 +2914,13 @@ export function TaskView({ taskId }: { taskId: string }) {
             (panels gated on isLg; below lg they are not rendered — the
             mobile tab bar under the header covers them), horizontally
             scrollable on narrow screens. */}
-        <div className="flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1">
-          <div className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="relative flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1">
+          <div
+            role="group"
+            aria-label="タスク操作"
+            tabIndex={0}
+            className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto rounded-md sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
           {isMd && working && (
             <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
               <Square className="h-3 w-3 fill-current" />
@@ -2996,6 +3001,10 @@ export function TaskView({ taskId }: { taskId: string }) {
             </Button>
           )}
           </div>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 right-0 w-5 rounded-r-md bg-gradient-to-l from-surface to-transparent sm:hidden"
+          />
           {!isMd && mobileKebabGroups.length > 0 && (
             <HeaderKebabMenu
               groups={mobileKebabGroups}
