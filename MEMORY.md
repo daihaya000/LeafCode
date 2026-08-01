@@ -3777,3 +3777,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: restore focus only when the document is still unfocused/body-focused, and add a regression test for replacement dialogs.
 - Verification: SessionSwitcherDialog tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: delayed focus recovery must be conditional; an unmount callback should never override the focus state of the next UI surface.
+
+## 2026-08-01: Authentication, plan approval, and attention queue lifecycle
+
+- Found: Cursor ACP auth could finish after unmount and relied only on rendered state for duplicate-save prevention; plan approval could report an old document result after path changes; the attention queue could retain busy state after setup errors and update after unmount.
+- Fixed: add mounted/synchronous operation guards, document-generation checks, safe busy cleanup, interruption checks during bulk permission handling, and conditional focus restoration.
+- Verification: PlanDocumentCard tests passed (3/3), AttentionQueueModal tests passed (13/13), typecheck, ESLint, and `git diff --check` passed.
+- Lesson: every user-triggered async operation needs both a same-turn lock and a lifecycle/context check, with cleanup in a `finally` path even when local setup fails.

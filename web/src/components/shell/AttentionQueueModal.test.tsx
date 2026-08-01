@@ -163,6 +163,27 @@ describe("AttentionQueueModal", () => {
       expect(optionBtn.disabled).toBe(false);
     });
 
+    it("does not update the queue after the modal unmounts", async () => {
+      const request = deferred<unknown>();
+      mockOcJson.mockReturnValueOnce(request.promise);
+      const item = questionItem();
+      enqueue(item);
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+      act(() => {
+        screen.getAllByRole("radio")[0]!.click();
+      });
+      cleanup();
+
+      await act(async () => {
+        request.resolve({});
+        await request.promise;
+      });
+
+      expect(attentionState.remove).not.toHaveBeenCalled();
+    });
+
     it("QuestionCard re-enables its reply button after a 404 reply", async () => {
       const request = deferred<unknown>();
       mockOcJson.mockReturnValueOnce(request.promise);

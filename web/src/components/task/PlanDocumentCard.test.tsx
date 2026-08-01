@@ -72,4 +72,40 @@ describe("PlanDocumentCard", () => {
       screen.getByRole("button", { name: "実装を開始しました" }).hasAttribute("disabled"),
     ).toBe(true);
   });
+
+  it("does not apply an approval result after the document changes", async () => {
+    let resolveApproval!: () => void;
+    const approval = new Promise<void>((resolve) => {
+      resolveApproval = resolve;
+    });
+    const onApprove = vi.fn(() => approval);
+    const view = render(
+      <PlanDocumentCard
+        path="/repo/plan.md"
+        directory="/repo"
+        actionable
+        working={false}
+        onApprove={onApprove}
+      />,
+    );
+
+    await screen.findByTestId("plan-markdown");
+    fireEvent.click(screen.getAllByRole("button").at(-1)!);
+
+    view.rerender(
+      <PlanDocumentCard
+        path="/repo/other-plan.md"
+        directory="/repo"
+        actionable
+        working={false}
+        onApprove={onApprove}
+      />,
+    );
+    resolveApproval();
+    await act(async () => {
+      await approval;
+    });
+
+    expect(screen.getAllByRole("button").at(-1)?.hasAttribute("disabled")).toBe(false);
+  });
 });

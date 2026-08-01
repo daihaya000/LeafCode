@@ -41,6 +41,8 @@ export function PlanDocumentCard({
   const [approving, setApproving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const approvingRef = useRef(false);
+  const mountedRef = useRef(false);
+  const approvalGenerationRef = useRef(0);
   const fallbackName = basename(path);
   const isSubmitted = submitted || approved;
 
@@ -61,25 +63,39 @@ export function PlanDocumentCard({
   }, [directory, path, reload]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      approvalGenerationRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    approvalGenerationRef.current += 1;
     approvingRef.current = false;
     setApprovalError(false);
     setApproving(false);
     setSubmitted(false);
-  }, [path]);
+  }, [directory, path]);
 
   const approve = async () => {
     if (working || isSubmitted || approvingRef.current) return;
+    const generation = approvalGenerationRef.current;
     approvingRef.current = true;
     setApproving(true);
     setApprovalError(false);
     try {
       await onApprove();
+      if (!mountedRef.current || generation !== approvalGenerationRef.current) return;
       setSubmitted(true);
     } catch {
+      if (!mountedRef.current || generation !== approvalGenerationRef.current) return;
       setApprovalError(true);
     } finally {
-      approvingRef.current = false;
-      setApproving(false);
+      if (generation === approvalGenerationRef.current) {
+        approvingRef.current = false;
+        if (mountedRef.current) setApproving(false);
+      }
     }
   };
 

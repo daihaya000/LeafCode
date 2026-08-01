@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge, Button } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 
@@ -10,6 +10,8 @@ function isConnected(value: unknown): boolean {
 
 export function CursorAcpAuth() {
   const [connected, setConnected] = useState(false);
+  const mountedRef = useRef(false);
+  const savingRef = useRef(false);
   const [key, setKey] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "saving" | "saved" | "error">("loading");
   const [message, setMessage] = useState<string | null>(null);
@@ -18,29 +20,43 @@ export function CursorAcpAuth() {
     setState("loading");
     try {
       const provider = await getJson<ProviderResponse>("/api/opencode/provider");
+      if (!mountedRef.current) return;
       setConnected(isConnected(provider.connected));
       setState("ready");
     } catch {
+      if (!mountedRef.current) return;
       setState("error");
       setMessage("Cursorの認証状態を取得できませんでした");
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    void load();
+    return () => {
+      mountedRef.current = false;
+      savingRef.current = false;
+    };
+  }, []);
 
   const save = async () => {
-    if (!key.trim() || state === "saving") return;
+    if (!key.trim() || state === "saving" || savingRef.current) return;
+    savingRef.current = true;
     setState("saving");
     setMessage(null);
     try {
       await sendJson("POST", "/api/provider/cursor-acp/auth", { key });
+      if (!mountedRef.current) return;
       setKey("");
       setConnected(true);
       setState("saved");
       setMessage("保存しました。反映にはOpenCodeの再起動が必要です。");
     } catch (cause) {
+      if (!mountedRef.current) return;
       setState("error");
       setMessage(cause instanceof Error ? cause.message : "Cursor APIキーを保存できませんでした");
+    } finally {
+      savingRef.current = false;
     }
   };
 

@@ -28,8 +28,17 @@ export function AttentionQueueModal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const mountedRef = useRef(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      busyRef.current = false;
+    };
+  }, []);
 
   const sorted = useMemo(() => {
     return [...actionableItems].sort(
@@ -60,7 +69,10 @@ export function AttentionQueueModal() {
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
       firstFocusable?.focus();
-    } else if (previousFocusRef.current) {
+    } else if (
+      previousFocusRef.current?.isConnected &&
+      (document.activeElement === document.body || document.activeElement === null)
+    ) {
       previousFocusRef.current.focus();
       previousFocusRef.current = null;
     }
@@ -106,8 +118,10 @@ export function AttentionQueueModal() {
       setError(null);
       try {
         await fn();
+        if (!mountedRef.current) return;
         remove(item.request.id, item.request.sessionID);
       } catch (err) {
+        if (!mountedRef.current) return;
         // Already answered elsewhere (e.g. TaskView) — drop from queue.
         if (
           (err instanceof ApiError && err.status === 404) ||
@@ -119,7 +133,7 @@ export function AttentionQueueModal() {
         setError(err instanceof Error ? err.message : "応答に失敗しました");
       } finally {
         busyRef.current = false;
-        setBusy(false);
+        if (mountedRef.current) setBusy(false);
       }
     },
     [remove],
@@ -148,15 +162,24 @@ export function AttentionQueueModal() {
     const excludedKey = exclude
       ? `${exclude.request.id}\u0000${exclude.request.sessionID}`
       : null;
-    writeAccessMode("full");
-    const subagent = readSubagentPermission();
-    const skill = readSkillPermission();
+    let subagent: ReturnType<typeof readSubagentPermission>;
+    let skill: ReturnType<typeof readSkillPermission>;
+    try {
+      writeAccessMode("full");
+      subagent = readSubagentPermission();
+      skill = readSkillPermission();
+    } catch {
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
+      return;
+    }
     const permissionItems = items.filter(
       (item) =>
         item.kind === "permission" &&
         `${item.request.id}\u0000${item.request.sessionID}` !== excludedKey,
     );
     for (const item of permissionItems) {
+      if (!mountedRef.current) break;
       if (item.kind !== "permission") continue;
       const action = permissionAutoAction({
         permission: item.request.permission,
@@ -175,13 +198,13 @@ export function AttentionQueueModal() {
               : { response: reply },
           timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         });
-        remove(item.request.id, item.request.sessionID);
+        if (mountedRef.current) remove(item.request.id, item.request.sessionID);
       } catch {
         // Ignore errors — individual failures will remain in queue for manual handling
       }
     }
     busyRef.current = false;
-    setBusy(false);
+    if (mountedRef.current) setBusy(false);
   }, [items, remove]);
 
   const replyQuestion = useCallback(
