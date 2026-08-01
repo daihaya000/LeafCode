@@ -255,6 +255,7 @@ export function ModelSelect({
             : undefined
         }
         aria-label={ariaLabel}
+        value={value}
         title={title ?? selected?.label ?? "モデル"}
         onClick={() =>
           setOpen((current) => {

@@ -4029,3 +4029,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: centralize strict TCP port parsing for OpenCode, WebUI, host control, and Browser Bridge ports; invalid values now use the documented defaults.
 - Verification: host test suite passed (192/192); browser-bridge test suite passed (70/70).
 - Lesson: validate environment-provided network settings at configuration time so startup failures are deterministic and actionable.
+
+## 2026-08-01: Model selector value-state consistency
+
+- Found: `HomeView` model restoration and Auto-mode tests failed because the custom `ModelSelect` combobox trigger did not expose its current value, unlike the other custom selectors; this produced 23 cascading HomeView failures.
+- Fixed: bind the trigger's `value` attribute to the selected model so automation, tests, and consumers can observe the same state as the rendered label and ARIA selection.
+- Verification: full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: custom selector controls should expose both semantic ARIA state and a stable machine-readable current value when the surrounding UI uses value-based state checks.
