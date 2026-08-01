@@ -539,11 +539,19 @@ export function SettingsView() {
           <div className="flex h-14 items-center">
             <h1 className="text-sm font-semibold">設定</h1>
           </div>
-          <div className="flex flex-wrap gap-x-2 gap-y-1">
+          <div className="relative">
+            <div
+              role="tablist"
+              aria-label="設定カテゴリ"
+              tabIndex={0}
+              className="flex gap-x-2 overflow-x-auto rounded-md [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:flex-wrap sm:overflow-visible"
+            >
             {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
+                role="tab"
+                aria-selected={activeTab === t.key}
                 onClick={() => setActiveTab(t.key)}
                 className={cx(
                   "shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap",
@@ -560,6 +568,11 @@ export function SettingsView() {
                 )}
               </button>
             ))}
+            </div>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-0 w-6 rounded-r-md bg-gradient-to-l from-bg to-transparent sm:hidden"
+            />
           </div>
         </div>
       </header>

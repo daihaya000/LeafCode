@@ -233,11 +233,23 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("host-log-panel")).toBeTruthy();
   });
 
+  it("exposes the mobile-scrollable settings categories as a tablist", async () => {
+    render(<SettingsView />);
+
+    const tablist = await screen.findByRole("tablist", { name: "設定カテゴリ" });
+
+    expect(tablist.getAttribute("tabindex")).toBe("0");
+    expect(tablist.className).toContain("overflow-x-auto");
+    expect(screen.getByRole("tab", { name: "全般" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
   it("switches visible content when a tab is clicked", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "アドオン" }));
+    fireEvent.click(screen.getByRole("tab", { name: "アドオン" }));
 
     expect(await screen.findByTestId("addon-settings")).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
@@ -256,7 +268,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "エージェント" }));
+    fireEvent.click(screen.getByRole("tab", { name: "エージェント" }));
 
     expect(await screen.findByRole("heading", { name: "Rank A" })).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
@@ -267,7 +279,7 @@ describe("SettingsView", () => {
     await screen.findByText("エンジン");
 
     expect(
-      screen.getAllByRole("button").map((button) => button.textContent),
+      screen.getAllByRole("tab").map((button) => button.textContent),
     ).toEqual(
       expect.arrayContaining([
         "全般",
@@ -283,7 +295,7 @@ describe("SettingsView", () => {
       ]),
     );
     const tabLabels = screen
-      .getAllByRole("button")
+      .getAllByRole("tab")
       .map((button) => button.textContent ?? "")
       .filter((label) =>
         [
@@ -323,7 +335,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
 
     await screen.findByText("エンジン");
-    const projectTab = await screen.findByRole("button", {
+    const projectTab = await screen.findByRole("tab", {
       name: /プロジェクト/,
     });
     expect(projectTab.textContent).toContain("1");
@@ -499,7 +511,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /プロジェクト/ }));
     const deleteBtn = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
     fireEvent.click(deleteBtn);
 
@@ -522,7 +534,7 @@ describe("SettingsView", () => {
     );
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     const firstDelete = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
     const secondDelete = screen.getByRole("button", { name: /C:\\repo2を削除/ });
     fireEvent.click(firstDelete);
@@ -544,7 +556,7 @@ describe("SettingsView", () => {
     sendJson.mockRejectedValue(new Error("削除に失敗しました"));
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("削除に失敗しました");
@@ -561,7 +573,7 @@ describe("SettingsView", () => {
     });
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("既に削除済みです");
@@ -576,7 +588,7 @@ describe("SettingsView", () => {
     mockSettingsGetJson(roots);
 
     render(<SettingsView />);
-    fireEvent.click(await screen.findByRole("button", { name: /プロジェクト/ }));
+    fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
 
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
@@ -588,15 +600,15 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "スキル" }));
+    fireEvent.click(screen.getByRole("tab", { name: "スキル" }));
     expect(await screen.findByTestId("extensions-skills")).toBeTruthy();
     expect(screen.queryByText("エンジン")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "MCP" }));
+    fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
     expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
     expect(screen.queryByTestId("extensions-skills")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "プラグイン" }));
+    fireEvent.click(screen.getByRole("tab", { name: "プラグイン" }));
     expect(await screen.findByTestId("extensions-plugins")).toBeTruthy();
     expect(screen.queryByTestId("extensions-mcp")).toBeNull();
   });
@@ -605,7 +617,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
 
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    fireEvent.click(screen.getByRole("tab", { name: "接続" }));
     await screen.findByText("スマホ / VPN アクセス");
     expect(screen.queryByRole("heading", { name: "MCP サーバー" })).toBeNull();
     expect(screen.queryByRole("button", { name: "MCPタブを開く" })).toBeNull();
@@ -645,7 +657,7 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
     await screen.findByText("エンジン");
-    fireEvent.click(screen.getByRole("button", { name: "接続" }));
+    fireEvent.click(screen.getByRole("tab", { name: "接続" }));
 
     expect(await screen.findByText("https://webui.example.com")).toBeTruthy();
     expect(screen.getByText("http://192.168.1.100:3000")).toBeTruthy();
@@ -702,7 +714,7 @@ describe("SettingsView", () => {
     await screen.findByText("エンジン");
     expect(screen.queryByRole("heading", { name: "デフォルトモデル" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "プロバイダー/モデル" }));
+    fireEvent.click(screen.getByRole("tab", { name: "プロバイダー/モデル" }));
 
     expect(
       await screen.findByRole("heading", { name: "デフォルトモデル" }),

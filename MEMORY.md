@@ -3280,3 +3280,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: added the labelled `タスク操作` focusable group and a mobile edge fade, while preserving the existing responsive visibility and scroll behavior.
 - Verification: TaskView tests passed (100/100); typecheck, ESLint, and diff checks passed.
 - Lesson: repeated responsive interaction patterns should share the same accessibility and overflow affordances across Composer and task headers.
+
+## 2026-08-01: Settings category navigation on mobile
+
+- Found: the settings page wrapped ten category buttons into multiple rows on narrow screens, pushing content down and making the navigation difficult to scan.
+- Fixed: exposed the categories as a labelled, keyboard-focusable tablist with `aria-selected`, horizontal scrolling on mobile, and a right-edge fade cue; desktop keeps the wrapped layout.
+- Verification: SettingsView tests passed (22/22); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: dense responsive navigation should preserve a compact viewport footprint while remaining discoverable and operable without touch.
