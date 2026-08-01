@@ -1,5 +1,5 @@
 import { Mic, MicOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { UseVoiceInputReturn } from "@/lib/use-voice-input";
 
 interface VoiceInputButtonProps {
@@ -48,9 +48,16 @@ export function VoiceInputButton({
   const [mode, setMode] = useState<VoiceInputMode>("web-speech");
   const [nativeBusy, setNativeBusy] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  const nativeBusyRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
+    mountedRef.current = true;
     setMode(detectVoiceInputMode());
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const isWindowsNative = mode === "windows-native";
@@ -59,7 +66,8 @@ export function VoiceInputButton({
   if (!isWindowsNative && !voice.supported) return null;
 
   const handleWindowsVoiceInput = () => {
-    if (nativeBusy) return;
+    if (nativeBusyRef.current) return;
+    nativeBusyRef.current = true;
     setNativeBusy(true);
     setNativeError(null);
     void (async () => {
@@ -78,13 +86,14 @@ export function VoiceInputButton({
           throw new Error(data.error || `Windows 音声入力を起動できませんでした。(${res.status})`);
         }
       } catch (error) {
-        setNativeError(
+        if (mountedRef.current) setNativeError(
           error instanceof Error
             ? error.message
             : "Windows 音声入力を起動できませんでした。",
         );
       } finally {
-        setNativeBusy(false);
+        nativeBusyRef.current = false;
+        if (mountedRef.current) setNativeBusy(false);
       }
     })();
   };
@@ -99,18 +108,22 @@ export function VoiceInputButton({
       // stop() returns a Promise that resolves once the engine fires its
       // final `result` + `end` events, so the last utterance finalized by
       // the stop is not lost. Forward the resolved transcript to the parent.
+      if (stoppingRef.current) return;
+      stoppingRef.current = true;
       setStopping(true);
       void (async () => {
         try {
-          onTranscript(await voice.stop());
+          const transcript = await voice.stop();
+          if (mountedRef.current) onTranscript(transcript);
         } catch (error) {
-          setStopError(
+          if (mountedRef.current) setStopError(
             error instanceof Error
               ? error.message
               : "音声入力を停止できませんでした。もう一度お試しください。",
           );
         } finally {
-          setStopping(false);
+          stoppingRef.current = false;
+          if (mountedRef.current) setStopping(false);
         }
       })();
     } else {

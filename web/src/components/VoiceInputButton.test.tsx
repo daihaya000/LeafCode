@@ -221,6 +221,51 @@ describe("VoiceInputButton", () => {
     expect(onNativeVoiceStart).toHaveBeenCalledTimes(2);
   });
 
+  it("does not start two native voice requests before the first settles", async () => {
+    mockUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36");
+    Object.defineProperty(window.navigator, "brave", {
+      value: {},
+      configurable: true,
+    });
+    let resolveFetch!: (response: Response) => void;
+    const fetchMock = vi.fn(
+      () => new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<VoiceInputButton voice={mockVoice()} onTranscript={vi.fn()} />);
+
+    const button = await screen.findByRole("button");
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    act(() => resolveFetch(new Response(JSON.stringify({ ok: true }))));
+  });
+
+  it("does not submit a stop transcript after unmount", async () => {
+    let resolveStop!: (text: string) => void;
+    const voice = mockVoice({
+      listening: true,
+      stop: vi.fn(
+        () => new Promise<string>((resolve) => {
+          resolveStop = resolve;
+        }),
+      ),
+    });
+    const onTranscript = vi.fn();
+    const { unmount } = render(
+      <VoiceInputButton voice={voice} onTranscript={onTranscript} />,
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+    unmount();
+    act(() => resolveStop("late transcript"));
+
+    await waitFor(() => expect(onTranscript).not.toHaveBeenCalled());
+  });
+
   it("keeps Web Speech mode on smartphones", async () => {
     mockUserAgent(
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/126.0.0.0 Mobile/15E148 Safari/604.1",

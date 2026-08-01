@@ -3666,6 +3666,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: PtyPanel tests passed (13/13), including duplicate-close and late-SSE coverage; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: terminal transports need explicit disposal checks at every event boundary, not only `EventSource.close()` in cleanup.
 
+## 2026-08-01: Voice input action lifecycle
+
+- Found: native voice start and Web Speech stop relied on rendered busy state, leaving same-turn re-entry windows; delayed stop results could also reach the parent after unmount.
+- Fixed: add ref-level start/stop locks and mounted guards for native errors, busy state, and transcript submission.
+- Verification: VoiceInputButton tests passed (16/16); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: input controls that bridge browser or host events need synchronous action locks in addition to disabled UI state, plus lifecycle guards around every async completion.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and make new profiles restore `opencode-claude-auth@latest` in their plugin list by default, alongside the existing Cursor ACP setup.
