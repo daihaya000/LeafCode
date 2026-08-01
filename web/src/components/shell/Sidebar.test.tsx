@@ -1457,7 +1457,6 @@ describe("Sidebar archived section", () => {
   });
 
   it("destroys an archived task after confirmation", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
         return Promise.resolve({ projects: [] });
@@ -1499,18 +1498,24 @@ describe("Sidebar archived section", () => {
     await screen.findByText("Archived task");
     screen.getByLabelText("タスクを完全に削除").click();
 
+    const deleteButton = screen
+      .getAllByRole("button")
+      .find((button) => button.className.includes("hover:bg-danger-bg"))!;
+    const confirmation = await screen.findByRole("alertdialog");
+    expect(document.activeElement).toBe(confirmation.querySelector("button"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    deleteButton.click();
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
     await vi.waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
       expect(sendJson).toHaveBeenCalledWith(
         "DELETE",
         "/api/tasks/ws-archived",
       );
     });
-    confirmSpy.mockRestore();
   });
 
   it("bulk-destroys all archived tasks in a project group after confirmation", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
         return Promise.resolve({
@@ -1543,12 +1548,11 @@ describe("Sidebar archived section", () => {
     await screen.findByText("Task A");
     screen.getByLabelText("Repoのアーカイブを一括削除").click();
 
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
     await vi.waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
       expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/tasks/task-a");
       expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/tasks/task-b");
     });
-    confirmSpy.mockRestore();
   });
 });
 

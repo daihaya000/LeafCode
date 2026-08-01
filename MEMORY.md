@@ -3981,6 +3981,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: ExtensionsSettings tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: destructive controls should share one contextual confirmation pattern across settings sections, including explicit keyboard lifecycle tests.
 
+## 2026-08-01: Sidebar destructive-action confirmation UX
+
+- Found: archived task deletion, bulk archived-task deletion, and project deletion in the sidebar still used native confirmation dialogs, making the affected scope invisible to the page and inaccessible to a predictable keyboard flow.
+- Fixed: introduce one sidebar alert dialog with contextual scope text, primary-action focus, Escape cancellation, trigger focus restoration, and confirmation callbacks that preserve existing async action locks.
+- Verification: Sidebar tests passed (37/37); typecheck, ESLint, `git diff --check`, and a search confirmed no native confirm/alert calls remain in Sidebar.tsx.
+- Lesson: repeated destructive actions should share a single confirmation lifecycle so behavior stays consistent across desktop and mobile surfaces.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.

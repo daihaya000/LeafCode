@@ -35,6 +35,12 @@ import {
 } from "@/lib/sidebar-settings";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
+type SidebarConfirmation = {
+  title: string;
+  description: string;
+  onConfirm: () => void;
+};
+
 const EXPANDED_KEY = "webui.sidebar.expanded";
 const WIDTH_KEY = "webui.sidebar.width";
 const ARCHIVED_EXPANDED_KEY = "webui.sidebar.archived_expanded";
@@ -204,7 +210,11 @@ export function Sidebar({
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionBusyKey, setActionBusyKey] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<SidebarConfirmation | null>(null);
   const actionBusyRef = useRef<string | null>(null);
+  const confirmationRef = useRef<HTMLDivElement | null>(null);
+  const confirmationTriggerRef = useRef<HTMLElement | null>(null);
   const refreshRequestRef = useRef(0);
   const refreshBusyRef = useRef(false);
   const refreshQueuedRef = useRef(false);
@@ -214,6 +224,25 @@ export function Sidebar({
   );
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const mobilePrevFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!pendingConfirmation) {
+      if (confirmationTriggerRef.current?.isConnected) {
+        confirmationTriggerRef.current.focus();
+      }
+      confirmationTriggerRef.current = null;
+      return;
+    }
+
+    confirmationRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPendingConfirmation(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pendingConfirmation]);
 
   const activeTaskId = pathname.startsWith("/task/")
     ? pathname.slice("/task/".length).split("/")[0]
@@ -584,6 +613,14 @@ export function Sidebar({
     setActionBusyKey(null);
   };
 
+  const requestConfirmation = (confirmation: SidebarConfirmation) => {
+    confirmationTriggerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setPendingConfirmation(confirmation);
+  };
+
   const toggleProject = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -648,15 +685,27 @@ export function Sidebar({
 
   const destroyArchivedTask = async (
     task: TaskSummary,
-    e: React.MouseEvent,
+    e: React.MouseEvent | undefined,
+    confirmed = false,
   ) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e?.preventDefault();
+    e?.stopPropagation();
     const label =
       task.isolation === "current_folder"
         ? `「${task.title}」を完全に削除しますか？（フォルダはそのまま残ります）`
         : `「${task.title}」を完全に削除しますか？ worktree/コピーも削除されます。`;
-    if (!window.confirm(label)) return;
+    if (!confirmed) {
+      requestConfirmation({
+        title: "タスクを完全に削除",
+        description: label,
+        onConfirm: () => {
+          confirmationTriggerRef.current = null;
+          setPendingConfirmation(null);
+          void destroyArchivedTask(task, undefined, true);
+        },
+      });
+      return;
+    }
     const actionKey = `destroy:${task.id}`;
     if (!beginAction(actionKey)) return;
     try {
@@ -680,13 +729,25 @@ export function Sidebar({
 
   const destroyArchivedGroup = async (
     group: { key: string; name: string; tasks: TaskSummary[] },
-    e: React.MouseEvent,
+    e: React.MouseEvent | undefined,
+    confirmed = false,
   ) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e?.preventDefault();
+    e?.stopPropagation();
     if (group.tasks.length === 0) return;
     const label = `「${group.name}」のアーカイブ済みタスクを${group.tasks.length}件すべて完全に削除しますか？ worktree/コピーも削除されます。`;
-    if (!window.confirm(label)) return;
+    if (!confirmed) {
+      requestConfirmation({
+        title: "アーカイブを一括削除",
+        description: label,
+        onConfirm: () => {
+          confirmationTriggerRef.current = null;
+          setPendingConfirmation(null);
+          void destroyArchivedGroup(group, undefined, true);
+        },
+      });
+      return;
+    }
     const actionKey = `destroy-group:${group.key}`;
     if (!beginAction(actionKey)) return;
     setDestroyingGroupKey(group.key);
@@ -729,14 +790,23 @@ export function Sidebar({
     }
   };
 
-  const removeProject = async (p: ProjectDto, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (
-      !window.confirm(
-        `プロジェクト「${p.name}」を削除しますか？\n関連タスク / worktree も削除されます。`,
-      )
-    ) {
+  const removeProject = async (
+    p: ProjectDto,
+    e: React.MouseEvent | undefined,
+    confirmed = false,
+  ) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (!confirmed) {
+      requestConfirmation({
+        title: "プロジェクトを削除",
+        description: `プロジェクト「${p.name}」と関連タスク・worktreeを削除します。`,
+        onConfirm: () => {
+          confirmationTriggerRef.current = null;
+          setPendingConfirmation(null);
+          void removeProject(p, undefined, true);
+        },
+      });
       return;
     }
     const actionKey = `remove-project:${p.id}`;
@@ -1289,8 +1359,40 @@ export function Sidebar({
     </div>
   );
 
+  const confirmationPanel = pendingConfirmation ? (
+    <div
+      ref={confirmationRef}
+      role="alertdialog"
+      aria-label={pendingConfirmation.title}
+      aria-describedby="sidebar-confirmation-description"
+      className="fixed inset-x-3 top-3 z-50 rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger shadow-lg md:left-auto md:w-[min(28rem,calc(100vw-1.5rem))]"
+    >
+      <p className="font-semibold">{pendingConfirmation.title}</p>
+      <p id="sidebar-confirmation-description" className="mt-1 whitespace-pre-wrap text-xs">
+        {pendingConfirmation.description}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-danger"
+          onClick={pendingConfirmation.onConfirm}
+        >
+          削除する
+        </button>
+        <button
+          type="button"
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          onClick={() => setPendingConfirmation(null)}
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
+      {confirmationPanel}
       {/* Desktop */}
       <aside
         className="relative hidden h-full shrink-0 border-r border-border md:block"
