@@ -3917,3 +3917,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a shared modal focus lifecycle with Tab wrapping, safe Escape dismissal, and trigger focus restoration, while simplifying callback dependencies around ref-backed locks.
 - Verification: ProfilesSettings tests passed (11/11); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 6 to 0.
 - Lesson: destructive or restart-causing confirmations must keep keyboard focus inside the decision surface and return users to the initiating control after cancellation.
+
+## 2026-08-01: Image lightbox keyboard lifecycle
+
+- Found: PartView image attachments opened a `role="dialog"` lightbox but allowed focus to escape to the page behind it and did not restore focus to the thumbnail on close.
+- Fixed: focus the close control on open, wrap Tab/Shift+Tab inside the lightbox, close on Escape, and restore focus to the originating thumbnail.
+- Verification: PartView tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: every custom lightbox needs the same modal focus lifecycle as a full confirmation dialog, even when it contains only an image.

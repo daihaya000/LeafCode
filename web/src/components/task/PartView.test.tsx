@@ -67,6 +67,32 @@ describe("PartView file attachments", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("keeps focus inside the lightbox and restores it to the thumbnail", () => {
+    const part = filePart({
+      filename: "focus.jpg",
+      mime: "image/jpeg",
+      url: "data:image/jpeg;base64,/9j/4AAQ",
+    });
+    render(<PartView part={part} role="user" />);
+
+    const thumbnail = screen.getByLabelText("focus.jpg を拡大表示") as HTMLElement;
+    thumbnail.focus();
+    fireEvent.click(thumbnail);
+
+    const dialog = screen.getByRole("dialog", { name: "focus.jpg" });
+    const close = screen.getByRole("button", { name: "閉じる" });
+    expect(document.activeElement).toBe(close);
+
+    close.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(thumbnail);
+    expect(dialog).not.toBe(document.activeElement);
+  });
+
   it("falls back to a filename chip for non-image file attachments", () => {
     const onFileClick = vi.fn();
     const part = filePart({ filename: "notes.txt", mime: "text/plain" });

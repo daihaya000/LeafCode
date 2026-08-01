@@ -442,13 +442,41 @@ function FileImagePreview({
   className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!expanded) return;
+    if (!expanded) {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+      return;
+    }
+
+    const getFocusable = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+    getFocusable()[0]?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         event.stopPropagation();
         setExpanded(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -459,7 +487,12 @@ function FileImagePreview({
     <>
       <button
         type="button"
-        onClick={() => setExpanded(true)}
+        onClick={() => {
+          previousFocusRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+          setExpanded(true);
+        }}
         aria-label={`${name} を拡大表示`}
         className={cx(
           "block h-28 w-28 cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface-2",
@@ -471,6 +504,7 @@ function FileImagePreview({
       </button>
       {expanded && (
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label={name}
