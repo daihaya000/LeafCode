@@ -25,6 +25,17 @@ describe("BrowserBridgeApprovals", () => {
     expect(screen.queryByRole("region", { name: "Browser Bridge 承認" })).toBeNull();
   });
 
+  it("offers a manual retry after the Broker request fails", async () => {
+    timedFetch
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValue(response({ available: true, approvals: [], requests: [] }));
+    render(<BrowserBridgeApprovals />);
+
+    const retry = await screen.findByRole("button", { name: "再試行" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(4));
+  });
+
   it("shows a safe error when the local Broker request fails", async () => {
     timedFetch.mockRejectedValue(new Error("Browser Bridgeに接続できません"));
     render(<BrowserBridgeApprovals />);

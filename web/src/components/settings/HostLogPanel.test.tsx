@@ -149,6 +149,18 @@ describe("HostLogPanel", () => {
     expect(alert.textContent).toContain("ホストが見つかりません");
   });
 
+  it("offers a manual retry after a fetch error", async () => {
+    timedFetch
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValue(jsonResponse({ entries: [], nextSeq: 0 }));
+
+    render(<HostLogPanel />);
+
+    const retry = await screen.findByRole("button", { name: "再試行" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
+  });
+
   it("clears the client-side view without refetching history", async () => {
     timedFetch.mockResolvedValue(
       jsonResponse({

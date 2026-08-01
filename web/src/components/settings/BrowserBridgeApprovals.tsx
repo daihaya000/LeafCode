@@ -26,12 +26,22 @@ export function BrowserBridgeApprovals() {
   const busyRef = useRef<string | null>(null);
   const mountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
+  const refreshAbortRef = useRef<AbortController | null>(null);
   const refresh = useCallback(async () => {
+    refreshAbortRef.current?.abort();
+    const abortController = new AbortController();
+    refreshAbortRef.current = abortController;
     const requestId = ++refreshRequestRef.current;
     try {
       const [approvalsRes, pairingRes] = await Promise.all([
-        timedFetch("/api/host/browser-bridge/approvals", { timeoutMs: 3000 }),
-        timedFetch("/api/host/browser-bridge/pairing", { timeoutMs: 3000 }),
+        timedFetch("/api/host/browser-bridge/approvals", {
+          timeoutMs: 3000,
+          signal: abortController.signal,
+        }),
+        timedFetch("/api/host/browser-bridge/pairing", {
+          timeoutMs: 3000,
+          signal: abortController.signal,
+        }),
       ]);
       const approvalsData = (await approvalsRes.json()) as { approvals?: Approval[]; available?: boolean };
       const pairingData = (await pairingRes.json()) as { requests?: PairingRequest[]; available?: boolean };
@@ -45,6 +55,10 @@ export function BrowserBridgeApprovals() {
       if (!mountedRef.current) return;
       if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       setError(err instanceof Error ? err.message : "承認一覧を取得できません");
+    } finally {
+      if (refreshAbortRef.current === abortController) {
+        refreshAbortRef.current = null;
+      }
     }
   }, []);
   useEffect(() => {
@@ -53,6 +67,8 @@ export function BrowserBridgeApprovals() {
     const timer = window.setInterval(() => void refresh(), 2000);
     return () => {
       mountedRef.current = false;
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
       refreshRequestRef.current += 1;
       window.clearInterval(timer);
     };
@@ -106,7 +122,19 @@ export function BrowserBridgeApprovals() {
   if (!available && !error) return null;
   return <section className="rounded-lg border border-border bg-card p-4" aria-label="Browser Bridge 承認">
     <h3 className="text-sm font-semibold">Browser Bridge 承認</h3>
-    {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
+    {error ? (
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <p role="alert" className="text-sm text-danger">{error}</p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void refresh()}
+          disabled={busy !== null}
+        >
+          再試行
+        </Button>
+      </div>
+    ) : null}
     {pairingRequests.map((request) => <div key={request.requestId} className="mt-3 rounded-md bg-muted p-3">
       <p className="text-sm font-medium">拡張機能のペアリング要求</p><p className="mt-1 break-all text-xs text-muted-foreground">{request.origin}</p>
       <div className="mt-3 flex gap-2"><Button size="sm" busy={busy === `pairing:${request.requestId}`} disabled={busy !== null} onClick={() => void decidePairing(request.requestId, "allow")}>許可</Button><Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void decidePairing(request.requestId, "deny")}>拒否</Button></div>

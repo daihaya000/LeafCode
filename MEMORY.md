@@ -4121,3 +4121,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: extend the shared body-scroll lock to the sidebar and profile overlays, cap PTY interaction requests at three seconds while consuming the response to release the timeout, and make the Browser Bridge dot reflect connected/available/unavailable states.
 - Verification: targeted Sidebar, Profiles, PTY, and Browser Bridge tests passed (75/75); full suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: status indicators must reflect the same state used by the action controls, and fire-and-forget requests still need bounded lifetimes and response cleanup.
+
+## 2026-08-01: Local integration recovery UX
+
+- Found: Browser Bridge approval polling could start a new 3-second request while the previous one was still pending, and both approval and host-log errors lacked an immediate retry action.
+- Fixed: abort the previous approval refresh before starting the next poll, ignore aborted/stale results, expose an alert with a manual retry action, and add the same retry affordance to host logs.
+- Verification: Browser Bridge approval and host-log tests passed (21/21); full suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: polling should have an explicit cancellation policy, and background retries should not replace a visible recovery action.

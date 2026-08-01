@@ -120,12 +120,14 @@ export function HostLogPanel() {
           トレイホストの直近ログ（OpenCode / WebUI / Caddy / ビルド）を表示します。生のコンソールを開かなくても診断できます。
         </p>
         {fetchError && (
-          <p
-            role="alert"
-            className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
-          >
-            {fetchError} — start-webui.bat（トレイホスト）が起動しているか確認してください
-          </p>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2">
+            <p role="alert" className="text-xs text-danger">
+              {fetchError} — start-webui.bat（トレイホスト）が起動しているか確認してください
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => void poll()}>
+              再試行
+            </Button>
+          </div>
         )}
         <div
           ref={scrollRef}
