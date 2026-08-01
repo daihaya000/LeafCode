@@ -3343,3 +3343,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: announce card errors as assertive alerts and expose single-choice options as `radio`/`aria-checked`, multi-choice options as `checkbox`/`aria-checked`; updated attention-modal tests to use the semantic roles.
 - Verification: QuestionCard and AttentionQueueModal tests passed (18/18); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: approval UI needs both immediate failure feedback and semantics that describe the decision model, not only the visual styling.
+
+## 2026-08-01: NextAction stale-response protection
+
+- Found: a NextAction request could finish after the conversation invalidation key changed, allowing a suggestion generated from the previous conversation to appear in the new state.
+- Fixed: track task/session/context generations, invalidate in-flight generations on context changes, and ignore stale success/error responses; removed state updates during render in favor of an effect.
+- Verification: NextAction tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: async suggestion UIs need a response generation tied to the conversation state, not only a loading flag.

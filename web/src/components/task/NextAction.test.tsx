@@ -127,6 +127,39 @@ describe("NextAction", () => {
     expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
   });
 
+  it("discards a response from the previous conversation state", async () => {
+    let resolveOld: ((value: { suggestion: string }) => void) | undefined;
+    sendJsonMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve as (value: { suggestion: string }) => void;
+      }),
+    );
+    const { rerender } = render(
+      <NextAction
+        taskId="task-1"
+        sessionId="ses-1"
+        onApply={vi.fn()}
+        invalidateKey="v1"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("次の指示を提案"));
+    await waitFor(() => expect(screen.getByText("提案を作成中…")).toBeTruthy());
+
+    rerender(
+      <NextAction
+        taskId="task-1"
+        sessionId="ses-1"
+        onApply={vi.fn()}
+        invalidateKey="v2"
+      />,
+    );
+    expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
+
+    resolveOld?.({ suggestion: "古い会話の提案" });
+    await Promise.resolve();
+    expect(screen.queryByText("古い会話の提案")).toBeNull();
+  });
+
   it("sends model and agent in the request body", async () => {
     sendJsonMock.mockResolvedValueOnce({ suggestion: "テスト" });
     render(

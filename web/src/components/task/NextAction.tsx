@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Sparkles,
   Loader2,
@@ -118,7 +118,6 @@ export function NextAction({
   isMd = true,
 }: NextActionProps) {
   const [state, setState] = useState<NextActionState>({ kind: "idle" });
-  const [lastInvalidateKey, setLastInvalidateKey] = useState(invalidateKey);
   // How many suggestions to request. Transient UI state (default 1), not
   // persisted; the server validates and clamps it anyway.
   const [count, setCount] = useState<number>(NEXT_ACTION_COUNT_DEFAULT);
@@ -129,25 +128,32 @@ export function NextAction({
   // renders the suggestions expanded and never shows the toggle.
   const [collapsed, setCollapsed] = useState(false);
   const panelId = useId();
+  const contextRef = useRef({ taskId, sessionId, invalidateKey });
+  const generationRef = useRef(0);
 
   // Reset to idle when the invalidation key changes (conversation updated,
   // revert, or task switch). Previously shown suggestions belong to the old
   // conversation state, so drop them too. On mobile the success panel is
   // collapsed again so the next generation starts fresh.
-  if (invalidateKey !== lastInvalidateKey) {
-    setLastInvalidateKey(invalidateKey);
-    if (previousSuggestions.length > 0) {
-      setPreviousSuggestions([]);
+  useEffect(() => {
+    const previous = contextRef.current;
+    if (
+      previous.taskId === taskId &&
+      previous.sessionId === sessionId &&
+      previous.invalidateKey === invalidateKey
+    ) {
+      return;
     }
-    if (state.kind !== "idle" && state.kind !== "loading") {
-      setState({ kind: "idle" });
-    }
-    if (!isMd) {
-      setCollapsed(true);
-    }
-  }
+    contextRef.current = { taskId, sessionId, invalidateKey };
+    // Invalidate an in-flight generation before clearing the old suggestion.
+    generationRef.current += 1;
+    setPreviousSuggestions([]);
+    setState({ kind: "idle" });
+    if (!isMd) setCollapsed(true);
+  }, [taskId, sessionId, invalidateKey, isMd]);
 
   const generate = useCallback(async () => {
+    const generation = ++generationRef.current;
     setState({ kind: "loading" });
     try {
       const body: Record<string, unknown> = { sessionId, count };
@@ -171,6 +177,7 @@ export function NextAction({
       if (suggestions.length === 0) {
         throw new Error("empty suggestions");
       }
+      if (generation !== generationRef.current) return;
       // Remember everything shown so far so the next regeneration can
       // exclude all of them (capped to keep the prompt bounded).
       setPreviousSuggestions((prev) => {
@@ -186,6 +193,7 @@ export function NextAction({
       setCollapsed(false);
       setState({ kind: "success", suggestions });
     } catch (err) {
+      if (generation !== generationRef.current) return;
       console.warn("[NextAction] generate failed", err);
       setState({
         kind: "error",
