@@ -24,7 +24,10 @@ export class ApiError extends Error {
   }
 }
 
-function withTimeoutSignal(timeoutMs: number | undefined): {
+function withTimeoutSignal(
+  timeoutMs: number | undefined,
+  parentSignal?: AbortSignal,
+): {
   signal?: AbortSignal;
   clear: () => void;
 } {
@@ -34,9 +37,15 @@ function withTimeoutSignal(timeoutMs: number | undefined): {
       : DEFAULT_FETCH_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  if (parentSignal?.aborted) abortFromParent();
   return {
     signal: controller.signal,
-    clear: () => clearTimeout(timer),
+    clear: () => {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener("abort", abortFromParent);
+    },
   };
 }
 
@@ -169,9 +178,11 @@ export async function timedFetch(
   input: string,
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<Response> {
-  const { timeoutMs, signal: _ignored, ...rest } = init ?? {};
-  void _ignored;
-  const { signal, clear } = withTimeoutSignal(timeoutMs);
+  const { timeoutMs, signal: parentSignal, ...rest } = init ?? {};
+  const { signal, clear } = withTimeoutSignal(
+    timeoutMs,
+    parentSignal ?? undefined,
+  );
   try {
     const res = await fetch(input, {
       cache: "no-store",

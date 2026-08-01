@@ -232,6 +232,34 @@ describe("timedFetch body readers", () => {
     await expect(response.json()).rejects.toBe(bodyError);
   });
 
+  it("honors a caller AbortSignal in addition to its timeout", async () => {
+    vi.useFakeTimers();
+    const caller = new AbortController();
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = timedFetch("/api/tasks", {
+      signal: caller.signal,
+      timeoutMs: 30_000,
+    });
+    caller.abort();
+
+    await expect(pending).rejects.toBeInstanceOf(ApiError);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tasks",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).signal).not.toBe(
+      caller.signal,
+    );
+  });
+
   it("converts a body stream read timeout to ApiError 408", async () => {
     vi.useFakeTimers();
     let releaseRead!: (result: ReadableStreamReadResult<Uint8Array>) => void;
