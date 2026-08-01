@@ -562,6 +562,9 @@ describe("SettingsView", () => {
     await screen.findByText("エンジン");
     fireEvent.click(screen.getByRole("tab", { name: /プロジェクト/ }));
 
+    expect(
+      await screen.findByRole("button", { name: "Repoをお気に入りに追加" }),
+    ).toBeTruthy();
     const deleteButton = await screen.findByRole("button", { name: "Repoを削除" });
     deleteButton.focus();
     fireEvent.click(deleteButton);

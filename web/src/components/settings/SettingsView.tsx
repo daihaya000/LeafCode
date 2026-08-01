@@ -1063,6 +1063,7 @@ export function SettingsView() {
                     <button
                       type="button"
                       disabled={busy}
+                      aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
                       title="お気に入り"
                       onClick={() => void toggleFavorite(p)}
                       className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2"

@@ -4085,3 +4085,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: localized the Home project loader, file tree, graph, diff merge warning, and nested-agent fallback messages with complete Japanese sentences.
 - Verification: HomeView tests passed (53/53); FileTree, Graph, NestedAgent, and Diff tests passed (29/29); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: error paths that are rarely reached by normal `Error` objects still need localization because API wrappers and tests can reject arbitrary values.
+
+## 2026-08-01: Settings favorite action labeling
+
+- Found: the project favorite icon in Settings used only a generic `title="お気に入り"`, so its target project and current toggle direction were not exposed to assistive technology.
+- Fixed: label it with the project name and state-aware action (`お気に入りに追加` / `お気に入りから外す`) and added a Settings regression assertion.
+- Verification: SettingsView tests passed (25/25); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: stateful icon toggles need both the affected resource and the resulting action in their accessible name.
