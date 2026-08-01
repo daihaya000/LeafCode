@@ -77,6 +77,7 @@ export function useSessionActions({
 }) {
   const [busy, setBusy] = useState<SessionActionKey | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [revertConfirmOpen, setRevertConfirmOpen] = useState(false);
   const busyRef = useRef<SessionActionKey | null>(null);
   const mountedRef = useRef(false);
   const actionGenerationRef = useRef(0);
@@ -85,6 +86,7 @@ export function useSessionActions({
     mountedRef.current = true;
     actionGenerationRef.current += 1;
     busyRef.current = null;
+    setRevertConfirmOpen(false);
     setError(null);
     setBusy(null);
     return () => {
@@ -135,15 +137,17 @@ export function useSessionActions({
   }, [run, directory, sessionId]);
 
   const revert = useCallback(() => {
+    if (!lastUserMessageId || busyRef.current !== null) return;
+    setRevertConfirmOpen(true);
+  }, [lastUserMessageId]);
+
+  const confirmRevert = useCallback(() => {
+    if (!lastUserMessageId) {
+      setRevertConfirmOpen(false);
+      return;
+    }
+    setRevertConfirmOpen(false);
     void run("revert", async () => {
-      if (!lastUserMessageId) throw new Error("messageID がありません");
-      if (
-        !window.confirm(
-          "直前の入力を下の入力欄に戻し、その返答以降を巻き戻しますか？",
-        )
-      ) {
-        return "cancelled" as const;
-      }
       const text = await revertUserMessageToComposer(
         directory,
         sessionId,
@@ -155,6 +159,10 @@ export function useSessionActions({
     });
   }, [run, directory, sessionId, lastUserMessageId, messages, onRestoreText]);
 
+  const cancelRevert = useCallback(() => {
+    setRevertConfirmOpen(false);
+  }, []);
+
   const unrevert = useCallback(() => {
     void run("unrevert", async () => {
       await unrevertSession(directory, sessionId);
@@ -162,7 +170,16 @@ export function useSessionActions({
     });
   }, [run, directory, sessionId]);
 
-  return { busy, error, compact, revert, unrevert };
+  return {
+    busy,
+    error,
+    compact,
+    revert,
+    confirmRevert,
+    cancelRevert,
+    revertConfirmOpen,
+    unrevert,
+  };
 }
 
 /** Compact (context compression) icon button for the header Zone A. */

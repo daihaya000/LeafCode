@@ -64,6 +64,30 @@ describe("SessionActions error UX", () => {
     await waitFor(() => expect(result.current.busy).toBeNull());
   });
 
+  it("opens an inline revert confirmation without using the native dialog", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { result } = renderHook(() =>
+      useSessionActions({
+        directory: "/repo",
+        sessionId: "ses-1",
+        lastUserMessageId: "msg-1",
+        messages,
+      }),
+    );
+
+    act(() => result.current.revert());
+    expect(result.current.revertConfirmOpen).toBe(true);
+    act(() => result.current.cancelRevert());
+    expect(result.current.revertConfirmOpen).toBe(false);
+
+    act(() => {
+      result.current.revert();
+      result.current.confirmRevert();
+    });
+    await waitFor(() => expect(ocJson).toHaveBeenCalledTimes(1));
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it("renders message revert failures as an accessible inline alert", async () => {
     ocJson.mockRejectedValueOnce(new Error("revert failed"));
     const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);

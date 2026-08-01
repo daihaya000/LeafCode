@@ -3297,4 +3297,42 @@ describe("TaskView voice input", () => {
     expect(alert).not.toHaveBeenCalled();
     expect(restore.getAttribute("aria-busy")).toBe("false");
   });
+
+  it("confirms task deletion inline and preserves the menu trigger on cancel", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    taskStatus = "merged";
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const menuTrigger = screen.getByRole("button", { name: "メニューを開く" });
+    menuTrigger.focus();
+    fireEvent.click(menuTrigger);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "タスクを削除" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Task title");
+    expect(dialog.textContent).toContain("フォルダは残ります");
+    expect(document.activeElement).toBe(dialog.querySelector("button"));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(document.activeElement).toBe(menuTrigger);
+    expect(sendJson).not.toHaveBeenCalledWith("DELETE", "/api/tasks/ws1");
+
+    fireEvent.click(menuTrigger);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "タスクを削除" }));
+    fireEvent.click((await screen.findByRole("alertdialog")).querySelector("button")!);
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/tasks/ws1");
+    });
+  });
 });

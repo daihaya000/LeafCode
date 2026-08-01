@@ -3995,6 +3995,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: path and access-control mutations need the same contextual confirmation treatment as task and provider mutations.
 
+## 2026-08-01: Task and session destructive-action confirmation UX
+
+- Found: TaskView task deletion and the session-level revert action still relied on native confirmation dialogs; task deletion also used the live task object at execution time, which could make the destructive target ambiguous during async refreshes.
+- Fixed: add contextual alert dialogs with impact text, primary-action focus, Escape cancellation, trigger focus restoration, and guarded confirmation execution; snapshot the task id from the route and expose explicit revert confirmation controls from `useSessionActions`.
+- Verification: SessionActions tests passed (5/5); TaskView task-delete regression test passed (1/1 selected); typecheck, ESLint, `git diff --check`, and a native-confirm search for both components passed.
+- Lesson: menu-triggered destructive actions need confirmation state outside the menu lifecycle, with stable route-scoped identifiers and explicit keyboard focus ownership.
+
 ## 2026-08-01: Project deletion confirmation UX
 
 - Found: SettingsView project deletion still used a native confirmation, leaving the related task/worktree deletion scope outside the page and without a predictable keyboard focus lifecycle.

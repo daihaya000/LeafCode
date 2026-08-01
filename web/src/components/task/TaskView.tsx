@@ -512,8 +512,17 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [taskActionBusy, setTaskActionBusy] = useState<
     "remove" | "session" | "restore" | null
   >(null);
+  const [pendingTaskDelete, setPendingTaskDelete] = useState<{
+    id: string;
+    title: string;
+    isolation: string;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const taskDeleteConfirmRef = useRef<HTMLDivElement | null>(null);
+  const taskDeleteTriggerRef = useRef<HTMLElement | null>(null);
+  const revertConfirmRef = useRef<HTMLDivElement | null>(null);
+  const revertTriggerRef = useRef<HTMLElement | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const modelLabels = useMemo<Readonly<Record<string, string>>>(
     () =>
@@ -2385,16 +2394,56 @@ export function TaskView({ taskId }: { taskId: string }) {
     closeSessionDialog();
   }, [refreshTask, closeSessionDialog]);
 
-  const removeTask = useCallback(async () => {
-    if (!task || taskActionBusy) return;
-    const label =
-      task.isolation === "current_folder"
-        ? "このタスクを一覧から削除しますか？（フォルダは残ります）"
-        : "このタスクを削除しますか？ worktree/コピーも削除されます。";
-    if (!window.confirm(label)) return;
+  useEffect(() => {
+    if (!pendingTaskDelete) {
+      if (taskDeleteTriggerRef.current?.isConnected) {
+        taskDeleteTriggerRef.current.focus();
+      }
+      taskDeleteTriggerRef.current = null;
+      return;
+    }
+
+    taskDeleteConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPendingTaskDelete(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pendingTaskDelete]);
+
+  const removeTask = useCallback(async (target?: {
+    id: string;
+    title: string;
+    isolation: string;
+  }) => {
+    if (taskActionBusy) return;
+    if (!target) {
+      if (!task) return;
+      const activeElement = document.activeElement;
+      taskDeleteTriggerRef.current =
+        activeElement instanceof HTMLElement &&
+        activeElement.getAttribute("role") !== "menuitem"
+          ? activeElement
+          : document.querySelector<HTMLElement>(
+              'button[aria-label="メニューを開く"]',
+            );
+      setPendingTaskDelete({
+        id: taskId,
+        title: task.title,
+        isolation: task.isolation,
+      });
+      return;
+    }
+    const targetId = target.id || task?.id || taskRef.current?.id;
+    if (!targetId) {
+      setSendError("削除対象のタスクIDを取得できませんでした");
+      return;
+    }
     setTaskActionBusy("remove");
     try {
-      await sendJson("DELETE", `/api/tasks/${task.id}`);
+      await sendJson("DELETE", `/api/tasks/${targetId}`);
       notifyTasksChanged();
       router.push("/");
     } catch (err) {
@@ -2402,7 +2451,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task, router, taskActionBusy]);
+  }, [task, taskId, router, taskActionBusy]);
 
   const ensureSession = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -2583,8 +2632,27 @@ export function TaskView({ taskId }: { taskId: string }) {
             void stream.resync();
             setDiffKey((k) => k + 1);
           },
-        },
+      },
   );
+  const revertConfirmOpen = sessionActions.revertConfirmOpen;
+  const cancelRevert = sessionActions.cancelRevert;
+
+  useEffect(() => {
+    if (!revertConfirmOpen) {
+      if (revertTriggerRef.current?.isConnected) revertTriggerRef.current.focus();
+      revertTriggerRef.current = null;
+      return;
+    }
+
+    revertConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancelRevert();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [revertConfirmOpen, cancelRevert]);
 
   /**
    * Mobile-only kebab menu groups. On md and above every action is surfaced
@@ -2621,7 +2689,17 @@ export function TaskView({ taskId }: { taskId: string }) {
         id: "revert",
         label: "巻き戻す (undo)",
         icon: <RotateCcw className="h-4 w-4" />,
-        onSelect: sessionActions.revert,
+        onSelect: () => {
+          const activeElement = document.activeElement;
+          revertTriggerRef.current =
+            activeElement instanceof HTMLElement &&
+            activeElement.getAttribute("role") !== "menuitem"
+              ? activeElement
+              : document.querySelector<HTMLElement>(
+                  'button[aria-label="メニューを開く"]',
+                );
+          sessionActions.revert();
+        },
         disabled: !lastRevertMessageId || sessionActions.busy !== null,
         busy: sessionActions.busy === "revert",
       });
@@ -2717,10 +2795,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     copied,
     showDiff,
     sidePanel,
-    sessionActions.busy,
-    sessionActions.compact,
-    sessionActions.revert,
-    sessionActions.unrevert,
+    sessionActions,
     streamAbort,
     copyPath,
     toggleSidePanel,
@@ -3109,6 +3184,77 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
         </div>
       </header>
+
+      {pendingTaskDelete && (
+        <div
+          ref={taskDeleteConfirmRef}
+          role="alertdialog"
+          aria-label="タスク削除の確認"
+          aria-describedby="task-delete-confirm-description"
+          className="shrink-0 border-b border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger"
+        >
+          <p id="task-delete-confirm-description">
+            タスク「{pendingTaskDelete.title}」を削除しますか？
+            <br />
+            {pendingTaskDelete.isolation === "current_folder"
+              ? "一覧から削除します。フォルダは残ります。"
+              : "worktree / コピーも削除されます。"}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              busy={taskActionBusy === "remove"}
+              onClick={() => {
+                const target = pendingTaskDelete;
+                taskDeleteTriggerRef.current = null;
+                setPendingTaskDelete(null);
+                void removeTask(target);
+              }}
+            >
+              削除する
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPendingTaskDelete(null)}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {sessionActions.revertConfirmOpen && (
+        <div
+          ref={revertConfirmRef}
+          role="alertdialog"
+          aria-label="巻き戻しの確認"
+          aria-describedby="session-revert-confirm-description"
+          className="shrink-0 border-b border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning"
+        >
+          <p id="session-revert-confirm-description">
+            直前の入力を下の入力欄に戻し、その返答以降を巻き戻しますか？
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              busy={sessionActions.busy === "revert"}
+              onClick={sessionActions.confirmRevert}
+            >
+              巻き戻す
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={sessionActions.cancelRevert}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </div>
+      )}
 
       {sessionActions.error && (
         <p
