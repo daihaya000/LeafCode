@@ -3322,3 +3322,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: retain the last known folder entries while showing the navigation error, and mark the error with `role="alert"`/assertive live announcement.
 - Verification: AddProjectButton tests passed (17/17); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: navigation errors should preserve the last usable view and explain the failure, instead of replacing it with an indistinguishable empty state.
+
+## 2026-08-01: Diff filter empty-state clarity
+
+- Found: filtering a repository with changes down to zero visible files displayed the same "変更はありません" message as a clean repository, leaving no obvious way back to the full diff.
+- Fixed: distinguish filter-specific empty results, add a `すべて表示` recovery action, announce operation errors/successes with live-region roles, and expose refresh activity with `aria-busy`.
+- Verification: DiffPane tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: empty states need to describe the active scope and provide the shortest path to recover broader context.

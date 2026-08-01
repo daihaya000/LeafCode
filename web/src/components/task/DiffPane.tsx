@@ -669,6 +669,8 @@ export function DiffPane({
               ? "border-danger/30 bg-danger-bg text-danger"
               : "border-success/30 bg-success-bg text-success",
           )}
+          role={error ? "alert" : "status"}
+          aria-live={error ? "assertive" : "polite"}
         >
           {error ?? (
             <span className="inline-flex items-center gap-1">
@@ -689,7 +691,10 @@ export function DiffPane({
       )}
 
       {/* File list */}
-      <div className="min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div
+        className="min-h-0 min-w-0 flex-1 space-y-2 overflow-y-auto p-3"
+        aria-busy={loading || undefined}
+      >
         {!payload && loading && (
           <div className="flex justify-center py-10">
             <Spinner />
@@ -701,9 +706,23 @@ export function DiffPane({
           </p>
         )}
         {payload?.git && files.length === 0 && (
-          <p className="py-10 text-center text-sm text-faint">
-            {payload.error || "変更はありません"}
-          </p>
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="text-sm text-faint" role="status" aria-live="polite">
+              {payload.error ||
+                (payload.files.length > 0
+                  ? `${filter === "tracked" ? "既存の変更" : "新規ファイル"}はありません`
+                  : "変更はありません")}
+            </p>
+            {payload.files.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFilter("all")}
+              >
+                すべて表示
+              </Button>
+            )}
+          </div>
         )}
         {files.map((f) => (
           <FileDiffBlock

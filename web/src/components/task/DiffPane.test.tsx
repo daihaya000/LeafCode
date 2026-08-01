@@ -140,6 +140,45 @@ describe("DiffPane directory race", () => {
     expect(screen.queryByText("セッション外?")).toBeNull();
   });
 
+  it("distinguishes an empty filter from a repository with no changes", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          ...payload("file"),
+          files: [
+            payload("file").files[0],
+            {
+              path: "new.txt",
+              additions: 1,
+              deletions: 0,
+              binary: false,
+              untracked: false,
+              hunks: [],
+            },
+          ],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({ branches: [], current: "main", defaultTarget: "main" });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    await screen.findByText("file.ts");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "表示する変更の種類" }), {
+      target: { value: "untracked" },
+    });
+
+    expect(await screen.findByText("新規ファイルはありません")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "すべて表示" }));
+    expect(screen.getByText("file.ts")).toBeTruthy();
+  });
+
   it("does not commit via Enter when no paths are selected", async () => {
     mockMetaApis();
     render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
