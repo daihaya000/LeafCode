@@ -171,10 +171,10 @@ describe("ProfilesSettings", () => {
     render(<ProfilesSettings />);
 
     await waitFor(() => {
-      expect(screen.getAllByText("切替").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("切り替え").length).toBeGreaterThan(0);
     });
 
-    fireEvent.click(screen.getAllByText("切替")[0]);
+    fireEvent.click(screen.getAllByText("切り替え")[0]);
 
     await waitFor(() => {
       expect(screen.getAllByRole("dialog").length).toBeGreaterThan(0);
@@ -190,7 +190,7 @@ describe("ProfilesSettings", () => {
 
     render(<ProfilesSettings />);
     await screen.findAllByText("default");
-    const switchButton = screen.getAllByText("切替")[0] as HTMLElement;
+    const switchButton = screen.getAllByText("切り替え")[0] as HTMLElement;
     switchButton.focus();
     document.body.style.overflow = "auto";
     fireEvent.click(switchButton);

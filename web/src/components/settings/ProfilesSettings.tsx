@@ -609,7 +609,7 @@ export function ProfilesSettings() {
               <th scope="col" className="w-1/5 px-5 py-3 font-semibold">名前</th>
               <th scope="col" className="px-5 py-3 font-semibold">保存先</th>
               <th scope="col" className="w-32 px-5 py-3 font-semibold">状態</th>
-              <th scope="col" className="w-44 px-5 py-3 font-semibold">操作</th>
+              <th scope="col" className="w-60 px-5 py-3 font-semibold">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -645,33 +645,36 @@ export function ProfilesSettings() {
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1">
+                    <div className="grid grid-cols-2 gap-1.5">
                       {!p.active && p.exists && canSwitch && (
                         <Button
                           variant="secondary"
                           size="sm"
+                          className="justify-center"
                           aria-label={`${p.name}に切り替え`}
                           disabled={busy || jobRunning || restarting || actionBusy !== null}
                           onClick={() => setSwitchConfirm(p)}
                         >
-                          切替
+                          切り替え
                         </Button>
                       )}
                       {p.exists && (
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="justify-center"
                           aria-label={`${p.name}にWebUI依存を適用`}
                           busy={actionBusy === `dependencies:${p.id}`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => void applyDependencies(p)}
                         >
-                          WebUI依存
+                          連携を適用
                         </Button>
                       )}
                       {renameId === p.id ? (
                         <Button
                           size="sm"
+                          className="justify-center"
                           aria-label={`${p.name}の名前を保存`}
                           busy={actionBusy === `rename:${p.id}`}
                           disabled={actionBusy !== null || busyId !== null || !renameValue.trim()}
@@ -683,6 +686,7 @@ export function ProfilesSettings() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="justify-center"
                           aria-label={`${p.name}の名前を変更`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => {
@@ -690,18 +694,19 @@ export function ProfilesSettings() {
                             setRenameValue(p.name);
                           }}
                         >
-                          名前
+                          名前を変更
                         </Button>
                       )}
                       {!p.active && (
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="justify-center"
                           aria-label={`${p.name}をプロファイルから除外`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => setUnregisterConfirm(p)}
                         >
-                          除外
+                          一覧から除外
                         </Button>
                       )}
                     </div>
@@ -726,33 +731,36 @@ export function ProfilesSettings() {
                 {!p.exists && <Badge tone="danger">不在</Badge>}
               </div>
               <p className="mt-1 truncate font-mono text-xs text-muted">{p.path}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-1">
+              <div className="mt-3 grid grid-cols-2 gap-1.5">
                 {!p.active && p.exists && canSwitch && (
                   <Button
                     variant="secondary"
                     size="sm"
+                    className="justify-center"
                     aria-label={`${p.name}に切り替え`}
                     disabled={busy || jobRunning || restarting || actionBusy !== null}
                     onClick={() => setSwitchConfirm(p)}
                   >
-                    切替
+                    切り替え
                   </Button>
                 )}
                 {p.exists && (
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="justify-center"
                     aria-label={`${p.name}にWebUI依存を適用`}
                     busy={actionBusy === `dependencies:${p.id}`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => void applyDependencies(p)}
                   >
-                    WebUI依存
+                    連携を適用
                   </Button>
                 )}
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="justify-center"
                   aria-label={`${p.name}の名前を変更`}
                   disabled={jobRunning || actionBusy !== null || busyId !== null}
                   onClick={() => {
@@ -760,17 +768,18 @@ export function ProfilesSettings() {
                     setRenameValue(p.name);
                   }}
                 >
-                  名前変更
+                  名前を変更
                 </Button>
                 {!p.active && (
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="justify-center"
                     aria-label={`${p.name}をプロファイルから除外`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => setUnregisterConfirm(p)}
                   >
-                    除外
+                    一覧から除外
                   </Button>
                 )}
               </div>
