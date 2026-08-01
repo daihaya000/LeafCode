@@ -32,6 +32,7 @@ import {
   type ModelOption,
 } from "@/lib/model-options";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
+import { OpenAISubscriptionAuth } from "./OpenAISubscriptionAuth";
 
 type ModelDto = {
   id: string;
@@ -955,6 +956,10 @@ export function ProviderModelsSettings() {
             </ul>
           ))}
       </section>
+
+      {providers.some((provider) => provider.id === "openai") && (
+        <OpenAISubscriptionAuth />
+      )}
     </div>
   );
 }
