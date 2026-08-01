@@ -3861,3 +3861,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: track option elements and scroll the active command with nearest-block behavior when the selection changes.
 - Verification: SlashSuggestMenu and Composer tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: keyboard selection state and visual visibility must be synchronized in bounded suggestion lists.
+
+## 2026-08-01: TaskView restore session race guard
+
+- Found: restoring a reverted session could finish after the user switched sessions, then resync and refresh diff state for the replacement session.
+- Fixed: capture the restore directory/session and verify the current task scope before post-restore resync or diff invalidation.
+- Verification: TaskView tests passed (104/104); typecheck and ESLint passed with existing warnings only.
+- Lesson: async task actions must validate their original session scope before applying follow-up UI state.

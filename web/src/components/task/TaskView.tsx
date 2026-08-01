@@ -2425,11 +2425,23 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [task, refreshTask, taskActionBusy]);
 
   const restoreSession = useCallback(async () => {
-    if (!task?.sessionId || taskActionBusy) return;
+    const restoreDirectory = task?.directory;
+    const restoreSessionId = task?.sessionId;
+    if (!restoreDirectory || !restoreSessionId || taskActionBusy) return;
     setTaskActionBusy("restore");
     try {
       const { unrevertSession } = await import("./SessionActions");
-      await unrevertSession(task.directory, task.sessionId);
+      await unrevertSession(restoreDirectory, restoreSessionId);
+      // A session switch can happen while the restore request is in flight.
+      // Never resync or invalidate the session that replaced the request's
+      // original scope.
+      const currentTask = taskRef.current;
+      if (
+        currentTask?.directory !== restoreDirectory ||
+        currentTask.sessionId !== restoreSessionId
+      ) {
+        return;
+      }
       await stream.resync();
       setDiffKey((k) => k + 1);
       setSendError(null);
@@ -2438,7 +2450,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task, stream, taskActionBusy]);
+  }, [task?.directory, task?.sessionId, stream, taskActionBusy]);
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
