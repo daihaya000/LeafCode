@@ -189,8 +189,12 @@ export function GraphPanel({
     text: string;
   } | null>(null);
   const [fileBusy, setFileBusy] = useState(false);
+  const [loadingCommits, setLoadingCommits] = useState<Set<string>>(
+    () => new Set(),
+  );
   const commitCountRef = useRef(0);
   const busyRef = useRef(false);
+  const detailBusyRef = useRef(new Set<string>());
   const reqIdRef = useRef(0);
   const directoryRef = useRef(directory);
   directoryRef.current = directory;
@@ -261,6 +265,8 @@ export function GraphPanel({
     setExpanded(null);
     setFilesByCommit({});
     setFileDiff(null);
+    detailBusyRef.current.clear();
+    setLoadingCommits(new Set());
     setError(null); // R21/R11#2-3: Clear error when directory changes
     commitCountRef.current = 0;
     void load();
@@ -332,6 +338,10 @@ export function GraphPanel({
     setExpanded(hash);
     setFileDiff(null);
     if (filesByCommit[hash]) return;
+    const detailKey = `${directory}\u0000${hash}`;
+    if (detailBusyRef.current.has(detailKey)) return;
+    detailBusyRef.current.add(detailKey);
+    setLoadingCommits((prev) => new Set(prev).add(hash));
     const dir = directory;
     try {
       const data = await getJson<GraphShowPayload>("/api/git/show", {
@@ -346,6 +356,15 @@ export function GraphPanel({
     } catch (err) {
       if (directoryRef.current !== dir) return;
       setError(err instanceof Error ? err.message : "コミット詳細の取得に失敗");
+    } finally {
+      detailBusyRef.current.delete(detailKey);
+      if (directoryRef.current === dir) {
+        setLoadingCommits((prev) => {
+          const next = new Set(prev);
+          next.delete(hash);
+          return next;
+        });
+      }
     }
   };
 
@@ -391,6 +410,8 @@ export function GraphPanel({
           variant="ghost"
           size="icon"
           title="更新"
+          busy={loading}
+          disabled={loading || loadingMore}
           className="h-7 w-7"
           onClick={() => void load()}
         >
@@ -405,7 +426,11 @@ export function GraphPanel({
           </div>
         )}
         {error && (
-          <p className="border-b border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
+          <p
+            role="alert"
+            aria-live="assertive"
+            className="border-b border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
+          >
             {error}
           </p>
         )}
@@ -434,6 +459,7 @@ export function GraphPanel({
             >
               <button
                 type="button"
+                aria-busy={loadingCommits.has(row.commit.hash) || undefined}
                 onClick={() => void toggleExpand(row.commit.hash)}
                 className="flex w-full min-w-0 cursor-pointer items-stretch gap-1 px-1 py-0 text-left hover:bg-surface-2"
                 style={{ minHeight: ROW_H }}
@@ -524,7 +550,7 @@ export function GraphPanel({
                     <div key={f.path} className="mb-0.5">
                       <button
                         type="button"
-                        disabled={fileBusy}
+                        disabled={fileBusy || loadingCommits.has(row.commit.hash)}
                         onClick={() => void openFileDiff(row.commit.hash, f.path)}
                         className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-surface-2"
                       >

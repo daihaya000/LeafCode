@@ -3406,3 +3406,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add handler-level busy guards for answer, reject, quick reply, and extra permission actions, plus a regression test for duplicate quick answers.
 - Verification: QuestionCard tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: approval UI is a critical interaction boundary; duplicate responses must be rejected inside the action function as well as visually disabled.
+
+## 2026-08-01: Graph panel detail loading
+
+- Found: repeatedly expanding a commit could issue duplicate detail requests, the refresh action remained clickable during a log load, and graph errors lacked an assertive live-region role.
+- Fixed: track per-commit detail requests, expose row busy state and disable its file actions, lock refresh while loading, and mark errors as alerts.
+- Verification: GraphPanel tests passed (9/9); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: expandable data panels need request-level locks independent of the visible spinner, especially when the trigger remains mounted during loading.

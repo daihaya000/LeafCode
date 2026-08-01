@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GraphPanel } from "./GraphPanel";
 import type { GraphLogPayload } from "@/lib/types";
@@ -177,5 +177,33 @@ describe("GraphPanel", () => {
 
     expect(screen.queryByText("stale commit")).toBeNull();
     expect(screen.getByText("commit 0")).toBeTruthy();
+  });
+
+  it("does not request commit details twice while expansion is pending", async () => {
+    let resolveShow!: (value: unknown) => void;
+    const showPending = new Promise((resolve) => {
+      resolveShow = resolve;
+    });
+    getJson.mockImplementation((url: string) => {
+      if (url === "/api/git/log") return Promise.resolve(payloadWith(1));
+      return showPending;
+    });
+
+    render(<GraphPanel directory="/repo" />);
+    await screen.findByText("commit 0");
+    const row = screen.getByRole("button", { name: /commit 0/ });
+
+    fireEvent.click(row);
+    fireEvent.click(row);
+
+    expect(
+      getJson.mock.calls.filter(([url]) => url === "/api/git/show"),
+    ).toHaveLength(1);
+    expect(row.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => {
+      resolveShow({ files: [] });
+      await Promise.resolve();
+    });
   });
 });
