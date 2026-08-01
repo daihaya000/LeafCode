@@ -3771,3 +3771,9 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - 判断理由: WebUIのOAuth APIではなく、Claude Authプラグイン削除によりOpenCode側のOAuth提供元がなくなっていたため。プラグインを再登録・再有効化してOpenCode hostを再起動するのが復旧手順。
 - 教訓: 認証UIのエラーは画面側だけで判断せず、上流の認証方式一覧に対象プロバイダーと方式が存在するかを先に確認する。
 \n## 2026-08-01: 接続状態バッジの対象を明示\n\n- やったこと: SettingsView の2つの接続状態バッジを「OpenCode 接続中」「トレイホスト接続中」のように対象付きへ変更し、テストの期待値も更新。\n- 判断理由: 旧表示は「接続中」と「ホスト接続中」が並び、どの接続を示すか一目で判別しづらかったため。\n- 教訓: 複数の接続先を同じ画面で示す場合は、状態語だけでなく対象名をラベルに含める。\n
+## 2026-08-01: SessionSwitcherDialog focus lifecycle
+
+- Found: focus restoration was scheduled after dialog unmount without checking whether a replacement dialog or another user interaction had already received focus.
+- Fixed: restore focus only when the document is still unfocused/body-focused, and add a regression test for replacement dialogs.
+- Verification: SessionSwitcherDialog tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: delayed focus recovery must be conditional; an unmount callback should never override the focus state of the next UI surface.

@@ -112,6 +112,35 @@ describe("SessionSwitcherDialog", () => {
     opener.remove();
   });
 
+  it("does not steal focus from a replacement dialog", async () => {
+    const view = render(
+      <SessionSwitcherDialog
+        key="initial"
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="sess1"
+        onSwitch={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const selector = () => screen.getByRole("combobox");
+    await waitFor(() => expect(document.activeElement).toBe(selector()));
+
+    view.rerender(
+      <SessionSwitcherDialog
+        key="replacement"
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="sess1"
+        onSwitch={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(document.activeElement).toBe(selector()));
+  });
+
   it("delegates successful session actions without closing or refreshing itself", () => {
     const { onClose, onSwitch } = renderDialog();
 

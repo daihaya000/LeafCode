@@ -36,7 +36,14 @@ export function SessionSwitcherDialog({
       const previousFocus = previousFocusRef.current;
       if (!previousFocus) return;
       window.setTimeout(() => {
-        if (previousFocus.isConnected) previousFocus.focus();
+        // Do not steal focus from a replacement dialog or from a user action
+        // that happened while React was removing this dialog.
+        if (
+          previousFocus.isConnected &&
+          (document.activeElement === document.body || document.activeElement === null)
+        ) {
+          previousFocus.focus();
+        }
       }, 0);
     };
   }, []);
