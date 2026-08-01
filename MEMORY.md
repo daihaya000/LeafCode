@@ -4192,6 +4192,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: TaskView tests passed (105/105); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: transient UI feedback must follow the resource scope that produced it and be cancelled when that scope changes.
 
+## 2026-08-01: Archived group touch target
+
+- Found: the archived-project bulk-delete icon in the sidebar was only 20px square, below the project's compact touch target policy on mobile.
+- Fixed: use a 36px square target on mobile and retain a compact 24px target from the desktop breakpoint onward; added a regression assertion.
+- Verification: Sidebar tests passed (38/38); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: destructive icon actions in dense lists still need a touch-sized hit area; only the visual icon should remain compact.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

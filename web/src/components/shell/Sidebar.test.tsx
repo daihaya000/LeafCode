@@ -1560,7 +1560,11 @@ describe("Sidebar archived section", () => {
     archiveHeading.click();
 
     await screen.findByText("Task A");
-    screen.getByLabelText("Repoのアーカイブを一括削除").click();
+    const groupDelete = screen.getByLabelText("Repoのアーカイブを一括削除");
+    expect(groupDelete.className).toContain("h-9");
+    expect(groupDelete.className).toContain("w-9");
+    expect(groupDelete.className).toContain("md:h-6");
+    groupDelete.click();
 
     (await screen.findByRole("alertdialog")).querySelector("button")?.click();
     await vi.waitFor(() => {

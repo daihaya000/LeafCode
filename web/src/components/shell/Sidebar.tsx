@@ -1255,7 +1255,7 @@ export function Sidebar({
                         aria-busy={actionBusyKey === `destroy-group:${group.key}`}
                         disabled={actionBusyKey !== null}
                         onClick={(e) => void destroyArchivedGroup(group, e)}
-                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50 md:h-6 md:w-6"
                       >
                         {destroyingGroupKey === group.key ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
