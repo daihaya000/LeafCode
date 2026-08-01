@@ -19,8 +19,8 @@ const { getJson, sendJson, timedFetch, attentionState } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({ children, href, ...props }: { children: React.ReactNode; href: string } & React.ComponentProps<"a">) => (
+    <a href={href} {...props}>{children}</a>
   ),
 }));
 
@@ -117,6 +117,15 @@ describe("Sidebar", () => {
     expect(drawer?.className).toContain("overflow-hidden");
     expect(drawer?.className).toContain("top-0");
     expect(drawer?.className).not.toContain("inset-y-0");
+  });
+
+  it("gives the mobile header icon links explicit accessible names", async () => {
+    render(<Sidebar mobileOpen onClose={vi.fn()} />);
+
+    const drawer = document.getElementById("mobile-nav");
+    expect(drawer).toBeTruthy();
+    expect(within(drawer!).getByRole("link", { name: "新規タスク" })).toBeTruthy();
+    expect(within(drawer!).getByRole("link", { name: "設定" })).toBeTruthy();
   });
 
   it("does not render the mobile drawer when closed", async () => {

@@ -4064,3 +4064,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: none beyond the icon-action labels recorded above; retained the existing focus behavior after verifying its keyboard lifecycle against the implementation and tests.
 - Verification: full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: audit overlay focus lifecycles before changing them; stable focus restoration is preferable to duplicating competing traps.
+
+## 2026-08-01: Mobile sidebar icon-link labeling
+
+- Found: the mobile sidebar's new-task and settings icon links relied on `title` only; the test `next/link` mock also discarded arbitrary link props, allowing an accessible-name regression to go unnoticed.
+- Fixed: add explicit `aria-label` values and preserve link props in the Sidebar test mock; added a mobile-drawer regression test for both names.
+- Verification: Sidebar tests passed (38/38); broader typecheck, ESLint, full web suite, and `git diff --check` are run before commit.
+- Lesson: test doubles for routing primitives must forward accessibility attributes, otherwise semantic regressions can be masked even when the rendered UI looks correct.

@@ -877,6 +877,7 @@ export function Sidebar({
         </Link>
         <Link
           href="/"
+          aria-label="新規タスク"
           onClick={() => onClose()}
           title="新規タスク"
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
@@ -892,6 +893,7 @@ export function Sidebar({
         />
         <Link
           href="/settings"
+          aria-label="設定"
           onClick={() => onClose()}
           title="設定"
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
