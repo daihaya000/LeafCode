@@ -15,6 +15,7 @@ describe("BrowserBridgeSettings", () => {
   });
   afterEach(() => {
     cleanup();
+    window.localStorage.removeItem("browser-bridge-broker-url");
     vi.clearAllTimers();
     vi.useRealTimers();
   });
@@ -26,6 +27,18 @@ describe("BrowserBridgeSettings", () => {
     expect(
       screen.getByRole("button", { name: "この URL で接続" }),
     ).toBeTruthy();
+  });
+
+  it("restores a saved secure wss Broker URL", async () => {
+    window.localStorage.setItem(
+      "browser-bridge-broker-url",
+      "wss://bridge.example.test/extension",
+    );
+    timedFetch.mockResolvedValue(response({ available: false }));
+
+    render(<BrowserBridgeSettings />);
+
+    expect(await screen.findByDisplayValue("wss://bridge.example.test/extension")).toBeTruthy();
   });
 
   it("collapses the connection form once the Broker reports connected", async () => {

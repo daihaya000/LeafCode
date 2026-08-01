@@ -26,7 +26,9 @@ function readSavedUrl(): string {
   if (typeof window === "undefined") return DEFAULT_BROKER_URL;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw && raw.startsWith("ws://") ? raw : DEFAULT_BROKER_URL;
+    return raw && (raw.startsWith("ws://") || raw.startsWith("wss://"))
+      ? raw
+      : DEFAULT_BROKER_URL;
   } catch {
     return DEFAULT_BROKER_URL;
   }

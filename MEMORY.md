@@ -3938,3 +3938,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: track whether the viewport is near the bottom and auto-follow only while the user remains there; manual upward scrolling is preserved across polling updates.
 - Verification: HostLogPanel tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: live feeds should follow new content only when the user has opted into the live edge, not on every data refresh.
+
+## 2026-08-01: Browser Bridge secure URL persistence
+
+- Found: Browser Bridge accepted `wss://` URLs during connection but restored only `ws://` values from local storage, silently replacing secure endpoints after reload.
+- Fixed: accept both `ws://` and `wss://` when reading the saved Broker URL and added a secure URL restoration test.
+- Verification: BrowserBridgeSettings tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: connection input validation and persistence validation must share the same protocol contract.
