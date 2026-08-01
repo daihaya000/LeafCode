@@ -4057,3 +4057,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add explicit `aria-label` values, including a copied-state label for URL actions, and add a regression assertion for multiple URL copy controls.
 - Verification: targeted Settings/Graph/Diff/Session tests passed (48/48); full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: icon-only actions should expose an explicit action-oriented name and, where relevant, announce state changes such as copied/saved completion.
+
+## 2026-08-01: Overlay and menu focus audit
+
+- Found: command palette and task kebab menu already implement focus entry, Escape handling, outside-click dismissal, and trigger restoration; no additional focus regression was found in this pass.
+- Fixed: none beyond the icon-action labels recorded above; retained the existing focus behavior after verifying its keyboard lifecycle against the implementation and tests.
+- Verification: full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: audit overlay focus lifecycles before changing them; stable focus restoration is preferable to duplicating competing traps.
