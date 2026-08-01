@@ -437,9 +437,31 @@ export function ProfilesSettings() {
   const { profiles, canSwitch, reason, migration } = data;
   const jobRunning = job?.state === "running";
 
+  const activeProfile = profiles.find((profile) => profile.active);
+
   return (
-    <section aria-label="プロファイル">
-      <h2 className="mb-3 text-sm font-semibold text-muted">プロファイル</h2>
+    <section aria-label="プロファイル" className="space-y-4 pb-6">
+      <header className="rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Workspace identity</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">プロファイル</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+              作業環境を分けて、設定・認証・連携を安全に切り替えます。アクティブな環境はすべての新しいセッションに適用されます。
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-56">
+            <div className="rounded-xl border border-border bg-bg px-3 py-2.5">
+              <span className="block text-muted">登録数</span>
+              <strong className="mt-0.5 block text-base text-text">{profiles.length}</strong>
+            </div>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+              <span className="block text-muted">現在の環境</span>
+              <strong className="mt-0.5 block truncate text-base text-text">{activeProfile?.name ?? "未設定"}</strong>
+            </div>
+          </div>
+        </div>
+      </header>
 
       {/* Cannot-switch banner */}
       {reason && (
@@ -450,21 +472,28 @@ export function ProfilesSettings() {
 
       {/* Migration card */}
       {migration?.needed && !jobRunning && (
-        <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-4">
-          <h3 className="text-sm font-semibold text-text">dataDir への移行</h3>
-          <p className="mt-1 text-xs text-muted">
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                <h3 className="text-sm font-semibold text-text">dataDir への移行</h3>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-muted">
             現在の設定（約 {formatBytes(migration.estimatedBytes)}）を{" "}
             <code className="font-mono">%APPDATA%\opencode-webui\profiles\default</code>{" "}
             に複製し、リンクを切り替えます。コピー元は削除されません。
-          </p>
-          <Button
-            className="mt-3"
-            onClick={() => void doMigrate()}
-            disabled={jobRunning || actionBusy !== null || busyId !== null}
-            busy={actionBusy === "migrate"}
-          >
-            移行を開始
-          </Button>
+              </p>
+            </div>
+            <Button
+              className="shrink-0"
+              onClick={() => void doMigrate()}
+              disabled={jobRunning || actionBusy !== null || busyId !== null}
+              busy={actionBusy === "migrate"}
+            >
+              移行を開始
+            </Button>
+          </div>
         </div>
       )}
 
@@ -520,14 +549,14 @@ export function ProfilesSettings() {
 
       {setupSettings && (
         <fieldset
-          className="mb-4 rounded-xl border border-border bg-surface px-4 py-4"
+          className="rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm"
           aria-busy={actionBusy?.startsWith("setup:") || undefined}
         >
-          <legend className="px-1 text-sm font-semibold text-text">新規プロファイルの自動セットアップ</legend>
-          <p className="mt-1 text-xs text-muted">
+          <legend className="px-1 text-sm font-semibold text-text">新規作成時のセットアップ</legend>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
             新規作成・複製時にWebUI連携用の依存ファイルと設定を自動配置します。
           </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 lg:grid-cols-3">
             {([
               ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
               ["cursorAcp", "Cursor ACP", "Cursor連携プラグインとプロバイダーを追加"],
@@ -535,7 +564,7 @@ export function ProfilesSettings() {
             ] as const).map(([key, label, description]) => (
               <label
                 key={key}
-                className="flex cursor-pointer items-start gap-3 rounded-lg border border-border px-3 py-2.5 hover:bg-surface-2"
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-surface-2"
               >
                 <input
                   type="checkbox"
@@ -555,23 +584,40 @@ export function ProfilesSettings() {
         </fieldset>
       )}
 
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-text">登録済みプロファイル</h3>
+          <p className="mt-0.5 text-xs text-muted">使用する環境を選び、必要に応じて名前や連携を管理します。</p>
+        </div>
+        {!createOpen && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+            disabled={jobRunning || actionBusy !== null || busyId !== null}
+          >
+            新規作成
+          </Button>
+        )}
+      </div>
+
       {/* Profile list — desktop table */}
-      <div className="hidden overflow-hidden rounded-xl border border-border bg-surface sm:block">
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-surface shadow-sm sm:block">
         <table className="w-full table-fixed text-left text-sm">
-          <thead>
-            <tr className="border-b border-border text-xs text-muted">
-              <th scope="col" className="w-1/5 px-4 py-2 font-medium">名前</th>
-              <th scope="col" className="px-4 py-2 font-medium">パス</th>
-              <th scope="col" className="w-28 px-4 py-2 font-medium">状態</th>
-              <th scope="col" className="w-36 px-4 py-2 font-medium">操作</th>
+          <thead className="bg-bg/70">
+            <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted">
+              <th scope="col" className="w-1/5 px-5 py-3 font-semibold">名前</th>
+              <th scope="col" className="px-5 py-3 font-semibold">保存先</th>
+              <th scope="col" className="w-32 px-5 py-3 font-semibold">状態</th>
+              <th scope="col" className="w-44 px-5 py-3 font-semibold">操作</th>
             </tr>
           </thead>
           <tbody>
             {profiles.map((p) => {
               const busy = busyId === p.id;
               return (
-                <tr key={p.id} aria-busy={busy || undefined} className="border-b border-border last:border-0 align-top">
-                  <td className="px-4 py-2.5">
+                <tr key={p.id} aria-busy={busy || undefined} className="border-b border-border last:border-0 align-top transition-colors hover:bg-surface-2/60">
+                  <td className="px-5 py-3.5">
                     {renameId === p.id ? (
                       <input
                         autoFocus
@@ -588,17 +634,17 @@ export function ProfilesSettings() {
                       <span className="font-medium text-text">{p.name}</span>
                     )}
                   </td>
-                  <td className="truncate px-4 py-2.5 font-mono text-xs text-muted" title={p.path}>
+                  <td className="truncate px-5 py-3.5 font-mono text-xs text-muted" title={p.path}>
                     {p.path}
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-5 py-3.5">
                     <div className="flex flex-wrap items-center gap-1">
                       {p.active && <Badge tone="working">アクティブ</Badge>}
                       {p.external && <Badge tone="neutral">dataDir 外</Badge>}
                       {!p.exists && <Badge tone="danger">不在</Badge>}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1">
                       {!p.active && p.exists && canSwitch && (
                         <Button
@@ -668,11 +714,11 @@ export function ProfilesSettings() {
       </div>
 
       {/* Profile list — mobile cards */}
-      <ul className="space-y-2 sm:hidden">
+      <ul className="space-y-3 sm:hidden">
         {profiles.map((p) => {
           const busy = busyId === p.id;
           return (
-            <li key={p.id} aria-busy={busy || undefined} className="rounded-xl border border-border bg-surface px-4 py-3">
+            <li key={p.id} aria-busy={busy || undefined} className="rounded-2xl border border-border bg-surface px-4 py-4 shadow-sm">
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{p.name}</span>
                 {p.active && <Badge tone="working">アクティブ</Badge>}
@@ -758,28 +804,24 @@ export function ProfilesSettings() {
 
       {/* Create button */}
       <div className="mt-3">
-        {!createOpen ? (
-          <Button
-            variant="secondary"
-            onClick={() => setCreateOpen(true)}
-            disabled={jobRunning || actionBusy !== null || busyId !== null}
-          >
-            新規作成
-          </Button>
-        ) : (
-          <div className="rounded-xl border border-border bg-surface px-4 py-3">
-            <label className="block text-xs text-muted" htmlFor="profile-name">名前</label>
+        {createOpen && (
+          <div className="rounded-2xl border border-primary/30 bg-surface px-5 py-4 shadow-sm">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-text">新しいプロファイルを作成</h3>
+              <p className="mt-0.5 text-xs text-muted">空の環境、または既存環境を複製して始められます。</p>
+            </div>
+            <label className="block text-xs font-medium text-muted" htmlFor="profile-name">名前</label>
             <input
               id="profile-name"
-              className="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text"
+              className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="例: 実験用"
             />
-            <label className="mt-3 block text-xs text-muted" htmlFor="profile-from">作成元</label>
+            <label className="mt-3 block text-xs font-medium text-muted" htmlFor="profile-from">作成元</label>
             <select
               id="profile-from"
-              className="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text"
+              className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
               value={createFrom}
               onChange={(e) => setCreateFrom(e.target.value)}
             >
@@ -790,7 +832,7 @@ export function ProfilesSettings() {
                 </option>
               ))}
             </select>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-4 flex gap-2">
               <Button
                 size="sm"
                 busy={actionBusy === "create"}
