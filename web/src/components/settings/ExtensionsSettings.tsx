@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Badge, Button, cx } from "@/components/ui";
 import { BrowserBridgeApprovals } from "./BrowserBridgeApprovals";
 import { BrowserBridgeSettings } from "./BrowserBridgeSettings";
@@ -245,17 +245,21 @@ function useExtensionSection<T extends { id: string }>(
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const loadRequestRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setStatus("loading");
     setError(null);
     try {
       const data = await getJson<Record<string, unknown>>(url);
+      if (requestId !== loadRequestRef.current) return;
       const list = data[key];
       setItems(Array.isArray(list) ? (list as T[]) : []);
       setTruncated(data.truncated === true);
       setStatus("ready");
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setError(err instanceof Error ? err.message : "取得に失敗しました");
       setStatus("error");
     }
@@ -268,6 +272,7 @@ function useExtensionSection<T extends { id: string }>(
   /** Toggle one item; returns success so the caller can request a restart. */
   const toggle = useCallback(
     async (item: T, patchUrl: string, enabled: boolean): Promise<boolean> => {
+      if (busyId === item.id) return false;
       setBusyId(item.id);
       setActionError(null);
       try {
@@ -283,11 +288,12 @@ function useExtensionSection<T extends { id: string }>(
         setBusyId(null);
       }
     },
-    [load],
+    [busyId, load],
   );
 
   const remove = useCallback(
     async (item: T, deleteUrl: string): Promise<boolean> => {
+      if (busyId === item.id) return false;
       setBusyId(item.id);
       setActionError(null);
       try {
@@ -303,7 +309,7 @@ function useExtensionSection<T extends { id: string }>(
         setBusyId(null);
       }
     },
-    [load],
+    [busyId, load],
   );
 
   return { status, items, truncated, error, busyId, actionError, load, toggle, remove };
@@ -500,6 +506,7 @@ export function ExtensionsSettings({
   }, [loadSkills, loadMcp, loadPlugins]);
 
   const restartOpencode = useCallback(async () => {
+    if (restarting) return;
     setRestarting(true);
     setRestartError(null);
     try {
@@ -546,7 +553,7 @@ export function ExtensionsSettings({
     } finally {
       setRestarting(false);
     }
-  }, [reloadAll]);
+  }, [reloadAll, restarting]);
 
   const onToggled = (ok: boolean) => {
     if (ok) setRestartNeeded(true);
@@ -569,6 +576,7 @@ export function ExtensionsSettings({
   }, []);
 
   const savePlugin = useCallback(async () => {
+    if (pluginFormBusy) return;
     const name = newPlugin.name.trim();
     const trimmedOptions = newPlugin.optionsJson.trim();
     let options: unknown;
@@ -609,7 +617,7 @@ export function ExtensionsSettings({
     } finally {
       setPluginFormBusy(false);
     }
-  }, [editingPluginId, loadPlugins, newPlugin, resetPluginForm]);
+  }, [editingPluginId, loadPlugins, newPlugin, pluginFormBusy, resetPluginForm]);
 
   return (
     <div className="space-y-8">

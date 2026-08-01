@@ -3448,3 +3448,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add request-generation protection, make toggle and restart handlers mutually exclusive, and disable every agent switch while one toggle is pending.
 - Verification: AgentsSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: settings that mutate a shared engine should serialize the whole operation class, not only disable the row that initiated the request.
+
+## 2026-08-01: Extension settings request isolation
+
+- Found: overlapping skill/MCP/plugin list loads could overwrite newer data, and the same extension row, restart action, or plugin save could be re-entered before its request settled.
+- Fixed: add per-section load generations, same-item action guards, restart/save handler guards, and preserve independent-row interaction behavior.
+- Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: extension settings contain independent collections, so concurrency protection should be scoped per collection and item rather than disabling the entire page unnecessarily.

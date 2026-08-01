@@ -325,6 +325,7 @@ describe("ExtensionsSettings", () => {
     const alphaSwitch = await screen.findByRole("switch", { name: "alpha を無効化" });
 
     fireEvent.click(alphaSwitch);
+    fireEvent.click(alphaSwitch);
 
     await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
     expect(sendJson).toHaveBeenCalledWith(
@@ -374,6 +375,7 @@ describe("ExtensionsSettings", () => {
       expect(alphaSwitch).toHaveProperty("disabled", true);
       expect(alphaSwitch.closest("li")?.getAttribute("aria-busy")).toBe("true");
     });
+    expect(sendJson).toHaveBeenCalledTimes(1);
     // The other row stays operable.
     expect(betaSwitch).toHaveProperty("disabled", false);
     expect(betaSwitch.closest("li")?.getAttribute("aria-busy")).toBeNull();
