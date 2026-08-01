@@ -16,6 +16,7 @@ import { useTheme } from "next-themes";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
+import { ProfilesSettings } from "@/components/settings/ProfilesSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
@@ -73,7 +74,8 @@ type SettingsTab =
   | "plugins"
   | "addons"
   | "agents"
-  | "providers";
+  | "providers"
+  | "profiles";
 
 type UpdateTarget = "webui" | "opencode";
 
@@ -520,6 +522,7 @@ export function SettingsView() {
     { key: "connectivity", label: "接続" },
     { key: "providers", label: "プロバイダー/モデル" },
     { key: "agents", label: "エージェント" },
+    { key: "profiles", label: "プロファイル" },
     { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
     { key: "plugins", label: "プラグイン" },
@@ -1110,6 +1113,8 @@ export function SettingsView() {
         )}
 
         {activeTab === "agents" && <AgentsSettings />}
+
+        {activeTab === "profiles" && <ProfilesSettings />}
 
         {activeTab === "providers" && <ProviderModelsSettings />}
       </main>

@@ -1,0 +1,588 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Badge, Button } from "@/components/ui";
+import { getJson, sendJson, timedFetch } from "@/lib/client";
+import { restartOpencodeAndWait } from "@/lib/opencode-restart";
+
+// ---------------------------------------------------------------------------
+// types
+// ---------------------------------------------------------------------------
+
+type ProfileDto = {
+  id: string;
+  name: string;
+  path: string;
+  external?: true;
+  active: boolean;
+  exists: boolean;
+};
+
+type MigrationInfo = {
+  needed: boolean;
+  sourcePath: string;
+  estimatedBytes: number;
+};
+
+type ListResponse = {
+  profiles: ProfileDto[];
+  activeId: string | null;
+  linkState: "link" | "realdir" | "missing";
+  canSwitch: boolean;
+  reason?: string;
+  migration?: MigrationInfo;
+};
+
+type JobResponse = {
+  state: "running" | "done" | "error";
+  copied: number;
+  total: number;
+  note?: string;
+  error?: string;
+};
+
+type LoadState = "loading" | "ready" | "error";
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "—";
+  if (bytes < 1e6) return `${Math.round(bytes / 1e3)} KB`;
+  return `${Math.round(bytes / 1e6)} MB`;
+}
+
+function useHostStatus() {
+  const [hostOk, setHostOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await timedFetch("/api/host", { timeoutMs: 1500 });
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
+        if (!cancelled) setHostOk(res.ok && Boolean(body.ok));
+      } catch {
+        if (!cancelled) setHostOk(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return hostOk;
+}
+
+// ---------------------------------------------------------------------------
+// component
+// ---------------------------------------------------------------------------
+
+export function ProfilesSettings() {
+  const [state, setState] = useState<LoadState>("loading");
+  const [data, setData] = useState<ListResponse | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [switchConfirm, setSwitchConfirm] = useState<ProfileDto | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [job, setJob] = useState<JobResponse | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createFrom, setCreateFrom] = useState<"empty" | string>("empty");
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [unregisterConfirm, setUnregisterConfirm] = useState<ProfileDto | null>(null);
+  const hostOk = useHostStatus();
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const result = await getJson<ListResponse>("/api/profiles");
+      setData(result);
+      setState("ready");
+    } catch {
+      setState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Poll job progress
+  useEffect(() => {
+    if (!jobId) return;
+    const poll = async () => {
+      try {
+        const j = await getJson<JobResponse>(`/api/profiles/jobs/${jobId}`);
+        setJob(j);
+        if (j.state !== "running") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setJobId(null);
+          void load();
+        }
+      } catch {
+        /* keep polling */
+      }
+    };
+    pollRef.current = setInterval(poll, 800);
+    void poll();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+    };
+  }, [jobId, load]);
+
+  const doSwitch = useCallback(
+    async (profile: ProfileDto) => {
+      setSwitchConfirm(null);
+      setBusyId(profile.id);
+      setRestartError(null);
+      try {
+        await sendJson("POST", `/api/profiles/${profile.id}/activate`, {});
+        // Unknown host status should not silently skip the required restart;
+        // only a confirmed unavailable host falls back to manual restart.
+        if (hostOk !== false) {
+          setRestarting(true);
+          await restartOpencodeAndWait();
+        }
+        await load();
+      } catch (err) {
+        setRestartError(
+          err instanceof Error ? err.message : "切り替えに失敗しました",
+        );
+      } finally {
+        setBusyId(null);
+        setRestarting(false);
+      }
+    },
+    [hostOk, load],
+  );
+
+  const doMigrate = useCallback(async () => {
+    setActionError(null);
+    try {
+      const res = await sendJson<{ jobId: string }>("POST", "/api/profiles/migrate", {});
+      setJobId(res.jobId);
+      setJob({ state: "running", copied: 0, total: 0 });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "移行を開始できませんでした");
+    }
+  }, []);
+
+  const doCreate = useCallback(async () => {
+    setActionError(null);
+    try {
+      const res = await sendJson<{ jobId?: string; id?: string }>(
+        "POST",
+        "/api/profiles",
+        { name: createName, from: createFrom },
+      );
+      setCreateOpen(false);
+      setCreateName("");
+      setCreateFrom("empty");
+      if (res.jobId) {
+        setJobId(res.jobId);
+        setJob({ state: "running", copied: 0, total: 0 });
+      } else {
+        await load();
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "作成に失敗しました");
+    }
+  }, [createName, createFrom, load]);
+
+  const doRename = useCallback(
+    async (id: string) => {
+      setActionError(null);
+      try {
+        await sendJson("PATCH", `/api/profiles/${id}`, { name: renameValue });
+        setRenameId(null);
+        setRenameValue("");
+        await load();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "名前変更に失敗しました");
+      }
+    },
+    [renameValue, load],
+  );
+
+  const doUnregister = useCallback(
+    async (profile: ProfileDto) => {
+      setUnregisterConfirm(null);
+      setActionError(null);
+      try {
+        await sendJson("DELETE", `/api/profiles/${profile.id}`, {});
+        await load();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "除外に失敗しました");
+      }
+    },
+    [load],
+  );
+
+  // -------------------------------------------------------------------------
+  // render states
+  // -------------------------------------------------------------------------
+
+  if (state === "loading") {
+    return (
+      <p aria-busy="true" className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-sm text-muted">
+        プロファイルを読み込んでいます…
+      </p>
+    );
+  }
+
+  if (state === "error" || !data) {
+    return (
+      <div role="alert" className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-4 text-sm text-danger">
+        <p className="text-muted">プロファイルを取得できませんでした。</p>
+        <Button variant="secondary" className="mt-2" onClick={() => void load()}>
+          再試行
+        </Button>
+      </div>
+    );
+  }
+
+  const { profiles, canSwitch, reason, migration } = data;
+  const jobRunning = job?.state === "running";
+
+  return (
+    <section aria-label="プロファイル">
+      <h2 className="mb-3 text-sm font-semibold text-muted">プロファイル</h2>
+
+      {/* Cannot-switch banner */}
+      {reason && (
+        <div role="alert" className="mb-4 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
+          {reason}
+        </div>
+      )}
+
+      {/* Migration card */}
+      {migration?.needed && !jobRunning && (
+        <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-4">
+          <h3 className="text-sm font-semibold text-text">dataDir への移行</h3>
+          <p className="mt-1 text-xs text-muted">
+            現在の設定（約 {formatBytes(migration.estimatedBytes)}）を{" "}
+            <code className="font-mono">%APPDATA%\opencode-webui\profiles\default</code>{" "}
+            に複製し、リンクを切り替えます。コピー元は削除されません。
+          </p>
+          <Button
+            className="mt-3"
+            onClick={() => void doMigrate()}
+            disabled={jobRunning}
+          >
+            移行を開始
+          </Button>
+        </div>
+      )}
+
+      {/* Job progress */}
+      {job && (
+        <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3" aria-live="polite">
+          {job.state === "running" && (
+            <>
+              <p className="text-sm text-muted">
+                複製中… {job.copied} / {job.total > 0 ? job.total : "?"} ファイル
+              </p>
+              {job.total > 0 && (
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${Math.min(100, (job.copied / job.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+          {job.state === "done" && (
+            <p className="text-sm text-success">
+              完了しました。{job.note && ` ${job.note}`}
+            </p>
+          )}
+          {job.state === "error" && (
+            <p role="alert" className="text-sm text-danger">{job.error ?? "エラーが発生しました"}</p>
+          )}
+        </div>
+      )}
+
+      {/* Restart error */}
+      {restartError && (
+        <div role="alert" className="mb-4 rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+          {restartError}
+        </div>
+      )}
+
+      {/* Action error */}
+      {actionError && (
+        <div role="alert" className="mb-4 rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
+          {actionError}
+        </div>
+      )}
+
+      {/* Host unavailable notice */}
+      {hostOk === false && (
+        <p className="mb-4 text-xs text-faint">
+          トレイホストが利用できないため、切替後の OpenCode 自動再起動は行われません。手動で再起動してください。
+        </p>
+      )}
+
+      {/* Profile list — desktop table */}
+      <div className="hidden overflow-hidden rounded-xl border border-border bg-surface sm:block">
+        <table className="w-full table-fixed text-left text-sm">
+          <thead>
+            <tr className="border-b border-border text-xs text-muted">
+              <th scope="col" className="w-1/5 px-4 py-2 font-medium">名前</th>
+              <th scope="col" className="px-4 py-2 font-medium">パス</th>
+              <th scope="col" className="w-28 px-4 py-2 font-medium">状態</th>
+              <th scope="col" className="w-36 px-4 py-2 font-medium">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {profiles.map((p) => {
+              const busy = busyId === p.id;
+              return (
+                <tr key={p.id} aria-busy={busy || undefined} className="border-b border-border last:border-0 align-top">
+                  <td className="px-4 py-2.5">
+                    {renameId === p.id ? (
+                      <input
+                        autoFocus
+                        className="w-full rounded border border-border bg-bg px-2 py-1 text-sm text-text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void doRename(p.id);
+                          if (e.key === "Escape") setRenameId(null);
+                        }}
+                        aria-label={`${p.name} の新しい名前`}
+                      />
+                    ) : (
+                      <span className="font-medium text-text">{p.name}</span>
+                    )}
+                  </td>
+                  <td className="truncate px-4 py-2.5 font-mono text-xs text-muted" title={p.path}>
+                    {p.path}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {p.active && <Badge tone="working">アクティブ</Badge>}
+                      {p.external && <Badge tone="neutral">dataDir 外</Badge>}
+                      {!p.exists && <Badge tone="danger">不在</Badge>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-1">
+                      {!p.active && p.exists && canSwitch && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy || jobRunning || restarting}
+                          onClick={() => setSwitchConfirm(p)}
+                        >
+                          切替
+                        </Button>
+                      )}
+                      {renameId === p.id ? (
+                        <Button size="sm" onClick={() => void doRename(p.id)}>保存</Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={jobRunning}
+                          onClick={() => {
+                            setRenameId(p.id);
+                            setRenameValue(p.name);
+                          }}
+                        >
+                          名前
+                        </Button>
+                      )}
+                      {!p.active && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={jobRunning}
+                          onClick={() => setUnregisterConfirm(p)}
+                        >
+                          除外
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Profile list — mobile cards */}
+      <ul className="space-y-2 sm:hidden">
+        {profiles.map((p) => {
+          const busy = busyId === p.id;
+          return (
+            <li key={p.id} aria-busy={busy || undefined} className="rounded-xl border border-border bg-surface px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">{p.name}</span>
+                {p.active && <Badge tone="working">アクティブ</Badge>}
+                {p.external && <Badge tone="neutral">dataDir 外</Badge>}
+                {!p.exists && <Badge tone="danger">不在</Badge>}
+              </div>
+              <p className="mt-1 truncate font-mono text-xs text-muted">{p.path}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                {!p.active && p.exists && canSwitch && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || jobRunning || restarting}
+                    onClick={() => setSwitchConfirm(p)}
+                  >
+                    切替
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={jobRunning}
+                  onClick={() => {
+                    setRenameId(p.id);
+                    setRenameValue(p.name);
+                  }}
+                >
+                  名前変更
+                </Button>
+                {!p.active && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={jobRunning}
+                    onClick={() => setUnregisterConfirm(p)}
+                  >
+                    除外
+                  </Button>
+                )}
+              </div>
+              {renameId === p.id && (
+                <div className="mt-2 flex gap-1">
+                  <input
+                    autoFocus
+                    className="min-w-0 flex-1 rounded border border-border bg-bg px-2 py-1 text-sm text-text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void doRename(p.id);
+                      if (e.key === "Escape") setRenameId(null);
+                    }}
+                    aria-label={`${p.name} の新しい名前`}
+                  />
+                  <Button size="sm" onClick={() => void doRename(p.id)}>保存</Button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Create button */}
+      <div className="mt-3">
+        {!createOpen ? (
+          <Button variant="secondary" onClick={() => setCreateOpen(true)} disabled={jobRunning}>
+            新規作成
+          </Button>
+        ) : (
+          <div className="rounded-xl border border-border bg-surface px-4 py-3">
+            <label className="block text-xs text-muted" htmlFor="profile-name">名前</label>
+            <input
+              id="profile-name"
+              className="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              placeholder="例: 実験用"
+            />
+            <label className="mt-3 block text-xs text-muted" htmlFor="profile-from">作成元</label>
+            <select
+              id="profile-from"
+              className="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text"
+              value={createFrom}
+              onChange={(e) => setCreateFrom(e.target.value)}
+            >
+              <option value="empty">空（opencode.jsonc のみ）</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} を複製（.git 除外・node_modules 複製）
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" disabled={!createName.trim() || jobRunning} onClick={() => void doCreate()}>
+                作成
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>
+                キャンセル
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Switch confirmation dialog */}
+      {switchConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="プロファイル切替の確認"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-text">
+              「{switchConfirm.name}」に切り替えますか？
+            </h3>
+            <p className="mt-2 text-sm text-muted">
+              OpenCode が再起動され、<strong className="text-text">進行中のタスクは中断されます</strong>。
+              切替は WebUI・エンジン・ターミナルのすべてに影響します。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setSwitchConfirm(null)}>キャンセル</Button>
+              <Button onClick={() => void doSwitch(switchConfirm)}>切り替える</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unregister confirmation dialog */}
+      {unregisterConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="プロファイル除外の確認"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
+            <h3 className="text-base font-semibold text-text">
+              「{unregisterConfirm.name}」を一覧から除外しますか？
+            </h3>
+            <p className="mt-2 text-sm text-muted">
+              実体ディレクトリ（<code className="font-mono text-xs">{unregisterConfirm.path}</code>）は
+              <strong className="text-text">削除されません</strong>。一覧から削除するだけです。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setUnregisterConfirm(null)}>キャンセル</Button>
+              <Button variant="danger" onClick={() => void doUnregister(unregisterConfirm)}>除外する</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restarting overlay */}
+      {restarting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" aria-live="assertive">
+          <div className="rounded-2xl border border-border bg-surface px-8 py-6 text-center shadow-xl">
+            <p className="text-sm text-muted" aria-busy="true">OpenCode を再起動しています…</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
