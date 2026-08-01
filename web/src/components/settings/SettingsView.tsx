@@ -24,6 +24,7 @@ import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
 import { ProfilesSettings } from "@/components/settings/ProfilesSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
+import { ModelRankingSettings } from "@/components/settings/ModelRankingSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
 import { Badge, Button, cx, timeAgo } from "@/components/ui";
@@ -80,6 +81,7 @@ type SettingsTab =
   | "addons"
   | "agents"
   | "providers"
+  | "ranking"
   | "profiles";
 
 type UpdateTarget = "webui" | "opencode";
@@ -627,6 +629,7 @@ export function SettingsView() {
     },
     { key: "connectivity", label: "接続" },
     { key: "providers", label: "プロバイダー/モデル" },
+    { key: "ranking", label: "コスパランキング" },
     { key: "agents", label: "エージェント" },
     { key: "skills", label: "スキル" },
     { key: "mcp", label: "MCP" },
@@ -1350,6 +1353,8 @@ export function SettingsView() {
         {activeTab === "profiles" && <ProfilesSettings />}
 
         {activeTab === "providers" && <ProviderModelsSettings />}
+
+        {activeTab === "ranking" && <ModelRankingSettings />}
       </main>
       </div>
     </div>
