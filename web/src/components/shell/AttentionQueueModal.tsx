@@ -27,6 +27,7 @@ export function AttentionQueueModal() {
     useGlobalAttention();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -99,6 +100,8 @@ export function AttentionQueueModal() {
 
   const respond = useCallback(
     async (item: AttentionItem, fn: () => Promise<void>) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       setError(null);
       try {
@@ -115,6 +118,7 @@ export function AttentionQueueModal() {
         }
         setError(err instanceof Error ? err.message : "応答に失敗しました");
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     },
@@ -137,11 +141,21 @@ export function AttentionQueueModal() {
 
   // R36#2: full-access へ切替時、キュー内の権限を自動処理。
   // TaskView と同様、サブエージェント / スキル不許可の対象権限は reject を優先する。
-  const enableFullAccess = useCallback(async () => {
+  const enableFullAccess = useCallback(async (exclude?: AttentionItem) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    const excludedKey = exclude
+      ? `${exclude.request.id}\u0000${exclude.request.sessionID}`
+      : null;
     writeAccessMode("full");
     const subagent = readSubagentPermission();
     const skill = readSkillPermission();
-    const permissionItems = items.filter((item) => item.kind === "permission");
+    const permissionItems = items.filter(
+      (item) =>
+        item.kind === "permission" &&
+        `${item.request.id}\u0000${item.request.sessionID}` !== excludedKey,
+    );
     for (const item of permissionItems) {
       if (item.kind !== "permission") continue;
       const action = permissionAutoAction({
@@ -166,6 +180,8 @@ export function AttentionQueueModal() {
         // Ignore errors — individual failures will remain in queue for manual handling
       }
     }
+    busyRef.current = false;
+    setBusy(false);
   }, [items, remove]);
 
   const replyQuestion = useCallback(
@@ -256,7 +272,7 @@ export function AttentionQueueModal() {
             <PermissionCard
               key={current.request.id}
               request={current.request}
-              onEnableFullAccess={enableFullAccess}
+              onEnableFullAccess={() => enableFullAccess(current)}
               onReply={async (req, response) =>
                 await replyPermission(
                   { kind: "permission", directory: current.directory, request: req },

@@ -349,6 +349,11 @@ describe("AttentionQueueModal", () => {
           body: { response: "once" },
         }),
       );
+      expect(
+        mockOcJson.mock.calls.filter(
+          ([path]) => String(path).includes("/permissions/p1"),
+        ),
+      ).toHaveLength(1);
       expect(mockOcJson).toHaveBeenCalledWith(
         expect.stringContaining("/permissions/p_skill"),
         "/repo",

@@ -3595,3 +3595,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: share a synchronous busy ref across all three response paths while retaining per-action busy indicators and inline errors.
 - Verification: QuestionCard tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: every response entry point for an interactive request must share one lock, including shortcuts that bypass the primary submit button.
+
+## 2026-08-01: Attention queue full-access deduplication
+
+- Found: the global attention modal could answer the current permission once, then full-access processing could reuse the same stale item snapshot and POST a second response for that request.
+- Fixed: exclude the already-answered request from the full-access sweep and add a modal-level mutation lock shared by normal and bulk responses.
+- Verification: AttentionQueueModal tests passed (12/12), including exact single-response coverage; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: bulk actions launched from a per-item response must explicitly exclude the initiating item because queue removal is not synchronously visible inside the existing closure.
