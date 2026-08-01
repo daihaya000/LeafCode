@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { apiUrl, ApiError, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
@@ -697,6 +697,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const statusRef = useRef(state.status);
   /** After sendPrompt/sendCommand until busy/idle SSE — suppress message init races. */
   const pendingMutationRef = useRef(false);
+  const abortingRef = useRef(false);
+  const [aborting, setAborting] = useState(false);
   const connectionRef = useRef<ConnectionState>(state.connection);
   /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
   const preferRestStatusRef = useRef(false);
@@ -1943,6 +1945,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     async (reason?: string) => {
       const sid = sessionRef.current;
       if (!directory || !sid) return;
+      if (abortingRef.current) return;
+      abortingRef.current = true;
+      setAborting(true);
       // Unlock immediately so a hung/failed abort POST cannot freeze the composer.
       pendingMutationRef.current = false;
       statusRef.current = { type: "idle" };
@@ -1966,6 +1971,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           if (sessionRef.current === sid) await resync();
         } catch {
           /* non-fatal */
+        } finally {
+          abortingRef.current = false;
+          setAborting(false);
         }
       }
     },
@@ -2087,6 +2095,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   return {
     ...visibleState,
     visibleMessages,
+    aborting,
     resync,
     sendPrompt,
     sendCommand,

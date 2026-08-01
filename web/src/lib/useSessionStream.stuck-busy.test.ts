@@ -210,4 +210,40 @@ describe("useSessionStream stuck-busy recovery", () => {
     await flush(ACTIVE_SESSION_RECONCILE_MS * 2);
     expect(result.current.status?.type).toBe("idle");
   });
+
+  it("keeps the UI in stopping state until the abort request settles", async () => {
+    const { useSessionStream } = await import("./useSessionStream");
+    let resolveAbort: (() => void) | undefined;
+    ocJson.mockImplementation((path: string) => {
+      if (path === `/session/${SESSION}/abort`) {
+        return new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+        });
+      }
+      if (path === "/session/status") return Promise.resolve(statusMap);
+      return Promise.resolve({});
+    });
+
+    const { result } = renderHook(() => useSessionStream(DIRECTORY, SESSION));
+    await flush();
+
+    await act(async () => {
+      void result.current.abort();
+      await Promise.resolve();
+    });
+    expect(result.current.aborting).toBe(true);
+    expect(result.current.status?.type).toBe("idle");
+
+    await act(async () => {
+      void result.current.abort();
+      await Promise.resolve();
+    });
+    expect(
+      ocJson.mock.calls.filter(([path]) => path === `/session/${SESSION}/abort`),
+    ).toHaveLength(1);
+
+    resolveAbort?.();
+    await flush();
+    expect(result.current.aborting).toBe(false);
+  });
 });

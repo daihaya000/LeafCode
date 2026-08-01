@@ -3350,3 +3350,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: track task/session/context generations, invalidate in-flight generations on context changes, and ignore stale success/error responses; removed state updates during render in favor of an effect.
 - Verification: NextAction tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: async suggestion UIs need a response generation tied to the conversation state, not only a loading flag.
+
+## 2026-08-01: Abort request UI lock
+
+- Found: abort() returned the local task state to idle before the abort request settled, allowing the stop control to disappear and the composer to accept a new prompt while cancellation was still in flight.
+- Fixed: track an aborting state, ignore repeated abort requests, keep TaskView controls locked, and show `停止中…` until abort and resync settle.
+- Verification: useSessionStream and TaskView tests passed (104/104); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: cancellation can unlock the underlying state quickly for recovery, but UI controls need a separate in-flight cancellation guard.

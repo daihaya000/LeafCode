@@ -1571,7 +1571,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const hasActiveTask =
     streamActive || (streamStatusType === undefined && task?.status === "working");
   // Block composer while the task is known-busy even before stream.status loads.
-  const working = hasActiveTask;
+  const working = hasActiveTask || stream.aborting;
   /**
    * A loop that is still owned by the scheduler. While live, GoalLoopPanel owns
    * the loop UI, so the composer toggle is hidden to avoid two competing
@@ -2917,9 +2917,16 @@ export function TaskView({ taskId }: { taskId: string }) {
             className="flex max-w-[60vw] items-center gap-0.5 overflow-x-auto rounded-md sm:max-w-none sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
           {isMd && working && (
-            <Button variant="danger" size="sm" onClick={() => void stream.abort()}>
+            <Button
+              variant="danger"
+              size="sm"
+              busy={stream.aborting}
+              disabled={stream.aborting}
+              aria-label={stream.aborting ? "停止中" : "停止"}
+              onClick={() => void stream.abort()}
+            >
               <Square className="h-3 w-3 fill-current" />
-              <span className="hidden sm:inline">停止</span>
+              <span className="hidden sm:inline">{stream.aborting ? "停止中…" : "停止"}</span>
             </Button>
           )}
           {isMd && task.sessionId && (
@@ -3613,7 +3620,9 @@ export function TaskView({ taskId }: { taskId: string }) {
                       variant="secondary"
                       size="icon"
                       className="shrink-0"
-                      aria-label="停止"
+                      aria-label={stream.aborting ? "停止中" : "停止"}
+                      busy={stream.aborting}
+                      disabled={stream.aborting}
                       onClick={() => void stream.abort()}
                     >
                       <Square className="h-3.5 w-3.5 fill-current" />
