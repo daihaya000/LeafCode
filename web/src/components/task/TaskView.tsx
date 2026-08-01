@@ -3191,6 +3191,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             aria-label={manualResyncing ? "再同期中" : "再同期"}
             busy={manualResyncing}
             disabled={working || manualResyncing}
+            className="h-11 w-11 md:h-9 md:w-9"
             onClick={() => void manualResync()}
           >
             <RefreshCw className="h-4 w-4" />
@@ -3201,7 +3202,10 @@ export function TaskView({ taskId }: { taskId: string }) {
               size="icon"
               title="ターミナル"
               aria-label="ターミナル"
-              className={cx(showDiff && sidePanel === "pty" && "bg-surface-2 text-text")}
+              className={cx(
+                "h-11 w-11 md:h-9 md:w-9",
+                showDiff && sidePanel === "pty" && "bg-surface-2 text-text",
+              )}
               onClick={() => toggleSidePanel("pty")}
             >
               <Terminal className="h-4 w-4" />
@@ -3214,6 +3218,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               title="ファイルツリー"
               aria-label="ファイルツリー"
               className={cx(
+                "h-11 w-11 md:h-9 md:w-9",
                 showDiff && sidePanel === "files" && "bg-surface-2 text-text",
               )}
               onClick={() => toggleSidePanel("files")}
@@ -3228,6 +3233,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               title="グラフ"
               aria-label="グラフ"
               className={cx(
+                "h-11 w-11 md:h-9 md:w-9",
                 showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
               )}
               onClick={() => toggleSidePanel("graph")}
@@ -3242,6 +3248,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               title="Diff パネル"
               aria-label="Diff パネル"
               className={cx(
+                "h-11 w-11 md:h-9 md:w-9",
                 showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
               )}
               onClick={() => toggleSidePanel("diff")}

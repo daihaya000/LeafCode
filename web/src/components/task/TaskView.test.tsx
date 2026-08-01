@@ -1327,7 +1327,9 @@ describe("TaskView", () => {
     expect(screen.queryByRole("button", { name: "メニューを開く" })).toBeNull();
     expect(screen.queryByTitle("作業パスをコピー")).toBeNull();
     expect(screen.queryByTestId("session-switcher")).toBeNull();
-    expect(screen.getByRole("button", { name: "再同期" })).toBeTruthy();
+    const resyncButton = screen.getByRole("button", { name: "再同期" });
+    expect(resyncButton).toBeTruthy();
+    expect(resyncButton.className).toContain("h-11");
     expect(screen.getByRole("button", { name: "ターミナル" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "コンパクト" })).toBeTruthy();
     expect(within(headerActions).getByRole("button", { name: "ファイルツリー" })).toBeTruthy();

@@ -166,6 +166,7 @@ export function HeaderKebabMenu({
         aria-controls={menuId}
         aria-label={triggerLabel}
         title={triggerLabel}
+        className="h-11 w-11 md:h-9 md:w-9"
         onPointerDown={() => {
           pointerDownOpenRef.current = open;
           // Safety net: if no click follows this pointerdown (e.g. the
