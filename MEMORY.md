@@ -3630,3 +3630,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: invalidate section loads during effect cleanup and add a synchronous action lock while preserving the existing row-level busy feedback.
 - Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: shared settings hooks need both request invalidation and ref-level mutation guards; component-level disabled rendering is not sufficient.
+
+## 2026-08-01: Profiles settings job and mutation lifecycle
+
+- Found: profile operations relied on rendered state for re-entry protection, while job and initial-load responses could continue applying after the component or polling generation changed.
+- Fixed: add ref-level locks across profile mutations, invalidate load responses on cleanup, and cancel stale job polling responses.
+- Verification: ProfilesSettings tests passed (10/10), including migration single-flight coverage; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: settings pages with multiple mutation entry points need one synchronous operation lock and explicit polling generation boundaries.

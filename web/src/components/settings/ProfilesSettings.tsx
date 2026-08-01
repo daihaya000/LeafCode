@@ -101,31 +101,47 @@ export function ProfilesSettings() {
   const [unregisterConfirm, setUnregisterConfirm] = useState<ProfileDto | null>(null);
   const hostOk = useHostStatus();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(false);
+  const loadRequestRef = useRef(0);
+  const actionBusyRef = useRef<string | null>(null);
+  const busyIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     try {
       const [result, settings] = await Promise.all([
         getJson<ListResponse>("/api/profiles"),
         getJson<ProfileSetupSettings>("/api/profiles/settings"),
       ]);
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return;
       setData(result);
       setSetupSettings(settings);
       setState("ready");
     } catch {
-      setState("error");
+      if (mountedRef.current && requestId === loadRequestRef.current) {
+        setState("error");
+      }
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
+    return () => {
+      mountedRef.current = false;
+      loadRequestRef.current += 1;
+    };
   }, [load]);
 
   // Poll job progress
   useEffect(() => {
     if (!jobId) return;
+    let cancelled = false;
     const poll = async () => {
+      if (cancelled || !mountedRef.current) return;
       try {
         const j = await getJson<JobResponse>(`/api/profiles/jobs/${jobId}`);
+        if (cancelled || !mountedRef.current) return;
         setJob(j);
         if (j.state !== "running") {
           if (pollRef.current) clearInterval(pollRef.current);
@@ -140,6 +156,7 @@ export function ProfilesSettings() {
     pollRef.current = setInterval(poll, 800);
     void poll();
     return () => {
+      cancelled = true;
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
@@ -147,8 +164,9 @@ export function ProfilesSettings() {
 
   const doSwitch = useCallback(
     async (profile: ProfileDto) => {
-      if (busyId !== null || actionBusy !== null) return;
+      if (busyIdRef.current !== null || actionBusyRef.current !== null) return;
       setSwitchConfirm(null);
+      busyIdRef.current = profile.id;
       setBusyId(profile.id);
       setRestartError(null);
       try {
@@ -165,15 +183,19 @@ export function ProfilesSettings() {
           err instanceof Error ? err.message : "切り替えに失敗しました",
         );
       } finally {
-        setBusyId(null);
-        setRestarting(false);
+        if (busyIdRef.current === profile.id) {
+          busyIdRef.current = null;
+          setBusyId(null);
+          setRestarting(false);
+        }
       }
     },
     [actionBusy, busyId, hostOk, load],
   );
 
   const doMigrate = useCallback(async () => {
-    if (actionBusy !== null || busyId !== null) return;
+    if (actionBusyRef.current !== null || busyIdRef.current !== null) return;
+    actionBusyRef.current = "migrate";
     setActionBusy("migrate");
     setActionError(null);
     try {
@@ -183,12 +205,16 @@ export function ProfilesSettings() {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "移行を開始できませんでした");
     } finally {
-      setActionBusy(null);
+      if (actionBusyRef.current === "migrate") {
+        actionBusyRef.current = null;
+        setActionBusy(null);
+      }
     }
   }, [actionBusy, busyId]);
 
   const doCreate = useCallback(async () => {
-    if (!createName.trim() || actionBusy !== null || busyId !== null) return;
+    if (!createName.trim() || actionBusyRef.current !== null || busyIdRef.current !== null) return;
+    actionBusyRef.current = "create";
     setActionBusy("create");
     setActionError(null);
     try {
@@ -209,14 +235,19 @@ export function ProfilesSettings() {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "作成に失敗しました");
     } finally {
-      setActionBusy(null);
+      if (actionBusyRef.current === "create") {
+        actionBusyRef.current = null;
+        setActionBusy(null);
+      }
     }
   }, [actionBusy, busyId, createFrom, createName, load]);
 
   const updateSetupSetting = useCallback(
     async (key: keyof ProfileSetupSettings, value: boolean) => {
-      if (!setupSettings || actionBusy !== null || busyId !== null) return;
-      setActionBusy(`setup:${key}`);
+      if (!setupSettings || actionBusyRef.current !== null || busyIdRef.current !== null) return;
+      const operation = `setup:${key}`;
+      actionBusyRef.current = operation;
+      setActionBusy(operation);
       const next = { ...setupSettings, [key]: value };
       setSetupSettings(next);
       setActionError(null);
@@ -233,7 +264,10 @@ export function ProfilesSettings() {
           err instanceof Error ? err.message : "自動セットアップ設定を保存できませんでした",
         );
       } finally {
-        setActionBusy(null);
+        if (actionBusyRef.current === operation) {
+          actionBusyRef.current = null;
+          setActionBusy(null);
+        }
       }
     },
     [actionBusy, busyId, setupSettings],
@@ -241,8 +275,10 @@ export function ProfilesSettings() {
 
   const doRename = useCallback(
     async (id: string) => {
-      if (!renameValue.trim() || actionBusy !== null || busyId !== null) return;
-      setActionBusy(`rename:${id}`);
+      if (!renameValue.trim() || actionBusyRef.current !== null || busyIdRef.current !== null) return;
+      const operation = `rename:${id}`;
+      actionBusyRef.current = operation;
+      setActionBusy(operation);
       setActionError(null);
       try {
         await sendJson("PATCH", `/api/profiles/${id}`, { name: renameValue });
@@ -252,7 +288,10 @@ export function ProfilesSettings() {
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "名前変更に失敗しました");
       } finally {
-        setActionBusy(null);
+        if (actionBusyRef.current === operation) {
+          actionBusyRef.current = null;
+          setActionBusy(null);
+        }
       }
     },
     [actionBusy, busyId, load, renameValue],
@@ -260,9 +299,11 @@ export function ProfilesSettings() {
 
   const doUnregister = useCallback(
     async (profile: ProfileDto) => {
-      if (actionBusy !== null || busyId !== null) return;
+      if (actionBusyRef.current !== null || busyIdRef.current !== null) return;
       setUnregisterConfirm(null);
-      setActionBusy(`unregister:${profile.id}`);
+      const operation = `unregister:${profile.id}`;
+      actionBusyRef.current = operation;
+      setActionBusy(operation);
       setActionError(null);
       try {
         await sendJson("DELETE", `/api/profiles/${profile.id}`, {});
@@ -270,7 +311,10 @@ export function ProfilesSettings() {
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "除外に失敗しました");
       } finally {
-        setActionBusy(null);
+        if (actionBusyRef.current === operation) {
+          actionBusyRef.current = null;
+          setActionBusy(null);
+        }
       }
     },
     [actionBusy, busyId, load],

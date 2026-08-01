@@ -93,6 +93,36 @@ describe("ProfilesSettings", () => {
     expect(screen.getAllByText("移行を開始").length).toBeGreaterThan(0);
   });
 
+  it("does not start migration twice before the first request settles", async () => {
+    const baseFetch = mockFetch({
+      "/api/profiles": BASE_LIST,
+      "/api/host": HOST_OK,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/api/profiles/migrate") && init?.method === "POST") {
+        return new Promise<Response>(() => undefined);
+      }
+      return baseFetch(input);
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<ProfilesSettings />);
+
+    await screen.findAllByText("default");
+    const migrate = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent?.includes("移行を開始"));
+    expect(migrate).toBeTruthy();
+    fireEvent.click(migrate!);
+    fireEvent.click(migrate!);
+
+    await waitFor(() => expect(migrate).toHaveProperty("disabled", true));
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/api/profiles/migrate"),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("does not show the migration card when not needed", async () => {
     const noMigration = {
       profiles: BASE_LIST.profiles,
