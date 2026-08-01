@@ -3623,3 +3623,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: only an active controller may clear file results; abort completion is ignored regardless of the browser's error class.
 - Verification: CommandPalette tests passed (3/3), including an aborted-request race; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: cancellation should be decided from controller state, not from the exception class supplied by the browser.
+
+## 2026-08-01: Extension settings action lifecycle
+
+- Found: extension section loads were not invalidated on unmount, and the rendered `busyId` state alone left a same-tick mutation re-entry window.
+- Fixed: invalidate section loads during effect cleanup and add a synchronous action lock while preserving the existing row-level busy feedback.
+- Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: shared settings hooks need both request invalidation and ref-level mutation guards; component-level disabled rendering is not sufficient.

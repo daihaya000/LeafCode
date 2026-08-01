@@ -246,6 +246,7 @@ function useExtensionSection<T extends { id: string }>(
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
+  const busyIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
@@ -267,12 +268,16 @@ function useExtensionSection<T extends { id: string }>(
 
   useEffect(() => {
     void load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
   }, [load]);
 
   /** Toggle one item; returns success so the caller can request a restart. */
   const toggle = useCallback(
     async (item: T, patchUrl: string, enabled: boolean): Promise<boolean> => {
-      if (busyId === item.id) return false;
+      if (busyIdRef.current) return false;
+      busyIdRef.current = item.id;
       setBusyId(item.id);
       setActionError(null);
       try {
@@ -285,7 +290,10 @@ function useExtensionSection<T extends { id: string }>(
         );
         return false;
       } finally {
-        setBusyId(null);
+        if (busyIdRef.current === item.id) {
+          busyIdRef.current = null;
+          setBusyId(null);
+        }
       }
     },
     [busyId, load],
@@ -293,7 +301,8 @@ function useExtensionSection<T extends { id: string }>(
 
   const remove = useCallback(
     async (item: T, deleteUrl: string): Promise<boolean> => {
-      if (busyId === item.id) return false;
+      if (busyIdRef.current) return false;
+      busyIdRef.current = item.id;
       setBusyId(item.id);
       setActionError(null);
       try {
@@ -306,7 +315,10 @@ function useExtensionSection<T extends { id: string }>(
         );
         return false;
       } finally {
-        setBusyId(null);
+        if (busyIdRef.current === item.id) {
+          busyIdRef.current = null;
+          setBusyId(null);
+        }
       }
     },
     [busyId, load],
