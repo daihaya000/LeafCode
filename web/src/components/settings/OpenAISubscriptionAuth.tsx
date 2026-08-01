@@ -47,7 +47,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
   const pollAttempts = useRef(0);
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
-  const mountedRef = useRef(true);
+  const mountedRef = useRef(false);
 
   const refreshConnection = useCallback(async () => {
     if (connectionRequestBusyRef.current) return null;
@@ -74,13 +74,13 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
     }
   }, []);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
       connectionRequestGenerationRef.current += 1;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -90,15 +90,18 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
         getJson<AuthMethodsResponse>("/api/opencode/provider/auth"),
         getJson<ProviderResponse>("/api/opencode/provider"),
       ]);
+      if (!mountedRef.current) return;
       const index = (methods.openai ?? []).findIndex(isBrowserOAuth);
       if (index < 0) {
         throw new Error("OpenAI のブラウザ認証方式が利用できません");
       }
+      if (!mountedRef.current) return;
       setMethodIndex(index);
       const nextConnected = isConnected(provider.connected);
       setConnected(nextConnected);
       setState(nextConnected ? "connected" : "ready");
     } catch (cause) {
+      if (!mountedRef.current) return;
       setState("error");
       setError(
         cause instanceof Error
@@ -117,7 +120,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
     let cancelled = false;
     pollAttempts.current = 0;
     const poll = async () => {
-      if (cancelled) return;
+      if (cancelled || !mountedRef.current) return;
       pollAttempts.current += 1;
       try {
         const nextConnected = await refreshConnection();
@@ -125,7 +128,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
       } catch {
         // Keep the authentication window usable while the engine is restarting.
       }
-      if (pollAttempts.current >= POLL_MAX_ATTEMPTS && !cancelled) {
+      if (pollAttempts.current >= POLL_MAX_ATTEMPTS && !cancelled && mountedRef.current) {
         setState("ready");
         setError("認証完了を確認できませんでした。認証後に再確認してください。");
       }
@@ -150,6 +153,10 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
         "/api/provider/openai/oauth/authorize",
         { method: methodIndex },
       );
+      if (!mountedRef.current) {
+        popup?.close();
+        return;
+      }
       setAuthUrl(authorization.url);
       setInstructions(authorization.instructions ?? null);
       if (popup) {
@@ -158,6 +165,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
       setState("waiting");
     } catch (cause) {
       popup?.close();
+      if (!mountedRef.current) return;
       setState(connected ? "connected" : "ready");
       setError(
         cause instanceof Error

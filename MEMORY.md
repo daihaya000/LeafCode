@@ -3715,6 +3715,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: ProviderModelsSettings tests passed (30/30); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: optimistic drag-and-drop saves need lifecycle guards on both the queued operation and its final pending-count update.
 
+## 2026-08-01: Subscription auth lifecycle
+
+- Found: Claude/OpenAI OAuth panels already guarded connection polling, but initial auth loading, OAuth authorization completion, and timeout feedback still had state-update paths after unmount.
+- Fixed: initialize mounted state in an effect, guard initial loads and OAuth responses, and stop polling/timeout feedback when the panel is no longer mounted.
+- Verification: OpenAISubscriptionAuth tests passed (3/3); Claude shares the same guarded flow and typecheck, ESLint, and `git diff --check` passed.
+- Lesson: an auth panel's polling guard is incomplete unless the initial discovery and popup authorization promises use the same lifecycle boundary.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.

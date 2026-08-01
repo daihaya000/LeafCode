@@ -26,7 +26,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
   const attempts = useRef(0);
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
-  const mountedRef = useRef(true);
+  const mountedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (connectionRequestBusyRef.current) return null;
@@ -53,13 +53,13 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
     }
   }, []);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
       connectionRequestGenerationRef.current += 1;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -69,6 +69,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
         getJson<AuthMethodsResponse>("/api/opencode/provider/auth"),
         getJson<ProviderResponse>("/api/opencode/provider"),
       ]);
+      if (!mountedRef.current) return;
       const index = (methods.anthropic ?? []).findIndex((method) => method.type === "oauth");
       if (index < 0) throw new Error("ClaudeのOAuth認証方式が利用できません");
       setMethodIndex(index);
@@ -76,6 +77,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
       setConnected(next);
       setState(next ? "connected" : "ready");
     } catch (cause) {
+      if (!mountedRef.current) return;
       setState("error");
       setError(cause instanceof Error ? cause.message : "Claudeの認証状態を取得できませんでした");
     }
@@ -88,13 +90,13 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
     let cancelled = false;
     attempts.current = 0;
     const poll = async () => {
-      if (cancelled) return;
+      if (cancelled || !mountedRef.current) return;
       attempts.current += 1;
       try {
         const nextConnected = await refresh();
         if (nextConnected) return;
       } catch { /* The engine may restart during OAuth. */ }
-      if (attempts.current >= POLL_MAX_ATTEMPTS && !cancelled) {
+      if (attempts.current >= POLL_MAX_ATTEMPTS && !cancelled && mountedRef.current) {
         setState("ready");
         setError("認証完了を確認できませんでした。認証後に再確認してください。");
       }
@@ -115,12 +117,17 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
         "/api/provider/anthropic/oauth/authorize",
         { method: methodIndex },
       );
+      if (!mountedRef.current) {
+        popup?.close();
+        return;
+      }
       setAuthUrl(authorization.url);
       setInstructions(authorization.instructions ?? null);
       if (popup) popup.location.href = authorization.url;
       setState("waiting");
     } catch (cause) {
       popup?.close();
+      if (!mountedRef.current) return;
       setState(connected ? "connected" : "ready");
       setError(cause instanceof Error ? cause.message : "Claudeの認証を開始できませんでした");
     }
