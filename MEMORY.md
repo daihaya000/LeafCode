@@ -3399,3 +3399,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add an in-handler busy guard, disable refresh during write actions, add refresh request generations, and show a retryable session-switch status while restoring the real selection.
 - Verification: DiffPane and SessionSwitcher tests passed (12/12); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: UI disabled state is not sufficient protection for async actions; the handler and the data source both need concurrency boundaries.
+
+## 2026-08-01: Approval response concurrency
+
+- Found: QuestionCard and PermissionCard relied on rendered disabled controls alone; re-entry through keyboard/event timing could invoke a second answer or permission POST while the first was pending.
+- Fixed: add handler-level busy guards for answer, reject, quick reply, and extra permission actions, plus a regression test for duplicate quick answers.
+- Verification: QuestionCard tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: approval UI is a critical interaction boundary; duplicate responses must be rejected inside the action function as well as visually disabled.

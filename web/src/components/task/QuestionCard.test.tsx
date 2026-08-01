@@ -1,4 +1,6 @@
 import { createElement } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { QuestionCard } from "./QuestionCard";
@@ -13,6 +15,8 @@ const baseRequest = (questions: QuestionRequest["questions"]): QuestionRequest =
 });
 
 describe("QuestionCard custom answer", () => {
+  afterEach(() => cleanup());
+
   it("renders the custom input when custom is true", () => {
     const request = baseRequest([
       {
@@ -135,5 +139,35 @@ describe("QuestionCard custom answer", () => {
     expect(markup).toContain('role="radio"');
     expect(markup).toContain('role="checkbox"');
     expect(markup).toContain('aria-checked="false"');
+  });
+
+  it("does not submit a quick answer twice while the first request is pending", () => {
+    let resolveReply!: () => void;
+    const onReply = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveReply = resolve;
+      }),
+    );
+    render(
+      createElement(QuestionCard, {
+        request: baseRequest([
+          {
+            question: "続行しますか？",
+            header: "",
+            options: [{ label: "はい", description: "" }],
+            custom: false,
+          },
+        ]),
+        onReply,
+        onReject: vi.fn(),
+      }),
+    );
+
+    const option = screen.getByRole("radio", { name: "はい" });
+    fireEvent.click(option);
+    fireEvent.click(option);
+
+    expect(onReply).toHaveBeenCalledTimes(1);
+    resolveReply();
   });
 });

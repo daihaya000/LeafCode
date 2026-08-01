@@ -27,6 +27,7 @@ export function PermissionCard({
   const [error, setError] = useState<string | null>(null);
 
   const reply = async (response: "once" | "always" | "reject") => {
+    if (busy !== null) return;
     setBusy(response);
     setError(null);
     try {
@@ -39,7 +40,7 @@ export function PermissionCard({
   };
 
   const onExtra = async (value: string) => {
-    if (!value) return;
+    if (!value || busy !== null) return;
     if (value === "always") {
       const action = permissionAutoAction({
         permission: request.permission,

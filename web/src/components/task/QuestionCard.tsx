@@ -69,7 +69,7 @@ export function QuestionCard({
     });
 
   const reply = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || busy !== null) return;
     setBusy("reply");
     setError(null);
     try {
@@ -82,6 +82,7 @@ export function QuestionCard({
   };
 
   const reject = async () => {
+    if (busy !== null) return;
     setBusy("reject");
     setError(null);
     try {
@@ -94,6 +95,7 @@ export function QuestionCard({
   };
 
   const quickReply = async (qi: number, label: string) => {
+    if (busy !== null) return;
     const q = request.questions[qi];
     if (!q || q.multiple || request.questions.length !== 1) {
       toggle(qi, label, q?.multiple);
