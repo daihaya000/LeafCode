@@ -795,4 +795,42 @@ describe("ProviderModelsSettings", () => {
       }),
     ));
   });
+
+  it("serializes overlapping order saves so the latest drag wins", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    let orderCalls = 0;
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "PATCH" && path === "/api/extensions/provider-models/order") {
+        orderCalls += 1;
+        if (orderCalls === 1) {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+      }
+      return Promise.resolve({ ok: true });
+    });
+
+    render(<ProviderModelsSettings />);
+    const openaiDrag = await screen.findByLabelText("OpenAI をドラッグして並び替え");
+    const anthropicDrag = screen.getByLabelText("Anthropic をドラッグして並び替え");
+    const dataTransfer = { effectAllowed: "" };
+    fireEvent.dragStart(openaiDrag.closest("li")!, { dataTransfer });
+    fireEvent.dragOver(anthropicDrag.closest("li")!, { dataTransfer });
+    fireEvent.drop(anthropicDrag.closest("li")!, { dataTransfer });
+    await waitFor(() => expect(orderCalls).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /OpenAI のモデルを展開/ }));
+    const gpt5Drag = await screen.findByLabelText("GPT-5 をドラッグして並び替え");
+    const gpt4oDrag = screen.getByLabelText("GPT-4o をドラッグして並び替え");
+    fireEvent.dragStart(gpt4oDrag.closest("li")!, { dataTransfer });
+    fireEvent.dragOver(gpt5Drag.closest("li")!, { dataTransfer });
+    fireEvent.drop(gpt5Drag.closest("li")!, { dataTransfer });
+
+    expect(orderCalls).toBe(1);
+    expect(screen.getByRole("status").textContent).toContain("保存中");
+    resolveFirst({ ok: true });
+    await waitFor(() => expect(orderCalls).toBe(2));
+    await waitFor(() => expect(screen.queryByText("並び順を保存中…")).toBeNull());
+  });
 });

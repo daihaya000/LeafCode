@@ -319,6 +319,10 @@ export function ProviderModelsSettings() {
   const [addMessage, setAddMessage] = useState<string | null>(null);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [deletingProviderId, setDeletingProviderId] = useState<string | null>(null);
+  const loadRequestRef = useRef(0);
+  const orderQueueRef = useRef(Promise.resolve());
+  const orderPendingRef = useRef(0);
+  const [orderSaving, setOrderSaving] = useState(false);
   const [newProvider, setNewProvider] = useState<NewProviderForm>({
     id: "",
     name: "",
@@ -405,15 +409,18 @@ export function ProviderModelsSettings() {
     ),)];
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setStatus("loading");
     setError(null);
     try {
       const data = await getJson<ProviderModelsResponse>(
         "/api/extensions/provider-models",
       );
+      if (requestId !== loadRequestRef.current) return;
       setProviders(data.providers ?? []);
       setStatus("ready");
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       setError(err instanceof Error ? err.message : "取得に失敗しました");
       setStatus("error");
     }
@@ -476,22 +483,34 @@ export function ProviderModelsSettings() {
     [load],
   );
 
-  const saveOrder = useCallback(async (nextProviders: ProviderDto[]) => {
-    setActionError(null);
-    try {
-      await sendJson("PATCH", "/api/extensions/provider-models/order", {
-        providerOrder: nextProviders.map((provider) => provider.id),
-        modelOrder: Object.fromEntries(
-          nextProviders.map((provider) => [
-            provider.id,
-            provider.models.map((model) => model.id),
-          ]),
-        ),
-      });
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "並び順の保存に失敗しました");
-      void load();
-    }
+  const saveOrder = useCallback((nextProviders: ProviderDto[]) => {
+    orderPendingRef.current += 1;
+    setOrderSaving(true);
+    const operation = orderQueueRef.current.then(async () => {
+      setActionError(null);
+      try {
+        await sendJson("PATCH", "/api/extensions/provider-models/order", {
+          providerOrder: nextProviders.map((provider) => provider.id),
+          modelOrder: Object.fromEntries(
+            nextProviders.map((provider) => [
+              provider.id,
+              provider.models.map((model) => model.id),
+            ]),
+          ),
+        });
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "並び順の保存に失敗しました");
+        void load();
+      }
+    });
+    orderQueueRef.current = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    void operation.finally(() => {
+      orderPendingRef.current -= 1;
+      if (orderPendingRef.current === 0) setOrderSaving(false);
+    });
   }, [load]);
 
   const moveProvider = useCallback(
@@ -777,6 +796,11 @@ export function ProviderModelsSettings() {
           利用可能な AI プロバイダーとモデルの表示を切り替えます。OpenCode
           設定ファイルに新規プロバイダーを追加できます。
         </p>
+        {orderSaving && (
+          <p className="mb-3 text-xs text-muted" role="status" aria-live="polite">
+            並び順を保存中…
+          </p>
+        )}
         <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

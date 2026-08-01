@@ -3434,3 +3434,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add action-level busy guards, disable related controls across desktop/mobile views, show busy states, and preserve the create flow while an operation is pending.
 - Verification: ProfilesSettings tests passed (9/9); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: settings pages with several independent destructive or restart-triggering actions need a shared operation boundary to prevent conflicting state transitions.
+
+## 2026-08-01: Provider model ordering consistency
+
+- Found: overlapping provider/model list loads could apply stale data, and rapid drag-and-drop operations sent concurrent order updates whose server completion order could differ from the user's final order.
+- Fixed: add load request generations, serialize order saves through a queue, expose an order-saving status, and recover from order failures via a guarded reload.
+- Verification: ProviderModelsSettings tests passed (28/28); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: reorderable settings need both optimistic local responsiveness and serialized persistence so the last visible arrangement is also the last server write.
