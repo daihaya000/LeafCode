@@ -6,7 +6,6 @@ import { opencodeConfigDir } from "../opencode-extensions/paths";
 const CONFIG_SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const BROKER_URL = "{env:OPENCODE_WEBUI_BROWSER_BROKER}";
 const BROKER_TOKEN = "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}";
-const CLAUDE_AUTH_PLUGIN = "opencode-claude-auth@latest";
 
 /**
  * OpenCode-side dependencies used by the WebUI.  The browser extension itself
@@ -50,6 +49,16 @@ function bundledCursorAcpDir(): string | undefined {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+function bundledClaudeAuthDir(): string | undefined {
+  const explicit = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
+    ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
+    : path.resolve(process.cwd());
+  const candidates = [path.join(root, "vendor", "claude-auth"), path.join(root, "..", "vendor", "claude-auth")];
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
 function copyEntry(source: string, target: string): void {
   const info = fs.lstatSync(source);
   if (info.isSymbolicLink()) {
@@ -86,7 +95,21 @@ function copyCursorAcpFiles(targetDir: string, sourceDirs: string[]): string[] {
   return copied;
 }
 
-/** Install WebUI MCP and Cursor ACP dependencies without overwriting settings. */
+function copyClaudeAuthFiles(targetDir: string, sourceDir: string | undefined): string[] {
+  if (!sourceDir) return [];
+  const copied: string[] = [];
+  for (const relative of ["plugin/claude-auth.js", "packages/claude-auth"]) {
+    const target = path.join(targetDir, relative);
+    if (fs.existsSync(target)) continue;
+    const source = path.join(sourceDir, relative);
+    if (!fs.existsSync(source)) continue;
+    copyEntry(source, target);
+    copied.push(relative);
+  }
+  return copied;
+}
+
+/** Install WebUI MCP, Cursor ACP, and Claude Auth dependencies without overwriting settings. */
 export function installWebUiDependencies(
   profileDir: string,
   options: WebUiDependencyOptions = {},
@@ -97,6 +120,7 @@ export function installWebUiDependencies(
 
   const activeDir = opencodeConfigDir();
   const bundledDir = bundledCursorAcpDir();
+  const bundledClaudeAuth = bundledClaudeAuthDir();
   const sourceDirs = [activeDir, bundledDir].filter(
     (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
   );
@@ -117,6 +141,9 @@ export function installWebUiDependencies(
 
   let content = fs.readFileSync(targetConfigPath, "utf8");
   const installed = options.cursorAcp === false ? [] : copyCursorAcpFiles(profileDir, sourceDirs);
+  if (options.claudeAuth !== false) {
+    installed.push(...copyClaudeAuthFiles(profileDir, bundledClaudeAuth));
+  }
   const formattingOptions = {
     insertSpaces: true,
     tabSize: 2,
@@ -142,19 +169,6 @@ export function installWebUiDependencies(
     );
     content = applyEdits(content, edits);
     installed.push(`${parent}.${name}`);
-  }
-  if (options.claudeAuth !== false) {
-    const root = parse(content) as Record<string, unknown>;
-    const plugins = root.plugin;
-    if (Array.isArray(plugins)) {
-      if (!plugins.includes(CLAUDE_AUTH_PLUGIN)) {
-        content = applyEdits(content, modify(content, ["plugin", plugins.length], CLAUDE_AUTH_PLUGIN, { formattingOptions }));
-        installed.push(`plugin.${CLAUDE_AUTH_PLUGIN}`);
-      }
-    } else {
-      content = applyEdits(content, modify(content, ["plugin"], [CLAUDE_AUTH_PLUGIN], { formattingOptions }));
-      installed.push(`plugin.${CLAUDE_AUTH_PLUGIN}`);
-    }
   }
   if (content !== fs.readFileSync(targetConfigPath, "utf8")) {
     const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;

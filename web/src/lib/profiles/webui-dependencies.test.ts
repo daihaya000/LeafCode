@@ -7,14 +7,17 @@ import { installWebUiDependencies } from "./webui-dependencies";
 const dirs: string[] = [];
 let previousConfigDir: string | undefined;
 let previousCursorAcpDir: string | undefined;
+let previousClaudeAuthDir: string | undefined;
 
 beforeEach(() => {
   previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
   previousCursorAcpDir = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
+  previousClaudeAuthDir = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR;
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-source-"));
   dirs.push(source);
   process.env.OPENCODE_CONFIG_DIR = source;
   process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = path.join(source, "bundled");
+  process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR = path.join(source, "claude-bundled");
 });
 
 afterEach(() => {
@@ -22,6 +25,8 @@ afterEach(() => {
   else process.env.OPENCODE_CONFIG_DIR = previousConfigDir;
   if (previousCursorAcpDir === undefined) delete process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
   else process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = previousCursorAcpDir;
+  if (previousClaudeAuthDir === undefined) delete process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR;
+  else process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR = previousClaudeAuthDir;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -30,10 +35,7 @@ describe("installWebUiDependencies", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-"));
     dirs.push(dir);
 
-    expect(installWebUiDependencies(dir)).toEqual([
-      "mcp.browser-bridge",
-      "plugin.opencode-claude-auth@latest",
-    ]);
+    expect(installWebUiDependencies(dir)).toEqual(["mcp.browser-bridge"]);
     const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
     expect(config.mcp["browser-bridge"].command[0]).toBe("node");
     expect(config.mcp["browser-bridge"].environment).toEqual({
@@ -48,7 +50,7 @@ describe("installWebUiDependencies", () => {
     const configPath = path.join(dir, "opencode.jsonc");
     fs.writeFileSync(configPath, '{ "mcp": { "browser-bridge": { "command": ["custom"] } } }');
 
-    expect(installWebUiDependencies(dir)).toEqual(["plugin.opencode-claude-auth@latest"]);
+    expect(installWebUiDependencies(dir)).toEqual([]);
     expect(fs.readFileSync(configPath, "utf8")).toContain("custom");
   });
 
@@ -109,16 +111,21 @@ describe("installWebUiDependencies", () => {
     });
   });
 
-  it("restores the Claude Auth plugin without overwriting existing plugins", () => {
+  it("copies the bundled Claude Auth plugin and runtime", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR!;
+    fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "packages", "claude-auth"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "claude-auth.js"), "export default {};");
+    fs.writeFileSync(path.join(bundle, "packages", "claude-auth", "index.js"), "export default {};");
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
-    const configPath = path.join(target, "opencode.jsonc");
-    fs.writeFileSync(configPath, JSON.stringify({ plugin: ["custom-plugin"] }));
 
-    expect(installWebUiDependencies(target)).toContain("plugin.opencode-claude-auth@latest");
-    expect(JSON.parse(fs.readFileSync(configPath, "utf8")).plugin).toEqual([
-      "custom-plugin",
-      "opencode-claude-auth@latest",
+    expect(installWebUiDependencies(target)).toEqual([
+      "plugin/claude-auth.js",
+      "packages/claude-auth",
+      "mcp.browser-bridge",
     ]);
+    expect(fs.existsSync(path.join(target, "plugin", "claude-auth.js"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "packages", "claude-auth", "index.js"))).toBe(true);
   });
 });
