@@ -172,6 +172,44 @@ describe("ProfilesSettings", () => {
     });
   });
 
+  it("locks profile creation while the request is pending", async () => {
+    const baseFetch = mockFetch({
+      "/api/profiles": BASE_LIST,
+      "/api/host": HOST_OK,
+    });
+    let resolveCreate!: (response: Response) => void;
+    let createCalls = 0;
+    global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/api/profiles") && init?.method === "POST") {
+        createCalls += 1;
+        return new Promise<Response>((resolve) => {
+          resolveCreate = resolve;
+        });
+      }
+      return baseFetch(input);
+    }) as unknown as typeof fetch;
+
+    render(<ProfilesSettings />);
+    await screen.findAllByText("default");
+    fireEvent.click(screen.getByRole("button", { name: "新規作成" }));
+    fireEvent.change(screen.getByLabelText("名前"), { target: { value: "実験用" } });
+
+    const create = screen.getByRole("button", { name: "作成" }) as HTMLButtonElement;
+    fireEvent.click(create);
+    fireEvent.click(create);
+
+    await waitFor(() => expect(create.disabled).toBe(true));
+    expect(createCalls).toBe(1);
+
+    resolveCreate(
+      new Response(JSON.stringify({ id: "new-id" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: "作成" })).toBeNull());
+  });
+
   it("renders Browser Bridge and Cursor ACP setup checkboxes", async () => {
     global.fetch = mockFetch({
       "/api/profiles": BASE_LIST,

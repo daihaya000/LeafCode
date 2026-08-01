@@ -86,6 +86,7 @@ export function ProfilesSettings() {
   const [data, setData] = useState<ListResponse | null>(null);
   const [setupSettings, setSetupSettings] = useState<ProfileSetupSettings | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [switchConfirm, setSwitchConfirm] = useState<ProfileDto | null>(null);
   const [restarting, setRestarting] = useState(false);
@@ -146,6 +147,7 @@ export function ProfilesSettings() {
 
   const doSwitch = useCallback(
     async (profile: ProfileDto) => {
+      if (busyId !== null || actionBusy !== null) return;
       setSwitchConfirm(null);
       setBusyId(profile.id);
       setRestartError(null);
@@ -167,10 +169,12 @@ export function ProfilesSettings() {
         setRestarting(false);
       }
     },
-    [hostOk, load],
+    [actionBusy, busyId, hostOk, load],
   );
 
   const doMigrate = useCallback(async () => {
+    if (actionBusy !== null || busyId !== null) return;
+    setActionBusy("migrate");
     setActionError(null);
     try {
       const res = await sendJson<{ jobId: string }>("POST", "/api/profiles/migrate", {});
@@ -178,10 +182,14 @@ export function ProfilesSettings() {
       setJob({ state: "running", copied: 0, total: 0 });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "移行を開始できませんでした");
+    } finally {
+      setActionBusy(null);
     }
-  }, []);
+  }, [actionBusy, busyId]);
 
   const doCreate = useCallback(async () => {
+    if (!createName.trim() || actionBusy !== null || busyId !== null) return;
+    setActionBusy("create");
     setActionError(null);
     try {
       const res = await sendJson<{ jobId?: string; id?: string }>(
@@ -200,12 +208,15 @@ export function ProfilesSettings() {
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "作成に失敗しました");
+    } finally {
+      setActionBusy(null);
     }
-  }, [createName, createFrom, load]);
+  }, [actionBusy, busyId, createFrom, createName, load]);
 
   const updateSetupSetting = useCallback(
     async (key: keyof ProfileSetupSettings, value: boolean) => {
-      if (!setupSettings) return;
+      if (!setupSettings || actionBusy !== null || busyId !== null) return;
+      setActionBusy(`setup:${key}`);
       const next = { ...setupSettings, [key]: value };
       setSetupSettings(next);
       setActionError(null);
@@ -221,13 +232,17 @@ export function ProfilesSettings() {
         setActionError(
           err instanceof Error ? err.message : "自動セットアップ設定を保存できませんでした",
         );
+      } finally {
+        setActionBusy(null);
       }
     },
-    [setupSettings],
+    [actionBusy, busyId, setupSettings],
   );
 
   const doRename = useCallback(
     async (id: string) => {
+      if (!renameValue.trim() || actionBusy !== null || busyId !== null) return;
+      setActionBusy(`rename:${id}`);
       setActionError(null);
       try {
         await sendJson("PATCH", `/api/profiles/${id}`, { name: renameValue });
@@ -236,23 +251,29 @@ export function ProfilesSettings() {
         await load();
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "名前変更に失敗しました");
+      } finally {
+        setActionBusy(null);
       }
     },
-    [renameValue, load],
+    [actionBusy, busyId, load, renameValue],
   );
 
   const doUnregister = useCallback(
     async (profile: ProfileDto) => {
+      if (actionBusy !== null || busyId !== null) return;
       setUnregisterConfirm(null);
+      setActionBusy(`unregister:${profile.id}`);
       setActionError(null);
       try {
         await sendJson("DELETE", `/api/profiles/${profile.id}`, {});
         await load();
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "除外に失敗しました");
+      } finally {
+        setActionBusy(null);
       }
     },
-    [load],
+    [actionBusy, busyId, load],
   );
 
   // -------------------------------------------------------------------------
@@ -304,7 +325,8 @@ export function ProfilesSettings() {
           <Button
             className="mt-3"
             onClick={() => void doMigrate()}
-            disabled={jobRunning}
+            disabled={jobRunning || actionBusy !== null || busyId !== null}
+            busy={actionBusy === "migrate"}
           >
             移行を開始
           </Button>
@@ -362,7 +384,10 @@ export function ProfilesSettings() {
       )}
 
       {setupSettings && (
-        <fieldset className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
+        <fieldset
+          className="mb-4 rounded-xl border border-border bg-surface px-4 py-4"
+          aria-busy={actionBusy?.startsWith("setup:") || undefined}
+        >
           <legend className="px-1 text-sm font-semibold text-text">新規プロファイルの自動セットアップ</legend>
           <p className="mt-1 text-xs text-muted">
             新規作成・複製時にWebUI連携用の依存ファイルと設定を自動配置します。
@@ -380,6 +405,7 @@ export function ProfilesSettings() {
                   type="checkbox"
                   className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
                   checked={setupSettings[key]}
+                  disabled={actionBusy !== null || busyId !== null}
                   onChange={(event) => void updateSetupSetting(key, event.target.checked)}
                   aria-label={`${label}の自動セットアップ`}
                 />
@@ -442,19 +468,26 @@ export function ProfilesSettings() {
                         <Button
                           variant="secondary"
                           size="sm"
-                          disabled={busy || jobRunning || restarting}
+                          disabled={busy || jobRunning || restarting || actionBusy !== null}
                           onClick={() => setSwitchConfirm(p)}
                         >
                           切替
                         </Button>
                       )}
                       {renameId === p.id ? (
-                        <Button size="sm" onClick={() => void doRename(p.id)}>保存</Button>
+                        <Button
+                          size="sm"
+                          busy={actionBusy === `rename:${p.id}`}
+                          disabled={actionBusy !== null || busyId !== null || !renameValue.trim()}
+                          onClick={() => void doRename(p.id)}
+                        >
+                          保存
+                        </Button>
                       ) : (
                         <Button
                           variant="ghost"
                           size="sm"
-                          disabled={jobRunning}
+                          disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => {
                             setRenameId(p.id);
                             setRenameValue(p.name);
@@ -467,7 +500,7 @@ export function ProfilesSettings() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          disabled={jobRunning}
+                          disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => setUnregisterConfirm(p)}
                         >
                           除外
@@ -500,7 +533,7 @@ export function ProfilesSettings() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    disabled={busy || jobRunning || restarting}
+                    disabled={busy || jobRunning || restarting || actionBusy !== null}
                     onClick={() => setSwitchConfirm(p)}
                   >
                     切替
@@ -509,7 +542,7 @@ export function ProfilesSettings() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={jobRunning}
+                  disabled={jobRunning || actionBusy !== null || busyId !== null}
                   onClick={() => {
                     setRenameId(p.id);
                     setRenameValue(p.name);
@@ -521,7 +554,7 @@ export function ProfilesSettings() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={jobRunning}
+                    disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => setUnregisterConfirm(p)}
                   >
                     除外
@@ -541,7 +574,14 @@ export function ProfilesSettings() {
                     }}
                     aria-label={`${p.name} の新しい名前`}
                   />
-                  <Button size="sm" onClick={() => void doRename(p.id)}>保存</Button>
+                  <Button
+                    size="sm"
+                    busy={actionBusy === `rename:${p.id}`}
+                    disabled={actionBusy !== null || busyId !== null || !renameValue.trim()}
+                    onClick={() => void doRename(p.id)}
+                  >
+                    保存
+                  </Button>
                 </div>
               )}
             </li>
@@ -552,7 +592,11 @@ export function ProfilesSettings() {
       {/* Create button */}
       <div className="mt-3">
         {!createOpen ? (
-          <Button variant="secondary" onClick={() => setCreateOpen(true)} disabled={jobRunning}>
+          <Button
+            variant="secondary"
+            onClick={() => setCreateOpen(true)}
+            disabled={jobRunning || actionBusy !== null || busyId !== null}
+          >
             新規作成
           </Button>
         ) : (
@@ -580,7 +624,12 @@ export function ProfilesSettings() {
               ))}
             </select>
             <div className="mt-3 flex gap-2">
-              <Button size="sm" disabled={!createName.trim() || jobRunning} onClick={() => void doCreate()}>
+              <Button
+                size="sm"
+                busy={actionBusy === "create"}
+                disabled={!createName.trim() || jobRunning || actionBusy !== null || busyId !== null}
+                onClick={() => void doCreate()}
+              >
                 作成
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>
@@ -608,8 +657,8 @@ export function ProfilesSettings() {
               切替は WebUI・エンジン・ターミナルのすべてに影響します。
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setSwitchConfirm(null)}>キャンセル</Button>
-              <Button onClick={() => void doSwitch(switchConfirm)}>切り替える</Button>
+              <Button variant="ghost" disabled={busyId !== null} onClick={() => setSwitchConfirm(null)}>キャンセル</Button>
+              <Button busy={busyId === switchConfirm.id} disabled={actionBusy !== null} onClick={() => void doSwitch(switchConfirm)}>切り替える</Button>
             </div>
           </div>
         </div>
@@ -632,8 +681,15 @@ export function ProfilesSettings() {
               <strong className="text-text">削除されません</strong>。一覧から削除するだけです。
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setUnregisterConfirm(null)}>キャンセル</Button>
-              <Button variant="danger" onClick={() => void doUnregister(unregisterConfirm)}>除外する</Button>
+              <Button variant="ghost" disabled={actionBusy !== null} onClick={() => setUnregisterConfirm(null)}>キャンセル</Button>
+              <Button
+                variant="danger"
+                busy={actionBusy === `unregister:${unregisterConfirm.id}`}
+                disabled={busyId !== null}
+                onClick={() => void doUnregister(unregisterConfirm)}
+              >
+                除外する
+              </Button>
             </div>
           </div>
         </div>

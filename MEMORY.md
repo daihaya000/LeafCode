@@ -3427,3 +3427,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: return fresh status data from `fetchStatus`, guard duplicate connect actions, and persist a local dismissal until the Broker is actually unavailable or the user reconnects.
 - Verification: BrowserBridgeSettings tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: connection actions must consume the response they just awaited, while background polling must respect explicit user dismissal.
+
+## 2026-08-01: Profile settings action locks
+
+- Found: profile creation, migration, rename, unregister, setup-setting updates, and switch confirmation could be re-entered before their API/restart work settled.
+- Fixed: add action-level busy guards, disable related controls across desktop/mobile views, show busy states, and preserve the create flow while an operation is pending.
+- Verification: ProfilesSettings tests passed (9/9); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: settings pages with several independent destructive or restart-triggering actions need a shared operation boundary to prevent conflicting state transitions.
