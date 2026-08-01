@@ -1258,6 +1258,7 @@ export function SettingsView() {
                       variant="ghost"
                       size="icon"
                       title="URL をコピー"
+                      aria-label={copied === a.url ? "URLをコピー済み" : "URLをコピー"}
                       onClick={() => void copyUrl(a.url)}
                     >
                       {copied === a.url ? (

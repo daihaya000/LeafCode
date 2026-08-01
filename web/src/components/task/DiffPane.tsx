@@ -557,6 +557,7 @@ export function DiffPane({
           variant="ghost"
           size="icon"
           title={allExpanded ? "すべて折りたたむ" : "すべて展開"}
+          aria-label={allExpanded ? "すべて折りたたむ" : "すべて展開"}
           onClick={() =>
             setExpanded(Object.fromEntries(files.map((f) => [f.path, !allExpanded])))
           }
@@ -571,6 +572,7 @@ export function DiffPane({
           variant="ghost"
           size="icon"
           title="更新"
+          aria-label="差分を更新"
           busy={loading}
           disabled={busy}
           onClick={() => void load()}

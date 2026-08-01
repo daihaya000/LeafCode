@@ -197,6 +197,7 @@ export function CompactButton({
       variant="ghost"
       size="icon"
       title="コンテキスト圧縮 (compact)"
+      aria-label="コンテキストを圧縮"
       busy={busy}
       disabled={disabled}
       onClick={onClick}

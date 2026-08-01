@@ -4050,3 +4050,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add explicit `aria-label` values to the three desktop panel toggles and scope regression tests to the task-action toolbar so desktop controls are distinguished from mobile tabs.
 - Verification: TaskView tests passed (105/105); full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: icon-only controls should declare their accessible name explicitly, and responsive duplicates should be tested within their owning region.
+
+## 2026-08-01: Settings and side-panel icon labels
+
+- Found: URL copy, graph refresh, Diff expand/collapse and refresh, and session compact icon buttons relied on `title` or icon context without an explicit accessible name.
+- Fixed: add explicit `aria-label` values, including a copied-state label for URL actions, and add a regression assertion for multiple URL copy controls.
+- Verification: targeted Settings/Graph/Diff/Session tests passed (48/48); full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: icon-only actions should expose an explicit action-oriented name and, where relevant, announce state changes such as copied/saved completion.

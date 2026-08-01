@@ -420,6 +420,7 @@ export function GraphPanel({
           variant="ghost"
           size="icon"
           title="更新"
+          aria-label="グラフを更新"
           busy={loading}
           disabled={loading || loadingMore}
           className="h-7 w-7"
