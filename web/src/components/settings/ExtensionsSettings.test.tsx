@@ -292,8 +292,6 @@ describe("ExtensionsSettings", () => {
   });
 
   it("confirms before permanently removing a disabled WebUI-managed plugin", async () => {
-    const confirm = vi.fn(() => true);
-    vi.stubGlobal("confirm", confirm);
     mockGetJson({
       plugins: [
         {
@@ -309,15 +307,47 @@ describe("ExtensionsSettings", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "一覧から削除" }));
 
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("元設定（オプションを含む）は失われ、後で有効化しても復元できません。"),
-    );
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("disabled-plug");
+    fireEvent.click(dialog.querySelector("button")!);
     await waitFor(() =>
       expect(sendJson).toHaveBeenCalledWith(
         "DELETE",
         "/api/extensions/plugins/config%3Abbbbbbbbbbbbbbbb.1",
       ),
     );
+  });
+
+  it("focuses the plugin deletion confirmation and closes it with Escape", async () => {
+    mockGetJson({
+      plugins: [
+        {
+          id: "config:bbbbbbbbbbbbbbbb.1",
+          name: "disabled-plug",
+          kind: "config",
+          enabled: false,
+          managedByWebui: true,
+        },
+      ],
+    });
+    render(<ExtensionsSettings activeSection="plugins" />);
+
+    let deleteButton!: HTMLButtonElement;
+    await waitFor(() => {
+      const candidate = screen.getAllByRole("button").find((button) =>
+        button.className.includes("bg-danger-bg"),
+      );
+      expect(candidate).toBeTruthy();
+      deleteButton = candidate as HTMLButtonElement;
+    });
+    deleteButton.focus();
+    fireEvent.click(deleteButton);
+
+    const dialog = screen.getByRole("alertdialog");
+    expect(document.activeElement).toBe(dialog.querySelector("button"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(document.activeElement).toBe(deleteButton);
   });
 
   it("toggles a skill and shows a single restart banner", async () => {

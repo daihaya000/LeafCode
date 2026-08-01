@@ -514,6 +514,9 @@ export function ExtensionsSettings({
   );
   const [pluginFormError, setPluginFormError] = useState<string | null>(null);
   const [editingPluginId, setEditingPluginId] = useState<string | null>(null);
+  const [deleteConfirmPlugin, setDeleteConfirmPlugin] = useState<PluginDto | null>(null);
+  const deleteConfirmRef = useRef<HTMLDivElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const [newPlugin, setNewPlugin] = useState<{
     name: string;
     optionsJson: string;
@@ -528,6 +531,25 @@ export function ExtensionsSettings({
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!deleteConfirmPlugin) {
+      if (deleteTriggerRef.current?.isConnected) {
+        deleteTriggerRef.current.focus();
+      }
+      deleteTriggerRef.current = null;
+      return;
+    }
+
+    deleteConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setDeleteConfirmPlugin(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [deleteConfirmPlugin]);
 
   const loadSkills = skills.load;
   const loadMcp = mcp.load;
@@ -875,6 +897,46 @@ export function ExtensionsSettings({
               </div>
             )}
           </div>
+          {deleteConfirmPlugin && (
+            <div
+              ref={deleteConfirmRef}
+              role="alertdialog"
+              aria-label="プラグイン削除の確認"
+              aria-describedby="plugin-delete-confirm-description"
+              className="mb-4 rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger"
+            >
+              <p id="plugin-delete-confirm-description">
+                プラグイン「{deleteConfirmPlugin.name}」を一覧から削除しますか？
+                <br />
+                WebUI管理の保存状態とオプションが失われ、後から有効化しても復元できません。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  busy={plugins.busyId === deleteConfirmPlugin.id}
+                  onClick={() => {
+                    const plugin = deleteConfirmPlugin;
+                    deleteTriggerRef.current = null;
+                    setDeleteConfirmPlugin(null);
+                    void plugins.remove(
+                      plugin,
+                      `/api/extensions/plugins/${encodeURIComponent(plugin.id)}`,
+                    );
+                  }}
+                >
+                  削除する
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeleteConfirmPlugin(null)}
+                >
+                  キャンセル
+                </Button>
+              </div>
+            </div>
+          )}
           <SectionShell
             headingId="extensions-plugins"
             title="プラグイン"
@@ -933,17 +995,11 @@ export function ExtensionsSettings({
                       size="sm"
                       busy={plugins.busyId === p.id}
                       onClick={() => {
-                        if (
-                          !window.confirm(
-                            `無効なプラグイン「${p.name}」の保存済み状態を一覧から削除しますか？\n元設定（オプションを含む）は失われ、後で有効化しても復元できません。`,
-                          )
-                        ) {
-                          return;
-                        }
-                        void plugins.remove(
-                          p,
-                          `/api/extensions/plugins/${encodeURIComponent(p.id)}`,
-                        );
+                        deleteTriggerRef.current =
+                          document.activeElement instanceof HTMLElement
+                            ? document.activeElement
+                            : null;
+                        setDeleteConfirmPlugin(p);
                       }}
                     >
                       一覧から削除

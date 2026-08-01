@@ -3974,6 +3974,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: ProviderModelsSettings tests passed (31/31); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: destructive settings changes need contextual confirmation and regression tests aligned with the widget's semantic role.
 
+## 2026-08-01: Plugin deletion confirmation UX
+
+- Found: deleting a disabled WebUI-managed plugin in ExtensionsSettings used a native confirmation dialog, so the destructive impact was disconnected from the plugin list and had no predictable keyboard focus behavior.
+- Fixed: add an inline alert dialog with the plugin name and data-loss warning, focus the primary action on open, support Escape cancellation and focus restoration, and keep the existing async deletion lock.
+- Verification: ExtensionsSettings tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: destructive controls should share one contextual confirmation pattern across settings sections, including explicit keyboard lifecycle tests.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.
