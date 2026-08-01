@@ -1112,6 +1112,39 @@ describe("HomeView engine health polling", () => {
     ).length;
     expect(tasksCallsAfterVisible).toBeGreaterThan(tasksCallsWhileHidden);
   });
+
+  it("does not overlap engine health checks while a request is pending", async () => {
+    vi.useFakeTimers();
+    let releaseHealth!: (value: unknown) => void;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{ id: "project-1", name: "Project", rootPath: "/repo", favorite: false }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return new Promise((resolve) => {
+          releaseHealth = resolve;
+        });
+      }
+      if (path === "/api/git/branches") {
+        return Promise.resolve({ branches: ["main"], defaultTarget: "main", current: "main" });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<HomeView />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(3000 * 2);
+    });
+    expect(getJson.mock.calls.filter(([path]) => path === "/api/tasks")).toHaveLength(1);
+
+    await act(async () => {
+      releaseHealth({ engineOk: false });
+      await Promise.resolve();
+    });
+  });
 });
 
 describe("HomeView goal loop toggle", () => {

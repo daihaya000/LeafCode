@@ -210,6 +210,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
   const [loaded, setLoaded] = useState(false);
   const projectsRequestRef = useRef(0);
+  const engineRequestBusyRef = useRef(false);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -317,11 +318,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   }, [initialProjectId]);
 
   const refreshEngine = useCallback(async () => {
+    if (engineRequestBusyRef.current) return;
+    engineRequestBusyRef.current = true;
     try {
       const data = await getJson<{ engineOk: boolean }>("/api/tasks");
       setEngineOk(data.engineOk);
     } catch {
       /* keep */
+    } finally {
+      engineRequestBusyRef.current = false;
     }
   }, []);
 

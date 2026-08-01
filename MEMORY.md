@@ -3567,3 +3567,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: serialize connection checks per component and invalidate their response generation during unmount, while keeping the existing polling and retry UX.
 - Verification: OpenAISubscriptionAuth tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: authentication status is a shared state machine; manual refresh and background polling must use one guarded transition path.
+
+## 2026-08-01: Home engine health backpressure
+
+- Found: HomeView could start overlapping engine health checks when visibility recovery coincided with the health interval, increasing requests and allowing timing-dependent status flicker.
+- Fixed: serialize `/api/tasks` health checks with a synchronous in-flight ref while retaining immediate visibility refresh and automatic recovery.
+- Verification: HomeView tests passed (51/51); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: even lightweight health checks need backpressure when multiple lifecycle triggers can call them.
