@@ -3659,6 +3659,19 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: TaskView tests passed (104/104); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: request sequence identity must be paired with a component lifecycle boundary; same-task late responses are still invalid after unmount.
 
+## 2026-08-01: PTY panel lifecycle isolation
+
+- Found: PTY list responses and delayed SSE frames could outlive the panel, while close actions used rendered state and could issue duplicate DELETE requests during the same event turn.
+- Fixed: add mounted/request invalidation, ignore post-disposal terminal events, and add a synchronous close lock while preserving reconnect feedback.
+- Verification: PtyPanel tests passed (13/13), including duplicate-close and late-SSE coverage; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: terminal transports need explicit disposal checks at every event boundary, not only `EventSource.close()` in cleanup.
+
+## 2026-08-01: Claude Auth profile dependency
+
+- Did: added `claudeAuth` to profile setup settings and make new profiles restore `opencode-claude-auth@latest` in their plugin list by default, alongside the existing Cursor ACP setup.
+- Why: Claude OAuth is supplied by that plugin, so deleting it removes Anthropic's OAuth method from `/provider/auth`. Existing custom plugin entries remain untouched.
+- Lesson: profile-scoped auth dependencies must be restored from setup defaults rather than relying on a user's current global plugin list.
+
 ## 2026-08-01: Claude OAuth plugin removal diagnosis
 
 - やったこと: Claude認証の再試行時にOpenCodeの `/provider/auth` を実測し、Anthropicの認証方式自体が応答から消えていることを確認した。デバッグ計装は診断後に除去した。

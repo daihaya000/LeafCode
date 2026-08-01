@@ -53,9 +53,12 @@ export function PtyPanel({ directory }: { directory: string }) {
   const sseRef = useRef<EventSource | null>(null);
   const refreshRequestRef = useRef(0);
   const creatingRef = useRef(false);
+  const closingRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
 
   /** Refresh the PTY session list from the BFF. */
   const refresh = useCallback(async () => {
+    if (!mountedRef.current) return;
     const requestId = ++refreshRequestRef.current;
     setRefreshing(true);
     try {
@@ -67,20 +70,32 @@ export function PtyPanel({ directory }: { directory: string }) {
       if (!res.ok) {
         throw new Error(data.error ?? `list failed: ${res.status}`);
       }
-      if (requestId !== refreshRequestRef.current) return;
+      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       setSessions(Array.isArray(data?.sessions) ? data.sessions : []);
       setError(null);
     } catch (err) {
-      if (requestId !== refreshRequestRef.current) return;
+      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       setError(
         err instanceof Error
           ? err.message
           : "PTY セッション一覧を取得できません",
       );
     } finally {
-      if (requestId === refreshRequestRef.current) setRefreshing(false);
+      if (mountedRef.current && requestId === refreshRequestRef.current) {
+        setRefreshing(false);
+      }
     }
   }, [directory]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      refreshRequestRef.current += 1;
+      sseRef.current?.close();
+      termRef.current?.dispose();
+    };
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -149,17 +164,19 @@ export function PtyPanel({ directory }: { directory: string }) {
       });
       const created = (await res.json()) as { id?: string; error?: string };
       if (!res.ok) throw new Error(created.error ?? `create failed: ${res.status}`);
+      if (!mountedRef.current) return;
       await refresh();
-      if (created.id) {
+      if (mountedRef.current && created.id) {
         setActiveId(created.id);
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(
         err instanceof Error ? err.message : "PTY セッションを作成できません",
       );
     } finally {
       creatingRef.current = false;
-      setCreating(false);
+      if (mountedRef.current) setCreating(false);
     }
   }, [directory, refresh]);
 
@@ -195,10 +212,12 @@ export function PtyPanel({ directory }: { directory: string }) {
       sseRef.current = source;
 
       source.onopen = () => {
+        if (disposed) return;
         retries = 0;
         setReconnecting(false);
       };
       source.onmessage = (ev) => {
+        if (disposed) return;
         try {
           const payload = JSON.parse(ev.data) as { t?: string; d?: string };
           if (payload?.t === "o" && typeof payload.d === "string") {
@@ -206,7 +225,7 @@ export function PtyPanel({ directory }: { directory: string }) {
           } else if (payload?.t === "exit") {
             terminated = true;
             source.close();
-            setActiveId(null);
+            if (mountedRef.current) setActiveId(null);
             void refresh();
           }
         } catch {
@@ -267,14 +286,15 @@ export function PtyPanel({ directory }: { directory: string }) {
       es?.close();
       disposable.dispose();
       resizeDisposable.dispose();
-      setReconnecting(false);
+      if (mountedRef.current) setReconnecting(false);
     };
   }, [activeId, directory, mountTerminal, refresh]);
 
   /** Close a PTY session (BFF → Engine DELETE). */
   const closeSession = useCallback(
     async (ptyId: string) => {
-      if (closingId) return;
+      if (closingRef.current) return;
+      closingRef.current = ptyId;
       setClosingId(ptyId);
       try {
         const res = await fetch(
@@ -283,7 +303,7 @@ export function PtyPanel({ directory }: { directory: string }) {
         );
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) throw new Error(data.error ?? `close failed: ${res.status}`);
-        if (activeId === ptyId) {
+        if (mountedRef.current && activeId === ptyId) {
           sseRef.current?.close();
           termRef.current?.dispose();
           termRef.current = null;
@@ -291,11 +311,15 @@ export function PtyPanel({ directory }: { directory: string }) {
         }
         await refresh();
       } catch (err) {
+        if (!mountedRef.current) return;
         setError(
           err instanceof Error ? err.message : "PTY 繧ｻ繝・す繝ｧ繝ｳ縺ｮ邨ｭ豁ｳ縺ｫ螟ｱ謨励＠縺ｾ縺励◆",
         );
       } finally {
-        setClosingId(null);
+        if (closingRef.current === ptyId) {
+          closingRef.current = null;
+          if (mountedRef.current) setClosingId(null);
+        }
       }
     },
     [activeId, closingId, directory, refresh],

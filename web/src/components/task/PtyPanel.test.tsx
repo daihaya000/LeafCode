@@ -179,6 +179,44 @@ describe("PtyPanel", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
+  it("does not delete the same PTY twice before the first close settles", async () => {
+    mockFetchJson(200, {
+      sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
+    });
+    fetchMock.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+
+    render(<PtyPanel directory="C:/proj" />);
+    const closeButton = await screen.findByTestId("close-pty-pty_1");
+    fireEvent.click(closeButton);
+    fireEvent.click(closeButton);
+
+    expect(
+      fetchMock.mock.calls.filter(([url, init]) =>
+        String(url).includes("/api/pty-session") && init?.method === "DELETE",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("ignores SSE output after the terminal is unmounted", async () => {
+    mockFetchJson(200, {
+      sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
+    });
+
+    const { unmount } = render(<PtyPanel directory="C:/proj" />);
+    fireEvent.click(await screen.findByText("bash"));
+    await waitFor(() => expect(eventSourceInstances.length).toBe(1));
+    unmount();
+    eventSourceInstances[0].onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({ t: "o", d: "late output" }),
+      }),
+    );
+
+    expect(writeMock).not.toHaveBeenCalledWith("late output");
+  });
+
   it("opens the SSE stream when a session tab is clicked", async () => {
     mockFetchJson(200, {
       sessions: [{ id: "pty_1", title: "bash", cwd: "/proj", status: "running" }],
