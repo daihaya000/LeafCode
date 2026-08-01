@@ -1104,6 +1104,7 @@ export function SettingsView() {
                 <input
                   value={newRoot}
                   onChange={(e) => setNewRoot(e.target.value)}
+                  aria-label="追加する許可ルート"
                   placeholder="C:\path\to\allow"
                   className="h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong"
                   onKeyDown={(e) => {

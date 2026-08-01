@@ -462,6 +462,7 @@ export function AddProjectButton({
               <input
                 value={manualPath}
                 onChange={(e) => setManualPath(e.target.value)}
+                aria-label="追加するプロジェクトのパス"
                 placeholder="またはパスを入力 C:\path\to\repo"
                 className="h-10 w-full rounded-lg border border-border bg-bg px-3 font-mono text-xs outline-none focus:border-border-strong"
                 onKeyDown={(e) => {

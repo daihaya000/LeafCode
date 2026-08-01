@@ -4092,3 +4092,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: label it with the project name and state-aware action (`お気に入りに追加` / `お気に入りから外す`) and added a Settings regression assertion.
 - Verification: SettingsView tests passed (25/25); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: stateful icon toggles need both the affected resource and the resulting action in their accessible name.
+
+## 2026-08-01: Form input labeling audit
+
+- Found: Add Project's manual path field and Settings' allowed-root field relied on placeholders without a persistent accessible name.
+- Fixed: add explicit labels (`追加するプロジェクトのパス` and `追加する許可ルート`) and update the AddProject regression helper to query the semantic label rather than the placeholder.
+- Verification: AddProjectButton tests passed (18/18) and SettingsView tests passed (25/25); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: placeholders are examples, not labels; every editable field needs a stable purpose name that remains available after input.

@@ -91,7 +91,7 @@ afterEach(() => {
 });
 
 function getInput() {
-  return screen.getByPlaceholderText("またはパスを入力 C:\\path\\to\\repo") as HTMLInputElement;
+  return screen.getByRole("textbox", { name: "追加するプロジェクトのパス" }) as HTMLInputElement;
 }
 
 function openDialog() {
