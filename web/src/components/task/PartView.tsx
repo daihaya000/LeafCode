@@ -527,7 +527,7 @@ function FileImagePreview({
               setExpanded(false);
             }}
             aria-label="閉じる"
-            className="absolute right-4 top-4 rounded-full bg-bg/80 p-2 text-muted hover:text-text"
+            className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-bg/80 p-2 text-muted hover:text-text"
           >
             <X className="h-5 w-5" />
           </button>

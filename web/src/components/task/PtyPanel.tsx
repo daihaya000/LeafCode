@@ -371,7 +371,7 @@ export function PtyPanel({ directory }: { directory: string }) {
           type="button"
           onClick={() => void createSession()}
           disabled={creating}
-          className="ml-auto inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[11px] text-muted transition hover:bg-surface-3 disabled:opacity-50"
+          className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[11px] text-muted transition hover:bg-surface-3 disabled:opacity-50 md:min-h-7"
         >
           <Plus className="h-3 w-3" />
           新規
@@ -410,7 +410,7 @@ export function PtyPanel({ directory }: { directory: string }) {
                 data-testid={`close-pty-${s.id}`}
                 disabled={closingId !== null}
                 onClick={() => void closeSession(s.id)}
-                className="inline-flex min-h-[28px] min-w-[32px] items-center justify-center rounded-r-md text-faint transition hover:bg-surface-3 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-r-md text-faint transition hover:bg-surface-3 hover:text-text disabled:cursor-not-allowed disabled:opacity-40 md:min-h-[28px] md:min-w-[32px]"
               >
                 <X className="h-3 w-3" />
               </button>

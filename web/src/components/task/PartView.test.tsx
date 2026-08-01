@@ -81,6 +81,8 @@ describe("PartView file attachments", () => {
 
     const dialog = screen.getByRole("dialog", { name: "focus.jpg" });
     const close = screen.getByRole("button", { name: "閉じる" });
+    expect(close.className).toContain("h-11");
+    expect(close.className).toContain("w-11");
     expect(document.activeElement).toBe(close);
 
     close.focus();

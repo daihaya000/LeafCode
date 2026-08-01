@@ -4199,6 +4199,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: Sidebar tests passed (38/38); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: destructive icon actions in dense lists still need a touch-sized hit area; only the visual icon should remain compact.
 
+## 2026-08-01: PTY and lightbox touch targets
+
+- Found: PTY new/close controls and the image lightbox close control were compact desktop-sized targets on mobile, making terminal and image actions easy to miss.
+- Fixed: enlarge these controls to 44px on mobile while retaining compact desktop sizing for PTY controls; added regression assertions.
+- Verification: PTY and PartView tests passed (25/25); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: touch sizing should be applied to every interaction surface, including transient overlays and embedded terminal controls, not only primary navigation.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

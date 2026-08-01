@@ -170,6 +170,8 @@ describe("PtyPanel", () => {
     render(<PtyPanel directory="C:/proj" />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const createButton = screen.getAllByRole("button")[0]!;
+    expect(createButton.className).toContain("min-h-11");
+    expect(createButton.className).toContain("md:min-h-7");
     fireEvent.click(createButton);
     fireEvent.click(createButton);
 
@@ -192,6 +194,8 @@ describe("PtyPanel", () => {
 
     render(<PtyPanel directory="C:/proj" />);
     const closeButton = await screen.findByTestId("close-pty-pty_1");
+    expect(closeButton.className).toContain("min-h-11");
+    expect(closeButton.className).toContain("min-w-11");
     fireEvent.click(closeButton);
     fireEvent.click(closeButton);
 
