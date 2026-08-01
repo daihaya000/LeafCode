@@ -96,7 +96,8 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
       if (cancelled) return;
       pollAttempts.current += 1;
       try {
-        await refreshConnection();
+        const nextConnected = await refreshConnection();
+        if (nextConnected) return;
       } catch {
         // Keep the authentication window usable while the engine is restarting.
       }
@@ -114,7 +115,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
   }, [refreshConnection, state]);
 
   const start = async () => {
-    if (methodIndex === null) return;
+    if (methodIndex === null || state === "starting" || state === "waiting") return;
     const popup = window.open("about:blank", "openai-auth", "noopener,noreferrer");
     setState("starting");
     setError(null);

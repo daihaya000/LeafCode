@@ -66,7 +66,10 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
     const poll = async () => {
       if (cancelled) return;
       attempts.current += 1;
-      try { await refresh(); } catch { /* The engine may restart during OAuth. */ }
+      try {
+        const nextConnected = await refresh();
+        if (nextConnected) return;
+      } catch { /* The engine may restart during OAuth. */ }
       if (attempts.current >= POLL_MAX_ATTEMPTS && !cancelled) {
         setState("ready");
         setError("認証完了を確認できませんでした。認証後に再確認してください。");
@@ -78,7 +81,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
   }, [refresh, state]);
 
   const start = async () => {
-    if (methodIndex === null) return;
+    if (methodIndex === null || state === "starting" || state === "waiting") return;
     const popup = window.open("about:blank", "claude-auth", "noopener,noreferrer");
     setState("starting");
     setError(null);

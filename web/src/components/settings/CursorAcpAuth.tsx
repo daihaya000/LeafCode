@@ -29,7 +29,7 @@ export function CursorAcpAuth() {
   useEffect(() => { void load(); }, []);
 
   const save = async () => {
-    if (!key.trim()) return;
+    if (!key.trim() || state === "saving") return;
     setState("saving");
     setMessage(null);
     try {

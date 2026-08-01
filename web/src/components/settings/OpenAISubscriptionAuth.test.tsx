@@ -89,4 +89,27 @@ describe("OpenAISubscriptionAuth", () => {
       await screen.findByRole("link", { name: /認証ページを開く/ }),
     ).toBeTruthy();
   });
+
+  it("does not start a second browser authentication while the first is pending", async () => {
+    mockApi(false);
+    let resolveAuthorization!: (value: unknown) => void;
+    sendJson.mockReturnValue(
+      new Promise((resolve) => {
+        resolveAuthorization = resolve;
+      }),
+    );
+    vi.spyOn(window, "open").mockReturnValue(null);
+
+    render(<OpenAISubscriptionAuth />);
+    const button = await screen.findByRole("button", { name: "ブラウザで認証" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(sendJson).toHaveBeenCalledTimes(1);
+    resolveAuthorization({
+      url: "https://auth.openai.com/oauth/authorize?state=test",
+      method: "auto",
+    });
+    await waitFor(() => expect(screen.getByRole("link", { name: /認証ページを開く/ })).toBeTruthy());
+  });
 });

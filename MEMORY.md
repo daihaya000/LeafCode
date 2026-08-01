@@ -3455,3 +3455,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add per-section load generations, same-item action guards, restart/save handler guards, and preserve independent-row interaction behavior.
 - Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: extension settings contain independent collections, so concurrency protection should be scoped per collection and item rather than disabling the entire page unnecessarily.
+
+## 2026-08-01: Subscription auth state transitions
+
+- Found: the final OAuth polling attempt could successfully detect a connection and then immediately overwrite it with a timeout error; auth start/save handlers also relied only on disabled button rendering.
+- Fixed: preserve a successful poll result, add internal start guards for OpenAI/Claude, and guard Cursor credential saves against re-entry.
+- Verification: OpenAISubscriptionAuth tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: polling completion must return early on success before timeout bookkeeping, and authentication actions need function-level idempotency.
