@@ -3553,3 +3553,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a scope-aware in-flight guard; a new directory/session/task-call scope can still invalidate and start its own refresh.
 - Verification: NestedAgentPanel tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: polling guards should be keyed to the resource scope so backpressure prevents duplicate work without delaying legitimate updates after navigation.
+
+## 2026-08-01: Goal Loop refresh ordering
+
+- Found: TaskView's Goal Loop polling could overlap while a slow response was pending, and it had only a task-id check, so same-task older responses could overwrite newer loop state.
+- Fixed: add task-scoped in-flight backpressure plus request generations for both success and error updates.
+- Verification: TaskView tests passed (103/103); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: polling state needs both transport backpressure and response ordering; either one alone leaves a stale-state or request-amplification path.

@@ -507,10 +507,16 @@ describe("TaskView", () => {
       updatedAt: "2026-07-18T00:00:00Z",
     };
     let loopPolls = 0;
+    let releaseLoopPoll!: (value: unknown) => void;
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/sidepanel-width") return Promise.resolve({ value: null });
       if (path === "/api/tasks/ws1/goal-loop") {
         loopPolls += 1;
+        if (loopPolls === 1) {
+          return new Promise((resolve) => {
+            releaseLoopPoll = resolve;
+          });
+        }
         return Promise.resolve({ loop });
       }
       return Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2), goalLoop: loop });
@@ -524,6 +530,10 @@ describe("TaskView", () => {
     });
 
     expect(loopPolls).toBe(1);
+    releaseLoopPoll({ loop });
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("auto-rejects task permission when subagent is denied, leaving others manual", async () => {

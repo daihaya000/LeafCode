@@ -464,6 +464,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const taskRef = useRef<TaskSummary | null>(null);
   const taskIdRef = useRef(taskId);
   const refreshSequenceRef = useRef(0);
+  const goalLoopRefreshSequenceRef = useRef(0);
+  const goalLoopRefreshBusyRef = useRef<string | null>(null);
   if (taskIdRef.current !== taskId) {
     taskIdRef.current = taskId;
     taskRef.current = readCachedTaskSummary(taskId);
@@ -1393,17 +1395,36 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [taskId]);
 
   const refreshGoalLoop = useCallback(async () => {
+    const requestedTaskId = taskId;
+    if (goalLoopRefreshBusyRef.current === requestedTaskId) return;
+    goalLoopRefreshBusyRef.current = requestedTaskId;
+    const sequence = ++goalLoopRefreshSequenceRef.current;
     try {
       const data = await getJson<{ loop: GoalLoopDto | null }>(
         `/api/tasks/${taskId}/goal-loop`,
       );
-      if (taskIdRef.current !== taskId) return;
+      if (
+        sequence !== goalLoopRefreshSequenceRef.current ||
+        taskIdRef.current !== requestedTaskId
+      ) {
+        return;
+      }
       setGoalLoop(data.loop ?? null);
       setGoalLoopError(null);
     } catch (err) {
+      if (
+        sequence !== goalLoopRefreshSequenceRef.current ||
+        taskIdRef.current !== requestedTaskId
+      ) {
+        return;
+      }
       setGoalLoopError(
         err instanceof Error ? err.message : "ループを読み込めません",
       );
+    } finally {
+      if (goalLoopRefreshBusyRef.current === requestedTaskId) {
+        goalLoopRefreshBusyRef.current = null;
+      }
     }
   }, [taskId]);
 
