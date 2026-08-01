@@ -56,6 +56,23 @@ describe("attentionQueueReducer", () => {
     expect(state.items).toHaveLength(1);
   });
 
+  it("keeps same request ids separate across sessions and kinds", () => {
+    let state: AttentionQueueState = { items: [], tasks: [] };
+    state = attentionQueueReducer(state, {
+      kind: "add",
+      item: questionItem("/a", "s1", "shared"),
+    });
+    state = attentionQueueReducer(state, {
+      kind: "add",
+      item: questionItem("/a", "s2", "shared"),
+    });
+    state = attentionQueueReducer(state, {
+      kind: "add",
+      item: permissionItem("/a", "s1", "shared"),
+    });
+    expect(state.items).toHaveLength(3);
+  });
+
   it("removes permissions matching active scope", () => {
     let state: AttentionQueueState = { items: [], tasks: [] };
     state = attentionQueueReducer(state, { kind: "add", item: permissionItem("/a", "s1", "p1") });
@@ -188,6 +205,13 @@ describe("attention busy stickiness and 404 replied handling", () => {
     });
 
     expect(result.current.items).toHaveLength(0);
+  });
+
+  it("does not suppress the same id in a different session", () => {
+    const { result } = renderHook(() => useAttentionQueue(null));
+    act(() => result.current.remove("shared", "s1"));
+    act(() => result.current.add(questionItem("/a", "s2", "shared")));
+    expect(result.current.items).toHaveLength(1);
   });
 
   it("keeps a permission in queue when sync fails (busy does not stick)", () => {

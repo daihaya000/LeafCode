@@ -3,36 +3,42 @@
 const STORE = new Map<string, number>();
 const TTL_MS = 60_000;
 
+function storeKey(requestId: string, sessionID?: string): string {
+  return `${sessionID ?? ""}\u0000${requestId}`;
+}
+
 function prune(now: number) {
   for (const [id, at] of STORE) {
     if (now - at > TTL_MS) STORE.delete(id);
   }
 }
 
-export function rememberReplied(requestId: string) {
+export function rememberReplied(requestId: string, sessionID?: string) {
   const now = Date.now();
-  STORE.set(requestId, now);
+  STORE.set(storeKey(requestId, sessionID), now);
   prune(now);
 }
 
-export function wasRecentlyReplied(requestId: string): boolean {
+export function wasRecentlyReplied(requestId: string, sessionID?: string): boolean {
   const now = Date.now();
-  const at = STORE.get(requestId);
+  const key = storeKey(requestId, sessionID);
+  const at = STORE.get(key);
   if (at === undefined) return false;
   if (now - at > TTL_MS) {
-    STORE.delete(requestId);
+    STORE.delete(key);
     return false;
   }
   return true;
 }
 
-export function dropRecentlyReplied<T extends { id: string }>(rows: T[]): T[] {
+export function dropRecentlyReplied<T extends { id: string; sessionID?: string }>(rows: T[]): T[] {
   const now = Date.now();
   return rows.filter((r) => {
-    const at = STORE.get(r.id);
+    const key = storeKey(r.id, r.sessionID);
+    const at = STORE.get(key);
     if (at === undefined) return true;
     if (now - at > TTL_MS) {
-      STORE.delete(r.id);
+      STORE.delete(key);
       return true;
     }
     return false;

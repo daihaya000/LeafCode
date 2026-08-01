@@ -3602,3 +3602,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: exclude the already-answered request from the full-access sweep and add a modal-level mutation lock shared by normal and bulk responses.
 - Verification: AttentionQueueModal tests passed (12/12), including exact single-response coverage; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: bulk actions launched from a per-item response must explicitly exclude the initiating item because queue removal is not synchronously visible inside the existing closure.
+
+## 2026-08-01: Attention identity scoping
+
+- Found: global attention deduplication, REST reconciliation, auto-reply failure state, and recently-replied suppression keyed requests by ID alone, so identical IDs from different sessions or kinds could be dropped or cross-suppressed.
+- Fixed: use composite attention identity and session-scoped reply memory across the global queue and session stream; added collision and isolation regression tests.
+- Verification: useAttentionQueue/recently-replied tests passed (26/26); GlobalAttentionProvider tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: request IDs are only locally unique; every queue, retry, and cache boundary must preserve directory, session, and request kind.

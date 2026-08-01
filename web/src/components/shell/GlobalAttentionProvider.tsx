@@ -22,6 +22,7 @@ import {
   isResolvedEvent,
   normalizeOcList,
   replyPath,
+  attentionItemKey,
   type AttentionItem,
   type AttentionScope,
 } from "@/lib/attention";
@@ -207,6 +208,7 @@ export function GlobalAttentionProvider({
         item.request.id,
         fullAccess,
         autoReplyFailedIds,
+        attentionItemKey(item),
       );
     });
   }, [items, subagentPermission, skillPermission, fullAccess, autoReplyFailedIds]);
@@ -223,8 +225,9 @@ export function GlobalAttentionProvider({
     }
     for (const item of items) {
       if (item.kind !== "permission") continue;
-      if (autoReplyIdsRef.current.has(item.request.id)) continue;
-      if (autoReplyFailedIds.has(item.request.id)) continue;
+      const itemKey = attentionItemKey(item);
+      if (autoReplyIdsRef.current.has(itemKey)) continue;
+      if (autoReplyFailedIds.has(itemKey)) continue;
       const action = permissionAutoAction({
         permission: item.request.permission,
         subagent: subagentPermission,
@@ -232,7 +235,7 @@ export function GlobalAttentionProvider({
         fullAccess,
       });
       if (action === "manual") continue;
-      autoReplyIdsRef.current.add(item.request.id);
+      autoReplyIdsRef.current.add(itemKey);
       const reply = action === "reject" ? "reject" : "once";
       void ocJson(replyPath(item), item.directory, {
         method: "POST",
@@ -244,19 +247,19 @@ export function GlobalAttentionProvider({
       })
         .then(() => {
           setAutoReplyFailedIds((prev) => {
-            if (!prev.has(item.request.id)) return prev;
+            if (!prev.has(itemKey)) return prev;
             const next = new Set(prev);
-            next.delete(item.request.id);
+            next.delete(itemKey);
             return next;
           });
           remove(item.request.id, item.request.sessionID);
         })
         .catch(() => {
-          autoReplyIdsRef.current.delete(item.request.id);
+          autoReplyIdsRef.current.delete(itemKey);
           setAutoReplyFailedIds((prev) => {
-            if (prev.has(item.request.id)) return prev;
+            if (prev.has(itemKey)) return prev;
             const next = new Set(prev);
-            next.add(item.request.id);
+            next.add(itemKey);
             return next;
           });
         });
@@ -378,20 +381,24 @@ export function GlobalAttentionProvider({
         const questionById = new Map<string, AttentionItem>();
         if (questionsOk) {
           for (const q of questions.map((q) => toQuestionItem(directory, q))) {
-            questionById.set(q.request.id, q);
+            questionById.set(`${q.request.sessionID}\u0000${q.request.id}`, q);
           }
         }
-        for (const q of v2Questions) questionById.set(q.request.id, q);
+        for (const q of v2Questions) {
+          questionById.set(`${q.request.sessionID}\u0000${q.request.id}`, q);
+        }
 
         const permissionById = new Map<string, AttentionItem>();
         if (permissionsOk) {
           for (const p of permissions.map((p) =>
             toPermissionItem(directory, p, "v1"),
           )) {
-            permissionById.set(p.request.id, p);
+            permissionById.set(`${p.request.sessionID}\u0000${p.request.id}`, p);
           }
         }
-        for (const p of v2Permissions) permissionById.set(p.request.id, p);
+        for (const p of v2Permissions) {
+          permissionById.set(`${p.request.sessionID}\u0000${p.request.id}`, p);
+        }
 
         const keepQuestionSessionIds = questionsOk
           ? []
@@ -421,7 +428,7 @@ export function GlobalAttentionProvider({
     // Track previous item IDs to detect new arrivals even when count stays same
     // (e.g., 1 resolved + 1 arrived simultaneously)
     const previousIds = previousItemIdsRef.current;
-    const currentIds = new Set(actionableItems.map((item) => item.request.id));
+    const currentIds = new Set(actionableItems.map(attentionItemKey));
     previousItemIdsRef.current = currentIds;
 
     if (actionableItems.length === 0) {
@@ -430,7 +437,7 @@ export function GlobalAttentionProvider({
     }
 
     // Check if any new IDs appeared (not just count increase)
-    const hasNewItems = actionableItems.some((item) => !previousIds.has(item.request.id));
+    const hasNewItems = actionableItems.some((item) => !previousIds.has(attentionItemKey(item)));
     if (hasNewItems) autoOpenedRef.current = false;
 
     if (autoOpenedRef.current) return;

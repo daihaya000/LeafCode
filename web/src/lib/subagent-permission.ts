@@ -84,6 +84,7 @@ export function isActionableAttentionPermission(
   requestId: string,
   fullAccess: boolean,
   failedAutoIds: ReadonlySet<string>,
+  requestKey = requestId,
 ): boolean {
   const action = permissionAutoAction({
     permission,
@@ -92,6 +93,6 @@ export function isActionableAttentionPermission(
     fullAccess,
   });
   if (action === "manual") return true;
-  if (failedAutoIds.has(requestId)) return true;
+  if (failedAutoIds.has(requestKey)) return true;
   return false;
 }

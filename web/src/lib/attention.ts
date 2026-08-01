@@ -6,6 +6,11 @@ export type AttentionItem =
 
 export type AttentionScope = { directory: string; sessionId: string };
 
+/** Stable identity for one pending request across SSE and REST sources. */
+export function attentionItemKey(item: AttentionItem): string {
+  return `${item.kind}\u0000${item.directory}\u0000${item.request.sessionID}\u0000${item.request.id}`;
+}
+
 export function scopeKey(scope: AttentionScope): string {
   return `${scope.directory}\u0000${scope.sessionId}`;
 }

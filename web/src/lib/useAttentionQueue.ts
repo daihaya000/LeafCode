@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { getJson } from "./client";
 import type { AttentionItem, AttentionScope } from "./attention";
-import { scopeKey } from "./attention";
+import { attentionItemKey, scopeKey } from "./attention";
 import { rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import type { TaskSummary } from "./types";
 
@@ -59,7 +59,7 @@ export function attentionQueueReducer(
 ): AttentionQueueState {
   switch (action.kind) {
     case "add": {
-      if (state.items.some((i) => i.request.id === action.item.request.id)) {
+      if (state.items.some((i) => attentionItemKey(i) === attentionItemKey(action.item))) {
         return state;
       }
       return { ...state, items: [...state.items, action.item] };
@@ -85,11 +85,11 @@ export function attentionQueueReducer(
     case "reconcileDirectory": {
       const syncQuestions = action.questions !== undefined;
       const syncPermissions = action.permissions !== undefined;
-      const questionIds = new Set(
-        (action.questions ?? []).map((q) => q.request.id),
+      const questionKeys = new Set(
+        (action.questions ?? []).map((q) => `${q.request.sessionID}\u0000${q.request.id}`),
       );
-      const permissionIds = new Set(
-        (action.permissions ?? []).map((p) => p.request.id),
+      const permissionKeys = new Set(
+        (action.permissions ?? []).map((p) => `${p.request.sessionID}\u0000${p.request.id}`),
       );
       const keepQ = new Set(action.keepQuestionSessionIds ?? []);
       const keepP = new Set(action.keepPermissionSessionIds ?? []);
@@ -99,27 +99,27 @@ export function attentionQueueReducer(
           if (!syncQuestions) return true;
           // Prefer the sync copy for the same id (v1→v2 upgrade, parity with
           // useSessionStream permissionsSynced).
-          if (questionIds.has(item.request.id)) return false;
+          if (questionKeys.has(`${item.request.sessionID}\u0000${item.request.id}`)) return false;
           if (keepQ.has(item.request.sessionID)) return true;
           return item.request.receivedAt > action.syncStartedAt;
         }
         if (item.kind === "permission") {
           if (!syncPermissions) return true;
-          if (permissionIds.has(item.request.id)) return false;
+          if (permissionKeys.has(`${item.request.sessionID}\u0000${item.request.id}`)) return false;
           if (keepP.has(item.request.sessionID)) return true;
           return item.request.receivedAt > action.syncStartedAt;
         }
         return true;
       });
       const keptKeys = new Set(
-        kept.map((i) => `${i.kind}:${i.request.id}`),
+        kept.map(attentionItemKey),
       );
       const additions = [
         ...(action.questions ?? []),
         ...(action.permissions ?? []),
       ].filter(
         (item) =>
-          !keptKeys.has(`${item.kind}:${item.request.id}`) &&
+          !keptKeys.has(attentionItemKey(item)) &&
           shouldQueueAttention(item, action.activeScope ?? null),
       );
       return { ...state, items: [...kept, ...additions] };
@@ -141,12 +141,12 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
 
   const add = useCallback((item: AttentionItem) => {
     if (!shouldQueueAttention(item, scopeRef.current)) return;
-    if (wasRecentlyReplied(item.request.id)) return;
+    if (wasRecentlyReplied(item.request.id, item.request.sessionID)) return;
     dispatch({ kind: "add", item });
   }, []);
 
   const remove = useCallback((requestId: string, sessionID?: string) => {
-    rememberReplied(requestId);
+    rememberReplied(requestId, sessionID);
     dispatch({ kind: "remove", requestId, sessionID });
   }, []);
 
@@ -163,7 +163,9 @@ export function useAttentionQueue(activeScope: AttentionScope | null) {
     ) => {
       const drop = (items: AttentionItem[] | undefined) => {
         if (!items) return items;
-        return items.filter((item) => !wasRecentlyReplied(item.request.id));
+        return items.filter(
+          (item) => !wasRecentlyReplied(item.request.id, item.request.sessionID),
+        );
       };
       dispatch({
         kind: "reconcileDirectory",

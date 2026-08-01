@@ -16,4 +16,10 @@ describe("recently-replied", () => {
       ]).map((r) => r.id),
     ).toEqual(["other"]);
   });
+
+  it("scopes remembered ids by session", () => {
+    rememberReplied("same-id", "session-a");
+    expect(wasRecentlyReplied("same-id", "session-a")).toBe(true);
+    expect(wasRecentlyReplied("same-id", "session-b")).toBe(false);
+  });
 });

@@ -1287,7 +1287,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         const id = String(props.id ?? "");
         const sessionID = String(props.sessionID ?? "");
         if (!id || sessionID !== sid) return;
-        if (wasRecentlyReplied(id)) return;
+        if (wasRecentlyReplied(id, sessionID)) return;
         dispatch({
           kind: "permissionAsked",
           request: {
@@ -1307,7 +1307,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         if (!props.sessionID || props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
         if (requestId) {
-          rememberReplied(requestId);
+          rememberReplied(requestId, props.sessionID as string);
           dispatch({ kind: "permissionReplied", requestId });
         }
         return;
@@ -1316,7 +1316,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         const id = String(props.id ?? "");
         const sessionID = String(props.sessionID ?? "");
         if (!id || sessionID !== sid) return;
-        if (wasRecentlyReplied(id)) return;
+        if (wasRecentlyReplied(id, sessionID)) return;
         const questions = (props.questions ?? []) as QuestionInfo[];
         dispatch({
           kind: "questionAsked",
@@ -1339,7 +1339,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         if (!props.sessionID || props.sessionID !== sid) return;
         const requestId = String(props.requestID ?? props.id ?? "");
         if (requestId) {
-          rememberReplied(requestId);
+          rememberReplied(requestId, props.sessionID as string);
           dispatch({ kind: "questionReplied", requestId });
         }
         return;
@@ -2013,7 +2013,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           (err instanceof Error && /404/.test(err.message));
         if (!is404) throw err;
       }
-      rememberReplied(request.id);
+      rememberReplied(request.id, request.sessionID);
       dispatch({ kind: "permissionReplied", requestId: request.id });
     },
     [directory],
@@ -2046,7 +2046,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           (err instanceof Error && /404/.test(err.message));
         if (!is404) throw err;
       }
-      rememberReplied(request.id);
+      rememberReplied(request.id, request.sessionID);
       dispatch({ kind: "questionReplied", requestId: request.id });
     },
     [directory],
@@ -2074,7 +2074,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           (err instanceof Error && /404/.test(err.message));
         if (!is404) throw err;
       }
-      rememberReplied(request.id);
+      rememberReplied(request.id, request.sessionID);
       dispatch({ kind: "questionReplied", requestId: request.id });
     },
     [directory],
