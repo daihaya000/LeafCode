@@ -128,4 +128,40 @@ describe("BrowserBridgeSettings", () => {
 
     expect(screen.queryByText("接続済み")).toBeNull();
   });
+  it("does not overlap background status polls", async () => {
+    let resolveFirst: (value: Response) => void = () => {};
+    timedFetch
+      .mockImplementationOnce(
+        () => new Promise<Response>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockResolvedValue(response({ available: false }));
+    render(<BrowserBridgeSettings />);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(timedFetch).toHaveBeenCalledTimes(1);
+
+    resolveFirst(response({ available: false }));
+    await vi.advanceTimersByTimeAsync(2000);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the newer manual status when an older poll resolves later", async () => {
+    let resolveFirst: (value: Response) => void = () => {};
+    timedFetch
+      .mockImplementationOnce(
+        () => new Promise<Response>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockResolvedValue(response({ available: true, connected: true, paired: true }));
+    render(<BrowserBridgeSettings />);
+    const connect = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent?.includes("URL")) as HTMLButtonElement;
+    fireEvent.click(connect);
+    await waitFor(() => expect(screen.queryByLabelText("Broker URL")).toBeNull());
+
+    resolveFirst(response({ available: false }));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByLabelText("Broker URL")).toBeNull();
+  });
 });

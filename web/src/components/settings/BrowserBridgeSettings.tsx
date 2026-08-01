@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { Badge, Button, cx } from "@/components/ui";
 import { timedFetch } from "@/lib/client";
@@ -48,30 +48,51 @@ export function BrowserBridgeSettings() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [connectionDismissed, setConnectionDismissed] = useState(false);
+  const mountedRef = useRef(false);
+  const statusRequestRef = useRef(0);
+  const pollingRef = useRef(false);
   const hintId = useId();
 
   const fetchStatus = useCallback(async (): Promise<Status | null> => {
+    const requestId = ++statusRequestRef.current;
     try {
       const res = await timedFetch("/api/host/browser-bridge/status", {
         timeoutMs: 3000,
       });
       const data = (await res.json().catch(() => ({}))) as Status;
+      if (!mountedRef.current || requestId !== statusRequestRef.current) return null;
       setStatus(data);
       setError(null);
       return data;
     } catch (err) {
+      if (!mountedRef.current || requestId !== statusRequestRef.current) return null;
       setStatus({ available: false });
       setError(err instanceof Error ? err.message : "接続状態を取得できません");
       return null;
     }
   }, []);
 
+  const pollStatus = useCallback(async () => {
+    if (pollingRef.current) return;
+    pollingRef.current = true;
+    try {
+      await fetchStatus();
+    } finally {
+      pollingRef.current = false;
+    }
+  }, [fetchStatus]);
+
   // Initial load and polling while the component is mounted.
   useEffect(() => {
-    void fetchStatus();
-    const timer = window.setInterval(() => void fetchStatus(), POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [fetchStatus]);
+    mountedRef.current = true;
+    void pollStatus();
+    const timer = window.setInterval(() => void pollStatus(), POLL_MS);
+    return () => {
+      mountedRef.current = false;
+      window.clearInterval(timer);
+      statusRequestRef.current += 1;
+    };
+  }, [pollStatus]);
 
   const isConnected =
     status?.available === true &&

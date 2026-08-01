@@ -3483,3 +3483,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: serialize polling, ignore late state updates, and clean up the copy feedback timer on unmount.
 - Verification: HostLogPanel tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: long-lived settings panels need both interval cleanup and an in-flight guard; clearing an interval alone does not cancel work already awaiting a response.
+
+## 2026-08-01: Browser Bridge status polling consistency
+
+- Found: Browser Bridge settings could overlap background status polls, and an older poll response could overwrite a newer manual connection result or update state after unmount.
+- Fixed: serialize background polls, add latest-request-wins checks, and invalidate requests during cleanup.
+- Verification: BrowserBridgeSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: status panels need the same request-generation discipline as action queues when manual refresh and periodic refresh share one state store.
