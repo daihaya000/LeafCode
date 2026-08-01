@@ -3370,7 +3370,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             type="button"
             aria-label="Auto の選定結果を閉じる"
             onClick={dismissAutoBanner}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-surface-3 hover:text-text"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-surface-3 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
             <X aria-hidden="true" className="h-3.5 w-3.5" />
           </button>

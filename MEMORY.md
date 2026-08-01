@@ -4157,6 +4157,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: TaskView tests passed (105/105); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: when the same destructive action appears in multiple regions, accessible names must describe the scope, not only the verb.
 
+## 2026-08-01: Touch target sizing audit
+
+- Found: the GraphPanel refresh control was 28px square and the Auto-result dismissal control was 24px square, making both easy to miss on touch screens and high-DPI layouts.
+- Fixed: increase the refresh control to 36px, the dismissal control to 32px, and add a visible keyboard focus outline to the latter.
+- Verification: GraphPanel and TaskView tests passed (117/117); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: compact icon controls still need a consistent minimum interaction target; visual density should not shrink the hit area.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

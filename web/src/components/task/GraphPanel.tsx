@@ -423,7 +423,7 @@ export function GraphPanel({
           aria-label="グラフを更新"
           busy={loading}
           disabled={loading || loadingMore}
-          className="h-7 w-7"
+          className="h-9 w-9"
           onClick={() => void load()}
         >
           <RefreshCw className={cx("h-3.5 w-3.5", loading && "animate-spin")} />

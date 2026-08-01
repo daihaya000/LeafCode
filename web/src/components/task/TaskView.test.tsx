@@ -1819,7 +1819,10 @@ describe("TaskView", () => {
       await flushTaskLoad();
 
       expect(screen.getByText(CHIP_TEXT)).toBeTruthy();
-      fireEvent.click(screen.getByLabelText(CLOSE_LABEL));
+      const close = screen.getByLabelText(CLOSE_LABEL);
+      expect(close.classList.contains("h-8")).toBe(true);
+      expect(close.classList.contains("w-8")).toBe(true);
+      fireEvent.click(close);
 
       expect(screen.queryByLabelText(CLOSE_LABEL)).toBeNull();
       expect(screen.queryByText(CHIP_TEXT)).toBeNull();

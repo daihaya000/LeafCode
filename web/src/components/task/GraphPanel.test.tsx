@@ -67,6 +67,14 @@ describe("GraphPanel", () => {
     expect(commitLabel.classList.contains("font-mono")).toBe(true);
   });
 
+  it("keeps the refresh control large enough for touch input", async () => {
+    render(<GraphPanel directory="/repo" />);
+
+    const refresh = await screen.findByRole("button", { name: "グラフを更新" });
+    expect(refresh.classList.contains("h-9")).toBe(true);
+    expect(refresh.classList.contains("w-9")).toBe(true);
+  });
+
   it("shows the commit date in the metadata line", async () => {
     render(<GraphPanel directory="/repo" />);
 
