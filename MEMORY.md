@@ -3574,3 +3574,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: serialize `/api/tasks` health checks with a synchronous in-flight ref while retaining immediate visibility refresh and automatic recovery.
 - Verification: HomeView tests passed (51/51); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: even lightweight health checks need backpressure when multiple lifecycle triggers can call them.
+
+## 2026-08-01: Sidebar persistence ordering
+
+- Found: rapid sidebar geometry/project expansion changes could issue overlapping writes, allowing an older sidebar snapshot to finish after the latest one.
+- Fixed: serialize server persistence writes while keeping localStorage and the visible sidebar state synchronous.
+- Verification: Sidebar tests passed (36/36); sidebar-settings tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: durable UI preferences need the same ordering guarantee as their local optimistic state, especially during drag/resize interactions.

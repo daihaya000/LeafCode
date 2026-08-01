@@ -113,6 +113,41 @@ describe("sidebar-settings server sync", () => {
       });
     });
 
+    it("serializes overlapping writes so the latest geometry is sent last", async () => {
+      let releaseFirst!: (value: unknown) => void;
+      sendJson.mockImplementation((_method: string, _path: string, payload: { value: string }) => {
+        const state = JSON.parse(payload.value) as SidebarState;
+        if (state.width === 280) {
+          return new Promise((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true });
+      });
+      const first = writeSidebarToServer({
+        expanded: ["prj1"],
+        width: 280,
+        archivedExpanded: false,
+      });
+      await Promise.resolve();
+      const second = writeSidebarToServer({
+        expanded: ["prj1", "prj2"],
+        width: 360,
+        archivedExpanded: true,
+      });
+      await Promise.resolve();
+      expect(sendJson).toHaveBeenCalledTimes(1);
+
+      releaseFirst({ ok: true });
+      await Promise.all([first, second]);
+      expect(sendJson).toHaveBeenNthCalledWith(
+        2,
+        "PUT",
+        "/api/settings/sidebar",
+        { value: JSON.stringify({ expanded: ["prj1", "prj2"], width: 360, archivedExpanded: true }) },
+      );
+    });
+
     it("swallows fetch errors", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       sendJson.mockRejectedValue(new Error("network"));

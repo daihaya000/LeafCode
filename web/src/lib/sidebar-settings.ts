@@ -11,6 +11,8 @@
 
 import { getJson, sendJson } from "./client";
 
+let sidebarWriteQueue = Promise.resolve();
+
 export type SidebarState = {
   expanded: string[];
   width: number;
@@ -68,11 +70,18 @@ export async function writeSidebarToServer(
   state: SidebarState,
 ): Promise<void> {
   if (typeof window === "undefined") return;
-  try {
-    await sendJson("PUT", "/api/settings/sidebar", {
-      value: JSON.stringify(state),
-    });
-  } catch (err) {
-    console.warn("writeSidebarToServer failed", err);
-  }
+  const operation = sidebarWriteQueue.then(async () => {
+    try {
+      await sendJson("PUT", "/api/settings/sidebar", {
+        value: JSON.stringify(state),
+      });
+    } catch (err) {
+      console.warn("writeSidebarToServer failed", err);
+    }
+  });
+  sidebarWriteQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  await operation;
 }
