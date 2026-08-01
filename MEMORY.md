@@ -3960,6 +3960,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: GoalLoopPanel tests passed (44/44); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: irreversible task controls need an in-context confirmation surface whose state remains visible and operable without browser-native dialogs.
 
+## 2026-08-01: Message revert confirmation UX
+
+- Found: MessageRevertButton used a native confirmation dialog before hiding the selected message and later content, with no visible in-page warning or keyboard focus lifecycle.
+- Fixed: add an inline confirmation panel, focus its primary action on open, close on Escape, restore focus to the trigger, and keep the asynchronous revert locked against duplicate execution.
+- Verification: SessionActions tests passed (4/4); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: message-history mutations need an explicit, contextual confirmation surface because the impact extends beyond the clicked message.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.

@@ -66,7 +66,6 @@ describe("SessionActions error UX", () => {
 
   it("renders message revert failures as an accessible inline alert", async () => {
     ocJson.mockRejectedValueOnce(new Error("revert failed"));
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
 
     render(
@@ -78,6 +77,7 @@ describe("SessionActions error UX", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("dialog").querySelector("button")!);
 
     const message = await screen.findByRole("alert");
     expect(message.textContent).toBe("revert failed");
@@ -85,5 +85,26 @@ describe("SessionActions error UX", () => {
     await waitFor(() =>
       expect(screen.getByRole("button").getAttribute("aria-busy")).toBeNull(),
     );
+  });
+
+  it("focuses the revert confirmation and closes it with Escape", () => {
+    render(
+      <MessageRevertButton
+        directory="/repo"
+        sessionId="ses-1"
+        messageId="msg-1"
+        messages={messages}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "入力欄に戻す" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog");
+    const confirm = dialog.querySelector("button") as HTMLElement;
+    expect(document.activeElement).toBe(confirm);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });

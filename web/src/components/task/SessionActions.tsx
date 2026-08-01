@@ -212,8 +212,11 @@ export function MessageRevertButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const busyRef = useRef(false);
   const mountedRef = useRef(false);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -222,51 +225,106 @@ export function MessageRevertButton({
     };
   }, []);
 
+  useEffect(() => {
+    if (!confirmOpen) {
+      if (
+        triggerRef.current?.isConnected &&
+        (document.activeElement === document.body || document.activeElement === null)
+      ) {
+        triggerRef.current.focus();
+      }
+      triggerRef.current = null;
+      return;
+    }
+    confirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setConfirmOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [confirmOpen]);
+
+  const performRevert = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const text = await revertUserMessageToComposer(
+        directory,
+        sessionId,
+        messageId,
+        messages,
+      );
+      if (!mountedRef.current) return;
+      onRestoreText?.(text);
+      onDone?.();
+    } catch (err) {
+      if (mountedRef.current) setError(
+        err instanceof Error ? err.message : "巻き戻しに失敗しました",
+      );
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
+  };
+
   return (
     <div className="flex max-w-full flex-col items-end gap-1">
       <button
+        ref={triggerRef}
         type="button"
-        disabled={disabled || busy}
+        disabled={disabled || busy || confirmOpen}
         aria-busy={busy || undefined}
+        aria-expanded={confirmOpen}
+        aria-controls="message-revert-confirm"
         title="このコメントを入力欄に戻して巻き戻す"
         onClick={() => {
-          void (async () => {
-            if (busyRef.current) return;
-            if (
-              !window.confirm(
-                "このコメントを下の入力欄に戻し、ここ以降を巻き戻しますか？",
-              )
-            ) {
-              return;
-            }
-            busyRef.current = true;
-            setBusy(true);
-            setError(null);
-            try {
-              const text = await revertUserMessageToComposer(
-                directory,
-                sessionId,
-                messageId,
-                messages,
-              );
-              if (!mountedRef.current) return;
-              onRestoreText?.(text);
-              onDone?.();
-            } catch (err) {
-              if (mountedRef.current) setError(
-                err instanceof Error ? err.message : "巻き戻しに失敗しました",
-              );
-            } finally {
-              busyRef.current = false;
-              if (mountedRef.current) setBusy(false);
-            }
-          })();
+          triggerRef.current = document.activeElement instanceof HTMLButtonElement
+            ? document.activeElement
+            : null;
+          setConfirmOpen(true);
         }}
         className={REVERT_BUTTON_BASE}
       >
         <RotateCcw className={busy ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
         入力欄に戻す
       </button>
+      {confirmOpen && (
+        <div
+          ref={confirmRef}
+          id="message-revert-confirm"
+          role="dialog"
+          aria-label="メッセージ巻き戻しの確認"
+          aria-describedby="message-revert-confirm-description"
+          className="max-w-[min(22rem,80vw)] rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-right text-[11px] text-warning"
+        >
+          <p id="message-revert-confirm-description">
+            このコメントを入力欄に戻し、ここ以降を巻き戻しますか？
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                setConfirmOpen(false);
+                void performRevert();
+              }}
+            >
+              巻き戻す
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmOpen(false)}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </div>
+      )}
       {error && (
         <p role="alert" className="max-w-[min(22rem,80vw)] break-words text-right text-[11px] text-danger">
           {error}
