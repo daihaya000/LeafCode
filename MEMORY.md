@@ -3903,3 +3903,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: connect each commit row to its file detail region, reset the detail busy set safely on unmount, and stabilize the PTY close callback dependencies.
 - Verification: GraphPanel and PtyPanel tests passed (25/25); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 10 to 8.
 - Lesson: expandable visual rows and async cleanup both need explicit state boundaries that remain valid after rerender or unmount.
+
+## 2026-08-01: Extensions action callback stability
+
+- Found: extension toggle/delete callbacks used `busyId` state only through a ref-backed lock, causing unnecessary callback invalidation whenever the busy row changed.
+- Fixed: depend only on the actual loader used by the callbacks; the synchronous ref lock still prevents duplicate mutations and the rendered state remains accurate.
+- Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 8 to 6.
+- Lesson: keep async mutation locks in refs when they are intentionally synchronous, and do not couple their callbacks to redundant render state.

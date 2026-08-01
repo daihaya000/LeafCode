@@ -305,7 +305,7 @@ function useExtensionSection<T extends { id: string }>(
         }
       }
     },
-    [busyId, load],
+    [load],
   );
 
   const remove = useCallback(
@@ -330,7 +330,7 @@ function useExtensionSection<T extends { id: string }>(
         }
       }
     },
-    [busyId, load],
+    [load],
   );
 
   return { status, items, truncated, error, busyId, actionError, load, toggle, remove };
