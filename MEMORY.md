@@ -3609,3 +3609,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: use composite attention identity and session-scoped reply memory across the global queue and session stream; added collision and isolation regression tests.
 - Verification: useAttentionQueue/recently-replied tests passed (26/26); GlobalAttentionProvider tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: request IDs are only locally unique; every queue, retry, and cache boundary must preserve directory, session, and request kind.
+
+## 2026-08-01: Browser Bridge approval re-entry
+
+- Found: approval and pairing actions used rendered busy state as their only duplicate-submit guard, allowing same-tick double clicks to issue two POST requests; polling could also resolve after unmount.
+- Fixed: add a synchronous shared action lock, retain per-card disabled rendering, and invalidate polling responses during cleanup.
+- Verification: BrowserBridgeApprovals tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: approval UI actions need a ref-level lock because the disabled attribute updates only after React renders.

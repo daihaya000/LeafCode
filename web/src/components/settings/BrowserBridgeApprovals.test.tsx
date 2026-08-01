@@ -137,6 +137,24 @@ describe("BrowserBridgeApprovals", () => {
     expect((screen.getByRole("button", { name: "拒否" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("does not submit the same approval twice before the first decision settles", async () => {
+    let resolveDecision!: (value: Response) => void;
+    const pendingDecision = new Promise<Response>((resolve) => {
+      resolveDecision = resolve;
+    });
+    timedFetch
+      .mockResolvedValueOnce(response({ available: true, approvals: [{ approvalId: "approval_duplicate", tool: "browser_click", origin: "https://example.test", createdAt: 1 }] }))
+      .mockResolvedValueOnce(response({ available: true, requests: [] }))
+      .mockReturnValueOnce(pendingDecision);
+    render(<BrowserBridgeApprovals />);
+    const allow = await screen.findByRole("button", { name: "許可" });
+    fireEvent.click(allow);
+    fireEvent.click(allow);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(3));
+    expect(timedFetch.mock.calls.filter(([path]) => path === "/api/host/browser-bridge/approvals/approval_duplicate")).toHaveLength(1);
+    resolveDecision(response({ approvalId: "approval_duplicate", decision: "allow" }));
+  });
+
   it("shows a pending pairing request and forwards an allow decision without any code to type", async () => {
     const requestId = "pairing_request_abcdefghijklmnopqrstuvwxyz";
     timedFetch

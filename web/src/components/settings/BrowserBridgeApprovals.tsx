@@ -23,6 +23,8 @@ export function BrowserBridgeApprovals() {
   const [available, setAvailable] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
   const refreshRequestRef = useRef(0);
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
@@ -34,23 +36,30 @@ export function BrowserBridgeApprovals() {
       const approvalsData = (await approvalsRes.json()) as { approvals?: Approval[]; available?: boolean };
       const pairingData = (await pairingRes.json()) as { requests?: PairingRequest[]; available?: boolean };
       if (!approvalsRes.ok || !pairingRes.ok) throw new Error("Browser Bridgeに接続できません");
-      if (requestId !== refreshRequestRef.current) return;
+      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       setApprovals(Array.isArray(approvalsData.approvals) ? approvalsData.approvals : []);
       setPairingRequests(Array.isArray(pairingData.requests) ? pairingData.requests : []);
       setAvailable(approvalsData.available === true || pairingData.available === true);
       setError(null);
     } catch (err) {
-      if (requestId !== refreshRequestRef.current) return;
+      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       setError(err instanceof Error ? err.message : "承認一覧を取得できません");
     }
   }, []);
   useEffect(() => {
+    mountedRef.current = true;
     void refresh();
     const timer = window.setInterval(() => void refresh(), 2000);
-    return () => window.clearInterval(timer);
+    return () => {
+      mountedRef.current = false;
+      refreshRequestRef.current += 1;
+      window.clearInterval(timer);
+    };
   }, [refresh]);
   const decide = async (approvalId: string, decision: "allow" | "deny") => {
-    if (busy === approvalId) return;
+    const busyKey = `approval:${approvalId}`;
+    if (busyRef.current) return;
+    busyRef.current = busyKey;
     setBusy(approvalId);
     try {
       const res = await timedFetch(`/api/host/browser-bridge/approvals/${approvalId}`, {
@@ -64,11 +73,14 @@ export function BrowserBridgeApprovals() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "承認の更新に失敗しました");
     } finally {
+      busyRef.current = null;
       setBusy(null);
     }
   };
   const decidePairing = async (requestId: string, decision: "allow" | "deny") => {
-    if (busy === requestId) return;
+    const busyKey = `pairing:${requestId}`;
+    if (busyRef.current) return;
+    busyRef.current = busyKey;
     setBusy(requestId);
     try {
       const res = await timedFetch(`/api/host/browser-bridge/pairing/${requestId}`, {
@@ -82,6 +94,7 @@ export function BrowserBridgeApprovals() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "ペアリング要求の更新に失敗しました");
     } finally {
+      busyRef.current = null;
       setBusy(null);
     }
   };
