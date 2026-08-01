@@ -3137,6 +3137,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               variant="ghost"
               size="icon"
               title="ファイルツリー"
+              aria-label="ファイルツリー"
               className={cx(
                 showDiff && sidePanel === "files" && "bg-surface-2 text-text",
               )}
@@ -3150,6 +3151,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               variant="ghost"
               size="icon"
               title="グラフ"
+              aria-label="グラフ"
               className={cx(
                 showDiff && sidePanel === "graph" && "bg-surface-2 text-text",
               )}
@@ -3163,6 +3165,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               variant="ghost"
               size="icon"
               title="Diff パネル"
+              aria-label="Diff パネル"
               className={cx(
                 showDiff && sidePanel === "diff" && "bg-surface-2 text-text",
               )}

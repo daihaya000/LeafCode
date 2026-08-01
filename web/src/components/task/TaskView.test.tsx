@@ -1330,14 +1330,14 @@ describe("TaskView", () => {
     expect(screen.getByRole("button", { name: "再同期" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "ターミナル" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "コンパクト" })).toBeTruthy();
-    expect(screen.getByTitle("ファイルツリー")).toBeTruthy();
-    expect(screen.getByTitle("グラフ")).toBeTruthy();
-    expect(screen.getByTitle("Diff パネル")).toBeTruthy();
+    expect(within(headerActions).getByRole("button", { name: "ファイルツリー" })).toBeTruthy();
+    expect(within(headerActions).getByRole("button", { name: "グラフ" })).toBeTruthy();
+    expect(within(headerActions).getByRole("button", { name: "Diff パネル" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "再同期" }));
     expect(streamMock.resync).toHaveBeenCalledTimes(1);
     // DiffPane only renders when sidePanel === "diff"; open it first.
-    fireEvent.click(screen.getByTitle("Diff パネル"));
+    fireEvent.click(within(headerActions).getByRole("button", { name: "Diff パネル" }));
     fireEvent.click(screen.getByRole("button", { name: "再同期" }));
     expect(diffPaneRefreshKeys).toContain(1);
 
@@ -1399,9 +1399,10 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    expect(screen.queryByTitle("ファイルツリー")).toBeNull();
-    expect(screen.queryByTitle("グラフ")).toBeNull();
-    expect(screen.queryByTitle("Diff パネル")).toBeNull();
+    const headerActions = screen.getByRole("group", { name: "タスク操作" });
+    expect(within(headerActions).queryByRole("button", { name: "ファイルツリー" })).toBeNull();
+    expect(within(headerActions).queryByRole("button", { name: "グラフ" })).toBeNull();
+    expect(within(headerActions).queryByRole("button", { name: "Diff パネル" })).toBeNull();
     expect(screen.getByRole("button", { name: "再同期" })).toBeTruthy();
     // Below md the terminal button is no longer a standalone header icon —
     // it moves into the mobile kebab menu alongside the other panel toggles.
@@ -1421,7 +1422,8 @@ describe("TaskView", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      const graphBtn = screen.getByTitle("グラフ");
+      const headerActions = screen.getByRole("group", { name: "タスク操作" });
+      const graphBtn = within(headerActions).getByRole("button", { name: "グラフ" });
       expect(graphBtn.className.split(/\s+/)).toContain("bg-surface-2");
       expect(graphBtn.className.split(/\s+/)).toContain("text-text");
     });
@@ -1433,7 +1435,8 @@ describe("TaskView", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      const filesBtn = screen.getByTitle("ファイルツリー");
+      const headerActions = screen.getByRole("group", { name: "タスク操作" });
+      const filesBtn = within(headerActions).getByRole("button", { name: "ファイルツリー" });
       // First click: open files panel
       fireEvent.click(filesBtn);
       expect(filesBtn.className.split(/\s+/)).toContain("bg-surface-2");
@@ -1450,7 +1453,8 @@ describe("TaskView", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      const graphBtn = screen.getByTitle("グラフ");
+      const headerActions = screen.getByRole("group", { name: "タスク操作" });
+      const graphBtn = within(headerActions).getByRole("button", { name: "グラフ" });
       // Graph starts active (default) but tab is "chat"; first click
       // switches to diff tab (graph stays active).
       fireEvent.click(graphBtn);

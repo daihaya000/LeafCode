@@ -4043,3 +4043,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: include the task title in each row action's accessible name and tooltip; aligned Sidebar regression tests with the task-specific labels.
 - Verification: Sidebar tests passed (37/37); full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: repeated row actions must carry the row's identity in their accessible name, not only in nearby visual text.
+
+## 2026-08-01: Task panel toggle accessible names
+
+- Found: TaskView's desktop file-tree, graph, and diff-panel icon buttons relied on `title` alone, while the mobile panel tabs use the same visible names; this made semantic queries and assistive-technology naming inconsistent across breakpoints.
+- Fixed: add explicit `aria-label` values to the three desktop panel toggles and scope regression tests to the task-action toolbar so desktop controls are distinguished from mobile tabs.
+- Verification: TaskView tests passed (105/105); full web suite passed (173 files / 2249 tests); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: icon-only controls should declare their accessible name explicitly, and responsive duplicates should be tested within their owning region.
