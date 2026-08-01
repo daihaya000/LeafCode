@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui";
 import {
@@ -26,19 +26,41 @@ export function PermissionCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const mountedRef = useRef(false);
+  const requestGenerationRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestGenerationRef.current += 1;
+      busyRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+    busyRef.current = false;
+    setBusy(null);
+    setError(null);
+  }, [request.id]);
 
   const reply = async (response: "once" | "always" | "reject") => {
     if (busy !== null || busyRef.current) return;
+    const generation = requestGenerationRef.current;
     busyRef.current = true;
     setBusy(response);
     setError(null);
     try {
       await onReply(request, response);
     } catch (err) {
+      if (!mountedRef.current || generation !== requestGenerationRef.current) return;
       setError(err instanceof Error ? err.message : "応答に失敗しました");
     } finally {
       busyRef.current = false;
-      setBusy(null);
+      if (mountedRef.current && generation === requestGenerationRef.current) {
+        setBusy(null);
+      }
     }
   };
 
@@ -55,6 +77,7 @@ export function PermissionCard({
       return;
     }
     if (value === "full") {
+      const generation = requestGenerationRef.current;
       busyRef.current = true;
       setBusy("full");
       setError(null);
@@ -69,12 +92,16 @@ export function PermissionCard({
           fullAccess: true,
         });
         await onReply(request, action === "reject" ? "reject" : "once");
+        if (!mountedRef.current || generation !== requestGenerationRef.current) return;
         onEnableFullAccess?.();
       } catch (err) {
+        if (!mountedRef.current || generation !== requestGenerationRef.current) return;
         setError(err instanceof Error ? err.message : "応答に失敗しました");
       } finally {
         busyRef.current = false;
-        setBusy(null);
+        if (mountedRef.current && generation === requestGenerationRef.current) {
+          setBusy(null);
+        }
       }
     }
   };

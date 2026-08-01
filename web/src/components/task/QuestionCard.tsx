@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { Button, cx } from "@/components/ui";
 import type { QuestionInfo, QuestionRequest } from "@/lib/types";
@@ -17,6 +17,8 @@ export function QuestionCard({
   const [busy, setBusy] = useState<"reply" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const mountedRef = useRef(false);
+  const requestGenerationRef = useRef(0);
   const [selected, setSelected] = useState<string[][]>(() =>
     request.questions.map(() => []),
   );
@@ -26,6 +28,22 @@ export function QuestionCard({
   const customRefs = useRef<(HTMLInputElement | null)[]>(
     request.questions.map(() => null),
   );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestGenerationRef.current += 1;
+      busyRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+    busyRef.current = false;
+    setBusy(null);
+    setError(null);
+  }, [request.id]);
 
   // `custom` is enabled by default unless explicitly disabled (`custom: false`).
   // Some callers omit the field entirely while still expecting free-text input
@@ -71,31 +89,39 @@ export function QuestionCard({
 
   const reply = async () => {
     if (!canSubmit || busy !== null || busyRef.current) return;
+    const generation = requestGenerationRef.current;
     busyRef.current = true;
     setBusy("reply");
     setError(null);
     try {
       await onReply(request, buildAnswers());
     } catch (err) {
+      if (!mountedRef.current || generation !== requestGenerationRef.current) return;
       setError(err instanceof Error ? err.message : "回答に失敗しました");
     } finally {
       busyRef.current = false;
-      setBusy(null);
+      if (mountedRef.current && generation === requestGenerationRef.current) {
+        setBusy(null);
+      }
     }
   };
 
   const reject = async () => {
     if (busy !== null || busyRef.current) return;
+    const generation = requestGenerationRef.current;
     busyRef.current = true;
     setBusy("reject");
     setError(null);
     try {
       await onReject(request);
     } catch (err) {
+      if (!mountedRef.current || generation !== requestGenerationRef.current) return;
       setError(err instanceof Error ? err.message : "拒否に失敗しました");
     } finally {
       busyRef.current = false;
-      setBusy(null);
+      if (mountedRef.current && generation === requestGenerationRef.current) {
+        setBusy(null);
+      }
     }
   };
 
@@ -106,6 +132,7 @@ export function QuestionCard({
       toggle(qi, label, q?.multiple);
       return;
     }
+    const generation = requestGenerationRef.current;
     busyRef.current = true;
     setBusy("reply");
     setError(null);
@@ -115,10 +142,13 @@ export function QuestionCard({
       );
       await onReply(request, answers);
     } catch (err) {
+      if (!mountedRef.current || generation !== requestGenerationRef.current) return;
       setError(err instanceof Error ? err.message : "回答に失敗しました");
     } finally {
       busyRef.current = false;
-      setBusy(null);
+      if (mountedRef.current && generation === requestGenerationRef.current) {
+        setBusy(null);
+      }
     }
   };
 

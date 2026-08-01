@@ -3819,3 +3819,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add mounted guards, a directory/action generation, and a synchronous action lock while preserving stale-diff invalidation.
 - Verification: DiffPane tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: request ids protect response ordering, but mutation controls also need a separate action generation and ref lock.
+
+## 2026-08-01: Permission and question card lifecycle
+
+- Found: standalone PermissionCard and QuestionCard instances relied on local rendered Busy state; their reply/reject/full-access promises could finish after the card was replaced or unmounted.
+- Fixed: add mounted boundaries, request-ID generations, synchronous busy locks, and guarded error/final state updates for every reply path.
+- Verification: PermissionCard and QuestionCard tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: parent-level queue protection is not enough when the actionable card also owns asynchronous UI state; each reusable action card must protect itself.
