@@ -112,4 +112,39 @@ describe("OpenAISubscriptionAuth", () => {
     });
     await waitFor(() => expect(screen.getByRole("link", { name: /認証ページを開く/ })).toBeTruthy());
   });
+
+  it("shows busy feedback while manually checking authentication", async () => {
+    mockApi(false);
+    vi.spyOn(window, "open").mockReturnValue(null);
+
+    render(<OpenAISubscriptionAuth />);
+    const startButton = await screen.findByRole("button", { name: "ブラウザで認証" });
+    fireEvent.click(startButton);
+    await screen.findByRole("button", { name: "認証完了を確認" });
+
+    let resolveCheck!: (value: unknown) => void;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return new Promise((resolve) => {
+          resolveCheck = resolve;
+        });
+      }
+      if (path === "/api/opencode/provider/auth") {
+        return Promise.resolve({
+          openai: [{ type: "oauth", label: "ChatGPT Pro/Plus (browser)" }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "認証完了を確認" }));
+    const checking = screen.getByRole("button", { name: "確認中…" }) as HTMLButtonElement;
+    expect(checking.disabled).toBe(true);
+
+    resolveCheck({ connected: [] });
+    await waitFor(() => {
+      const retry = screen.getByRole("button", { name: "認証完了を確認" }) as HTMLButtonElement;
+      expect(retry.disabled).toBe(false);
+    });
+  });
 });

@@ -44,6 +44,7 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [instructions, setInstructions] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const pollAttempts = useRef(0);
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
@@ -175,6 +176,16 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
     }
   };
 
+  const checkConnection = async () => {
+    if (checking || connectionRequestBusyRef.current) return;
+    setChecking(true);
+    try {
+      await refreshConnection();
+    } finally {
+      if (mountedRef.current) setChecking(false);
+    }
+  };
+
   return (
     <section
       aria-label={showHeading ? undefined : "OpenAI サブスクリプション"}
@@ -224,9 +235,11 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => void refreshConnection()}
+                busy={checking}
+                disabled={checking}
+                onClick={() => void checkConnection()}
               >
-                認証完了を確認
+                {checking ? "確認中…" : "認証完了を確認"}
               </Button>
             )}
           </div>

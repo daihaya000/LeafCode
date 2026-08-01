@@ -23,6 +23,7 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [instructions, setInstructions] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const attempts = useRef(0);
   const connectionRequestBusyRef = useRef(false);
   const connectionRequestGenerationRef = useRef(0);
@@ -133,6 +134,16 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
     }
   };
 
+  const checkConnection = async () => {
+    if (checking || connectionRequestBusyRef.current) return;
+    setChecking(true);
+    try {
+      await refresh();
+    } finally {
+      if (mountedRef.current) setChecking(false);
+    }
+  };
+
   return (
     <section
       aria-label={showHeading ? undefined : "Claude サブスクリプション"}
@@ -153,7 +164,17 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
             {state === "error" && <Button variant="secondary" size="sm" onClick={() => void load()}>再試行</Button>}
             {(state === "ready" || state === "connected") && <Button size="sm" onClick={() => void start()} disabled={methodIndex === null}>{connected ? "再認証" : "ブラウザで認証"}</Button>}
             {state === "starting" && <Button size="sm" busy>認証を準備中…</Button>}
-            {state === "waiting" && <Button variant="secondary" size="sm" onClick={() => void refresh()}>認証完了を確認</Button>}
+            {state === "waiting" && (
+              <Button
+                variant="secondary"
+                size="sm"
+                busy={checking}
+                disabled={checking}
+                onClick={() => void checkConnection()}
+              >
+                {checking ? "確認中…" : "認証完了を確認"}
+              </Button>
+            )}
           </div>
         </div>
         {state === "waiting" && <p className="mt-3 text-xs text-muted" aria-live="polite">認証ページを開いています。完了すると自動で接続状態を更新します。</p>}

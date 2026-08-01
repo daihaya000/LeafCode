@@ -4099,3 +4099,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add explicit labels (`追加するプロジェクトのパス` and `追加する許可ルート`) and update the AddProject regression helper to query the semantic label rather than the placeholder.
 - Verification: AddProjectButton tests passed (18/18) and SettingsView tests passed (25/25); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: placeholders are examples, not labels; every editable field needs a stable purpose name that remains available after input.
+
+## 2026-08-01: OAuth completion-check feedback
+
+- Found: the OAuth waiting-state `認証完了を確認` controls had an internal duplicate-request guard but remained visually enabled while a slow status request was in flight, making a click appear to do nothing.
+- Fixed: add stateful busy text (`確認中…`) and disable the manual check button during the request in both OpenAI and Claude subscription settings; added an OpenAI regression test.
+- Verification: OpenAI auth tests passed (4/4); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: an internal concurrency guard is not sufficient UX; asynchronous controls should also communicate the in-flight state and return to an actionable state after completion.
