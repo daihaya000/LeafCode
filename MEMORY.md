@@ -3462,3 +3462,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: preserve a successful poll result, add internal start guards for OpenAI/Claude, and guard Cursor credential saves against re-entry.
 - Verification: OpenAISubscriptionAuth tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: polling completion must return early on success before timeout bookkeeping, and authentication actions need function-level idempotency.
+
+## 2026-08-01: Shared settings action lock
+
+- Found: root deletion in SettingsView used a separate busy state, allowing project/orphan actions or Enter-key submission to overlap it; the generic guard itself also trusted button disabling.
+- Fixed: make guard handlers reject re-entry, include root deletion in the shared busy channel, and disable root controls while any settings mutation is active.
+- Verification: SettingsView tests passed (22/22); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: actions triggered by both buttons and keyboard events must share the same in-handler lock and visible busy state.

@@ -408,6 +408,7 @@ export function SettingsView() {
 
   const guard = useCallback(
     async (fn: () => Promise<void>) => {
+      if (busy) return;
       setBusy(true);
       setError(null);
       try {
@@ -420,7 +421,7 @@ export function SettingsView() {
         setBusy(false);
       }
     },
-    [refresh],
+    [busy, refresh],
   );
 
   const toggleFavorite = (p: ProjectDto) =>
@@ -448,7 +449,9 @@ export function SettingsView() {
     });
 
   const removeRoot = async (r: string) => {
+    if (busy || deletingRoot !== null) return;
     if (!window.confirm(`許可ルート「${r}」を削除しますか？`)) return;
+    setBusy(true);
     setDeletingRoot(r);
     setError(null);
     try {
@@ -471,6 +474,7 @@ export function SettingsView() {
       setError(err instanceof Error ? err.message : "操作に失敗しました");
     } finally {
       setDeletingRoot(null);
+      setBusy(false);
     }
   };
 
@@ -938,7 +942,7 @@ export function SettingsView() {
                     <span className="truncate text-text">{r}</span>
                     <button
                       type="button"
-                      disabled={deletingRoot !== null}
+                      disabled={busy || deletingRoot !== null}
                       aria-label={`${r}を削除`}
                       aria-busy={deletingRoot === r}
                       onClick={() => void removeRoot(r)}
