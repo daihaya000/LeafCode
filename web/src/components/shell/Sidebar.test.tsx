@@ -1306,6 +1306,103 @@ describe("Sidebar archived section", () => {
     });
   });
 
+  it("shows archived-action failures inline without calling alert", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws-archived",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Archived task",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "merged",
+            sessionId: null,
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T01:00:00Z",
+          }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockImplementation((method: string, path: string) =>
+      path === "/api/tasks/ws-archived/restore"
+        ? Promise.reject(new Error("restore denied"))
+        : Promise.resolve({}),
+    );
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    const archiveHeading = await screen.findByRole("button", {
+      name: "アーカイブを展開",
+    });
+    archiveHeading.click();
+    await screen.findByText("Archived task");
+    screen.getByLabelText("タスクを復元").click();
+
+    expect((await screen.findByRole("alert")).textContent).toContain("restore denied");
+    expect(alertSpy.mock.calls).toHaveLength(0);
+  });
+
+  it("locks a restore action against duplicate clicks", async () => {
+    let resolveRestore: (() => void) | undefined;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws-archived",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Archived task",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "merged",
+            sessionId: null,
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T01:00:00Z",
+          }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockImplementation((method: string, path: string) =>
+      path === "/api/tasks/ws-archived/restore"
+        ? new Promise<void>((resolve) => { resolveRestore = resolve; })
+        : Promise.resolve({}),
+    );
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    (await screen.findByRole("button", { name: "アーカイブを展開" })).click();
+    await screen.findByText("Archived task");
+    const restore = screen.getByLabelText("タスクを復元") as HTMLButtonElement;
+    fireEvent.click(restore);
+    await waitFor(() =>
+      expect(
+        sendJson.mock.calls.filter(([, path]) => path === "/api/tasks/ws-archived/restore"),
+      ).toHaveLength(1),
+    );
+    expect(restore.disabled).toBe(true);
+    expect(restore.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(restore);
+    expect(
+      sendJson.mock.calls.filter(([, path]) => path === "/api/tasks/ws-archived/restore"),
+    ).toHaveLength(1);
+    resolveRestore?.();
+  });
+
   it("destroys an archived task after confirmation", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     getJson.mockImplementation((path: string) => {

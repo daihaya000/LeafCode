@@ -3378,3 +3378,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: remove blocking alerts, render session-action failures as an assertive header alert, show message-revert failures inline, and expose the revert button's busy state with `aria-busy`.
 - Verification: SessionActions and TaskView tests passed (102/102); dedicated SessionActions error tests passed (2/2); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: action errors should remain in the task context and preserve interaction, especially for operations that may require a retry or composer recovery.
+
+## 2026-08-01: Sidebar action feedback and concurrency
+
+- Found: archive/restore/delete/favorite failures used blocking `window.alert`, action buttons could be double-clicked, and overlapping sidebar refreshes could apply stale lists.
+- Fixed: add a sidebar-scoped action lock with `aria-busy`/disabled controls, render dismissible assertive inline errors, preserve actionable recovery hints, and ignore stale refresh generations.
+- Verification: Sidebar tests passed (36/36); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: navigation surfaces need one visible operation channel and one refresh authority so background polling cannot overwrite the result of a newer user action.

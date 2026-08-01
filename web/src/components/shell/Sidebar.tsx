@@ -69,7 +69,7 @@ export function formatHeaderDate(value: string): string {
  * above the WCAG 2.2 AA 24x24 minimum for pointer targets).
  */
 const TASK_ROW_ACTION_BTN =
-  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-6 md:w-6";
+  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-6 md:w-6";
 
 function loadExpanded(): Set<string> {
   try {
@@ -202,6 +202,10 @@ export function Sidebar({
   const [destroyingGroupKey, setDestroyingGroupKey] = useState<string | null>(
     null,
   );
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionBusyKey, setActionBusyKey] = useState<string | null>(null);
+  const actionBusyRef = useRef<string | null>(null);
+  const refreshRequestRef = useRef(0);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -298,12 +302,14 @@ export function Sidebar({
   }, []);
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     const [projectsResult, tasksResult, archivedResult] =
       await Promise.allSettled([
         getJson<{ projects: ProjectDto[] }>("/api/projects"),
         getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
         getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived"),
       ]);
+    if (requestId !== refreshRequestRef.current) return;
     if (projectsResult.status === "fulfilled") {
       setProjects(projectsResult.value.projects ?? []);
       setProjectsLoaded(true);
@@ -534,6 +540,20 @@ export function Sidebar({
 
   const orphanCount = tasks.filter((t) => t.status === "orphaned").length;
 
+  const beginAction = (key: string) => {
+    if (actionBusyRef.current) return false;
+    actionBusyRef.current = key;
+    setActionBusyKey(key);
+    setActionError(null);
+    return true;
+  };
+
+  const endAction = (key: string) => {
+    if (actionBusyRef.current !== key) return;
+    actionBusyRef.current = null;
+    setActionBusyKey(null);
+  };
+
   const toggleProject = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -548,6 +568,8 @@ export function Sidebar({
   const archiveTask = async (task: TaskSummary, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const actionKey = `archive:${task.id}`;
+    if (!beginAction(actionKey)) return;
     try {
       await sendJson("PATCH", `/api/tasks/${task.id}/archive`);
       if (activeTaskId === task.id) router.push("/");
@@ -556,9 +578,11 @@ export function Sidebar({
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "タスクのアーカイブに失敗しました";
-      window.alert(msg);
+      setActionError(msg);
       notifyTasksChanged();
       await refresh();
+    } finally {
+      endAction(actionKey);
     }
   };
 
@@ -577,14 +601,18 @@ export function Sidebar({
   ) => {
     e.preventDefault();
     e.stopPropagation();
+    const actionKey = `restore:${task.id}`;
+    if (!beginAction(actionKey)) return;
     try {
       await sendJson("PATCH", `/api/tasks/${task.id}/restore`);
       notifyTasksChanged();
       await refresh();
     } catch (err) {
-      window.alert(
+      setActionError(
         err instanceof Error ? err.message : "タスクの復元に失敗しました",
       );
+    } finally {
+      endAction(actionKey);
     }
   };
 
@@ -599,6 +627,8 @@ export function Sidebar({
         ? `「${task.title}」を完全に削除しますか？（フォルダはそのまま残ります）`
         : `「${task.title}」を完全に削除しますか？ worktree/コピーも削除されます。`;
     if (!window.confirm(label)) return;
+    const actionKey = `destroy:${task.id}`;
+    if (!beginAction(actionKey)) return;
     try {
       await sendJson("DELETE", `/api/tasks/${task.id}`);
       notifyTasksChanged();
@@ -606,13 +636,15 @@ export function Sidebar({
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "タスクの削除に失敗しました";
-      window.alert(
+      setActionError(
         msg.includes("orphaned") || msg.includes("worktree")
           ? `${msg}\n\n設定 → 「orphan を掃除」で残件を削除できます。`
           : msg,
       );
       notifyTasksChanged();
       await refresh();
+    } finally {
+      endAction(actionKey);
     }
   };
 
@@ -625,6 +657,8 @@ export function Sidebar({
     if (group.tasks.length === 0) return;
     const label = `「${group.name}」のアーカイブ済みタスクを${group.tasks.length}件すべて完全に削除しますか？ worktree/コピーも削除されます。`;
     if (!window.confirm(label)) return;
+    const actionKey = `destroy-group:${group.key}`;
+    if (!beginAction(actionKey)) return;
     setDestroyingGroupKey(group.key);
     try {
       const results = await Promise.allSettled(
@@ -632,12 +666,13 @@ export function Sidebar({
       );
       const failed = results.filter((r) => r.status === "rejected").length;
       if (failed > 0) {
-        window.alert(
+        setActionError(
           `${failed}/${group.tasks.length} 件の削除に失敗しました。設定 → 「orphan を掃除」で残件を削除できます。`,
         );
       }
     } finally {
       setDestroyingGroupKey(null);
+      endAction(actionKey);
       notifyTasksChanged();
       await refresh();
     }
@@ -646,6 +681,8 @@ export function Sidebar({
   const toggleFavorite = async (p: ProjectDto, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const actionKey = `favorite:${p.id}`;
+    if (!beginAction(actionKey)) return;
     try {
       await sendJson("PATCH", "/api/projects", {
         id: p.id,
@@ -653,8 +690,12 @@ export function Sidebar({
       });
       notifyTasksChanged();
       await refresh();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "お気に入りの更新に失敗しました",
+      );
+    } finally {
+      endAction(actionKey);
     }
   };
 
@@ -668,6 +709,8 @@ export function Sidebar({
     ) {
       return;
     }
+    const actionKey = `remove-project:${p.id}`;
+    if (!beginAction(actionKey)) return;
     try {
       await sendJson("DELETE", "/api/projects", undefined, { id: p.id });
       notifyTasksChanged();
@@ -677,7 +720,9 @@ export function Sidebar({
         if (!still || still.projectId === p.id) router.push("/");
       }
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "削除に失敗しました");
+      setActionError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      endAction(actionKey);
     }
   };
 
@@ -771,6 +816,26 @@ export function Sidebar({
         </div>
       )}
 
+      {actionError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex shrink-0 items-start gap-2 border-b border-danger/30 bg-danger-bg px-3 py-2 text-[11px] leading-snug text-danger"
+        >
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+            {actionError}
+          </span>
+          <button
+            type="button"
+            aria-label="操作エラーを閉じる"
+            onClick={() => setActionError(null)}
+            className="shrink-0 rounded px-1 text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-danger"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div
         ref={setScrollTarget}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-2"
@@ -835,8 +900,10 @@ export function Sidebar({
                         type="button"
                         aria-label={`${p.name}を${p.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
                         title={p.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                        aria-busy={actionBusyKey === `favorite:${p.id}`}
+                        disabled={actionBusyKey !== null}
                         onClick={(e) => void toggleFavorite(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
                         <Star
                           className={
@@ -864,8 +931,10 @@ export function Sidebar({
                         type="button"
                         aria-label={`${p.name}を削除`}
                         title="プロジェクトを削除"
+                        aria-busy={actionBusyKey === `remove-project:${p.id}`}
+                        disabled={actionBusyKey !== null}
                         onClick={(e) => void removeProject(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
                       </button>
@@ -1015,6 +1084,8 @@ export function Sidebar({
                                     type="button"
                                     aria-label="タスクをアーカイブ"
                                     title="タスクをアーカイブ"
+                                    aria-busy={actionBusyKey === `archive:${task.id}`}
+                                    disabled={actionBusyKey !== null}
                                     onClick={(e) => void archiveTask(task, e)}
                                     className={cx(
                                       TASK_ROW_ACTION_BTN,
@@ -1076,8 +1147,8 @@ export function Sidebar({
                         type="button"
                         aria-label={`${group.name}のアーカイブを一括削除`}
                         title="このプロジェクトのアーカイブを一括削除"
-                        aria-busy={destroyingGroupKey === group.key}
-                        disabled={destroyingGroupKey === group.key}
+                        aria-busy={actionBusyKey === `destroy-group:${group.key}`}
+                        disabled={actionBusyKey !== null}
                         onClick={(e) => void destroyArchivedGroup(group, e)}
                         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-faint hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50"
                       >
@@ -1123,6 +1194,8 @@ export function Sidebar({
                           type="button"
                           aria-label="タスクを復元"
                           title="タスクを復元"
+                          aria-busy={actionBusyKey === `restore:${task.id}`}
+                          disabled={actionBusyKey !== null}
                           onClick={(e) => void restoreArchivedTask(task, e)}
                           className={cx(
                             TASK_ROW_ACTION_BTN,
@@ -1135,6 +1208,8 @@ export function Sidebar({
                           type="button"
                           aria-label="タスクを完全に削除"
                           title="タスクを完全に削除"
+                          aria-busy={actionBusyKey === `destroy:${task.id}`}
+                          disabled={actionBusyKey !== null}
                           onClick={(e) => void destroyArchivedTask(task, e)}
                           className={cx(
                             TASK_ROW_ACTION_BTN,
