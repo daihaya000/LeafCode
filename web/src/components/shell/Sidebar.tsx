@@ -258,10 +258,13 @@ export function Sidebar({
 
   useEffect(() => {
     if (!mobileOpen) {
-      if (mobilePrevFocusRef.current) {
+      if (
+        mobilePrevFocusRef.current?.isConnected &&
+        (document.activeElement === document.body || document.activeElement === null)
+      ) {
         mobilePrevFocusRef.current.focus();
-        mobilePrevFocusRef.current = null;
       }
+      mobilePrevFocusRef.current = null;
       return;
     }
     mobilePrevFocusRef.current = document.activeElement as HTMLElement | null;

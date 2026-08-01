@@ -3805,3 +3805,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: scope create/close completion and refresh follow-up to a workspace generation, while preserving the initial and replacement directory refresh ordering.
 - Verification: PtyPanel tests passed (14/14); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: workspace changes need an explicit generation token, but request invalidation must not cancel the first load of the new workspace.
+
+## 2026-08-01: Sidebar mobile focus lifecycle
+
+- Found: closing the mobile navigation always focused the original opener, even if focus had already moved to a replacement surface or the opener was removed.
+- Fixed: restore focus only when the document is still body/unfocused and the opener remains connected.
+- Verification: Sidebar tests passed (37/37); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: drawer focus restoration should respect subsequent navigation and focus changes just like modal focus restoration.
