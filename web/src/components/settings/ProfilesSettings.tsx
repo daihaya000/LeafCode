@@ -106,6 +106,53 @@ export function ProfilesSettings() {
   const loadRequestRef = useRef(0);
   const actionBusyRef = useRef<string | null>(null);
   const busyIdRef = useRef<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const isOpen = switchConfirm !== null || unregisterConfirm !== null;
+    if (!isOpen) {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+      return;
+    }
+
+    previousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const dialog = dialogRef.current;
+    const getFocusable = () => Array.from(
+      dialog?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+    getFocusable()[0]?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (actionBusyRef.current === null && busyIdRef.current === null) {
+          setSwitchConfirm(null);
+          setUnregisterConfirm(null);
+        }
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [switchConfirm, unregisterConfirm]);
 
   const load = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
@@ -196,7 +243,7 @@ export function ProfilesSettings() {
         }
       }
     },
-    [actionBusy, busyId, hostOk, load],
+    [hostOk, load],
   );
 
   const doMigrate = useCallback(async () => {
@@ -218,7 +265,7 @@ export function ProfilesSettings() {
         if (mountedRef.current) setActionBusy(null);
       }
     }
-  }, [actionBusy, busyId]);
+  }, []);
 
   const doCreate = useCallback(async () => {
     if (!createName.trim() || actionBusyRef.current !== null || busyIdRef.current !== null) return;
@@ -250,7 +297,7 @@ export function ProfilesSettings() {
         if (mountedRef.current) setActionBusy(null);
       }
     }
-  }, [actionBusy, busyId, createFrom, createName, load]);
+  }, [createFrom, createName, load]);
 
   const updateSetupSetting = useCallback(
     async (key: keyof ProfileSetupSettings, value: boolean) => {
@@ -282,7 +329,7 @@ export function ProfilesSettings() {
         }
       }
     },
-    [actionBusy, busyId, setupSettings],
+    [setupSettings],
   );
 
   const doRename = useCallback(
@@ -308,7 +355,7 @@ export function ProfilesSettings() {
         }
       }
     },
-    [actionBusy, busyId, load, renameValue],
+    [load, renameValue],
   );
 
   const doUnregister = useCallback(
@@ -333,7 +380,7 @@ export function ProfilesSettings() {
         }
       }
     },
-    [actionBusy, busyId, load],
+    [load],
   );
 
   const applyDependencies = useCallback(async (profile: ProfileDto) => {
@@ -754,7 +801,7 @@ export function ProfilesSettings() {
           aria-modal="true"
           aria-label="プロファイル切替の確認"
         >
-          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
+          <div ref={dialogRef} className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
             <h3 className="text-base font-semibold text-text">
               「{switchConfirm.name}」に切り替えますか？
             </h3>
@@ -778,7 +825,7 @@ export function ProfilesSettings() {
           aria-modal="true"
           aria-label="プロファイル除外の確認"
         >
-          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
+          <div ref={dialogRef} className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
             <h3 className="text-base font-semibold text-text">
               「{unregisterConfirm.name}」を一覧から除外しますか？
             </h3>

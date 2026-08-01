@@ -182,6 +182,32 @@ describe("ProfilesSettings", () => {
     expect(screen.getAllByText(/進行中のタスクは中断されます/).length).toBeGreaterThan(0);
   });
 
+  it("traps focus in the switch dialog and restores it on Escape", async () => {
+    global.fetch = mockFetch({
+      "/api/profiles": BASE_LIST,
+      "/api/host": HOST_OK,
+    }) as unknown as typeof fetch;
+
+    render(<ProfilesSettings />);
+    await screen.findAllByText("default");
+    const switchButton = screen.getAllByText("切替")[0] as HTMLElement;
+    switchButton.focus();
+    fireEvent.click(switchButton);
+
+    const dialog = await screen.findByRole("dialog");
+    const buttons = Array.from(dialog.querySelectorAll("button")) as HTMLButtonElement[];
+    expect(buttons).toHaveLength(2);
+    expect(document.activeElement).toBe(buttons[0]);
+
+    buttons[1].focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(buttons[0]);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(switchButton);
+  });
+
   it("shows the create form when 新規作成 is clicked", async () => {
     global.fetch = mockFetch({
       "/api/profiles": BASE_LIST,

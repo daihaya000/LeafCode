@@ -3910,3 +3910,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: depend only on the actual loader used by the callbacks; the synchronous ref lock still prevents duplicate mutations and the rendered state remains accurate.
 - Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 8 to 6.
 - Lesson: keep async mutation locks in refs when they are intentionally synchronous, and do not couple their callbacks to redundant render state.
+
+## 2026-08-01: Profile confirmation dialog accessibility
+
+- Found: profile switch/unregister confirmations had no reliable initial focus, focus containment, Escape handling, or focus restoration; their async callbacks also depended on redundant busy state.
+- Fixed: add a shared modal focus lifecycle with Tab wrapping, safe Escape dismissal, and trigger focus restoration, while simplifying callback dependencies around ref-backed locks.
+- Verification: ProfilesSettings tests passed (11/11); typecheck, ESLint, and `git diff --check` passed. ESLint warnings reduced from 6 to 0.
+- Lesson: destructive or restart-causing confirmations must keep keyboard focus inside the decision surface and return users to the initiating control after cancellation.
