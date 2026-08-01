@@ -365,7 +365,7 @@ export function GraphPanel({
       }));
     } catch (err) {
       if (!mountedRef.current || directoryRef.current !== dir) return;
-      setError(err instanceof Error ? err.message : "コミット詳細の取得に失敗");
+      setError(err instanceof Error ? err.message : "コミット詳細を取得できませんでした");
     } finally {
       detailBusyRef.current.delete(detailKey);
       if (mountedRef.current && directoryRef.current === dir) {
@@ -395,7 +395,7 @@ export function GraphPanel({
       setFileDiff({ commit, path, text: data.diff ?? "" });
     } catch (err) {
       if (!mountedRef.current || directoryRef.current !== dir) return;
-      setError(err instanceof Error ? err.message : "diff の取得に失敗");
+      setError(err instanceof Error ? err.message : "差分を取得できませんでした");
     } finally {
       if (mountedRef.current && directoryRef.current === dir) setFileBusy(false);
     }

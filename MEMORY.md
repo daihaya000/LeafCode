@@ -4078,3 +4078,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: restore Japanese PTY strings, add explicit action-panel labels, and replace a mojibake Composer test fixture with the real `タスク作成` label.
 - Verification: PTY tests passed (14/14), Diff tests passed (7/7); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: responsive `hidden` text must not be the only accessible name for an icon/text hybrid control, and mojibake scans should include both UI source and test fixtures.
+
+## 2026-08-01: Japanese fallback error messages
+
+- Found: several non-`Error` fallback branches still surfaced English or terse mixed-language text (`projects failed`, `unknown error`, and abbreviated task-panel messages) inside the Japanese UI.
+- Fixed: localized the Home project loader, file tree, graph, diff merge warning, and nested-agent fallback messages with complete Japanese sentences.
+- Verification: HomeView tests passed (53/53); FileTree, Graph, NestedAgent, and Diff tests passed (29/29); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: error paths that are rarely reached by normal `Error` objects still need localization because API wrappers and tests can reject arbitrary values.

@@ -339,7 +339,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       return true;
     } catch (err) {
       if (!mountedRef.current || requestId !== projectsRequestRef.current) return false;
-      setError(err instanceof Error ? err.message : "projects failed");
+      setError(err instanceof Error ? err.message : "プロジェクトを取得できませんでした");
       return false;
     } finally {
       if (mountedRef.current && requestId === projectsRequestRef.current) {

@@ -40,7 +40,7 @@ export function FileTreePanel({
       setCwd(path);
     } catch (err) {
       if (!mountedRef.current || id !== reqIdRef.current) return;
-      setError(err instanceof Error ? err.message : "読み込み失敗");
+      setError(err instanceof Error ? err.message : "ディレクトリを読み込めませんでした");
     } finally {
       if (mountedRef.current && id === reqIdRef.current) setLoading(false);
     }

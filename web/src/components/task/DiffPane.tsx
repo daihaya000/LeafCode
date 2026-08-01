@@ -442,7 +442,7 @@ export function DiffPane({
           // The merge succeeded; surface the archive failure instead of
           // swallowing it so the card doesn't silently stay active.
           archiveWarning = `（ただしアーカイブに失敗: ${
-            err instanceof Error ? err.message : "unknown error"
+            err instanceof Error ? err.message : "不明なエラー"
           }）`;
         }
       }

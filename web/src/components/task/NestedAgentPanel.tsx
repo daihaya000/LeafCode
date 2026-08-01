@@ -212,7 +212,7 @@ export function NestedAgentPanel({
       setError(null);
     } catch (err) {
       if (!mountedRef.current || gen !== genRef.current) return;
-      setError(err instanceof Error ? err.message : "子セッション取得失敗");
+      setError(err instanceof Error ? err.message : "子セッションを取得できませんでした");
     } finally {
       if (refreshScopeRef.current === scopeKey) {
         refreshScopeRef.current = null;
