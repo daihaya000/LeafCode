@@ -173,6 +173,7 @@ function toolLabel(tool: string): string {
 }
 
 const EMPTY_TASK_CALL_IDS: string[] = [];
+const LONG_RUNNING_TOOL_SECONDS = 2 * 60;
 
 const ToolPartView = memo(function ToolPartView({
   part,
@@ -194,6 +195,18 @@ const ToolPartView = memo(function ToolPartView({
   const isError = status === "error";
   const isCancelled = status === "cancelled";
   const tool = part.tool ?? "tool";
+  const isShellTool = /bash|shell/i.test(tool);
+  const active = status === "running" || status === "pending";
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => elapsedForTool(state) ?? 0);
+  useEffect(() => {
+    if (!active || state?.time?.start == null) return;
+    const update = () => setElapsedSeconds(elapsedForTool(state) ?? 0);
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [active, state]);
+  const longRunning =
+    isShellTool && active && elapsedSeconds >= LONG_RUNNING_TOOL_SECONDS;
   const isTaskTool = isTaskToolName(tool);
   const nestedActive =
     isTaskTool &&
@@ -303,10 +316,10 @@ const ToolPartView = memo(function ToolPartView({
           {preview && !open && (
             <p className="mt-0.5 truncate text-[11px] text-faint">{preview}</p>
           )}
-          {(status === "running" || status === "pending") &&
+          {active &&
             state?.time?.start != null && (
               <p className="mt-0.5 text-[11px] text-faint">
-                {formatElapsed(elapsedForTool(state) ?? 0)}
+                {formatElapsed(elapsedSeconds)}
               </p>
             )}
         </div>
@@ -328,6 +341,19 @@ const ToolPartView = memo(function ToolPartView({
           />
         )}
       </button>
+      {longRunning && (
+        <div
+          className="flex items-start gap-2 border-t border-warning/25 bg-warning/10 px-3 py-2 text-[11px] text-warning"
+          data-testid="long-running-tool-warning"
+          role="status"
+        >
+          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            2分以上実行中です。ログが増えていない場合はハングの可能性があります。
+            必要なら上部の停止ボタンで中断できます。
+          </span>
+        </div>
+      )}
       {showNested && directory && rootSessionId && (
         <NestedAgentPanel
           directory={directory}

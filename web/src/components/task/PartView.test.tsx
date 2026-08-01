@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "@testing-library/react";
 import type { Part } from "@/lib/types";
 
 vi.mock("./NestedAgentPanel", () => ({
@@ -10,7 +11,10 @@ vi.mock("./NestedAgentPanel", () => ({
 
 import { PartView } from "./PartView";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function filePart(overrides: Partial<Part> = {}): Part {
   return {
@@ -161,5 +165,35 @@ describe("PartView cancelled tool display", () => {
     );
 
     expect(screen.getByTestId("nested-agent-panel").textContent).toBe("active");
+  });
+});
+
+describe("PartView long-running tool display", () => {
+  it("warns when a shell tool has run for two minutes", () => {
+    vi.useFakeTimers();
+    const startedAt = new Date("2026-08-01T00:00:00Z").getTime();
+    vi.setSystemTime(startedAt);
+    const part: Part = {
+      id: "p5",
+      messageID: "m5",
+      type: "tool",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "npx debug-agent" },
+        time: { start: startedAt },
+      },
+    };
+
+    render(<PartView part={part} role="assistant" />);
+    expect(screen.queryByTestId("long-running-tool-warning")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+
+    expect(screen.getByTestId("long-running-tool-warning").textContent).toContain(
+      "ハングの可能性があります",
+    );
   });
 });
