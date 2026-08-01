@@ -122,6 +122,34 @@ describe("SessionSwitcher controlled snap-back", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("retries loading the session list after an error", async () => {
+    getJson
+      .mockRejectedValueOnce(new Error("session list unavailable"))
+      .mockResolvedValueOnce({
+        sessions: [
+          { opencodeSessionId: "ses_1", title: "Session 1", updatedAt: "t1" },
+          { opencodeSessionId: "ses_2", title: "Session 2", updatedAt: "t2" },
+        ],
+      });
+
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="ses_1"
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    const retry = await screen.findByRole("button", {
+      name: /session list unavailable/,
+    });
+    fireEvent.click(retry);
+
+    await screen.findByRole("combobox");
+    expect(screen.getByRole("option", { name: "Session 2" })).toBeTruthy();
+  });
+
   it("does not let an old workspace refresh overwrite the new session list", async () => {
     let resolveOld!: (value: unknown) => void;
     const oldRequest = new Promise((resolve) => {

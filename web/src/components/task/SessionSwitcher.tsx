@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Layers, Plus } from "lucide-react";
+import { Layers, Plus, RefreshCw } from "lucide-react";
 import { Button, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 
@@ -69,7 +69,7 @@ export function SessionSwitcher({
       refreshIdRef.current += 1;
       workspaceGenerationRef.current += 1;
     };
-  }, [workspaceId]);
+  }, [workspaceId, refresh]);
 
   // Rebind only bumps updated_at server-side; the visible list stays valid.
   // Avoid a full refresh on every select change to prevent dropdown flicker.
@@ -115,6 +115,7 @@ export function SessionSwitcher({
   };
 
   if (sessions.length <= 1) {
+    const canRetryList = sessionsError !== null && !sessionsLoading;
     return (
       <div className="flex min-w-0 items-center gap-1">
         <Button
@@ -136,10 +137,16 @@ export function SessionSwitcher({
           }
           busy={busy || sessionsLoading}
           disabled={sessionsLoading}
-          onClick={() => void create()}
+          onClick={() => void (canRetryList ? refresh() : create())}
         >
-          <Plus className="h-3.5 w-3.5" />
-          <Layers className="h-3.5 w-3.5" />
+          {canRetryList ? (
+            <RefreshCw className="h-3.5 w-3.5" />
+          ) : (
+            <>
+              <Plus className="h-3.5 w-3.5" />
+              <Layers className="h-3.5 w-3.5" />
+            </>
+          )}
         </Button>
         {sessionsError && !sessionsLoading && (
           <span

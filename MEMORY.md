@@ -3882,3 +3882,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: focus the first usable control inside the dialog when it opens; focus restoration on close remains intact.
 - Verification: AddProjectButton tests passed (18/18); typecheck, ESLint, and `git diff --check` passed. ESLint still reports 12 pre-existing warnings.
 - Lesson: modal focus management needs both entry focus and exit restoration, not only a focus trap.
+
+## 2026-08-01: Session list retry affordance
+
+- Found: when the session list request failed while only one or no session was available, the sole action still looked like “new session” and offered no explicit recovery path.
+- Fixed: show a refresh affordance and retry the list request when its error state is active; return to the new-session action after recovery.
+- Verification: SessionSwitcher tests passed (7/7); typecheck, ESLint, and `git diff --check` passed. ESLint now reports 11 existing warnings.
+- Lesson: an error state should expose the lowest-risk recovery action before offering a state-changing operation.
