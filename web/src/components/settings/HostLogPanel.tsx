@@ -31,8 +31,13 @@ export function HostLogPanel() {
   const [copied, setCopied] = useState(false);
   const sinceRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const mountedRef = useRef(false);
+  const pollingRef = useRef(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const poll = useCallback(async () => {
+    if (!mountedRef.current || pollingRef.current) return;
+    pollingRef.current = true;
     try {
       const qs =
         sinceRef.current !== null ? `?since=${sinceRef.current}` : "";
@@ -46,7 +51,7 @@ export function HostLogPanel() {
         throw new Error(data.error ?? `status ${res.status}`);
       }
       const next = data.entries ?? [];
-      if (next.length > 0) {
+      if (mountedRef.current && next.length > 0) {
         setEntries((prev) => {
           const merged = [...prev, ...next];
           return merged.length > MAX_CLIENT_ENTRIES
@@ -54,19 +59,31 @@ export function HostLogPanel() {
             : merged;
         });
       }
-      if (typeof data.nextSeq === "number") sinceRef.current = data.nextSeq;
-      setFetchError(null);
+      if (mountedRef.current) {
+        if (typeof data.nextSeq === "number") sinceRef.current = data.nextSeq;
+        setFetchError(null);
+      }
     } catch (err) {
-      setFetchError(
+      if (mountedRef.current) setFetchError(
         err instanceof Error ? err.message : "ホストログを取得できません",
       );
+    } finally {
+      pollingRef.current = false;
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void poll();
     const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timer);
+      if (copiedTimerRef.current !== null) {
+        clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = null;
+      }
+    };
   }, [poll]);
 
   useEffect(() => {
@@ -78,8 +95,13 @@ export function HostLogPanel() {
     const text = entries.map((e) => `[${e.source}] ${e.text}`).join("");
     const ok = await copyText(text);
     if (!ok) return;
+    if (!mountedRef.current) return;
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedTimerRef.current !== null) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => {
+      copiedTimerRef.current = null;
+      if (mountedRef.current) setCopied(false);
+    }, 1500);
   };
 
   const clearView = () => {

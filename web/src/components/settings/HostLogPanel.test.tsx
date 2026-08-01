@@ -91,6 +91,25 @@ describe("HostLogPanel", () => {
     findLogLine("[host] b");
   });
 
+  it("does not overlap a slow poll with the next interval", async () => {
+    let resolveFirst: (value: Response) => void = () => {};
+    timedFetch
+      .mockImplementationOnce(
+        () => new Promise<Response>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockResolvedValue(jsonResponse({ entries: [], nextSeq: 0 }));
+
+    render(<HostLogPanel />);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(timedFetch).toHaveBeenCalledTimes(1);
+
+    resolveFirst(jsonResponse({ entries: [], nextSeq: 0 }));
+    await vi.advanceTimersByTimeAsync(2000);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
+  });
+
   it("shows a fetch error and stops accumulating entries", async () => {
     timedFetch.mockResolvedValue(
       jsonResponse({ error: "ホストが見つかりません" }, false, 502),

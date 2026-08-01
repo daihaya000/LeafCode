@@ -3476,3 +3476,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add refresh request generations and decision handler guards for approval and pairing actions.
 - Verification: BrowserBridgeApprovals tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: approval queues need latest-refresh-wins semantics because stale cards can invite users to repeat an action that has already completed.
+
+## 2026-08-01: Host log polling lifecycle
+
+- Found: the host log panel could start overlapping polls when a request exceeded the two-second interval, and late responses/timers could update state after unmount.
+- Fixed: serialize polling, ignore late state updates, and clean up the copy feedback timer on unmount.
+- Verification: HostLogPanel tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: long-lived settings panels need both interval cleanup and an in-flight guard; clearing an interval alone does not cancel work already awaiting a response.
