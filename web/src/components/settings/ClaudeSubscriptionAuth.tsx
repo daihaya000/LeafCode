@@ -69,6 +69,9 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
         getJson<AuthMethodsResponse>("/api/opencode/provider/auth"),
         getJson<ProviderResponse>("/api/opencode/provider"),
       ]);
+      // #region debug log
+      fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'H1-H4',location:'ClaudeSubscriptionAuth.tsx:load',message:'Claude auth inputs received',data:{anthropicMethods:Array.isArray(methods.anthropic)?methods.anthropic.map((method)=>method?.type):null,connected:Array.isArray(provider.connected)?provider.connected.includes('anthropic'):null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const index = (methods.anthropic ?? []).findIndex((method) => method.type === "oauth");
       if (index < 0) throw new Error("ClaudeのOAuth認証方式が利用できません");
       setMethodIndex(index);
