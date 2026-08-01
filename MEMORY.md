@@ -3329,3 +3329,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: distinguish filter-specific empty results, add a `すべて表示` recovery action, announce operation errors/successes with live-region roles, and expose refresh activity with `aria-busy`.
 - Verification: DiffPane tests passed (6/6); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: empty states need to describe the active scope and provide the shortest path to recover broader context.
+
+## 2026-08-01: File tree empty-state clarity
+
+- Found: an empty directory in FileTreePanel rendered as a blank panel, and the root-level "上へ" action could remain visually available even when no parent existed.
+- Fixed: added an explicit empty-folder status, disabled the parent action when unavailable or loading, exposed loading with `aria-busy`, and marked load failures as alerts.
+- Verification: FileTreePanel tests passed (2/2); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: navigation panels need a meaningful empty state and disabled boundary controls so absence of data is not mistaken for a rendering failure.

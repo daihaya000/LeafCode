@@ -57,14 +57,18 @@ export function FileTreePanel({
     const parent = cwd.replace(/[\\/][^\\/]+$/, "");
     if (parent && parent !== cwd) void load(parent);
   };
+  const parent = cwd.replace(/[\\/][^\\/]+$/, "");
+  const canGoUp = Boolean(parent && parent !== cwd);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col border-border bg-surface lg:border-l">
       <div className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
         <button
           type="button"
+          aria-label="上へ"
+          disabled={!canGoUp || loading}
           onClick={up}
-          className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-surface-2"
+          className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
         >
           上へ
         </button>
@@ -72,13 +76,25 @@ export function FileTreePanel({
           {cwd}
         </span>
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-1">
+      <div
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto p-1"
+        aria-busy={loading || undefined}
+      >
         {loading && (
           <div className="flex justify-center py-6">
             <Spinner />
           </div>
         )}
-        {error && <p className="px-2 text-xs text-danger">{error}</p>}
+        {error && (
+          <p className="px-2 text-xs text-danger" role="alert" aria-live="assertive">
+            {error}
+          </p>
+        )}
+        {!loading && !error && entries.length === 0 && (
+          <p className="px-2 py-6 text-center text-xs text-faint" role="status">
+            このフォルダには項目がありません
+          </p>
+        )}
         {!loading &&
           entries.map((e) => (
             <button
