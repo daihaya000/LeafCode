@@ -250,6 +250,59 @@ describe("Sidebar", () => {
     expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("¥30.0");
   });
 
+  it("does not overlap active-task and engine-health refreshes", async () => {
+    let taskCalls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      if (path === "/api/tasks") {
+        taskCalls += 1;
+        if (taskCalls === 1) {
+          return Promise.resolve({
+            tasks: [{
+              id: "ws1",
+              projectId: "prj1",
+              projectName: "Repo",
+              title: "Working task",
+              directory: "/repo",
+              isolation: "current_folder",
+              status: "working",
+              sessionId: "sess1",
+              branch: "main",
+              additions: 0,
+              deletions: 0,
+              filesChanged: 0,
+              createdAt: "2026-07-18T00:00:00Z",
+              updatedAt: "2026-07-18T00:00:00Z",
+            }],
+            engineOk: false,
+          });
+        }
+        return new Promise(() => undefined);
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Repoを展開" }));
+    await screen.findByText("Working task");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(taskCalls).toBe(2);
+  });
+
   it("omits the cost badge when the task has no known cost", async () => {
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {

@@ -206,6 +206,9 @@ export function Sidebar({
   const [actionBusyKey, setActionBusyKey] = useState<string | null>(null);
   const actionBusyRef = useRef<string | null>(null);
   const refreshRequestRef = useRef(0);
+  const refreshBusyRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
+  const mountedRef = useRef(false);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -302,29 +305,52 @@ export function Sidebar({
   }, []);
 
   const refresh = useCallback(async () => {
+    if (!mountedRef.current) return;
+    if (refreshBusyRef.current) {
+      refreshQueuedRef.current = true;
+      return;
+    }
+    refreshBusyRef.current = true;
     const requestId = ++refreshRequestRef.current;
-    const [projectsResult, tasksResult, archivedResult] =
-      await Promise.allSettled([
-        getJson<{ projects: ProjectDto[] }>("/api/projects"),
-        getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
-        getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived"),
-      ]);
-    if (requestId !== refreshRequestRef.current) return;
-    if (projectsResult.status === "fulfilled") {
-      setProjects(projectsResult.value.projects ?? []);
-      setProjectsLoaded(true);
-      setProjectsLoadError(false);
-    } else {
-      setProjectsLoadError(true);
-    }
-    if (tasksResult.status === "fulfilled") {
-      setTasks(tasksResult.value.tasks ?? []);
-      updateEngineHealth(tasksResult.value.engineOk);
-    }
-    if (archivedResult.status === "fulfilled") {
-      setArchivedTasks(archivedResult.value.tasks ?? []);
+    try {
+      const [projectsResult, tasksResult, archivedResult] =
+        await Promise.allSettled([
+          getJson<{ projects: ProjectDto[] }>("/api/projects"),
+          getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
+          getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived"),
+        ]);
+      if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
+      if (projectsResult.status === "fulfilled") {
+        setProjects(projectsResult.value.projects ?? []);
+        setProjectsLoaded(true);
+        setProjectsLoadError(false);
+      } else {
+        setProjectsLoadError(true);
+      }
+      if (tasksResult.status === "fulfilled") {
+        setTasks(tasksResult.value.tasks ?? []);
+        updateEngineHealth(tasksResult.value.engineOk);
+      }
+      if (archivedResult.status === "fulfilled") {
+        setArchivedTasks(archivedResult.value.tasks ?? []);
+      }
+    } finally {
+      refreshBusyRef.current = false;
+      if (refreshQueuedRef.current && mountedRef.current) {
+        refreshQueuedRef.current = false;
+        void refresh();
+      }
     }
   }, [updateEngineHealth]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      refreshRequestRef.current += 1;
+      refreshQueuedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Fast path: paint from localStorage without waiting on the network.
@@ -341,6 +367,7 @@ export function Sidebar({
 
     void (async () => {
       const remote = await readSidebarFromServer();
+      if (!mountedRef.current) return;
       const hasRemote =
         remote.expanded !== null ||
         remote.width !== null ||

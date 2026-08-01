@@ -3644,3 +3644,16 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a mounted lifecycle guard, invalidate request/detail generations during cleanup, and cover late commit-detail responses with a regression test.
 - Verification: GraphPanel tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: identity checks prevent cross-directory contamination, but every async UI request also needs an explicit mounted boundary.
+
+## 2026-08-01: Sidebar refresh backpressure
+
+- Found: active-task and engine-health timers could enter the same Sidebar refresh concurrently, allowing redundant requests and timing-dependent list/health updates.
+- Fixed: serialize refreshes with a trailing queued refresh, invalidate them on unmount, and ignore late sidebar-preference responses after cleanup.
+- Verification: Sidebar tests passed (37/37), including overlapping-poll coverage; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: multiple polling triggers should share one backpressure gate and retain one trailing refresh so recovery signals are not lost.
+
+## 2026-08-01: Claude OAuth plugin removal diagnosis
+
+- やったこと: Claude認証の再試行時にOpenCodeの `/provider/auth` を実測し、Anthropicの認証方式自体が応答から消えていることを確認した。デバッグ計装は診断後に除去した。
+- 判断理由: WebUIのOAuth APIではなく、Claude Authプラグイン削除によりOpenCode側のOAuth提供元がなくなっていたため。プラグインを再登録・再有効化してOpenCode hostを再起動するのが復旧手順。
+- 教訓: 認証UIのエラーは画面側だけで判断せず、上流の認証方式一覧に対象プロバイダーと方式が存在するかを先に確認する。
