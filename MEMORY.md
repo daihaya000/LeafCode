@@ -3736,6 +3736,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: NestedAgentPanel tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: child-session identity and component lifetime are separate axes; both are required for reliable live progress UI.
 
+## 2026-08-01: Session actions lifecycle
+
+- Found: SessionActions prevented duplicate commands, but an action started on one session could deliver completion/error/busy updates after directory or session changes; MessageRevertButton had the same unmount gap.
+- Fixed: add action generations and mounted guards, reset the action lock on session changes, and protect revert button feedback after async completion.
+- Verification: SessionActions tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: action locks must be scoped to the current session generation, otherwise a stale command can block or mutate the newly displayed session.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.

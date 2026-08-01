@@ -78,26 +78,47 @@ export function useSessionActions({
   const [busy, setBusy] = useState<SessionActionKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef<SessionActionKey | null>(null);
+  const mountedRef = useRef(false);
+  const actionGenerationRef = useRef(0);
 
   useEffect(() => {
+    mountedRef.current = true;
+    actionGenerationRef.current += 1;
+    busyRef.current = null;
     setError(null);
+    setBusy(null);
+    return () => {
+      mountedRef.current = false;
+      actionGenerationRef.current += 1;
+    };
   }, [directory, sessionId]);
 
   const run = useCallback(
     async (key: SessionActionKey, fn: () => Promise<"ok" | "cancelled">) => {
       if (busyRef.current !== null) return;
+      const generation = actionGenerationRef.current;
       busyRef.current = key;
       setBusy(key);
       setError(null);
       try {
         const result = await fn();
-        if (result === "ok") onDone?.();
+        if (
+          result === "ok" &&
+          mountedRef.current &&
+          generation === actionGenerationRef.current
+        ) {
+          onDone?.();
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "失敗しました";
-        setError(msg);
+        if (mountedRef.current && generation === actionGenerationRef.current) {
+          setError(msg);
+        }
       } finally {
         busyRef.current = null;
-        setBusy(null);
+        if (mountedRef.current && generation === actionGenerationRef.current) {
+          setBusy(null);
+        }
       }
     },
     [onDone],
@@ -192,6 +213,14 @@ export function MessageRevertButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   return (
     <div className="flex max-w-full flex-col items-end gap-1">
@@ -220,15 +249,16 @@ export function MessageRevertButton({
                 messageId,
                 messages,
               );
+              if (!mountedRef.current) return;
               onRestoreText?.(text);
               onDone?.();
             } catch (err) {
-              setError(
+              if (mountedRef.current) setError(
                 err instanceof Error ? err.message : "巻き戻しに失敗しました",
               );
             } finally {
               busyRef.current = false;
-              setBusy(false);
+              if (mountedRef.current) setBusy(false);
             }
           })();
         }}
