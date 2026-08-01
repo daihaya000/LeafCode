@@ -3616,3 +3616,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a synchronous shared action lock, retain per-card disabled rendering, and invalidate polling responses during cleanup.
 - Verification: BrowserBridgeApprovals tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: approval UI actions need a ref-level lock because the disabled attribute updates only after React renders.
+
+## 2026-08-01: Command palette aborted search isolation
+
+- Found: an aborted file-search request could reject as a browser-specific `TypeError` instead of `AbortError` and clear the newer query's results.
+- Fixed: only an active controller may clear file results; abort completion is ignored regardless of the browser's error class.
+- Verification: CommandPalette tests passed (3/3), including an aborted-request race; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: cancellation should be decided from controller state, not from the exception class supplied by the browser.

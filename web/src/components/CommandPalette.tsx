@@ -150,8 +150,8 @@ export function CommandPalette({
             setFiles(Array.isArray(d) ? d : []);
           }
         })
-        .catch((err: unknown) => {
-          if (!(err instanceof DOMException && err.name === "AbortError")) {
+        .catch(() => {
+          if (!controller.signal.aborted) {
             setFiles([]);
           }
         });

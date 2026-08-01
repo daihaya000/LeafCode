@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "./CommandPalette";
 import { getJson } from "@/lib/client";
@@ -45,5 +45,42 @@ describe("CommandPalette", () => {
 
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     expect(screen.getAllByRole("button")[1]?.getAttribute("aria-current")).toBe("true");
+  });
+
+  it("does not let an aborted file search clear newer results", async () => {
+    vi.useFakeTimers();
+    let rejectFirst!: (error: unknown) => void;
+    const first = new Promise<Response>((_, reject) => {
+      rejectFirst = reject;
+    });
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(["new-result.ts"]), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(getJson).mockResolvedValue({ tasks: [] });
+
+    render(<CommandPalette directory="/repo" />);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    const input = screen.getAllByRole("textbox").at(-1)!;
+    fireEvent.change(input, { target: { value: "first" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    fireEvent.change(input, { target: { value: "second" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await act(async () => {
+      rejectFirst(new TypeError("aborted"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("new-result.ts")).toBeTruthy();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 });
