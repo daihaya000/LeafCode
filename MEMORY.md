@@ -3708,6 +3708,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SettingsView tests passed (22/22), including root busy-state regression; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: when adding ref-level locks, preserve the state setter that drives the user's visible busy feedback; refs protect correctness, state communicates it.
 
+## 2026-08-01: Provider models settings lifecycle
+
+- Found: provider/model toggles used only rendered busy state, while provider list loading, order-save queue completions, and CRUD feedback could finish after the settings page was gone.
+- Fixed: add a mounted boundary, synchronous toggle lock, stale-load protection, queued-order completion guards, and mounted checks for provider delete/save feedback.
+- Verification: ProviderModelsSettings tests passed (30/30); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: optimistic drag-and-drop saves need lifecycle guards on both the queued operation and its final pending-count update.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.

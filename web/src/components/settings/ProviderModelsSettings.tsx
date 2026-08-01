@@ -321,7 +321,9 @@ export function ProviderModelsSettings() {
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [deletingProviderId, setDeletingProviderId] = useState<string | null>(null);
   const providerMutationRef = useRef(false);
+  const toggleBusyRef = useRef(false);
   const loadRequestRef = useRef(0);
+  const mountedRef = useRef(false);
   const orderQueueRef = useRef(Promise.resolve());
   const orderPendingRef = useRef(0);
   const [orderSaving, setOrderSaving] = useState(false);
@@ -333,6 +335,14 @@ export function ProviderModelsSettings() {
     icon: "",
     models: "",
   });
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadRequestRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -424,11 +434,11 @@ export function ProviderModelsSettings() {
       const data = await getJson<ProviderModelsResponse>(
         "/api/extensions/provider-models",
       );
-      if (requestId !== loadRequestRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return;
       setProviders(data.providers ?? []);
       setStatus("ready");
     } catch (err) {
-      if (requestId !== loadRequestRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return;
       setError(err instanceof Error ? err.message : "取得に失敗しました");
       setStatus("error");
     }
@@ -440,6 +450,8 @@ export function ProviderModelsSettings() {
 
   const toggle = useCallback(
     async (key: string, enabled: boolean) => {
+      if (toggleBusyRef.current) return;
+      toggleBusyRef.current = true;
       setBusyId(key);
       setActionError(null);
       try {
@@ -451,6 +463,7 @@ export function ProviderModelsSettings() {
         // Optimistic update: reflect the change in the local list without a
         // full reload so expanded rows stay open and the list never flashes
         // to "読み込み中…". Toggling a provider also flips its models.
+        if (!mountedRef.current) return;
         setProviders((prev) =>
           prev.map((p) => {
             if (key === p.id) {
@@ -481,11 +494,12 @@ export function ProviderModelsSettings() {
           }),
         );
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "操作に失敗しました");
+        if (mountedRef.current) setActionError(err instanceof Error ? err.message : "操作に失敗しました");
         // On failure, resync from the server so the UI reflects the real state.
-        void load();
+        if (mountedRef.current) void load();
       } finally {
-        setBusyId(null);
+        toggleBusyRef.current = false;
+        if (mountedRef.current) setBusyId(null);
       }
     },
     [load],
@@ -495,6 +509,7 @@ export function ProviderModelsSettings() {
     orderPendingRef.current += 1;
     setOrderSaving(true);
     const operation = orderQueueRef.current.then(async () => {
+      if (!mountedRef.current) return;
       setActionError(null);
       try {
         await sendJson("PATCH", "/api/extensions/provider-models/order", {
@@ -517,7 +532,7 @@ export function ProviderModelsSettings() {
     );
     void operation.finally(() => {
       orderPendingRef.current -= 1;
-      if (orderPendingRef.current === 0) setOrderSaving(false);
+      if (mountedRef.current && orderPendingRef.current === 0) setOrderSaving(false);
     });
   }, [load]);
 
@@ -600,13 +615,14 @@ export function ProviderModelsSettings() {
           "DELETE",
           `/api/extensions/provider-models/${encodeURIComponent(provider.id)}`,
         );
+        if (!mountedRef.current) return;
         setProviders((prev) => prev.filter((p) => p.id !== provider.id));
         if (editingProviderId === provider.id) resetProviderForm();
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "削除に失敗しました");
+        if (mountedRef.current) setActionError(err instanceof Error ? err.message : "削除に失敗しました");
       } finally {
         providerMutationRef.current = false;
-        setDeletingProviderId(null);
+        if (mountedRef.current) setDeletingProviderId(null);
       }
     },
     [editingProviderId, resetProviderForm],
@@ -633,14 +649,15 @@ export function ProviderModelsSettings() {
           `/api/extensions/provider-models/${encodeURIComponent(editingProviderId)}`,
           { icon: newProvider.icon.trim() || null },
         );
+        if (!mountedRef.current) return;
         setAddMessage("アイコンを更新しました。");
         resetProviderForm();
         await load();
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "保存に失敗しました");
+        if (mountedRef.current) setActionError(err instanceof Error ? err.message : "保存に失敗しました");
       } finally {
         providerMutationRef.current = false;
-        setAddBusy(false);
+        if (mountedRef.current) setAddBusy(false);
       }
       return;
     }
@@ -674,6 +691,7 @@ export function ProviderModelsSettings() {
       } else {
         await sendJson("POST", "/api/extensions/provider-models", body);
       }
+      if (!mountedRef.current) return;
       setAddMessage(
         editingProviderId
           ? "更新しました。OpenCode の再起動後に反映されます。"
@@ -682,10 +700,10 @@ export function ProviderModelsSettings() {
       resetProviderForm();
       await load();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "保存に失敗しました");
+      if (mountedRef.current) setActionError(err instanceof Error ? err.message : "保存に失敗しました");
     } finally {
       providerMutationRef.current = false;
-      setAddBusy(false);
+      if (mountedRef.current) setAddBusy(false);
     }
   }, [editingProviderId, iconOnlyEdit, load, newProvider, resetProviderForm]);
 
