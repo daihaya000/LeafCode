@@ -247,6 +247,15 @@ function useExtensionSection<T extends { id: string }>(
   const [actionError, setActionError] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
   const busyIdRef = useRef<string | null>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadRequestRef.current += 1;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
@@ -254,13 +263,13 @@ function useExtensionSection<T extends { id: string }>(
     setError(null);
     try {
       const data = await getJson<Record<string, unknown>>(url);
-      if (requestId !== loadRequestRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return;
       const list = data[key];
       setItems(Array.isArray(list) ? (list as T[]) : []);
       setTruncated(data.truncated === true);
       setStatus("ready");
     } catch (err) {
-      if (requestId !== loadRequestRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return;
       setError(err instanceof Error ? err.message : "取得に失敗しました");
       setStatus("error");
     }
@@ -285,14 +294,14 @@ function useExtensionSection<T extends { id: string }>(
         await load();
         return true;
       } catch (err) {
-        setActionError(
+        if (mountedRef.current) setActionError(
           err instanceof Error ? err.message : "操作に失敗しました",
         );
         return false;
       } finally {
         if (busyIdRef.current === item.id) {
           busyIdRef.current = null;
-          setBusyId(null);
+          if (mountedRef.current) setBusyId(null);
         }
       }
     },
@@ -310,14 +319,14 @@ function useExtensionSection<T extends { id: string }>(
         await load();
         return true;
       } catch (err) {
-        setActionError(
+        if (mountedRef.current) setActionError(
           err instanceof Error ? err.message : "削除に失敗しました",
         );
         return false;
       } finally {
         if (busyIdRef.current === item.id) {
           busyIdRef.current = null;
-          setBusyId(null);
+          if (mountedRef.current) setBusyId(null);
         }
       }
     },
@@ -494,9 +503,12 @@ export function ExtensionsSettings({
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+  const restartingRef = useRef(false);
 
   const [pluginFormOpen, setPluginFormOpen] = useState(false);
   const [pluginFormBusy, setPluginFormBusy] = useState(false);
+  const pluginFormBusyRef = useRef(false);
   const [pluginFormMessage, setPluginFormMessage] = useState<string | null>(
     null,
   );
@@ -510,6 +522,13 @@ export function ExtensionsSettings({
     optionsJson: "",
   });
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const loadSkills = skills.load;
   const loadMcp = mcp.load;
   const loadPlugins = plugins.load;
@@ -518,7 +537,8 @@ export function ExtensionsSettings({
   }, [loadSkills, loadMcp, loadPlugins]);
 
   const restartOpencode = useCallback(async () => {
-    if (restarting) return;
+    if (restartingRef.current) return;
+    restartingRef.current = true;
     setRestarting(true);
     setRestartError(null);
     try {
@@ -541,6 +561,7 @@ export function ExtensionsSettings({
       let success = false;
       for (let i = 0; i < 60; i += 1) {
         await new Promise((r) => setTimeout(r, 1000));
+        if (!mountedRef.current) return;
         try {
           const h = await getJson<HealthDto>("/api/health", undefined, {
             timeoutMs: 1500,
@@ -556,19 +577,20 @@ export function ExtensionsSettings({
       if (!success) {
         throw new Error("OpenCode の再起動を確認できませんでした");
       }
-      setRestartNeeded(false);
+      if (mountedRef.current) setRestartNeeded(false);
       await reloadAll();
     } catch (err) {
-      setRestartError(
+      if (mountedRef.current) setRestartError(
         err instanceof Error ? err.message : "再起動に失敗しました",
       );
     } finally {
-      setRestarting(false);
+      restartingRef.current = false;
+      if (mountedRef.current) setRestarting(false);
     }
-  }, [reloadAll, restarting]);
+  }, [reloadAll]);
 
   const onToggled = (ok: boolean) => {
-    if (ok) setRestartNeeded(true);
+    if (ok && mountedRef.current) setRestartNeeded(true);
   };
 
   const resetPluginForm = useCallback(() => {
@@ -588,7 +610,7 @@ export function ExtensionsSettings({
   }, []);
 
   const savePlugin = useCallback(async () => {
-    if (pluginFormBusy) return;
+    if (pluginFormBusyRef.current) return;
     const name = newPlugin.name.trim();
     const trimmedOptions = newPlugin.optionsJson.trim();
     let options: unknown;
@@ -600,6 +622,7 @@ export function ExtensionsSettings({
         return;
       }
     }
+    pluginFormBusyRef.current = true;
     setPluginFormBusy(true);
     setPluginFormError(null);
     setPluginFormMessage(null);
@@ -614,6 +637,7 @@ export function ExtensionsSettings({
       } else {
         await sendJson("POST", "/api/extensions/plugins", body);
       }
+      if (!mountedRef.current) return;
       setPluginFormMessage(
         editingPluginId
           ? "更新しました。OpenCode の再起動後に反映されます。"
@@ -623,13 +647,14 @@ export function ExtensionsSettings({
       setRestartNeeded(true);
       await loadPlugins();
     } catch (err) {
-      setPluginFormError(
+      if (mountedRef.current) setPluginFormError(
         err instanceof Error ? err.message : "保存に失敗しました",
       );
     } finally {
-      setPluginFormBusy(false);
+      pluginFormBusyRef.current = false;
+      if (mountedRef.current) setPluginFormBusy(false);
     }
-  }, [editingPluginId, loadPlugins, newPlugin, pluginFormBusy, resetPluginForm]);
+  }, [editingPluginId, loadPlugins, newPlugin, resetPluginForm]);
 
   return (
     <div className="space-y-8">

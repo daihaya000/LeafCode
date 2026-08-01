@@ -3694,6 +3694,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: AgentsSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: long-running settings actions need both a ref-level lock for same-turn input and a lifecycle check inside every polling iteration.
 
+## 2026-08-01: Extensions settings lifecycle
+
+- Found: Skills/MCP/Plugin section requests invalidated replacement loads but not the component lifecycle; restart polling and Plugin save completion also relied on rendered busy state and could finish after navigation.
+- Fixed: add section mounted guards, synchronous restart/Plugin-save locks, restart polling cancellation, and mounted checks for toggle/save/restart feedback.
+- Verification: ExtensionsSettings tests passed (23/23); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: shared settings pages need separate lifecycle boundaries for reusable section hooks and page-level mutations.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.
