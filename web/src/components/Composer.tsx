@@ -170,7 +170,13 @@ export function Composer({
       />
       {afterTextarea}
       <div className="flex items-center gap-2 pt-1">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="relative min-w-0 flex-1 overflow-x-auto">
+          <div
+            role="group"
+            aria-label="タスク設定"
+            tabIndex={0}
+            className="flex min-w-0 items-center gap-2 overflow-x-auto rounded-md [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
           <input
             ref={attachmentControl.inputRef}
             type="file"
@@ -195,6 +201,11 @@ export function Composer({
             <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
           {toolbar}
+          </div>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 right-0 w-6 rounded-r-md bg-gradient-to-l from-bg to-transparent sm:hidden"
+          />
         </div>
         {action}
       </div>

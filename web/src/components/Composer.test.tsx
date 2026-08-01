@@ -61,6 +61,14 @@ function renderComposer(overrides: Partial<Parameters<typeof Composer>[0]> = {})
 }
 
 describe("Composer", () => {
+  it("exposes the horizontally scrollable toolbar as a keyboard-focusable group", () => {
+    renderComposer();
+
+    const toolbar = screen.getByRole("group", { name: "タスク設定" });
+    expect(toolbar.getAttribute("tabindex")).toBe("0");
+    expect(toolbar.className).toContain("overflow-x-auto");
+  });
+
   it("keeps the input controlled and delegates input events to its parent", () => {
     const { onChange, onKeyDown } = renderComposer();
     const textarea = screen.getByRole("combobox", { name: "プロンプト" });

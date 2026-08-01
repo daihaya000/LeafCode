@@ -3265,3 +3265,11 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: compose the caller signal with the internal timeout controller and clean up the parent listener when the request settles.
 - Verification: `web` typecheck and ESLint passed; `client.test.ts` 24/24 passed; stuck-busy regression tests 3/3 passed; host tests 189/189 passed (one skipped); browser-bridge tests 70/70 passed.
 - Lesson: timeout wrappers must preserve caller cancellation; a timeout should be an upper bound, not a replacement for lifecycle cancellation.
+
+## 2026-08-01: Mobile composer toolbar discoverability
+
+- Found: at 390px width, the composer toolbar clipped most controls behind a hidden horizontal scrollbar; touch users had no clear scroll affordance and keyboard users could not focus the scroll region.
+- Fixed: wrapped the toolbar in a labelled, keyboard-focusable group, retained the existing `overflow-x-auto` contract, and added a mobile edge fade to signal more controls.
+- Fixed globally: added a consistent `:focus-visible` outline for keyboard navigation across custom controls.
+- Verification: `web` typecheck passed; Composer and HomeView tests passed (53/53); ESLint and `git diff --check` passed.
+- Lesson: responsive horizontal toolbars need both a visual overflow cue and a keyboard-accessible scroll surface.
