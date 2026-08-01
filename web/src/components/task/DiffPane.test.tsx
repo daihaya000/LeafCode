@@ -184,6 +184,10 @@ describe("DiffPane directory race", () => {
     render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
     await screen.findByText("file.ts");
 
+    expect(screen.getByRole("button", { name: "Commit パネル" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Merge パネル" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "PR パネル" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: /Commit/i }));
     fireEvent.click(
       screen.getByRole("checkbox", { name: /file\.ts をコミット対象にする/ }),

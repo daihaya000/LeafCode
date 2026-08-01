@@ -324,7 +324,7 @@ export function PtyPanel({ directory }: { directory: string }) {
       } catch (err) {
         if (!mountedRef.current) return;
         setError(
-          err instanceof Error ? err.message : "PTY 繧ｻ繝・す繝ｧ繝ｳ縺ｮ邨ｭ豁ｳ縺ｫ螟ｱ謨励＠縺ｾ縺励◆",
+          err instanceof Error ? err.message : "PTY セッションの終了に失敗しました",
         );
       } finally {
         if (closingRef.current === ptyId) {
@@ -381,7 +381,7 @@ export function PtyPanel({ directory }: { directory: string }) {
 
       {refreshing && (
         <p role="status" aria-live="polite" aria-busy="true" className="min-w-0 text-xs text-faint">
-          PTY 繧ｻ繝・す繝ｧ繝ｳ繧呈､懈ｴ九＠縺ｾ縺励◆…
+          PTY セッションを更新中…
         </p>
       )}
 
@@ -403,7 +403,7 @@ export function PtyPanel({ directory }: { directory: string }) {
               </button>
               <button
                 type="button"
-                aria-label={`${s.title || s.id} 繧ｻ繝�す繝ｧ繝ｳ繧堤ｵｭ豁ｳ`}
+                aria-label={`${s.title || s.id} セッションを閉じる`}
                 data-testid={`close-pty-${s.id}`}
                 disabled={closingId !== null}
                 onClick={() => void closeSession(s.id)}

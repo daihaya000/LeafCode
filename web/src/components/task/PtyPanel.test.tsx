@@ -112,6 +112,7 @@ describe("PtyPanel", () => {
     expect(call[0]).toContain("/api/pty-session");
     expect(call[0]).toContain("directory=C%3A%2Fproj");
     expect(await screen.findByText("bash")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "bash セッションを閉じる" })).toBeTruthy();
   });
 
   it("announces the initial loading state instead of showing an empty state", async () => {
@@ -125,7 +126,9 @@ describe("PtyPanel", () => {
     render(<PtyPanel directory="C:/proj" />);
 
     expect(screen.getByRole("status").getAttribute("aria-busy")).toBe("true");
-    expect(screen.queryByText("遞ｼ蜒堺ｸｭ縺ｮ PTY 縺ｯ縺ゅｊ縺ｾ縺帙ｓ縲ゅ梧眠隕上阪〒繧ｿ繝ｼ繝溘リ繝ｫ繧帝幕蟋九〒縺阪∪縺吶・")).toBeNull();
+    expect(
+      screen.queryByText("稼働中の PTY はありません。「新規」でターミナルを開始できます。"),
+    ).toBeNull();
 
     resolveList?.({
       ok: true,

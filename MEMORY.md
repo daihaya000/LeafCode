@@ -4071,3 +4071,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add explicit `aria-label` values and preserve link props in the Sidebar test mock; added a mobile-drawer regression test for both names.
 - Verification: Sidebar tests passed (38/38); broader typecheck, ESLint, full web suite, and `git diff --check` are run before commit.
 - Lesson: test doubles for routing primitives must forward accessibility attributes, otherwise semantic regressions can be masked even when the rendered UI looks correct.
+
+## 2026-08-01: PTY and Diff action accessibility audit
+
+- Found: PTY session error/loading text and the close-session accessible name contained literal mojibake; Diff Commit lost its visible text at small widths and its Commit/Merge/PR action buttons had no explicit accessible name.
+- Fixed: restore Japanese PTY strings, add explicit action-panel labels, and replace a mojibake Composer test fixture with the real `タスク作成` label.
+- Verification: PTY tests passed (14/14), Diff tests passed (7/7); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
+- Lesson: responsive `hidden` text must not be the only accessible name for an icon/text hybrid control, and mojibake scans should include both UI source and test fixtures.

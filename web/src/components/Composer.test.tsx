@@ -112,12 +112,12 @@ describe("Composer", () => {
     const onDrop = vi.fn();
     const onDragOver = vi.fn();
     renderComposer({
-      form: { ariaLabel: "繧ｿ繧ｹ繧ｯ菴懈・", onSubmit: vi.fn() },
+      form: { ariaLabel: "タスク作成", onSubmit: vi.fn() },
       onDrop,
       onDragOver,
     });
 
-    const form = screen.getByRole("form", { name: "繧ｿ繧ｹ繧ｯ菴懈・" });
+    const form = screen.getByRole("form", { name: "タスク作成" });
     fireEvent.dragOver(form);
     fireEvent.drop(form);
 

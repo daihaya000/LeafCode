@@ -522,6 +522,7 @@ export function DiffPane({
         <Button
           variant={panel === "commit" ? "secondary" : "ghost"}
           size="sm"
+          aria-label="Commit パネル"
           disabled={!hasChanges || !!baseCompare}
           title={
             baseCompare
@@ -537,6 +538,7 @@ export function DiffPane({
           variant={panel === "merge" ? "secondary" : "ghost"}
           size="sm"
           className="inline-flex"
+          aria-label="Merge パネル"
           onClick={() => setPanel(panel === "merge" ? null : "merge")}
         >
           <GitMerge className="h-3.5 w-3.5" />
@@ -546,6 +548,7 @@ export function DiffPane({
           variant={panel === "pr" ? "secondary" : "ghost"}
           size="sm"
           className="inline-flex"
+          aria-label="PR パネル"
           disabled={prAvailable === false}
           title={prAvailable === false ? "gh CLI が必要です" : undefined}
           onClick={() => setPanel(panel === "pr" ? null : "pr")}
