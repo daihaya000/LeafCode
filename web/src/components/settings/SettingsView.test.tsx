@@ -538,8 +538,6 @@ describe("SettingsView", () => {
 
   it("confirms the root path and removes the row after a successful delete", async () => {
     const roots = ["C:\\repo1"];
-    const confirm = vi.fn(() => true);
-    vi.stubGlobal("confirm", confirm);
     mockSettingsGetJson(roots);
     sendJson.mockImplementation(async () => {
       roots.splice(0, 1);
@@ -551,10 +549,16 @@ describe("SettingsView", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /プロジェクト/ }));
     const deleteBtn = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
+    deleteBtn.focus();
     fireEvent.click(deleteBtn);
 
+    const dialog = await screen.findByRole("alertdialog");
+    expect(document.activeElement).toBe(dialog.querySelector("button"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    fireEvent.click(deleteBtn);
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
     await waitFor(() => {
-      expect(confirm).toHaveBeenCalledWith("許可ルート「C:\\repo1」を削除しますか？");
       expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/roots", undefined, { path: "C:\\repo1" });
       expect(screen.queryByText("C:\\repo1")).toBeNull();
     });
@@ -563,7 +567,6 @@ describe("SettingsView", () => {
   it("marks only the root being deleted as busy", async () => {
     const roots = ["C:\\repo1", "C:\\repo2"];
     let resolveDelete: (() => void) | undefined;
-    vi.stubGlobal("confirm", vi.fn(() => true));
     mockSettingsGetJson(roots);
     sendJson.mockImplementation(
       () => new Promise((resolve) => {
@@ -576,6 +579,7 @@ describe("SettingsView", () => {
     const firstDelete = await screen.findByRole("button", { name: /C:\\repo1を削除/ });
     const secondDelete = screen.getByRole("button", { name: /C:\\repo2を削除/ });
     fireEvent.click(firstDelete);
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
 
     await waitFor(() => {
       expect(firstDelete.getAttribute("aria-busy")).toBe("true");
@@ -589,13 +593,13 @@ describe("SettingsView", () => {
 
   it("keeps the root and announces a delete error", async () => {
     const roots = ["C:\\repo1"];
-    vi.stubGlobal("confirm", vi.fn(() => true));
     mockSettingsGetJson(roots);
     sendJson.mockRejectedValue(new Error("削除に失敗しました"));
 
     render(<SettingsView />);
     fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
 
     expect((await screen.findByRole("alert")).textContent).toContain("削除に失敗しました");
     expect(screen.getByText("C:\\repo1")).toBeTruthy();
@@ -603,7 +607,6 @@ describe("SettingsView", () => {
 
   it("refreshes the list and announces when the root was already deleted", async () => {
     const roots = ["C:\\repo1"];
-    vi.stubGlobal("confirm", vi.fn(() => true));
     mockSettingsGetJson(roots);
     sendJson.mockImplementation(async () => {
       roots.splice(0, 1);
@@ -613,6 +616,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
+    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
 
     expect((await screen.findByRole("alert")).textContent).toContain("既に削除済みです");
     await waitFor(() => expect(screen.queryByText("C:\\repo1")).toBeNull());
@@ -621,15 +625,14 @@ describe("SettingsView", () => {
 
   it("does not send DELETE when root deletion is cancelled", async () => {
     const roots = ["C:\\repo1"];
-    const confirm = vi.fn(() => false);
-    vi.stubGlobal("confirm", confirm);
     mockSettingsGetJson(roots);
 
     render(<SettingsView />);
     fireEvent.click(await screen.findByRole("tab", { name: /プロジェクト/ }));
     fireEvent.click(await screen.findByRole("button", { name: /C:\\repo1を削除/ }));
 
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole("alertdialog");
+    dialog.querySelectorAll("button")[1]?.click();
     expect(sendJson).not.toHaveBeenCalled();
     expect(screen.getByText("C:\\repo1")).toBeTruthy();
   });

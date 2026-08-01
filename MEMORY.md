@@ -3988,6 +3988,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: Sidebar tests passed (37/37); typecheck, ESLint, `git diff --check`, and a search confirmed no native confirm/alert calls remain in Sidebar.tsx.
 - Lesson: repeated destructive actions should share a single confirmation lifecycle so behavior stays consistent across desktop and mobile surfaces.
 
+## 2026-08-01: Allowlist root deletion confirmation UX
+
+- Found: deleting a configured allowlist root in SettingsView still used a native confirmation dialog, hiding the target path from the page and providing no keyboard focus lifecycle.
+- Fixed: add an inline alert dialog with the root path, primary-action focus, Escape cancellation, trigger focus restoration, and the existing per-root busy/error behavior.
+- Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: path and access-control mutations need the same contextual confirmation treatment as task and provider mutations.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.

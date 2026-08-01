@@ -202,6 +202,7 @@ export function SettingsView() {
   const [newRoot, setNewRoot] = useState("");
   const [busy, setBusy] = useState(false);
   const [deletingRoot, setDeletingRoot] = useState<string | null>(null);
+  const [pendingRootDelete, setPendingRootDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
@@ -223,6 +224,8 @@ export function SettingsView() {
   const updatingRef = useRef<UpdateTarget | null>(null);
   const busyRef = useRef(false);
   const deletingRootRef = useRef<string | null>(null);
+  const rootConfirmRef = useRef<HTMLDivElement | null>(null);
+  const rootTriggerRef = useRef<HTMLElement | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -234,6 +237,23 @@ export function SettingsView() {
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!pendingRootDelete) {
+      if (rootTriggerRef.current?.isConnected) rootTriggerRef.current.focus();
+      rootTriggerRef.current = null;
+      return;
+    }
+
+    rootConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPendingRootDelete(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pendingRootDelete]);
   useEffect(() => {
     const prefs = readCostDisplayPrefs();
     setCostPrefs(prefs);
@@ -486,9 +506,16 @@ export function SettingsView() {
       setNewRoot("");
     });
 
-  const removeRoot = async (r: string) => {
+  const removeRoot = async (r: string, confirmed = false) => {
     if (busyRef.current || deletingRootRef.current !== null) return;
-    if (!window.confirm(`許可ルート「${r}」を削除しますか？`)) return;
+    if (!confirmed) {
+      rootTriggerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      setPendingRootDelete(r);
+      return;
+    }
     busyRef.current = true;
     setBusy(true);
     deletingRootRef.current = r;
@@ -1023,6 +1050,41 @@ export function SettingsView() {
                   許可
                 </Button>
               </div>
+              {pendingRootDelete && (
+                <div
+                  ref={rootConfirmRef}
+                  role="alertdialog"
+                  aria-label="許可ルート削除の確認"
+                  aria-describedby="root-delete-confirm-description"
+                  className="mb-3 rounded-xl border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
+                >
+                  <p id="root-delete-confirm-description">
+                    許可ルート「{pendingRootDelete}」を削除しますか？
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      busy={deletingRoot === pendingRootDelete}
+                      onClick={() => {
+                        const root = pendingRootDelete;
+                        rootTriggerRef.current = null;
+                        setPendingRootDelete(null);
+                        void removeRoot(root, true);
+                      }}
+                    >
+                      削除する
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPendingRootDelete(null)}
+                    >
+                      キャンセル
+                    </Button>
+                  </div>
+                </div>
+              )}
               <ul className="space-y-1">
                 {roots.map((r) => (
                   <li
