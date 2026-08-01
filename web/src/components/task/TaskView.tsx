@@ -2810,7 +2810,10 @@ export function TaskView({ taskId }: { taskId: string }) {
           <div className="mt-0.5 hidden min-w-0 items-center gap-1 text-xs text-faint sm:flex">
             <StatusBadge status={working ? "working" : task.status} />
             {working && currentTool && (
-              <span className="max-w-[12rem] truncate text-working">
+              <span
+                className="inline-flex w-24 shrink-0 truncate text-working"
+                title={currentTool}
+              >
                 {currentTool}
               </span>
             )}
