@@ -51,6 +51,7 @@ export function BrowserBridgeSettings() {
   const mountedRef = useRef(false);
   const statusRequestRef = useRef(0);
   const pollingRef = useRef(false);
+  const connectionBusyRef = useRef(false);
   const hintId = useId();
 
   const fetchStatus = useCallback(async (): Promise<Status | null> => {
@@ -113,7 +114,8 @@ export function BrowserBridgeSettings() {
   }, [connectionDismissed, isConnected, status, urlDraft]);
 
   const handleConnect = async () => {
-    if (loading) return;
+    if (connectionBusyRef.current) return;
+    connectionBusyRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -126,6 +128,7 @@ export function BrowserBridgeSettings() {
       // Broker is reachable and whether a paired extension exists.
       writeSavedUrl(trimmed);
       const next = await fetchStatus();
+      if (!mountedRef.current) return;
       if (next?.available !== true) {
         throw new Error("Broker に接続できません");
       }
@@ -137,9 +140,11 @@ export function BrowserBridgeSettings() {
       });
       setExpanded(false);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "接続に失敗しました");
     } finally {
-      setLoading(false);
+      connectionBusyRef.current = false;
+      if (mountedRef.current) setLoading(false);
     }
   };
 

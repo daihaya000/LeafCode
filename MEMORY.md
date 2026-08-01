@@ -3722,6 +3722,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: OpenAISubscriptionAuth tests passed (3/3); Claude shares the same guarded flow and typecheck, ESLint, and `git diff --check` passed.
 - Lesson: an auth panel's polling guard is incomplete unless the initial discovery and popup authorization promises use the same lifecycle boundary.
 
+## 2026-08-01: Browser Bridge operation lifecycle
+
+- Found: Browser Bridge status polling already invalidated stale reads, but connect and approval/pairing decisions still used rendered busy state and could apply completion/error updates after leaving the settings page.
+- Fixed: add a synchronous connection lock and mounted guards for connect, approval, and pairing completion/error/busy updates.
+- Verification: BrowserBridgeSettings and BrowserBridgeApprovals tests passed (21/21); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: polling-safe components still need separate lifecycle protection around user-triggered mutations that await the same service.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.

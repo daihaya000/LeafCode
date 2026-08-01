@@ -42,6 +42,7 @@ export function BrowserBridgeApprovals() {
       setAvailable(approvalsData.available === true || pairingData.available === true);
       setError(null);
     } catch (err) {
+      if (!mountedRef.current) return;
       if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       setError(err instanceof Error ? err.message : "承認一覧を取得できません");
     }
@@ -69,12 +70,15 @@ export function BrowserBridgeApprovals() {
         timeoutMs: 3000,
       });
       if (!res.ok) throw new Error("承認の更新に失敗しました");
+      if (!mountedRef.current) return;
       await refresh();
     } catch (err) {
+      if (!mountedRef.current) return;
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "承認の更新に失敗しました");
     } finally {
       busyRef.current = null;
-      setBusy(null);
+      if (mountedRef.current) setBusy(null);
     }
   };
   const decidePairing = async (requestId: string, decision: "allow" | "deny") => {
@@ -90,12 +94,13 @@ export function BrowserBridgeApprovals() {
         timeoutMs: 3000,
       });
       if (!res.ok) throw new Error("ペアリング要求の更新に失敗しました");
+      if (!mountedRef.current) return;
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "ペアリング要求の更新に失敗しました");
     } finally {
       busyRef.current = null;
-      setBusy(null);
+      if (mountedRef.current) setBusy(null);
     }
   };
   if (!available && !error) return null;
