@@ -1380,8 +1380,8 @@ describe("TaskView", () => {
 
     const header = document.querySelector("header");
     expect(header).toBeTruthy();
-    expect(within(header as HTMLElement).queryByRole("button", { name: "停止" })).toBeNull();
-    expect(screen.getByRole("button", { name: "停止" })).toBeTruthy();
+    expect(within(header as HTMLElement).queryByRole("button", { name: "タスクを停止" })).toBeNull();
+    expect(screen.getByRole("button", { name: "生成を停止" })).toBeTruthy();
   });
 
   it("keeps files, graph, diff, and terminal below md while resync stays visible and terminal moves into the kebab menu", async () => {

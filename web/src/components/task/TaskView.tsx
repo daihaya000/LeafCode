@@ -3135,7 +3135,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               size="sm"
               busy={stream.aborting}
               disabled={stream.aborting}
-              aria-label={stream.aborting ? "停止中" : "停止"}
+              aria-label={stream.aborting ? "停止中" : "タスクを停止"}
               onClick={() => void stream.abort()}
             >
               <Square className="h-3 w-3 fill-current" />
@@ -3972,7 +3972,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       variant="secondary"
                       size="icon"
                       className="shrink-0"
-                      aria-label={stream.aborting ? "停止中" : "停止"}
+                      aria-label={stream.aborting ? "停止中" : "生成を停止"}
                       busy={stream.aborting}
                       disabled={stream.aborting}
                       onClick={() => void stream.abort()}
