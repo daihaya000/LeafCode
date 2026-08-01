@@ -100,6 +100,31 @@ describe("HomeView image attachments", () => {
     expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("ignores an engine response that resolves after unmount", async () => {
+    let releaseHealth!: (value: { engineOk: boolean }) => void;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/tasks") {
+        return new Promise<{ engineOk: boolean }>((resolve) => {
+          releaseHealth = resolve;
+        });
+      }
+      if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { unmount } = render(<HomeView />);
+
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/tasks"));
+    unmount();
+    await act(async () => {
+      releaseHealth({ engineOk: false });
+      await Promise.resolve();
+    });
+
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it.each(["ctrlKey", "metaKey"])("starts a task only with %s+Enter", async (modifier) => {
     render(<HomeView />);
     const prompt = screen.getByRole("combobox", { name: "タスクの説明" });

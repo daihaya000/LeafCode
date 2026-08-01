@@ -3680,12 +3680,20 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: FileTreePanel tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: request-generation guards handle replacement, while a mounted guard is still required for the terminal lifecycle boundary.
 
+## 2026-08-01: Home view initialization lifecycle
+
+- Found: HomeView guarded project request replacement but several initial settings, provider, agent, model, usage, and engine responses could still finish after the view unmounted; the initial `loaded` flag also had no lifecycle guard.
+- Fixed: add a shared mounted boundary, cancel initialization effects, and require the boundary for project/engine/loading state updates.
+- Verification: HomeView tests passed (53/53), including a late engine response; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: a dashboard's initial parallel requests need one shared lifecycle boundary in addition to per-request de-duplication.
+
 ## 2026-08-01: Claude Auth profile dependency
 
 - Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.
 - Why: Claude OAuth is supplied by that plugin, so deleting it removes Anthropic's OAuth method from `/provider/auth`. Vendoring removes the npm/network dependency and keeps new profiles reproducible.
 - Lesson: profile-scoped auth dependencies should be restored from repository-owned runtime files rather than relying on a user's global plugin cache.
 - Follow-up: replaced the interim npm plugin entry with `vendor/claude-auth` containing the runtime and local auto-load wrapper; new profiles now copy both files and runtime.
+- Follow-up: added a per-profile `WebUI依存` action and local API so existing profiles can receive the same vendored dependencies without recreation.
 
 ## 2026-08-01: Claude OAuth plugin removal diagnosis
 

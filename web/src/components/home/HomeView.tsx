@@ -212,6 +212,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [loaded, setLoaded] = useState(false);
   const projectsRequestRef = useRef(0);
   const engineRequestBusyRef = useRef(false);
+  const mountedRef = useRef(false);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -235,6 +236,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const slashOpen = !slashDismissed && slashItems.length > 0;
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      projectsRequestRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
     setSlashIndex(0);
     setSlashDismissed(false);
   }, [slashQuery?.query, slashQuery?.start]);
@@ -250,26 +259,39 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   // unreachable or has no value, the existing localStorage copy (if any)
   // is left untouched and readDefaultModel() behaves as before.
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
       const serverValue = await readDefaultModelFromServer().catch(() => null);
-      if (serverValue && !readDefaultModel()) {
+      if (!cancelled && mountedRef.current && serverValue && !readDefaultModel()) {
         writeDefaultModel(serverValue);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Same DB → localStorage restore for the Auto settings. Only keys the server
   // actually has are applied, and only when localStorage has no copy yet, so a
   // local choice is never overwritten by a stale server value.
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
       const snapshot: AutoSettingsSnapshot = await readAutoSettingsFromServer()
         .catch(() => ({}));
-      if (snapshot.mode && !hasStoredAutoSetting(AUTO_OPTIMIZE_SETTING_KEY)) {
+      if (
+        !cancelled &&
+        mountedRef.current &&
+        snapshot.mode &&
+        !hasStoredAutoSetting(AUTO_OPTIMIZE_SETTING_KEY)
+      ) {
         writeAutoOptimizeMode(snapshot.mode);
         setAutoOptimize(snapshot.mode);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Follow changes made in the Settings screen or another tab.
@@ -279,7 +301,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   }, []);
 
   useEffect(() => {
-    void readCodexBarAutoUsage().then(setCodexBarUsage);
+    let cancelled = false;
+    void readCodexBarAutoUsage().then((usage) => {
+      if (!cancelled && mountedRef.current) setCodexBarUsage(usage);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const changeAutoOptimize = useCallback((mode: AutoOptimizeMode) => {
@@ -293,7 +321,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     setProjectsLoading(true);
     try {
       const data = await getJson<{ projects: ProjectDto[] }>("/api/projects");
-      if (requestId !== projectsRequestRef.current) return false;
+      if (!mountedRef.current || requestId !== projectsRequestRef.current) return false;
       const nextProjects = data.projects ?? [];
       setProjects(nextProjects);
       setProjectId((cur) => {
@@ -310,11 +338,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       });
       return true;
     } catch (err) {
-      if (requestId !== projectsRequestRef.current) return false;
+      if (!mountedRef.current || requestId !== projectsRequestRef.current) return false;
       setError(err instanceof Error ? err.message : "projects failed");
       return false;
     } finally {
-      if (requestId === projectsRequestRef.current) setProjectsLoading(false);
+      if (mountedRef.current && requestId === projectsRequestRef.current) {
+        setProjectsLoading(false);
+      }
     }
   }, [initialProjectId]);
 
@@ -323,7 +353,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     engineRequestBusyRef.current = true;
     try {
       const data = await getJson<{ engineOk: boolean }>("/api/tasks");
-      setEngineOk(data.engineOk);
+      if (mountedRef.current) setEngineOk(data.engineOk);
     } catch {
       /* keep */
     } finally {
@@ -332,6 +362,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
       try {
         const [providerRes, configRes, agentRes, providerModelsRes] = await Promise.all([
@@ -340,6 +371,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
         ]);
+        if (cancelled || !mountedRef.current) return;
 
         const data = providerRes.ok
           ? ((await providerRes.json()) as ProviderResponse)
@@ -445,6 +477,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
         if (agentRes.ok) {
           const agentsData = (await agentRes.json()) as AgentResponse;
+          if (cancelled || !mountedRef.current) return;
           const names = agentsData
             .filter((a) => a.mode !== "subagent" && !a.hidden)
             .map((a) => a.name);
@@ -469,11 +502,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         /* non-fatal */
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     void Promise.all([refreshProjects(), refreshEngine()]).finally(() =>
-      setLoaded(true),
+      mountedRef.current && setLoaded(true),
     );
   }, [refreshProjects, refreshEngine]);
 
