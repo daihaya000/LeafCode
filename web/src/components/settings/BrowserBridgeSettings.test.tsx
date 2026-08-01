@@ -12,6 +12,10 @@ describe("BrowserBridgeSettings", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     timedFetch.mockReset();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
   });
   afterEach(() => {
     cleanup();
@@ -185,5 +189,20 @@ describe("BrowserBridgeSettings", () => {
     resolveFirst(response({ available: false }));
     await act(async () => { await Promise.resolve(); });
     expect(screen.queryByLabelText("Broker URL")).toBeNull();
+  });
+
+  it("pauses polling while hidden and resumes when visible", async () => {
+    timedFetch.mockResolvedValue(response({ available: false }));
+    render(<BrowserBridgeSettings />);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    fireEvent(document, new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(timedFetch).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
   });
 });

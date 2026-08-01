@@ -4136,6 +4136,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: focused UI tests passed (45/45); full suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: a global focus rule cannot recover controls whose utility classes have stronger `outline-none` specificity; every custom-styled native control needs an explicit visible focus state.
 
+## 2026-08-01: Visibility-aware settings polling
+
+- Found: Browser Bridge status and host-log polling continued every two seconds while the tab was hidden, and in-flight requests could remain alive until their timeout after the panel became inactive.
+- Fixed: pause both pollers while the document is hidden, resume with an immediate refresh when visible, and abort the active request during visibility changes and unmount cleanup. Added keyboard-visible focus outlines to the shared GhostSelect trigger and options.
+- Verification: targeted settings/UI tests passed (22/22); full Vitest suite, typecheck, ESLint, and `git diff --check` passed.
+- Lesson: background UI should stop both scheduled work and the request currently occupying the work slot; visibility changes are lifecycle events, not only rendering hints.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

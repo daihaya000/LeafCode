@@ -29,20 +29,29 @@ export function HostLogPanel() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   const sinceRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const mountedRef = useRef(false);
   const pollingRef = useRef(false);
+  const pollAbortRef = useRef<AbortController | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const poll = useCallback(async () => {
     if (!mountedRef.current || pollingRef.current) return;
     pollingRef.current = true;
+    const controller = new AbortController();
+    pollAbortRef.current = controller;
     try {
       const qs =
         sinceRef.current !== null ? `?since=${sinceRef.current}` : "";
-      const res = await timedFetch(`/api/host/logs${qs}`, { timeoutMs: 3000 });
+      const res = await timedFetch(`/api/host/logs${qs}`, {
+        timeoutMs: 3000,
+        signal: controller.signal,
+      });
       const data = (await res.json().catch(() => ({}))) as {
         entries?: LogEntry[];
         nextSeq?: number;
@@ -70,22 +79,43 @@ export function HostLogPanel() {
       );
     } finally {
       pollingRef.current = false;
+      if (pollAbortRef.current === controller) pollAbortRef.current = null;
     }
   }, []);
 
   useEffect(() => {
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (!visible) {
+        pollAbortRef.current?.abort();
+        pollAbortRef.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
     mountedRef.current = true;
+    if (!pageVisible) return () => {
+      mountedRef.current = false;
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+    };
     void poll();
     const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(timer);
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
       if (copiedTimerRef.current !== null) {
         clearTimeout(copiedTimerRef.current);
         copiedTimerRef.current = null;
       }
     };
-  }, [poll]);
+  }, [pageVisible, poll]);
 
   useEffect(() => {
     if (!scrollRef.current) return;

@@ -50,17 +50,25 @@ export function BrowserBridgeSettings() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [connectionDismissed, setConnectionDismissed] = useState(false);
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   const mountedRef = useRef(false);
   const statusRequestRef = useRef(0);
+  const statusAbortRef = useRef<AbortController | null>(null);
   const pollingRef = useRef(false);
   const connectionBusyRef = useRef(false);
   const hintId = useId();
 
   const fetchStatus = useCallback(async (): Promise<Status | null> => {
     const requestId = ++statusRequestRef.current;
+    statusAbortRef.current?.abort();
+    const controller = new AbortController();
+    statusAbortRef.current = controller;
     try {
       const res = await timedFetch("/api/host/browser-bridge/status", {
         timeoutMs: 3000,
+        signal: controller.signal,
       });
       const data = (await res.json().catch(() => ({}))) as Status;
       if (!mountedRef.current || requestId !== statusRequestRef.current) return null;
@@ -72,6 +80,8 @@ export function BrowserBridgeSettings() {
       setStatus({ available: false });
       setError(err instanceof Error ? err.message : "接続状態を取得できません");
       return null;
+    } finally {
+      if (statusAbortRef.current === controller) statusAbortRef.current = null;
     }
   }, []);
 
@@ -85,17 +95,39 @@ export function BrowserBridgeSettings() {
     }
   }, [fetchStatus]);
 
-  // Initial load and polling while the component is mounted.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (!visible) {
+        statusRequestRef.current += 1;
+        statusAbortRef.current?.abort();
+        statusAbortRef.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  // Initial load and polling while the component is mounted and visible.
   useEffect(() => {
     mountedRef.current = true;
+    if (!pageVisible) return () => {
+      mountedRef.current = false;
+      statusRequestRef.current += 1;
+      statusAbortRef.current?.abort();
+      statusAbortRef.current = null;
+    };
     void pollStatus();
     const timer = window.setInterval(() => void pollStatus(), POLL_MS);
     return () => {
       mountedRef.current = false;
       window.clearInterval(timer);
       statusRequestRef.current += 1;
+      statusAbortRef.current?.abort();
+      statusAbortRef.current = null;
     };
-  }, [pollStatus]);
+  }, [pageVisible, pollStatus]);
 
   const isConnected =
     status?.available === true &&

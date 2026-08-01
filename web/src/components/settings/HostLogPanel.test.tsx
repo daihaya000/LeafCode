@@ -28,6 +28,10 @@ describe("HostLogPanel", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     timedFetch.mockReset();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
   });
 
   afterEach(() => {
@@ -174,5 +178,20 @@ describe("HostLogPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "表示をクリア" }));
     expect(screen.queryByText(/line one/)).toBeNull();
+  });
+
+  it("pauses polling while hidden and resumes when visible", async () => {
+    timedFetch.mockResolvedValue(jsonResponse({ entries: [], nextSeq: 0 }));
+    render(<HostLogPanel />);
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(1));
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    fireEvent(document, new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(timedFetch).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => expect(timedFetch).toHaveBeenCalledTimes(2));
   });
 });

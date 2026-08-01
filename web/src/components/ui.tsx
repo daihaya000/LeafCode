@@ -244,7 +244,7 @@ export function GhostSelect({
                   options[Math.max(0, Math.min(nextIndex, options.length - 1))]?.focus();
                 }}
                 className={cx(
-                  "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+                  "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-40",
                   option.value === value && "bg-surface-2 text-text",
                 )}
               >
@@ -302,7 +302,7 @@ export function GhostSelect({
           }
         }}
         className={cx(
-          "group inline-flex h-full w-full min-w-0 items-center gap-1.5 rounded-lg border bg-bg px-2 py-1.5 text-xs font-medium shadow-sm transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none",
+          "group inline-flex h-full w-full min-w-0 items-center gap-1.5 rounded-lg border bg-bg px-2 py-1.5 text-xs font-medium shadow-sm transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
           tone === "warning"
             ? "border-warning/40 text-warning hover:bg-warning-bg focus:bg-warning-bg"
             : "border-border text-muted hover:bg-surface-2 hover:text-text focus:border-border-strong focus:bg-surface-2 focus:text-text",
