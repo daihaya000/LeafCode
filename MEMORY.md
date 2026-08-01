@@ -3798,3 +3798,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: capture the opener before opening and restore it only when focus is still body/unfocused; added a regression test.
 - Verification: CommandPalette tests passed (4/4); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: focus origin must be captured before rendering an auto-focused overlay, not during its open effect.
+
+## 2026-08-01: PtyPanel workspace generation
+
+- Found: a PTY created or closed while the directory prop changed could finish against the newly displayed workspace; directory refresh invalidation also risked suppressing the initial list load.
+- Fixed: scope create/close completion and refresh follow-up to a workspace generation, while preserving the initial and replacement directory refresh ordering.
+- Verification: PtyPanel tests passed (14/14); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: workspace changes need an explicit generation token, but request invalidation must not cancel the first load of the new workspace.

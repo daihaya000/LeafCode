@@ -353,6 +353,36 @@ describe("PtyPanel", () => {
     });
     await waitFor(() => expect(screen.queryByText("old")).toBeNull());
   });
+
+  it("does not activate a session created for the previous directory", async () => {
+    let resolveCreate: ((value: unknown) => void) | undefined;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Promise((resolve) => {
+          resolveCreate = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: vi.fn(() => Promise.resolve({ sessions: [] })),
+      });
+    });
+
+    const { rerender } = render(<PtyPanel directory="C:/old" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getAllByRole("button")[0]!);
+    rerender(<PtyPanel directory="C:/new" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    resolveCreate?.({
+      ok: true,
+      status: 200,
+      json: vi.fn(() => Promise.resolve({ id: "old-created" })),
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(eventSourceInstances).toHaveLength(0);
+  });
 });
 
 describe("ptyReconnectDelayMs", () => {

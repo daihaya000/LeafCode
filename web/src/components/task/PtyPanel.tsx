@@ -52,6 +52,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sseRef = useRef<EventSource | null>(null);
   const refreshRequestRef = useRef(0);
+  const workspaceGenerationRef = useRef(0);
   const creatingRef = useRef(false);
   const closingRef = useRef<string | null>(null);
   const mountedRef = useRef(false);
@@ -105,6 +106,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   // terminal against the newly selected directory.
   useEffect(() => {
     setActiveId(null);
+    workspaceGenerationRef.current += 1;
     sseRef.current?.close();
     termRef.current?.dispose();
     termRef.current = null;
@@ -154,6 +156,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   /** Create a new PTY and switch to it. */
   const createSession = useCallback(async () => {
     if (creatingRef.current) return;
+    const generation = workspaceGenerationRef.current;
     creatingRef.current = true;
     setCreating(true);
     try {
@@ -164,9 +167,13 @@ export function PtyPanel({ directory }: { directory: string }) {
       });
       const created = (await res.json()) as { id?: string; error?: string };
       if (!res.ok) throw new Error(created.error ?? `create failed: ${res.status}`);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
       await refresh();
-      if (mountedRef.current && created.id) {
+      if (
+        mountedRef.current &&
+        generation === workspaceGenerationRef.current &&
+        created.id
+      ) {
         setActiveId(created.id);
       }
     } catch (err) {
@@ -294,6 +301,7 @@ export function PtyPanel({ directory }: { directory: string }) {
   const closeSession = useCallback(
     async (ptyId: string) => {
       if (closingRef.current) return;
+      const generation = workspaceGenerationRef.current;
       closingRef.current = ptyId;
       setClosingId(ptyId);
       try {
@@ -303,13 +311,17 @@ export function PtyPanel({ directory }: { directory: string }) {
         );
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) throw new Error(data.error ?? `close failed: ${res.status}`);
-        if (mountedRef.current && activeId === ptyId) {
+        if (
+          mountedRef.current &&
+          generation === workspaceGenerationRef.current &&
+          activeId === ptyId
+        ) {
           sseRef.current?.close();
           termRef.current?.dispose();
           termRef.current = null;
           setActiveId(null);
         }
-        await refresh();
+        if (generation === workspaceGenerationRef.current) await refresh();
       } catch (err) {
         if (!mountedRef.current) return;
         setError(
