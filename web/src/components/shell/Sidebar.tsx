@@ -793,6 +793,28 @@ export function Sidebar({
     }
   };
 
+  const toggleSessionFavorite = async (task: TaskSummary, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!task.sessionId) return;
+    const actionKey = `session-favorite:${task.id}`;
+    if (!beginAction(actionKey)) return;
+    try {
+      await sendJson("POST", `/api/workspaces/${task.id}/sessions`, {
+        opencodeSessionId: task.sessionId,
+        favorite: !task.favorite,
+      });
+      notifyTasksChanged();
+      await refresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "セッションのお気に入り更新に失敗しました",
+      );
+    } finally {
+      endAction(actionKey);
+    }
+  };
+
   const removeProject = async (
     p: ProjectDto,
     e: React.MouseEvent | undefined,
@@ -1085,7 +1107,7 @@ export function Sidebar({
                                   onClick={() => nav(`/task/${task.id}`)}
                                   className="flex w-full min-w-0 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
-                                  <div className="flex items-center gap-1.5 pr-12 md:pr-0">
+                                  <div className="flex items-center gap-1.5 pr-12 md:pr-8">
                                     <span className="flex h-3 w-3 shrink-0 items-center justify-center">
                                       {!waitingForAttention &&
                                       task.status === "working" ? (
@@ -1198,8 +1220,30 @@ export function Sidebar({
                                     )}
                                   >
                                     <Archive className="h-3 w-3" />
-                                  </button>
-                                </div>
+                                </button>
+                                  {task.sessionId && (
+                                    <button
+                                      type="button"
+                                      aria-label={`「${task.title}」を${task.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+                                      title={task.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                                      aria-busy={actionBusyKey === `session-favorite:${task.id}`}
+                                      disabled={actionBusyKey !== null}
+                                      onClick={(e) => void toggleSessionFavorite(task, e)}
+                                      className={cx(
+                                        TASK_ROW_ACTION_BTN,
+                                        "text-muted hover:bg-surface-2 hover:text-text",
+                                      )}
+                                    >
+                                      <Star
+                                        className={cx(
+                                          "h-3 w-3",
+                                          task.favorite && "fill-warning text-warning",
+                                        )}
+                                        aria-hidden="true"
+                                      />
+                                    </button>
+                                  )}
+                              </div>
                               </div>
                             </li>
                           );

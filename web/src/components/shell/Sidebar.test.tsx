@@ -124,6 +124,42 @@ describe("Sidebar", () => {
     await waitFor(() => expect(document.body.style.overflow).toBe("auto"));
   });
 
+  it("adds a favorite button for each bound session", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{ id: "prj1", name: "Repo", rootPath: "/repo", favorite: false, lastOpenedAt: null }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1", projectId: "prj1", projectName: "Repo", title: "Task title",
+            directory: "/repo", isolation: "current_folder", status: "idle", sessionId: "sess1",
+            favorite: false, branch: "main", additions: 0, deletions: 0, filesChanged: 0,
+            createdAt: "2026-07-18T00:00:00Z", updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({});
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    await screen.findByText("Repo");
+    fireEvent.click(screen.getByRole("button", { name: "Repoを展開" }));
+    const favorite = await screen.findByRole("button", { name: "「Task title」をお気に入りに追加" });
+    fireEvent.click(favorite);
+
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "POST",
+      "/api/workspaces/ws1/sessions",
+      { opencodeSessionId: "sess1", favorite: true },
+    ));
+  });
+
   it("gives the mobile header icon links explicit accessible names", async () => {
     render(<Sidebar mobileOpen onClose={vi.fn()} />);
 

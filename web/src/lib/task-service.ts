@@ -132,6 +132,7 @@ function toTask(
     isolation: ws.isolation,
     status,
     sessionId: binding?.opencode_session_id ?? null,
+    favorite: binding?.favorite === 1,
     branch: stat.branch,
     additions: stat.additions,
     deletions: stat.deletions,

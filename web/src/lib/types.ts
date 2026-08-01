@@ -135,6 +135,8 @@ export type TaskSummary = {
   isolation: "current_folder" | "git_worktree" | "temporary_copy" | "devcontainer";
   status: TaskStatus;
   sessionId: string | null;
+  /** Whether the bound session is marked as a favorite. */
+  favorite?: boolean;
   branch: string | null;
   additions: number;
   deletions: number;
