@@ -239,6 +239,22 @@ export function createProfile(input: {
   return { kind: "job", jobId: job.id };
 }
 
+export type InstallDependenciesResult = { ok: true; installed: string[] } | ActivateError;
+
+export function installDependencies(id: string): InstallDependenciesResult {
+  const { state } = ensureRegistry();
+  const profile = findProfile(state, id);
+  if (!profile) return { status: 409, error: "プロファイルが見つかりません。" };
+  if (!dirExists(profile.path) || !isValidProfileDir(profile.path)) {
+    return { status: 409, error: `${profile.path} は設定ディレクトリとして認識できません。` };
+  }
+  try {
+    return { ok: true, installed: installWebUiDependencies(profile.path, readProfileSetupSettings()) };
+  } catch (error) {
+    return { status: 409, error: error instanceof Error ? error.message : "WebUI依存の適用に失敗しました。" };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // migrate
 // ---------------------------------------------------------------------------

@@ -321,6 +321,27 @@ export function ProfilesSettings() {
     [actionBusy, busyId, load],
   );
 
+  const applyDependencies = useCallback(async (profile: ProfileDto) => {
+    if (actionBusyRef.current !== null || busyIdRef.current !== null) return;
+    const operation = `dependencies:${profile.id}`;
+    actionBusyRef.current = operation;
+    setActionBusy(operation);
+    setActionError(null);
+    try {
+      const result = await sendJson<{ installed: string[] }>("POST", `/api/profiles/${profile.id}/dependencies`, {});
+      if (result.installed.length > 0) {
+        setActionError(profile.active ? "WebUI依存を追加しました。OpenCode hostを再起動してください。" : "WebUI依存を追加しました。");
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
+    } finally {
+      if (actionBusyRef.current === operation) {
+        actionBusyRef.current = null;
+        setActionBusy(null);
+      }
+    }
+  }, []);
+
   // -------------------------------------------------------------------------
   // render states
   // -------------------------------------------------------------------------
@@ -520,6 +541,17 @@ export function ProfilesSettings() {
                           切替
                         </Button>
                       )}
+                      {p.exists && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          busy={actionBusy === `dependencies:${p.id}`}
+                          disabled={jobRunning || actionBusy !== null || busyId !== null}
+                          onClick={() => void applyDependencies(p)}
+                        >
+                          WebUI依存
+                        </Button>
+                      )}
                       {renameId === p.id ? (
                         <Button
                           size="sm"
@@ -583,6 +615,17 @@ export function ProfilesSettings() {
                     onClick={() => setSwitchConfirm(p)}
                   >
                     切替
+                  </Button>
+                )}
+                {p.exists && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    busy={actionBusy === `dependencies:${p.id}`}
+                    disabled={jobRunning || actionBusy !== null || busyId !== null}
+                    onClick={() => void applyDependencies(p)}
+                  >
+                    WebUI依存
                   </Button>
                 )}
                 <Button
