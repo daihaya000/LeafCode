@@ -3952,3 +3952,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add `aria-pressed` to both toggle groups and cover the selected-state contract with a regression test.
 - Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: visual selected styling should always have an equivalent semantic state for keyboard and assistive-technology users.
+
+## 2026-08-01: Backend port environment validation
+
+- Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.
+- Fixed: centralize strict TCP port parsing for OpenCode, WebUI, host control, and Browser Bridge ports; invalid values now use the documented defaults.
+- Verification: host test suite passed (192/192); browser-bridge test suite passed (70/70).
+- Lesson: validate environment-provided network settings at configuration time so startup failures are deterministic and actionable.

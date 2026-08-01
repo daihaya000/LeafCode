@@ -23,6 +23,7 @@ import {
   webRestartSchedule,
 } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
+import { readPort } from './port-config.js';
 import {
   closeControlServer,
   createControlServer,
@@ -89,13 +90,13 @@ const LOCK_FILE = join(DATA_DIR, 'host.lock');
 const CONTROL_FILE = join(DATA_DIR, 'host-control.json');
 const BROWSER_BRIDGE_PAIRING_FILE = join(DATA_DIR, 'browser-bridge-pairing.json');
 /** Preferred OpenCode serve port. Override with OPENCODE_PORT. May bump on ghost sockets. */
-let OPENCODE_PORT = Number(process.env.OPENCODE_PORT) || 4096;
-let WEBUI_PORT = Number(process.env.OPENCODE_WEBUI_PORT) || 3000;
+let OPENCODE_PORT = readPort(process.env.OPENCODE_PORT, 4096);
+let WEBUI_PORT = readPort(process.env.OPENCODE_WEBUI_PORT, 3000);
 /** Localhost control plane for WebUI / tray restart actions. */
-const CONTROL_PORT = Number(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT) || 18765;
+const CONTROL_PORT = readPort(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT, 18765);
 let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
 /** Local-only Browser Bridge Broker. This port is never exposed through Caddy. */
-const BROWSER_BRIDGE_PORT = Number(process.env.OPENCODE_WEBUI_BROWSER_BROKER_PORT) || 18766;
+const BROWSER_BRIDGE_PORT = readPort(process.env.OPENCODE_WEBUI_BROWSER_BROKER_PORT, 18766);
 
 /** True when the host should run without a tray icon. */
 export function isHeadless() {
