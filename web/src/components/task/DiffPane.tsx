@@ -230,10 +230,25 @@ export function DiffPane({
   const fileRefs = useRef(new Map<string, HTMLDivElement>());
   const reqIdRef = useRef(0);
   const metaReqIdRef = useRef(0);
+  const actionGenerationRef = useRef(0);
+  const actionBusyRef = useRef(false);
+  const mountedRef = useRef(false);
   const directoryRef = useRef(directory);
   directoryRef.current = directory;
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      reqIdRef.current += 1;
+      metaReqIdRef.current += 1;
+      actionGenerationRef.current += 1;
+      actionBusyRef.current = false;
+    };
+  }, []);
+
   const load = useCallback(async () => {
+    if (!mountedRef.current) return;
     const id = ++reqIdRef.current;
     setLoading(true);
     setError(null);
@@ -241,7 +256,7 @@ export function DiffPane({
       const query: Record<string, string> = { directory };
       if (baseCompare) query.base = baseCompare;
       const data = await getJson<DiffFilesPayload>("/api/diff/files", query);
-      if (id !== reqIdRef.current) return;
+      if (!mountedRef.current || id !== reqIdRef.current) return;
       setPayload(data);
       setExpanded((prev) => {
         // keep manual choices; default-expand when few files
@@ -252,10 +267,10 @@ export function DiffPane({
         return next;
       });
     } catch (err) {
-      if (id !== reqIdRef.current) return;
+      if (!mountedRef.current || id !== reqIdRef.current) return;
       setError(err instanceof Error ? err.message : "diff の取得に失敗しました");
     } finally {
-      if (id === reqIdRef.current) setLoading(false);
+      if (mountedRef.current && id === reqIdRef.current) setLoading(false);
     }
   }, [directory, baseCompare]);
 
@@ -263,6 +278,7 @@ export function DiffPane({
     // Drop in-flight diffs and clear the list so commit cannot target a stale
     // workspace's paths after a directory switch (GraphPanel / FileTree pattern).
     reqIdRef.current += 1;
+    actionGenerationRef.current += 1;
     setPayload(null);
     setError(null);
     setExpanded({});
@@ -343,24 +359,31 @@ export function DiffPane({
 
   const run = useCallback(
     async (fn: () => Promise<string>) => {
-      if (busy) return;
+      if (actionBusyRef.current) return;
+      const generation = actionGenerationRef.current;
+      actionBusyRef.current = true;
       setBusy(true);
       setError(null);
       setNotice(null);
       try {
         const message = await fn();
+        if (!mountedRef.current || generation !== actionGenerationRef.current) return;
         setNotice(message);
         setPanel(null);
         await load();
         await loadMergeMeta();
         onMutated?.();
       } catch (err) {
+        if (!mountedRef.current || generation !== actionGenerationRef.current) return;
         setError(err instanceof Error ? err.message : "操作に失敗しました");
       } finally {
-        setBusy(false);
+        actionBusyRef.current = false;
+        if (mountedRef.current && generation === actionGenerationRef.current) {
+          setBusy(false);
+        }
       }
     },
-    [busy, load, loadMergeMeta, onMutated],
+    [load, loadMergeMeta, onMutated],
   );
 
   const commit = () =>

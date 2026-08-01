@@ -3812,3 +3812,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: restore focus only when the document is still body/unfocused and the opener remains connected.
 - Verification: Sidebar tests passed (37/37); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: drawer focus restoration should respect subsequent navigation and focus changes just like modal focus restoration.
+
+## 2026-08-01: DiffPane action lifecycle
+
+- Found: diff loading and commit/merge/PR actions had request ordering protection but no component-lifetime boundary; an action could finish after a directory switch or unmount and leave stale status/busy updates.
+- Fixed: add mounted guards, a directory/action generation, and a synchronous action lock while preserving stale-diff invalidation.
+- Verification: DiffPane tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: request ids protect response ordering, but mutation controls also need a separate action generation and ref lock.
