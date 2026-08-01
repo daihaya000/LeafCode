@@ -4185,6 +4185,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: OpenAI auth tests passed (5/5); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: authentication wait loops are background work too and need the same visibility lifecycle as other settings pollers.
 
+## 2026-08-01: Task copy feedback lifecycle
+
+- Found: the task header's `作業パスをコピー` feedback used an untracked timeout, so switching tasks could let the previous task's timer clear the new task's feedback early.
+- Fixed: keep the timer in a ref, replace it on repeated copies, and clear/reset it when the task changes or unmounts.
+- Verification: TaskView tests passed (105/105); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: transient UI feedback must follow the resource scope that produced it and be cancelled when that scope changes.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

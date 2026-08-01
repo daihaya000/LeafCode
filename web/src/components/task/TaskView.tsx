@@ -526,6 +526,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     isolation: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const taskDeleteConfirmRef = useRef<HTMLDivElement | null>(null);
   const taskDeleteTriggerRef = useRef<HTMLElement | null>(null);
@@ -2426,8 +2427,28 @@ export function TaskView({ taskId }: { taskId: string }) {
     const ok = await copyText(task.directory);
     if (!ok) return;
     setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    if (copiedTimerRef.current !== null) {
+      clearTimeout(copiedTimerRef.current);
+    }
+    copiedTimerRef.current = window.setTimeout(() => {
+      copiedTimerRef.current = null;
+      if (mountedRef.current) setCopied(false);
+    }, 1500);
   }, [task]);
+
+  useEffect(() => {
+    setCopied(false);
+    if (copiedTimerRef.current !== null) {
+      clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = null;
+    }
+    return () => {
+      if (copiedTimerRef.current !== null) {
+        clearTimeout(copiedTimerRef.current);
+        copiedTimerRef.current = null;
+      }
+    };
+  }, [taskId]);
 
   const closeSessionDialog = useCallback(() => {
     setSessionDialogOpen(false);
