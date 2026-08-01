@@ -3385,3 +3385,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add a sidebar-scoped action lock with `aria-busy`/disabled controls, render dismissible assertive inline errors, preserve actionable recovery hints, and ignore stale refresh generations.
 - Verification: Sidebar tests passed (36/36); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: navigation surfaces need one visible operation channel and one refresh authority so background polling cannot overwrite the result of a newer user action.
+
+## 2026-08-01: Task action recovery and modal-free feedback
+
+- Found: session restore was the last remaining `window.alert` path, and session start/cleanup/restore could be triggered repeatedly while an async request was pending.
+- Fixed: route restore failures through the existing inline task error, add a shared action lock with `disabled`/`aria-busy`, and cover duplicate restore clicks with a regression test.
+- Verification: TaskView tests passed (101/101); no `window.alert` remains under `web/src`; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: task-level recovery actions should share one busy channel so users cannot create competing requests while still seeing a retryable, non-blocking error.

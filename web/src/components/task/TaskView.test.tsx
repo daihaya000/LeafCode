@@ -24,6 +24,7 @@ const {
   setActiveScope,
   diffPaneRefreshKeys,
   sessionActionsCompact,
+  unrevertSession,
   playSessionCompleteSound,
 } = vi.hoisted(() => ({
   getJson: vi.fn(),
@@ -35,6 +36,7 @@ const {
   setActiveScope: vi.fn(),
   diffPaneRefreshKeys: [] as number[],
   sessionActionsCompact: vi.fn(),
+  unrevertSession: vi.fn(),
   playSessionCompleteSound: vi.fn(),
 }));
 
@@ -144,6 +146,7 @@ vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
 vi.mock("./SessionActions", () => ({
   CompactButton: () => <button type="button" aria-label="コンパクト">コンパクト</button>,
   MessageRevertButton: () => null,
+  unrevertSession,
   useSessionActions: () => ({
     busy: null,
     error: null,
@@ -3188,5 +3191,25 @@ describe("TaskView voice input", () => {
     });
 
     expect(screen.queryByLabelText("最初のメッセージへ")).toBeNull();
+  });
+
+  it("surfaces session restore failures inline and prevents duplicate restores", async () => {
+    const streamMock = useSessionStream();
+    streamMock.revert = { messageId: "m1" };
+    unrevertSession.mockRejectedValue(new Error("restore failed"));
+    const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const restore = screen.getByRole("button", { name: "復元" });
+    fireEvent.click(restore);
+    fireEvent.click(restore);
+
+    expect(restore.getAttribute("aria-busy")).toBe("true");
+    await screen.findByText("restore failed");
+    expect(unrevertSession).toHaveBeenCalledTimes(1);
+    expect(alert).not.toHaveBeenCalled();
+    expect(restore.getAttribute("aria-busy")).toBe("false");
   });
 });

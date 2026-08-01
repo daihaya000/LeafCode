@@ -491,6 +491,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [taskActionBusy, setTaskActionBusy] = useState<
+    "remove" | "session" | "restore" | null
+  >(null);
   const [copied, setCopied] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
@@ -2326,23 +2329,27 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [refreshTask, closeSessionDialog]);
 
   const removeTask = useCallback(async () => {
-    if (!task) return;
+    if (!task || taskActionBusy) return;
     const label =
       task.isolation === "current_folder"
         ? "このタスクを一覧から削除しますか？（フォルダは残ります）"
         : "このタスクを削除しますか？ worktree/コピーも削除されます。";
     if (!window.confirm(label)) return;
+    setTaskActionBusy("remove");
     try {
       await sendJson("DELETE", `/api/tasks/${task.id}`);
       notifyTasksChanged();
       router.push("/");
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setTaskActionBusy(null);
     }
-  }, [task, router]);
+  }, [task, router, taskActionBusy]);
 
   const ensureSession = useCallback(async () => {
-    if (!task) return;
+    if (!task || taskActionBusy) return;
+    setTaskActionBusy("session");
     try {
       const session = await ocJson<{ id: string }>("/session", task.directory, {
         method: "POST",
@@ -2355,8 +2362,26 @@ export function TaskView({ taskId }: { taskId: string }) {
       await refreshTask();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "セッション作成に失敗しました");
+    } finally {
+      setTaskActionBusy(null);
     }
-  }, [task, refreshTask]);
+  }, [task, refreshTask, taskActionBusy]);
+
+  const restoreSession = useCallback(async () => {
+    if (!task?.sessionId || taskActionBusy) return;
+    setTaskActionBusy("restore");
+    try {
+      const { unrevertSession } = await import("./SessionActions");
+      await unrevertSession(task.directory, task.sessionId);
+      await stream.resync();
+      setDiffKey((k) => k + 1);
+      setSendError(null);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "復元に失敗しました");
+    } finally {
+      setTaskActionBusy(null);
+    }
+  }, [task, stream, taskActionBusy]);
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
@@ -3103,7 +3128,12 @@ export function TaskView({ taskId }: { taskId: string }) {
               <p className="text-sm text-muted">
                 この Workspace にはまだセッションがありません。
               </p>
-              <Button variant="primary" onClick={() => void ensureSession()}>
+              <Button
+                variant="primary"
+                onClick={() => void ensureSession()}
+                disabled={taskActionBusy !== null}
+                aria-busy={taskActionBusy === "session"}
+              >
                 セッションを開始
               </Button>
             </div>
@@ -3112,7 +3142,13 @@ export function TaskView({ taskId }: { taskId: string }) {
               {task.status === "merged" && (
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b border-success/30 bg-success-bg px-4 py-2 text-sm text-success">
                   <span>マージ済み — worktree を削除できます</span>
-                  <Button variant="danger" size="sm" onClick={() => void removeTask()}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => void removeTask()}
+                    disabled={taskActionBusy !== null}
+                    aria-busy={taskActionBusy === "remove"}
+                  >
                     クリーンアップ
                   </Button>
                 </div>
@@ -3123,24 +3159,9 @@ export function TaskView({ taskId }: { taskId: string }) {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => {
-                      void (async () => {
-                        try {
-                          const { unrevertSession } = await import(
-                            "./SessionActions"
-                          );
-                          await unrevertSession(task.directory, task.sessionId!);
-                          await stream.resync();
-                          setDiffKey((k) => k + 1);
-                        } catch (err) {
-                          window.alert(
-                            err instanceof Error
-                              ? err.message
-                              : "復元に失敗しました",
-                          );
-                        }
-                      })();
-                    }}
+                    onClick={() => void restoreSession()}
+                    disabled={taskActionBusy !== null}
+                    aria-busy={taskActionBusy === "restore"}
                   >
                     復元
                   </Button>
