@@ -456,6 +456,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
   const [goalLoopBusy, setGoalLoopBusy] = useState(false);
   const [goalLoopError, setGoalLoopError] = useState<string | null>(null);
+  const goalLoopBusyRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -1445,7 +1446,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const startGoalLoop = useCallback(
     async (goal: string): Promise<boolean> => {
       const sessionId = taskRef.current?.sessionId;
-      if (!sessionId || !goal.trim()) return false;
+      if (!sessionId || !goal.trim() || goalLoopBusyRef.current) return false;
+      goalLoopBusyRef.current = true;
       setGoalLoopBusy(true);
       setGoalLoopError(null);
       try {
@@ -1502,6 +1504,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         );
         return false;
       } finally {
+        goalLoopBusyRef.current = false;
         setGoalLoopBusy(false);
       }
     },
@@ -1519,6 +1522,8 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const changeGoalLoopState = useCallback(
     async (action: "pause" | "resume" | "stop") => {
+      if (goalLoopBusyRef.current) return;
+      goalLoopBusyRef.current = true;
       setGoalLoopBusy(true);
       setGoalLoopError(null);
       try {
@@ -1533,6 +1538,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       } catch (err) {
         setGoalLoopError(err instanceof Error ? err.message : "ループ操作に失敗しました");
       } finally {
+        goalLoopBusyRef.current = false;
         setGoalLoopBusy(false);
       }
     },
@@ -1541,6 +1547,8 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const updateGoalLoopMaxTurns = useCallback(
     async (maxTurns: number) => {
+      if (goalLoopBusyRef.current) return;
+      goalLoopBusyRef.current = true;
       setGoalLoopBusy(true);
       setGoalLoopError(null);
       try {
@@ -1556,6 +1564,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           err instanceof Error ? err.message : "最大ターン数の更新に失敗しました",
         );
       } finally {
+        goalLoopBusyRef.current = false;
         setGoalLoopBusy(false);
       }
     },

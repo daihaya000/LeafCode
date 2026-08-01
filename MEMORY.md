@@ -3511,3 +3511,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: share an immediate busy ref across direct replies, auto-actions, and full-access approval; preserve the existing disabled/busy feedback.
 - Verification: PermissionCard test passed (1/1); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: every permission response entry point must share one synchronous lock, including controls that internally delegate to the main reply handler.
+
+## 2026-08-01: Goal Loop action serialization
+
+- Found: Goal Loop start, pause/resume/stop, and max-turn updates shared one React busy state but had no synchronous handler lock, allowing same-tick duplicate requests.
+- Fixed: serialize all Goal Loop mutations with one ref-backed lock while keeping the existing visible busy state and disabled controls.
+- Verification: TaskView tests passed (102/102), including duplicate-start coverage; typecheck, ESLint, and `git diff --check` passed.
+- Lesson: long-running state machines need one mutation gate across every transition, not separate visual guards per button.

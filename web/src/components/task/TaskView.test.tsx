@@ -12,6 +12,7 @@ import {
 import type { ReactElement } from "react";
 import { writeLastUsedModel } from "@/lib/default-model";
 import type { TaskSummary } from "@/lib/types";
+import { GOAL_LOOP_TOGGLE_LABEL } from "@/components/GoalLoopComposer";
 import { TaskView, __clearTaskViewCachesForTest } from "./TaskView";
 
 const {
@@ -2450,6 +2451,37 @@ describe("TaskView", () => {
           }),
         ),
       );
+    });
+
+    it("does not start the same goal loop twice while the request is pending", async () => {
+      let resolveLoop: ((value: unknown) => void) | undefined;
+      sendJson.mockImplementation((_method: string, path: string) => {
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return new Promise((resolve) => { resolveLoop = resolve; });
+        }
+        return Promise.resolve(undefined);
+      });
+
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await selectAuto();
+      fireEvent.click(screen.getByRole("button", { name: GOAL_LOOP_TOGGLE_LABEL }));
+      fireEvent.change(
+        screen.getAllByRole("combobox")[0]!,
+        { target: { value: "duplicate guard" } },
+      );
+      const start = screen.getAllByRole("button").at(-1)!;
+      fireEvent.click(start);
+      fireEvent.click(start);
+
+      await waitFor(() => {
+        expect(
+          sendJson.mock.calls.filter((call) => call[1] === "/api/tasks/ws1/goal-loop"),
+        ).toHaveLength(1);
+      });
+      resolveLoop?.({
+        loop: { id: "loop1", status: "queued", progress: [], turnCount: 0, maxTurns: 10 },
+      });
     });
 
     it("forwards manual Intelligence to a fixed agent model in a goal loop", async () => {
