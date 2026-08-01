@@ -33,6 +33,16 @@ function configPath(dir: string): string {
     .find((candidate) => fs.existsSync(candidate)) ?? path.join(dir, "opencode.jsonc");
 }
 
+function bundledCursorAcpDir(): string | undefined {
+  const explicit = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
+    ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
+    : path.resolve(process.cwd());
+  const candidates = [path.join(root, "vendor", "cursor-acp"), path.join(root, "..", "vendor", "cursor-acp")];
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
 function copyEntry(source: string, target: string): void {
   const info = fs.lstatSync(source);
   if (info.isSymbolicLink()) {
@@ -52,15 +62,19 @@ function copyEntry(source: string, target: string): void {
   fs.copyFileSync(source, target);
 }
 
-function copyCursorAcpFiles(targetDir: string, sourceDir: string): string[] {
-  if (path.resolve(targetDir).toLowerCase() === path.resolve(sourceDir).toLowerCase()) return [];
+function copyCursorAcpFiles(targetDir: string, sourceDirs: string[]): string[] {
   const copied: string[] = [];
   for (const relative of ["plugin/cursor-acp.js", "packages/cursor-acp"]) {
-    const source = path.join(sourceDir, relative);
     const target = path.join(targetDir, relative);
-    if (!fs.existsSync(source) || fs.existsSync(target)) continue;
-    copyEntry(source, target);
-    copied.push(relative);
+    if (fs.existsSync(target)) continue;
+    for (const sourceDir of sourceDirs) {
+      if (path.resolve(targetDir).toLowerCase() === path.resolve(sourceDir).toLowerCase()) continue;
+      const source = path.join(sourceDir, relative);
+      if (!fs.existsSync(source)) continue;
+      copyEntry(source, target);
+      copied.push(relative);
+      break;
+    }
   }
   return copied;
 }
@@ -71,10 +85,15 @@ export function installWebUiDependencies(profileDir: string): string[] {
   fs.mkdirSync(profileDir, { recursive: true });
   if (!fs.existsSync(targetConfigPath)) fs.writeFileSync(targetConfigPath, CONFIG_SKELETON, "utf8");
 
-  const sourceDir = opencodeConfigDir();
-  const sourceConfigPath = configPath(sourceDir);
+  const activeDir = opencodeConfigDir();
+  const bundledDir = bundledCursorAcpDir();
+  const sourceDirs = [activeDir, bundledDir].filter(
+    (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
+  );
   let cursorProvider: Record<string, unknown> | undefined;
-  if (fs.existsSync(sourceConfigPath) && path.resolve(sourceConfigPath) !== path.resolve(targetConfigPath)) {
+  for (const sourceDir of sourceDirs) {
+    const sourceConfigPath = configPath(sourceDir);
+    if (!fs.existsSync(sourceConfigPath) || path.resolve(sourceConfigPath) === path.resolve(targetConfigPath)) continue;
     const sourceRoot = parse(fs.readFileSync(sourceConfigPath, "utf8")) as Record<string, unknown>;
     const provider = sourceRoot.provider;
     const value = provider && typeof provider === "object" && !Array.isArray(provider)
@@ -82,11 +101,12 @@ export function installWebUiDependencies(profileDir: string): string[] {
       : undefined;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       cursorProvider = value as Record<string, unknown>;
+      break;
     }
   }
 
   let content = fs.readFileSync(targetConfigPath, "utf8");
-  const installed = copyCursorAcpFiles(profileDir, sourceDir);
+  const installed = copyCursorAcpFiles(profileDir, sourceDirs);
   const formattingOptions = {
     insertSpaces: true,
     tabSize: 2,

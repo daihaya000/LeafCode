@@ -6,17 +6,22 @@ import { installWebUiDependencies } from "./webui-dependencies";
 
 const dirs: string[] = [];
 let previousConfigDir: string | undefined;
+let previousCursorAcpDir: string | undefined;
 
 beforeEach(() => {
   previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
+  previousCursorAcpDir = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-source-"));
   dirs.push(source);
   process.env.OPENCODE_CONFIG_DIR = source;
+  process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = path.join(source, "bundled");
 });
 
 afterEach(() => {
   if (previousConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
   else process.env.OPENCODE_CONFIG_DIR = previousConfigDir;
+  if (previousCursorAcpDir === undefined) delete process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
+  else process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = previousCursorAcpDir;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -65,5 +70,26 @@ describe("installWebUiDependencies", () => {
     expect(fs.existsSync(path.join(target, "packages", "cursor-acp", "index.js"))).toBe(true);
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
     expect(config.provider["cursor-acp"].name).toBe("Cursor");
+  });
+
+  it("uses the repository bundle when the active profile has no Cursor ACP", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR!;
+    fs.mkdirSync(bundle, { recursive: true });
+    fs.writeFileSync(
+      path.join(bundle, "opencode.jsonc"),
+      JSON.stringify({ provider: { "cursor-acp": { name: "Bundled Cursor" } } }),
+    );
+    fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "cursor-acp.js"), "export default {};\n");
+    fs.mkdirSync(path.join(bundle, "packages", "cursor-acp"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "packages", "cursor-acp", "index.js"), "export default {};\n");
+
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+    installWebUiDependencies(target);
+
+    const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
+    expect(config.provider["cursor-acp"].name).toBe("Bundled Cursor");
+    expect(fs.readFileSync(path.join(target, "plugin", "cursor-acp.js"), "utf8")).toContain("export default");
   });
 });
