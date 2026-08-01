@@ -113,7 +113,7 @@ describe("ProviderModelsSettings", () => {
     expect(
       await screen.findByRole("heading", { name: "デフォルトモデル" }),
     ).toBeTruthy();
-    const trigger = screen.getByRole("button", { name: "デフォルトモデル" });
+    const trigger = screen.getByRole("combobox", { name: "デフォルトモデル" });
     fireEvent.click(trigger);
     const listbox = screen.getByRole("listbox", { name: "デフォルトモデル" });
     expect(listbox.parentElement).toBe(document.body);
@@ -133,8 +133,8 @@ describe("ProviderModelsSettings", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "デフォルトモデル" }),
-      ).toHaveProperty("value", "openai::gpt-5");
+        screen.getByRole("combobox", { name: "デフォルトモデル" }).textContent,
+      ).toContain("GPT-5");
     });
   });
 
@@ -159,21 +159,14 @@ describe("ProviderModelsSettings", () => {
     render(<ProviderModelsSettings />);
 
     await screen.findByRole("switch", { name: /OpenAI/ });
-    const defaultModelTrigger = screen
-      .getAllByRole("button")
-      .find(
-        (button) =>
-          button.getAttribute("aria-haspopup") === "listbox" &&
-          button.getAttribute("value") === "",
-      );
-    expect(defaultModelTrigger).toBeTruthy();
-    fireEvent.click(defaultModelTrigger!);
+    const defaultModelTrigger = screen.getByRole("combobox", { name: "デフォルトモデル" });
+    fireEvent.click(defaultModelTrigger);
     fireEvent.click(screen.getByRole("option", { name: "GPT-5" }));
     expect(localStorage.getItem("webui:default-model")).toBe("openai::gpt-5");
 
     releaseServer();
     await waitFor(() =>
-      expect(defaultModelTrigger).toHaveProperty("value", "openai::gpt-5"),
+      expect(defaultModelTrigger.textContent).toContain("GPT-5"),
     );
   });
 
@@ -542,29 +535,23 @@ describe("ProviderModelsSettings", () => {
       }
       return Promise.reject(new Error(`Unexpected getJson: ${path}`));
     });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    try {
-      render(<ProviderModelsSettings />);
+    render(<ProviderModelsSettings />);
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Custom AI を削除" }),
-      );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Custom AI を削除" }),
+    );
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("alertdialog").querySelector("button")!);
 
-      expect(confirmSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Custom AI"),
-      );
-      await waitFor(() =>
-        expect(sendJson).toHaveBeenCalledWith(
-          "DELETE",
-          "/api/extensions/provider-models/custom",
-        ),
-      );
-      await waitFor(() =>
-        expect(screen.queryByText("Custom AI")).toBeNull(),
-      );
-    } finally {
-      confirmSpy.mockRestore();
-    }
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "DELETE",
+        "/api/extensions/provider-models/custom",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText("Custom AI")).toBeNull(),
+    );
   });
 
   it("does not delete a provider twice while the first request is pending", async () => {
@@ -596,24 +583,18 @@ describe("ProviderModelsSettings", () => {
       }
       return Promise.resolve({ ok: true });
     });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    try {
-      render(<ProviderModelsSettings />);
-      const deleteButton = await screen.findByRole("button", {
-        name: /Custom AI/,
-      });
+    render(<ProviderModelsSettings />);
+    const deleteButton = await screen.findByRole("button", {
+      name: /Custom AI/,
+    });
 
-      fireEvent.click(deleteButton);
-      await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
-      fireEvent.click(deleteButton);
-      expect(sendJson).toHaveBeenCalledTimes(1);
-      expect(confirmSpy).toHaveBeenCalledTimes(1);
+    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("alertdialog").querySelector("button")!);
+    await waitFor(() => expect(sendJson).toHaveBeenCalledTimes(1));
+    expect((deleteButton as HTMLButtonElement).disabled).toBe(true);
 
-      resolveDelete({ ok: true });
-      await waitFor(() => expect(screen.queryByText("Custom AI")).toBeNull());
-    } finally {
-      confirmSpy.mockRestore();
-    }
+    resolveDelete({ ok: true });
+    await waitFor(() => expect(screen.queryByText("Custom AI")).toBeNull());
   });
 
   it("does not send DELETE when provider deletion is cancelled", async () => {
@@ -636,20 +617,38 @@ describe("ProviderModelsSettings", () => {
       }
       return Promise.reject(new Error(`Unexpected getJson: ${path}`));
     });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-    try {
-      render(<ProviderModelsSettings />);
+    render(<ProviderModelsSettings />);
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Custom AI を削除" }),
-      );
+    const deleteButton = await screen.findByRole("button", { name: "Custom AI を削除" });
+    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("alertdialog").querySelectorAll("button")[1]!);
 
-      expect(confirmSpy).toHaveBeenCalled();
-      expect(sendJson).not.toHaveBeenCalled();
-      expect(screen.getByText("Custom AI")).toBeTruthy();
-    } finally {
-      confirmSpy.mockRestore();
-    }
+    expect(sendJson).not.toHaveBeenCalled();
+    expect(screen.getByText("Custom AI")).toBeTruthy();
+  });
+
+  it("focuses the provider deletion confirmation and closes it with Escape", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") return Promise.resolve({ value: null });
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          providers: [{ id: "custom", name: "Custom AI", enabled: true, editable: true, models: [] }],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+
+    render(<ProviderModelsSettings />);
+    const trigger = await screen.findByRole("button", { name: "Custom AI を削除" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("alertdialog");
+    const confirm = dialog.querySelector("button") as HTMLElement;
+    expect(document.activeElement).toBe(confirm);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("edits only the icon of a built-in provider via PATCH", async () => {

@@ -3967,6 +3967,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SessionActions tests passed (4/4); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: message-history mutations need an explicit, contextual confirmation surface because the impact extends beyond the clicked message.
 
+## 2026-08-01: Provider deletion confirmation UX
+
+- Found: ProviderModelsSettings used a native confirmation dialog for deleting editable providers, leaving the impact and restart requirement outside the page and without a keyboard focus lifecycle.
+- Fixed: add an inline alert dialog, focus the primary action on open, cancel with Escape, restore focus to the trigger, and preserve the global mutation lock against duplicate deletes.
+- Verification: ProviderModelsSettings tests passed (31/31); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: destructive settings changes need contextual confirmation and regression tests aligned with the widget's semantic role.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.

@@ -320,7 +320,10 @@ export function ProviderModelsSettings() {
   const [addMessage, setAddMessage] = useState<string | null>(null);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [deletingProviderId, setDeletingProviderId] = useState<string | null>(null);
+  const [deleteConfirmProvider, setDeleteConfirmProvider] = useState<ProviderDto | null>(null);
   const providerMutationRef = useRef(false);
+  const deleteConfirmRef = useRef<HTMLDivElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const toggleBusyRef = useRef(false);
   const loadRequestRef = useRef(0);
   const mountedRef = useRef(false);
@@ -580,6 +583,27 @@ export function ProviderModelsSettings() {
     setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", icon: "", models: "" });
   }, []);
 
+  useEffect(() => {
+    if (!deleteConfirmProvider) {
+      if (
+        deleteTriggerRef.current?.isConnected &&
+        (document.activeElement === document.body || document.activeElement === null)
+      ) {
+        deleteTriggerRef.current.focus();
+      }
+      deleteTriggerRef.current = null;
+      return;
+    }
+    deleteConfirmRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setDeleteConfirmProvider(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [deleteConfirmProvider]);
+
   const editProvider = useCallback((provider: ProviderDto) => {
     setAddOpen(true);
     setEditingProviderId(provider.id);
@@ -600,13 +624,7 @@ export function ProviderModelsSettings() {
   const deleteProvider = useCallback(
     async (provider: ProviderDto) => {
       if (providerMutationRef.current) return;
-      if (
-        !window.confirm(
-          `プロバイダー「${provider.name}」を削除しますか？\nopencode.jsonc から削除され、OpenCode の再起動後に反映されます。`,
-        )
-      ) {
-        return;
-      }
+      setDeleteConfirmProvider(null);
       providerMutationRef.current = true;
       setDeletingProviderId(provider.id);
       setActionError(null);
@@ -955,6 +973,37 @@ export function ProviderModelsSettings() {
             </div>
           )}
         </div>
+        {deleteConfirmProvider && (
+          <div
+            ref={deleteConfirmRef}
+            role="alertdialog"
+            aria-label="プロバイダー削除の確認"
+            aria-describedby="provider-delete-confirm-description"
+            className="mb-3 rounded-lg border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
+          >
+            <p id="provider-delete-confirm-description">
+              プロバイダー「{deleteConfirmProvider.name}」を削除しますか？
+              <br />
+              opencode.jsoncから削除され、OpenCodeの再起動後に反映されます。
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => void deleteProvider(deleteConfirmProvider)}
+              >
+                削除する
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteConfirmProvider(null)}
+              >
+                キャンセル
+              </Button>
+            </div>
+          </div>
+        )}
         {actionError && (
           <p role="alert" className="mb-2 text-xs text-danger">
             {actionError}
@@ -1008,7 +1057,12 @@ export function ProviderModelsSettings() {
                     void toggle(provider.id, enabled)
                   }
                   onEditProvider={() => editProvider(provider)}
-                  onDeleteProvider={() => void deleteProvider(provider)}
+                  onDeleteProvider={() => {
+                    deleteTriggerRef.current = document.activeElement instanceof HTMLElement
+                      ? document.activeElement
+                      : null;
+                    setDeleteConfirmProvider(provider);
+                  }}
                   onToggleModel={(model, enabled) =>
                     void toggle(`${provider.id}::${model.id}`, enabled)
                   }
