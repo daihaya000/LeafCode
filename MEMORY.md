@@ -3364,3 +3364,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add an explicit loading status, request-generation protection, HTTP failure handling with an alert, directory-scoped terminal cleanup, `aria-pressed` session selection, and a real accessible close button with duplicate-action protection.
 - Verification: PTY/Graph/TaskView tests passed (118/118); typecheck and ESLint passed.
 - Lesson: terminal/session lists need both lifecycle isolation and fully semantic controls because their data and connection state change independently.
+
+## 2026-08-01: Home project refresh consistency
+
+- Found: overlapping project-list requests could let an older response replace the current list, and a failed refresh after adding a project still selected the new id even though it was not present in the retained list.
+- Fixed: add request-generation guards, expose a project loading label/lock, and only select the newly added project after a successful refresh.
+- Verification: HomeView tests passed (50/50); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: selection state should only point at data confirmed in the currently visible collection; refresh helpers should report success when callers need to make a follow-up selection.

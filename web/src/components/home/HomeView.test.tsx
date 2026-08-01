@@ -480,6 +480,63 @@ describe("HomeView image attachments", () => {
     expect(await screen.findByRole("dialog", { name: "フォルダを選択" })).toBeTruthy();
   });
 
+  it("keeps the current project selected when the post-add refresh fails", async () => {
+    let projectCalls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        projectCalls += 1;
+        if (projectCalls > 1) return Promise.reject(new Error("refresh failed"));
+        return Promise.resolve({
+          projects: [{ id: "project-1", name: "Project", rootPath: "/repo", favorite: false }],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({ branches: ["main"], defaultTarget: "main", current: "main" });
+      }
+      if (path === "/api/browse/dirs") {
+        return Promise.resolve({ path: "/repo", parent: null, entries: [], quickAccess: [] });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/projects") {
+        return Promise.resolve({
+          project: { id: "project-new", name: "New project", rootPath: "/new" },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${method} ${path}`));
+    });
+
+    render(<HomeView />);
+    const projectSelect = await waitFor(() =>
+      screen.getAllByRole("button").find(
+        (button) => button.getAttribute("aria-haspopup") === "listbox",
+      )!,
+    );
+    fireEvent.click(projectSelect);
+    const addButton = await waitFor(() =>
+      screen.getAllByRole("button").find(
+        (button) => button.querySelector("svg.lucide-folder-plus") !== null,
+      )!,
+    );
+    fireEvent.click(addButton);
+
+    const input = await waitFor(() =>
+      screen.getByRole("dialog").querySelector<HTMLInputElement>("input")!,
+    );
+    fireEvent.change(input, { target: { value: "C:/new" } });
+    const confirmButton = screen
+      .getByRole("dialog")
+      .querySelector<HTMLButtonElement>("button.bg-primary");
+    expect(confirmButton).not.toBeNull();
+    fireEvent.click(confirmButton!);
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("refresh failed"));
+    expect(screen.queryByRole("option", { name: "New project" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Project" })).toBeTruthy();
+  });
+
   describe("HomeView voice input", () => {
     let mockRecognition: {
       start: ReturnType<typeof vi.fn>;

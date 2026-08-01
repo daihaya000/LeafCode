@@ -162,6 +162,7 @@ const ENGINE_HEALTH_POLL_MS = 3000;
 export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [engineOk, setEngineOk] = useState(true);
   const [projectId, setProjectId] = useState("");
   const [isolation, setIsolation] = useState<"current_folder" | "git_worktree">(
@@ -208,6 +209,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
   const [loaded, setLoaded] = useState(false);
+  const projectsRequestRef = useRef(0);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
   );
@@ -284,9 +286,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     void writeAutoSettingToServer(AUTO_OPTIMIZE_SETTING_KEY, mode);
   }, []);
 
-  const refreshProjects = useCallback(async () => {
+  const refreshProjects = useCallback(async (): Promise<boolean> => {
+    const requestId = ++projectsRequestRef.current;
+    setProjectsLoading(true);
     try {
       const data = await getJson<{ projects: ProjectDto[] }>("/api/projects");
+      if (requestId !== projectsRequestRef.current) return false;
       const nextProjects = data.projects ?? [];
       setProjects(nextProjects);
       setProjectId((cur) => {
@@ -301,8 +306,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         }
         return nextProjects[0]?.id ?? "";
       });
+      return true;
     } catch (err) {
+      if (requestId !== projectsRequestRef.current) return false;
       setError(err instanceof Error ? err.message : "projects failed");
+      return false;
+    } finally {
+      if (requestId === projectsRequestRef.current) setProjectsLoading(false);
     }
   }, [initialProjectId]);
 
@@ -896,13 +906,15 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           <div className="mx-auto mb-3 flex max-w-5xl items-center justify-start gap-2 overflow-x-auto px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <GhostSelect
               value={projectId}
-              disabled={submitting}
+              disabled={submitting || projectsLoading}
               aria-label="プロジェクト"
               icon={<FolderGit2 className="h-3.5 w-3.5" />}
               valueLabel={
-                selectedProject
-                  ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
-                  : "プロジェクトなし"
+                projectsLoading
+                  ? "読み込み中…"
+                  : selectedProject
+                    ? `${selectedProject.favorite ? "★ " : ""}${selectedProject.name}`
+                    : "プロジェクトなし"
               }
               onChange={setProjectId}
               className="max-w-[12rem] shrink-0 sm:max-w-56"
@@ -918,7 +930,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   buttonSize="sm"
                   className="w-full"
                   onAdded={(project) => {
-                    void refreshProjects().then(() => setProjectId(project.id));
+                    void refreshProjects().then((refreshed) => {
+                      if (refreshed) setProjectId(project.id);
+                    });
                   }}
                 />
               }
