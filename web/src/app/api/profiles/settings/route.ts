@@ -15,14 +15,22 @@ export async function PUT(req: Request) {
   const denied = rejectUnlessLocal(req);
   if (denied) return denied;
   const body = (await req.json().catch(() => undefined)) as
-    | { browserBridge?: unknown; cursorAcp?: unknown }
+    | { browserBridge?: unknown; cursorAcp?: unknown; claudeAuth?: unknown }
     | undefined;
-  if (typeof body?.browserBridge !== "boolean" || typeof body.cursorAcp !== "boolean") {
+  if (
+    typeof body?.browserBridge !== "boolean" ||
+    typeof body.cursorAcp !== "boolean" ||
+    typeof body.claudeAuth !== "boolean"
+  ) {
     return NextResponse.json({ error: "自動セットアップ設定が不正です" }, { status: 400 });
   }
   try {
     return NextResponse.json(
-      writeProfileSetupSettings({ browserBridge: body.browserBridge, cursorAcp: body.cursorAcp }),
+      writeProfileSetupSettings({
+        browserBridge: body.browserBridge,
+        cursorAcp: body.cursorAcp,
+        claudeAuth: body.claudeAuth,
+      }),
     );
   } catch {
     return NextResponse.json({ error: "自動セットアップ設定を保存できません" }, { status: 500 });

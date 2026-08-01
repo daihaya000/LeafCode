@@ -8,7 +8,7 @@ function mockFetch(responses: Record<string, unknown>) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/profiles/settings")) {
-      return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true }), {
+      return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true, claudeAuth: true }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });

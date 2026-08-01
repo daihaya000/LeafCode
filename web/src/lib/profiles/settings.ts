@@ -5,11 +5,13 @@ import { dataDir } from "../paths";
 export type ProfileSetupSettings = {
   browserBridge: boolean;
   cursorAcp: boolean;
+  claudeAuth: boolean;
 };
 
 const DEFAULT_SETTINGS: ProfileSetupSettings = {
   browserBridge: true,
   cursorAcp: true,
+  claudeAuth: true,
 };
 
 function settingsPath(): string {
@@ -22,6 +24,7 @@ export function readProfileSetupSettings(): ProfileSetupSettings {
     return {
       browserBridge: parsed.browserBridge !== false,
       cursorAcp: parsed.cursorAcp !== false,
+      claudeAuth: parsed.claudeAuth !== false,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

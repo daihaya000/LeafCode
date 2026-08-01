@@ -6,6 +6,7 @@ import { opencodeConfigDir } from "../opencode-extensions/paths";
 const CONFIG_SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const BROKER_URL = "{env:OPENCODE_WEBUI_BROWSER_BROKER}";
 const BROKER_TOKEN = "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}";
+const CLAUDE_AUTH_PLUGIN = "opencode-claude-auth@latest";
 
 /**
  * OpenCode-side dependencies used by the WebUI.  The browser extension itself
@@ -30,6 +31,7 @@ export function webUiMcpEntry(): Record<string, unknown> {
 export type WebUiDependencyOptions = {
   browserBridge?: boolean;
   cursorAcp?: boolean;
+  claudeAuth?: boolean;
 };
 
 function configPath(dir: string): string {
@@ -140,6 +142,19 @@ export function installWebUiDependencies(
     );
     content = applyEdits(content, edits);
     installed.push(`${parent}.${name}`);
+  }
+  if (options.claudeAuth !== false) {
+    const root = parse(content) as Record<string, unknown>;
+    const plugins = root.plugin;
+    if (Array.isArray(plugins)) {
+      if (!plugins.includes(CLAUDE_AUTH_PLUGIN)) {
+        content = applyEdits(content, modify(content, ["plugin", plugins.length], CLAUDE_AUTH_PLUGIN, { formattingOptions }));
+        installed.push(`plugin.${CLAUDE_AUTH_PLUGIN}`);
+      }
+    } else {
+      content = applyEdits(content, modify(content, ["plugin"], [CLAUDE_AUTH_PLUGIN], { formattingOptions }));
+      installed.push(`plugin.${CLAUDE_AUTH_PLUGIN}`);
+    }
   }
   if (content !== fs.readFileSync(targetConfigPath, "utf8")) {
     const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;
