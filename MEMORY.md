@@ -4143,7 +4143,16 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: targeted settings/UI tests passed (22/22); full Vitest suite, typecheck, ESLint, and `git diff --check` passed.
 - Lesson: background UI should stop both scheduled work and the request currently occupying the work slot; visibility changes are lifecycle events, not only rendering hints.
 
+## 2026-08-01: Browser Bridge approval queue lifecycle
+
+- Found: the Browser Bridge approval/pairing queue continued polling in hidden tabs, and an aborted refresh could be surfaced as a normal connection error.
+- Fixed: pause approval polling while hidden, abort the active refresh on visibility changes and unmount, resume immediately on return, and ignore aborted refresh results.
+- Verification: approval and host-log lifecycle tests passed (23/23); full Vitest, typecheck, ESLint, and `git diff --check` passed.
+- Lesson: all background panels that share a transport need the same lifecycle policy; fixing one poller does not protect sibling panels.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。
 - 教訓: 改善計画はコード上の既実装を再確認し、既済項目を重複計画しない。OS Job Objectはプロセス回収には有効だがセキュリティ境界ではないため、隔離強化とは分けて扱う。
+- 2026-08-01: TaskViewのComposerに「キュー／割り込み」送信方式を追加。安全性を優先してキューを初期値にし、実行中のキュー送信はローカルで保持してidle遷移後に自動送信、割り込みは既存のprompt_asyncへ即時送信する構成にした。キュー項目の削除、添付保持、実行中の入力・音声入力を可能にした。`npm run typecheck`、TaskView Vitest 105件、対象eslintを通過。教訓: 実行中送信を解禁する場合は、従来のbusyロックに依存したUIテストも送信方式の仕様に合わせて更新する。
+- 2026-08-01: X投稿のノードワークフローモードについて実装可否を調査。既存のGoalLoop、NestedAgentPanel、SSE、Workspace/Session設計を再利用できるため実現可能。ただしGraphPanelはGit履歴グラフであり、任意DAG実行には別のWorkflow定義・実行状態・永続化層が必要。投稿の動画本体は取得できず、正確なUI再現にはスクリーンショットまたは動画共有が必要。
