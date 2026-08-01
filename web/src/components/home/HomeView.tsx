@@ -27,6 +27,7 @@ import {
 } from "@/lib/access-mode";
 import {
   readSubagentPermission,
+  SUBAGENT_PERMISSION_EVENT,
   writeSubagentPermission,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
@@ -203,8 +204,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     Record<string, ProviderModelMeta>
   >({});
   const [accessMode, setAccessMode] = useState<AccessMode>("ask");
-  const [subagentPermission, setSubagentPermission] =
-    useState<SubagentPermission>("allow");
+  const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
+    () => readSubagentPermission(),
+  );
   const [skillPermission, setSkillPermission] = useState<SkillPermission>("allow");
   const [baseBranch, setBaseBranch] = useState("");
   const [branchProjectId, setBranchProjectId] = useState("");
@@ -252,6 +254,25 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     setAccessMode(readAccessMode());
     setSubagentPermission(readSubagentPermission());
     setSkillPermission(readSkillPermission());
+  }, []);
+
+  // Settings and another composer can change the shared preference while the
+  // Home composer remains mounted. Keep the value used by POST /api/tasks in
+  // sync; otherwise the UI may show "禁止" while the stale request still
+  // sends "allow" and the new session starts with task permission allowed.
+  useEffect(() => {
+    const onSubagentPermission = (event: Event) => {
+      const detail = (event as CustomEvent<SubagentPermission>).detail;
+      if (detail === "allow" || detail === "deny") {
+        setSubagentPermission(detail);
+      }
+    };
+    window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagentPermission);
+    return () =>
+      window.removeEventListener(
+        SUBAGENT_PERMISSION_EVENT,
+        onSubagentPermission,
+      );
   }, []);
 
   // DB → localStorage migration so the default model set on another

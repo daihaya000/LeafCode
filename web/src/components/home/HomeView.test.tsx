@@ -858,6 +858,20 @@ describe("HomeView subagent permission", () => {
     )!;
     expect(sentBody.agent).toBeUndefined();
   });
+
+  it("updates the composer when the shared subagent preference changes elsewhere", async () => {
+    render(<HomeView />);
+    const select = (await screen.findByLabelText(
+      "サブエージェント",
+    )) as HTMLButtonElement;
+    expect(select.value).toBe("allow");
+
+    window.dispatchEvent(
+      new CustomEvent("webui:subagent-permission", { detail: "deny" }),
+    );
+
+    await waitFor(() => expect(select.value).toBe("deny"));
+  });
 });
 
 describe("HomeView last-used model", () => {
