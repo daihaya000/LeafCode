@@ -14,6 +14,7 @@ import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionPr
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson } from "@/lib/client";
 import type { ProjectDto } from "@/lib/types";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 type DirEntry = { name: string; path: string };
 type DirList = {
@@ -113,14 +114,7 @@ export function AddProjectButton({
   }, [attentionOpen, open]);
 
   // M3: lock body scroll while the dialog is open.
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   useEffect(() => {
     if (!open) {

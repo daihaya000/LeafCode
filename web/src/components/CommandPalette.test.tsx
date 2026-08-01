@@ -102,4 +102,16 @@ describe("CommandPalette", () => {
 
     await waitFor(() => expect(document.activeElement).toBe(opener));
   });
+
+  it("locks background scrolling while open and restores it after closing", async () => {
+    vi.mocked(getJson).mockResolvedValue({ tasks: [] });
+    document.body.style.overflow = "auto";
+    render(<CommandPalette />);
+
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    await waitFor(() => expect(document.body.style.overflow).toBe("hidden"));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await waitFor(() => expect(document.body.style.overflow).toBe("auto"));
+  });
 });

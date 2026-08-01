@@ -129,6 +129,18 @@ describe("AttentionQueueModal", () => {
     expect(screen.getByText("ses_fallback")).toBeTruthy();
   });
 
+  it("locks background scrolling while an actionable item is open", () => {
+    document.body.style.overflow = "auto";
+    enqueue(questionItem());
+    attentionState.open = true;
+
+    render(<AttentionQueueModal />);
+
+    expect(document.body.style.overflow).toBe("hidden");
+    cleanup();
+    expect(document.body.style.overflow).toBe("auto");
+  });
+
   describe("busy release regression", () => {
     beforeEach(() => {
       mockOcJson.mockReset();

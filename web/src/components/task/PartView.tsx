@@ -27,6 +27,7 @@ import { isImageFilePart } from "@/lib/message-parts";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { formatElapsed, stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
 import { ProviderIcon } from "./ProviderIcon";
@@ -444,6 +445,8 @@ function FileImagePreview({
   const [expanded, setExpanded] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useBodyScrollLock(expanded);
 
   useEffect(() => {
     if (!expanded) {

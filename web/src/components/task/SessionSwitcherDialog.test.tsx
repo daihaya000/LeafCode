@@ -24,7 +24,7 @@ function renderDialog({
   onClose?: ReturnType<typeof vi.fn>;
   onSwitch?: ReturnType<typeof vi.fn>;
 } = {}) {
-  render(
+  const view = render(
     <SessionSwitcherDialog
       workspaceId="ws1"
       directory="/repo"
@@ -33,7 +33,7 @@ function renderDialog({
       onClose={onClose}
     />,
   );
-  return { onClose, onSwitch };
+  return { onClose, onSwitch, unmount: view.unmount };
 }
 
 describe("SessionSwitcherDialog", () => {
@@ -79,6 +79,16 @@ describe("SessionSwitcherDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("presentation"));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("locks background scrolling while mounted and restores it on unmount", () => {
+    document.body.style.overflow = "auto";
+    const view = renderDialog();
+
+    expect(document.body.style.overflow).toBe("hidden");
+    view.onClose.mockClear();
+    view.unmount();
+    expect(document.body.style.overflow).toBe("auto");
   });
 
   it("restores focus to the opener when the parent removes the dialog", async () => {

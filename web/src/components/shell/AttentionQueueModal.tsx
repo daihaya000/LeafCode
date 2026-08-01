@@ -21,6 +21,7 @@ import {
 import { readSkillPermission } from "@/lib/skill-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 export function AttentionQueueModal() {
   const { items, actionableItems, open, setOpen, remove, resolveSessionTitle } =
@@ -51,6 +52,8 @@ export function AttentionQueueModal() {
   const sessionLabel = current
     ? resolveSessionTitle(current) ?? current.request.sessionID
     : null;
+
+  useBodyScrollLock(open && !!current);
 
   useEffect(() => {
     setError(null);

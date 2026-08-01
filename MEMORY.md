@@ -1,4 +1,5 @@
 ## 2026-07-31(追11): CodexBarウィジェットで「プロバイダー設定ファイルが不正です」エラー
+- 2026-08-01: HomeView/TaskViewの入力欄でブラウザ標準の青いフォーカス枠が親コンテナのフォーカス表示と重なっていたため、textareaに`focus-visible:outline-none`を追加。親の`focus-within`リングはキーボード操作の視認性として残した。型チェック・lint・関連Vitest 58件を通過。
 
 - ユーザー報告: CodexBar利用状況パネルの「更新するプロバイダー」欄が常に
   「CodexBar の設定ファイルが不正です」→再試行、で失敗する（スクリーンショット添付）。
@@ -4106,3 +4107,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add stateful busy text (`確認中…`) and disable the manual check button during the request in both OpenAI and Claude subscription settings; added an OpenAI regression test.
 - Verification: OpenAI auth tests passed (4/4); full web suite, typecheck, ESLint, and `git diff --check` are run before commit.
 - Lesson: an internal concurrency guard is not sufficient UX; asynchronous controls should also communicate the in-flight state and return to an actionable state after completion.
+
+## 2026-08-01: Modal background-scroll audit
+
+- Found: Command Palette, attention queue, session switcher, and image lightbox trapped focus but allowed the page behind the fixed overlay to scroll; this was especially disruptive on mobile.
+- Fixed: add a reference-counted `useBodyScrollLock` hook, use it across these overlays, and migrate the project-add dialog so nested overlays restore the original body overflow only after the final lock is released.
+- Verification: targeted modal and project-dialog tests passed (44/44); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: focus management and background interaction are separate modal responsibilities; a modal audit must verify both keyboard and scroll isolation.

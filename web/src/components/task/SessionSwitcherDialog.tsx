@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 import { SessionSwitcher } from "./SessionSwitcher";
 
 const FOCUSABLE_SELECTOR =
@@ -21,6 +22,8 @@ export function SessionSwitcherDialog({
 }: SessionSwitcherDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useBodyScrollLock(true);
 
   const getFocusableElements = () =>
     Array.from(

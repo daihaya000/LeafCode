@@ -24,6 +24,7 @@ import { useOptionalGlobalAttention } from "@/components/shell/GlobalAttentionPr
 import { getJson } from "@/lib/client";
 import { directoryHeaders } from "@/lib/directory-header";
 import type { TaskSummary } from "@/lib/types";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 type Item =
   | { kind: "action"; id: string; label: string; icon: React.ReactNode; run: () => void }
@@ -51,6 +52,8 @@ export function CommandPalette({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const attentionOpen = attention?.open ?? false;
+
+  useBodyScrollLock(open);
 
   // Global shortcut — do not open over an active attention modal.
   useEffect(() => {
