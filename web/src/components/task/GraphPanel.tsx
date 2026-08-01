@@ -197,6 +197,7 @@ export function GraphPanel({
   const detailBusyRef = useRef(new Set<string>());
   const reqIdRef = useRef(0);
   const directoryRef = useRef(directory);
+  const mountedRef = useRef(false);
   directoryRef.current = directory;
 
   const load = useCallback(
@@ -218,7 +219,7 @@ export function GraphPanel({
           limit: String(limit),
           skip: String(skipCount),
         });
-        if (id !== reqIdRef.current) return;
+        if (!mountedRef.current || id !== reqIdRef.current) return;
         setPayload((prev) => {
           const next =
             append && prev
@@ -232,12 +233,12 @@ export function GraphPanel({
           return next;
         });
       } catch (err) {
-        if (id !== reqIdRef.current) return;
+        if (!mountedRef.current || id !== reqIdRef.current) return;
         if (!silent) {
           setError(err instanceof Error ? err.message : "ログの取得に失敗しました");
         }
       } finally {
-        if (id === reqIdRef.current) {
+        if (mountedRef.current && id === reqIdRef.current) {
           busyRef.current = false;
           if (!silent) {
             setLoading(false);
@@ -256,6 +257,15 @@ export function GraphPanel({
   useEffect(() => {
     loadRef.current = load;
   }, [load]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      reqIdRef.current += 1;
+      detailBusyRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     // Invalidate in-flight log/show requests from the previous directory.
@@ -348,17 +358,17 @@ export function GraphPanel({
         directory: dir,
         commit: hash,
       });
-      if (directoryRef.current !== dir) return;
+      if (!mountedRef.current || directoryRef.current !== dir) return;
       setFilesByCommit((prev) => ({
         ...prev,
         [hash]: data.files ?? [],
       }));
     } catch (err) {
-      if (directoryRef.current !== dir) return;
+      if (!mountedRef.current || directoryRef.current !== dir) return;
       setError(err instanceof Error ? err.message : "コミット詳細の取得に失敗");
     } finally {
       detailBusyRef.current.delete(detailKey);
-      if (directoryRef.current === dir) {
+      if (mountedRef.current && directoryRef.current === dir) {
         setLoadingCommits((prev) => {
           const next = new Set(prev);
           next.delete(hash);
@@ -381,13 +391,13 @@ export function GraphPanel({
         commit,
         file: path,
       });
-      if (directoryRef.current !== dir) return;
+      if (!mountedRef.current || directoryRef.current !== dir) return;
       setFileDiff({ commit, path, text: data.diff ?? "" });
     } catch (err) {
-      if (directoryRef.current !== dir) return;
+      if (!mountedRef.current || directoryRef.current !== dir) return;
       setError(err instanceof Error ? err.message : "diff の取得に失敗");
     } finally {
-      if (directoryRef.current === dir) setFileBusy(false);
+      if (mountedRef.current && directoryRef.current === dir) setFileBusy(false);
     }
   };
 

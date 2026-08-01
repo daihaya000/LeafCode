@@ -179,6 +179,27 @@ describe("GraphPanel", () => {
     expect(screen.getByText("commit 0")).toBeTruthy();
   });
 
+  it("ignores a late commit detail response after unmount", async () => {
+    let resolveShow!: (value: unknown) => void;
+    const showPending = new Promise((resolve) => {
+      resolveShow = resolve;
+    });
+    getJson.mockImplementation((url: string) => {
+      if (url === "/api/git/log") return Promise.resolve(payloadWith(1));
+      return showPending;
+    });
+
+    const { unmount } = render(<GraphPanel directory="/repo" />);
+    await screen.findByText("commit 0");
+    fireEvent.click(screen.getByRole("button", { name: /commit 0/ }));
+    unmount();
+
+    await act(async () => {
+      resolveShow({ files: [] });
+      await Promise.resolve();
+    });
+  });
+
   it("does not request commit details twice while expansion is pending", async () => {
     let resolveShow!: (value: unknown) => void;
     const showPending = new Promise((resolve) => {

@@ -3637,3 +3637,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add ref-level locks across profile mutations, invalidate load responses on cleanup, and cancel stale job polling responses.
 - Verification: ProfilesSettings tests passed (10/10), including migration single-flight coverage; typecheck, ESLint, and `git diff --check` passed.
 - Lesson: settings pages with multiple mutation entry points need one synchronous operation lock and explicit polling generation boundaries.
+
+## 2026-08-01: Git graph unmount response isolation
+
+- Found: GraphPanel guarded late responses when switching directories, but a commit detail or diff response arriving after the panel unmounted could still call state setters because the directory remained unchanged.
+- Fixed: add a mounted lifecycle guard, invalidate request/detail generations during cleanup, and cover late commit-detail responses with a regression test.
+- Verification: GraphPanel tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: identity checks prevent cross-directory contamination, but every async UI request also needs an explicit mounted boundary.
