@@ -63,6 +63,34 @@ describe("HostLogPanel", () => {
     );
   });
 
+  it("does not steal the scroll position while the user reads older logs", async () => {
+    timedFetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          entries: [{ seq: 1, ts: 1, source: "host", level: "log", text: "first" }],
+          nextSeq: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          entries: [{ seq: 2, ts: 2, source: "host", level: "log", text: "second" }],
+          nextSeq: 2,
+        }),
+      );
+
+    render(<HostLogPanel />);
+    await waitFor(() => findLogLine("[host] first"));
+    const viewport = document.querySelector(".max-h-64") as HTMLDivElement;
+    Object.defineProperty(viewport, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 300 });
+    viewport.scrollTop = 100;
+    fireEvent.scroll(viewport);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await waitFor(() => findLogLine("[host] second"));
+    expect(viewport.scrollTop).toBe(100);
+  });
+
   it("uses the since cursor from nextSeq on subsequent polls", async () => {
     timedFetch
       .mockResolvedValueOnce(

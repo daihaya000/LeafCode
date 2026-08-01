@@ -3931,3 +3931,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: use namespaced busy keys, disable all approval actions while any decision is pending, and show a busy indicator on the active allow action.
 - Verification: BrowserBridgeApprovals tests passed (12/12); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: when a mutation lock is global, the UI must communicate that global lock consistently across every competing action.
+
+## 2026-08-01: Host log viewer scroll stability
+
+- Found: HostLogPanel always scrolled to the bottom whenever polling appended entries, interrupting users who were reading older log lines.
+- Fixed: track whether the viewport is near the bottom and auto-follow only while the user remains there; manual upward scrolling is preserved across polling updates.
+- Verification: HostLogPanel tests passed (7/7); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: live feeds should follow new content only when the user has opted into the live edge, not on every data refresh.

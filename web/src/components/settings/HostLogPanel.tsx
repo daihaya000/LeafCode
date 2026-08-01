@@ -31,6 +31,7 @@ export function HostLogPanel() {
   const [copied, setCopied] = useState(false);
   const sinceRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
   const mountedRef = useRef(false);
   const pollingRef = useRef(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,6 +89,7 @@ export function HostLogPanel() {
 
   useEffect(() => {
     if (!scrollRef.current) return;
+    if (!stickToBottomRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [entries]);
 
@@ -127,6 +129,12 @@ export function HostLogPanel() {
         )}
         <div
           ref={scrollRef}
+          onScroll={() => {
+            const element = scrollRef.current;
+            if (!element) return;
+            stickToBottomRef.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
+          }}
           className="max-h-64 overflow-y-auto rounded-lg bg-black px-3 py-2 font-mono text-xs"
         >
           {entries.length === 0 && !fetchError && (
