@@ -2,14 +2,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HostLogPanel } from "./HostLogPanel";
 
-const { timedFetch } = vi.hoisted(() => ({
+const { timedFetch, copyText } = vi.hoisted(() => ({
   timedFetch: vi.fn(),
+  copyText: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@/lib/client", () => ({ timedFetch }));
 
 vi.mock("@/lib/clipboard", () => ({
-  copyText: vi.fn().mockResolvedValue(true),
+  copyText,
 }));
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
@@ -178,6 +179,26 @@ describe("HostLogPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "表示をクリア" }));
     expect(screen.queryByText(/line one/)).toBeNull();
+  });
+
+  it("keeps each log entry on its own line when copied", async () => {
+    timedFetch.mockResolvedValue(
+      jsonResponse({
+        entries: [
+          { seq: 1, ts: 1, source: "host", level: "log", text: "first" },
+          { seq: 2, ts: 2, source: "opencode", level: "error", text: "second" },
+        ],
+        nextSeq: 2,
+      }),
+    );
+
+    render(<HostLogPanel />);
+    await waitFor(() => findLogLine("[host] first"));
+
+    fireEvent.click(screen.getByRole("button", { name: "コピー" }));
+    await waitFor(() =>
+      expect(copyText).toHaveBeenCalledWith("[host] first\n[opencode] second"),
+    );
   });
 
   it("pauses polling while hidden and resumes when visible", async () => {

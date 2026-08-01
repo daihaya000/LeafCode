@@ -4171,6 +4171,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: settings regression tests passed (42/42); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: repeated controls need the target resource in their accessible name even when the surrounding table or card visually supplies that context.
 
+## 2026-08-01: Host log copy fidelity
+
+- Found: the host-log panel rendered entries on separate lines but concatenated them without separators when using `コピー`, making pasted diagnostics difficult to read.
+- Fixed: join copied entries with newline separators and added a regression test covering multiple log sources and levels.
+- Verification: HostLogPanel tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: copy/export behavior must preserve the visual structure users rely on when diagnosing failures.
+
 ## 2026-08-01: AIハーネス改善計画のレビュー
 - やったこと: 現行コードと前回の改善計画を照合し、worktree既定化済み、PTY監査あり、Caddy Basic認証は任意、CIはencoding/host中心、体系的なAgent評価基盤が不足していることを確認した。
 - 判断理由: 一般的なセキュリティ強化だけでなく、AIハーネス固有の成功率・介入率・コスト・回復率を測れる評価基盤を先に置く方が、後続改善の効果を客観評価できるため。

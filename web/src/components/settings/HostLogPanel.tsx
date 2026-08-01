@@ -124,7 +124,7 @@ export function HostLogPanel() {
   }, [entries]);
 
   const copyAll = async () => {
-    const text = entries.map((e) => `[${e.source}] ${e.text}`).join("");
+    const text = entries.map((e) => `[${e.source}] ${e.text}`).join("\n");
     const ok = await copyText(text);
     if (!ok) return;
     if (!mountedRef.current) return;
