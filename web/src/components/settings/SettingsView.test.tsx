@@ -285,6 +285,23 @@ describe("SettingsView", () => {
     expect(setTheme).toHaveBeenCalledWith("light");
   });
 
+  it("exposes selected cost display options as pressed toggle buttons", async () => {
+    render(<SettingsView />);
+
+    await screen.findByRole("heading", { name: "表示テーマ" });
+    const currencyButtons = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent?.includes("$") || button.textContent?.includes("円"));
+    expect(currencyButtons.length).toBe(2);
+    expect(currencyButtons.filter((button) => button.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+
+    const rateButtons = screen
+      .getAllByRole("button")
+      .filter((button) => /自動|手動/.test(button.textContent ?? ""));
+    expect(rateButtons).toHaveLength(2);
+    expect(rateButtons.filter((button) => button.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+  });
+
   it("shows the エージェント tab and lists agents when selected", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");

@@ -856,6 +856,7 @@ export function SettingsView() {
                     <button
                       key={opt.value}
                       type="button"
+                      aria-pressed={costPrefs.currency === opt.value}
                       onClick={() => setCurrency(opt.value)}
                       className={
                         costPrefs.currency === opt.value
@@ -877,6 +878,7 @@ export function SettingsView() {
                     <button
                       key={opt.value}
                       type="button"
+                      aria-pressed={costPrefs.rateMode === opt.value}
                       onClick={() => setRateMode(opt.value)}
                       className={
                         costPrefs.rateMode === opt.value

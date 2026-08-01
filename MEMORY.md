@@ -3945,3 +3945,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: accept both `ws://` and `wss://` when reading the saved Broker URL and added a secure URL restoration test.
 - Verification: BrowserBridgeSettings tests passed (11/11); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: connection input validation and persistence validation must share the same protocol contract.
+
+## 2026-08-01: Cost display toggle semantics
+
+- Found: SettingsView's currency and exchange-rate selectors used styled buttons to represent mutually exclusive choices but exposed no pressed state to assistive technology.
+- Fixed: add `aria-pressed` to both toggle groups and cover the selected-state contract with a regression test.
+- Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: visual selected styling should always have an equivalent semantic state for keyboard and assistive-technology users.
