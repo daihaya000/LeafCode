@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -95,9 +95,12 @@ export function GoalLoopPanel({
   onUpdateMaxTurns?: (maxTurns: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
   // Keep the draft as text. Clamping on every keystroke made it impossible to
   // clear a value such as `1` before typing a multi-digit replacement (`20`).
   const [editingMaxTurns, setEditingMaxTurns] = useState<string | null>(null);
+  const stopDialogRef = useRef<HTMLDivElement | null>(null);
+  const stopTriggerRef = useRef<HTMLElement | null>(null);
 
   const terminal =
     loop?.status === "completed" || loop?.status === "blocked" || loop?.status === "stopped";
@@ -105,6 +108,27 @@ export function GoalLoopPanel({
   useEffect(() => {
     if (terminal) setExpanded(false);
   }, [terminal]);
+
+  useEffect(() => {
+    if (!stopConfirmOpen) {
+      if (
+        stopTriggerRef.current?.isConnected &&
+        (document.activeElement === document.body || document.activeElement === null)
+      ) {
+        stopTriggerRef.current.focus();
+      }
+      stopTriggerRef.current = null;
+      return;
+    }
+    stopDialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setStopConfirmOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [stopConfirmOpen]);
 
   if (!loop) return null;
 
@@ -123,13 +147,11 @@ export function GoalLoopPanel({
   const canEditMaxTurns = loop.status === "paused" && Boolean(onUpdateMaxTurns);
 
   const handleStop = () => {
-    if (
-      !window.confirm(
-        "ループを停止しますか？セッションは中断され、進行中の作業は失われます。",
-      )
-    )
-      return;
-    onAction("stop");
+    if (stopConfirmOpen) return;
+    stopTriggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setStopConfirmOpen(true);
   };
 
   // A goal loop can accumulate many completed turns. Keep the panel compact by
@@ -241,6 +263,40 @@ export function GoalLoopPanel({
           )}
         </div>
       </div>
+
+      {stopConfirmOpen && canStop && (
+        <div
+          ref={stopDialogRef}
+          id="goal-loop-stop-confirm"
+          role="dialog"
+          aria-label="ループ停止の確認"
+          aria-describedby="goal-loop-stop-confirm-description"
+          className="mt-3 rounded-lg border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
+        >
+          <p id="goal-loop-stop-confirm-description">
+            ループを停止しますか？セッションは中断され、進行中の作業は失われます。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                setStopConfirmOpen(false);
+                onAction("stop");
+              }}
+            >
+              停止する
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setStopConfirmOpen(false)}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </div>
+      )}
 
       {loop.acceptance?.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1 text-xs">

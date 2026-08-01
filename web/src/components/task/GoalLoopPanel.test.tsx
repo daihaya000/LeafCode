@@ -245,15 +245,12 @@ describe("GoalLoopPanel", () => {
   });
 
   it("confirms before stop and calls onAction when confirmed", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const onAction = vi.fn();
     render(
       <GoalLoopPanel loop={baseLoop({ status: "running" })} busy={false} onAction={onAction} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "ループを停止" }));
-    expect(confirmSpy).toHaveBeenCalledWith(
-      "ループを停止しますか？セッションは中断され、進行中の作業は失われます。",
-    );
+    fireEvent.click(screen.getByRole("dialog").querySelector("button")!);
     expect(onAction).toHaveBeenCalledWith("stop");
   });
 
@@ -265,6 +262,21 @@ describe("GoalLoopPanel", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "ループを停止" }));
     expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("focuses the stop confirmation and closes it with Escape", () => {
+    render(<GoalLoopPanel loop={baseLoop({ status: "running" })} busy={false} onAction={vi.fn()} />);
+    const stop = screen.getAllByRole("button").find((button) => button.getAttribute("aria-label") === "ループを停止") as HTMLElement;
+    stop.focus();
+    fireEvent.click(stop);
+
+    const dialog = screen.getByRole("dialog");
+    const confirm = dialog.querySelector("button") as HTMLElement;
+    expect(document.activeElement).toBe(confirm);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(stop);
   });
 
   it("renders only the current progress entry", () => {

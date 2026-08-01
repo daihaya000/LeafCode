@@ -3953,6 +3953,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: SettingsView tests passed (24/24); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: visual selected styling should always have an equivalent semantic state for keyboard and assistive-technology users.
 
+## 2026-08-01: Goal loop stop confirmation UX
+
+- Found: stopping a live goal loop relied on a native `window.confirm`, hiding the warning context from the page and providing no controllable focus or keyboard cancellation lifecycle.
+- Fixed: show an inline accessible confirmation panel tied to the stop trigger, focus its primary action on open, close on Escape, and restore focus when cancelled.
+- Verification: GoalLoopPanel tests passed (44/44); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: irreversible task controls need an in-context confirmation surface whose state remains visible and operable without browser-native dialogs.
+
 ## 2026-08-01: Backend port environment validation
 
 - Found: The host converted port environment variables with `Number(...) || default`, allowing out-of-range, fractional, and negative values to reach Node's server APIs and fail startup later.
