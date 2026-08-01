@@ -111,6 +111,7 @@ export function NestedAgentPanel({
   const stickyIdRef = useRef<string | null>(null);
   const stickyCallIdRef = useRef<string | undefined>(undefined);
   const genRef = useRef(0);
+  const refreshScopeRef = useRef<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const stickBottomRef = useRef(true);
 
@@ -132,6 +133,9 @@ export function NestedAgentPanel({
 
   const refresh = useCallback(async () => {
     if (!directory || !parentSessionId) return;
+    const scopeKey = `${directory}\u0000${parentSessionId}\u0000${hintCallID}\u0000${hintSiblingsKey}`;
+    if (refreshScopeRef.current === scopeKey) return;
+    refreshScopeRef.current = scopeKey;
     const gen = ++genRef.current;
     const hint: TaskMatchHint = {
       callID: hintCallID,
@@ -208,6 +212,10 @@ export function NestedAgentPanel({
     } catch (err) {
       if (gen !== genRef.current) return;
       setError(err instanceof Error ? err.message : "子セッション取得失敗");
+    } finally {
+      if (refreshScopeRef.current === scopeKey) {
+        refreshScopeRef.current = null;
+      }
     }
   }, [
     directory,

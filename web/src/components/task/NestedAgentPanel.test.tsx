@@ -114,6 +114,35 @@ describe("NestedAgentPanel", () => {
     expect(ocJson.mock.calls.length).toBeGreaterThan(afterMount);
   });
 
+  it("does not overlap polling requests for the same child scope", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let releaseStatus!: (value: unknown) => void;
+    ocJson.mockImplementation((path: string) => {
+      if (path === "/session/status") {
+        return new Promise((resolve) => {
+          releaseStatus = resolve;
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    render(
+      <NestedAgentPanel
+        directory="/repo"
+        parentSessionId={PARENT_ID}
+        active
+        matchHint={hint}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(ocJson).toHaveBeenCalledTimes(1);
+
+    releaseStatus({ [CHILD_ID]: { type: "busy" } });
+  });
+
   it("does not poll while the tab is hidden", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     setVisible(false);

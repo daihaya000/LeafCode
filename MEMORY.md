@@ -3546,3 +3546,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add synchronous refs at both the shared session-action runner and message-level revert handler while preserving inline errors and busy feedback.
 - Verification: SessionActions tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: destructive or state-changing task actions need a handler-level lock even when their buttons already render as disabled during the request.
+
+## 2026-08-01: Nested agent polling backpressure
+
+- Found: the Nested Agent panel could start another same-scope refresh while the previous status/children/message request was still pending, allowing slow connections to accumulate polls.
+- Fixed: add a scope-aware in-flight guard; a new directory/session/task-call scope can still invalidate and start its own refresh.
+- Verification: NestedAgentPanel tests passed (8/8); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: polling guards should be keyed to the resource scope so backpressure prevents duplicate work without delaying legitimate updates after navigation.
