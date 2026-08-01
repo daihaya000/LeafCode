@@ -32,6 +32,12 @@ describe("NEXT_ACTION_SYSTEM_INSTRUCTION", () => {
     expect(typeof NEXT_ACTION_SYSTEM_INSTRUCTION).toBe("string");
     expect(NEXT_ACTION_SYSTEM_INSTRUCTION.length).toBeGreaterThan(50);
     expect(NEXT_ACTION_SYSTEM_INSTRUCTION).toContain("日本語");
+    expect(NEXT_ACTION_SYSTEM_INSTRUCTION).toContain(
+      "基本は作業を前に進める次工程",
+    );
+    expect(NEXT_ACTION_SYSTEM_INSTRUCTION).toContain(
+      "単なる確認作業を汎用的な次の一手として提案しない",
+    );
   });
 });
 
