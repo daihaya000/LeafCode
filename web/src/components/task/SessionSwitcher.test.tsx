@@ -48,6 +48,37 @@ describe("SessionSwitcher controlled snap-back", () => {
     expect(onSwitch).toHaveBeenCalled();
   });
 
+  it("toggles the current session favorite", async () => {
+    getJson.mockResolvedValue({
+      sessions: [
+        { opencodeSessionId: "ses_1", title: "Session 1", favorite: false, updatedAt: "t1" },
+        { opencodeSessionId: "ses_2", title: "Session 2", favorite: true, updatedAt: "t2" },
+      ],
+    });
+    sendJson.mockResolvedValue({});
+
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="ses_1"
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    const favoriteButton = await screen.findByRole("button", { name: "お気に入りに追加" });
+    fireEvent.click(favoriteButton);
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/workspaces/ws1/sessions",
+        { opencodeSessionId: "ses_1", favorite: true },
+      ),
+    );
+    expect(await screen.findByRole("button", { name: "お気に入りから外す" })).toBeTruthy();
+  });
+
   it("ignores a second session switch while the first is pending", async () => {
     getJson.mockResolvedValue({
       sessions: [

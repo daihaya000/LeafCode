@@ -34,6 +34,7 @@ export function projectKey(rootPath: string): string {
 export type ManifestSession = {
   opencodeSessionId: string;
   title: string;
+  favorite?: boolean;
   updatedAt: string;
 };
 
@@ -103,6 +104,7 @@ export function parseManifest(raw: unknown): ProjectSessionManifest | null {
       sessions.push({
         opencodeSessionId: sid,
         title: str(s.title),
+        favorite: s.favorite === true,
         updatedAt: str(s.updatedAt, new Date(0).toISOString()),
       });
     }

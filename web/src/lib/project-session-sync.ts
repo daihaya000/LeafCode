@@ -3,6 +3,7 @@ import { dataDir } from "./paths";
 import {
   ProjectRow,
   bindSession,
+  getDb,
   getProject,
   importWorkspaceRow,
   getWorkspace,
@@ -51,6 +52,7 @@ function manifestFromDb(project: ProjectRow): ProjectSessionManifest {
     sessions: listSessionBindings(ws.id).map((b) => ({
       opencodeSessionId: b.opencode_session_id,
       title: b.title,
+      favorite: b.favorite === 1,
       updatedAt: b.updated_at,
     })),
   }));
@@ -232,6 +234,11 @@ export function restoreProjectFromManifest(
       }
       for (const s of ws.sessions) {
         bindSession(ws.id, s.opencodeSessionId, s.title, s.updatedAt);
+        if (s.favorite) {
+          getDb().prepare(
+            "UPDATE session_bindings SET favorite = 1 WHERE workspace_id = ? AND opencode_session_id = ?",
+          ).run(ws.id, s.opencodeSessionId);
+        }
         result.sessions += 1;
       }
     }

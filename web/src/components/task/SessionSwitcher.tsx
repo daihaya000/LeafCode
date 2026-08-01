@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Layers, Plus, RefreshCw } from "lucide-react";
+import { Layers, Plus, RefreshCw, Star } from "lucide-react";
 import { Button, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";
 
 type SessionRow = {
   opencodeSessionId: string;
   title: string;
+  favorite: boolean;
   updatedAt: string;
 };
 
@@ -28,6 +29,7 @@ export function SessionSwitcher({
   const [busy, setBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
   // Keep the user's selection while the parent catches up with onSwitch.
   const [localSelection, setLocalSelection] = useState<string | null>(null);
   const busyRef = useRef(false);
@@ -45,10 +47,15 @@ export function SessionSwitcher({
     setSessionsLoading(true);
     try {
       const data = await getJson<{
-        sessions?: { opencodeSessionId: string; title: string; updatedAt: string }[];
+        sessions?: { opencodeSessionId: string; title: string; favorite?: boolean; updatedAt: string }[];
       }>(`/api/workspaces/${workspaceId}/sessions`);
       if (!mountedRef.current || requestId !== refreshIdRef.current) return;
-      setSessions(data.sessions ?? []);
+      setSessions(
+        (data.sessions ?? []).map((session) => ({
+          ...session,
+          favorite: session.favorite === true,
+        })),
+      );
       setSessionsError(null);
     } catch (err) {
       if (!mountedRef.current || requestId !== refreshIdRef.current) return;
@@ -59,6 +66,36 @@ export function SessionSwitcher({
       if (mountedRef.current && requestId === refreshIdRef.current) setSessionsLoading(false);
     }
   }, [workspaceId]);
+
+  const toggleFavorite = async () => {
+    const id = localSelection ?? currentSessionId;
+    const session = sessions.find((item) => item.opencodeSessionId === id);
+    if (!id || !session || favoriteBusy) return;
+    const nextFavorite = !session.favorite;
+    setFavoriteBusy(true);
+    setSessions((current) =>
+      current.map((item) =>
+        item.opencodeSessionId === id ? { ...item, favorite: nextFavorite } : item,
+      ),
+    );
+    try {
+      await sendJson("POST", `/api/workspaces/${workspaceId}/sessions`, {
+        opencodeSessionId: id,
+        favorite: nextFavorite,
+      });
+    } catch (err) {
+      setSessions((current) =>
+        current.map((item) =>
+          item.opencodeSessionId === id ? { ...item, favorite: !nextFavorite } : item,
+        ),
+      );
+      setSwitchError(
+        err instanceof Error ? err.message : "お気に入りを更新できませんでした",
+      );
+    } finally {
+      setFavoriteBusy(false);
+    }
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -118,6 +155,19 @@ export function SessionSwitcher({
     const canRetryList = sessionsError !== null && !sessionsLoading;
     return (
       <div className="flex min-w-0 items-center gap-1">
+        {sessions.length === 1 && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title={sessions[0].favorite ? "お気に入りから外す" : "お気に入りに追加"}
+            aria-label={sessions[0].favorite ? "お気に入りから外す" : "お気に入りに追加"}
+            busy={favoriteBusy}
+            disabled={favoriteBusy}
+            onClick={() => void toggleFavorite()}
+          >
+            <Star className={cx("h-3.5 w-3.5", sessions[0].favorite && "fill-current text-primary")} />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -207,6 +257,17 @@ export function SessionSwitcher({
           </option>
         ))}
       </select>
+      <Button
+        variant="ghost"
+        size="icon"
+        title={sessions.find((s) => s.opencodeSessionId === (localSelection ?? currentSessionId))?.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+        aria-label={sessions.find((s) => s.opencodeSessionId === (localSelection ?? currentSessionId))?.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+        busy={favoriteBusy}
+        disabled={favoriteBusy}
+        onClick={() => void toggleFavorite()}
+      >
+        <Star className={cx("h-3.5 w-3.5", sessions.find((s) => s.opencodeSessionId === (localSelection ?? currentSessionId))?.favorite && "fill-current text-primary")} />
+      </Button>
       <Button
         variant="ghost"
         size="icon"

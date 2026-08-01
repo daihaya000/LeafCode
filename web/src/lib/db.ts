@@ -29,6 +29,7 @@ export type SessionBindingRow = {
   workspace_id: string;
   opencode_session_id: string;
   title: string;
+  favorite: number;
   updated_at: string;
 };
 
@@ -73,6 +74,7 @@ export function getDb(): Database.Database {
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       opencode_session_id TEXT NOT NULL,
       title TEXT NOT NULL DEFAULT '',
+      favorite INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL,
       PRIMARY KEY (workspace_id, opencode_session_id)
     );
@@ -131,6 +133,12 @@ export function getDb(): Database.Database {
   }
   if (!hasGoalLoopColumn("pause_requested")) {
     db.exec("ALTER TABLE goal_loops ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0");
+  }
+  const sessionBindingColumns = db
+    .prepare("PRAGMA table_info(session_bindings)")
+    .all() as { name: string }[];
+  if (!sessionBindingColumns.some((column) => column.name === "favorite")) {
+    db.exec("ALTER TABLE session_bindings ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
   }
   return db;
 }
@@ -292,6 +300,22 @@ export function bindSession(
     .run(workspaceId, opencodeSessionId, title, updatedAt ?? new Date().toISOString());
 }
 
+/** Update the favorite state without changing session recency. */
+export function setSessionFavorite(
+  workspaceId: string,
+  opencodeSessionId: string,
+  favorite: boolean,
+): boolean {
+  if (!isSafeOpenCodeSessionId(opencodeSessionId)) return false;
+  const info = getDb()
+    .prepare(
+      `UPDATE session_bindings SET favorite = ?
+       WHERE workspace_id = ? AND opencode_session_id = ?`,
+    )
+    .run(favorite ? 1 : 0, workspaceId, opencodeSessionId);
+  return info.changes > 0;
+}
+
 /** Update only the title of an existing binding, preserving updated_at. */
 export function updateSessionTitle(
   workspaceId: string,
@@ -326,8 +350,8 @@ export function touchSessionActivity(
 export function listSessionBindings(workspaceId: string): SessionBindingRow[] {
   return getDb()
     .prepare(
-      `SELECT * FROM session_bindings WHERE workspace_id = ?
-       ORDER BY updated_at DESC`,
+       `SELECT * FROM session_bindings WHERE workspace_id = ?
+       ORDER BY favorite DESC, updated_at DESC`,
     )
     .all(workspaceId) as SessionBindingRow[];
 }

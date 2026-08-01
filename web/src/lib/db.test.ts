@@ -13,6 +13,8 @@ const {
   createWorkspace,
   deleteProject,
   getDb,
+  listSessionBindings,
+  setSessionFavorite,
   touchSessionActivity,
   upsertProject,
 } = await import("./db");
@@ -49,6 +51,21 @@ test("touchSessionActivity updates only the matching binding", () => {
     ).updated_at,
   ).toBe("2026-07-22T11:00:00.000Z");
   expect(touchSessionActivity("ws-2", "ses-1", "t2")).toBe(false);
+});
+
+test("session favorites are stored per workspace and ordered first", () => {
+  bindSession("ws-1", "ses-2", "Second", "2026-07-22T12:00:00.000Z");
+  expect(setSessionFavorite("ws-1", "ses-2", true)).toBe(true);
+  bindSession("ws-1", "ses-2", "Second renamed", "2026-07-22T13:00:00.000Z");
+
+  const sessions = listSessionBindings("ws-1");
+  expect(sessions[0]).toMatchObject({
+    opencode_session_id: "ses-2",
+    title: "Second renamed",
+    favorite: 1,
+  });
+  expect(setSessionFavorite("ws-1", "ses-2", false)).toBe(true);
+  expect(listSessionBindings("ws-1").find((s) => s.opencode_session_id === "ses-2")?.favorite).toBe(0);
 });
 
 test("bindSession throws on unsafe opencode_session_id (R22)", () => {
