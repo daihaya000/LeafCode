@@ -3868,3 +3868,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: capture the restore directory/session and verify the current task scope before post-restore resync or diff invalidation.
 - Verification: TaskView tests passed (104/104); typecheck and ESLint passed with existing warnings only.
 - Lesson: async task actions must validate their original session scope before applying follow-up UI state.
+
+## 2026-08-01: Settings tab keyboard navigation
+
+- Found: settings categories were visually rendered as tabs but required sequential Tab navigation and lacked tab/panel ARIA relationships.
+- Fixed: add roving `tabIndex`, Arrow/Home/End navigation with focus movement, `aria-controls`, and an associated `tabpanel`.
+- Verification: SettingsView tests passed (23/23); typecheck, ESLint, and `git diff --check` passed. ESLint still reports 12 pre-existing warnings.
+- Lesson: horizontally scrollable category navigation should retain full keyboard parity with desktop tab interfaces.

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import {
   Check,
   Copy,
@@ -574,6 +580,30 @@ export function SettingsView() {
     { key: "plugins", label: "プラグイン" },
     { key: "addons", label: "アドオン" },
   ];
+  const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement>>>({});
+  const moveTab = (index: number) => {
+    const next = tabs[(index + tabs.length) % tabs.length]!;
+    setActiveTab(next.key);
+    tabRefs.current[next.key]?.focus();
+  };
+  const onTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      moveTab(index + 1);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveTab(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      moveTab(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      moveTab(tabs.length - 1);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -594,13 +624,21 @@ export function SettingsView() {
               tabIndex={0}
               className="flex gap-x-2 overflow-x-auto rounded-md [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:flex-wrap sm:overflow-visible"
             >
-            {tabs.map((t) => (
+            {tabs.map((t, index) => (
               <button
                 key={t.key}
                 type="button"
                 role="tab"
+                id={`settings-tab-${t.key}`}
+                ref={(element) => {
+                  if (element) tabRefs.current[t.key] = element;
+                  else delete tabRefs.current[t.key];
+                }}
                 aria-selected={activeTab === t.key}
+                aria-controls={`settings-panel-${t.key}`}
+                tabIndex={activeTab === t.key ? 0 : -1}
                 onClick={() => setActiveTab(t.key)}
+                onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={cx(
                   "shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap",
                   activeTab === t.key
@@ -625,7 +663,13 @@ export function SettingsView() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]">
+      <main
+        id={`settings-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeTab}`}
+        tabIndex={0}
+        className="mx-auto max-w-6xl space-y-8 px-4 py-8 pb-[max(6rem,env(safe-area-inset-bottom))]"
+      >
         {error && (
           <p
             className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-diff-del-text"

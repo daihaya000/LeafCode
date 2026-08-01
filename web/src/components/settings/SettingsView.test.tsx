@@ -245,6 +245,27 @@ describe("SettingsView", () => {
     );
   });
 
+  it("supports roving keyboard navigation across settings tabs", async () => {
+    render(<SettingsView />);
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs[0]?.getAttribute("tabindex")).toBe("0");
+    expect(tabs[1]?.getAttribute("tabindex")).toBe("-1");
+    expect(tabs[0]?.getAttribute("aria-controls")).toBe("settings-panel-general");
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(
+      "settings-tab-general",
+    );
+
+    fireEvent.keyDown(tabs[0]!, { key: "ArrowRight" });
+    expect(tabs[1]?.getAttribute("aria-selected")).toBe("true");
+    expect(tabs[0]?.getAttribute("tabindex")).toBe("-1");
+    expect(tabs[1]?.getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("tabpanel").id).toBe("settings-panel-profiles");
+
+    fireEvent.keyDown(tabs[1]!, { key: "End" });
+    expect(tabs.at(-1)?.getAttribute("aria-selected")).toBe("true");
+  });
+
   it("switches visible content when a tab is clicked", async () => {
     render(<SettingsView />);
     await screen.findByText("エンジン");
