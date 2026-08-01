@@ -3017,7 +3017,7 @@ describe("TaskView voice input", () => {
     expect(textarea.value).toBe("follow up text");
   });
 
-  it("disables the mic button while composer is locked", async () => {
+  it("keeps the composer available while the session is working", async () => {
     taskStatus = "working";
     useSessionStream.mockReturnValue({
       messages: [],
@@ -3043,7 +3043,7 @@ describe("TaskView voice input", () => {
     await flushTaskLoad();
 
     const micBtn = await screen.findByRole("button", { name: "音声入力" });
-    expect((micBtn as HTMLButtonElement).disabled).toBe(true);
+    expect((micBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("does not change existing input when transcript is empty", async () => {

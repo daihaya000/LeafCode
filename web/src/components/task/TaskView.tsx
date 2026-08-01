@@ -32,6 +32,8 @@ import {
   Terminal,
   Trash2,
   X,
+  ListPlus,
+  Zap,
 } from "lucide-react";
 
 import { AccessModeSelect } from "@/components/AccessModeSelect";
@@ -233,6 +235,8 @@ type AgentResponse = {
 }[];
 
 type Attachment = ComposerAttachment;
+type DeliveryMode = "steer" | "queue";
+type QueuedFollowUp = { id: number; text: string; attachments: Attachment[] };
 
 type ComposerDraft = { input: string; attachments: Attachment[] };
 
@@ -509,6 +513,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("queue");
+  const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
+  const [queuedAutoSend, setQueuedAutoSend] = useState(false);
+  const nextQueueIdRef = useRef(1);
   const [taskActionBusy, setTaskActionBusy] = useState<
     "remove" | "session" | "restore" | null
   >(null);
@@ -1668,7 +1676,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
   const sendingScopeRef = useRef<string | null>(null);
   const composerLocked =
-    working || (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
+    (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
   const voiceDisabled = composerLocked || !task?.sessionId;
   const voice = useVoiceInput({ disabled: voiceDisabled });
   useEffect(() => {
@@ -1944,6 +1952,18 @@ export function TaskView({ taskId }: { taskId: string }) {
     const sendSessionId = taskRef.current?.sessionId;
     const sendTaskId = taskRef.current?.id;
     if (!sendSessionId || !sendTaskId || !sendScopeKey) return;
+    // Queue mode never touches a busy session. Store the complete draft and
+    // let the idle transition below submit it as a normal follow-up.
+    if (working && deliveryMode === "queue") {
+      const queued = { id: nextQueueIdRef.current++, text, attachments };
+      setQueuedFollowUps((items) => [...items, queued]);
+      rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
+      setInput("");
+      setAttachments([]);
+      setSendError(null);
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      return;
+    }
     // Goal loop mode: the composer text is the goal, not a chat turn. Hand it
     // to the loop API and restore the draft when the API rejects it.
     if (goalLoopEnabled && !goalLoopLive) {
@@ -2151,7 +2171,31 @@ export function TaskView({ taskId }: { taskId: string }) {
     goalLoopLive,
     resolveAutoSelection,
     startGoalLoop,
+    working,
+    deliveryMode,
   ]);
+
+  // Drain the local queue only after the engine reports idle. This avoids
+  // racing the current turn while keeping the queued message visible until
+  // it is actually handed to OpenCode.
+  useEffect(() => {
+    if (working || sending || goalLoopLive || queuedAutoSend || queuedFollowUps.length === 0) {
+      return;
+    }
+    const [next, ...rest] = queuedFollowUps;
+    if (!next) return;
+    setQueuedFollowUps(rest);
+    setInput(next.text);
+    setAttachments(next.attachments);
+    setQueuedAutoSend(true);
+  }, [goalLoopLive, queuedAutoSend, queuedFollowUps, sending, working]);
+
+  useEffect(() => {
+    if (!queuedAutoSend || working || sending || goalLoopLive) return;
+    if (!input.trim() && attachments.length === 0) return;
+    setQueuedAutoSend(false);
+    void send();
+  }, [attachments.length, goalLoopLive, input, queuedAutoSend, send, sending, working]);
 
   const syncCursor = useCallback(() => {
     const el = textareaRef.current;
@@ -3654,6 +3698,65 @@ export function TaskView({ taskId }: { taskId: string }) {
                   isMd={isMd}
                 />
               )}
+              {!goalLoopLive && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <div
+                    role="radiogroup"
+                    aria-label="送信方式"
+                    className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
+                  >
+                    {([
+                      ["queue", "キュー", ListPlus, "現在の処理後に送信"],
+                      ["steer", "割り込み", Zap, "実行中の処理へ即時送信"],
+                    ] as const).map(([mode, label, Icon, title]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={deliveryMode === mode}
+                        title={title}
+                        onClick={() => setDeliveryMode(mode)}
+                        className={cx(
+                          "inline-flex min-h-7 items-center gap-1 rounded px-2 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+                          deliveryMode === mode
+                            ? "bg-bg text-text shadow-sm"
+                            : "text-muted hover:text-text",
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {working && deliveryMode === "queue" && (
+                    <span className="text-muted">送信すると現在の処理後に実行</span>
+                  )}
+                </div>
+              )}
+              {queuedFollowUps.length > 0 && (
+                <div
+                  className="mt-2 flex flex-wrap items-center gap-1.5"
+                  aria-live="polite"
+                  aria-label={`キュー待ち ${queuedFollowUps.length} 件`}
+                >
+                  <span className="text-xs font-medium text-muted">キュー待ち:</span>
+                  {queuedFollowUps.map((item, index) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title="キューから削除"
+                      onClick={() =>
+                        setQueuedFollowUps((items) => items.filter((queued) => queued.id !== item.id))
+                      }
+                      className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                    >
+                      <span className="text-faint">{index + 1}.</span>
+                      <span className="max-w-56 truncate">{item.text || "画像"}</span>
+                      <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              )}
               {sendError && (
                 <p
                   role="alert"
@@ -3765,7 +3868,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                 attachmentControl={{
                   inputRef: fileInputRef,
                   inputDisabled: !imageSupported,
-                  buttonDisabled: !task.sessionId || working || !imageSupported,
+                  buttonDisabled: !task.sessionId || composerLocked || !imageSupported,
                   buttonTitle: imageSupported
                     ? "画像を添付"
                     : "選択中のエージェント/モデルは画像入力に対応していません",
