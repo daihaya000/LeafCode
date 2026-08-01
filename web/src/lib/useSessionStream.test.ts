@@ -10,6 +10,7 @@ import {
   resolveResyncStatus,
   sessionStreamReducer,
   SESSION_COMMAND_TIMEOUT_MS,
+  SESSION_HANG_TIMEOUT_MS,
   SESSION_MUTATION_TIMEOUT_MS,
   shouldTrustSseForMessages,
   stripGoalLoopJsonBlock,
@@ -20,6 +21,10 @@ import { SSE_SILENCE_MS } from "./sse-health";
 import type { MessageWithParts } from "./types";
 
 describe("SESSION_COMMAND_TIMEOUT_MS", () => {
+  it("uses the requested five-minute hang threshold", () => {
+    expect(SESSION_HANG_TIMEOUT_MS).toBe(300_000);
+  });
+
   it("keeps active reconcile frequent enough to recover missed SSE events", () => {
     expect(ACTIVE_SESSION_RECONCILE_MS).toBeGreaterThanOrEqual(1_000);
     expect(ACTIVE_SESSION_RECONCILE_MS).toBeLessThanOrEqual(5_000);

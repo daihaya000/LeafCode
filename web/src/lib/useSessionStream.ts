@@ -69,6 +69,15 @@ export type StreamAction =
 /** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
+/** Stop a session that has remained busy for too long, then retry it once. */
+export const SESSION_HANG_TIMEOUT_MS = 5 * 60_000;
+
+type AutoRetryRequest = {
+  path: string;
+  body: Record<string, unknown>;
+  timeoutMs: number;
+};
+
 /**
  * `session.command` is proxied by the BFF as a long-running synchronous
  * mutation with up to a 290s upstream timeout (see
@@ -699,6 +708,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const safetyNetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Tracks elapsed-time tick for the in-flight mutation. */
   const mutationElapsedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mutationStartedAtRef = useRef<number | null>(null);
+  const autoRetryRequestRef = useRef<AutoRetryRequest | null>(null);
+  const autoRetryUsedRef = useRef(false);
   /** Stable ref to the latest abort() so sendPrompt/sendCommand can call it without a circular dep. */
   const abortRef = useRef<(reason?: string) => Promise<void>>(async () => {});
   /** The single in-flight resync pass, if any — see the `resync` wrapper. */
@@ -730,6 +742,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   useEffect(() => {
     dispatch({ kind: "reset", scopeKey, cached: readCachedSessionState(scopeKey) });
     pendingMutationRef.current = false;
+    mutationStartedAtRef.current = null;
+    autoRetryRequestRef.current = null;
+    autoRetryUsedRef.current = false;
     preferRestStatusRef.current = false;
     idleStreakRef.current = 0;
     sessionActivityAtRef.current = Date.now();
@@ -738,6 +753,52 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     lastResyncMsRef.current = 0;
     clearMutationTimers();
   }, [scopeKey, clearMutationTimers]);
+
+  // A session can keep its SSE connection alive while the active turn itself
+  // is stuck (for example, a detached shell process). Abort only after the
+  // full turn has been busy for five minutes, then retry the exact request
+  // once after abort() has completed and resync has observed the idle state.
+  useEffect(() => {
+    const busy = state.status?.type === "busy" || state.status?.type === "retry";
+    if (!busy || !directory || !sessionId || !autoRetryRequestRef.current || autoRetryUsedRef.current) {
+      if (!busy) {
+        mutationStartedAtRef.current = null;
+        autoRetryRequestRef.current = null;
+        autoRetryUsedRef.current = false;
+      }
+      return;
+    }
+    const startedAt = mutationStartedAtRef.current ?? Date.now();
+    const remaining = Math.max(0, SESSION_HANG_TIMEOUT_MS - (Date.now() - startedAt));
+    const timer = window.setTimeout(() => {
+      const request = autoRetryRequestRef.current;
+      if (!request || autoRetryUsedRef.current) return;
+      autoRetryUsedRef.current = true;
+      autoRetryRequestRef.current = null;
+      void (async () => {
+        await abortRef.current(
+          `5分間応答がないため停止し、同じ処理を1回だけ再開します`,
+        );
+        if (sessionRef.current !== sessionId || scopeRef.current !== scopeKey) return;
+        mutationStartedAtRef.current = Date.now();
+        dispatch({ kind: "status", status: { type: "busy" } });
+        dispatch({ kind: "sessionError", message: "ハング検知後に自動再開しました" });
+        try {
+          await ocJson(request.path, directory, {
+            method: "POST",
+            body: request.body,
+            timeoutMs: request.timeoutMs,
+          });
+        } catch (error) {
+          dispatch({
+            kind: "sessionError",
+            message: error instanceof Error ? error.message : "自動再開に失敗しました",
+          });
+        }
+      })();
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [directory, scopeKey, sessionId, state.status?.type]);
 
   useEffect(() => {
     rememberSessionState(state);
@@ -1733,14 +1794,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
       const startedAt = Date.now();
-      const HANG_TIMEOUT_MS = 120_000;
-      const stopMutationElapsed = startMutationElapsed(startedAt, (elapsedMs) => {
-        if (elapsedMs >= HANG_TIMEOUT_MS && statusRef.current?.type !== "idle") {
-          void abortRef.current(
-            `コマンドがタイムアウトしました（${HANG_TIMEOUT_MS / 1_000}秒経過）`,
-          );
-        }
-      });
+      mutationStartedAtRef.current = startedAt;
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
       if (opts?.files && opts.files.length > 0) {
         for (const f of opts.files) {
@@ -1760,6 +1814,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (opts?.variant) {
         body.variant = opts.variant;
       }
+      autoRetryRequestRef.current = {
+        path: `/session/${sid}/prompt_async`,
+        body,
+        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+      };
+      autoRetryUsedRef.current = false;
+      const stopMutationElapsed = startMutationElapsed(startedAt);
       try {
         await ocJson(`/session/${sid}/prompt_async`, directory, {
           method: "POST",
@@ -1808,14 +1869,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
       const startedAt = Date.now();
-      const HANG_TIMEOUT_MS = 120_000;
-      const stopMutationElapsed = startMutationElapsed(startedAt, (elapsedMs) => {
-        if (elapsedMs >= HANG_TIMEOUT_MS && statusRef.current?.type !== "idle") {
-          void abortRef.current(
-            `コマンドがタイムアウトしました（${HANG_TIMEOUT_MS / 1_000}秒経過）`,
-          );
-        }
-      });
+      mutationStartedAtRef.current = startedAt;
       const body: Record<string, unknown> = {
         command,
         arguments: args,
@@ -1834,6 +1888,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           ...(f.name ? { filename: f.name } : {}),
         }));
       }
+      autoRetryRequestRef.current = {
+        path: `/session/${sid}/command`,
+        body,
+        timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
+      };
+      autoRetryUsedRef.current = false;
+      const stopMutationElapsed = startMutationElapsed(startedAt);
       try {
         await ocJson(`/session/${sid}/command`, directory, {
           method: "POST",
