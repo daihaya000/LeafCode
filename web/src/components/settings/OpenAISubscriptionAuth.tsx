@@ -45,18 +45,42 @@ export function OpenAISubscriptionAuth({ showHeading = true }: { showHeading?: b
   const [instructions, setInstructions] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollAttempts = useRef(0);
+  const connectionRequestBusyRef = useRef(false);
+  const connectionRequestGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const refreshConnection = useCallback(async () => {
-    const provider = await getJson<ProviderResponse>("/api/opencode/provider");
-    const nextConnected = isConnected(provider.connected);
-    setConnected(nextConnected);
-    if (nextConnected) {
-      setState("connected");
-      setAuthUrl(null);
-      setInstructions(null);
+    if (connectionRequestBusyRef.current) return null;
+    connectionRequestBusyRef.current = true;
+    const generation = ++connectionRequestGenerationRef.current;
+    try {
+      const provider = await getJson<ProviderResponse>("/api/opencode/provider");
+      const nextConnected = isConnected(provider.connected);
+      if (
+        !mountedRef.current ||
+        generation !== connectionRequestGenerationRef.current
+      ) {
+        return null;
+      }
+      setConnected(nextConnected);
+      if (nextConnected) {
+        setState("connected");
+        setAuthUrl(null);
+        setInstructions(null);
+      }
+      return nextConnected;
+    } finally {
+      connectionRequestBusyRef.current = false;
     }
-    return nextConnected;
   }, []);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      connectionRequestGenerationRef.current += 1;
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
     setState("loading");

@@ -3560,3 +3560,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: add task-scoped in-flight backpressure plus request generations for both success and error updates.
 - Verification: TaskView tests passed (103/103); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: polling state needs both transport backpressure and response ordering; either one alone leaves a stale-state or request-amplification path.
+
+## 2026-08-01: Subscription OAuth status refresh
+
+- Found: OpenAI and Claude subscription status checks shared automatic polling and manual confirmation without an in-flight guard, and a late response could update state after unmount.
+- Fixed: serialize connection checks per component and invalidate their response generation during unmount, while keeping the existing polling and retry UX.
+- Verification: OpenAISubscriptionAuth tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: authentication status is a shared state machine; manual refresh and background polling must use one guarded transition path.
