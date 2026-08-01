@@ -3840,3 +3840,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Fixed: guard mutation completions, errors, and Busy cleanup with the existing mounted boundary while preserving synchronous operation locks.
 - Verification: ProfilesSettings tests passed (10/10); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: a settings page with many independent mutations needs lifecycle checks on every operation, not only its shared list loader.
+
+## 2026-08-01: HeaderKebabMenu accessibility semantics
+
+- Found: the task header kebab trigger exposed a generic `aria-haspopup` value while its portaled popup was a `menu`, weakening screen-reader interaction semantics.
+- Fixed: expose `aria-haspopup="menu"` to match the popup role.
+- Verification: HeaderKebabMenu tests passed (5/5); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: composite popup controls should publish the same role relationship that their rendered overlay implements.

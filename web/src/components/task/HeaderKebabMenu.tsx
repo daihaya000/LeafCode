@@ -161,7 +161,7 @@ export function HeaderKebabMenu({
         ref={triggerRef}
         variant="ghost"
         size="icon"
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
         aria-label={triggerLabel}
