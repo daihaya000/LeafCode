@@ -3673,11 +3673,19 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Verification: VoiceInputButton tests passed (16/16); typecheck, ESLint, and `git diff --check` passed.
 - Lesson: input controls that bridge browser or host events need synchronous action locks in addition to disabled UI state, plus lifecycle guards around every async completion.
 
+## 2026-08-01: File tree unmount isolation
+
+- Found: FileTreePanel invalidated responses when navigating or changing roots, but a directory response that arrived after unmount could still enter the state-update path.
+- Fixed: track the panel lifecycle and require it to be mounted for directory data, errors, and loading completion to be applied; cleanup also invalidates the request generation.
+- Verification: FileTreePanel tests passed (3/3); typecheck, ESLint, and `git diff --check` passed.
+- Lesson: request-generation guards handle replacement, while a mounted guard is still required for the terminal lifecycle boundary.
+
 ## 2026-08-01: Claude Auth profile dependency
 
-- Did: added `claudeAuth` to profile setup settings and make new profiles restore `opencode-claude-auth@latest` in their plugin list by default, alongside the existing Cursor ACP setup.
-- Why: Claude OAuth is supplied by that plugin, so deleting it removes Anthropic's OAuth method from `/provider/auth`. Existing custom plugin entries remain untouched.
-- Lesson: profile-scoped auth dependencies must be restored from setup defaults rather than relying on a user's current global plugin list.
+- Did: added `claudeAuth` to profile setup settings and made new profiles copy the vendored Claude Auth plugin and runtime alongside the existing Cursor ACP setup.
+- Why: Claude OAuth is supplied by that plugin, so deleting it removes Anthropic's OAuth method from `/provider/auth`. Vendoring removes the npm/network dependency and keeps new profiles reproducible.
+- Lesson: profile-scoped auth dependencies should be restored from repository-owned runtime files rather than relying on a user's global plugin cache.
+- Follow-up: replaced the interim npm plugin entry with `vendor/claude-auth` containing the runtime and local auto-load wrapper; new profiles now copy both files and runtime.
 
 ## 2026-08-01: Claude OAuth plugin removal diagnosis
 

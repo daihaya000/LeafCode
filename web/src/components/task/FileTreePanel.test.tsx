@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileTreePanel } from "./FileTreePanel";
 
@@ -38,5 +38,22 @@ describe("FileTreePanel", () => {
       path: "C:\\repo\\src",
       files: "1",
     });
+  });
+
+  it("ignores a directory response that resolves after unmount", async () => {
+    let resolveLoad!: (value: { entries: [] }) => void;
+    const pending = new Promise<{ entries: [] }>((resolve) => {
+      resolveLoad = resolve;
+    });
+    getJson.mockReturnValue(pending);
+    const { unmount } = render(<FileTreePanel root="C:\\repo" />);
+
+    await waitFor(() => expect(getJson).toHaveBeenCalled());
+    unmount();
+    await act(async () => {
+      resolveLoad({ entries: [] });
+      await Promise.resolve();
+    });
+    expect(getJson).toHaveBeenCalled();
   });
 });

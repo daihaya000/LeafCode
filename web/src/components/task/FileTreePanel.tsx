@@ -19,6 +19,7 @@ export function FileTreePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reqIdRef = useRef(0);
+  const mountedRef = useRef(false);
 
   const load = useCallback(async (path: string) => {
     const id = ++reqIdRef.current;
@@ -29,7 +30,7 @@ export function FileTreePanel({
         entries?: { name: string; path: string; kind?: string }[];
         dirs?: { name: string; path: string }[];
       }>("/api/browse/dirs", { path, files: "1" });
-      if (id !== reqIdRef.current) return;
+      if (!mountedRef.current || id !== reqIdRef.current) return;
       const dirs = (data.dirs ?? data.entries ?? []).map((e) => ({
         name: e.name,
         path: e.path,
@@ -38,19 +39,24 @@ export function FileTreePanel({
       setEntries(dirs);
       setCwd(path);
     } catch (err) {
-      if (id !== reqIdRef.current) return;
+      if (!mountedRef.current || id !== reqIdRef.current) return;
       setError(err instanceof Error ? err.message : "読み込み失敗");
     } finally {
-      if (id === reqIdRef.current) setLoading(false);
+      if (mountedRef.current && id === reqIdRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     reqIdRef.current += 1;
     setEntries([]);
     setError(null);
     setCwd(root);
     void load(root);
+    return () => {
+      mountedRef.current = false;
+      reqIdRef.current += 1;
+    };
   }, [root, load]);
 
   const up = () => {
