@@ -3116,6 +3116,9 @@ describe("TaskView voice input", () => {
     await flushTaskLoad();
 
     expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
+    const deliveryMode = screen.getByRole("radiogroup", { name: "送信方式" });
+    expect(within(deliveryMode).getByRole("radio", { name: "キュー" })).toBeTruthy();
+    expect(within(deliveryMode).getByRole("radio", { name: "割り込み" })).toBeTruthy();
   });
 
   it("does not show NextAction when working", async () => {

@@ -3831,41 +3831,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                   isMd={isMd}
                 />
               )}
-              {!goalLoopLive && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <div
-                    role="radiogroup"
-                    aria-label="送信方式"
-                    className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
-                  >
-                    {([
-                      ["queue", "キュー", ListPlus, "現在の処理後に送信"],
-                      ["steer", "割り込み", Zap, "実行中の処理へ即時送信"],
-                    ] as const).map(([mode, label, Icon, title]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="radio"
-                        aria-checked={deliveryMode === mode}
-                        title={title}
-                        onClick={() => setDeliveryMode(mode)}
-                        className={cx(
-                          "inline-flex min-h-7 items-center gap-1 rounded px-2 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
-                          deliveryMode === mode
-                            ? "bg-bg text-text shadow-sm"
-                            : "text-muted hover:text-text",
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  {working && deliveryMode === "queue" && (
-                    <span className="text-muted">送信すると現在の処理後に実行</span>
-                  )}
-                </div>
-              )}
               {queuedFollowUps.length > 0 && (
                 <div
                   className="mt-2 flex flex-wrap items-center gap-1.5"
@@ -4009,6 +3974,43 @@ export function TaskView({ taskId }: { taskId: string }) {
                   onTrigger: () => fileInputRef.current?.click(),
                 }}
                 toolbar={<>
+                    {!goalLoopLive && (
+                      <>
+                        <div
+                          role="radiogroup"
+                          aria-label="送信方式"
+                          className="inline-flex h-8 shrink-0 items-center rounded-lg border border-border bg-surface-2 p-0.5"
+                        >
+                          {([
+                            ["queue", "キュー", ListPlus, "現在の処理後に送信"],
+                            ["steer", "割り込み", Zap, "実行中の処理へ即時送信"],
+                          ] as const).map(([mode, label, Icon, title]) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              role="radio"
+                              aria-checked={deliveryMode === mode}
+                              title={title}
+                              onClick={() => setDeliveryMode(mode)}
+                              className={cx(
+                                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+                                deliveryMode === mode
+                                  ? "bg-bg text-text shadow-sm"
+                                  : "text-muted hover:text-text",
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {working && deliveryMode === "queue" && (
+                          <span className="shrink-0 text-[11px] text-muted">
+                            送信後に実行
+                          </span>
+                        )}
+                      </>
+                    )}
                     <VoiceInputButton
                       voice={voice}
                       onTranscript={onVoiceTranscript}
