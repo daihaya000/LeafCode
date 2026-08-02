@@ -100,4 +100,25 @@ describe("WorkflowGraphEditor", () => {
     expect(operations).toHaveLength(graph.nodes.length);
     expect(operations.every((operation) => operation.op === "move_node")).toBe(true);
   });
+
+  it("adds the selected registry Node type with compatible ports", async () => {
+    mocks.sendJson.mockResolvedValue({ graph });
+    render(
+      <WorkflowGraphEditor
+        taskId="ws-editor"
+        graph={graph}
+        selectedNodeId={null}
+        selectedEdgeId={null}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        direction="LR"
+      />,
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Node type" }), { target: { value: "opencode.visual_judge" } });
+    fireEvent.click(screen.getByRole("button", { name: "Nodeを追加" }));
+    await waitFor(() => expect(mocks.sendJson).toHaveBeenCalledTimes(1));
+    expect(mocks.sendJson.mock.calls[0]?.[2].operations[1]).toMatchObject({
+      op: "add_edge",
+      edge: { sourceHandle: "result", targetHandle: "implementation" },
+    });
+  });
 });

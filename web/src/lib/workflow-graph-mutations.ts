@@ -46,6 +46,54 @@ function cloneGraph(graph: WorkflowGraphDraft): WorkflowGraphDraft {
   return structuredClone(graph);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseOperation(value: unknown): WorkflowGraphOperation {
+  if (!isRecord(value) || typeof value.op !== "string") {
+    throw new WorkflowGraphMutationError("Invalid Graph operation", "invalid_operation");
+  }
+  const hasString = (key: string): boolean => typeof value[key] === "string" && String(value[key]).length > 0;
+  switch (value.op) {
+    case "update_node_config":
+      if (!hasString("nodeId") || !isRecord(value.config)) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "update_node_presentation":
+      if (!hasString("nodeId") || (value.presentation !== undefined && !isRecord(value.presentation))) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "move_node":
+      if (!hasString("nodeId") || !isRecord(value.position)) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "set_node_disabled":
+      if (!hasString("nodeId") || typeof value.disabled !== "boolean") break;
+      return value as unknown as WorkflowGraphOperation;
+    case "set_node_label":
+      if (!hasString("nodeId") || typeof value.label !== "string") break;
+      return value as unknown as WorkflowGraphOperation;
+    case "set_viewport":
+      if (value.viewport !== undefined && !isRecord(value.viewport)) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "add_node":
+      if (!isRecord(value.node)) break;
+      if (typeof value.node.id !== "string" || value.node.id.length === 0) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "remove_node":
+      if (!hasString("nodeId")) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "add_edge":
+      if (!isRecord(value.edge)) break;
+      if (typeof value.edge.id !== "string" || value.edge.id.length === 0) break;
+      return value as unknown as WorkflowGraphOperation;
+    case "remove_edge":
+      if (!hasString("edgeId")) break;
+      return value as unknown as WorkflowGraphOperation;
+    default:
+      break;
+  }
+  throw new WorkflowGraphMutationError(`Invalid Graph operation: ${String(value.op)}`, "invalid_operation");
+}
+
 function applyOperation(graph: WorkflowGraphDraft, operation: WorkflowGraphOperation): void {
   switch (operation.op) {
     case "update_node_config":
@@ -95,6 +143,8 @@ function applyOperation(graph: WorkflowGraphDraft, operation: WorkflowGraphOpera
       }
       return;
     }
+    default:
+      throw new WorkflowGraphMutationError("Invalid Graph operation", "invalid_operation");
   }
 }
 
@@ -119,12 +169,7 @@ export function updateWorkflowGraph(input: {
     throw new WorkflowGraphMutationError("Workflow Graph revision conflict", "revision_conflict", current);
   }
   const next = cloneGraph(current);
-  for (const operation of input.operations) {
-    if (!operation || typeof operation !== "object" || !("op" in operation)) {
-      throw new WorkflowGraphMutationError("Invalid Graph operation", "invalid_operation");
-    }
-    applyOperation(next, operation as WorkflowGraphOperation);
-  }
+  for (const operation of input.operations) applyOperation(next, parseOperation(operation));
   next.graphRevision = current.graphRevision + 1;
   next.updatedAt = new Date().toISOString();
   const validation = validateWorkflowGraph(next);

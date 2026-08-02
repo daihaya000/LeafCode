@@ -4356,6 +4356,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - 接続不能なNodeペアは共通のdata type／dependencyポートがない場合にボタンを無効化し、理由を表示。追加Node IDも既存IDとの衝突を避ける。
 - 保存済みviewportがReact Flowの`fitView`で上書きされないよう、viewport未保存時だけfitするよう修正。localhostへのデバッグ送信コードも除去した。
 - 検証: `npm run typecheck`、対象Vitest 16件、対象Lintを通過。
+
+## 2026-08-02: Workflow Graph Editor Phase 2
+
+- Registryの`userAddable`定義から追加Node種別を選択できるNode paletteを追加し、Visual Judge等を初期config・互換ポート付きで追加可能にした。
+- React Flowのviewport保存はユーザー操作開始後だけ実行し、初期fitViewによる不要なrevision更新を防止。保存時は最新revisionを参照し、競合時はGraph再読込を試みる。
+- Graph mutation APIにoperation discriminatorと必須フィールドの入力検証を追加。未知operationや壊れた`add_node`を400相当で拒否し、Graph revisionを変更しない。
+- 検証: Graph関連24テスト126件、TypeScript、Lintを通過。
 - やったこと: EXE起動時のWorkflow/Graph/Graph Edit既定値をbatchに設定し、Next.jsのclient公開環境変数とfeature flag fallbackを追加。調査用debug instrumentationは原因確認後に削除した。
 - 判断理由: サーバー側環境変数だけでは静的にbuildされたクライアントのGraph判定に届かず、実機ログで3つのflagがfalseになっていたため。
 - 検証: host test 192件、Workflow関連Vitest 18件、TypeScriptチェック、diff checkを通過。コミット`c6d06e4`を確認。

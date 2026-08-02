@@ -71,17 +71,21 @@ export function WorkflowGraphCanvas({
     [elements.nodes, selectedNodeId],
   );
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveStarted = useRef(false);
+  const graphRevisionRef = useRef(graphRevision);
+  graphRevisionRef.current = graphRevision;
   useEffect(() => () => {
     if (persistTimer.current) clearTimeout(persistTimer.current);
   }, []);
   const persistViewport = (_event: unknown, viewport: Viewport) => {
-    if (!isWorkflowGraphEditEnabled()) return;
+    if (!isWorkflowGraphEditEnabled() || !moveStarted.current) return;
+    moveStarted.current = false;
     if (persistTimer.current) clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(() => {
       void sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
-        expectedGraphRevision: graphRevision,
+        expectedGraphRevision: graphRevisionRef.current,
         operations: [{ op: "set_viewport", viewport }],
-      }).then(() => onRefresh()).catch(() => undefined);
+      }).then(() => onRefresh()).catch(() => onRefresh().catch(() => undefined));
     }, 250);
   };
   const handleNodeClick: NodeMouseHandler<WorkflowGraphReactNode> = (_event, node) => {
@@ -113,6 +117,7 @@ export function WorkflowGraphCanvas({
         edgesFocusable={false}
         onNodeClick={handleNodeClick}
         onPaneClick={() => onSelectNode(null)}
+        onMoveStart={() => { moveStarted.current = true; }}
         onMoveEnd={persistViewport}
         defaultViewport={graph.viewport}
         aria-label="Workflow Graphを移動・拡大縮小できます"

@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { ApiError, sendJson } from "@/lib/client";
 import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
-import { WORKFLOW_NODE_REGISTRY, type WorkflowPortDefinition } from "@/lib/workflow-node-registry";
+import {
+  getDefaultWorkflowNodeConfig,
+  WORKFLOW_NODE_REGISTRY,
+  type WorkflowNodeRegistryDefinition,
+  type WorkflowPortDefinition,
+} from "@/lib/workflow-node-registry";
 import type { WorkflowGraphDraft, WorkflowGraphEdge, WorkflowGraphNode } from "@/lib/workflow-graph-types";
 import type { WorkflowGraphOperation } from "@/lib/workflow-graph-mutations";
 import type { WorkflowGraphDirection } from "@/lib/workflow-graph-react-flow";
@@ -39,21 +44,30 @@ function compatiblePorts(
   return null;
 }
 
-function nextReviewNode(graph: WorkflowGraphDraft): { node: WorkflowGraphNode; edge: WorkflowGraphEdge } | null {
+function nextWorkflowNode(
+  graph: WorkflowGraphDraft,
+  definition: WorkflowNodeRegistryDefinition | undefined,
+): { node: WorkflowGraphNode; edge: WorkflowGraphEdge } | null {
   const source = graph.nodes.find((node) => node.id === "implement_ui");
-  const template = graph.nodes.find((node) => node.id === "code_review");
-  const ports = compatiblePorts(source, template);
-  if (!source || !template || !ports) return null;
+  const config = definition && getDefaultWorkflowNodeConfig(definition);
+  if (!source || !definition || !config) return null;
   let index = graph.nodes.length;
-  let id = `code_review_${index}`;
-  while (graph.nodes.some((node) => node.id === id)) id = `code_review_${++index}`;
+  const prefix = definition.defaultNodeKey ?? definition.type.split(".").at(-1) ?? "node";
+  let id = `${prefix}_${index}`;
+  while (graph.nodes.some((node) => node.id === id)) id = `${prefix}_${++index}`;
+  const node: WorkflowGraphNode = {
+    id,
+    type: definition.type,
+    typeVersion: definition.version,
+    label: `${definition.displayName} ${index}`,
+    position: { x: source.position.x + 320, y: source.position.y + index * 220 },
+    config: structuredClone(config) as Record<string, unknown>,
+    disabled: false,
+  };
+  const ports = compatiblePorts(source, node);
+  if (!ports) return null;
   return {
-    node: {
-      ...structuredClone(template),
-      id,
-      label: `${template.label} ${index}`,
-      position: { x: template.position.x, y: template.position.y + 220 },
-    },
+    node,
     edge: {
       id: `${source.id}-to-${id}`,
       source: source.id,
@@ -85,6 +99,8 @@ export function WorkflowGraphEditor({
   const [conflict, setConflict] = useState<ConflictKind | null>(null);
   const [sourceId, setSourceId] = useState("implement_ui");
   const [targetId, setTargetId] = useState("code_review");
+  const [nodeType, setNodeType] = useState("opencode.code_review");
+  const addableDefinitions = WORKFLOW_NODE_REGISTRY.definitions.filter((definition) => definition.userAddable);
 
   const source = graph.nodes.find((node) => node.id === sourceId);
   const target = graph.nodes.find((node) => node.id === targetId);
@@ -122,7 +138,7 @@ export function WorkflowGraphEditor({
   };
 
   const addNode = () => {
-    const addition = nextReviewNode(graph);
+    const addition = nextWorkflowNode(graph, addableDefinitions.find((definition) => definition.type === nodeType));
     if (addition) void mutate([{ op: "add_node", node: addition.node }, { op: "add_edge", edge: addition.edge }]);
   };
   const removeNode = () => { if (selectedNodeId) void mutate([{ op: "remove_node", nodeId: selectedNodeId }]); };
@@ -141,7 +157,12 @@ export function WorkflowGraphEditor({
     <section className="mb-3 rounded-lg border border-primary/20 bg-primary/5 p-3" aria-label="Graph Editor">
       <div className="flex flex-wrap items-center gap-2">
         <strong className="mr-1 text-xs text-text">Graph Edit</strong>
-        <button type="button" disabled={pending} onClick={addNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">Nodeを追加</button>
+        <label className="flex items-center gap-1 text-[11px] text-muted">追加Node
+          <select aria-label="Node type" value={nodeType} onChange={(event) => setNodeType(event.target.value)} className="max-w-40 rounded border border-border bg-surface px-1.5 py-1 text-xs text-text">
+            {addableDefinitions.map((definition) => <option key={`${definition.type}@${definition.version}`} value={definition.type}>{definition.displayName}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={pending || !nextWorkflowNode(graph, addableDefinitions.find((definition) => definition.type === nodeType))} onClick={addNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">Nodeを追加</button>
         <button type="button" disabled={pending || !selectedNodeId} onClick={removeNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">選択Nodeを削除</button>
         <button type="button" disabled={pending || !selectedNodeId} onClick={moveNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">選択Nodeを移動</button>
         <button type="button" disabled={pending || graph.nodes.length === 0} onClick={autoLayout} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">自動レイアウト（{direction}）</button>

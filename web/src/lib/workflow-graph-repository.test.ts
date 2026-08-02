@@ -276,4 +276,22 @@ describe("workflow graph repository", () => {
     ).toThrowError(expect.objectContaining({ code: "invalid_graph" }));
     expect(readWorkflowGraphByWorkspace(workspaceId)).toEqual(initial);
   });
+
+  test("rejects unknown and malformed operations without changing the revision", () => {
+    const workspaceId = "ws-repository-invalid-operation";
+    createLegacyWorkspace(workspaceId);
+    const initial = getOrMaterializeWorkflowGraph(workspaceId)!;
+
+    expect(() => updateWorkflowGraph({
+      workspaceId,
+      expectedGraphRevision: initial.graphRevision,
+      operations: [{ op: "rename_graph" }],
+    })).toThrowError(expect.objectContaining({ code: "invalid_operation" }));
+    expect(() => updateWorkflowGraph({
+      workspaceId,
+      expectedGraphRevision: initial.graphRevision,
+      operations: [{ op: "add_node" }],
+    })).toThrowError(expect.objectContaining({ code: "invalid_operation" }));
+    expect(readWorkflowGraphByWorkspace(workspaceId)).toEqual(initial);
+  });
 });
