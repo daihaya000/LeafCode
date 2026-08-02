@@ -9,8 +9,41 @@ type StateFile = {
   providerIcons: Record<string, string>;
 };
 
+/**
+ * Defaults used when a profile has no WebUI provider/model state yet.
+ *
+ * Keep the provider/model IDs here rather than in a profile config file: the
+ * enabled state is intentionally WebUI-local and is not part of OpenCode's
+ * configuration schema.  Unknown providers/models are appended naturally by
+ * the provider list code.
+ */
+const DEFAULT_STATE: StateFile = {
+  disabled: { "anthropic::claude-fable-5": true },
+  providerOrder: ["openai", "anthropic"],
+  modelOrder: {
+    openai: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+    anthropic: [
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-haiku-4-5",
+    ],
+  },
+  providerIcons: {},
+};
+
 function emptyState(): StateFile {
-  return { disabled: {}, providerOrder: [], modelOrder: {}, providerIcons: {} };
+  return {
+    disabled: { ...DEFAULT_STATE.disabled },
+    providerOrder: [...DEFAULT_STATE.providerOrder],
+    modelOrder: Object.fromEntries(
+      Object.entries(DEFAULT_STATE.modelOrder).map(([providerID, order]) => [
+        providerID,
+        [...order],
+      ]),
+    ),
+    providerIcons: {},
+  };
 }
 
 function statePath(): string {
