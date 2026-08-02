@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ChevronUp,
   RefreshCw,
+  KeyRound,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -52,6 +53,11 @@ type ConfigProvider = {
 
 type ProviderSettings = {
   providers: ConfigProvider[];
+  version: string;
+};
+
+type CredentialSettings = {
+  credentials: { id: string; name: string; configured: boolean }[];
   version: string;
 };
 
@@ -408,6 +414,59 @@ function ProviderSettingsRow({
   );
 }
 
+function CredentialSettingsRow({
+  credential,
+  saving,
+  onSave,
+}: {
+  credential: CredentialSettings["credentials"][number];
+  saving: boolean;
+  onSave: (value: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <li className="flex flex-col gap-1.5 border-b border-border py-2 last:border-b-0">
+      <label htmlFor={`codexbar-key-${credential.id}`} className="flex items-center gap-1.5 text-xs font-medium text-text">
+        <KeyRound className="h-3.5 w-3.5 text-muted" />
+        {credential.name}
+        {credential.configured && <span className="text-[10px] font-normal text-success">設定済み</span>}
+      </label>
+      <div className="flex gap-1.5">
+        <input
+          id={`codexbar-key-${credential.id}`}
+          type="password"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder={credential.configured ? "変更する場合のみ入力" : "API キー"}
+          autoComplete="new-password"
+          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-text outline-none focus:border-primary"
+        />
+        <button
+          type="button"
+          disabled={saving || !value.trim()}
+          onClick={() => {
+            onSave(value);
+            setValue("");
+          }}
+          className="rounded-md bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? "保存中…" : "保存"}
+        </button>
+        {credential.configured && (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => onSave("")}
+            className="rounded-md border border-border px-2 py-1 text-[10px] text-muted hover:bg-surface-3 disabled:opacity-50"
+          >
+            削除
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export function CodexBarWidget() {
   const [usage, setUsage] = useState<CodexBarUsage | null>(null);
   const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
@@ -419,10 +478,12 @@ export function CodexBarWidget() {
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
+  const [credentialSettings, setCredentialSettings] = useState<CredentialSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [savingProviderId, setSavingProviderId] = useState<string | null>(null);
+  const [savingCredentialId, setSavingCredentialId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
 
@@ -512,9 +573,13 @@ export function CodexBarWidget() {
   const loadProviderSettings = useCallback(async () => {
     setSettingsLoading(true);
     try {
-      const data = await getJson<ProviderSettings>("/api/addons/codexbar/providers");
+      const [data, credentials] = await Promise.all([
+        getJson<ProviderSettings>("/api/addons/codexbar/providers"),
+        getJson<CredentialSettings>("/api/addons/codexbar/credentials"),
+      ]);
       if (!mounted.current) return;
       setProviderSettings(data);
+      setCredentialSettings(credentials);
       setSettingsError(null);
       setSettingsStatus("プロバイダー設定を読み込みました");
     } catch (err) {
@@ -524,6 +589,28 @@ export function CodexBarWidget() {
       if (mounted.current) setSettingsLoading(false);
     }
   }, []);
+
+  const saveCredential = useCallback(async (credentialId: string, apiKey: string) => {
+    if (!credentialSettings) return;
+    setSavingCredentialId(credentialId);
+    try {
+      const updated = await sendJson<CredentialSettings>(
+        "PUT",
+        "/api/addons/codexbar/credentials",
+        { providerId: credentialId, apiKey, version: credentialSettings.version },
+      );
+      if (!mounted.current) return;
+      setCredentialSettings(updated);
+      setSettingsError(null);
+      setSettingsStatus(apiKey ? "API キーを保存しました" : "API キーを削除しました");
+      void refresh();
+    } catch (err) {
+      if (!mounted.current) return;
+      setSettingsError(err instanceof Error ? err.message : "API キーの保存に失敗しました");
+    } finally {
+      if (mounted.current) setSavingCredentialId(null);
+    }
+  }, [credentialSettings, refresh]);
 
   const toggleProviderEnabled = useCallback(async (provider: ConfigProvider) => {
     if (!providerSettings) return;
@@ -689,6 +776,22 @@ export function CodexBarWidget() {
                 />
               ))}
             </ul>
+          )}
+          {credentialSettings && (
+            <>
+              <p className="mb-1 mt-3 min-w-0 text-[10px] font-medium text-muted">API キー（ローカル設定）</p>
+              <p className="mb-1 text-[10px] text-faint">キーは画面に表示せず、CodexBar の設定ファイルに保存します。</p>
+              <ul>
+                {credentialSettings.credentials.map((credential) => (
+                  <CredentialSettingsRow
+                    key={credential.id}
+                    credential={credential}
+                    saving={savingCredentialId === credential.id}
+                    onSave={(value) => void saveCredential(credential.id, value)}
+                  />
+                ))}
+              </ul>
+            </>
           )}
         </section>
       )}
