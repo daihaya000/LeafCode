@@ -7,6 +7,7 @@ import type { MessageWithParts } from "./types";
 import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
 import { isWorkflowModeEnabled } from "./workflow-feature";
+import { workflowArtifactsForPrompt } from "./workflow-artifacts";
 
 const SCHEDULER_INTERVAL_MS = 2_500;
 let schedulerStarted = false;
@@ -301,6 +302,10 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
   }
   const config = parseJson(node.config, null) as WorkflowNodeConfig | null;
   if (!config) return pauseWorkflowForAttempt(attempt.id, "scheduler_error", "Node設定を読めません。");
+  const visualArtifacts = node.node_key === "visual_judge" ? workflowArtifactsForPrompt(node.workflow_run_id) : [];
+  if (node.node_key === "visual_judge" && visualArtifacts.length === 0) {
+    return pauseWorkflowForAttempt(attempt.id, "visual_artifact_missing", "Visual Judgeに利用可能なスクリーンショットがありません。明示的なartifact登録またはSkipが必要です。");
+  }
   let prompt;
   try {
     const snapshot = await readWorkflowWorkspaceSnapshot(workspace.absolute_path);
@@ -317,6 +322,7 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
       },
       nodeInstructions: config.instructions,
       workspace: snapshot,
+      artifacts: visualArtifacts,
     });
   } catch (error) {
     const candidate =
