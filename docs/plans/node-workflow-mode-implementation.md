@@ -1,6 +1,6 @@
 # ノードワークフローモード実装計画
 
-**仕様:** [`docs/specs/node-workflow-mode.md`](../specs/node-workflow-mode.md)（承認済み、`38fabc4`）
+**仕様:** [`docs/specs/node-workflow-mode.md`](../specs/node-workflow-mode.md)（改訂承認済み、`23f3d6e`）
 
 **ゴール:** 通常Taskを安全に固定3Node Workflowへ変換し、Implement UI、Code Review、Visual Judgeを独立Session・Node別設定で実行、可視化、Pause／再開／再試行できるようにする。
 
@@ -34,6 +34,17 @@ Task 1 永続化・primary Session
 
 `TaskView.tsx`、`Sidebar.tsx`、`task-service.ts`、`types.ts`は競合しやすいため、同時編集せずTask順に統合する。
 
+## Prompt生成の実装境界
+
+- 後続Nodeへの入力はSchedulerが`WorkflowPromptEnvelope`から生成する。前Nodeの自然言語TranscriptをAgentに要約させて制御入力へ変換しない。
+- 正規ソースは`task_context_snapshot`、Node／Attempt設定snapshot、検証済み構造化result／finding、artifact metadata、Attempt開始時Workspace snapshotの順とし、Transcriptは既存Implement Sessionの履歴参照に限定する。
+- Promptは固定section順でレンダリングし、動的値はJSONとしてエンコードする。section境界をエスケープし、入力値内の命令文でrole instruction、output contract、権限を変更できないようにする。
+- canonical input hash、`promptMarker`、`templateVersion`、`outputSchemaVersion`、`outputMode`、truncation情報を保存してから、既存`prompt_async`の`parts[0].text`へ1回だけ送信する。Node固有指示の主経路に`system`を使わない。
+- 初期`outputMode`は`fenced_json`とし、`structured`はprobeで往復互換性を確認できた場合だけ選択する。marker、schema、Node kind、Attempt IDが一致しない応答は部分適用せずPauseする。
+- 送達不明Attemptは保存済みmarkerと履歴境界で送達・結果を照合するだけにし、Prompt再生成・再送を行わない。Retryは必ず新Attemptとする。
+- rendered input上限、critical／major finding保持、non-blocking省略、`input_too_large` PauseをPrompt builderの単体・統合テストで固定する。
+- Prompt traceはAttemptに紐付け、Previewはredaction付きread-onlyとする。Preview取得やRetryから既存Promptを再送しない。
+
 ---
 
 ## Task 1: 永続化基盤とprimary Session固定
@@ -55,11 +66,13 @@ Task 1 永続化・primary Session
 - [ ] `workflow_runs`、`workflow_node_runs`、`workflow_node_attempts`、`workflow_artifacts`を作成する。
 - [ ] FK、CAS revision、active Run、Node key、Attempt番号に必要なUNIQUE／indexを追加する。
 - [ ] `workflow_node_attempts`へ、`pending`／`ready`／`creating_session`／`dispatching`／`running`のactive状態をNodeごとに最大1件へ制限するpartial UNIQUE indexを追加する。
+- [ ] `workflow_node_attempts`へ`prompt_marker`、Prompt／schema version、canonical input hash、truncation、output mode、生成時刻、dispatch statusを保存する列を追加する。
 - [ ] 既存Workspaceのprimaryを現行`latestBindings()`結果からbackfillする。
 - [ ] 新規Task作成、通常Sessionの初回bind、Project／Workspace import復元で`primary_session_id IS NULL`なら同一transaction内にprimaryを設定するhelperを追加する。
 - [ ] `TaskSummary.sessionId`を最新bindingではなく`primary_session_id`から解決する。
 - [ ] Reviewer bindingの作成・touchでprimaryが変わらないDB helperを追加する。
 - [ ] `TaskExecutionMode`と最小Workflow summary型を追加する。
+- [ ] `task_context_snapshot`とAttemptの設定／入力／結果を、実行後に上書きできない保存境界として定義する。
 - [ ] `isWorkflowModeEnabled()`を`OPENCODE_WEBUI_WORKFLOW_MODE`から解決し、未設定時はTask 8までfalseとする。参照箇所はこのhelperへ集約する。
 
 **テスト**
@@ -91,8 +104,10 @@ git diff --check
 - Create: `web/src/lib/workflow-types.ts`
 - Create: `web/src/lib/workflow.ts`
 - Create: `web/src/lib/workflow-permission.ts`
+- Create: `web/src/lib/workflow-prompt.ts`
 - Create: `web/src/lib/workflow.test.ts`
 - Create: `web/src/lib/workflow-permission.test.ts`
+- Create: `web/src/lib/workflow-prompt.test.ts`
 - Modify: `web/src/lib/opencode-task-permission.ts`
 - Modify: `web/src/lib/opencode-skill-permission.ts`（共通化が必要な場合のみ）
 
@@ -100,6 +115,7 @@ git diff --check
 
 - [ ] 固定Node／Edge definition snapshotを生成する。
 - [ ] `WorkflowNodeConfig`、`ImplementResult`、`ReviewResult`、kind別`WorkflowNodeOutcome`を定義する。
+- [ ] `WorkflowPromptEnvelope`、固定section、template／schema version、Prompt trace metadataの型を定義する。
 - [ ] explicit／Auto／Agent固定モデル、reasoning effort、fallbackの解決順を実装する。
 - [ ] unknown field、未知Node、無効severity、画像非対応Visual Judgeを拒否する。
 - [ ] Attempt開始時にresolved設定を不変snapshotとして保存する。
@@ -108,6 +124,9 @@ git diff --check
 - [ ] `browser=false`ではOpenCodeのsession ruleで`browser_*`をdenyする。
 - [ ] Node設定から上位Agent／共通policyを緩和できないようにする。
 - [ ] Gate真理値、required override、optional skip、finding重複排除を純粋関数化する。
+- [ ] 正規ソース順位に従ってEnvelopeを組み立て、構造化result／finding以外のTranscript本文を後続入力から除外する。
+- [ ] 固定section順、JSON encoding、section終端エスケープ、canonical input hash、Attempt固有markerを実装する。
+- [ ] rendered input上限を検証し、critical／majorを保持したままnon-blocking情報だけを明示的に省略する。blocking情報が収まらない場合は`input_too_large`を返す。
 
 **テスト**
 
@@ -117,6 +136,9 @@ git diff --check
 - [ ] shell／task／browser経由の迂回権限がdenyされる。
 - [ ] Implement／Reviewの構造化結果validation。
 - [ ] required／optional Gate全組合せ。
+- [ ] 同一Envelopeから同一hash、marker形式、section順が生成される。
+- [ ] 自然言語Transcript、section injection、権限変更要求がPrompt制御入力へ混入しない。
+- [ ] blocking／non-blocking findingのサイズ超過、truncation件数、`input_too_large`を検証する。
 
 **検証**
 
@@ -205,6 +227,9 @@ git diff --check
 
 - [ ] `startWorkflowScheduler()`と重複起動guardを追加する。
 - [ ] `ready` Attemptをrevision CASで個別claimする。
+- [ ] Attempt claim後にEnvelopeを生成し、Prompt metadataとcanonical input hashを保存してからOpenCodeへ送信する。
+- [ ] `parts: [{ type: "text", text }]`、resolved agent、model、variantの既存`prompt_async`契約で送信し、Node固有指示の主経路に`system`を使わない。
+- [ ] `fenced_json`を初期既定とし、`structured`は互換性probeが成功した場合だけ選択する。marker、schema version、Node kind、Attempt IDを結果読取時に検証する。
 - [ ] Implement完了後、2 Reviewerを同時に`ready`化し、独立claimする。
 - [ ] 一方のReviewer失敗で他方の結果を破棄しない。
 - [ ] 両Reviewer終端後だけGateを評価する。
@@ -214,6 +239,8 @@ git diff --check
 - [ ] `creating_session`復旧時はdirectory／時刻／title markerで1件だけ照合する。
 - [ ] 0件／複数件では自動作成せずPauseし、手動attach／孤立Session整理を待つ。
 - [ ] prompt送達不明、408／409／429、timeout、5xxで自動再送しない。
+- [ ] 送達不明復旧では保存済みmarkerと`last_message_id`後の履歴だけを照合し、Promptを再生成・再送しない。
+- [ ] Prompt traceのdispatch status、template／schema version、input hash、truncation、生成時刻をAttemptへ保存し、既存Attemptを編集しない。
 - [ ] responseは`last_message_id`より後だけを読む。
 - [ ] feature flag OFF時は新規dispatchを止め、非終端Runを`feature_disabled`でPauseする。
 - [ ] Attempt完了時に対象Sessionと子Sessionのtoken、cost、durationをsnapshotし、Workflow合計を二重計上なしで集約する。
@@ -233,6 +260,8 @@ git diff --check
 - [ ] prompt送達不明で重複送信しない。
 - [ ] Reviewer部分成功を保持する。
 - [ ] progress／completed／blocked、attempt／cycle上限。
+- [ ] marker不一致、schema不一致、自然言語だけの結果、送達不明を自動pass／部分適用しない。
+- [ ] Promptの再起動復旧、入力hash再現、redaction対象、再送なしを検証する。
 - [ ] tracked／untracked／ignored／改行差分のfingerprint。
 - [ ] 外部変更とImplement自身の正当な変更を区別する。
 - [ ] Node／子Sessionのtoken、cost、durationを二重計上せず集約する。
@@ -256,6 +285,8 @@ git diff --check
 
 - Create: `web/src/app/api/tasks/[id]/workflow/events/route.ts`
 - Create: `web/src/app/api/tasks/[id]/workflow/events/route.test.ts`
+- Create: `web/src/app/api/tasks/[id]/workflow/attempts/[attemptId]/input/route.ts`
+- Create: `web/src/app/api/tasks/[id]/workflow/attempts/[attemptId]/input/route.test.ts`
 - Create: `web/src/lib/workflow-events.ts`
 - Create: `web/src/lib/workflow-events.test.ts`
 - Modify: `web/src/app/api/opencode/[...path]/route.ts`
@@ -268,6 +299,8 @@ git diff --check
 **実装**
 
 - [ ] Workflow revision、Node状態、進捗をnamed SSE eventで配信する。
+- [ ] Prompt trace endpointで保存済みtemplate／schema version、hash、source ID、dispatch status、redacted Previewを返す。
+- [ ] Prompt trace取得を監査イベントへ記録し、GETやPreview操作からPrompt再生成・再送を発生させない。
 - [ ] heartbeat、接続stall、silence時REST fallbackを既存方針に合わせる。
 - [ ] Attempt Session IDからNode／Taskへpermission／questionを集約する。
 - [ ] child Session Attentionを親Implement Nodeへ集約する。
@@ -283,6 +316,7 @@ git diff --check
 - [ ] Node／child Session Attention集約。
 - [ ] SSE／REST重複排除。
 - [ ] 手動prompt／command拒否とPause。
+- [ ] Prompt trace endpointのrevision検証、redaction、Preview取得時の再送なし。
 - [ ] 通常TaskとGoal Loopの既存proxy hook回帰。
 
 **検証**
@@ -329,6 +363,8 @@ git diff --check
 - [ ] 視覚グラフと同内容の構造化step listを提供する。
 - [ ] Nodeカードへ状態、Attention、処理要約、finding、token、時間、Diff、model、Attemptを表示する。
 - [ ] Node詳細へAgent、model、effort、permission、指示、Attempt履歴、evidence、token／cost／durationを表示する。
+- [ ] AttemptごとのPrompt trace、入力元、template／schema version、hash、truncation、dispatch status、redacted Previewを表示する。
+- [ ] Prompt Previewをread-onlyにし、生成Promptの手動編集・既存Attemptへの再送操作を表示しない。
 - [ ] Node Attentionから既存GlobalAttentionProviderの回答／承認UIを開き、解決後に元Nodeへfocusを戻す。
 - [ ] 実行済み設定の編集は`次回試行から適用`と明示する。
 - [ ] Convert／detach／Retry／Skip／required override／Stopへ確認dialogを付ける。
@@ -437,6 +473,7 @@ git diff --check
 - [ ] detach／reattachとprimary Session保持。
 - [ ] Attention回答、manual send拒否、Goal Loop排他。
 - [ ] Session作成timeout、prompt送達不明、再起動復旧、drift。
+- [ ] Promptの正規ソース順位、固定section、input hash、marker、schema検証、サイズ超過Pause、redacted Preview。
 - [ ] Reviewer permission deny。
 - [ ] desktop／tablet／mobileとkeyboard操作。
 
@@ -476,7 +513,7 @@ git status --short
 
 ## 完了定義
 
-- 仕様書の受入条件16項目が自動テストまたは明示的な手動検証へ対応している。
+- 仕様書の受入条件22項目が自動テストまたは明示的な手動検証へ対応している。
 - 各Taskが独立コミットで、コミット直後に`git log --oneline -1`で反映確認されている。
 - 最終`git status --short`が空である。
 - MEMORY.mdへ実装判断と教訓をローカル追記し、Gitへ追加しない。
