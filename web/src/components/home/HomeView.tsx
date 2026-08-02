@@ -170,6 +170,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     "current_folder",
   );
   const [prompt, setPrompt] = useState("");
+  const [startMode, setStartMode] = useState<"task" | "workflow">("task");
   const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
   const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
   const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
@@ -719,6 +720,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
+    let createdTaskId: string | null = null;
     try {
       // `"auto".split("::")` yields `["auto"]`, so modelID stays undefined and
       // the `model` field below is omitted for Auto without a special case.
@@ -762,8 +764,20 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         // variant can survive, so drop it explicitly.
         ...(intelligence && !isAuto ? { variant: intelligence } : {}),
       });
+      createdTaskId = data.taskId;
+      if (startMode === "workflow") {
+        const current = await getJson<{ workflow: { workspaceRevision: number } }>(
+          `/api/tasks/${encodeURIComponent(data.taskId)}/workflow`,
+        );
+        await sendJson("POST", `/api/tasks/${encodeURIComponent(data.taskId)}/workflow`, {
+          workspaceRevision: current.workflow.workspaceRevision,
+          goal: text,
+          acceptance: [],
+          constraints: [],
+        });
+      }
       const decision = data.autoDecision;
-      if (goalLoopEnabled) {
+      if (goalLoopEnabled && startMode === "task") {
         // The loop runs server-side later, so it needs the resolved model
         // rather than the literal "auto" sentinel.
         const loopModel = decision
@@ -809,6 +823,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       notifyTasksChanged();
       router.push(`/task/${data.taskId}`);
     } catch (err) {
+      if (startMode === "workflow" && createdTaskId) {
+        try {
+          await sendJson("DELETE", `/api/tasks/${encodeURIComponent(createdTaskId)}`);
+        } catch {
+          // Keep the original initialization error visible; the TaskView menu can retry conversion.
+        }
+      }
       submittingRef.current = false;
       setError(err instanceof Error ? err.message : "タスク作成に失敗しました");
       setSubmitting(false);
@@ -830,6 +851,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     goalLoopEnabled,
     goalLoopAcceptance,
     goalLoopMaxTurns,
+    startMode,
     subagentPermission,
     skillPermission,
     submitting,
@@ -1042,6 +1064,30 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               <option value="current_folder">{defaultBranchLabel}</option>
               <option value="git_worktree">worktree</option>
             </GhostSelect>
+          </div>
+          <div role="radiogroup" aria-label="開始モード" className="mb-2 flex w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-surface-2 p-1 sm:w-fit">
+            {([
+              ["task", "Taskで開始", "通常のTaskとして開始"],
+              ["workflow", "Workflowで開始", "Implement → Reviewの固定フロー"],
+            ] as const).map(([mode, label, description]) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={startMode === mode}
+                title={description}
+                disabled={submitting}
+                onClick={() => setStartMode(mode)}
+                className={cx(
+                  "min-h-9 flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
+                  startMode === mode
+                    ? "bg-surface text-text shadow-sm"
+                    : "text-muted hover:bg-surface/70 hover:text-text",
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <Composer
             form={{

@@ -874,6 +874,39 @@ describe("HomeView subagent permission", () => {
   });
 });
 
+describe("HomeView start mode", () => {
+  beforeEach(() => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") return Promise.resolve({ projects: [{ id: "project-1", name: "Project", rootPath: "/repo", favorite: false }] });
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") return Promise.resolve({ branches: ["main"], defaultTarget: "main", current: "main" });
+      if (path.endsWith("/workflow")) return Promise.resolve({ workflow: { workspaceRevision: 0, run: null } });
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockImplementation((method: string, path: string) => {
+      if (method === "POST" && path === "/api/tasks") return Promise.resolve({ taskId: "task-1", sessionId: "session-1" });
+      if (method === "POST" && path === "/api/tasks/task-1/workflow") return Promise.resolve({ workflow: { run: { status: "ready" } } });
+      return Promise.resolve({});
+    });
+    timedFetch.mockResolvedValue({ ok: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("creates a Task and initializes Workflow when Workflow mode is selected", async () => {
+    render(<HomeView />);
+    await screen.findByRole("form", { name: "タスク作成" });
+    fireEvent.click(screen.getByRole("radio", { name: "Workflowで開始" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "タスクの説明" }), { target: { value: "Build a workflow" } });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith("POST", "/api/tasks/task-1/workflow", expect.objectContaining({ workspaceRevision: 0, goal: "Build a workflow" })));
+    expect(push).toHaveBeenCalledWith("/task/task-1");
+  });
+});
+
 describe("HomeView last-used model", () => {
   beforeEach(() => {
     localStorage.clear();
