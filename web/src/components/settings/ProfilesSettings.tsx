@@ -562,7 +562,7 @@ export function ProfilesSettings() {
               ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
               ["cursorAcp", "Cursor ACP", "Cursor連携プラグインとプロバイダーを追加"],
               ["claudeAuth", "Claude Auth", "Claudeサブスクリプション認証プラグインを追加"],
-              ["commandcodeAuth", "CommandCode Auth", "CommandCode認証プラグインを追加"],
+              ["commandcodeAuth", "CommandCode CLI Proxy", "CommandCode CLI経由の認証・ローカルプロキシを追加"],
             ] as const).map(([key, label, description]) => (
               <label
                 key={key}
