@@ -31,7 +31,10 @@ export type WebUiDependencyOptions = {
   browserBridge?: boolean;
   cursorAcp?: boolean;
   claudeAuth?: boolean;
+  commandcodeAuth?: boolean;
 };
+
+const COMMANDCODE_PLUGIN = "opencommand-plugin@0.0.24";
 
 function configPath(dir: string): string {
   return ["opencode.jsonc", "opencode.json"]
@@ -169,6 +172,24 @@ export function installWebUiDependencies(
     );
     content = applyEdits(content, edits);
     installed.push(`${parent}.${name}`);
+  }
+  if (content !== fs.readFileSync(targetConfigPath, "utf8")) {
+    const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tempPath, content, "utf8");
+    try {
+      fs.renameSync(tempPath, targetConfigPath);
+    } catch (error) {
+      fs.rmSync(tempPath, { force: true });
+      throw error;
+    }
+  }
+  if (options.commandcodeAuth !== false) {
+    const root = parse(content) as Record<string, unknown>;
+    const plugins = Array.isArray(root.plugin) ? root.plugin : [];
+    if (!plugins.some((entry) => entry === COMMANDCODE_PLUGIN || (Array.isArray(entry) && entry[0] === COMMANDCODE_PLUGIN))) {
+      content = applyEdits(content, modify(content, ["plugin"], [...plugins, COMMANDCODE_PLUGIN], { formattingOptions }));
+      installed.push(`plugin.${COMMANDCODE_PLUGIN}`);
+    }
   }
   if (content !== fs.readFileSync(targetConfigPath, "utf8")) {
     const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;

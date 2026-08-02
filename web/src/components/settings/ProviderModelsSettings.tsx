@@ -35,6 +35,7 @@ import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { OpenAISubscriptionAuth } from "./OpenAISubscriptionAuth";
 import { ClaudeSubscriptionAuth } from "./ClaudeSubscriptionAuth";
 import { CursorAcpAuth } from "./CursorAcpAuth";
+import { CommandCodeAuth } from "./CommandCodeAuth";
 
 type ModelDto = {
   id: string;
@@ -1101,6 +1102,7 @@ export function ProviderModelsSettings() {
         </section>
       )}
       {providers.some((provider) => provider.id === "cursor-acp") && <CursorAcpAuth />}
+      {(providers.some((provider) => provider.id === "opencommand") || providers.some((provider) => provider.id === "commandcode")) && <CommandCodeAuth />}
     </div>
   );
 }

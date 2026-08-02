@@ -6,12 +6,14 @@ export type ProfileSetupSettings = {
   browserBridge: boolean;
   cursorAcp: boolean;
   claudeAuth: boolean;
+  commandcodeAuth: boolean;
 };
 
 const DEFAULT_SETTINGS: ProfileSetupSettings = {
   browserBridge: true,
   cursorAcp: true,
   claudeAuth: true,
+  commandcodeAuth: true,
 };
 
 function settingsPath(): string {
@@ -25,6 +27,7 @@ export function readProfileSetupSettings(): ProfileSetupSettings {
       browserBridge: parsed.browserBridge !== false,
       cursorAcp: parsed.cursorAcp !== false,
       claudeAuth: parsed.claudeAuth !== false,
+      commandcodeAuth: parsed.commandcodeAuth !== false,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

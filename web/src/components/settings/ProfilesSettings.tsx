@@ -47,6 +47,7 @@ type ProfileSetupSettings = {
   browserBridge: boolean;
   cursorAcp: boolean;
   claudeAuth: boolean;
+  commandcodeAuth: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -556,11 +557,12 @@ export function ProfilesSettings() {
           <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
             新規作成・複製時にWebUI連携用の依存ファイルと設定を自動配置します。
           </p>
-          <div className="mt-3 grid gap-2 lg:grid-cols-3">
+          <div className="mt-3 grid gap-2 lg:grid-cols-4">
             {([
               ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
               ["cursorAcp", "Cursor ACP", "Cursor連携プラグインとプロバイダーを追加"],
               ["claudeAuth", "Claude Auth", "Claudeサブスクリプション認証プラグインを追加"],
+              ["commandcodeAuth", "CommandCode Auth", "CommandCode認証プラグインを追加"],
             ] as const).map(([key, label, description]) => (
               <label
                 key={key}

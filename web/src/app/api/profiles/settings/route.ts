@@ -15,12 +15,13 @@ export async function PUT(req: Request) {
   const denied = rejectUnlessLocal(req);
   if (denied) return denied;
   const body = (await req.json().catch(() => undefined)) as
-    | { browserBridge?: unknown; cursorAcp?: unknown; claudeAuth?: unknown }
+    | { browserBridge?: unknown; cursorAcp?: unknown; claudeAuth?: unknown; commandcodeAuth?: unknown }
     | undefined;
   if (
     typeof body?.browserBridge !== "boolean" ||
     typeof body.cursorAcp !== "boolean" ||
-    typeof body.claudeAuth !== "boolean"
+    typeof body.claudeAuth !== "boolean" ||
+    typeof body.commandcodeAuth !== "boolean"
   ) {
     return NextResponse.json({ error: "自動セットアップ設定が不正です" }, { status: 400 });
   }
@@ -30,6 +31,7 @@ export async function PUT(req: Request) {
         browserBridge: body.browserBridge,
         cursorAcp: body.cursorAcp,
         claudeAuth: body.claudeAuth,
+        commandcodeAuth: body.commandcodeAuth,
       }),
     );
   } catch {

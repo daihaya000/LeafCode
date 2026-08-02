@@ -35,7 +35,7 @@ describe("installWebUiDependencies", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-"));
     dirs.push(dir);
 
-    expect(installWebUiDependencies(dir)).toEqual(["mcp.browser-bridge"]);
+    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual(["mcp.browser-bridge"]);
     const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
     expect(config.mcp["browser-bridge"].command[0]).toBe("node");
     expect(config.mcp["browser-bridge"].environment).toEqual({
@@ -50,7 +50,7 @@ describe("installWebUiDependencies", () => {
     const configPath = path.join(dir, "opencode.jsonc");
     fs.writeFileSync(configPath, '{ "mcp": { "browser-bridge": { "command": ["custom"] } } }');
 
-    expect(installWebUiDependencies(dir)).toEqual([]);
+    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual([]);
     expect(fs.readFileSync(configPath, "utf8")).toContain("custom");
   });
 
@@ -67,7 +67,7 @@ describe("installWebUiDependencies", () => {
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
-    const installed = installWebUiDependencies(target);
+    const installed = installWebUiDependencies(target, { commandcodeAuth: false });
 
     expect(installed).toContain("plugin/cursor-acp.js");
     expect(installed).toContain("packages/cursor-acp");
@@ -91,7 +91,7 @@ describe("installWebUiDependencies", () => {
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
-    installWebUiDependencies(target);
+    installWebUiDependencies(target, { commandcodeAuth: false });
 
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
     expect(config.provider["cursor-acp"].name).toBe("Bundled Cursor");
@@ -105,6 +105,7 @@ describe("installWebUiDependencies", () => {
       browserBridge: false,
       cursorAcp: false,
       claudeAuth: false,
+      commandcodeAuth: false,
     })).toEqual([]);
     expect(JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"))).toEqual({
       $schema: "https://opencode.ai/config.json",
@@ -124,8 +125,21 @@ describe("installWebUiDependencies", () => {
       "plugin/claude-auth.js",
       "packages/claude-auth",
       "mcp.browser-bridge",
+      "plugin.opencommand-plugin@0.0.24",
     ]);
     expect(fs.existsSync(path.join(target, "plugin", "claude-auth.js"))).toBe(true);
     expect(fs.existsSync(path.join(target, "packages", "claude-auth", "index.js"))).toBe(true);
+  });
+
+  it("adds the CommandCode auth plugin to a new profile", () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false })).toEqual([
+      "plugin.opencommand-plugin@0.0.24",
+    ]);
+    expect(JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8")).plugin).toEqual([
+      "opencommand-plugin@0.0.24",
+    ]);
   });
 });
