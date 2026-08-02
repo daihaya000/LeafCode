@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const PROVIDER_CATALOG = [
   { id: "codex", name: "Codex" },
   { id: "claude", name: "Claude" },
+  { id: "commandcode", name: "Command Code" },
   { id: "opencode-go", name: "OpenCode" },
   { id: "ollama", name: "Ollama" },
   { id: "cursor", name: "Cursor" },
