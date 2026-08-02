@@ -183,7 +183,6 @@ import {
   MessageRevertButton,
   useSessionActions,
 } from "./SessionActions";
-import { NextAction } from "./NextAction";
 import { HeaderKebabMenu, type KebabGroup, type KebabItem } from "./HeaderKebabMenu";
 import { SessionSwitcherDialog } from "./SessionSwitcherDialog";
 
@@ -1662,22 +1661,6 @@ export function TaskView({ taskId }: { taskId: string }) {
     goalLoop?.status === "paused";
   /** Composer is waiting for POST /goal-loop to answer. */
   const goalLoopStarting = goalLoopEnabled && !goalLoopLive && goalLoopBusy;
-  // NextAction invalidation key: changes when conversation content, revert
-  // position, or task changes — so stale suggestions are discarded.
-  const nextActionInvalidateKey = useMemo(() => {
-    const msgs = stream.visibleMessages;
-    const lastId = msgs.length > 0 ? msgs[msgs.length - 1]?.info.id ?? "" : "";
-    const revertId = stream.revert?.messageID ?? "";
-    return `${taskId}:${msgs.length}:${lastId}:${revertId}`;
-  }, [taskId, stream.visibleMessages, stream.revert]);
-  // Show NextAction only when idle, conversation loaded, no attention pending.
-  const showNextAction =
-    !!task?.sessionId &&
-    !working &&
-    stream.loaded &&
-    stream.visibleMessages.length > 0 &&
-    stream.permissions.length === 0 &&
-    stream.questions.length === 0;
   const [sending, setSending] = useState(false);
   /** Scope that owns the in-flight send — other sessions must stay editable. */
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
@@ -3819,17 +3802,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                   未コミットの変更が{task.filesChanged}件残っています（完了報告前に git
                   status を確認してください）
                 </div>
-              )}
-              {showNextAction && (
-                <NextAction
-                  taskId={taskId}
-                  sessionId={task.sessionId!}
-                  model={model || undefined}
-                  agent={agent || undefined}
-                  onApply={restoreToComposer}
-                  invalidateKey={nextActionInvalidateKey}
-                  isMd={isMd}
-                />
               )}
               {queuedFollowUps.length > 0 && (
                 <div
