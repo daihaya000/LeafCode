@@ -25,6 +25,7 @@ process.env.APPDATA = testDataDir;
 
 const { bindSession, createWorkspace, getDb, getWorkspace, upsertProject } = await import("./db");
 const { createWorkflow, getWorkflow, updateWorkflow } = await import("./workflow-service");
+const { getOrMaterializeWorkflowGraph } = await import("./workflow-graph-repository");
 const { advanceReviewGate, runWorkflowSchedulerTick, startWorkflowScheduler, stopWorkflowSchedulerForTests } = await import("./workflow-scheduler");
 
 afterAll(() => {
@@ -183,5 +184,25 @@ describe("workflow scheduler", () => {
       result: { decision: "pass" },
     });
     expect(updated.run?.status).toBe("completed");
+  });
+
+  test("dispatches a v2 Run through the snapshot Executor Registry", async () => {
+    const revision = setup("scheduler-v2-executor");
+    const created = createWorkflow({
+      workspaceId: "scheduler-v2-executor",
+      workspaceRevision: revision,
+      taskContext: { goal: "Build UI", acceptance: [], constraints: [] },
+    });
+    getOrMaterializeWorkflowGraph("scheduler-v2-executor");
+    updateWorkflow({
+      workspaceId: "scheduler-v2-executor",
+      action: "start",
+      workflowRevision: created.run!.revision,
+      workspaceRevision: created.workspaceRevision,
+    });
+    await runWorkflowSchedulerTick();
+    const attempt = getWorkflow("scheduler-v2-executor")!.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    expect(attempt.status).toBe("running");
+    expect(ocServer).toHaveBeenCalledWith(expect.any(String), "/session/ses-scheduler-v2-executor/prompt_async", expect.any(Object));
   });
 });

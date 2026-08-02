@@ -2,13 +2,22 @@ import { bindSession, getDb, getWorkspace, type WorkflowNodeAttemptRow } from ".
 import { ocServer } from "./oc-server";
 import { applyWorkflowSessionPermissions } from "./opencode-task-permission";
 import { buildWorkflowPrompt } from "./workflow-prompt";
-import { evaluateReviewGate, parseImplementResult, parseReviewResult } from "./workflow";
+import { parseImplementResult, parseReviewResult } from "./workflow";
 import type { MessageWithParts } from "./types";
 import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
 import { isWorkflowModeEnabled } from "./workflow-feature";
 import { workflowArtifactsForPrompt } from "./workflow-artifacts";
 import { recordReviewGateAttempt } from "./workflow-control";
+import { executeReviewGate, parseReviewGateInput } from "./workflow-control-executor";
+import {
+  resolveLegacyExecutor,
+  resolveLegacyControlExecutor,
+  resolveSnapshotExecutor,
+  WorkflowExecutorResolutionError,
+  type WorkflowExecutor,
+} from "./workflow-executor-registry";
+import type { WorkflowExecutionSnapshot } from "./workflow-graph-types";
 
 const SCHEDULER_INTERVAL_MS = 2_500;
 const IMPLEMENT_ATTEMPT_LIMIT = 10;
@@ -23,6 +32,20 @@ function parseJson(value: string | null | undefined, fallback: unknown): unknown
   } catch {
     return fallback;
   }
+}
+
+function executorForRun(workflowRunId: string, nodeKey: string): WorkflowExecutor {
+  const run = getDb().prepare("SELECT definition_snapshot FROM workflow_runs WHERE id = ?").get(workflowRunId) as { definition_snapshot: string } | undefined;
+  if (!run) throw new WorkflowExecutorResolutionError(`Workflow Run ${workflowRunId} is missing`);
+  const snapshot = parseJson(run.definition_snapshot, null) as Partial<WorkflowExecutionSnapshot> | null;
+  if (snapshot?.schemaVersion === "workflow-execution-v2") {
+    return resolveSnapshotExecutor(snapshot as WorkflowExecutionSnapshot, nodeKey);
+  }
+  if (nodeKey === "implement_ui" || nodeKey === "code_review" || nodeKey === "visual_judge") {
+    return resolveLegacyExecutor(nodeKey);
+  }
+  if (nodeKey === "review_gate") return resolveLegacyControlExecutor();
+  throw new WorkflowExecutorResolutionError(`No legacy executor for Node ${nodeKey}`);
 }
 
 function readyAttempts(): WorkflowNodeAttemptRow[] {
@@ -183,6 +206,11 @@ async function activateReviewers(
 
 export async function advanceReviewGate(workflowRunId: string): Promise<void> {
   const database = getDb();
+  try {
+    if (executorForRun(workflowRunId, "review_gate").runtime !== "server_control") return;
+  } catch {
+    return;
+  }
   const rows = database
     .prepare(
       `SELECT a.id AS attempt_id, n.node_key, n.config, a.status, a.result
@@ -191,20 +219,12 @@ export async function advanceReviewGate(workflowRunId: string): Promise<void> {
     )
     .all(workflowRunId) as Array<{ attempt_id: string; node_key: "code_review" | "visual_judge"; config: string; status: string; result: string | null }>;
   if (rows.length !== 2 || rows.some((row) => row.status !== "succeeded")) return;
-  const decisions = rows.map((row) =>
-    evaluateReviewGate({
-      status: "succeeded",
-      result: row.result ? parseReviewResult(JSON.parse(row.result)) : null,
-      config: JSON.parse(row.config),
-    }),
-  );
-  const findings = decisions.flatMap((decision) => decision.decision === "return_to_implement" ? decision.findings : []);
-  const pauseDecision = decisions.find((decision) => decision.decision === "pause");
-  const gateDecision = pauseDecision?.decision === "pause"
-    ? { decision: "pause" as const, reason: pauseDecision.reason }
-    : findings.length
-      ? { decision: "return_to_implement" as const, findings }
-      : { decision: "pass" as const };
+  const gateDecision = executeReviewGate(rows.map((row) => ({
+    status: row.status,
+    result: parseReviewGateInput(row.result),
+    config: JSON.parse(row.config),
+  })));
+  const findings = gateDecision.decision === "return_to_implement" ? gateDecision.findings : [];
   recordReviewGateAttempt({
     workflowRunId,
     reviewers: rows.map((row) => ({
@@ -216,7 +236,7 @@ export async function advanceReviewGate(workflowRunId: string): Promise<void> {
     decision: gateDecision,
   });
   const now = new Date().toISOString();
-  if (decisions.some((decision) => decision.decision === "pause")) {
+  if (gateDecision.decision === "pause") {
     database
       .prepare("UPDATE workflow_runs SET status = 'paused', pause_reason = 'review_blocked', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'")
       .run(now, workflowRunId);
@@ -270,6 +290,13 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
     )
     .get(attempt.node_run_id) as { node_key: WorkflowNodeKey; workspace_id: string; workflow_run_id: string } | undefined;
   if (!info) return;
+  let executor: WorkflowExecutor;
+  try {
+    executor = executorForRun(info.workflow_run_id, info.node_key);
+  } catch (error) {
+    return pauseWorkflowForAttempt(attempt.id, "unsupported_executor", error instanceof Error ? error.message : String(error));
+  }
+  if (executor.runtime !== "opencode_session") return;
   const workspace = getWorkspace(info.workspace_id);
   if (!workspace) return;
   let messages: MessageWithParts[];
@@ -384,6 +411,15 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
     .prepare("SELECT * FROM workflow_node_runs WHERE id = ?")
     .get(attempt.node_run_id) as { workflow_run_id: string; node_key: WorkflowNodeKey; kind: string; config: string } | undefined;
   if (!node) return pauseWorkflowForAttempt(attempt.id, "scheduler_error", "Workflow Nodeが見つかりません。");
+  let executor: WorkflowExecutor;
+  try {
+    executor = executorForRun(node.workflow_run_id, node.node_key);
+  } catch (error) {
+    return pauseWorkflowForAttempt(attempt.id, "unsupported_executor", error instanceof Error ? error.message : String(error));
+  }
+  if (executor.runtime !== "opencode_session") {
+    return pauseWorkflowForAttempt(attempt.id, "scheduler_error", `Executor ${executor.key} is not an OpenCode Session executor.`);
+  }
   const run = getDb().prepare("SELECT * FROM workflow_runs WHERE id = ?").get(node.workflow_run_id) as {
     task_context_snapshot: string;
     cycle_count: number;
@@ -520,7 +556,19 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
     const ready = readyAttempts();
     for (const attempt of runningAttempts()) await processRunningAttempt(attempt);
     for (const attempt of ready) {
-      const node = getDb().prepare("SELECT n.node_key FROM workflow_node_runs n WHERE n.id = ?").get(attempt.node_run_id) as { node_key: string } | undefined;
+      const node = getDb().prepare("SELECT n.node_key, n.workflow_run_id FROM workflow_node_runs n WHERE n.id = ?").get(attempt.node_run_id) as { node_key: string; workflow_run_id: string } | undefined;
+      if (!node) continue;
+      let executor: WorkflowExecutor;
+      try {
+        executor = executorForRun(node.workflow_run_id, node.node_key);
+      } catch (error) {
+        if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "unsupported_executor", error instanceof Error ? error.message : String(error));
+        continue;
+      }
+      if (executor.runtime !== "opencode_session") {
+        if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "scheduler_error", `Executor ${executor.key} cannot dispatch a Session.`);
+        continue;
+      }
       if (node?.node_key === "implement_ui" && attempt.attempt_no > IMPLEMENT_ATTEMPT_LIMIT) {
         if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "max_attempts", `Implement Attempt limit (${IMPLEMENT_ATTEMPT_LIMIT}) exceeded.`);
         continue;
