@@ -53,7 +53,7 @@ export function CommandCodeAuth() {
               <h3 className="text-sm font-semibold text-text">CommandCode API</h3>
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
-            <p className="mt-1 text-xs text-faint">APIキーはOpenCommandのローカル認証ストアへ保存します。キー自体は表示・ログ出力しません。</p>
+            <p className="mt-1 text-xs text-faint">APIキーはCommandCode CLIの認証ストアへ保存します。CLI経由のローカルプロキシを使用し、キー自体は表示・ログ出力しません。</p>
           </div>
           <div className="flex w-full shrink-0 gap-2 sm:w-auto">
             <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode APIキー" aria-label="CommandCode APIキー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
