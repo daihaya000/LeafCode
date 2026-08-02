@@ -6,8 +6,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const secretPath = () => path.join(os.homedir(), ".opencommand", "opencommand-secrets.json");
-const tokenKey = "opencommand.command_code_token";
+const secretPath = () => path.join(os.homedir(), ".commandcode", "auth.json");
 
 function readSecrets(): Record<string, unknown> {
   try {
@@ -30,7 +29,7 @@ function writeSecrets(secrets: Record<string, unknown>): void {
 }
 
 export async function GET() {
-  const token = readSecrets()[tokenKey];
+  const token = readSecrets().apiKey;
   return NextResponse.json({ connected: typeof token === "string" && token.length > 0 });
 }
 
@@ -40,7 +39,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "CommandCode APIキーを入力してください" }, { status: 400 });
   }
   try {
-    writeSecrets({ ...readSecrets(), [tokenKey]: body.key.trim() });
+    writeSecrets({ ...readSecrets(), apiKey: body.key.trim(), userId: "webui", userName: "WebUI", keyName: "webui", authenticatedAt: new Date().toISOString() });
     return NextResponse.json({ ok: true, requiresRestart: true });
   } catch {
     return NextResponse.json({ error: "CommandCode APIキーの保存に失敗しました" }, { status: 500 });
@@ -50,7 +49,7 @@ export async function POST(req: Request) {
 export async function DELETE() {
   try {
     const secrets = readSecrets();
-    delete secrets[tokenKey];
+    for (const key of ["apiKey", "userId", "userName", "keyName", "authenticatedAt"]) delete secrets[key];
     writeSecrets(secrets);
     return NextResponse.json({ ok: true, requiresRestart: true });
   } catch {

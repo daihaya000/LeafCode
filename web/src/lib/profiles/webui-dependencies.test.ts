@@ -8,16 +8,23 @@ const dirs: string[] = [];
 let previousConfigDir: string | undefined;
 let previousCursorAcpDir: string | undefined;
 let previousClaudeAuthDir: string | undefined;
+let previousRoot: string | undefined;
 
 beforeEach(() => {
   previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
   previousCursorAcpDir = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
   previousClaudeAuthDir = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR;
+  previousRoot = process.env.OPENCODE_WEBUI_ROOT;
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-source-"));
   dirs.push(source);
   process.env.OPENCODE_CONFIG_DIR = source;
   process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = path.join(source, "bundled");
   process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR = path.join(source, "claude-bundled");
+  process.env.OPENCODE_WEBUI_ROOT = source;
+  fs.mkdirSync(path.join(source, "vendor", "commandcode-cli", "plugin"), { recursive: true });
+  fs.mkdirSync(path.join(source, "vendor", "commandcode-cli", "packages", "commandcode-cli"), { recursive: true });
+  fs.writeFileSync(path.join(source, "vendor", "commandcode-cli", "plugin", "commandcode-cli.js"), "export default {};");
+  fs.writeFileSync(path.join(source, "vendor", "commandcode-cli", "packages", "commandcode-cli", "index.mjs"), "export default {};");
 });
 
 afterEach(() => {
@@ -27,6 +34,8 @@ afterEach(() => {
   else process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = previousCursorAcpDir;
   if (previousClaudeAuthDir === undefined) delete process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR;
   else process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR = previousClaudeAuthDir;
+  if (previousRoot === undefined) delete process.env.OPENCODE_WEBUI_ROOT;
+  else process.env.OPENCODE_WEBUI_ROOT = previousRoot;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -124,8 +133,9 @@ describe("installWebUiDependencies", () => {
     expect(installWebUiDependencies(target)).toEqual([
       "plugin/claude-auth.js",
       "packages/claude-auth",
+      "plugin/commandcode-cli.js",
+      "packages/commandcode-cli",
       "mcp.browser-bridge",
-      "plugin.opencommand-plugin@0.0.24",
     ]);
     expect(fs.existsSync(path.join(target, "plugin", "claude-auth.js"))).toBe(true);
     expect(fs.existsSync(path.join(target, "packages", "claude-auth", "index.js"))).toBe(true);
@@ -136,10 +146,9 @@ describe("installWebUiDependencies", () => {
     dirs.push(target);
 
     expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false })).toEqual([
-      "plugin.opencommand-plugin@0.0.24",
+      "plugin/commandcode-cli.js",
+      "packages/commandcode-cli",
     ]);
-    expect(JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8")).plugin).toEqual([
-      "opencommand-plugin@0.0.24",
-    ]);
+    expect(fs.existsSync(path.join(target, "plugin", "commandcode-cli.js"))).toBe(true);
   });
 });
