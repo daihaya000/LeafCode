@@ -411,6 +411,14 @@ export function createWorkflow(input: {
           );
       }
     }
+    const controlNodeId = crypto.randomUUID();
+    database
+      .prepare(
+        `INSERT INTO workflow_node_runs
+         (id, workflow_run_id, node_key, kind, config, latest_attempt_no, created_at, updated_at)
+         VALUES (?, ?, 'review_gate', 'control', '{}', 0, ?, ?)`,
+      )
+      .run(controlNodeId, runId, now, now);
   })();
   return getWorkflow(input.workspaceId)!;
 }

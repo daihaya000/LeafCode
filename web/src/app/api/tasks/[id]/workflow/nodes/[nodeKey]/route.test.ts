@@ -67,3 +67,15 @@ test("PATCH rejects unknown nodes before touching the service", async () => {
   expect(response.status).toBe(400);
   expect(mocks.updateWorkflowNode).not.toHaveBeenCalled();
 });
+
+test("PATCH rejects Control Nodes so their audit records remain server-managed", async () => {
+  const response = await PATCH(
+    new NextRequest("http://localhost/api/tasks/ws1/workflow/nodes/review_gate", {
+      method: "PATCH",
+      body: JSON.stringify({ workflowRevision: 1, nodeRevision: 1, config: {} }),
+    }),
+    contextFor("ws1", "review_gate"),
+  );
+  expect(response.status).toBe(400);
+  expect(mocks.updateWorkflowNode).not.toHaveBeenCalled();
+});

@@ -42,12 +42,14 @@ function runtimeStates(workflow: WorkflowView): WorkflowGraphRuntimeState[] {
     };
   });
   const runStatus = workflow.run?.status ?? "ready";
-  states.push({
-    nodeId: "review_gate",
-    status: runStatus === "completed" ? "succeeded" : runStatus,
-    attemptNo: 0,
-    attention: runStatus === "paused",
-  });
+  if (!workflow.nodes.some((node) => node.nodeKey === "review_gate")) {
+    states.push({
+      nodeId: "review_gate",
+      status: runStatus === "completed" ? "succeeded" : runStatus,
+      attemptNo: 0,
+      attention: runStatus === "paused",
+    });
+  }
   return states;
 }
 

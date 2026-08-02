@@ -8,6 +8,7 @@ import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
 import { isWorkflowModeEnabled } from "./workflow-feature";
 import { workflowArtifactsForPrompt } from "./workflow-artifacts";
+import { recordReviewGateAttempt } from "./workflow-control";
 
 const SCHEDULER_INTERVAL_MS = 2_500;
 const IMPLEMENT_ATTEMPT_LIMIT = 10;
@@ -180,15 +181,15 @@ async function activateReviewers(
   );
 }
 
-async function advanceReviewGate(workflowRunId: string): Promise<void> {
+export async function advanceReviewGate(workflowRunId: string): Promise<void> {
   const database = getDb();
   const rows = database
     .prepare(
-      `SELECT n.node_key, n.config, a.status, a.result
+      `SELECT a.id AS attempt_id, n.node_key, n.config, a.status, a.result
        FROM workflow_node_runs n JOIN workflow_node_attempts a ON a.node_run_id = n.id AND a.attempt_no = n.latest_attempt_no
        WHERE n.workflow_run_id = ? AND n.node_key IN ('code_review', 'visual_judge')`,
     )
-    .all(workflowRunId) as Array<{ node_key: WorkflowNodeKey; config: string; status: string; result: string | null }>;
+    .all(workflowRunId) as Array<{ attempt_id: string; node_key: "code_review" | "visual_judge"; config: string; status: string; result: string | null }>;
   if (rows.length !== 2 || rows.some((row) => row.status !== "succeeded")) return;
   const decisions = rows.map((row) =>
     evaluateReviewGate({
@@ -197,6 +198,23 @@ async function advanceReviewGate(workflowRunId: string): Promise<void> {
       config: JSON.parse(row.config),
     }),
   );
+  const findings = decisions.flatMap((decision) => decision.decision === "return_to_implement" ? decision.findings : []);
+  const pauseDecision = decisions.find((decision) => decision.decision === "pause");
+  const gateDecision = pauseDecision?.decision === "pause"
+    ? { decision: "pause" as const, reason: pauseDecision.reason }
+    : findings.length
+      ? { decision: "return_to_implement" as const, findings }
+      : { decision: "pass" as const };
+  recordReviewGateAttempt({
+    workflowRunId,
+    reviewers: rows.map((row) => ({
+      attemptId: row.attempt_id,
+      nodeKey: row.node_key,
+      status: row.status,
+      result: row.result ? parseReviewResult(JSON.parse(row.result)) : null,
+    })),
+    decision: gateDecision,
+  });
   const now = new Date().toISOString();
   if (decisions.some((decision) => decision.decision === "pause")) {
     database
@@ -204,7 +222,6 @@ async function advanceReviewGate(workflowRunId: string): Promise<void> {
       .run(now, workflowRunId);
     return;
   }
-  const findings = decisions.flatMap((decision) => decision.decision === "return_to_implement" ? decision.findings : []);
   if (!findings.length) {
     database
       .prepare("UPDATE workflow_runs SET status = 'completed', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'")

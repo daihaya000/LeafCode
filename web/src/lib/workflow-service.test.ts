@@ -25,6 +25,7 @@ const {
   updateWorkflowNode,
   WorkflowServiceError,
 } = await import("./workflow-service");
+const { recordReviewGateAttempt } = await import("./workflow-control");
 
 afterAll(() => {
   getDb().close();
@@ -72,6 +73,43 @@ describe("workflow service", () => {
       opencodeSessionId: "ses-implement",
     });
     expect(workflow.nodes.find((node) => node.nodeKey === "code_review")?.attempts).toEqual([]);
+    expect(workflow.nodes.find((node) => node.nodeKey === "review_gate")).toMatchObject({
+      kind: "control",
+      latestAttemptNo: 0,
+      attempts: [],
+    });
+  });
+
+  test("records a Review Gate decision as a control Attempt without a Session", () => {
+    const workspaceRevision = setupWorkspace("ws-control-audit", "ses-control");
+    const created = createWorkflow({
+      workspaceId: "ws-control-audit",
+      workspaceRevision,
+      taskContext: { goal: "goal", acceptance: [], constraints: [] },
+    });
+    const attemptId = recordReviewGateAttempt({
+      workflowRunId: created.run!.id,
+      reviewers: [
+        { attemptId: "review-attempt", nodeKey: "code_review", status: "succeeded", result: { verdict: "pass" } },
+        { attemptId: "visual-attempt", nodeKey: "visual_judge", status: "succeeded", result: { verdict: "pass" } },
+      ],
+      decision: { decision: "pass" },
+      now: "2026-08-02T02:00:00.000Z",
+    });
+
+    const control = getWorkflow("ws-control-audit")?.nodes.find((node) => node.nodeKey === "review_gate");
+    expect(attemptId).toEqual(expect.any(String));
+    expect(control).toMatchObject({ kind: "control", latestAttemptNo: 1 });
+    expect(control?.attempts[0]).toMatchObject({
+      attemptNo: 1,
+      status: "succeeded",
+      opencodeSessionId: null,
+      dispatchStatus: "control_evaluated",
+      inputHash: expect.stringMatching(/^sha256:/),
+      startedAt: "2026-08-02T02:00:00.000Z",
+      finishedAt: "2026-08-02T02:00:00.000Z",
+    });
+    expect(control?.attempts[0]?.result).toEqual({ decision: "pass" });
   });
 
   test("rejects stale conversion and active Goal Loop conversion", () => {

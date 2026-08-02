@@ -25,7 +25,7 @@ process.env.APPDATA = testDataDir;
 
 const { bindSession, createWorkspace, getDb, getWorkspace, upsertProject } = await import("./db");
 const { createWorkflow, getWorkflow, updateWorkflow } = await import("./workflow-service");
-const { runWorkflowSchedulerTick, startWorkflowScheduler, stopWorkflowSchedulerForTests } = await import("./workflow-scheduler");
+const { advanceReviewGate, runWorkflowSchedulerTick, startWorkflowScheduler, stopWorkflowSchedulerForTests } = await import("./workflow-scheduler");
 
 afterAll(() => {
   stopWorkflowSchedulerForTests();
@@ -143,5 +143,45 @@ describe("workflow scheduler", () => {
     startWorkflowScheduler();
     expect(getWorkflow("scheduler-restart")!.run?.pauseReason).toBe("scheduler_restart");
     stopWorkflowSchedulerForTests();
+  });
+
+  test("records a server-managed Review Gate Attempt when reviewers finish", async () => {
+    const revision = setup("scheduler-control-audit");
+    createWorkflow({
+      workspaceId: "scheduler-control-audit",
+      workspaceRevision: revision,
+      taskContext: { goal: "Build UI", acceptance: [], constraints: [] },
+    });
+    updateWorkflow({ workspaceId: "scheduler-control-audit", action: "start", workflowRevision: 0 });
+    const workflow = getWorkflow("scheduler-control-audit")!;
+    const runId = workflow.run!.id;
+    for (const nodeKey of ["code_review", "visual_judge"] as const) {
+      const node = workflow.nodes.find((candidate) => candidate.nodeKey === nodeKey)!;
+      getDb()
+        .prepare("UPDATE workflow_node_runs SET latest_attempt_no = 1 WHERE id = ?")
+        .run(node.id);
+      getDb()
+        .prepare(
+          `INSERT INTO workflow_node_attempts
+           (id, node_run_id, attempt_no, status, result, config_snapshot, output_mode, dispatch_status)
+           VALUES (?, ?, 1, 'succeeded', ?, ?, 'fenced_json', 'result_received')`,
+        )
+        .run(
+          `attempt-${nodeKey}`,
+          node.id,
+          JSON.stringify({ verdict: "pass", summary: "ok", evidence: [], findings: [] }),
+          JSON.stringify(node.config),
+        );
+    }
+    await advanceReviewGate(runId);
+    const updated = getWorkflow("scheduler-control-audit")!;
+    const gate = updated.nodes.find((node) => node.nodeKey === "review_gate")!;
+    expect(gate.attempts[0]).toMatchObject({
+      status: "succeeded",
+      opencodeSessionId: null,
+      dispatchStatus: "control_evaluated",
+      result: { decision: "pass" },
+    });
+    expect(updated.run?.status).toBe("completed");
   });
 });
