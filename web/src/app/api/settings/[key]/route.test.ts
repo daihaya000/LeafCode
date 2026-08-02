@@ -283,4 +283,24 @@ describe("/api/settings/[key] auto mode settings", () => {
       }
     });
   }
+
+  describe("hang-timeout", () => {
+    it("stores a valid timeout", async () => {
+      const res = await PUT(
+        putReq({ value: "120000" }, "hang-timeout") as never,
+        ctx("hang-timeout"),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("hang-timeout", "120000");
+    });
+
+    it("rejects a timeout outside the supported range", async () => {
+      const res = await PUT(
+        putReq({ value: "5000" }, "hang-timeout") as never,
+        ctx("hang-timeout"),
+      );
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+  });
 });

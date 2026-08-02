@@ -5,6 +5,7 @@ import { apiUrl, ApiError, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import { isSseConnectStalled, isSseSilent, SSE_SILENCE_MS } from "./sse-health";
+import { readHangTimeoutMs, subscribeHangTimeout } from "./hang-timeout";
 import type {
   MessageInfo,
   MessageWithParts,
@@ -69,7 +70,7 @@ export type StreamAction =
 /** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
-/** Stop a session that has remained busy for too long, then retry it once. */
+/** Backwards-compatible default; the active value is read from Settings. */
 export const SESSION_HANG_TIMEOUT_MS = 5 * 60_000;
 /** Metadata written to the retry prompt so the UI can hide only that copy. */
 export const HANG_RETRY_METADATA_KEY = "webui_hang_retry";
@@ -743,6 +744,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const pendingMutationRef = useRef(false);
   const abortingRef = useRef(false);
   const [aborting, setAborting] = useState(false);
+  const [hangTimeoutMs, setHangTimeoutMs] = useState(readHangTimeoutMs);
   const connectionRef = useRef<ConnectionState>(state.connection);
   /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
   const preferRestStatusRef = useRef(false);
@@ -805,6 +807,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   // full turn has been busy for five minutes, then retry the exact request
   // once after abort() has completed and resync has observed the idle state.
   useEffect(() => {
+    const onChange = () => setHangTimeoutMs(readHangTimeoutMs());
+    return subscribeHangTimeout(onChange);
+  }, []);
+
+  useEffect(() => {
     const busy = state.status?.type === "busy" || state.status?.type === "retry";
     if (!busy || !directory || !sessionId || !autoRetryRequestRef.current || autoRetryUsedRef.current) {
       if (!busy) {
@@ -815,7 +822,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       return;
     }
     const startedAt = mutationStartedAtRef.current ?? Date.now();
-    const remaining = Math.max(0, SESSION_HANG_TIMEOUT_MS - (Date.now() - startedAt));
+    const remaining = Math.max(0, hangTimeoutMs - (Date.now() - startedAt));
     const timer = window.setTimeout(() => {
       const request = autoRetryRequestRef.current;
       if (!request || autoRetryUsedRef.current) return;
@@ -823,7 +830,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       autoRetryRequestRef.current = null;
       void (async () => {
         await abortRef.current(
-          `5分間応答がないため停止し、同じ処理を1回だけ再開します`,
+          `${Number((hangTimeoutMs / 60_000).toFixed(1))}分間応答がないため停止し、同じ処理を1回だけ再開します`,
         );
         if (sessionRef.current !== sessionId || scopeRef.current !== scopeKey) return;
         mutationStartedAtRef.current = Date.now();
@@ -844,7 +851,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       })();
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [directory, scopeKey, sessionId, state.status?.type]);
+  }, [directory, hangTimeoutMs, scopeKey, sessionId, state.status?.type]);
 
   useEffect(() => {
     rememberSessionState(state);

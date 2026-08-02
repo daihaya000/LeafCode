@@ -43,6 +43,15 @@ import {
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { HealthDto, ProjectDto } from "@/lib/types";
+import {
+  clampHangTimeoutMs,
+  DEFAULT_HANG_TIMEOUT_MS,
+  MAX_HANG_TIMEOUT_MS,
+  MIN_HANG_TIMEOUT_MS,
+  readHangTimeoutMs,
+  syncHangTimeoutToServer,
+  writeHangTimeoutMs,
+} from "@/lib/hang-timeout";
 
 type OrphanDto = {
   id: string;
@@ -215,6 +224,9 @@ export function SettingsView() {
   const [rateDraft, setRateDraft] = useState(() =>
     String(readCostDisplayPrefs().usdJpyRate),
   );
+  const [hangTimeoutMinutes, setHangTimeoutMinutes] = useState(() =>
+    String(readHangTimeoutMs() / 60_000),
+  );
   const [fxStatus, setFxStatus] = useState<
     | { kind: "idle" }
     | { kind: "loading" }
@@ -380,6 +392,16 @@ export function SettingsView() {
   const requestRestart = (target: "webui" | "opencode" | "all") => {
     setError(null);
     setPendingRestart(target);
+  };
+
+  const commitHangTimeout = () => {
+    const minutes = Number(hangTimeoutMinutes);
+    const milliseconds = clampHangTimeoutMs(
+      (Number.isFinite(minutes) ? minutes : DEFAULT_HANG_TIMEOUT_MS / 60_000) * 60_000,
+    );
+    writeHangTimeoutMs(milliseconds);
+    setHangTimeoutMinutes(String(milliseconds / 60_000));
+    void syncHangTimeoutToServer(milliseconds);
   };
 
   const restartService = async (target: "webui" | "opencode" | "all") => {
@@ -741,6 +763,33 @@ export function SettingsView() {
 
         {activeTab === "general" && (
           <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">実行</h2>
+              <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">
+                <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="shrink-0 text-sm text-muted">ハング判定時間</span>
+                  <input
+                    type="number"
+                    min={MIN_HANG_TIMEOUT_MS / 60_000}
+                    max={MAX_HANG_TIMEOUT_MS / 60_000}
+                    step={0.5}
+                    value={hangTimeoutMinutes}
+                    onChange={(event) => setHangTimeoutMinutes(event.target.value)}
+                    onBlur={commitHangTimeout}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
+                    aria-describedby="hang-timeout-help"
+                  />
+                  <span className="text-xs text-faint">分</span>
+                </label>
+                <p id="hang-timeout-help" className="mt-2 text-[11px] text-faint">
+                  応答がない状態がこの時間続いた場合、自動停止して同じ処理を1回だけ再開します（0.17〜30分）。
+                </p>
+              </div>
+            </section>
+
             <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
               <div className="overflow-hidden rounded-xl border border-border bg-surface">

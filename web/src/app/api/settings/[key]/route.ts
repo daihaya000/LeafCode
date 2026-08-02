@@ -16,6 +16,7 @@ const ALLOWED_KEYS = new Set<string>([
   "default-model",
   "sidebar",
   "sidepanel-width",
+  "hang-timeout",
 ]);
 
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
@@ -29,6 +30,8 @@ const SIDEBAR_MAX_WIDTH = 480;
 const SIDEPANEL_MIN_WIDTH = 280;
 const SIDEPANEL_MAX_WIDTH = 900;
 const DEFAULT_MODEL_MAX_CHARS = 512;
+const HANG_TIMEOUT_MIN_MS = 10_000;
+const HANG_TIMEOUT_MAX_MS = 30 * 60_000;
 
 function isAllowedKey(key: string): key is string {
   return ALLOWED_KEYS.has(key);
@@ -60,6 +63,14 @@ function normalizeSettingValue(
       };
     }
     return { ok: true, value };
+  }
+
+  if (key === "hang-timeout") {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < HANG_TIMEOUT_MIN_MS || n > HANG_TIMEOUT_MAX_MS) {
+      return { ok: false, error: "hang-timeout must be between 10000 and 1800000 milliseconds" };
+    }
+    return { ok: true, value: String(Math.round(n)) };
   }
 
   if (key === "auto-optimize") {
