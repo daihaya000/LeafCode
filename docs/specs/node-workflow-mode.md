@@ -116,7 +116,8 @@ Workflow Taskでは、実行方式を変えずに次を切り替えられる。
 3. Workflow Runと固定Node／Edgeの定義スナップショットを作成する。
 4. 既存primary SessionをImplement Nodeへ紐付ける。
 5. Reviewer Sessionはこの時点では作らず、Nodeが`ready`になった時点で遅延作成する。
-6. 現在のGit差分要約とHEADをWorkflow開始基準として保存する。
+6. 変換ダイアログでWorkflowの`goal`、`acceptance`、追加制約を確定し、`task_context_snapshot`として保存する。既存Transcriptから不足分を推測して補わない。
+7. 現在のGit差分要約とHEADをWorkflow開始基準として保存する。
 
 変換に失敗した場合は`standard`を維持し、部分作成したRunを実行可能にしない。
 
@@ -289,15 +290,172 @@ Gateの真理値は次のとおり。
 
 通常のSkip APIはoptional Nodeだけを対象にする。required Nodeのskipは理由入力と強い確認を伴う`override_gate`として別監査イベントを残す。
 
+### 8.1 後続Node入力の生成契約
+
+後続Nodeへの指示文は、Agentに前Nodeの自然言語回答を要約させて生成しない。Workflow Schedulerが、DBに保存された構造化結果、Node設定、成果物メタデータ、Workspaceスナップショットから決定的に組み立てる。
+
+```ts
+type WorkflowPromptEnvelope = {
+  templateVersion: string;
+  outputSchemaVersion: string;
+  runId: string;
+  nodeKey: "implement_ui" | "code_review" | "visual_judge";
+  attemptId: string;
+  cycle: number;
+  promptMarker: string;
+  task: {
+    goal: string;
+    acceptance: string[];
+    constraints: string[];
+  };
+  nodeInstructions: string;
+  context: {
+    upstreamResults: Array<{ nodeKey: string; attemptId: string; result: unknown }>;
+    findings: Array<{
+      id: string;
+      sourceNode: string;
+      severity: "critical" | "major" | "minor" | "nit";
+      title: string;
+      detail: string;
+      target?: string;
+      suggestedFix?: string;
+    }>;
+    artifacts: Array<{
+      id: string;
+      kind: "diff" | "screenshot" | "test" | "log";
+      label: string;
+      opaqueRef?: string;
+      expiresAt?: string;
+    }>;
+    workspace: {
+      head: string | null;
+      fingerprint: string;
+      changedFiles: string[];
+    };
+  };
+};
+```
+
+#### 生成順序
+
+1. SchedulerがAttemptをCASでclaimする。
+2. `WorkflowPromptEnvelope`を、現在のWorkflow定義スナップショットとAttempt設定スナップショットから作る。
+3. `task.goal`、`acceptance`、Node設定、上流結果、finding、artifact、Workspace fingerprintを各フィールドの上限・型・許可値で検証する。
+4. `templateVersion`と`outputSchemaVersion`を付け、固定のsection順でレンダリングする。
+5. canonical JSONのhashを計算し、`promptMarker`、hash、template version、生成時刻をAttemptへ保存する。
+6. 保存成功後にだけOpenCodeへ1回送信する。送達不明になったAttemptは再レンダリング・再送しない。
+
+#### 入力ソースの正規順位
+
+Prompt生成時の正規ソースは次の順である。同じ情報が複数に存在しても、下位ソースで上位ソースを上書きしない。
+
+1. `workflow_runs.task_context_snapshot`（ユーザーが確認したgoal／acceptance／制約）
+2. `workflow_node_runs.config` と `workflow_node_attempts.config_snapshot`（Node／Attempt設定）
+3. 依存Nodeの検証済み構造化resultとfinding
+4. `workflow_artifacts`のmetadataと期限付きopaque参照
+5. Attempt開始時に取得したWorkspace snapshot
+6. OpenCode transcript（既存SessionをImplementへ引き継ぐための履歴参照に限定）
+
+Transcriptの自然言語本文は、Reviewerや修正Nodeの制御入力へ自動転送しない。前Nodeから渡すべき情報は必ず構造化resultまたはartifact metadataへ変換する。変換できない情報は欠落扱いにしてPauseし、別Agentに要約を依頼して補完しない。
+
+`AGENTS.md`とOpenCode Agent定義はOpenCodeが読み込む共通・役割規約であり、生成Promptはその規約を変更しないTask入力である。権限、書込み可否、Subagent可否、Browser可否はPrompt本文ではなくSession permissionで強制する。
+
+#### Node別テンプレート
+
+| Node | 動的に渡す入力 | 生成する責務 |
+| --- | --- | --- |
+| `implement_ui` 初回 | ユーザーgoal、acceptance、Task制約、現在Workspace | 実装し、検証し、`ImplementResult`を返す |
+| `implement_ui` 修正 | ユーザーgoal、acceptance、前回Implement結果、Code Review／Visual Judgeのblocking finding、review subject fingerprint | findingを修正し、`ImplementResult`を返す |
+| `code_review` | ユーザーgoal、acceptance、Implement結果、review subject、変更ファイル、必要なDiff artifact | Workspaceを変更せず、`ReviewResult`を返す |
+| `visual_judge` | ユーザーgoal、acceptance、Implement結果、review subject、承認済みscreenshot artifact、視覚評価基準 | Workspaceを変更せず、`ReviewResult`を返す |
+
+Code ReviewとVisual Judgeは相互の結果を入力にしない。同じ`reviewSubjectFingerprint`を参照して独立に判定し、両方の結果が揃ってからGateで統合する。これにより、一方のレビュー結果が他方の判定を誘導しない。
+
+#### レンダリング形式
+
+レンダリングは次の固定section順とする。
+
+```text
+<workflow_meta>       run / node / attempt / marker / template version
+<role_instruction>    Node固有の責務と禁止事項
+<task_context>        goal / acceptance / constraints
+<upstream_result>     構造化された上流結果（JSON）
+<review_findings>     修正対象finding（JSON）
+<artifacts>           artifactの説明とopaque参照
+<workspace_context>   HEAD / fingerprint / changed files
+<output_contract>     返すJSON schemaとmarker
+```
+
+動的なユーザー入力、コード、外部ページ内容、レビューfindingはすべてJSONデータとしてsection内へエンコードし、role instructionやoutput contractの命令文と混ぜない。section終端文字列を動的値からエスケープし、値に含まれる「指示」「承認不要」「ルールを無視」等をWorkflow制御へ反映しない。
+
+送信payloadは、既存の`prompt_async`契約に従い、原則として次の形にする。
+
+```ts
+{
+  parts: [{ type: "text", text: renderWorkflowPrompt(envelope) }],
+  agent,
+  model,
+  variant
+}
+```
+
+`system`フィールドをNode固有指示の主経路にはしない。OpenCodeのAgent system promptを置換する実装差異を避け、まず`parts.text`の固定テンプレートで送る。将来`system`がAgent定義へ追加的に適用されることを互換性テストで確認できた場合だけ、固定role instructionの補助経路として利用する。
+
+#### 構造化出力と復旧
+
+出力方式はWorkflow定義の`outputMode`としてAttempt開始時に固定する。
+
+- `structured`: OpenCodeが`format`と`info.structured`を正しく往復できることをprobeで確認できた場合だけ使用する。
+- `fenced_json`: 現行Goal Loopと同じmarker付きJSON fenceを使用するfallback。初期Workflowはこれを既定にする。
+
+`fenced_json`の応答には次を必須とする。
+
+````text
+<!-- webui-workflow-result:{promptMarker} -->
+```json
+{ ...ImplementResultまたはReviewResult... }
+```
+````
+
+結果読取は`last_message_id`より後の完了済みassistant messageだけを対象にし、marker、schema version、Node kind、Attempt IDを検証する。自然言語だけの回答、marker不一致、JSON不正、schema不一致は部分適用せず、Attemptを`failed`、WorkflowをPauseにする。送達不明から復旧する場合は、保存済みmarkerの応答を探すだけで、Promptを再生成・再送しない。
+
+#### 入力サイズと情報欠落
+
+初期上限は、固定role instructionを除くrendered input 48,000 code points、goal 12,000、Node固有指示8,000、1 finding 4,000、finding総数50、artifact説明4,000とする。
+
+- `critical`／`major` findingは上限内に必ず保持する。
+- `minor`／`nit`は上限超過時に省略できるが、省略件数を`inputTruncated`へ保存する。
+- blocking findingだけでも上限を超える場合は省略・要約せず`pause_reason = 'input_too_large'`で停止する。
+- 文字列を途中で黙って切り詰めて意味を変えない。各フィールドは検証で拒否するか、非blocking情報だけを明示的に落とす。
+
+#### Templateのバージョンと再現性
+
+`templateVersion`、`outputSchemaVersion`、canonical input hash、`inputTruncated`、resolved model／variantをAttemptへ不変保存する。新しいTemplateへ変更する場合は既存Attemptを編集せず、次のRetry／cycleで新Attemptを作る。実行中・送達不明Attemptの再開は保存済みmarkerとinput hashを使い、現在のTemplateで再生成しない。
+
+#### Promptの可視化と手動編集
+
+Node詳細には、実行済みAttemptごとに次のPrompt traceを表示する。
+
+- `templateVersion`、`outputSchemaVersion`、`outputMode`
+- `promptMarker`、生成時刻、canonical input hash
+- 入力元のNode／Attempt／finding／artifact ID
+- review subject fingerprint、Workspace HEAD、changed files
+- `inputTruncated`と省略されたnon-blocking情報の件数
+- 送信状態（生成済み、送信中、送信済み、結果待ち、結果解析失敗）
+
+生成PromptのPreviewはread-onlyとし、Node固有指示、モデル、権限などの設定変更はNode設定UIから行う。生成済みPrompt本文を編集して再送する操作は初期スコープに含めない。再実行は必ず新Attemptを作り、現在のTemplateと設定から新しいPromptを生成する。
+
+Prompt本文の表示・コピーはユーザー操作で明示的に行い、画面の通常一覧やSidebarへ展開しない。秘密情報、Browser Bridgeの入力値、DOM本文、画像base64、期限切れartifact本文はPreviewへ含めず、`[redacted]`または参照切れとして表示する。
+
 ## 9. 実行アルゴリズム
 
 1. Implement Nodeを`ready`にする。
-2. SchedulerがCASでAttemptをclaimし、Implement SessionへNode入力を送信する。
-3. Implementが構造化完了結果を返したらNodeを`succeeded`にする。
-4. Code ReviewとVisual Judgeを同時に`ready`にする。
+2. SchedulerがCASでAttemptをclaimし、Node入力Envelopeを生成・保存してからImplement SessionへNode入力を送信する。
+3. Implementが検証済みの構造化完了結果を返したらNodeを`succeeded`にする。
+4. Code ReviewとVisual Judgeを同時に`ready`にし、それぞれ同一review subjectから独立したNode入力を生成する。
 5. 各Reviewerを独立してclaim・実行する。一方の失敗で他方を中断しない。
 6. 両Reviewerが終端したらGateを評価する。
-7. blockingな`needs_changes`が1件以上あれば、findingを重複排除してImplement Sessionへ送り、新しいImplement Attemptを作る。
+7. blockingな`needs_changes`が1件以上あれば、findingを`sourceNode + id + target + severity`で重複排除し、決定的な順序でImplement Sessionへ送り、新しいImplement Attemptを作る。
 8. blocking findingがなく、required Reviewerが`pass`または許可された`skipped`ならWorkflowを`completed`にする。
 9. `blocked`、構造化結果不正、送達不明、上限超過はWorkflowを`paused`にしてAttentionを作る。
 
@@ -410,6 +568,28 @@ Retryは終端Attemptを変更せず、新しいAttempt番号を`pending`また�
 - **W15**: Reviewer Sessionの更新時刻によってTaskのprimary Sessionを変更しない。
 - **W16**: WorkspaceのHEAD／dirty tree fingerprintが期待値からdriftした状態でReviewer開始または修正再投入をしない。
 
+### Pause reason
+
+Workflowの分岐に使うPause理由は、人間向け`error`本文から推論せず、次のenumで保存する。
+
+| `pause_reason` | 意味 |
+| --- | --- |
+| `user` | ユーザーがPauseした |
+| `manual_send` | Workflow管理Sessionへの手動送信を検出した |
+| `feature_disabled` | feature flagが無効化された |
+| `unknown_delivery` | prompt送達を確認できず重複送信を防止した |
+| `session_create_unknown` | Session作成結果を一意に照合できない |
+| `workspace_drift` | 期待したreview subjectからWorkspaceが変化した |
+| `input_too_large` | blocking入力を失わずにPromptを構成できない |
+| `structured_result_invalid` | 結果marker／schema／JSONが不正 |
+| `node_attempt_limit` | Node単位のAttempt上限に達した |
+| `cycle_limit` | Workflow修正cycle上限に達した |
+| `browser_blocked` | Browser Bridgeを必要とする処理がblockedになった |
+| `engine_unavailable` | OpenCodeまたは必要な実行環境が利用できない |
+| `scheduler_error` | 想定外のScheduler例外 |
+
+表示文は`pause_reason`から決定し、`error`は詳細表示専用とする。
+
 ## 12. 永続化
 
 ### 12.1 `workspaces`追加列
@@ -430,6 +610,7 @@ Retryは終端Attemptを変更せず、新しいAttempt番号を`pending`また�
 | `workspace_id` | Task／Workspace |
 | `template_key` | 初期値`ui_implementation_review` |
 | `definition_snapshot` | Node／Edge／Gate定義JSON |
+| `task_context_snapshot` | ユーザー確認済みgoal／acceptance／制約JSON |
 | `status` | Workflow状態 |
 | `cycle_count` / `max_cycles` | 修正サイクル |
 | `primary_node_key` | 通常へ戻す既定Node |
@@ -463,6 +644,13 @@ Retryは終端Attemptを変更せず、新しいAttempt番号を`pending`また�
 | `input` / `result` | 構造化JSON |
 | `error` | 表示用エラー |
 | `last_message_id` | 応答境界 |
+| `prompt_marker` | 応答照合用のAttempt固有marker |
+| `prompt_template_version` / `output_schema_version` | 生成・解析契約のversion |
+| `input_hash` | canonical input envelopeのhash |
+| `input_truncated` | non-blocking入力の省略有無・件数 |
+| `output_mode` | `structured` / `fenced_json` |
+| `prompt_generated_at` | Envelope生成時刻 |
+| `dispatch_status` | `not_sent` / `sending` / `sent` / `awaiting_result` / `parse_failed` |
 | `base_head` / `start_head` / `finish_head` | Git境界 |
 | `dirty_fingerprint` | 対象差分のdrift検出 |
 | `revision` | CAS |
@@ -497,6 +685,7 @@ Diff要約、レビュー対象commit、screenshot一時参照などのmetadata�
 | `PATCH` | `/api/tasks/:id/workflow/nodes/:nodeKey` | 次回Node設定変更 |
 | `POST` | `/api/tasks/:id/workflow/nodes/:nodeKey/retry` | 新しいAttempt作成 |
 | `POST` | `/api/tasks/:id/workflow/nodes/:nodeKey/skip` | optional Nodeを明示skip |
+| `GET` | `/api/tasks/:id/workflow/attempts/:attemptId/input` | Prompt trace／redacted Preview取得 |
 | `GET` | `/api/tasks/:id/workflow/events` | Workflow状態のSSE取得 |
 
 すべてのmutationは期待`revision`を受け取り、競合時は`409`を返して最新状態を再取得させる。未知フィールド、未知Node、無効な状態遷移、利用不能なAgent／モデル／権限昇格を拒否する。
@@ -504,6 +693,8 @@ Diff要約、レビュー対象commit、screenshot一時参照などのmetadata�
 revision bodyは`workspaceRevision`、`workflowRevision`、`nodeRevision`、`attemptRevision`を区別する。通常↔Workflow変換、primary変更、archive／merge／cleanupは`workspaceRevision`、Workflow全体操作は`workflowRevision`、Node設定は`workflowRevision + nodeRevision`、Retry／Stopは`workflowRevision + attemptRevision`を要求する。WorkspaceとWorkflowを同時変更するdetach等は両revisionを同一transactionで検証する。`409`は最新Workflow DTOを返す。
 
 通常Taskへ戻す操作は`PATCH action=detach`と`primarySessionId`を使う。Workflow履歴を削除しない。
+
+Prompt trace endpointはAttemptの`workflowRevision`と`attemptRevision`を検証し、最新のPreviewだけでなく保存済みtemplate version、input hash、source IDs、dispatch statusを返す。本文を返す場合もredactionを適用し、Preview取得は監査イベントとして記録する。Promptの再生成・再送はこのGETから発生させない。
 
 ## 15. Attention集約
 
@@ -582,10 +773,12 @@ Desktopでは右パネル、tabletでは開閉パネル、mobileではSheet／Dr
 - Agent、モデル、思考強度、権限、固有指示
 - Session ID、開始・終了時刻、Attempt履歴
 - 結果要約、finding、evidence、artifact
+- AttemptごとのPrompt trace、入力元、template／schema version、hash、dispatch status、redacted Preview
 - Attentionへの回答
 - Chatで開く、Retry、Skip、Stop
 
 実行済み設定の編集時は`次回試行から適用`と表示する。
+生成Promptそのものの手動編集・既存Attemptへの再送ボタンは表示しない。Retryは新Attempt作成として表示する。
 
 ### 16.5 破壊的・状態変更操作
 
@@ -642,6 +835,7 @@ Desktopでは右パネル、tabletでは開閉パネル、mobileではSheet／Dr
 | Paused | pause reason、保存済み結果、再開条件を表示 |
 | Failed | Node単位の理由、時刻、Retryを表示し、他Node履歴を隠さない |
 | Completed | 両Reviewer結果、最終Diff、cycle、token、時間を要約 |
+| Prompt generation failed | `input_too_large`、schema不一致、参照切れ、生成失敗の理由とRetry／設定修正条件をNode詳細へ表示 |
 | Engine unavailable | 自動再送せず、接続状態と安全な再同期操作を表示 |
 | Conversion failed | 元の実行方式を維持し、部分Runを実行させない |
 
@@ -682,6 +876,10 @@ Desktopでは右パネル、tabletでは開閉パネル、mobileではSheet／Dr
 - Gate真理値、required override、optional skip
 - Workspace drift検出
 - 構造化結果不正、履歴境界消失、Session作成／prompt送達不明の安全Pause
+- Node Prompt Envelopeの同一入力hash、section順、marker、template version
+- 前Nodeの自然言語本文ではなく構造化resultだけを後続入力へ渡すこと
+- blocking／non-blocking情報のサイズ超過処理と`input_too_large`
+- Prompt traceのredaction、明示Preview、監査イベント、再生成不可
 
 ### 23.2 Integration
 
@@ -694,6 +892,10 @@ Desktopでは右パネル、tabletでは開閉パネル、mobileではSheet／Dr
 - host再起動後の`dispatching`／`running`復旧
 - Workflow→通常後もNode Sessionと履歴を参照できる
 - Browser Bridge approval／denial／timeoutをVisual Judge Nodeへ集約する
+- 同じWorkflowPromptEnvelopeから同じcanonical input hashとsection順が生成される
+- Implement／Code Review／Visual Judge／修正AttemptのPromptが定義どおりの入力だけを含む
+- marker不一致、schema version不一致、自然言語だけの応答を自動pass／部分適用しない
+- Prompt trace endpointのrevision検証、redaction、Preview取得時の再送なし
 
 ### 23.3 UI
 
@@ -732,6 +934,12 @@ Desktopでは右パネル、tabletでは開閉パネル、mobileではSheet／Dr
 14. Desktop、tablet、mobileで主要操作が利用でき、mobileで横グラフ操作を必須としない。
 15. キーボードだけでNode選択、詳細、変換、実行制御、Attention回答を完了できる。
 16. token、費用、時間、Attempt、モデル解決結果をNode／Workflow単位で確認できる。
+17. 同じWorkflowPromptEnvelopeから同じcanonical input hashとsection順が生成され、送達不明AttemptはPromptを再生成・再送しない。
+18. 前Nodeの自然言語本文を制御指示として引き継がず、構造化result、許可済みartifact、Workspace snapshotだけを後続Nodeへ渡す。
+19. Prompt marker、template version、output schema version、input hash、truncation情報をAttemptへ保存し、過去Attemptを後から上書きしない。
+20. blocking findingをサイズ制限で削除せず、収まらない場合は`input_too_large`でPauseする。
+21. Node詳細でAttemptごとのPrompt trace、入力元、dispatch status、redacted Previewを確認でき、Preview取得やRetryが既存Promptを再送しない。
+22. Workflow変換時にユーザー確認済みのgoal／acceptance／制約が保存され、Transcriptの自然文から不足情報を自動補完しない。
 
 ## 25. 将来拡張
 
