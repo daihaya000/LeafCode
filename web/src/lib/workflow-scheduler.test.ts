@@ -38,6 +38,7 @@ afterAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "true");
   ocServer.mockResolvedValue(undefined);
   runGit.mockImplementation(async (_directory: string, args: string[]) =>
     args[0] === "rev-parse"

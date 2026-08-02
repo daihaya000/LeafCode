@@ -6,6 +6,7 @@ import { evaluateReviewGate, parseImplementResult, parseReviewResult } from "./w
 import type { MessageWithParts } from "./types";
 import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
+import { isWorkflowModeEnabled } from "./workflow-feature";
 
 const SCHEDULER_INTERVAL_MS = 2_500;
 let schedulerStarted = false;
@@ -379,6 +380,17 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
   if (schedulerTicking) return;
   schedulerTicking = true;
   try {
+    if (!isWorkflowModeEnabled()) {
+      const now = new Date().toISOString();
+      getDb()
+        .prepare(
+          `UPDATE workflow_runs
+           SET status = 'paused', pause_reason = 'feature_disabled', revision = revision + 1, updated_at = ?
+           WHERE status NOT IN ('completed', 'failed', 'stopped', 'detached', 'paused')`,
+        )
+        .run(now);
+      return;
+    }
     for (const attempt of runningAttempts()) await processRunningAttempt(attempt);
     for (const attempt of readyAttempts()) {
       if (claimAttempt(attempt)) await dispatchAttempt({ ...attempt, status: "dispatching" });
