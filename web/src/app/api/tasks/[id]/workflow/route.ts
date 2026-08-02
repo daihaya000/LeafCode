@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isWorkflowModeEnabled } from "@/lib/workflow-feature";
+import { runWorkflowSchedulerTick } from "@/lib/workflow-scheduler";
 import {
   createWorkflow,
   getWorkflow,
@@ -106,6 +107,7 @@ export async function PATCH(req: NextRequest, context: Ctx) {
       workspaceRevision: body?.workspaceRevision,
       primarySessionId: body?.primarySessionId,
     });
+    if (action === "start" || action === "resume") void runWorkflowSchedulerTick();
     return NextResponse.json({ workflow });
   } catch (error) {
     return errorResponse(error);
