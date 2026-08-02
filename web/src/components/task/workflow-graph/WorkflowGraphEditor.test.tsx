@@ -27,6 +27,23 @@ describe("WorkflowGraphEditor", () => {
     vi.clearAllMocks();
   });
 
+  it("keeps editing controls compact until they are requested", () => {
+    render(
+      <WorkflowGraphEditor
+        taskId="ws-editor"
+        graph={graph}
+        selectedNodeId={null}
+        selectedEdgeId={null}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        direction="LR"
+        defaultExpanded={false}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Nodeを追加" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "編集を開く" }));
+    expect(screen.getByRole("button", { name: "Nodeを追加" })).toBeTruthy();
+  });
+
   it("adds a supported Node with a connection and deletes a selected Edge", async () => {
     mocks.sendJson.mockResolvedValue({ graph });
     const onRefresh = vi.fn().mockResolvedValue(undefined);

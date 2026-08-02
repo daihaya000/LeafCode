@@ -124,7 +124,7 @@ export function WorkflowGraphCanvas({
 
   return (
     <div
-      className="workflow-graph-canvas h-full min-h-[22rem] w-full overflow-hidden rounded-lg border border-border bg-surface-2"
+      className="workflow-graph-canvas h-full min-h-[28rem] w-full overflow-hidden rounded-lg border border-border bg-surface-2"
       data-testid="workflow-graph-canvas"
       aria-label="Workflow Graph canvas"
     >
@@ -154,7 +154,7 @@ export function WorkflowGraphCanvas({
         defaultViewport={graph.viewport}
         aria-label="Workflow Graphを移動・拡大縮小できます"
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+        <Background variant={BackgroundVariant.Dots} gap={32} size={1} />
         <Controls
           showInteractive={false}
           position="bottom-left"
@@ -171,7 +171,11 @@ export function WorkflowGraphCanvas({
           />
         )}
         <Panel position="top-left" className="workflow-graph-legend">
-          <p className="text-[11px] font-medium text-muted">{editingEnabled ? "Nodeを選択して詳細を確認 · Canvasは移動・拡大縮小を保存" : "読み取り専用 · Nodeを選択して詳細を確認"}</p>
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted">
+            <span className="rounded-full bg-surface-2 px-2 py-0.5">{graph.nodes.length} Nodes</span>
+            <span className="rounded-full bg-surface-2 px-2 py-0.5">{graph.edges.length} Edges</span>
+            <span className="hidden sm:inline">{editingEnabled ? "選択で詳細 · ドラッグで移動" : "読み取り専用 · 選択で詳細"}</span>
+          </div>
         </Panel>
         {viewportError && (
           <Panel position="top-right" className="max-w-[min(22rem,calc(100%-1rem))] rounded-md border border-warning/40 bg-warning-bg px-2.5 py-2 text-[11px] text-warning shadow-sm" role="alert">

@@ -42,6 +42,20 @@ function StatusIcon({ status, reducedMotion }: { status: string; reducedMotion: 
   return <Circle className={cx(className, "text-faint")} aria-hidden="true" />;
 }
 
+function statusAccent(status: string, attention: boolean): string {
+  if (attention || status === "paused") return "border-l-warning";
+  if (status === "succeeded" || status === "completed") return "border-l-success";
+  if (["creating_session", "running", "dispatching"].includes(status)) return "border-l-working";
+  if (status === "failed") return "border-l-danger";
+  if (status === "unsupported") return "border-l-warning";
+  return "border-l-border-strong";
+}
+
+function nodeMeta(data: WorkflowGraphReactNode["data"]): string {
+  if (!data.definition) return data.graphNode.type;
+  return `${data.definition.category} · ${data.definition.runtime === "opencode_session" ? "session" : "control"}`;
+}
+
 export function WorkflowGraphNode({ data }: NodeProps<WorkflowGraphReactNode>) {
   const inputs = data.definition?.inputs ?? [];
   const outputs = data.definition?.outputs ?? [];
@@ -51,8 +65,9 @@ export function WorkflowGraphNode({ data }: NodeProps<WorkflowGraphReactNode>) {
       aria-label={`${data.graphNode.label}、${statusLabel(data.status)}`}
       aria-disabled={data.unsupported || data.graphNode.disabled ? "true" : undefined}
       className={cx(
-        "relative min-w-52 rounded-xl border bg-surface px-3 py-3 text-text shadow-sm transition-shadow",
+        "relative min-w-52 rounded-xl border border-l-4 bg-surface px-3 py-2.5 text-text shadow-sm transition-shadow",
         data.unsupported ? "border-warning/60 bg-warning-bg" : "border-border",
+        statusAccent(data.status, data.attention),
         data.graphNode.disabled && "opacity-65",
         data.attention && "ring-2 ring-warning/50",
         !data.unsupported && "hover:shadow-md",
@@ -83,9 +98,9 @@ export function WorkflowGraphNode({ data }: NodeProps<WorkflowGraphReactNode>) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="truncate text-xs font-semibold">{data.graphNode.label}</h3>
-            <span className="shrink-0 text-[10px] text-muted">{statusText}</span>
+            <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">{statusText}</span>
           </div>
-          <p className="mt-1 truncate text-[10px] text-muted">{data.graphNode.type}</p>
+          <p className="mt-1 truncate text-[10px] capitalize text-muted">{nodeMeta(data)}</p>
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-faint">

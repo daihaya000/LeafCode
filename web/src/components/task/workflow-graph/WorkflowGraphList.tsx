@@ -38,8 +38,11 @@ export function WorkflowGraphList({
 }) {
   const stateByNode = new Map(states.map((state) => [state.nodeId, state]));
   return (
-    <aside className="min-w-0 rounded-lg border border-border bg-surface p-3" aria-label="Workflow Nodeと接続の一覧">
-      <h3 className="text-xs font-semibold text-text">Node一覧</h3>
+    <aside className="min-w-0 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface p-3 xl:max-h-full" aria-label="Workflow Nodeと接続の一覧">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-text">Node一覧</h3>
+        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-muted">{graph.nodes.length}</span>
+      </div>
       <p className="mt-1 text-[10px] text-muted">Tabで移動し、EnterまたはSpaceで選択</p>
       <ul className="mt-2 space-y-1">
         {graph.nodes.length === 0 && (
@@ -74,7 +77,10 @@ export function WorkflowGraphList({
           );
         })}
       </ul>
-      <h3 className="mt-4 text-xs font-semibold text-text">接続一覧</h3>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-text">接続一覧</h3>
+        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-muted">{graph.edges.length}</span>
+      </div>
       <ul className="mt-2 space-y-1.5 text-[10px] text-muted">
         {graph.edges.length === 0 && (
           <li className="rounded-lg bg-surface-2 px-2.5 py-3 text-xs text-muted">接続はありません。</li>

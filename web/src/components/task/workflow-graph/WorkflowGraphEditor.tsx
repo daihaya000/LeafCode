@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
 import { ApiError, sendJson } from "@/lib/client";
 import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 import {
@@ -17,6 +17,7 @@ import type {
 import type { WorkflowGraphOperation } from "@/lib/workflow-graph-mutations";
 import type { WorkflowGraphDirection } from "@/lib/workflow-graph-react-flow";
 import { layoutWorkflowGraph } from "@/lib/workflow-graph-layout";
+import { cx } from "@/components/ui";
 
 type MutationResponse = { graph: WorkflowGraphDraft };
 type ConflictKind = "semantic" | "layout";
@@ -113,6 +114,7 @@ export function WorkflowGraphEditor({
   onRefresh,
   direction,
   editingEnabled = true,
+  defaultExpanded = true,
 }: {
   taskId: string;
   graph: WorkflowGraphDraft;
@@ -121,8 +123,10 @@ export function WorkflowGraphEditor({
   onRefresh: () => Promise<void>;
   direction: WorkflowGraphDirection;
   editingEnabled?: boolean;
+  defaultExpanded?: boolean;
 }) {
   const [pending, setPending] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictKind | null>(null);
   const [sourceId, setSourceId] = useState("implement_ui");
@@ -265,15 +269,24 @@ export function WorkflowGraphEditor({
   };
 
   return (
-    <section className="mb-3 rounded-lg border border-primary/20 bg-primary/5 p-3" aria-label="Graph Editor">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div>
+    <section className={cx("mb-3 rounded-lg border border-primary/20 bg-primary/5", expanded ? "p-3" : "px-3 py-2")} aria-label="Graph Editor">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <strong className="text-xs text-text">Graph Edit</strong>
-          <p className="mt-0.5 text-[10px] text-muted">選択NodeはCtrl＋矢印キーでも20pxずつ移動できます。</p>
+          <span className="rounded-full border border-primary/20 bg-surface/70 px-2 py-0.5 text-[10px] text-muted">Draft</span>
+          <p className="hidden text-[10px] text-muted sm:block">自動整列・Node／Edge編集</p>
         </div>
-        <button type="button" disabled={pending || graph.nodes.length === 0} onClick={autoLayout} className="min-h-10 rounded-md border border-border bg-surface px-3 py-2 text-xs text-text hover:bg-surface-2 disabled:opacity-50">自動レイアウト（{direction}）</button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button type="button" disabled={pending || graph.nodes.length === 0} onClick={autoLayout} className="min-h-10 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text hover:bg-surface-2 disabled:opacity-50">自動レイアウト（{direction}）</button>
+          <button type="button" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)} className="inline-flex min-h-10 items-center gap-1 rounded-md border border-primary/20 bg-surface/70 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-surface">
+            {expanded ? "編集を閉じる" : "編集を開く"}
+            <ChevronDown className={cx("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
+          </button>
+        </div>
       </div>
-      <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+      {expanded && <>
+      <p className="mt-1.5 text-[10px] text-muted">選択NodeはCtrl＋矢印キーでも20pxずつ移動できます。</p>
+      <div className="mt-2 grid gap-2 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
         <fieldset className="min-w-0 rounded-lg border border-border/80 bg-surface/70 p-2.5">
           <legend className="px-1 text-[11px] font-semibold text-muted">Node</legend>
           <div className="flex flex-wrap items-end gap-2">
@@ -333,6 +346,7 @@ export function WorkflowGraphEditor({
       {validationMessage && <p className="mt-2 rounded-md border border-danger/30 bg-danger/5 px-2.5 py-2 text-xs text-danger" role="alert" data-graph-validation>{validationMessage}</p>}
       {conflict && <p className="mt-2 rounded-md border border-warning/30 bg-warning-bg px-2.5 py-2 text-xs text-warning" role="alert" data-graph-conflict={conflict}>{conflict === "layout" ? "LayoutのCAS競合です。最新位置を再読込してから再試行してください。" : "SemanticのCAS競合です。Node／Edgeの最新Graphを確認してから再試行してください。"}</p>}
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
+      </>}
     </section>
   );
 }

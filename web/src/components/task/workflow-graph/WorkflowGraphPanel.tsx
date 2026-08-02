@@ -150,8 +150,9 @@ export function WorkflowGraphPanel({
           onRefresh={onRefresh}
           direction={direction}
           editingEnabled={graphEditAvailable}
+          defaultExpanded={false}
         />
-        <div className="relative grid min-h-0 flex-1 gap-3 md:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem_20rem]">
+        <div className="relative grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_17rem]" data-graph-inspector-open={selectedGraphNode ? "true" : "false"}>
           <WorkflowGraphCanvas
             graph={graph}
             states={states}
@@ -173,19 +174,21 @@ export function WorkflowGraphPanel({
             selectedEdgeId={selectedEdgeId}
             onSelectEdge={setSelectedEdgeId}
           />
-          <WorkflowGraphInspector
-            taskId={taskId}
-            graphNode={selectedGraphNode}
-            nodeRun={selectedNodeRun}
-            workflow={workflow}
-            graphRevision={graph.graphRevision}
-            mode={viewportMode}
-            editingEnabled={graphEditAvailable}
-            onOpenChat={onOpenChat}
-            onOpenDiff={onOpenDiff}
-            onRefresh={onRefresh}
-            onClose={() => setSelectedNodeId(null)}
-          />
+          {selectedGraphNode && (
+            <WorkflowGraphInspector
+              taskId={taskId}
+              graphNode={selectedGraphNode}
+              nodeRun={selectedNodeRun}
+              workflow={workflow}
+              graphRevision={graph.graphRevision}
+              mode={viewportMode}
+              editingEnabled={graphEditAvailable}
+              onOpenChat={onOpenChat}
+              onOpenDiff={onOpenDiff}
+              onRefresh={onRefresh}
+              onClose={() => setSelectedNodeId(null)}
+            />
+          )}
         </div>
       </div>
     </section>

@@ -108,6 +108,7 @@ test("supports safe Graph editing interactions without page overflow", async ({ 
   await page.goto(`/task/${task.id}`);
   await page.getByRole("tab", { name: "Workflow" }).click();
   await expect(page.getByRole("region", { name: "Graph Editor" })).toBeVisible();
+  await page.getByRole("button", { name: "編集を開く" }).click();
 
   await page.locator('[data-node-id="implement_ui"]').click();
   await expect(page.getByRole("button", { name: "右へ移動" })).toBeEnabled();
