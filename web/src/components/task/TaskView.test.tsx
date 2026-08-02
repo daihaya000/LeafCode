@@ -3116,9 +3116,11 @@ describe("TaskView voice input", () => {
     await flushTaskLoad();
 
     expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
-    const deliveryMode = screen.getByRole("radiogroup", { name: "送信方式" });
-    expect(within(deliveryMode).getByRole("radio", { name: "キュー" })).toBeTruthy();
-    expect(within(deliveryMode).getByRole("radio", { name: "割り込み" })).toBeTruthy();
+    const deliveryMode = screen.getByRole("button", { name: "送信方式" });
+    expect(deliveryMode.getAttribute("aria-haspopup")).toBe("listbox");
+    fireEvent.click(deliveryMode);
+    expect(screen.getByRole("option", { name: "キュー" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "割り込み" })).toBeTruthy();
   });
 
   it("does not show NextAction when working", async () => {

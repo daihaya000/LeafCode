@@ -3974,43 +3974,6 @@ export function TaskView({ taskId }: { taskId: string }) {
                   onTrigger: () => fileInputRef.current?.click(),
                 }}
                 toolbar={<>
-                    {!goalLoopLive && (
-                      <>
-                        <div
-                          role="radiogroup"
-                          aria-label="送信方式"
-                          className="inline-flex h-8 shrink-0 items-center rounded-lg border border-border bg-surface-2 p-0.5"
-                        >
-                          {([
-                            ["queue", "キュー", ListPlus, "現在の処理後に送信"],
-                            ["steer", "割り込み", Zap, "実行中の処理へ即時送信"],
-                          ] as const).map(([mode, label, Icon, title]) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              role="radio"
-                              aria-checked={deliveryMode === mode}
-                              title={title}
-                              onClick={() => setDeliveryMode(mode)}
-                              className={cx(
-                                "inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
-                                deliveryMode === mode
-                                  ? "bg-bg text-text shadow-sm"
-                                  : "text-muted hover:text-text",
-                              )}
-                            >
-                              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {working && deliveryMode === "queue" && (
-                          <span className="shrink-0 text-[11px] text-muted">
-                            送信後に実行
-                          </span>
-                        )}
-                      </>
-                    )}
                     <VoiceInputButton
                       voice={voice}
                       onTranscript={onVoiceTranscript}
@@ -4100,6 +4063,39 @@ export function TaskView({ taskId }: { taskId: string }) {
                         disabled={!task.sessionId || goalLoopBusy || working}
                         onToggle={() => setGoalLoopEnabled((v) => !v)}
                       />
+                    )}
+                    {!goalLoopLive && (
+                      <GhostSelect
+                        value={deliveryMode}
+                        onChange={(value) => {
+                          if (value === "queue" || value === "steer") {
+                            setDeliveryMode(value);
+                          }
+                        }}
+                        disabled={!task.sessionId}
+                        aria-label="送信方式"
+                        title={
+                          deliveryMode === "queue"
+                            ? "現在の処理後に送信"
+                            : "実行中の処理へ即時送信"
+                        }
+                        icon={
+                          deliveryMode === "queue" ? (
+                            <ListPlus className="h-3.5 w-3.5" />
+                          ) : (
+                            <Zap className="h-3.5 w-3.5" />
+                          )
+                        }
+                        valueLabel={deliveryMode === "queue" ? "キュー" : "割り込み"}
+                        className="max-w-[8rem] shrink-0"
+                      >
+                        <option value="queue" title="現在の処理後に送信">
+                          キュー
+                        </option>
+                        <option value="steer" title="実行中の処理へ即時送信">
+                          割り込み
+                        </option>
+                      </GhostSelect>
                     )}
                   </>}
                 action={working ? (
