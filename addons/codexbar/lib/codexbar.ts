@@ -99,8 +99,6 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
     )
     .map((p) => {
       const usedPercent = asNumber(p.usedPercent);
-      const limited = p.limited === true || (usedPercent !== null && usedPercent >= 90);
-      const maxed = p.maxed === true || (usedPercent !== null && usedPercent >= 99.5);
       const windows: CodexBarWindow[] = Array.isArray(p.windows)
         ? p.windows
             .filter(
@@ -125,14 +123,24 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
               balance: asNumber((creditValue as Record<string, unknown>).balance),
             }
           : null;
+      const creditPercent =
+        credits !== null && credits.used !== null && credits.limit !== null && credits.limit > 0
+          ? (credits.used / credits.limit) * 100
+          : null;
+      const representative =
+        usedPercent === null
+          ? creditPercent
+          : creditPercent === null
+            ? usedPercent
+            : Math.max(usedPercent, creditPercent);
       return {
         id: asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown",
         opencodeId: asString(p.opencodeProviderId),
         plan: asString(p.plan),
         planMonthlyUsd: asNumber(p.planMonthlyUsd),
-        usedPercent,
-        limited,
-        maxed,
+        usedPercent: representative,
+        limited: p.limited === true || (representative !== null && representative >= 90),
+        maxed: p.maxed === true || (representative !== null && representative >= 99.5),
         resetsAt: asString(p.resetsAt),
         updatedAt: asString(p.updatedAt),
         error: asString(p.error),
@@ -306,7 +314,8 @@ export function percentTone(usedPercent: number | null): UsageTone {
 }
 
 /**
- * Overall usage across all providers = mean of each provider's usedPercent.
+ * Overall usage across all providers = mean of each provider's representative
+ * rate/credit percentage.
  * Used for the collapsed pill so it reflects the whole picture rather than
  * only the single busiest provider. Null when no numeric data.
  */

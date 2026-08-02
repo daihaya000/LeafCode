@@ -233,7 +233,7 @@ describe("parseCodexBarSnapshot credits", () => {
     ]);
   });
 
-  it("keeps credits separate from rate-limit aggregates", () => {
+  it("includes credit consumption in rate-limit aggregates", () => {
     const u = parseCodexBarSnapshot({
       providers: [
         {
@@ -244,9 +244,16 @@ describe("parseCodexBarSnapshot credits", () => {
       ],
     });
 
-    expect(overallUsedPercent(u)).toBe(20);
-    expect(limitedCount(u)).toBe(0);
-    expect(u.providers[0]).toMatchObject({ limited: false, maxed: false });
+    expect(overallUsedPercent(u)).toBe(100);
+    expect(limitedCount(u)).toBe(1);
+    expect(u.providers[0]).toMatchObject({ usedPercent: 100, limited: true, maxed: true });
+  });
+
+  it("uses a credit-only provider in the overall percentage", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [{ codexBarProviderId: "commandcode", credits: { used: 0, limit: 10 } }],
+    });
+    expect(overallUsedPercent(u)).toBe(0);
   });
 });
 
