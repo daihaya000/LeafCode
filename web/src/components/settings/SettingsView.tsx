@@ -922,8 +922,16 @@ export function SettingsView() {
                       >
                         <p className="font-medium">利用可能なアップデート</p>
                         <ul className="mt-0.5 list-disc pl-4">
-                          {updateAvailability.webui.available && <li>WebUI の最新版を取得できます。</li>}
-                          {updateAvailability.opencode.available && <li>OpenCode CLI の最新版を取得できます。</li>}
+                          {updateAvailability.webui.available && (
+                            <li>
+                              WebUI: コミット {updateAvailability.webui.current ?? "不明"} → {updateAvailability.webui.latest ?? "不明"}
+                            </li>
+                          )}
+                          {updateAvailability.opencode.available && (
+                            <li>
+                              OpenCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"} → {updateAvailability.opencode.latest ?? "不明"}
+                            </li>
+                          )}
                         </ul>
                       </div>
                     )}
