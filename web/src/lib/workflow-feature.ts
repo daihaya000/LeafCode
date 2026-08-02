@@ -27,7 +27,17 @@ export function resolveWorkflowModeEnabled(
 }
 
 export function isWorkflowModeEnabled(): boolean {
-  return resolveWorkflowModeEnabled(process.env.OPENCODE_WEBUI_WORKFLOW_MODE);
+  return resolveWorkflowModeEnabled(
+    process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE,
+  );
+}
+
+function clientVisibleFlag(name: "MODE" | "GRAPH" | "GRAPH_EDIT"): string | undefined {
+  return name === "MODE"
+    ? process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE
+    : name === "GRAPH"
+      ? process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH
+      : process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT;
 }
 
 export function resolveWorkflowGraphRollout(raw: {
@@ -35,9 +45,9 @@ export function resolveWorkflowGraphRollout(raw: {
   graph?: string;
   graphEdit?: string;
 } = {
-  mode: process.env.OPENCODE_WEBUI_WORKFLOW_MODE,
-  graph: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH,
-  graphEdit: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT,
+  mode: clientVisibleFlag("MODE"),
+  graph: clientVisibleFlag("GRAPH"),
+  graphEdit: clientVisibleFlag("GRAPH_EDIT"),
 }): WorkflowGraphRollout {
   const workflowEnabled = resolveWorkflowModeEnabled(raw.mode);
   if (!workflowEnabled) {

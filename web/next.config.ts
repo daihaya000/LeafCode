@@ -35,6 +35,9 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_COMMIT: buildCommit,
     NEXT_PUBLIC_BUILD_COMMIT_DATE: buildCommitDate,
+    NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE: process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? "false",
+    NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? "false",
+    NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? "false",
   },
   serverExternalPackages: ["better-sqlite3"],
   // Production output lives outside the (OneDrive-synced) repo by default

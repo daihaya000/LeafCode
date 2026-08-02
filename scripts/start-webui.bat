@@ -17,6 +17,10 @@ goto :main
 
 :main
 setlocal EnableExtensions DisableDelayedExpansion
+rem Workflow Graph rollout defaults for the packaged EXE. Explicit false/0 overrides remain supported.
+if not defined OPENCODE_WEBUI_WORKFLOW_MODE set "OPENCODE_WEBUI_WORKFLOW_MODE=true"
+if not defined OPENCODE_WEBUI_WORKFLOW_GRAPH set "OPENCODE_WEBUI_WORKFLOW_GRAPH=true"
+if not defined OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT set "OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT=true"
 cd /d "%~dp0.."
 set "MESSAGE_DIR=%~dp0setup-messages"
 
