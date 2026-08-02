@@ -51,6 +51,7 @@ export function WorkflowGraphCanvas({
   taskId,
   graphRevision,
   onRefresh,
+  editingEnabled = true,
 }: {
   graph: WorkflowGraphDraft;
   states: readonly WorkflowGraphRuntimeState[];
@@ -62,6 +63,7 @@ export function WorkflowGraphCanvas({
   taskId: string;
   graphRevision: number;
   onRefresh: () => Promise<void>;
+  editingEnabled?: boolean;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const elements = useMemo(
@@ -88,7 +90,7 @@ export function WorkflowGraphCanvas({
     if (persistTimer.current) clearTimeout(persistTimer.current);
   }, []);
   const persistViewport = (_event: unknown, viewport: Viewport) => {
-    if (!isWorkflowGraphEditEnabled() || !moveStarted.current) return;
+    if (!editingEnabled || !isWorkflowGraphEditEnabled() || !moveStarted.current) return;
     moveStarted.current = false;
     if (persistTimer.current) clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(() => {

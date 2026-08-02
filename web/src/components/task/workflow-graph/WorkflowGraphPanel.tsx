@@ -82,6 +82,7 @@ export function WorkflowGraphPanel({
   graph,
   workflow,
   graphError,
+  graphEditAvailable = true,
   taskId,
   onOpenChat,
   onOpenDiff,
@@ -90,6 +91,7 @@ export function WorkflowGraphPanel({
   graph: WorkflowGraphDraft;
   workflow: WorkflowView;
   graphError?: string | null;
+  graphEditAvailable?: boolean;
   taskId: string;
   onOpenChat: (nodeId: string) => void;
   onOpenDiff: (nodeId: string) => void;
@@ -135,6 +137,7 @@ export function WorkflowGraphPanel({
           selectedEdgeId={selectedEdgeId}
           onRefresh={onRefresh}
           direction={direction}
+          editingEnabled={graphEditAvailable}
         />
         <div className="relative grid min-h-0 flex-1 gap-3 md:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem_20rem]">
           <WorkflowGraphCanvas
@@ -148,6 +151,7 @@ export function WorkflowGraphPanel({
             taskId={taskId}
             graphRevision={graph.graphRevision}
             onRefresh={onRefresh}
+            editingEnabled={graphEditAvailable}
           />
           <WorkflowGraphList
             graph={graph}
@@ -164,6 +168,7 @@ export function WorkflowGraphPanel({
             workflow={workflow}
             graphRevision={graph.graphRevision}
             mode={viewportMode}
+            editingEnabled={graphEditAvailable}
             onOpenChat={onOpenChat}
             onOpenDiff={onOpenDiff}
             onRefresh={onRefresh}

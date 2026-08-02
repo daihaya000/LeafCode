@@ -86,6 +86,7 @@ export function WorkflowGraphEditor({
   selectedEdgeId,
   onRefresh,
   direction,
+  editingEnabled = true,
 }: {
   taskId: string;
   graph: WorkflowGraphDraft;
@@ -93,6 +94,7 @@ export function WorkflowGraphEditor({
   selectedEdgeId: string | null;
   onRefresh: () => Promise<void>;
   direction: WorkflowGraphDirection;
+  editingEnabled?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -117,7 +119,7 @@ export function WorkflowGraphEditor({
     },
   }), [graph.graphRevision, ports, sourceId, targetId]);
 
-  if (!isWorkflowGraphEditEnabled()) return null;
+  if (!editingEnabled || !isWorkflowGraphEditEnabled()) return null;
 
   const mutate = async (operations: WorkflowGraphOperation[]) => {
     setPending(true);

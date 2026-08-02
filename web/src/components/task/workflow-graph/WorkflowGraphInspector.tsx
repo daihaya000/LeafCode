@@ -34,10 +34,12 @@ export function WorkflowGraphInspector({
   onRefresh,
   mode,
   graphRevision,
+  editingEnabled = true,
 }: {
   taskId: string;
   graphNode: WorkflowGraphNode | null;
   graphRevision?: number;
+  editingEnabled?: boolean;
   nodeRun: WorkflowNodeView | undefined;
   workflow: WorkflowView;
   onOpenChat: (nodeId: string) => void;
@@ -53,7 +55,7 @@ export function WorkflowGraphInspector({
   const [savingEdit, setSavingEdit] = useState(false);
   const previousNodeId = useRef<string | null>(null);
   const attempt: WorkflowAttemptView | undefined = nodeRun?.attempts.at(-1);
-  const editEnabled = graphRevision !== undefined && isWorkflowGraphEditEnabled();
+  const editEnabled = editingEnabled && graphRevision !== undefined && isWorkflowGraphEditEnabled();
 
   useEffect(() => {
     if (!graphNode || graphNode.id === previousNodeId.current) return;

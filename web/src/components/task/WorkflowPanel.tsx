@@ -92,11 +92,12 @@ export function WorkflowPanel({
 
   const graphState = useMemo(() => {
     if (!graphEnabled || !workflow?.run) return null;
-    if (graphDraft) return { graph: graphDraft, error: null };
+    if (graphDraft) return { graph: graphDraft, error: null, editable: true };
     if (!("templateKey" in workflow.run.definitionSnapshot)) {
       return {
         graph: null,
         error: "Execution SnapshotをGraphへ変換できないため、従来のWorkflow表示を使用しています。",
+        editable: false,
       };
     }
     try {
@@ -108,12 +109,14 @@ export function WorkflowPanel({
           createdAt: workflow.run.createdAt,
           updatedAt: workflow.run.updatedAt,
         }),
-        error: null,
+        error: "Graph Draftを取得できないため、互換Graphを読み取り専用で表示しています。",
+        editable: false,
       };
     } catch {
       return {
         graph: null,
         error: "互換Graphを生成できないため、従来のWorkflow表示を使用しています。",
+        editable: false,
       };
     }
   }, [graphDraft, graphEnabled, workflow]);
@@ -131,6 +134,7 @@ export function WorkflowPanel({
         graph={graphState.graph}
         workflow={workflow}
         graphError={graphState.error}
+        graphEditAvailable={graphState.editable}
         taskId={taskId}
         onOpenChat={onOpenChat}
         onOpenDiff={onOpenDiff}

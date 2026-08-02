@@ -152,6 +152,7 @@ describe("WorkflowPanel", () => {
     expect(screen.getByRole("complementary", { name: "Workflow Nodeと接続の一覧" })).toBeTruthy();
     expect(screen.getByText("接続一覧")).toBeTruthy();
     expect(screen.getByText("Review Gate")).toBeTruthy();
+    expect(screen.getByText("Graph Draftを取得できないため、互換Graphを読み取り専用で表示しています。")).toBeTruthy();
   });
 
   it("prefers the persisted Graph Draft when it is available", async () => {
