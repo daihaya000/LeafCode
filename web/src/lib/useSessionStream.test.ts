@@ -5,6 +5,7 @@ import {
   createInitialStreamState,
   filterCompactionContinueMessages,
   filterGoalLoopMessages,
+  HANG_RETRY_METADATA_KEY,
   MAX_ACTIVE_RECONCILE_MS,
   MESSAGE_REFETCH_TRUST_SSE_MS,
   nextReconcileDelayMs,
@@ -13,6 +14,7 @@ import {
   SESSION_COMMAND_TIMEOUT_MS,
   SESSION_HANG_TIMEOUT_MS,
   SESSION_MUTATION_TIMEOUT_MS,
+  markHangRetryBody,
   shouldTrustSseForMessages,
   stripGoalLoopJsonBlock,
   STUCK_BUSY_IDLE_STREAK,
@@ -700,6 +702,51 @@ describe("filterCompactionContinueMessages", () => {
     ];
 
     expect(filterCompactionContinueMessages(messages)).toEqual(messages);
+  });
+
+  it("drops a timeout retry marked by the WebUI metadata", () => {
+    const messages: MessageWithParts[] = [
+      {
+        info: { id: "retry", role: "user" },
+        parts: [
+          {
+            id: "retry-p1",
+            messageID: "retry",
+            type: "text",
+            text: "同じ処理",
+            metadata: { [HANG_RETRY_METADATA_KEY]: true },
+          },
+        ],
+      },
+    ];
+
+    expect(filterCompactionContinueMessages(messages)).toEqual([]);
+  });
+});
+
+describe("markHangRetryBody", () => {
+  it("marks only text parts and preserves the original body", () => {
+    const body = {
+      parts: [
+        { type: "text", text: "同じ処理", metadata: { existing: "keep" } },
+        { type: "file", mime: "text/plain", url: "data:text/plain,ok" },
+      ],
+    };
+
+    const marked = markHangRetryBody(body);
+    expect(marked.parts).toEqual([
+      {
+        type: "text",
+        text: "同じ処理",
+        metadata: { existing: "keep", [HANG_RETRY_METADATA_KEY]: true },
+      },
+      body.parts[1],
+    ]);
+    expect(body.parts[0]).toEqual({
+      type: "text",
+      text: "同じ処理",
+      metadata: { existing: "keep" },
+    });
   });
 });
 

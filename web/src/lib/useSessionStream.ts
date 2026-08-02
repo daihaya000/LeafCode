@@ -71,12 +71,36 @@ export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
 /** Stop a session that has remained busy for too long, then retry it once. */
 export const SESSION_HANG_TIMEOUT_MS = 5 * 60_000;
+/** Metadata written to the retry prompt so the UI can hide only that copy. */
+export const HANG_RETRY_METADATA_KEY = "webui_hang_retry";
 
 type AutoRetryRequest = {
   path: string;
   body: Record<string, unknown>;
   timeoutMs: number;
 };
+
+/** Clone a prompt body and mark its text parts as an automatic hang retry. */
+export function markHangRetryBody(body: Record<string, unknown>): Record<string, unknown> {
+  const parts = body.parts;
+  if (!Array.isArray(parts)) return body;
+  return {
+    ...body,
+    parts: parts.map((part) => {
+      if (!part || typeof part !== "object" || Array.isArray(part)) return part;
+      const value = part as Record<string, unknown>;
+      if (value.type !== "text") return part;
+      const metadata =
+        value.metadata && typeof value.metadata === "object" && !Array.isArray(value.metadata)
+          ? value.metadata
+          : {};
+      return {
+        ...value,
+        metadata: { ...metadata, [HANG_RETRY_METADATA_KEY]: true },
+      };
+    }),
+  };
+}
 
 /**
  * `session.command` is proxied by the BFF as a long-running synchronous
@@ -373,8 +397,8 @@ export function filterCompactionContinueMessages(
     return !message.parts.some(
       (part) =>
         part.type === "text" &&
-        part.synthetic === true &&
-        part.metadata?.compaction_continue === true,
+        ((part.synthetic === true && part.metadata?.compaction_continue === true) ||
+          part.metadata?.[HANG_RETRY_METADATA_KEY] === true),
     );
   });
 }
@@ -808,7 +832,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         try {
           await ocJson(request.path, directory, {
             method: "POST",
-            body: request.body,
+            body: markHangRetryBody(request.body),
             timeoutMs: request.timeoutMs,
           });
         } catch (error) {
