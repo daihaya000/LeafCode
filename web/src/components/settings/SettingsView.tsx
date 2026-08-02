@@ -101,6 +101,13 @@ type UpdateState =
   | { target: UpdateTarget; kind: "error"; message: string; detail?: string }
   | null;
 
+type UpdateAvailability = {
+  available: boolean;
+  current?: string;
+  latest?: string;
+  error?: string;
+};
+
 const RESTART_LABELS = {
   webui: "WebUI（フロントエンド）",
   opencode: "OpenCode（バックエンド）",
@@ -202,6 +209,10 @@ export function SettingsView() {
   );
   const [updating, setUpdating] = useState<UpdateTarget | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>(null);
+  const [updateAvailability, setUpdateAvailability] = useState<{
+    webui: UpdateAvailability;
+    opencode: UpdateAvailability;
+  } | null>(null);
   const [pendingRestart, setPendingRestart] = useState<"webui" | "opencode" | "all" | null>(
     null,
   );
@@ -358,7 +369,7 @@ export function SettingsView() {
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
-    const [h, p, r, o, a, host] = await Promise.allSettled([
+    const [h, p, r, o, a, host, updates] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
@@ -371,6 +382,10 @@ export function SettingsView() {
         const body = (await res.json().catch(() => ({}))) as { ok?: boolean };
         return { ok: res.ok && Boolean(body.ok) };
       }),
+      getJson<{
+        webui: UpdateAvailability;
+        opencode: UpdateAvailability;
+      }>("/api/updates/status"),
     ]);
     if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
     if (h.status === "fulfilled") setHealth(h.value);
@@ -383,6 +398,7 @@ export function SettingsView() {
     if (a.status === "fulfilled") setAccess(a.value);
     if (host.status === "fulfilled") setHostOk(host.value.ok);
     else setHostOk(false);
+    if (updates.status === "fulfilled") setUpdateAvailability(updates.value);
   }, []);
 
   useEffect(() => {
@@ -896,6 +912,22 @@ export function SettingsView() {
                         WebUI は <code>git pull --ff-only</code>、OpenCode CLI は upgrade API を実行します。
                       </p>
                     </div>
+                    {updateAvailability &&
+                      (updateAvailability.webui.available || updateAvailability.opencode.available) && (
+                      <div
+                        className="rounded-md border border-warning/30 bg-warning-bg px-2 py-1.5 text-[11px] leading-snug text-warning"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <p className="font-medium">新しいアップデートがあります</p>
+                        <p className="mt-0.5">
+                          {[updateAvailability.webui.available && "WebUI", updateAvailability.opencode.available && "OpenCode"]
+                            .filter(Boolean)
+                            .join(" / ")}
+                          の最新版を取得できます。
+                        </p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
