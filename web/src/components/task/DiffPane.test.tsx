@@ -123,6 +123,9 @@ describe("DiffPane directory race", () => {
         touchedPaths={new Set(["src/other.ts"])}
       />,
     );
+    fireEvent.change(screen.getByRole("combobox", { name: "表示するセッションの変更" }), {
+      target: { value: "external" },
+    });
     await screen.findByText("file.ts");
     expect(screen.getByText("セッション外?")).toBeTruthy();
   });

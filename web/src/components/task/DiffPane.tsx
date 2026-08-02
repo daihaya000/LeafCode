@@ -233,7 +233,7 @@ export function DiffPane({
   const [prAvailable, setPrAvailable] = useState<boolean | null>(null);
   const [sideBySide, setSideBySide] = useState(false);
   const [filter, setFilter] = useState<"all" | "tracked" | "untracked">("all");
-  const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
+  const [sessionFilter, setSessionFilter] = useState<SessionFilter>("current");
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [baseCompare, setBaseCompare] = useState("");
   const [busy, setBusy] = useState(false);
