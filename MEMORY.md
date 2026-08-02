@@ -4387,3 +4387,9 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - 判断理由: サーバー側環境変数だけでは静的にbuildされたクライアントのGraph判定に届かず、実機ログで3つのflagがfalseになっていたため。
 - 検証: host test 192件、Workflow関連Vitest 18件、TypeScriptチェック、diff checkを通過。コミット`c6d06e4`を確認。
 - 教訓: batchを機械置換するとWindowsのCRLFと文字列中の\r\n表現を混同しやすい。ASCII/CRLF検査だけでなく、対象パスの実テキストとhostテストを必ず確認する。
+
+## 2026-08-02: Workflow Graph validator shape hardening
+
+- 外部JSON境界のGraph validatorで、Node／Edgeの必須フィールド型を検証し、非文字列IDやnull Edgeを`.trim()`例外にせず`invalid_node_shape`／`invalid_edge_shape`として返すようにした。
+- malformed Graph regression testを追加。
+- 検証: Graph validation／repository／WorkflowPanel tests、TypeScript、Lint、diff checkを通過。

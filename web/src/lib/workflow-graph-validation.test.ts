@@ -232,6 +232,28 @@ describe("validateWorkflowGraph", () => {
     expect(issueCodes(duplicateConnection)).toContain("duplicate_port_connection");
   });
 
+  test("reports malformed Node and Edge shapes instead of throwing", () => {
+    const malformedNode = structuredClone(validGraph());
+    (malformedNode.nodes[0] as unknown as Record<string, unknown>).id = 42;
+    expect(() => validateWorkflowGraph(malformedNode)).not.toThrow();
+    expect(issueCodes(malformedNode)).toContain("invalid_node_id");
+
+    const malformedNodeShape = structuredClone(validGraph());
+    (malformedNodeShape.nodes[0] as unknown as Record<string, unknown>).label = 42;
+    expect(() => validateWorkflowGraph(malformedNodeShape)).not.toThrow();
+    expect(issueCodes(malformedNodeShape)).toContain("invalid_node_shape");
+
+    const nullNode = structuredClone(validGraph());
+    (nullNode as unknown as { nodes: unknown[] }).nodes = [null];
+    expect(() => validateWorkflowGraph(nullNode)).not.toThrow();
+    expect(issueCodes(nullNode as WorkflowGraphDraft)).toContain("invalid_node_shape");
+
+    const malformedEdge = structuredClone(validGraph());
+    (malformedEdge as unknown as { edges: unknown[] }).edges = [null];
+    expect(() => validateWorkflowGraph(malformedEdge)).not.toThrow();
+    expect(issueCodes(malformedEdge as WorkflowGraphDraft)).toContain("invalid_edge_shape");
+  });
+
   test("rejects missing required inputs and incompatible ports", () => {
     const missingInput = validGraph();
     missingInput.edges = missingInput.edges.filter((edge) => edge.id !== "implement-code");

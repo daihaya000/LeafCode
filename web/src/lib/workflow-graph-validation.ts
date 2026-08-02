@@ -32,7 +32,9 @@ export type WorkflowGraphValidationCode =
   | "duplicate_node_id"
   | "duplicate_edge_id"
   | "invalid_node_id"
+  | "invalid_node_shape"
   | "invalid_edge_id"
+  | "invalid_edge_shape"
   | "unsupported_node_type"
   | "invalid_node_config"
   | "node_config_too_large"
@@ -88,6 +90,10 @@ const edgeKinds = new Set(["dependency", "success", "feedback", "control"]);
 
 function byteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function getSchemaValidator(schema: AnySchema): ValidateFunction {
@@ -162,8 +168,22 @@ function validateNode(
   definition: WorkflowNodeRegistryDefinition | undefined,
   errors: WorkflowGraphValidationIssue[],
 ): void {
-  if (!node.id.trim()) {
-    errors.push(issue("invalid_node_id", "Node ID must not be empty", { nodeId: node.id }));
+  const nodeId = typeof node.id === "string" ? node.id : undefined;
+  if (!nodeId?.trim()) {
+    errors.push(issue("invalid_node_id", "Node ID must be a non-empty string", { nodeId }));
+  }
+  if (
+    typeof node.type !== "string" ||
+    !Number.isSafeInteger(node.typeVersion) ||
+    node.typeVersion < 1 ||
+    typeof node.label !== "string" ||
+    !node.label.trim() ||
+    typeof node.disabled !== "boolean" ||
+    !isRecord(node.position) ||
+    !isRecord(node.config)
+  ) {
+    errors.push(issue("invalid_node_shape", "Node has an invalid shape", { nodeId, path: "node" }));
+    return;
   }
   if (
     !Number.isFinite(node.position?.x) ||
@@ -175,7 +195,7 @@ function validateNode(
   ) {
     errors.push(
       issue("invalid_position", "Node position is outside the supported range", {
-        nodeId: node.id,
+        nodeId,
         path: "position",
       }),
     );
@@ -187,7 +207,7 @@ function validateNode(
   } catch {
     errors.push(
       issue("invalid_node_config", "Node config must be JSON serializable", {
-        nodeId: node.id,
+        nodeId,
         path: "config",
       }),
     );
@@ -196,7 +216,7 @@ function validateNode(
   if (configBytes > WORKFLOW_GRAPH_LIMITS.maxNodeConfigBytes) {
     errors.push(
       issue("node_config_too_large", "Node config exceeds 64 KiB", {
-        nodeId: node.id,
+        nodeId,
         path: "config",
       }),
     );
@@ -211,7 +231,7 @@ function validateNode(
           "invalid_node_config",
           schemaError.message ?? "Node config does not match its schema",
           {
-            nodeId: node.id,
+            nodeId,
             path: `config${schemaError.instancePath}`,
           },
         ),
@@ -227,7 +247,7 @@ function validateNode(
           issue(
             "permission_ceiling_exceeded",
             `${key} permission exceeds the ${definition.type} ceiling`,
-            { nodeId: node.id, path: `config.permissions.${key}` },
+            { nodeId, path: `config.permissions.${key}` },
           ),
         );
       }
@@ -280,13 +300,13 @@ function findCycleNode(
 }
 
 function validateTopology(
-  graph: WorkflowGraphDraft,
+  nodes: readonly WorkflowGraphNode[],
   definitions: ReadonlyMap<string, WorkflowNodeRegistryDefinition>,
   validEdges: readonly WorkflowGraphEdge[],
   errors: WorkflowGraphValidationIssue[],
   warnings: WorkflowGraphValidationIssue[],
 ): void {
-  const nodeIds = graph.nodes.map((node) => node.id);
+  const nodeIds = nodes.map((node) => node.id);
   const adjacency = new Map<string, Set<string>>(nodeIds.map((id) => [id, new Set()]));
   const indegree = new Map<string, number>(nodeIds.map((id) => [id, 0]));
   const incomingByPort = new Map<string, number>();
@@ -303,7 +323,7 @@ function validateTopology(
     }
   }
 
-  for (const node of graph.nodes) {
+  for (const node of nodes) {
     const definition = definitions.get(node.id);
     if (!definition) continue;
     for (const port of definition.inputs) {
@@ -381,7 +401,7 @@ function validateTopology(
     errors.push(issue("missing_terminal_path", "Graph has no reachable terminal path"));
   }
 
-  const writeNodes = graph.nodes.filter((node) => {
+  const writeNodes = nodes.filter((node) => {
     const permissions = (node.config as { permissions?: { write?: unknown } }).permissions;
     return definitions.has(node.id) && permissions?.write === true;
   });
@@ -447,36 +467,62 @@ export function validateWorkflowGraph(
   const nodeById = new Map<string, WorkflowGraphNode>();
   const definitions = new Map<string, WorkflowNodeRegistryDefinition>();
   for (const node of graph.nodes) {
-    if (nodeById.has(node.id)) {
-      errors.push(issue("duplicate_node_id", `Duplicate Node ID ${node.id}`, { nodeId: node.id }));
+    if (!isRecord(node)) {
+      errors.push(issue("invalid_node_shape", "Node must be an object", { path: "nodes" }));
       continue;
     }
-    nodeById.set(node.id, node);
-    const definition = registry.get(node.type, node.typeVersion);
+    const nodeValue = node as unknown as WorkflowGraphNode;
+    const nodeId = typeof nodeValue.id === "string" ? nodeValue.id : undefined;
+    if (!nodeId?.trim()) {
+      validateNode(nodeValue, undefined, errors);
+      continue;
+    }
+    if (nodeById.has(nodeId)) {
+      errors.push(issue("duplicate_node_id", `Duplicate Node ID ${nodeId}`, { nodeId }));
+      continue;
+    }
+    nodeById.set(nodeId, nodeValue);
+    const definition = registry.get(nodeValue.type, nodeValue.typeVersion);
     if (!definition && !options.allowUnsupported) {
       errors.push(
         issue(
           "unsupported_node_type",
-          `Unsupported Node type ${node.type}@${node.typeVersion}`,
-          { nodeId: node.id },
+          `Unsupported Node type ${nodeValue.type}@${nodeValue.typeVersion}`,
+          { nodeId },
         ),
       );
     }
-    if (definition) definitions.set(node.id, definition);
-    validateNode(node, definition, errors);
+    if (definition) definitions.set(nodeId, definition);
+    validateNode(nodeValue, definition, errors);
   }
 
   const edgeIds = new Set<string>();
   const validEdges: WorkflowGraphEdge[] = [];
   for (const edge of graph.edges) {
-    if (!edge.id.trim()) {
-      errors.push(issue("invalid_edge_id", "Edge ID must not be empty", { edgeId: edge.id }));
-    }
-    if (edgeIds.has(edge.id)) {
-      errors.push(issue("duplicate_edge_id", `Duplicate Edge ID ${edge.id}`, { edgeId: edge.id }));
+    if (!isRecord(edge)) {
+      errors.push(issue("invalid_edge_shape", "Edge must be an object", { path: "edges" }));
       continue;
     }
-    edgeIds.add(edge.id);
+    const edgeId = typeof edge.id === "string" ? edge.id : undefined;
+    if (!edgeId?.trim()) {
+      errors.push(issue("invalid_edge_id", "Edge ID must be a non-empty string", { edgeId }));
+      continue;
+    }
+    if (
+      typeof edge.source !== "string" ||
+      typeof edge.sourceHandle !== "string" ||
+      typeof edge.target !== "string" ||
+      typeof edge.targetHandle !== "string" ||
+      typeof edge.kind !== "string"
+    ) {
+      errors.push(issue("invalid_edge_shape", "Edge has an invalid shape", { edgeId, path: "edge" }));
+      continue;
+    }
+    if (edgeIds.has(edgeId)) {
+      errors.push(issue("duplicate_edge_id", `Duplicate Edge ID ${edgeId}`, { edgeId }));
+      continue;
+    }
+    edgeIds.add(edgeId);
     if (edge.source === edge.target) {
       errors.push(issue("self_edge", "Self edges are not allowed", { edgeId: edge.id }));
       continue;
@@ -521,7 +567,7 @@ export function validateWorkflowGraph(
     validEdges.push(edge);
   }
 
-  validateTopology(graph, definitions, validEdges, errors, warnings);
+  validateTopology([...nodeById.values()], definitions, validEdges, errors, warnings);
 
   return { valid: errors.length === 0, errors, warnings };
 }
