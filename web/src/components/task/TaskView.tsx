@@ -521,8 +521,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [queuedAutoSend, setQueuedAutoSend] = useState(false);
   const nextQueueIdRef = useRef(1);
   const [taskActionBusy, setTaskActionBusy] = useState<
-    "remove" | "session" | "restore" | null
+    "remove" | "session" | "restore" | "workflow" | null
   >(null);
+  const [workflowConfirmOpen, setWorkflowConfirmOpen] = useState(false);
   const [pendingTaskDelete, setPendingTaskDelete] = useState<{
     id: string;
     title: string;
@@ -2534,6 +2535,31 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [task, taskId, router, taskActionBusy]);
 
+  const convertToWorkflow = useCallback(async () => {
+    if (!task || taskActionBusy) return;
+    setTaskActionBusy("workflow");
+    try {
+      const current = await getJson<{ workflow: { workspaceRevision: number; run: unknown } }>(
+        `/api/tasks/${encodeURIComponent(task.id)}/workflow`,
+      );
+      if (current.workflow.run) throw new Error("このTaskはすでにWorkflowモードです");
+      await sendJson("POST", `/api/tasks/${encodeURIComponent(task.id)}/workflow`, {
+        workspaceRevision: current.workflow.workspaceRevision,
+        goal: task.title,
+        acceptance: [],
+        constraints: [],
+      });
+      setWorkflowConfirmOpen(false);
+      await refreshTask();
+      setViewTab("workflow");
+      notifyTasksChanged();
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : "Workflowへの変換に失敗しました");
+    } finally {
+      setTaskActionBusy(null);
+    }
+  }, [refreshTask, task, taskActionBusy]);
+
   const ensureSession = useCallback(async () => {
     if (!task || taskActionBusy) return;
     setTaskActionBusy("session");
@@ -2795,6 +2821,15 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
 
     const taskItems: KebabItem[] = [
+      ...(task?.executionMode !== "workflow"
+        ? [{
+            id: "convert-workflow",
+            label: "Workflowモードへ変換",
+            icon: <GitGraph className="h-4 w-4" />,
+            onSelect: () => setWorkflowConfirmOpen(true),
+            disabled: working || taskActionBusy !== null,
+          }]
+        : []),
       {
         id: "copy-path",
         label: copied ? "コピーしました" : "作業パスをコピー",
@@ -2872,7 +2907,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [
     isMd,
     task?.sessionId,
+    task?.executionMode,
     working,
+    taskActionBusy,
     copied,
     showDiff,
     sidePanel,
@@ -2882,6 +2919,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     toggleSidePanel,
     removeTask,
     lastRevertMessageId,
+    setWorkflowConfirmOpen,
   ]);
 
   const openFileInDiff = useCallback(
@@ -3308,6 +3346,37 @@ export function TaskView({ taskId }: { taskId: string }) {
               variant="ghost"
               size="sm"
               onClick={() => setPendingTaskDelete(null)}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {workflowConfirmOpen && task && (
+        <div
+          role="alertdialog"
+          aria-label="Workflow変換の確認"
+          className="shrink-0 border-b border-primary/30 bg-primary/5 px-4 py-3 text-sm text-text"
+        >
+          <p>
+            タスク「{task.title}」をWorkflowモードへ変換しますか？
+            <br />
+            Implement UI、Code Review、Visual Judgeの固定フローを作成します。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              busy={taskActionBusy === "workflow"}
+              onClick={() => void convertToWorkflow()}
+            >
+              Workflowへ変換
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setWorkflowConfirmOpen(false)}
             >
               キャンセル
             </Button>
