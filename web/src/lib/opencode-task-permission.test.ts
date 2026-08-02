@@ -11,7 +11,10 @@ vi.mock("@/lib/oc-server", () => ({
   ocServer,
 }));
 
-import { setSessionTaskPermission } from "./opencode-task-permission";
+import {
+  applyWorkflowSessionPermissions,
+  setSessionTaskPermission,
+} from "./opencode-task-permission";
 
 describe("setSessionTaskPermission", () => {
   beforeEach(() => {
@@ -53,6 +56,41 @@ describe("setSessionTaskPermission", () => {
     await expect(
       setSessionTaskPermission("C:\\worktree", "   ", "deny"),
     ).rejects.toMatchObject({ status: 400 });
+    expect(ocServer).not.toHaveBeenCalled();
+  });
+
+  it("applies reviewer denies in one session-scoped PATCH", async () => {
+    await applyWorkflowSessionPermissions("C:\\worktree", "reviewer", {
+      write: false,
+      subagent: false,
+      browser: false,
+    });
+
+    expect(ocServer).toHaveBeenCalledWith("C:\\worktree", "/session/reviewer", {
+      method: "PATCH",
+      body: {
+        permission: [
+          { permission: "edit", pattern: "*", action: "deny" },
+          { permission: "write", pattern: "*", action: "deny" },
+          { permission: "patch", pattern: "*", action: "deny" },
+          { permission: "git", pattern: "*", action: "deny" },
+          { permission: "bash", pattern: "*", action: "deny" },
+          { permission: "shell", pattern: "*", action: "deny" },
+          { permission: "terminal", pattern: "*", action: "deny" },
+          { permission: "task", pattern: "*", action: "deny" },
+          { permission: "skill", pattern: "*", action: "deny" },
+          { permission: "browser_*", pattern: "*", action: "deny" },
+        ],
+      },
+    });
+  });
+
+  it("does not issue a no-op PATCH when all capabilities are allowed", async () => {
+    await applyWorkflowSessionPermissions("C:\\worktree", "implementer", {
+      write: true,
+      subagent: true,
+      browser: true,
+    });
     expect(ocServer).not.toHaveBeenCalled();
   });
 });
