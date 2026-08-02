@@ -131,6 +131,7 @@ test("creates workflow tables and prevents multiple active runs or attempts", ()
   ]) {
     expect(tableColumns(table).size).toBeGreaterThan(0);
   }
+  expect(tableColumns("workflow_node_attempts")).toContain("usage_snapshot");
 
   const database = getDb();
   database

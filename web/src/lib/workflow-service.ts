@@ -60,10 +60,12 @@ export type WorkflowAttemptView = {
   result: unknown;
   error: string;
   promptMarker: string | null;
+  lastMessageId: string | null;
   promptTemplateVersion: string | null;
   outputSchemaVersion: string | null;
   inputHash: string | null;
   inputTruncated: unknown;
+  usageSnapshot: unknown;
   outputMode: string;
   dispatchStatus: string;
   revision: number;
@@ -138,10 +140,12 @@ function toAttemptView(row: WorkflowNodeAttemptRow): WorkflowAttemptView {
     result: parseJson(row.result, null),
     error: row.error,
     promptMarker: row.prompt_marker,
+    lastMessageId: row.last_message_id,
     promptTemplateVersion: row.prompt_template_version,
     outputSchemaVersion: row.output_schema_version,
     inputHash: row.input_hash,
     inputTruncated: parseJson(row.input_truncated, { omittedCount: 0 }),
+    usageSnapshot: parseJson(row.usage_snapshot, {}),
     outputMode: row.output_mode,
     dispatchStatus: row.dispatch_status,
     revision: row.revision,

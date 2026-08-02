@@ -25,7 +25,7 @@ process.env.APPDATA = testDataDir;
 
 const { bindSession, createWorkspace, getDb, getWorkspace, upsertProject } = await import("./db");
 const { createWorkflow, getWorkflow, updateWorkflow } = await import("./workflow-service");
-const { runWorkflowSchedulerTick, stopWorkflowSchedulerForTests } = await import("./workflow-scheduler");
+const { runWorkflowSchedulerTick, startWorkflowScheduler, stopWorkflowSchedulerForTests } = await import("./workflow-scheduler");
 
 afterAll(() => {
   stopWorkflowSchedulerForTests();
@@ -77,12 +77,12 @@ describe("workflow scheduler", () => {
     expect(attempt.dispatchStatus).toBe("awaiting_result");
     expect(attempt.promptMarker).toContain("workflow-");
     expect(attempt.inputHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(ocServer).toHaveBeenCalledTimes(1);
-    expect(ocServer.mock.calls[0]?.[1]).toBe("/session/ses-scheduler-send/prompt_async");
+    expect(ocServer).toHaveBeenCalledTimes(2);
+    expect(ocServer.mock.calls[1]?.[1]).toBe("/session/ses-scheduler-send/prompt_async");
 
     await runWorkflowSchedulerTick();
-    expect(ocServer).toHaveBeenCalledTimes(2);
-    expect(ocServer.mock.calls[1]?.[1]).toBe("/session/ses-scheduler-send/message");
+    expect(ocServer).toHaveBeenCalledTimes(3);
+    expect(ocServer.mock.calls[2]?.[1]).toBe("/session/ses-scheduler-send/message");
     updateWorkflow({
       workspaceId: "scheduler-send",
       action: "stop",
@@ -109,5 +109,39 @@ describe("workflow scheduler", () => {
     expect(ocServer).toHaveBeenCalledTimes(1);
     await runWorkflowSchedulerTick();
     expect(ocServer).toHaveBeenCalledTimes(1);
+  });
+
+  test("reads only the post-dispatch result and stores usage snapshot", async () => {
+    const revision = setup("scheduler-usage");
+    createWorkflow({
+      workspaceId: "scheduler-usage",
+      workspaceRevision: revision,
+      taskContext: { goal: "Build UI", acceptance: [], constraints: [] },
+    });
+    updateWorkflow({ workspaceId: "scheduler-usage", action: "start", workflowRevision: 0 });
+    ocServer.mockResolvedValueOnce(undefined);
+    await runWorkflowSchedulerTick();
+    const attempt = getWorkflow("scheduler-usage")!.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    getDb().prepare("UPDATE workflow_node_attempts SET last_message_id = 'old' WHERE id = ?").run(attempt.id);
+    ocServer.mockResolvedValueOnce([
+      { info: { id: "old", role: "assistant", time: { completed: 1 }, tokens: { total: 1, input: 1, output: 0, reasoning: 0 } }, parts: [{ type: "text", text: "old" }] },
+      { info: { id: "result-1", role: "assistant", time: { created: 10, completed: 30 }, cost: 0.25, tokens: { total: 12, input: 4, output: 6, reasoning: 2 } }, parts: [{ type: "text", text: `<!-- webui-workflow-result:${attempt.promptMarker} -->\n\`\`\`json\n{"status":"progress","summary":"partial","evidence":[]}\n\`\`\`` }] },
+    ]);
+    await runWorkflowSchedulerTick();
+    const updated = getWorkflow("scheduler-usage")!.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    expect(updated.status).toBe("succeeded");
+    expect(updated.lastMessageId).toBe("result-1");
+    expect(updated.usageSnapshot).toMatchObject({ tokens: 12, cost: 0.25, durationMs: 20 });
+    updateWorkflow({ workspaceId: "scheduler-usage", action: "stop", workflowRevision: getWorkflow("scheduler-usage")!.run!.revision });
+  });
+
+  test("pauses interrupted dispatches on scheduler restart", async () => {
+    const revision = setup("scheduler-restart");
+    createWorkflow({ workspaceId: "scheduler-restart", workspaceRevision: revision, taskContext: { goal: "Build UI", acceptance: [], constraints: [] } });
+    updateWorkflow({ workspaceId: "scheduler-restart", action: "start", workflowRevision: 0 });
+    getDb().prepare("UPDATE workflow_node_attempts SET status = 'dispatching' WHERE id = (SELECT a.id FROM workflow_node_attempts a JOIN workflow_node_runs n ON n.id = a.node_run_id WHERE n.workflow_run_id = (SELECT id FROM workflow_runs WHERE workspace_id = ?))").run("scheduler-restart");
+    startWorkflowScheduler();
+    expect(getWorkflow("scheduler-restart")!.run?.pauseReason).toBe("scheduler_restart");
+    stopWorkflowSchedulerForTests();
   });
 });

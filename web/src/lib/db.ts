@@ -91,6 +91,7 @@ export type WorkflowNodeAttemptRow = {
   start_head: string | null;
   finish_head: string | null;
   dirty_fingerprint: string | null;
+  usage_snapshot: string;
   revision: number;
   started_at: string | null;
   finished_at: string | null;
@@ -237,6 +238,7 @@ export function getDb(): Database.Database {
       start_head TEXT,
       finish_head TEXT,
       dirty_fingerprint TEXT,
+      usage_snapshot TEXT NOT NULL DEFAULT '{}',
       revision INTEGER NOT NULL DEFAULT 0,
       started_at TEXT,
       finished_at TEXT,
@@ -322,6 +324,12 @@ export function getDb(): Database.Database {
     .all() as { name: string }[];
   if (!sessionBindingColumns.some((column) => column.name === "favorite")) {
     db.exec("ALTER TABLE session_bindings ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");
+  }
+  const workflowAttemptColumns = db
+    .prepare("PRAGMA table_info(workflow_node_attempts)")
+    .all() as { name: string }[];
+  if (!workflowAttemptColumns.some((column) => column.name === "usage_snapshot")) {
+    db.exec("ALTER TABLE workflow_node_attempts ADD COLUMN usage_snapshot TEXT NOT NULL DEFAULT '{}'");
   }
   return db;
 }

@@ -10,6 +10,7 @@ import { isWorkflowModeEnabled } from "./workflow-feature";
 import { workflowArtifactsForPrompt } from "./workflow-artifacts";
 
 const SCHEDULER_INTERVAL_MS = 2_500;
+const IMPLEMENT_ATTEMPT_LIMIT = 10;
 let schedulerStarted = false;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let schedulerTicking = false;
@@ -79,6 +80,63 @@ function extractWorkflowResult(
     }
   }
   return null;
+}
+
+function messagesAfterBoundary(messages: MessageWithParts[], lastMessageId: string | null): MessageWithParts[] | null {
+  if (!lastMessageId) return messages;
+  const index = messages.findIndex((message) => message.info.id === lastMessageId);
+  return index < 0 ? null : messages.slice(index + 1);
+}
+
+function usageSnapshot(messages: MessageWithParts[]): string {
+  const assistant = messages.filter((message) => message.info.role === "assistant");
+  const tokens = assistant.reduce((sum, message) => sum + (message.info.tokens?.total ?? 0), 0);
+  const cost = assistant.reduce((sum, message) => sum + (message.info.cost ?? 0), 0);
+  const times = assistant.flatMap((message) => {
+    const time = message.info.time;
+    return time?.created && time.completed ? [time.created, time.completed] : [];
+  });
+  return JSON.stringify({
+    messageCount: assistant.length,
+    tokens,
+    cost,
+    durationMs: times.length ? Math.max(...times) - Math.min(...times) : 0,
+    capturedAt: new Date().toISOString(),
+  });
+}
+
+async function workspaceMatchesImplementSubject(workspaceId: string, workflowRunId: string): Promise<boolean> {
+  const expected = getDb().prepare(
+    `SELECT a.dirty_fingerprint FROM workflow_node_attempts a
+     JOIN workflow_node_runs n ON n.id = a.node_run_id
+     WHERE n.workflow_run_id = ? AND n.node_key = 'implement_ui' AND a.attempt_no = n.latest_attempt_no`,
+  ).get(workflowRunId) as { dirty_fingerprint: string | null } | undefined;
+  if (!expected?.dirty_fingerprint) return false;
+  const workspace = getWorkspace(workspaceId);
+  if (!workspace) return false;
+  const current = await readWorkflowWorkspaceSnapshot(workspace.absolute_path);
+  return current.fingerprint === expected.dirty_fingerprint;
+}
+
+function recoverInterruptedAttempts(): void {
+  const now = new Date().toISOString();
+  getDb().transaction(() => {
+    const interrupted = getDb().prepare(
+      `SELECT DISTINCT r.id FROM workflow_runs r
+       JOIN workflow_node_runs n ON n.workflow_run_id = r.id
+       JOIN workflow_node_attempts a ON a.node_run_id = n.id
+       WHERE r.status = 'running' AND a.status IN ('creating_session', 'dispatching')`,
+    ).all() as Array<{ id: string }>;
+    getDb().prepare(
+      `UPDATE workflow_node_attempts SET status = 'failed', dispatch_status = 'unknown_delivery', error = 'Scheduler restart requires a manual retry', finished_at = ?, revision = revision + 1
+       WHERE status IN ('creating_session', 'dispatching')`,
+    ).run(now);
+    for (const run of interrupted) {
+      getDb().prepare(
+        `UPDATE workflow_runs SET status = 'paused', pause_reason = 'scheduler_restart', error = 'An in-flight Attempt was interrupted by scheduler restart', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'`,
+      ).run(now, run.id);
+    }
+  })();
 }
 
 async function activateReviewers(
@@ -207,19 +265,39 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
     return;
   }
   if (!Array.isArray(messages)) return;
-  const result = extractWorkflowResult(messages, attempt.prompt_marker, info.node_key);
+  const boundedMessages = messagesAfterBoundary(messages, attempt.last_message_id);
+  if (!boundedMessages) return;
+  const result = extractWorkflowResult(boundedMessages, attempt.prompt_marker, info.node_key);
   if (!result) return;
+  const resultMessage = [...boundedMessages].reverse().find((message) => message.info.role === "assistant" && message.info.id);
   const now = new Date().toISOString();
+  if ((info.node_key === "code_review" || info.node_key === "visual_judge") && !(await workspaceMatchesImplementSubject(info.workspace_id, info.workflow_run_id))) {
+    return pauseWorkflowForAttempt(attempt.id, "workspace_drift", "Workspace changed since Implement completed.");
+  }
+  let finishHead: string | null = null;
+  let finishFingerprint: string | null = null;
+  if (info.node_key === "implement_ui") {
+    const snapshot = getWorkspace(info.workspace_id);
+    if (snapshot) {
+      const current = await readWorkflowWorkspaceSnapshot(snapshot.absolute_path);
+      finishHead = current.head;
+      finishFingerprint = current.fingerprint;
+    }
+  }
   const updated = getDb()
     .prepare(
       `UPDATE workflow_node_attempts
-       SET status = 'succeeded', outcome = ?, result = ?, dispatch_status = 'result_received',
+       SET status = 'succeeded', outcome = ?, result = ?, last_message_id = ?, usage_snapshot = ?, finish_head = COALESCE(?, finish_head), dirty_fingerprint = COALESCE(?, dirty_fingerprint), dispatch_status = 'result_received',
            finished_at = ?, revision = revision + 1
        WHERE id = ? AND status = 'running'`,
     )
     .run(
       JSON.stringify({ kind: info.node_key === "implement_ui" ? "implement" : "review", value: info.node_key === "implement_ui" ? (result as { status: string }).status : (result as { verdict: string }).verdict }),
       JSON.stringify(result),
+      resultMessage?.info.id ?? null,
+      usageSnapshot(boundedMessages),
+      finishHead,
+      finishFingerprint,
       now,
       attempt.id,
     );
@@ -306,9 +384,30 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
   if (node.node_key === "visual_judge" && visualArtifacts.length === 0) {
     return pauseWorkflowForAttempt(attempt.id, "visual_artifact_missing", "Visual Judgeに利用可能なスクリーンショットがありません。明示的なartifact登録またはSkipが必要です。");
   }
+  if (node.node_key === "code_review" || node.node_key === "visual_judge") {
+    if (!(await workspaceMatchesImplementSubject(workspace.id, node.workflow_run_id))) {
+      return pauseWorkflowForAttempt(attempt.id, "workspace_drift", "Workspace changed since Implement completed.");
+    }
+  }
+  try {
+    const previousMessages = await ocServer<MessageWithParts[]>(
+      workspace.absolute_path,
+      `/session/${encodeURIComponent(attempt.opencode_session_id)}/message`,
+      { timeoutMs: 10_000 },
+    );
+    const lastMessageId = Array.isArray(previousMessages)
+      ? previousMessages.at(-1)?.info.id ?? null
+      : null;
+    getDb()
+      .prepare("UPDATE workflow_node_attempts SET last_message_id = ? WHERE id = ? AND status = 'dispatching'")
+      .run(lastMessageId, attempt.id);
+  } catch (error) {
+    return pauseWorkflowForAttempt(attempt.id, "unknown_delivery", error instanceof Error ? error.message : String(error));
+  }
   let prompt;
   try {
     const snapshot = await readWorkflowWorkspaceSnapshot(workspace.absolute_path);
+    getDb().prepare("UPDATE workflow_node_attempts SET start_head = ?, dirty_fingerprint = ? WHERE id = ? AND status = 'dispatching'").run(snapshot.head, snapshot.fingerprint, attempt.id);
     prompt = buildWorkflowPrompt({
       runId: node.workflow_run_id,
       nodeKey: node.node_key,
@@ -399,6 +498,11 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
     }
     for (const attempt of runningAttempts()) await processRunningAttempt(attempt);
     for (const attempt of readyAttempts()) {
+      const node = getDb().prepare("SELECT n.node_key FROM workflow_node_runs n WHERE n.id = ?").get(attempt.node_run_id) as { node_key: string } | undefined;
+      if (node?.node_key === "implement_ui" && attempt.attempt_no > IMPLEMENT_ATTEMPT_LIMIT) {
+        if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "max_attempts", `Implement Attempt limit (${IMPLEMENT_ATTEMPT_LIMIT}) exceeded.`);
+        continue;
+      }
       if (claimAttempt(attempt)) await dispatchAttempt({ ...attempt, status: "dispatching" });
     }
   } finally {
@@ -409,6 +513,7 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
 export function startWorkflowScheduler(): void {
   if (schedulerStarted) return;
   schedulerStarted = true;
+  recoverInterruptedAttempts();
   schedulerTimer = setInterval(() => {
     void runWorkflowSchedulerTick();
   }, SCHEDULER_INTERVAL_MS);
