@@ -162,19 +162,20 @@ async function activateReviewers(
       });
       bindSession(workspaceId, session.id, node.node_key);
       const now = new Date().toISOString();
+      const nextAttemptNo = node.latest_attempt_no + 1;
       database
         .prepare(
-          `UPDATE workflow_node_runs SET latest_attempt_no = 1, updated_at = ?
-           WHERE id = ? AND latest_attempt_no = 0`,
+          `UPDATE workflow_node_runs SET latest_attempt_no = ?, updated_at = ?
+           WHERE id = ? AND latest_attempt_no = ?`,
         )
-        .run(now, node.id);
+        .run(nextAttemptNo, now, node.id, node.latest_attempt_no);
       database
         .prepare(
           `INSERT INTO workflow_node_attempts
            (id, node_run_id, attempt_no, opencode_session_id, status, config_snapshot, output_mode, dispatch_status)
-           VALUES (?, ?, 1, ?, 'ready', ?, 'fenced_json', 'not_sent')`,
+           VALUES (?, ?, ?, ?, 'ready', ?, 'fenced_json', 'not_sent')`,
         )
-        .run(crypto.randomUUID(), node.id, session.id, node.config);
+        .run(crypto.randomUUID(), node.id, nextAttemptNo, session.id, node.config);
     }),
   );
 }
@@ -496,8 +497,12 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
         .run(now);
       return;
     }
+    // Snapshot ready work before result processing. Reviewer Attempts created
+    // by a completed Implement must wait for the next tick so Visual Judge
+    // artifacts can be registered before dispatch.
+    const ready = readyAttempts();
     for (const attempt of runningAttempts()) await processRunningAttempt(attempt);
-    for (const attempt of readyAttempts()) {
+    for (const attempt of ready) {
       const node = getDb().prepare("SELECT n.node_key FROM workflow_node_runs n WHERE n.id = ?").get(attempt.node_run_id) as { node_key: string } | undefined;
       if (node?.node_key === "implement_ui" && attempt.attempt_no > IMPLEMENT_ATTEMPT_LIMIT) {
         if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "max_attempts", `Implement Attempt limit (${IMPLEMENT_ATTEMPT_LIMIT}) exceeded.`);
