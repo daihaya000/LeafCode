@@ -93,6 +93,12 @@ export function WorkflowPanel({
   const graphState = useMemo(() => {
     if (!graphEnabled || !workflow?.run) return null;
     if (graphDraft) return { graph: graphDraft, error: null };
+    if (!("templateKey" in workflow.run.definitionSnapshot)) {
+      return {
+        graph: null,
+        error: "Execution SnapshotをGraphへ変換できないため、従来のWorkflow表示を使用しています。",
+      };
+    }
     try {
       return {
         graph: synthesizeWorkflowGraph(workflow.run.definitionSnapshot, {

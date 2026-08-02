@@ -26,6 +26,7 @@ const {
   WorkflowServiceError,
 } = await import("./workflow-service");
 const { recordReviewGateAttempt } = await import("./workflow-control");
+const { getOrMaterializeWorkflowGraph } = await import("./workflow-graph-repository");
 
 afterAll(() => {
   getDb().close();
@@ -183,6 +184,29 @@ describe("workflow service", () => {
     });
     expect(reattached.executionMode).toBe("workflow");
     expect(reattached.run?.status).toBe("paused");
+  });
+
+  test("publishes the Graph Draft as an immutable v2 Execution Snapshot at Run start", () => {
+    const workspaceRevision = setupWorkspace("ws-snapshot-start", "ses-snapshot-start");
+    const created = createWorkflow({
+      workspaceId: "ws-snapshot-start",
+      workspaceRevision,
+      taskContext: { goal: "goal", acceptance: [], constraints: [] },
+    });
+    const draft = getOrMaterializeWorkflowGraph("ws-snapshot-start")!;
+    const started = updateWorkflow({
+      workspaceId: "ws-snapshot-start",
+      action: "start",
+      workflowRevision: created.run!.revision,
+      workspaceRevision: created.workspaceRevision,
+    });
+    expect(started.run?.definitionSnapshot).toMatchObject({
+      schemaVersion: "workflow-execution-v2",
+      sourceGraphId: draft.id,
+      sourceGraphRevision: draft.graphRevision,
+    });
+    expect((started.run?.definitionSnapshot as { presentation?: unknown }).presentation).toBeDefined();
+    expect(started.run?.status).toBe("running");
   });
 
   test("updates node config and creates a new retry attempt without overwriting history", () => {

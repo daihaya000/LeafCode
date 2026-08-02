@@ -5,6 +5,11 @@ import {
   type WorkflowNodeRunRow,
   type WorkflowRunRow,
 } from "./db";
+import { readWorkflowGraphByWorkspace } from "./workflow-graph-repository";
+import {
+  createWorkflowExecutionSnapshot,
+  WorkflowExecutionSnapshotError,
+} from "./workflow-execution-snapshot";
 import {
   assertValidWorkflowNodeConfig,
   validateWorkflowNodeKind,
@@ -17,6 +22,7 @@ import {
   type WorkflowNodeKey,
   type WorkflowTaskContext,
 } from "./workflow-types";
+import type { WorkflowExecutionSnapshot } from "./workflow-graph-types";
 
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "stopped", "detached"] as const;
 const IN_FLIGHT_ATTEMPT_STATUSES = ["creating_session", "dispatching", "running"] as const;
@@ -35,7 +41,7 @@ export type WorkflowRunView = {
   id: string;
   workspaceId: string;
   templateKey: string;
-  definitionSnapshot: WorkflowDefinitionSnapshot;
+  definitionSnapshot: WorkflowDefinitionSnapshot | WorkflowExecutionSnapshot;
   taskContextSnapshot: WorkflowTaskContext;
   status: string;
   cycleCount: number;
@@ -109,7 +115,7 @@ function toRunView(row: WorkflowRunRow): WorkflowRunView {
     id: row.id,
     workspaceId: row.workspace_id,
     templateKey: row.template_key,
-    definitionSnapshot: parseJson(row.definition_snapshot, {}) as WorkflowDefinitionSnapshot,
+    definitionSnapshot: parseJson(row.definition_snapshot, {}) as WorkflowDefinitionSnapshot | WorkflowExecutionSnapshot,
     taskContextSnapshot: parseJson(row.task_context_snapshot, {
       goal: "",
       acceptance: [],
@@ -498,12 +504,30 @@ export function updateWorkflow(input: {
     }
     if (input.action === "start") {
       if (run.status !== "ready") throw new WorkflowServiceError("Workflow is not ready", 409);
+      const draft = readWorkflowGraphByWorkspace(input.workspaceId);
+      let publishedSnapshot: string | undefined;
+      if (draft) {
+        const workspaceRevision = requireExpectedRevision(input.workspaceRevision, "workspaceRevision");
+        if (workspace.revision !== workspaceRevision) {
+          throw new WorkflowServiceError("workspace revision conflict", 409);
+        }
+        try {
+          publishedSnapshot = JSON.stringify(createWorkflowExecutionSnapshot(draft));
+        } catch (error) {
+          if (error instanceof WorkflowExecutionSnapshotError) {
+            throw new WorkflowServiceError(error.message, 409);
+          }
+          throw error;
+        }
+      }
       const updated = database
         .prepare(
-          `UPDATE workflow_runs SET status = 'running', revision = revision + 1, updated_at = ?
+          `UPDATE workflow_runs SET status = 'running',
+             definition_snapshot = COALESCE(?, definition_snapshot),
+             revision = revision + 1, updated_at = ?
            WHERE id = ? AND status = 'ready' AND revision = ?`,
         )
-        .run(new Date().toISOString(), run.id, input.workflowRevision);
+        .run(publishedSnapshot ?? null, new Date().toISOString(), run.id, input.workflowRevision);
       if (updated.changes !== 1) throw new WorkflowServiceError("workflow revision conflict", 409);
       return;
     }
