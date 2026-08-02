@@ -47,6 +47,10 @@ describe("WorkflowGraphEditor", () => {
       expect.objectContaining({ expectedGraphRevision: graph.graphRevision, operations: expect.any(Array) }),
     ));
     expect(mocks.sendJson.mock.calls[0]?.[2].operations).toHaveLength(2);
+    expect(mocks.sendJson.mock.calls[0]?.[2].operations[1]).toMatchObject({
+      op: "add_edge",
+      edge: { sourceHandle: "result", targetHandle: "implementation", kind: "dependency" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "選択Edgeを削除" }));
     await waitFor(() => expect(mocks.sendJson).toHaveBeenCalledTimes(2));

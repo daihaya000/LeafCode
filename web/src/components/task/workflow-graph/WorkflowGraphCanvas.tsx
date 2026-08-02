@@ -98,7 +98,7 @@ export function WorkflowGraphCanvas({
         edges={elements.edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        fitView
+        fitView={!graph.viewport}
         fitViewOptions={{ padding: 0.22 }}
         minZoom={0.25}
         maxZoom={2}

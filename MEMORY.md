@@ -1,4 +1,32 @@
+## 2026-08-02: NextActionのチェック偏重を抑制
+- やったこと: provider-model-state の未作成・破損時デフォルトを、OpenAI（GPT-5.6 Sol/Terra/Luna・GPT-5.5）とAnthropic（Claude Fable 5・Opus 5・Sonnet 5・Haiku 4.5）の表示順に設定し、Claude Fable 5のみ無効化した。回帰テストを追加し、Vitest・TypeScriptチェック後にコミット`5ed9132`を確認。
+- 判断理由: プロバイダー/モデルの有効状態はOpenCode設定ではなくWebUIローカル状態であり、新規・未初期化状態は `provider-model-state` のフォールバックで決まるため。既存の保存済みユーザー設定は上書きしない。
+- 教訓: 初期値変更では既存状態を破壊せず、状態ファイルが未作成または不正な場合だけ新しい既定値を返す。
+
+- やったこと: NextActionのシステム指示を、テスト・レビュー・コミットなどの確認系ではなく、実装・修正・調査・整理・文書化など未完了作業を前進させる提案を基本とする内容へ変更した。確認系は会話中で必要性が明確な場合だけ許可し、同方針のテストを追加した。コミット`bb90af0`を確認。
+- 判断理由: 旧指示が「明確な次工程がない場合」の例として確認系作業を列挙していたため、モデルが実作業よりチェックを選びやすかった。禁止ではなく、作業前進を優先する順序と条件を明示した。
+- 教訓: 生成プロンプトで望ましくない傾向を抑えるときは、単なる禁止だけでなく、優先する行動カテゴリと例外条件を併記する。
+
+## 2026-08-02: CodexBarウィジェットのプロバイダーを初回表示時に最小化
+
+- やったこと: プロバイダー詳細を初回表示時にすべて最小化し、既存のlocalStorage設定がある場合はユーザーの展開状態を維持するよう変更。関連Vitest 6件とTypeScriptチェックを通過し、コミット`8fcbab4`を確認。
+- 判断理由: 詳細が多いとウィジェットが縦に広がるため、初期状態は概要だけを表示し、必要なプロバイダーを操作で開く方が比較しやすい。既存の表示嗜好は上書きしない。
+- 教訓: 非同期取得後に決まるUIの初期状態は、保存済み設定の有無を確認してからデフォルトを適用する。
+
 ## 2026-07-31(追11): CodexBarウィジェットで「プロバイダー設定ファイルが不正です」エラー
+- 2026-08-02: プロファイル操作欄のボタンを2列グリッドに固定し、操作列を拡張。`切り替え`、`連携を適用`、`名前を変更`、`一覧から除外`へラベルを具体化して、デスクトップとモバイルのレイアウト崩れを防止した。型チェック・lint・関連Vitest 11件を通過し、コミット`b215a2a`を確認。
+  - 判断理由: 操作数が可変のため横一列のflexでは長いラベルが押しつぶされる。2列の固定グリッドにして主操作と補助操作を同じ幅で読めるようにした。
+  - 教訓: 操作ボタンは短縮語より動詞を含む具体的なラベルにし、テーブルでは列幅と折り返しを同時に設計する。
+
+- 2026-08-01: 設定のプロファイルタブを、概要ヘッダー・現在環境/登録数サマリー・保存先移行カード・セットアップ設定カード・レスポンシブなプロファイル一覧・作成フォームに整理して視認性を改善。既存の切替/作成/改名/除外/依存適用の挙動は維持した。`npm run typecheck`、対象Vitest 11件、対象eslintを通過し、コミット`bf38b1f`を確認。
+  - 判断理由: 設定画面では装飾よりも現在状態と次の操作の発見性を優先し、一覧の情報密度は保ちつつ、見出し・状態サマリー・操作のまとまりを強化した。
+  - 教訓: 既存の挙動テストが文言を直接参照する場合、UI改善でも主要ラベルは互換性を保つ。
+
+- 2026-08-02: サイドバーのタスク行にセッションお気に入りボタンを追加。TaskSummaryへfavoriteを伝播し、既存のセッションお気に入りAPIを呼ぶ方式にした。タスク遷移を邪魔しない独立ボタンとし、関連テスト・型チェック・lintを通過して`eb2ff8b`へコミット。
+
+- 2026-08-01: セッション単位のお気に入りを`session_bindings.favorite`として追加。既存DBには遅延マイグレーションを適用し、API・セッション切替UI・ローカルmanifestへ状態を伝播。お気に入りは更新日時を変えず一覧先頭に固定する判断にした。型チェック・lint・関連Vitest 24件を通過し、コミット`30bd84d`を確認。
+  - 教訓: 既存のbind処理でセッション再選択時にお気に入りを初期化しないよう、状態変更APIを分離する。
+
 - 2026-08-01: HomeView/TaskViewの入力欄でブラウザ標準の青いフォーカス枠が親コンテナのフォーカス表示と重なっていたため、textareaに`focus-visible:outline-none`を追加。親の`focus-within`リングはキーボード操作の視認性として残した。型チェック・lint・関連Vitest 58件を通過。
 
 - ユーザー報告: CodexBar利用状況パネルの「更新するプロバイダー」欄が常に
@@ -57,6 +85,10 @@
   click イベント単体のみを発火し、先行するpointerdown/mousedownは
   シミュレートしない）。
 - 修正(commit 68d134c): 該当のonPointerDownハンドラを削除。
+
+- 2026-08-02: DiffPaneの変更ファイル一覧を、ファイル数に関係なく初期状態では最小化するよう変更。手動で開いた状態は再読み込み後も維持し、初期表示の回帰テストを追加した。対象Vitest 8件と`npm run typecheck`を通過し、コミット`5d2459c`を確認。
+  - 判断理由: 一覧を先に走査できるよう、差分本文の展開を既定にせず、必要なファイルだけクリックで開くUIにした。
+  - 教訓: 変更ファイルのような反復項目は、初期表示をコンパクトにし、個別展開の状態を明示的にテストする。
   `ui.test.ts`に`fireEvent.pointerDown`→`fireEvent.click`の順で実クリックを
   再現するリグレッションテストを追加し、**修正前に実際に失敗することを
   一時的にコードを戻して確認**してから再修正・コミット。
@@ -4221,3 +4253,110 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - 2026-08-01: X投稿のノードワークフローモードについて実装可否を調査。既存のGoalLoop、NestedAgentPanel、SSE、Workspace/Session設計を再利用できるため実現可能。ただしGraphPanelはGit履歴グラフであり、任意DAG実行には別のWorkflow定義・実行状態・永続化層が必要。投稿の動画本体は取得できず、正確なUI再現にはスクリーンショットまたは動画共有が必要。
 - 2026-08-01: ノードワークフロー回答を再レビュー。X動画（16.4秒）を実取得・フレームOCRし、汎用DAGエディタではなく「Implement UI → Code Review / Visual Judge → 修正」の固定フィードバック実行ビューと判明。前回答のReact Flow前提・ノード別Workspace案は過剰。MVPは固定レイアウト＋同一Workspace（実装者のみ書込、レビュー役は読取）でよく、GoalLoopは設計パターンだけ、GraphPanelはほぼ非流用。安定したworkflow run/node/attempt/session対応とレビュー結果の構造化が必要。
 - 2026-08-01: ノードワークフロー導入時の左メニュー方針を整理。現行のProject→Task構造は維持し、Session/Nodeを左メニューへ展開しない。WorkflowはTask行の種別アイコン・進捗・集約Attentionで表し、ノード別会話はTask内キャンバス／詳細パネルから開く。理由は複数Sessionの常設階層化による情報過多とモバイルdrawer肥大化を避けるため。
+\n\n## 2026-08-01: composerのサブエージェント禁止設定同期\n- やったこと: HomeViewのサブエージェント権限をlocalStorageから初期化し、設定画面や別コンポーネントからのCustomEventを購読して送信前の状態を同期。回帰テストを追加。\n- 判断理由: Home composerは初期値がallowで外部変更を購読しておらず、表示やlocalStorageがdenyでもPOST /api/tasksにallowを送る競合が起き得た。\n- 教訓: composerが共有設定を送信する場合、マウント時の読み込みだけでなく変更イベント購読と送信値の回帰テストを用意する。\n
+- 教訓: composerが共有設定を送信する場合、マウント時の読み込みだけでなく変更イベント購読と送信値の回帰テストを用意する。\\n
+## 2026-08-01: ノードワークフローモード仕様書
+- やったこと: 固定フロー（Implement UI → Code Review / Visual Judge → 修正）を対象に、Workflow／Node／Attempt／Sessionの概念モデル、状態機械、CAS付きAPI、権限制御、Attention集約、drift検出、レスポンシブUI、テスト項目、受入条件を仕様化した。
+- 判断理由: 初期リリースは汎用DAGエディターではなく、同一Workspace上で実装Nodeだけが書き込み、Reviewerを独立Sessionで並列実行する安全な実行ビューに限定する方が、既存Task／Session設計と整合し、実装・復旧・監査の境界を明確にできる。
+- 成果物: `docs/specs/node-workflow-mode.md`
+- 教訓: 複数Agentの実行順や結果をプロンプト規約だけに委ねず、永続化されたRun／Attemptと構造化結果、送達不明時の安全なPauseを設計の中心に置く。
+
+## 2026-08-01: ノードワークフローモード仕様・実装計画
+- やったこと: X動画と既存コードを根拠に、固定3Node（Implement UI → Code Review / Visual Judge → 修正）の正式仕様と8段階の実装計画を作成した。状態機械、CAS、primary Session、権限強制、非冪等送達、drift、Attention、responsive/a11y、回帰・ロールバックまで定義し、複数回レビューでBlocker/Majorを解消した。
+- 判断理由: 初期版を汎用DAGにすると安全な再開・競合防止よりUI機能が先行するため、固定フローで実行基盤を安定させ、自由編集は将来拡張に分離した。WorkflowはSessionではなくTask/Workspaceが所有し、Node AttemptがSessionを所有する。
+- 教訓: 複数Sessionのオーケストレーションでは、primary Sessionの明示、Session作成自体の送達不明、Reviewerのshell迂回書込み、feature flag OFF時の復旧経路まで仕様・計画段階で固定する必要がある。
+- 成果物: `docs/specs/node-workflow-mode.md`（38fabc4）、`docs/plans/node-workflow-mode-implementation.md`（47e53c9）。
+\n## 2026-08-02: セッション履歴ベースのモデル別コスパランキング\n\n- やったこと: `/api/analytics/model-ranking` と設定画面のコスパランキングタブを追加し、セッション履歴の assistant message を provider/model 別に集計した。\n- 判断理由: クライアントで価格を推定せず、OpenCode が返す message cost を正規値にし、output + reasoning tokens / cost を比較指標にした。無料モデルは無限値扱いせず末尾表示した。\n- 教訓: 履歴由来の集計は取得不能なセッションを全体エラーにせず、Promise.all と個別 catch で利用可能な履歴だけを表示する。\n- 検証: 対象テスト、ESLint、TypeScript、全 Vitest が成功。\n
+## 2026-08-02: 非ループ時の自動送信調査
+- やったこと: 非ループの follow-up 送信経路と goal loop scheduler を確認し、TaskView/goal-loop の関連テスト139件を実行した。
+- 判断理由: 非ループで自動送信を許すのは、送信中に queue モードへ入れた下書きのアイドル後送信と、Auto モデルの失敗時リトライだけ。goal loop のプロンプトには指定の文言が含まれるため、これが実際に送信されたならループ状態または別セッション紐付けの確認が必要。
+- 教訓: 画面上のループトグルだけでなく、workspace/session の goal_loop 状態と prompt_async の実送信ログを突き合わせて判定する。
+
+## 2026-08-02: 自動コンパクション継続メッセージの非表示化
+- やったこと: OpenCode本体の `session/compaction.ts` を確認し、`synthetic: true` と `metadata.compaction_continue: true` を持つ内部userメッセージをWebUIの会話表示から除外した。回帰テスト2件を追加した。
+- 判断理由: 自動送信自体はコンテキスト圧縮後に処理を再開するOpenCodeの仕様であり、Goal Loopとは独立している。一方、内部メッセージを通常のユーザー発言として表示するのは誤認を招くため表示層で隠す。
+- 教訓: リポジトリ内に文言が見つからなくても上流実装を確認するまで不具合・仕様を断定しない。内部メッセージは文言一致ではなく上流の構造化マーカーで識別する。
+- 検証: `npm test -- --run src/lib/useSessionStream.test.ts` 59件成功、`npm run typecheck` 成功。
+- コミット: 5db992b
+
+- 2026-08-02: ZIP導入者向け更新方式を検討。既存フォルダを後付けでGit化する方式は、取得時点のcommitを特定できないZIPやローカル変更との衝突があり不安定なため、Gitの有無に依存しないGitHub Releasesベースの更新を推奨した。
+  - 判断理由: `%APPDATA%` に実行時データとWebビルドが分離済みなので、配布物を一時領域へ取得・検証してアプリ本体だけを差し替える方式と相性がよい。実行中ファイルの差し替えは外部updaterによる再起動時スワップとロールバックが安全。
+  - 教訓: セルフアップデートはソース取得方法を修復するより、immutableなリリース成果物・チェックサム・atomic swap・ロールバックを共通経路にする方が利用者にも保守側にも単純。
+
+- 2026-08-02: GitHubのZIPダウンロード導入者が設定画面のWebUI更新ボタンを使えるかを確認。更新APIは`process.cwd()`または親ディレクトリに`.git`があることを必須とし、`git pull --ff-only`を実行するため、ZIP展開のみ（`.git`なし）では利用できないと判断した。
+  - 判断理由: ZIPにはGit履歴・リモート設定が含まれず、APIの`repoRoot()`がリポジトリを特定できずに失敗するため。
+  - 教訓: Git依存のセルフアップデートUIは、ZIP配布とclone配布の導入条件を明示するか、別のリリースアーカイブ更新経路を用意する必要がある。
+
+- 2026-08-02: WebUI更新APIを、`.git`がある場合は従来どおり`git pull --ff-only`、ZIP導入の場合はGitHub ReleasesのZIP取得・展開・既存フォルダへの反映に分岐させた。UIの成功メッセージも更新方式に応じて表示する。型チェック・対象lint後に`b30c4fb`へコミット。
+  - 判断理由: 導入形式を自動判定し、ZIP版だけ別の更新経路へ切り替えることで、既存のGit版の挙動を維持しつつZIP版の更新を可能にした。
+  - 教訓: 更新元の判定は`.git`の有無に限定し、リリースアーカイブは一時フォルダへ展開してから反映する。`node_modules`と`.next`は保持して更新時間と破損リスクを抑える。
+
+- 2026-08-02: GitHub Releasesが未作成（API 404）の場合も、`codeload.github.com/.../zip/refs/heads/main`から最新mainのZIPを取得するフォールバックを追加し、`1206769`へコミット。
+  - 判断理由: Releases未作成の開発初期でもZIP導入者の更新を止めず、Release asset・Release source archive・main branchの順に取得できるようにした。
+\n- 2026-08-02: Workflow Schedulerへassistant結果のmarker付きJSON読取、Attempt完了保存、Implement完了後のCode Review/Visual Judge Session起動を追加した。\n  - 判断理由: 送達済みPromptと同じmarkerを持つ完了assistantメッセージだけを入力として扱い、未知・未完了結果は再送せず待機するため。\n  - 教訓: Workflowの各遷移はCASで確定し、Reviewer起動は両Nodeを独立Sessionとして並列作成する。\n\n- 2026-08-02: Reviewer 2Nodeの結果を集約し、Gate passでWorkflow完了、blocking findingsでprimary Implementへ差し戻し、blockedでPauseする遷移を追加した。\n  - 判断理由: 2つのReviewerがともに完了してからGateを評価し、差し戻しは既存primary Sessionを再利用する。\n  - 教訓: 別セッションの未コミット差分は混在させず、対象ファイルだけを検証・即コミットする。\n\n- 2026-08-02: Schedulerの結果取得を追加したことで既存テストの常駐Attemptが次テストへ影響したため、テスト内でWorkflowを停止し、結果取得リクエストを明示検証した。\n  - 教訓: polling導入時はテストデータのWorkflow状態を終了させ、running Attemptのリークを防ぐ。\n\n- 2026-08-02: Reviewer差し戻し前にWorkflowのmax_cyclesを検査し、上限到達時は再実行せずPauseする安全弁を追加した。\n  - 判断理由: 固定Workflowの自動ループが無制限に継続しないよう、永続化された上限を遷移確定前に評価する。\n\n- 2026-08-02: Workflow feature flag OFF時にSchedulerが新規dispatchせず、非終端Runをfeature_disabledでPauseする制御を追加した。\n  - 判断理由: flagの既定値falseをSchedulerにも適用し、APIと実行経路の有効条件を一致させるため。\n\n- 2026-08-02: Workflow Attention/SSE統合として、revision付きnamed SSE、Last-Event-ID再接続、heartbeat、手動prompt/commandの409拒否とmanual_send Pauseを追加した。\n  - 判断理由: Workflowの状態配信はDB snapshot pollingで既存サービスと分離し、手動入力はOpenCodeへ送らずCASで実行を停止する。\n  - 教訓: typecheck実行時に並列セッションの一時差分が影響することがあるため、再実行で最終状態を確認してからコミット結果を確定する。\n\n- 2026-08-02: Workflow UIとしてTaskViewにChat/Workflow/Diffの切替、SSE連動WorkflowPanel、3Node進捗、Attention状態、展開式Node詳細を追加した。\n  - 判断理由: 既存Chat/Diff導線を壊さず、Workflow Taskだけに専用tablistを表示し、mobileでは横スクロール可能なタブとstacked Node grid、desktopでは3列gridを使う。\n  - 検証: typecheck、対象lint、TaskView 105件＋WorkflowPanel 1件成功。既存hostを1280x720/390x844へresizeしdocument横溢れなしを確認。\n\n- 2026-08-02: Visual Judge artifact連携として、opaque screenshot referenceのみをworkflow_artifactsへ保存し、期限切れを除いてPromptへ注入する処理を追加した。Browser Bridgeのapproval/blocked/failedコード写像と、画像不足時のVisual Judge自動pass防止も実装した。\n  - 判断理由: screenshot本体、base64、DOM本文をDBへ保存せず、Visual Judgeが参照可能なartifact metadataだけをWorkflow入力にする。\n  - 教訓: required Visual Judgeの画像不足は成功扱いにせず、明示登録またはSkipを要求してPauseする。\n\n## 2026-08-02: NextAction全面改修\n- やったこと: NextActionを、説明付きの次の一手パネル、状態別のローディング/エラー表示、複数候補カード、モバイル折りたたみ、入力欄への追加済み表示へ改修し、曖昧な提案を避けるシステム指示と回帰テストも更新した。コミット`cb277e7`を確認。\n- 判断理由: composer直上の補助機能として、生成前の目的・生成中の進捗・生成後の選択肢・適用結果を同じ視線経路で理解できるようにし、作業を自動送信せず入力欄で編集できる既存契約を維持した。\n- 教訓: 状態の多い補助UIは見た目だけでなく、選択結果のフィードバック、モバイル時の省スペース、失敗時の復帰導線まで同じパネル構造で設計すると回帰を抑えやすい。\n
+## 2026-08-02: ハング再送メッセージの識別と非表示
+- やったこと: `useSessionStream` の5分ハング検知後の `ocJson` 再送に `webui_hang_retry: true` metadata をtext partへ付与し、同metadataのuser messageだけをvisibleMessagesから除外した。
+- 判断理由: OpenCodeのPromptInputはtext part metadataを受け付けるため、文言一致や重複判定より手動送信を誤って隠さない。元の初回送信bodyは変更せず、タイムアウト再送bodyだけをcloneしてmarkした。
+- 教訓: 会話欄だけの表示抑制はraw messagesを変更せず、専用metadataを表示フィルタで判定する。
+- 検証: `npm test -- --run src/lib/useSessionStream.test.ts` 61件成功、`npm run typecheck` 成功。
+- コミット: 68b71c6
+\n- 2026-08-02: Workflow回帰としてfeature flag有効のPlaywright環境を追加し、Workflow Taskのtab表示とdesktop/tablet/mobile横溢れをE2Eで検証した。既存Workflow API/feature/scheduler/prompt/artifact/eventsテスト40件も再実行した。\n  - 判断理由: E2EはOpenCode実体に依存せずAPIをfixture化し、feature flagはPlaywright webServer環境でtrueに固定して再現性を確保する。\n  - 教訓: UI E2Eの外部依存はroute fixtureで全レスポンス形状を明示し、pollingやSSE再接続によるDOM detachを避ける。\n\n- 2026-08-02: Schedulerの再起動復旧、dispatch前のlast_message_id境界、結果の後続メッセージ限定読取、Implement Attempt上限10、workspace fingerprint drift検証、token/cost/duration usage_snapshot保存を実装した。\n  - 判断理由: 送達不明や再起動途中状態は再送せずPauseし、ReviewerはImplement完了時のworkspace fingerprintと一致する場合だけ進める。\n  - 教訓: 使用量snapshotはassistant messageの境界後データから算出し、AttemptへJSONとして不変保存する。\n\n- 2026-08-02: Visual Judge artifact登録時にBrowser Bridgeのbrowser_list_tabsでshared tab存在、opaque reference一致、origin ownership一致を検証し、broker unavailable/approval/blocked状態をAPIエラーへ反映した。Visual Judge Attempt所属もサーバー側で検証する。\n  - 判断理由: screenshot本体は保存せず、承認済み共有タブのopaque referenceだけを許可する。\n
+
+- 2026-08-02: サイドバーのタスク行で、右下に絶対配置されたアーカイブ/お気に入り操作領域と時間表示が重ならないよう、ブランチ情報行に操作ボタン分の右余白を追加した。`npm run typecheck`、Sidebar関連Vitest 39件、Sidebarのeslintを通過し、コミット`4b43565`を確認。
+  - 判断理由: 時間表示の行だけが操作領域の占有幅を予約しておらず、狭いサイドバーで右端の時間がボタンの下に入り込んでいたため。
+  - 教訓: 行内に絶対配置の操作ボタンを置く場合、同じ行の可変テキスト領域にもレスポンシブな右余白を予約する。
+\n## 2026-08-02: NextActionの視覚的な主張を抑制\n- やったこと: ユーザーフィードバックを受け、NextActionの大きなカード枠・強い背景色・Primaryボタンを廃止し、composerに馴染む小さなアイコン、控えめな余白、secondary CTAへ調整した。コミット`0cee596`を確認。\n- 判断理由: NextActionは主役の画面ではなく、composer直上の補助導線なので、視線を奪うカードではなく既存コントロール群の一部として見えることを優先した。\n- 教訓: 補助UIの強さは色だけでなく、外枠・余白・見出しサイズ・CTAのvariantを同時に下げないと十分に抑えられない。\n\n- 2026-08-02: TaskViewのメニューにWorkflowモード変換導線と確認UIを追加し、GETでworkspaceRevisionを取得してPOST変換後にTaskを再読込するようにした。\n  - 判断理由: revisionをクライアントで推測せず、サーバーのWorkflow DTOを正とし、変換前に固定3Nodeフローと既存Taskへの影響を確認する。\n\n- 2026-08-02: HomeViewにTask/Workflow開始モードのradio UIを追加し、Workflow選択時はTask作成→workspaceRevision取得→Workflow初期化を連続実行する。初期化失敗時は作成Taskを削除して半端なTaskを残さない。\n  - 判断理由: 既存Task APIを再利用し、Workflow revisionを推測せずGET DTOから取得する。モード選択はmobileでflex拡張、sm以上で固定幅に切り替える。\n\n## 2026-08-02: キュー/割り込みUIをComposerへ統合\n- やったこと: 送信方式のキュー/割り込み切り替えをComposer外の独立行からComposerの設定ツールバーへ移動し、処理中の補足文も同じ項目群にまとめた。TaskViewの回帰テストを追加し、コミット`8301125`を確認。\n- 判断理由: 送信方式はフォローアップ入力の属性なので、NextActionやComposerの間に独立した帯として置くより、モデル/権限/添付などと同じComposer設定として扱う方が視線と操作のまとまりが自然になる。\n- 教訓: Composer周辺の設定は、入力欄から離れた補足行を増やさず、既存の水平スクロール可能なツールバーへ項目として統合すると密度と発見性を両立できる。\n\n- 2026-08-02: 実DB、Scheduler、ローカルHTTP Browser Bridge fixtureを接続したWorkflow統合E2Eを追加し、Implement→並列Reviewer→needs_changes差し戻し→再Implement→pass Gate完了とartifact共有tab検証を通した。Schedulerは結果処理後に同tickで新Reviewerをdispatchせず、artifact登録猶予を確保し、Reviewer Attempt番号をcycleごとに増分するよう修正した。\n  - 判断理由: Visual Judge artifactが登録される前に同tick dispatchされると安全Pauseするため、ready Attemptのsnapshotをresult処理前に固定する。\n  - 教訓: 実DB統合テストではPrompt markerをdispatch後に再取得し、last_message境界を含む非冪等経路を実際のAttempt状態で検証する。\n\n## 2026-08-02: 送信方式を末尾ドロップダウン化\n- やったこと: キュー/割り込みのラジオ切り替えを既存のGhostSelectドロップダウンへ置き換え、Composerツールバーの末尾（送信ボタン直前）へ移動した。回帰テストを更新し、コミット`e259591`を確認。\n- 判断理由: モデル/エージェント等の既存Composer項目と操作パターンを揃え、送信方式を常時主張する横並びボタンではなく必要時に選ぶ設定として扱うため。\n- 教訓: 既存UIの一貫性を求められた場合は、見た目だけでなく既存の操作プリミティブと配置ルールまで合わせる。\n\n- 2026-08-02: packaged EXEのWebUI spawn環境へOPENCODE_WEBUI_WORKFLOW_MODE=trueを既定注入し、明示的なfalse/0 overrideは保持するよう修正した。\n  - 判断理由: 開発用playwrightだけがflagをtrueにしており、tray EXEの子プロセスには未設定だったため、APIがWorkflow mode disabledを返していた。\n  - 注意: 修正は新しくビルドしたEXEから有効。\n
+- 2026-08-02: React FlowベースWorkflow Graph Editor仕様を追加し、既存3Node互換、Graph Draft/snapshot分離、Node Registry、CAS、編集制約、レスポンシブ、移行、受入基準を確定した。ユーザー承認済み。
+  - 判断理由: 将来のNode追加を可能にしつつ、Schedulerは不変snapshotとserver-side Registry allowlistだけを実行する。
+
+## 2026-08-02: Workflow Graph Editor実装計画
+
+- やったこと: 承認済み仕様 `docs/specs/workflow-graph-editor.md` を15 Task・5 Phaseへ分解し、Ajv 8、Dagre、Task単位Graph Draft、段階的feature flag、Control Node監査の実装方針と検証コマンドを `docs/plans/workflow-graph-editor-implementation.md` に確定した。パス依存・章構成・差分を検証し、コミット `877aa66` を確認した。
+- 判断理由: 既存3Node互換と実行snapshot不変性を保ったまま段階導入し、Phaseごとに旧UIへrollback可能にするため。
+- 教訓: 大規模Graph移行は、表示互換、永続化、UI連携、semantic編集、Scheduler汎用化を分離し、編集機能の公開を実行系完成後までfeature flagで抑える。
+ 
+## 2026-08-02: ハング判定時間の設定化
+- やったこと: Settings の実行カテゴリにハング判定時間（0.17〜30分）を追加し、localStorage と設定APIへ保存。useSessionStream が変更値を購読して自動停止・再開タイマーへ反映するようにした。
+- 判断理由: 既存の設定API allowlist と localStorage の二層構成に合わせ、既定値5分と範囲制限を維持して不正値でハング判定を無効化しないようにした。
+- 教訓: 実装後は型チェック、対象テスト、対象lintを分けて実行し、Windowsのパスに角括弧があるCLI引数はglob解釈に注意する。
+## 2026-08-02: Diffタブの並列セッション識別
+
+- やったこと: Diffタブに現在セッションのID・タイトル/エージェント・同一ワークスペースの別セッション一覧を表示し、セッション自身の変更と別セッション/未特定の変更を絞り込めるセレクトを追加。TaskViewからsessionIdを渡し、関連テストを追加した。Vitest、TypeScript、lintを通過し、コミット`1b3b838`を確認。
+- 判断理由: Diff API単体ではファイル変更の実行セッションを特定できないため、既存のセッションバインディング情報とTaskViewが収集している自身のtouchedPathsを組み合わせた。touchedPathsがない場合は誤った帰属を避け、セッション別フィルターを無効化する。
+- 教訓: 並列作業の変更帰属は推測で断定せず、確実な観測情報がある場合だけ絞り込みを有効にし、未特定状態を明示する。
+## 2026-08-02: Diffセッション絞り込みの既定値
+
+- やったこと: Diffタブのセッション絞り込みを「現在のセッション」既定に変更し、別セッションの確認テストは明示的に「別セッション・未特定」を選ぶよう更新。関連Vitest・TypeScriptチェックを通過し、コミット`5b4e042`を確認。
+- 判断理由: 並列セッションでの誤操作を避けるには、最初から現在セッションの変更だけを見せる方が安全。touchedPathsが未取得の場合は従来どおり全変更を表示する。
+- 教訓: 安全側の既定値変更では、観測情報が未確定な初期状態を過度に絞り込まず、データ取得後に確実な条件で適用する。
+
+## 2026-08-02: Workflow Graph Phase 1 Task 1-2
+
+- やったこと: React Flow・Dagre・Ajv依存、Graph Draft／Execution Snapshot v2 DTO、Graph／Graph Edit feature flag、Node Registry v1、Ajv config／result検証、Graph構造検証を実装した。対象テスト、typecheck、lintを通し、コミット ce3ac3c と eaf6f2c を確認した。
+- 判断理由: 既存3Nodeを維持しつつ、client表示用metadataとserver実行allowlistを分離し、未知Nodeは閲覧分類可能・実行拒否にするため。
+- 教訓: Graph検証はschema、port、DAG、feedback、required input、write並列、size上限を構造化codeで分離すると、保存時とRun開始時で同じ安全判定を再利用できる。
+
+## 2026-08-02: Workflow Graph互換read adapter
+
+- やったこと: 既存3Node Workflow定義を決定的な4Node／5Edge Graphへ合成するread adapter `workflow-graph-compat.ts` と8件の単体テストを追加し、Graph validatorとの整合性も検証した。コミット `070f1af` を確認。
+- 判断理由: 既存のoperational Node IDとconfigを保持し、server管理の `review_gate` を追加して、直接feedbackをGate経由のcontrol／feedback Edgeへ正規化した。
+- 教訓: 互換adapterは入力配列順に依存せず固定順で出力し、旧定義のtopology不一致を黙って補正せず明示的に拒否する。
+
+## 2026-08-02: Workflow Graph React Flow read-only canvas
+
+- やったこと: Graph DTOをReact Flow Node／Edgeへ変換するadapter、custom Node／Edge、Canvas、MiniMap／Controls、Node／接続代替一覧を追加し、`WorkflowPanel`でGraph feature flag有効時だけ表示する統合を実装した。reduced motion、unsupported Node表示、旧UI回帰をテストし、コミット `f45d5a5` を確認。
+- 判断理由: semantic編集をまだ公開せず、drag／connectを無効化したread-only境界を保ったまま、既存Panelへrollback可能なfeature flag分岐を置いた。
+- 教訓: React Flowの表示状態は既存Graph DTOから純粋adapterで変換し、Canvas以外にNode／接続一覧を同時提供するとSSR境界とアクセシビリティの責務を分離できる。
+\n## 2026-08-02: 次の一手表示の削除\n- やったこと: TaskView の composer 上部に表示されていた NextAction を取り除き、関連する状態計算・無効化キー・import を削除。表示されないことを TaskView テストで確認。\n- 判断理由: ユーザーから表示が邪魔との指摘があり、提案機能を画面上に出さない要望として最小範囲で対応した。\n- 教訓: UI の不要表示を除く場合は、描画だけでなく専用の派生状態と不要な依存も同時に削除し、既存テストの期待値を更新する。\n\n## 2026-08-02: NextActionの表示密度調整\n- やったこと: NextActionのTaskView連携を復元し、アイドル時は説明見出しを出さず「次の指示を提案」ボタンと提案数の行だけ表示するようにした。\n- 判断理由: NextAction機能は必要だが、上部の説明ブロックが邪魔という要望だったため、機能を残して表示面積だけ削減した。\n- 教訓: UI削減要望では機能削除と表示簡略化を分け、残す操作を確認してから実装する。\n\n\n## 2026-08-02 Workflow Graph Phase 2\n- やったこと: Graph DraftのSQLite永続化、legacy Runからのlazy materialize、全体revision CAS編集API、Graph API、read-only WorkflowPanelへのDraft読込を実装した。\n- 判断理由: semantic mutationはserver validation後に単一transactionで適用し、revision不一致は409と最新Graphを返す。既存Run snapshotと旧Workflow APIは変更せず、Graph APIがfallbackとして互換Graphを生成する。\n- 教訓: read-only UIの既存compat生成を残したままDraft取得を優先すると、Graph flag有効時もmigration未完了・API障害時の安全なfallbackを維持できる。\n\n\n## 2026-08-02 Phase 3 Task 1\n- やったこと: Workflow Graph InspectorにPrompt、Finding/Result、Artifact、Usage、Attention、Retry、Chat/Diff導線を追加し、TaskViewで選択NodeのChat/Diffコンテキストを共有した。\n- 判断理由: Control NodeはChat/Retryを無効化し、Retryは既存workflow node retry APIと実行revisionを使う。Graph取得失敗時のcompat fallbackは維持した。\n- 教訓: dynamic importを含むUIテストはローディング境界を待ってからcanvasを検証する。\n\n\n## 2026-08-02 Phase 3 Task 2\n- やったこと: 新規Workflow Runにserver管理のreview_gate Control Nodeを生成し、reviewer結果のGate判定をworkflow_node_attemptsへ監査記録として保存した。getWorkflowで参照でき、SessionはNULL、input hash・decision・開始終了時刻を保持する。\n- 判断理由: 既存のworkflow_node_runs／workflow_node_attemptsを再利用し、Control NodeのPATCH対象外をnode key allowlistで固定した。legacy Runには無理なbackfillをせず、compat Graph fallbackを維持した。\n- 教訓: Control Nodeの評価結果はpassだけでなくpause／feedbackも同一の監査Attemptとして記録し、UI側のsynthetic gate追加は既存rowがある場合に抑止する。\n\n\n## 2026-08-02 Phase 3 Task 3\n- やったこと: Graph Editorを390px／768px／1280pxのviewport modeで切替え、390pxはTB縦Graph＋bottom-sheet Inspector、768pxはDrawer Inspector、1280pxは固定3列Inspectorに対応した。\n- 判断理由: React FlowのGraph DTOは維持し、狭幅時だけ決定的なTB座標へ変換した。reduced motionは既存のedge／status animation停止を維持し、Node一覧をkeyboard fallbackとして明示した。\n- 教訓: dynamic importを含むresponsive UIテストは、viewport modeをmatchMediaで固定し、canvasをmockしてレイアウト契約だけを検証すると安定する。\n\n\n## 2026-08-02 Phase 4 Task 1\n- やったこと: Graph Edit flag配下にNode追加／削除、Edge追加／削除、接続元／先選択、validation表示を追加した。Graph APIの409にsemantic／layoutのconflictKindを付け、UIでも競合種別を表示する。\n- 判断理由: 既存のserver-side Graph validationとrevision CASを唯一の保存境界として再利用し、flag無効時はEditorを描画しない。Node追加はtemplate＋接続を同一PATCHで送り、invalid graphは保存せずvalidationへ戻す。\n- 教訓: 既存テストのfeature mockに新しいflag関数を必ず追加し、追加UIのimport時にundefined関数で回帰テストを壊さない。\n\n\n## 2026-08-02 Phase 4 Task 2\n- やったこと: DagreでDesktop LR／mobile TBの自動レイアウトを追加し、feedback Edgeをlayout graphから除外した。Graph Editの自動レイアウトはmove_node群としてDraftへ保存し、React FlowのonMoveEndでviewportもset_viewportとして保存する。\n- 判断理由: 保存済みLR座標はDesktopで尊重し、mobileだけTBのDagre座標へ変換することで手動／自動layoutのDraftを壊さない。viewport保存はdebounceしてGraph APIのCAS境界を再利用した。\n- 教訓: DagreのsetNodeへ同じサイズobjectを共有するとlayoutが全Node同一座標になるため、Nodeごとにobjectをcloneする。\n\n\n## 2026-08-02 Phase 4 Task 3\n- やったこと: Graph DraftをRun start時にExecution Snapshot v2へ公開し、Registry executor／permission解決、immutable deep freeze、presentation分離を実装した。\n- 判断理由: canonical hashはsemantic nodes／edgesだけから生成し、position、viewport、presentation、animated、Graph revisionを除外した。Graph DraftがあるRunだけworkspace／run CASを再確認して公開し、既存v1 RunとScheduler経路は維持した。\n- 教訓: v2 definition snapshotをWorkflowPanelのlegacy compat adapterへ直接渡せないため、schema discriminatorでv1 fallbackとv2 fallbackを分ける必要がある。\n\n\n## 2026-08-02 Phase 5 Task 1\n- やったこと: Execution Snapshot v2のresolvedExecutorを解決するExecutor Registryと、review_gateのControl Executorを追加した。Schedulerはv2ではsnapshot Nodeからexecutorを解決し、未知executor／runtime不一致を暗黙fallbackせずpauseし、v1はlegacy resolverで従来経路を維持する。\n- 判断理由: 固定nodeKey分岐を一度に全廃せず、executor解決を先に共通境界化して既存Prompt marker・Run・Scheduler回帰を守った。Control評価は既存evaluateReviewGateの意味を専用executorへ移した。\n- 教訓: v1のreview_gateはsnapshotに含まれないため、legacy control executorを明示解決しないと既存Gate完了経路が静かに止まる。\n\n\n## 2026-08-02 Phase 5 Task 2\n- やったこと: Workflow／Graph／Graph Editの段階公開状態をlegacy、graph_readonly、graph_editとして明示化し、親flag不在時の強制rollbackガードを追加した。v1固定SchedulerとGraph Snapshot v2／Executor Registry経路を同一統合テストで検証した。\n- 判断理由: 既存の個別flag APIを残したままrollout状態を正規化し、既存呼び出しの互換性を維持した。v2 E2EはGraph materialize→Run start公開→Implement→並列Reviewer→Control Gate完了まで実DBで通した。\n- 教訓: v2統合E2Eではvisual artifactがReviewer dispatchの前提になるため、Browser Bridge artifactを先に保存してからScheduler tickを進める。\n\n\n## 2026-08-02 Phase 5 Task 14 partial\n- やったこと: 実装計画を再読し、Phase 5の未完了Task 14を特定した。Graph dependency／parallel join／feedback／failed・unsupported dependency／write競合を評価するpure runtime evaluatorを追加し、v2 SchedulerがDraftではなくExecution Snapshotからready判定するよう統合した。\n- 判断理由: v1固定3Node経路は変更せず、v2 snapshotのときだけruntime evaluatorを適用して既存Scheduler互換を維持した。同一tickのready集合、CAS claim、既存max attempt／restart recoveryは現行Scheduler境界を維持した。\n- 教訓: 計画Taskを再開する際は、未完了Taskのpure evaluatorを先に独立テストし、既存v1／v2統合テストでSchedulerへの接続を確認してから次のprompt／runtime汎用化へ進む。\n\n\n## 2026-08-02 Phase 5 Task 15\n- やったこと: 実装計画を再読しTask 15の公開検証項目を特定した。EXE／E2Eではread-only Graphを既定true、Graph Editはfalseのまま段階公開し、READMEへflag／rollback／Snapshot分離を記録した。Graph専用Playwright fixtureと1280／768／390横overflow検証を追加した。\n- 判断理由: Graph Editは全受入基準完了前のため既定falseを維持し、Graphだけをread-only rolloutする。既存workflow.specの互換fixtureを壊さず、Graph API未提供時はcompat fallbackを検証できる構成にした。\n- 教訓: 新規Playwright specはglobal test型に依存せず`@playwright/test`から明示importし、tsc／lint／test listで単独認識を確認する。\n
+## 2026-08-02: Workflow GraphのEXE公開フラグをクライアントへ反映
+
+## 2026-08-02: Workflow Graph Editorの接続・viewport修正
+
+- Graph Editorの手動接続と追加Node生成がNode Registryの実ポートを解決するよう修正。固定`targetHandle: "input"`がCode Reviewの実ポート`implementation`と一致せず、追加操作が検証エラーになる不具合を解消した。
+- 接続不能なNodeペアは共通のdata type／dependencyポートがない場合にボタンを無効化し、理由を表示。追加Node IDも既存IDとの衝突を避ける。
+- 保存済みviewportがReact Flowの`fitView`で上書きされないよう、viewport未保存時だけfitするよう修正。localhostへのデバッグ送信コードも除去した。
+- 検証: `npm run typecheck`、対象Vitest 16件、対象Lintを通過。
+- やったこと: EXE起動時のWorkflow/Graph/Graph Edit既定値をbatchに設定し、Next.jsのclient公開環境変数とfeature flag fallbackを追加。調査用debug instrumentationは原因確認後に削除した。
+- 判断理由: サーバー側環境変数だけでは静的にbuildされたクライアントのGraph判定に届かず、実機ログで3つのflagがfalseになっていたため。
+- 検証: host test 192件、Workflow関連Vitest 18件、TypeScriptチェック、diff checkを通過。コミット`c6d06e4`を確認。
+- 教訓: batchを機械置換するとWindowsのCRLFと文字列中の\r\n表現を混同しやすい。ASCII/CRLF検査だけでなく、対象パスの実テキストとhostテストを必ず確認する。
