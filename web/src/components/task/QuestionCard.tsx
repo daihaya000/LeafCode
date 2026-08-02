@@ -43,6 +43,9 @@ export function QuestionCard({
     busyRef.current = false;
     setBusy(null);
     setError(null);
+    // #region debug log
+    fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'Q1',location:'QuestionCard.tsx:47',message:'question request generation reset',data:{requestId:request.id,busyRef:busyRef.current},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   }, [request.id]);
 
   // `custom` is enabled by default unless explicitly disabled (`custom: false`).
@@ -93,6 +96,9 @@ export function QuestionCard({
     busyRef.current = true;
     setBusy("reply");
     setError(null);
+    // #region debug log
+    fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'Q2',location:'QuestionCard.tsx:92',message:'question reply started',data:{requestId:request.id,generation},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
       await onReply(request, buildAnswers());
     } catch (err) {
@@ -103,6 +109,9 @@ export function QuestionCard({
       if (mountedRef.current && generation === requestGenerationRef.current) {
         setBusy(null);
       }
+      // #region debug log
+      fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'Q2',location:'QuestionCard.tsx:103',message:'question reply finished',data:{requestId:request.id,generation,mounted:mountedRef.current,currentGeneration:requestGenerationRef.current,busyRef:busyRef.current},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     }
   };
 
