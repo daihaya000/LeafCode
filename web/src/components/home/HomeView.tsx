@@ -7,6 +7,7 @@ import {
   Bot,
   FolderGit2,
   GitBranch,
+  Play,
 } from "lucide-react";
 import { AccessModeSelect } from "@/components/AccessModeSelect";
 import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
@@ -1064,30 +1065,25 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               <option value="current_folder">{defaultBranchLabel}</option>
               <option value="git_worktree">worktree</option>
             </GhostSelect>
-          </div>
-          <div role="radiogroup" aria-label="開始モード" className="mb-2 flex w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-surface-2 p-1 sm:w-fit">
-            {([
-              ["task", "Taskで開始", "通常のTaskとして開始"],
-              ["workflow", "Workflowで開始", "Implement → Reviewの固定フロー"],
-            ] as const).map(([mode, label, description]) => (
-              <button
-                key={mode}
-                type="button"
-                role="radio"
-                aria-checked={startMode === mode}
-                title={description}
-                disabled={submitting}
-                onClick={() => setStartMode(mode)}
-                className={cx(
-                  "min-h-9 flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:flex-none",
-                  startMode === mode
-                    ? "bg-surface text-text shadow-sm"
-                    : "text-muted hover:bg-surface/70 hover:text-text",
-                )}
-              >
-                {label}
-              </button>
-            ))}
+            <GhostSelect
+              value={startMode}
+              disabled={submitting}
+              aria-label="開始モード"
+              icon={<Play className="h-3.5 w-3.5" />}
+              valueLabel={startMode === "task" ? "Taskで開始" : "Workflowで開始"}
+              onChange={(value) => {
+                if (value === "task" || value === "workflow") setStartMode(value);
+              }}
+              className="max-w-[11rem] shrink-0 sm:max-w-44"
+              title={
+                startMode === "task"
+                  ? "通常のTaskとして開始"
+                  : "Implement → Reviewの固定フロー"
+              }
+            >
+              <option value="task" title="通常のTaskとして開始">Taskで開始</option>
+              <option value="workflow" title="Implement → Reviewの固定フロー">Workflowで開始</option>
+            </GhostSelect>
           </div>
           <Composer
             form={{

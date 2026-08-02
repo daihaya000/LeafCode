@@ -899,7 +899,9 @@ describe("HomeView start mode", () => {
   it("creates a Task and initializes Workflow when Workflow mode is selected", async () => {
     render(<HomeView />);
     await screen.findByRole("form", { name: "タスク作成" });
-    fireEvent.click(screen.getByRole("radio", { name: "Workflowで開始" }));
+    const startMode = screen.getByRole("button", { name: "開始モード" });
+    fireEvent.click(startMode);
+    fireEvent.click(screen.getByRole("option", { name: "Workflowで開始" }));
     fireEvent.change(screen.getByRole("combobox", { name: "タスクの説明" }), { target: { value: "Build a workflow" } });
     fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith("POST", "/api/tasks/task-1/workflow", expect.objectContaining({ workspaceRevision: 0, goal: "Build a workflow" })));
