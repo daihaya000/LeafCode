@@ -151,4 +151,23 @@ describe("installWebUiDependencies", () => {
     ]);
     expect(fs.existsSync(path.join(target, "plugin", "commandcode-cli.js"))).toBe(true);
   });
+
+  it("removes the legacy CommandCode plugin when installing the CLI proxy", () => {
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+    fs.mkdirSync(path.join(target, "plugin"), { recursive: true });
+    fs.mkdirSync(path.join(target, "packages", "commandcode"), { recursive: true });
+    fs.writeFileSync(path.join(target, "plugin", "commandcode.js"), "export default {};");
+
+    const installed = installWebUiDependencies(target, {
+      browserBridge: false,
+      cursorAcp: false,
+      claudeAuth: false,
+    });
+
+    expect(installed).toContain("removed:plugin/commandcode.js");
+    expect(installed).toContain("removed:packages/commandcode");
+    expect(fs.existsSync(path.join(target, "plugin", "commandcode.js"))).toBe(false);
+    expect(fs.existsSync(path.join(target, "packages", "commandcode"))).toBe(false);
+  });
 });

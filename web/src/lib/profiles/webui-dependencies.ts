@@ -133,6 +133,17 @@ function copyCommandcodeCliFiles(targetDir: string, sourceDir: string | undefine
   return copied;
 }
 
+function removeLegacyCommandcodeFiles(targetDir: string): string[] {
+  const removed: string[] = [];
+  for (const relative of ["plugin/commandcode.js", "packages/commandcode"]) {
+    const target = path.join(targetDir, relative);
+    if (!fs.existsSync(target)) continue;
+    fs.rmSync(target, { recursive: true, force: true });
+    removed.push(`removed:${relative}`);
+  }
+  return removed;
+}
+
 /** Install WebUI MCP, Cursor ACP, and Claude Auth dependencies without overwriting settings. */
 export function installWebUiDependencies(
   profileDir: string,
@@ -165,7 +176,8 @@ export function installWebUiDependencies(
   }
 
   let content = fs.readFileSync(targetConfigPath, "utf8");
-  const installed = options.cursorAcp === false ? [] : copyCursorAcpFiles(profileDir, sourceDirs);
+  const installed = options.commandcodeAuth === false ? [] : removeLegacyCommandcodeFiles(profileDir);
+  if (options.cursorAcp !== false) installed.push(...copyCursorAcpFiles(profileDir, sourceDirs));
   if (options.claudeAuth !== false) {
     installed.push(...copyClaudeAuthFiles(profileDir, bundledClaudeAuth));
   }
