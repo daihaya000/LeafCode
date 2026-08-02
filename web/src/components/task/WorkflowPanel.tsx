@@ -5,11 +5,13 @@ import { AlertCircle, CheckCircle2, Circle, Loader2, PauseCircle } from "lucide-
 import { getJson } from "@/lib/client";
 import { isWorkflowGraphEnabled } from "@/lib/workflow-feature";
 import { synthesizeWorkflowGraph } from "@/lib/workflow-graph-compat";
+import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import type { WorkflowView } from "@/lib/workflow-service";
 import { cx } from "@/components/ui";
 import { WorkflowGraphPanel } from "./workflow-graph/WorkflowGraphPanel";
 
 type WorkflowResponse = { workflow: WorkflowView };
+type GraphResponse = { graph: WorkflowGraphDraft };
 
 const labels: Record<string, string> = {
   implement_ui: "Implement UI",
@@ -34,18 +36,32 @@ function statusIcon(status: string) {
 }
 
 export function WorkflowPanel({ taskId }: { taskId: string }) {
+  const graphEnabled = isWorkflowGraphEnabled();
   const [workflow, setWorkflow] = useState<WorkflowView | null>(null);
+  const [graphDraft, setGraphDraft] = useState<WorkflowGraphDraft | null>(null);
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
       const response = await getJson<WorkflowResponse>(`/api/tasks/${encodeURIComponent(taskId)}/workflow`);
       setWorkflow(response.workflow);
+      if (graphEnabled) {
+        try {
+          const graphResponse = await getJson<GraphResponse>(
+            `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`,
+          );
+          setGraphDraft(graphResponse.graph);
+        } catch {
+          setGraphDraft(null);
+        }
+      } else {
+        setGraphDraft(null);
+      }
       setError(null);
     } catch {
       setError("Workflow状態を取得できませんでした。");
     }
-  }, [taskId]);
+  }, [graphEnabled, taskId]);
 
   useEffect(() => {
     void load();
@@ -66,9 +82,9 @@ export function WorkflowPanel({ taskId }: { taskId: string }) {
     };
   }, [load, taskId]);
 
-  const graphEnabled = isWorkflowGraphEnabled();
   const graphState = useMemo(() => {
     if (!graphEnabled || !workflow?.run) return null;
+    if (graphDraft) return { graph: graphDraft, error: null };
     try {
       return {
         graph: synthesizeWorkflowGraph(workflow.run.definitionSnapshot, {
@@ -86,7 +102,7 @@ export function WorkflowPanel({ taskId }: { taskId: string }) {
         error: "互換Graphを生成できないため、従来のWorkflow表示を使用しています。",
       };
     }
-  }, [graphEnabled, workflow]);
+  }, [graphDraft, graphEnabled, workflow]);
 
   const completed = useMemo(
     () => workflow?.nodes.filter((node) => node.attempts.at(-1)?.status === "succeeded").length ?? 0,

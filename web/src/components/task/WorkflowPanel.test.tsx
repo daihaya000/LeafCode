@@ -138,7 +138,11 @@ describe("WorkflowPanel", () => {
 
   it("uses the read-only Graph panel when the Graph feature flag is enabled", async () => {
     graphFeature.enabled = true;
-    getJson.mockResolvedValue({ workflow: graphWorkflow });
+    getJson.mockImplementation((url: string) =>
+      url.endsWith("/graph")
+        ? Promise.reject(new Error("draft unavailable"))
+        : Promise.resolve({ workflow: graphWorkflow }),
+    );
 
     render(<WorkflowPanel taskId="ws1" />);
 
@@ -147,5 +151,27 @@ describe("WorkflowPanel", () => {
     expect(screen.getByRole("complementary", { name: "Workflow Nodeと接続の一覧" })).toBeTruthy();
     expect(screen.getByText("接続一覧")).toBeTruthy();
     expect(screen.getByText("Review Gate")).toBeTruthy();
+  });
+
+  it("prefers the persisted Graph Draft when it is available", async () => {
+    graphFeature.enabled = true;
+    const persistedGraph = {
+      id: "draft-1",
+      workspaceId: "ws1",
+      schemaVersion: "workflow-graph-v1",
+      graphRevision: 8,
+      registryVersion: "workflow-registry-v1",
+      nodes: [],
+      edges: [],
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+    };
+    getJson.mockImplementation((url: string) =>
+      Promise.resolve(url.endsWith("/graph") ? { graph: persistedGraph } : { workflow: graphWorkflow }),
+    );
+    render(<WorkflowPanel taskId="ws1" />);
+    expect(await screen.findByRole("heading", { name: "Workflow Graph" })).toBeTruthy();
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/tasks/ws1/workflow/graph"));
+    expect(screen.getByText("0 nodes")).toBeTruthy();
   });
 });
