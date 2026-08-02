@@ -32,10 +32,6 @@ describe("CodexBarWidget provider settings", () => {
     getJson.mockImplementation((url: string) => {
       if (url.endsWith("/tokens")) return Promise.resolve({ available: false });
       if (url.endsWith("/providers")) return Promise.resolve(settings);
-      if (url.endsWith("/credentials")) return Promise.resolve({
-        version: "credentials-version-1",
-        credentials: [{ id: "synthetic", name: "Synthetic", configured: false }],
-      });
       return Promise.resolve(usage);
     });
     sendJson.mockResolvedValue({
@@ -81,10 +77,6 @@ describe("CodexBarWidget provider settings", () => {
           providers: [{ id: "codex", name: "Codex", enabled: true, configurable: true }],
         });
       }
-      if (url.endsWith("/credentials")) return Promise.resolve({
-        version: "credentials-version-1",
-        credentials: [{ id: "synthetic", name: "Synthetic", configured: false }],
-      });
       return Promise.resolve(usage);
     });
 

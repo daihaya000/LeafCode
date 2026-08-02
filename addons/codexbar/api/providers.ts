@@ -23,7 +23,7 @@ type CatalogProvider = (typeof PROVIDER_CATALOG)[number] & {
   configurable: boolean;
 };
 
-export type ConfigFile = Record<string, unknown>;
+type ConfigFile = Record<string, unknown>;
 
 const providerIds = new Set<string>(PROVIDER_CATALOG.map((provider) => provider.id));
 const defaultEnabledProviders: ProviderId[] = ["codex", "claude", "cursor"];
@@ -32,12 +32,12 @@ const LOCK_RETRY_DELAY_MS = 20;
 
 class ConfigError extends Error {}
 
-export function configPath(): string {
+function configPath(): string {
   const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
   return path.join(appData, "CodexBar", "config.json");
 }
 
-export function configLockPath(): string {
+function configLockPath(): string {
   return `${configPath()}.providers.lock`;
 }
 
@@ -49,7 +49,7 @@ function sleep(milliseconds: number): Promise<void> {
  * Serialize writers from all WebUI processes. The lock lives beside the fixed
  * config file, is created exclusively, and is always released by the owner.
  */
-export async function acquireConfigLock(): Promise<() => Promise<void>> {
+async function acquireConfigLock(): Promise<() => Promise<void>> {
   const lockFile = configLockPath();
   for (let attempt = 0; attempt < LOCK_RETRY_COUNT; attempt++) {
     try {
@@ -72,7 +72,7 @@ export async function acquireConfigLock(): Promise<() => Promise<void>> {
   throw new ConfigError("CodexBar の設定更新をロックできません");
 }
 
-export function versionOf(text: string): string {
+function versionOf(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
@@ -89,7 +89,7 @@ function enabledFromConfig(config: ConfigFile): ProviderId[] {
   return [...new Set(raw)] as ProviderId[];
 }
 
-export async function readConfig(): Promise<{ text: string; config: ConfigFile; enabled: ProviderId[] }> {
+async function readConfig(): Promise<{ text: string; config: ConfigFile; enabled: ProviderId[] }> {
   const file = configPath();
   let text: string;
   try {
@@ -154,7 +154,7 @@ function isUpdateRequest(value: unknown): value is {
     && typeof body.version === "string";
 }
 
-export async function writeConfig(config: ConfigFile): Promise<void> {
+async function writeConfig(config: ConfigFile): Promise<void> {
   const file = configPath();
   const temp = `${file}.${randomUUID()}.tmp`;
   try {
