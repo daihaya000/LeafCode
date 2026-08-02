@@ -17,6 +17,8 @@ export type WorkflowGraphRuntimeState = {
   attention?: boolean;
 };
 
+export type WorkflowGraphDirection = "LR" | "TB";
+
 export type WorkflowGraphReactNodeData = {
   graphNode: WorkflowGraphNode;
   definition?: WorkflowNodeRegistryDefinition;
@@ -64,12 +66,28 @@ export function toWorkflowGraphReactFlow(
   graph: WorkflowGraphDraft,
   states: readonly WorkflowGraphRuntimeState[] = [],
   reducedMotion = false,
+  direction: WorkflowGraphDirection = "LR",
 ): {
   nodes: WorkflowGraphReactNode[];
   edges: WorkflowGraphReactEdge[];
 } {
   const runtimeStates = stateMap(states);
   const nodeStates = new Map<string, string>();
+  const verticalPositions = new Map<string, { x: number; y: number }>();
+  if (direction === "TB") {
+    const ranks = [...new Set(graph.nodes.map((node) => node.position.x))].sort((a, b) => a - b);
+    for (const [rank, x] of ranks.entries()) {
+      const nodesAtRank = graph.nodes
+        .filter((node) => node.position.x === x)
+        .sort((a, b) => a.position.y - b.position.y);
+      nodesAtRank.forEach((node, index) => {
+        verticalPositions.set(node.id, {
+          x: (index - (nodesAtRank.length - 1) / 2) * 280,
+          y: rank * 220,
+        });
+      });
+    }
+  }
   const nodes = graph.nodes.map<WorkflowGraphReactNode>((graphNode) => {
     const definition = WORKFLOW_NODE_REGISTRY.get(
       graphNode.type,
@@ -81,7 +99,7 @@ export function toWorkflowGraphReactFlow(
     return {
       id: graphNode.id,
       type: "workflowGraphNode",
-      position: { ...graphNode.position },
+      position: verticalPositions.get(graphNode.id) ?? { ...graphNode.position },
       data: {
         graphNode,
         definition,

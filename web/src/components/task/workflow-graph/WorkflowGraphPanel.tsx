@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CircleAlert } from "lucide-react";
 import type { WorkflowView } from "@/lib/workflow-service";
 import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import type { WorkflowGraphRuntimeState } from "@/lib/workflow-graph-react-flow";
+import type { WorkflowGraphDirection } from "@/lib/workflow-graph-react-flow";
 import { cx } from "@/components/ui";
 import { WorkflowGraphList } from "./WorkflowGraphList";
 import { WorkflowGraphInspector } from "./WorkflowGraphInspector";
@@ -21,6 +22,29 @@ const WorkflowGraphCanvas = dynamic(
     ),
   },
 );
+
+type WorkflowGraphViewportMode = "mobile" | "tablet" | "desktop";
+
+function useWorkflowGraphViewportMode(): WorkflowGraphViewportMode {
+  const read = () => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "desktop" as const;
+    if (window.matchMedia("(max-width: 767px)").matches) return "mobile" as const;
+    if (window.matchMedia("(max-width: 1279px)").matches) return "tablet" as const;
+    return "desktop" as const;
+  };
+  const [mode, setMode] = useState<WorkflowGraphViewportMode>(read);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const queries = [
+      window.matchMedia("(max-width: 767px)"),
+      window.matchMedia("(max-width: 1279px)"),
+    ];
+    const update = () => setMode(read());
+    queries.forEach((query) => query.addEventListener?.("change", update));
+    return () => queries.forEach((query) => query.removeEventListener?.("change", update));
+  }, []);
+  return mode;
+}
 
 function statusLabel(status: string): string {
   if (status === "completed" || status === "succeeded") return "完了";
@@ -70,6 +94,8 @@ export function WorkflowGraphPanel({
   onOpenDiff: (nodeId: string) => void;
   onRefresh: () => Promise<void>;
 }) {
+  const viewportMode = useWorkflowGraphViewportMode();
+  const direction: WorkflowGraphDirection = viewportMode === "mobile" ? "TB" : "LR";
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const states = useMemo(() => runtimeStates(workflow), [workflow]);
   const completed = states.filter((state) => ["succeeded", "completed"].includes(state.status)).length;
@@ -78,7 +104,7 @@ export function WorkflowGraphPanel({
   const selectedNodeRun = workflow.nodes.find((node) => node.nodeKey === selectedNodeId);
 
   return (
-    <section aria-label="Workflow Graph進捗" className="flex min-h-0 flex-1 flex-col overflow-auto bg-surface-2 p-3 sm:p-4">
+    <section aria-label="Workflow Graph進捗" data-graph-viewport={viewportMode} data-graph-direction={direction} className="flex min-h-0 flex-1 flex-col overflow-auto bg-surface-2 p-3 sm:p-4">
       <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -100,12 +126,13 @@ export function WorkflowGraphPanel({
             {graphError}
           </p>
         )}
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_17rem_20rem]">
+        <div className="relative grid min-h-0 flex-1 gap-3 md:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem_20rem]">
           <WorkflowGraphCanvas
             graph={graph}
             states={states}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            direction={direction}
           />
           <WorkflowGraphList
             graph={graph}
@@ -118,6 +145,7 @@ export function WorkflowGraphPanel({
             graphNode={selectedGraphNode}
             nodeRun={selectedNodeRun}
             workflow={workflow}
+            mode={viewportMode}
             onOpenChat={onOpenChat}
             onOpenDiff={onOpenDiff}
             onRefresh={onRefresh}

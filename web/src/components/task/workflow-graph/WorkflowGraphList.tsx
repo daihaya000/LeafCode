@@ -34,6 +34,7 @@ export function WorkflowGraphList({
   return (
     <aside className="min-w-0 rounded-lg border border-border bg-surface p-3" aria-label="Workflow Nodeと接続の一覧">
       <h3 className="text-xs font-semibold text-text">Node一覧</h3>
+      <p className="mt-1 text-[10px] text-muted">Tabで移動し、EnterまたはSpaceで選択</p>
       <ul className="mt-2 space-y-1">
         {graph.nodes.length === 0 && (
           <li className="workflow-graph-empty rounded-lg bg-surface-2 px-2.5 py-3 text-xs text-muted">
@@ -52,6 +53,8 @@ export function WorkflowGraphList({
                   selectedNodeId === node.id && "bg-surface-2 text-text",
                 )}
                 aria-pressed={selectedNodeId === node.id}
+                aria-keyshortcuts="Enter Space"
+                data-node-id={node.id}
                 onClick={() => onSelectNode(selectedNodeId === node.id ? null : node.id)}
               >
                 <StateIcon status={status} />

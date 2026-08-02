@@ -41,6 +41,14 @@ describe("toWorkflowGraphReactFlow", () => {
       .toMatchObject({ animated: false, data: { active: true, reducedMotion: true } });
   });
 
+  test("uses a top-to-bottom layout for narrow viewports", () => {
+    const result = toWorkflowGraphReactFlow(graph, [], false, "TB");
+    const positions = new Map(result.nodes.map((node) => [node.id, node.position]));
+    expect(positions.get("implement_ui")?.y).toBeLessThan(positions.get("code_review")?.y ?? 0);
+    expect(positions.get("code_review")?.y).toBe(positions.get("visual_judge")?.y);
+    expect(positions.get("review_gate")?.y).toBeGreaterThan(positions.get("code_review")?.y ?? 0);
+  });
+
   test("keeps unknown Registry nodes visible but marks them unsupported", () => {
     const unsupported = structuredClone(graph);
     unsupported.nodes[0].type = "future.node";

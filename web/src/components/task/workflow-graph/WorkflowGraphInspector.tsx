@@ -31,6 +31,7 @@ export function WorkflowGraphInspector({
   onOpenChat,
   onOpenDiff,
   onRefresh,
+  mode,
 }: {
   taskId: string;
   graphNode: WorkflowGraphNode | null;
@@ -39,6 +40,7 @@ export function WorkflowGraphInspector({
   onOpenChat: (nodeId: string) => void;
   onOpenDiff: (nodeId: string) => void;
   onRefresh: () => Promise<void>;
+  mode: "mobile" | "tablet" | "desktop";
 }) {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export function WorkflowGraphInspector({
 
   if (!graphNode) {
     return (
-      <aside className="rounded-lg border border-border bg-surface p-3" aria-label="Node Inspector">
+      <aside data-inspector-mode={mode === "mobile" ? "bottom-sheet" : mode === "tablet" ? "drawer" : "fixed"} className={cx("rounded-lg border border-border bg-surface p-3", mode === "mobile" && "sticky bottom-0 z-20 max-h-[45vh] overflow-auto rounded-b-none shadow-lg", mode === "tablet" && "md:absolute md:right-0 md:top-0 md:z-20 md:h-full md:max-h-full md:w-[min(22rem,calc(100%-1rem))] md:overflow-auto md:shadow-xl")} aria-label="Node Inspector">
         <h3 className="text-sm font-semibold text-text">Node Inspector</h3>
         <p className="mt-2 text-xs text-muted">CanvasまたはNode一覧からNodeを選択してください。</p>
       </aside>
@@ -72,7 +74,7 @@ export function WorkflowGraphInspector({
   };
 
   return (
-    <aside className="min-w-0 rounded-lg border border-border bg-surface p-3" aria-label="Node Inspector">
+    <aside data-inspector-mode={mode === "mobile" ? "bottom-sheet" : mode === "tablet" ? "drawer" : "fixed"} className={cx("min-w-0 rounded-lg border border-border bg-surface p-3", mode === "mobile" && "sticky bottom-0 z-20 max-h-[45vh] overflow-auto rounded-b-none shadow-lg", mode === "tablet" && "md:absolute md:right-0 md:top-0 md:z-20 md:h-full md:max-h-full md:w-[min(22rem,calc(100%-1rem))] md:overflow-auto md:shadow-xl")} aria-label="Node Inspector">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-text">{graphNode.label}</h3>

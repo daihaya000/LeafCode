@@ -56,6 +56,7 @@ describe("WorkflowGraphInspector", () => {
         onOpenChat={onOpenChat}
         onOpenDiff={onOpenDiff}
         onRefresh={onRefresh}
+        mode="desktop"
       />,
     );
 
@@ -90,10 +91,31 @@ describe("WorkflowGraphInspector", () => {
         onOpenChat={vi.fn()}
         onOpenDiff={vi.fn()}
         onRefresh={vi.fn().mockResolvedValue(undefined)}
+        mode="desktop"
       />,
     );
     expect(screen.getAllByRole("button", { name: "Chatを開く" }).at(-1)).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Retry" })).toHaveProperty("disabled", true);
     expect(screen.getByText("Control NodeはRetry対象外です。")).toBeTruthy();
+  });
+
+  it.each([
+    ["mobile", "bottom-sheet"],
+    ["tablet", "drawer"],
+    ["desktop", "fixed"],
+  ] as const)("exposes the %s Inspector presentation mode", (mode, expected) => {
+    render(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphNode={null}
+        nodeRun={undefined}
+        workflow={workflow}
+        onOpenChat={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        mode={mode}
+      />,
+    );
+    expect(screen.getByRole("complementary", { name: "Node Inspector" }).getAttribute("data-inspector-mode")).toBe(expected);
   });
 });

@@ -14,6 +14,7 @@ import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import {
   toWorkflowGraphReactFlow,
   type WorkflowGraphReactNode,
+  type WorkflowGraphDirection,
   type WorkflowGraphRuntimeState,
 } from "@/lib/workflow-graph-react-flow";
 import { WorkflowGraphEdge } from "./WorkflowGraphEdge";
@@ -39,16 +40,18 @@ export function WorkflowGraphCanvas({
   states,
   selectedNodeId,
   onSelectNode,
+  direction,
 }: {
   graph: WorkflowGraphDraft;
   states: readonly WorkflowGraphRuntimeState[];
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
+  direction: WorkflowGraphDirection;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const elements = useMemo(
-    () => toWorkflowGraphReactFlow(graph, states, reducedMotion),
-    [graph, reducedMotion, states],
+    () => toWorkflowGraphReactFlow(graph, states, reducedMotion, direction),
+    [direction, graph, reducedMotion, states],
   );
   const nodes = useMemo(
     () =>
