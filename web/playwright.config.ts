@@ -29,7 +29,12 @@ export default defineConfig({
     // (which unconditionally refuses when port 3000 is occupied) — safe
     // here specifically because NEXT_DIST_DIR keeps the output separate.
     command: `npm run sync:addons && npx next build && npm run start -- --hostname 127.0.0.1 --port ${PORT}`,
-    env: { NEXT_DIST_DIR: ".next-e2e", OPENCODE_WEBUI_WORKFLOW_MODE: "true" },
+    env: {
+      NEXT_DIST_DIR: ".next-e2e",
+      OPENCODE_WEBUI_WORKFLOW_MODE: "true",
+      OPENCODE_WEBUI_WORKFLOW_GRAPH: "true",
+      OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: "false",
+    },
     url: BASE_URL,
     timeout: 180_000,
     reuseExistingServer: !process.env.CI,

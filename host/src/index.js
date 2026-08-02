@@ -1343,6 +1343,10 @@ async function spawnWeb() {
       // default. Preserve an explicit false/0 override for safe rollout.
       OPENCODE_WEBUI_WORKFLOW_MODE:
         process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? 'true',
+      // Read-only Graph is the packaged rollout default. Keep semantic edit
+      // opt-in separately in the WebUI environment.
+      OPENCODE_WEBUI_WORKFLOW_GRAPH:
+        process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? 'true',
       ...browserBridgeEnvironment(),
       PORT: String(WEBUI_PORT),
       // `next start` must serve the same distDir that was built. Do NOT set it

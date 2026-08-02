@@ -40,6 +40,18 @@
 | **リモートアクセス** | Caddy 逆プロキシ / ローカル HTTPS | オプトインでスマホ・別 PC から安全に接続 |
 | **UI** | light / dark テーマ / モバイル対応 / ⌘K パレット | Codex 風の composer-first デザイン |
 
+## Workflow Graphの段階公開
+
+Workflow Graphは既定でread-only表示が有効です。semantic編集は安全確認済み環境でのみ明示的に有効化してください。
+
+| 環境変数 | 既定値 | 内容 |
+| --- | --- | --- |
+| `OPENCODE_WEBUI_WORKFLOW_MODE` | `true`（EXE） | Workflow機能全体。`false`で旧Workflow UIへrollback |
+| `OPENCODE_WEBUI_WORKFLOW_GRAPH` | `true`（EXE） | Graph read-only表示。親Workflowが無効なら強制無効 |
+| `OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT` | `false` | Node／Edgeのsemantic編集。Graph flagが無効なら強制無効 |
+
+Graph DraftはRun開始時にExecution Snapshot v2へコピーされ、実行中RunはDraft変更の影響を受けません。問題がある場合は`OPENCODE_WEBUI_WORKFLOW_GRAPH=false`でread-only Graphから旧UIへ戻せます。
+
 ---
 
 ## クイックスタート
