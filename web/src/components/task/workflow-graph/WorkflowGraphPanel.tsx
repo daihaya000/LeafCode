@@ -10,6 +10,7 @@ import type { WorkflowGraphDirection } from "@/lib/workflow-graph-react-flow";
 import { cx } from "@/components/ui";
 import { WorkflowGraphList } from "./WorkflowGraphList";
 import { WorkflowGraphInspector } from "./WorkflowGraphInspector";
+import { WorkflowGraphEditor } from "./WorkflowGraphEditor";
 
 const WorkflowGraphCanvas = dynamic(
   () => import("./WorkflowGraphCanvas").then((module) => module.WorkflowGraphCanvas),
@@ -97,6 +98,7 @@ export function WorkflowGraphPanel({
   const viewportMode = useWorkflowGraphViewportMode();
   const direction: WorkflowGraphDirection = viewportMode === "mobile" ? "TB" : "LR";
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const states = useMemo(() => runtimeStates(workflow), [workflow]);
   const completed = states.filter((state) => ["succeeded", "completed"].includes(state.status)).length;
   const attention = workflow.run?.status === "paused";
@@ -126,6 +128,13 @@ export function WorkflowGraphPanel({
             {graphError}
           </p>
         )}
+        <WorkflowGraphEditor
+          taskId={taskId}
+          graph={graph}
+          selectedNodeId={selectedNodeId}
+          selectedEdgeId={selectedEdgeId}
+          onRefresh={onRefresh}
+        />
         <div className="relative grid min-h-0 flex-1 gap-3 md:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem_20rem]">
           <WorkflowGraphCanvas
             graph={graph}
@@ -139,6 +148,8 @@ export function WorkflowGraphPanel({
             states={states}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            selectedEdgeId={selectedEdgeId}
+            onSelectEdge={setSelectedEdgeId}
           />
           <WorkflowGraphInspector
             taskId={taskId}

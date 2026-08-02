@@ -24,11 +24,15 @@ export function WorkflowGraphList({
   states,
   selectedNodeId,
   onSelectNode,
+  selectedEdgeId,
+  onSelectEdge,
 }: {
   graph: WorkflowGraphDraft;
   states: readonly WorkflowGraphRuntimeState[];
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
+  selectedEdgeId: string | null;
+  onSelectEdge: (edgeId: string | null) => void;
 }) {
   const stateByNode = new Map(states.map((state) => [state.nodeId, state]));
   return (
@@ -68,11 +72,13 @@ export function WorkflowGraphList({
       <h3 className="mt-4 text-xs font-semibold text-text">接続一覧</h3>
       <ul className="mt-2 space-y-1.5 text-[10px] text-muted">
         {graph.edges.map((edge) => (
-          <li key={edge.id} className="flex items-center gap-1.5">
+          <li key={edge.id}>
+            <button type="button" className={cx("flex min-h-8 w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary", selectedEdgeId === edge.id && "bg-surface-2 text-text")} aria-pressed={selectedEdgeId === edge.id} data-edge-id={edge.id} onClick={() => onSelectEdge(selectedEdgeId === edge.id ? null : edge.id)}>
             <span className="min-w-0 truncate">{edge.source}</span>
             <ArrowRight className="h-3 w-3 shrink-0 text-faint" aria-hidden="true" />
             <span className="min-w-0 truncate">{edge.target}</span>
             <span className="ml-auto shrink-0 text-faint">{edge.kind}</span>
+            </button>
           </li>
         ))}
       </ul>

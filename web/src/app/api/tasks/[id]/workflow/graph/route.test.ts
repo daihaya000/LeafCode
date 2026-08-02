@@ -77,11 +77,26 @@ describe("/api/tasks/[id]/workflow/graph", () => {
     const response = await PATCH(
       new Request("http://localhost/api/tasks/ws1/workflow/graph", {
         method: "PATCH",
-        body: JSON.stringify({ expectedGraphRevision: 1, operations: [{ op: "move_node" }] }),
+        body: JSON.stringify({ expectedGraphRevision: 1, operations: [{ op: "update_node_config", nodeId: "implement_ui", config: {} }] }),
       }),
       contextFor("ws1"),
     );
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "conflict", graph: mocks.graph });
+    expect(await response.json()).toEqual({ error: "conflict", conflictKind: "semantic", graph: mocks.graph });
+  });
+
+  it("classifies layout-only CAS conflicts separately", async () => {
+    mocks.update.mockImplementation(() => {
+      throw Object.assign(new Error("conflict"), { code: "revision_conflict", latestGraph: mocks.graph });
+    });
+    const response = await PATCH(
+      new Request("http://localhost/api/tasks/ws1/workflow/graph", {
+        method: "PATCH",
+        body: JSON.stringify({ expectedGraphRevision: 1, operations: [{ op: "move_node", nodeId: "implement_ui", position: { x: 1, y: 2 } }] }),
+      }),
+      contextFor("ws1"),
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).conflictKind).toBe("layout");
   });
 });

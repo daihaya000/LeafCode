@@ -23,6 +23,8 @@ describe("WorkflowGraphList", () => {
         states={[{ nodeId: "implement_ui", status: "ready", attemptNo: 0 }]}
         selectedNodeId={null}
         onSelectNode={onSelectNode}
+        selectedEdgeId={null}
+        onSelectEdge={vi.fn()}
       />,
     );
     const button = screen.getByRole("button", { name: /Implement UI/ });

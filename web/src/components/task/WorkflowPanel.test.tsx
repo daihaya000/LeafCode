@@ -7,6 +7,7 @@ const graphFeature = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/client", () => ({ getJson }));
 vi.mock("@/lib/workflow-feature", () => ({
   isWorkflowGraphEnabled: () => graphFeature.enabled,
+  isWorkflowGraphEditEnabled: () => false,
 }));
 vi.mock("./workflow-graph/WorkflowGraphCanvas", () => ({
   WorkflowGraphCanvas: ({ graph }: { graph: { nodes: unknown[] } }) => (

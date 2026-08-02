@@ -10,6 +10,14 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+function graphConflictKind(operations: unknown): "semantic" | "layout" {
+  if (!Array.isArray(operations) || operations.length === 0) return "semantic";
+  const layoutOperations = new Set(["move_node", "update_node_presentation", "set_viewport"]);
+  return operations.every((operation) =>
+    Boolean(operation && typeof operation === "object" && "op" in operation && layoutOperations.has(String(operation.op))),
+  ) ? "layout" : "semantic";
+}
+
 export async function GET(_req: Request, context: Ctx) {
   const { id } = await context.params;
   const graph = getOrMaterializeWorkflowGraph(id);
@@ -37,7 +45,11 @@ export async function PATCH(req: Request, context: Ctx) {
     if (!isGraphMutationError(error)) throw error;
     if (error.code === "revision_conflict") {
       return Response.json(
-        { error: error.message, graph: "latestGraph" in error ? error.latestGraph : undefined },
+        {
+          error: error.message,
+          conflictKind: graphConflictKind(body?.operations),
+          graph: "latestGraph" in error ? error.latestGraph : undefined,
+        },
         { status: 409 },
       );
     }
