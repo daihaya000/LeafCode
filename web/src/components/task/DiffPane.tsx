@@ -259,10 +259,11 @@ export function DiffPane({
       if (!mountedRef.current || id !== reqIdRef.current) return;
       setPayload(data);
       setExpanded((prev) => {
-        // keep manual choices; default-expand when few files
+        // Keep manual choices, but start with every file minimized so the
+        // changed-file list stays compact and scannable.
         const next: Record<string, boolean> = {};
         for (const f of data.files) {
-          next[f.path] = prev[f.path] ?? data.files.length <= 8;
+          next[f.path] = prev[f.path] ?? false;
         }
         return next;
       });

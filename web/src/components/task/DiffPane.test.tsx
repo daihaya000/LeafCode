@@ -140,6 +140,16 @@ describe("DiffPane directory race", () => {
     expect(screen.queryByText("セッション外?")).toBeNull();
   });
 
+  it("starts each changed file minimized", async () => {
+    mockMetaApis();
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    const fileToggle = await screen.findByRole("button", {
+      name: "src/file.ts の差分を展開",
+    });
+
+    expect(fileToggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("distinguishes an empty filter from a repository with no changes", async () => {
     getJson.mockImplementation((url: string) => {
       if (String(url).includes("/api/diff/files")) {
