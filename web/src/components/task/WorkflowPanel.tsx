@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Circle, Loader2, PauseCircle } from "lucide-react";
 import { getJson } from "@/lib/client";
+import { isWorkflowGraphEnabled } from "@/lib/workflow-feature";
+import { synthesizeWorkflowGraph } from "@/lib/workflow-graph-compat";
 import type { WorkflowView } from "@/lib/workflow-service";
 import { cx } from "@/components/ui";
+import { WorkflowGraphPanel } from "./workflow-graph/WorkflowGraphPanel";
 
 type WorkflowResponse = { workflow: WorkflowView };
 
@@ -63,12 +66,44 @@ export function WorkflowPanel({ taskId }: { taskId: string }) {
     };
   }, [load, taskId]);
 
+  const graphEnabled = isWorkflowGraphEnabled();
+  const graphState = useMemo(() => {
+    if (!graphEnabled || !workflow?.run) return null;
+    try {
+      return {
+        graph: synthesizeWorkflowGraph(workflow.run.definitionSnapshot, {
+          id: `compat:${workflow.run.id}`,
+          workspaceId: workflow.workspaceId,
+          graphRevision: workflow.run.revision,
+          createdAt: workflow.run.createdAt,
+          updatedAt: workflow.run.updatedAt,
+        }),
+        error: null,
+      };
+    } catch {
+      return {
+        graph: null,
+        error: "互換Graphを生成できないため、従来のWorkflow表示を使用しています。",
+      };
+    }
+  }, [graphEnabled, workflow]);
+
   const completed = useMemo(
     () => workflow?.nodes.filter((node) => node.attempts.at(-1)?.status === "succeeded").length ?? 0,
     [workflow],
   );
   if (error && !workflow) return <div role="alert" className="p-4 text-sm text-danger">{error}</div>;
   if (!workflow) return <div className="flex items-center gap-2 p-4 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" />読み込み中…</div>;
+
+  if (graphState?.graph) {
+    return (
+      <WorkflowGraphPanel
+        graph={graphState.graph}
+        workflow={workflow}
+        graphError={graphState.error}
+      />
+    );
+  }
 
   const attention = workflow.run?.status === "paused";
   return (

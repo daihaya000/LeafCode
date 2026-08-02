@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@import "@xyflow/react/dist/style.css";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
@@ -239,4 +241,112 @@ body {
 }
 .status-pulse {
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Workflow Graph: keep React Flow's structural styles, but use the shared theme. */
+.workflow-graph-canvas {
+  --xy-edge-stroke-default: var(--border-strong);
+  --xy-edge-stroke-selected-default: var(--accent);
+  --xy-background-pattern-dots-color-default: var(--border);
+  --xy-node-border-default: 1px solid var(--border);
+  --xy-node-background-color-default: var(--surface);
+  --xy-node-color-default: var(--text);
+  --xy-node-border-radius-default: 0.75rem;
+  --xy-handle-background-color-default: var(--accent);
+  --xy-handle-border-color-default: var(--surface);
+  --xy-controls-button-background-color-default: var(--surface);
+  --xy-controls-button-background-color-hover-default: var(--surface-3);
+  --xy-controls-button-color-default: var(--muted);
+  --xy-controls-button-color-hover-default: var(--text);
+  --xy-controls-button-border-color-default: var(--border);
+  --xy-controls-box-shadow-default: 0 1px 3px color-mix(in srgb, var(--text) 12%, transparent);
+  --xy-minimap-background-color-default: var(--surface);
+  --xy-minimap-mask-background-color-default: color-mix(in srgb, var(--accent) 12%, transparent);
+  --xy-minimap-node-background-color-default: var(--surface-3);
+  --xy-minimap-node-stroke-color-default: var(--border-strong);
+}
+
+.workflow-graph-canvas .react-flow__node {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.workflow-graph-canvas .react-flow__node.selected > div {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.workflow-graph-canvas .react-flow__handle {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-width: 2px;
+}
+
+.workflow-graph-canvas .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.workflow-graph-canvas .react-flow__controls-button {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  border-bottom-color: var(--border);
+}
+
+.workflow-graph-canvas .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.workflow-graph-canvas .workflow-graph-edge-path {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+
+.workflow-graph-canvas .workflow-graph-edge-path--success {
+  stroke: var(--success);
+}
+
+.workflow-graph-canvas .workflow-graph-edge-path--control {
+  stroke: var(--accent);
+}
+
+.workflow-graph-canvas .workflow-graph-edge-path--feedback {
+  stroke: var(--warning);
+  stroke-dasharray: 6 4;
+}
+
+.workflow-graph-canvas .workflow-graph-edge-path--active {
+  stroke-width: 2.5;
+}
+
+.workflow-graph-canvas .workflow-graph-edge-label {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  padding: 0.125rem 0.375rem;
+  color: var(--muted);
+  font-size: 0.625rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.workflow-graph-canvas .workflow-graph-legend {
+  margin: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  padding: 0.375rem 0.5rem;
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-graph-canvas .react-flow__edge.animated path {
+    animation: none;
+    stroke-dasharray: none;
+  }
 }
