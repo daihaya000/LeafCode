@@ -142,6 +142,8 @@ export function WorkflowGraphPanel({
             states={states}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+            selectedEdgeId={selectedEdgeId}
+            onSelectEdge={setSelectedEdgeId}
             direction={direction}
             taskId={taskId}
             graphRevision={graph.graphRevision}
@@ -160,6 +162,7 @@ export function WorkflowGraphPanel({
             graphNode={selectedGraphNode}
             nodeRun={selectedNodeRun}
             workflow={workflow}
+            graphRevision={graph.graphRevision}
             mode={viewportMode}
             onOpenChat={onOpenChat}
             onOpenDiff={onOpenDiff}

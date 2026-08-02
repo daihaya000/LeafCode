@@ -9,7 +9,7 @@ const graph = createWorkflowGraphCompat(createWorkflowDefinitionSnapshot(), {
 });
 
 describe("toWorkflowGraphReactFlow", () => {
-  test("maps Graph DTO nodes and edges to read-only React Flow elements", () => {
+  test("maps Graph DTO nodes and edges to selectable React Flow elements", () => {
     const result = toWorkflowGraphReactFlow(graph, [
       { nodeId: "implement_ui", status: "succeeded", attemptNo: 1 },
       { nodeId: "code_review", status: "running", attemptNo: 1, dispatchStatus: "awaiting_result" },
@@ -26,6 +26,8 @@ describe("toWorkflowGraphReactFlow", () => {
     });
     expect(result.edges[0]).toMatchObject({
       type: "workflowGraphEdge",
+      selectable: true,
+      focusable: true,
       animated: true,
       data: { active: true },
     });

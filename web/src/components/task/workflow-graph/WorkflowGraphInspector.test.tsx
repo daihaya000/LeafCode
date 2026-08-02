@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowGraphInspector } from "./WorkflowGraphInspector";
 
 const { sendJson } = vi.hoisted(() => ({ sendJson: vi.fn() }));
+const feature = vi.hoisted(() => ({ editEnabled: false }));
 vi.mock("@/lib/client", () => ({ sendJson }));
+vi.mock("@/lib/workflow-feature", () => ({ isWorkflowGraphEditEnabled: () => feature.editEnabled }));
 
 const graphNode = {
   id: "implement_ui",
@@ -40,6 +42,7 @@ describe("WorkflowGraphInspector", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    feature.editEnabled = false;
   });
 
   it("shows evidence sections, Attention, and Chat/Diff/Retry actions", async () => {
@@ -97,6 +100,40 @@ describe("WorkflowGraphInspector", () => {
     expect(screen.getAllByRole("button", { name: "Chatを開く" }).at(-1)).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Retry" })).toHaveProperty("disabled", true);
     expect(screen.getByText("Control NodeはRetry対象外です。")).toBeTruthy();
+  });
+
+  it("saves edited label and config through the Graph CAS API", async () => {
+    feature.editEnabled = true;
+    sendJson.mockResolvedValue({ graph: {} });
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphRevision={4}
+        graphNode={graphNode}
+        nodeRun={undefined}
+        workflow={workflow}
+        onOpenChat={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onRefresh={onRefresh}
+        mode="desktop"
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Node label" }), { target: { value: "Updated implementation" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Node config JSON" }), { target: { value: '{"instructions":"Updated"}' } });
+    fireEvent.click(screen.getByRole("button", { name: "Node設定を保存" }));
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "PATCH",
+      "/api/tasks/ws1/workflow/graph",
+      {
+        expectedGraphRevision: 4,
+        operations: [
+          { op: "set_node_label", nodeId: "implement_ui", label: "Updated implementation" },
+          { op: "update_node_config", nodeId: "implement_ui", config: { instructions: "Updated" } },
+        ],
+      },
+    ));
+    expect(onRefresh).toHaveBeenCalled();
   });
 
   it.each([

@@ -4363,6 +4363,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - React Flowのviewport保存はユーザー操作開始後だけ実行し、初期fitViewによる不要なrevision更新を防止。保存時は最新revisionを参照し、競合時はGraph再読込を試みる。
 - Graph mutation APIにoperation discriminatorと必須フィールドの入力検証を追加。未知operationや壊れた`add_node`を400相当で拒否し、Graph revisionを変更しない。
 - 検証: Graph関連24テスト126件、TypeScript、Lintを通過。
+
+## 2026-08-02: Workflow Graph Editor Phase 3
+
+- Node InspectorにGraph Edit flag連動のラベル／Config JSON編集フォームを追加し、Node設定をCAS付きの同一PATCHで保存できるようにした。JSON形式・空ラベルは送信前に検証する。
+- Canvas上のEdge選択・フォーカスを有効化し、一覧とCanvasのNode／Edge選択状態を同期。初期のread-only adapter契約を、編集時の削除操作にも対応するUIへ更新した。
+- Inspectorの入力中ドラフトは同一Nodeのworkflow更新で上書きせず、Node選択が変わったときだけ再初期化する。
+- 検証: workflow graph UI 18テスト、TypeScript、Lintを通過。
 - やったこと: EXE起動時のWorkflow/Graph/Graph Edit既定値をbatchに設定し、Next.jsのclient公開環境変数とfeature flag fallbackを追加。調査用debug instrumentationは原因確認後に削除した。
 - 判断理由: サーバー側環境変数だけでは静的にbuildされたクライアントのGraph判定に届かず、実機ログで3つのflagがfalseになっていたため。
 - 検証: host test 192件、Workflow関連Vitest 18件、TypeScriptチェック、diff checkを通過。コミット`c6d06e4`を確認。

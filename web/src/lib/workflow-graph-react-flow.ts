@@ -118,9 +118,9 @@ export function toWorkflowGraphReactFlow(
       targetHandle: graphEdge.targetHandle,
       label: graphEdge.label,
       animated: active && !reducedMotion,
-      selectable: false,
+      selectable: true,
       reconnectable: false,
-      focusable: false,
+      focusable: true,
       data: { graphEdge, active, reducedMotion },
       className: [
         "workflow-graph-edge",

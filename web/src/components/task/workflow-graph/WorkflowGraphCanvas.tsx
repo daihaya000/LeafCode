@@ -8,12 +8,14 @@ import {
   MiniMap,
   Panel,
   ReactFlow,
+  type EdgeMouseHandler,
   type NodeMouseHandler,
   type Viewport,
 } from "@xyflow/react";
 import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import {
   toWorkflowGraphReactFlow,
+  type WorkflowGraphReactEdge,
   type WorkflowGraphReactNode,
   type WorkflowGraphDirection,
   type WorkflowGraphRuntimeState,
@@ -43,6 +45,8 @@ export function WorkflowGraphCanvas({
   states,
   selectedNodeId,
   onSelectNode,
+  selectedEdgeId,
+  onSelectEdge,
   direction,
   taskId,
   graphRevision,
@@ -52,6 +56,8 @@ export function WorkflowGraphCanvas({
   states: readonly WorkflowGraphRuntimeState[];
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
+  selectedEdgeId: string | null;
+  onSelectEdge: (edgeId: string | null) => void;
   direction: WorkflowGraphDirection;
   taskId: string;
   graphRevision: number;
@@ -69,6 +75,10 @@ export function WorkflowGraphCanvas({
         selected: node.id === selectedNodeId,
       })),
     [elements.nodes, selectedNodeId],
+  );
+  const edges = useMemo(
+    () => elements.edges.map((edge) => ({ ...edge, selected: edge.id === selectedEdgeId })),
+    [elements.edges, selectedEdgeId],
   );
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moveStarted = useRef(false);
@@ -90,6 +100,11 @@ export function WorkflowGraphCanvas({
   };
   const handleNodeClick: NodeMouseHandler<WorkflowGraphReactNode> = (_event, node) => {
     onSelectNode(node.id);
+    onSelectEdge(null);
+  };
+  const handleEdgeClick: EdgeMouseHandler<WorkflowGraphReactEdge> = (_event, edge) => {
+    onSelectNode(null);
+    onSelectEdge(edge.id);
   };
 
   return (
@@ -99,7 +114,7 @@ export function WorkflowGraphCanvas({
     >
       <ReactFlow
         nodes={nodes}
-        edges={elements.edges}
+        edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView={!graph.viewport}
@@ -114,9 +129,10 @@ export function WorkflowGraphCanvas({
         zoomOnScroll
         zoomOnPinch
         nodesFocusable
-        edgesFocusable={false}
+        edgesFocusable
         onNodeClick={handleNodeClick}
-        onPaneClick={() => onSelectNode(null)}
+        onEdgeClick={handleEdgeClick}
+        onPaneClick={() => { onSelectNode(null); onSelectEdge(null); }}
         onMoveStart={() => { moveStarted.current = true; }}
         onMoveEnd={persistViewport}
         defaultViewport={graph.viewport}

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageSquare, RefreshCw, TriangleAlert } from "lucide-react";
 import { sendJson } from "@/lib/client";
+import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 import type { WorkflowAttemptView, WorkflowNodeView, WorkflowView } from "@/lib/workflow-service";
 import type { WorkflowGraphNode } from "@/lib/workflow-graph-types";
 import { cx } from "@/components/ui";
@@ -32,9 +33,11 @@ export function WorkflowGraphInspector({
   onOpenDiff,
   onRefresh,
   mode,
+  graphRevision,
 }: {
   taskId: string;
   graphNode: WorkflowGraphNode | null;
+  graphRevision?: number;
   nodeRun: WorkflowNodeView | undefined;
   workflow: WorkflowView;
   onOpenChat: (nodeId: string) => void;
@@ -44,7 +47,21 @@ export function WorkflowGraphInspector({
 }) {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
+  const [configDraft, setConfigDraft] = useState("{}");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const previousNodeId = useRef<string | null>(null);
   const attempt: WorkflowAttemptView | undefined = nodeRun?.attempts.at(-1);
+  const editEnabled = graphRevision !== undefined && isWorkflowGraphEditEnabled();
+
+  useEffect(() => {
+    if (!graphNode || graphNode.id === previousNodeId.current) return;
+    previousNodeId.current = graphNode.id;
+    setLabelDraft(graphNode.label);
+    setConfigDraft(json(graphNode.config));
+    setEditError(null);
+  }, [graphNode]);
 
   if (!graphNode) {
     return (
@@ -73,6 +90,39 @@ export function WorkflowGraphInspector({
     }
   };
 
+  const saveEdit = async () => {
+    if (!editEnabled || graphRevision === undefined) return;
+    let config: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(configDraft);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("ConfigはJSONオブジェクトで入力してください。");
+      config = parsed as Record<string, unknown>;
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Config JSONを確認してください。");
+      return;
+    }
+    if (!labelDraft.trim()) {
+      setEditError("Nodeラベルを入力してください。");
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
+        expectedGraphRevision: graphRevision,
+        operations: [
+          { op: "set_node_label", nodeId: graphNode.id, label: labelDraft.trim() },
+          { op: "update_node_config", nodeId: graphNode.id, config },
+        ],
+      });
+      await onRefresh();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Node設定の保存に失敗しました。");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   return (
     <aside data-inspector-mode={mode === "mobile" ? "bottom-sheet" : mode === "tablet" ? "drawer" : "fixed"} className={cx("min-w-0 rounded-lg border border-border bg-surface p-3", mode === "mobile" && "sticky bottom-0 z-20 max-h-[45vh] overflow-auto rounded-b-none shadow-lg", mode === "tablet" && "md:absolute md:right-0 md:top-0 md:z-20 md:h-full md:max-h-full md:w-[min(22rem,calc(100%-1rem))] md:overflow-auto md:shadow-xl")} aria-label="Node Inspector">
       <div className="flex items-start justify-between gap-2">
@@ -94,6 +144,18 @@ export function WorkflowGraphInspector({
       )}
 
       <div className="mt-3 space-y-3">
+        <Section title="Node設定">
+          <div className="space-y-2">
+            <label className="block text-[10px] text-muted">ラベル
+              <input aria-label="Node label" value={labelDraft} disabled={!editEnabled || savingEdit} onChange={(event) => setLabelDraft(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-text disabled:opacity-50" />
+            </label>
+            <label className="block text-[10px] text-muted">Config JSON
+              <textarea aria-label="Node config JSON" value={configDraft} disabled={!editEnabled || savingEdit} onChange={(event) => setConfigDraft(event.target.value)} rows={6} spellCheck={false} className="mt-1 w-full resize-y rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-[10px] text-text disabled:opacity-50" />
+            </label>
+            {editEnabled && <button type="button" disabled={savingEdit} onClick={() => void saveEdit()} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text hover:bg-surface-2 disabled:opacity-50">{savingEdit ? "保存中…" : "Node設定を保存"}</button>}
+            {editError && <p role="alert" className="text-xs text-danger">{editError}</p>}
+          </div>
+        </Section>
         <Section title="Prompt">
           <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 text-[10px] text-muted">{json(attempt?.input)}</pre>
         </Section>
