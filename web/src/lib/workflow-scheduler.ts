@@ -150,8 +150,16 @@ async function advanceReviewGate(workflowRunId: string): Promise<void> {
       .run(now, workflowRunId);
     return;
   }
-  const run = database.prepare("SELECT workspace_id FROM workflow_runs WHERE id = ?").get(workflowRunId) as { workspace_id: string } | undefined;
+  const run = database
+    .prepare("SELECT workspace_id, cycle_count, max_cycles FROM workflow_runs WHERE id = ?")
+    .get(workflowRunId) as { workspace_id: string; cycle_count: number; max_cycles: number } | undefined;
   if (!run) return;
+  if (run.cycle_count >= run.max_cycles) {
+    database
+      .prepare("UPDATE workflow_runs SET status = 'paused', pause_reason = 'max_cycles', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'")
+      .run(now, workflowRunId);
+    return;
+  }
   const implement = database
     .prepare("SELECT id, config, latest_attempt_no FROM workflow_node_runs WHERE workflow_run_id = ? AND node_key = 'implement_ui'")
     .get(workflowRunId) as { id: string; config: string; latest_attempt_no: number } | undefined;
