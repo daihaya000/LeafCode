@@ -2,7 +2,7 @@ import { bindSession, getDb, getWorkspace, type WorkflowNodeAttemptRow } from ".
 import { ocServer } from "./oc-server";
 import { applyWorkflowSessionPermissions } from "./opencode-task-permission";
 import { buildWorkflowPrompt } from "./workflow-prompt";
-import { parseImplementResult, parseReviewResult } from "./workflow";
+import { evaluateReviewGate, parseImplementResult, parseReviewResult } from "./workflow";
 import type { MessageWithParts } from "./types";
 import type { WorkflowNodeConfig, WorkflowNodeKey } from "./workflow-types";
 import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
@@ -119,6 +119,61 @@ async function activateReviewers(
   );
 }
 
+async function advanceReviewGate(workflowRunId: string): Promise<void> {
+  const database = getDb();
+  const rows = database
+    .prepare(
+      `SELECT n.node_key, n.config, a.status, a.result
+       FROM workflow_node_runs n JOIN workflow_node_attempts a ON a.node_run_id = n.id AND a.attempt_no = n.latest_attempt_no
+       WHERE n.workflow_run_id = ? AND n.node_key IN ('code_review', 'visual_judge')`,
+    )
+    .all(workflowRunId) as Array<{ node_key: WorkflowNodeKey; config: string; status: string; result: string | null }>;
+  if (rows.length !== 2 || rows.some((row) => row.status !== "succeeded")) return;
+  const decisions = rows.map((row) =>
+    evaluateReviewGate({
+      status: "succeeded",
+      result: row.result ? parseReviewResult(JSON.parse(row.result)) : null,
+      config: JSON.parse(row.config),
+    }),
+  );
+  const now = new Date().toISOString();
+  if (decisions.some((decision) => decision.decision === "pause")) {
+    database
+      .prepare("UPDATE workflow_runs SET status = 'paused', pause_reason = 'review_blocked', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'")
+      .run(now, workflowRunId);
+    return;
+  }
+  const findings = decisions.flatMap((decision) => decision.decision === "return_to_implement" ? decision.findings : []);
+  if (!findings.length) {
+    database
+      .prepare("UPDATE workflow_runs SET status = 'completed', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'")
+      .run(now, workflowRunId);
+    return;
+  }
+  const run = database.prepare("SELECT workspace_id FROM workflow_runs WHERE id = ?").get(workflowRunId) as { workspace_id: string } | undefined;
+  if (!run) return;
+  const implement = database
+    .prepare("SELECT id, config, latest_attempt_no FROM workflow_node_runs WHERE workflow_run_id = ? AND node_key = 'implement_ui'")
+    .get(workflowRunId) as { id: string; config: string; latest_attempt_no: number } | undefined;
+  const workspace = getWorkspace(run.workspace_id);
+  if (!implement || !workspace?.primary_session_id) return;
+  const nextAttempt = implement.latest_attempt_no + 1;
+  const changed = database
+    .prepare("UPDATE workflow_node_runs SET latest_attempt_no = ?, updated_at = ? WHERE id = ? AND latest_attempt_no = ?")
+    .run(nextAttempt, now, implement.id, implement.latest_attempt_no);
+  if (changed.changes !== 1) return;
+  database
+    .prepare(
+      `INSERT INTO workflow_node_attempts
+       (id, node_run_id, attempt_no, opencode_session_id, status, config_snapshot, input, output_mode, dispatch_status)
+       VALUES (?, ?, ?, ?, 'ready', ?, ?, 'fenced_json', 'not_sent')`,
+    )
+    .run(crypto.randomUUID(), implement.id, nextAttempt, workspace.primary_session_id, implement.config, JSON.stringify({ findings }));
+  database
+    .prepare("UPDATE workflow_runs SET cycle_count = cycle_count + 1, revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'")
+    .run(now, workflowRunId);
+}
+
 async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
   if (!attempt.opencode_session_id) return;
   const info = getDb()
@@ -159,6 +214,9 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
     );
   if (updated.changes === 1 && info.node_key === "implement_ui" && (result as { status: string }).status === "completed") {
     await activateReviewers(info.workspace_id, info.workflow_run_id);
+  }
+  if (updated.changes === 1 && (info.node_key === "code_review" || info.node_key === "visual_judge")) {
+    await advanceReviewGate(info.workflow_run_id);
   }
 }
 
