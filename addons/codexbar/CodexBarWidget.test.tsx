@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CodexBarWidget } from "./CodexBarWidget";
 
@@ -53,9 +53,10 @@ describe("CodexBarWidget credits", () => {
     });
   });
 
-  it("shows credit usage and balance in an expanded provider", async () => {
+  it("minimizes providers by default and expands to show credit usage", async () => {
     render(<CodexBarWidget />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Claude を展開" }));
     expect(await screen.findByText("利用クレジット")).not.toBeNull();
     expect(screen.getByText("$12.50 / $300.00")).not.toBeNull();
     expect(screen.getByText("残高 $287.50")).not.toBeNull();
@@ -99,9 +100,9 @@ describe("CodexBarWidget error collapse", () => {
   });
 
   it("can collapse and expand an errored provider", async () => {
-    const { fireEvent } = await import("@testing-library/react");
     const { container } = render(<CodexBarWidget />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Synthetic を展開" }));
     expect(await screen.findByText("API キーが未設定です")).not.toBeNull();
     expect(screen.getByText("エラー")).not.toBeNull();
     // Must not show placeholder 0% as if usage were healthy.
@@ -146,7 +147,9 @@ describe("CodexBarWidget error collapse", () => {
     });
 
     render(<CodexBarWidget />);
-    const row = (await screen.findByRole("button", { name: /Synthetic/ })).closest("li");
+    const provider = await screen.findByRole("button", { name: "Synthetic を展開" });
+    fireEvent.click(provider);
+    const row = provider.closest("li");
     expect(row).not.toBeNull();
     expect(row!.textContent).toContain("API キーが未設定です");
     expect(row!.textContent).toContain("エラー");
@@ -193,8 +196,10 @@ describe("CodexBarWidget error collapse", () => {
     });
 
     const { container } = render(<CodexBarWidget />);
+    const openCodeButton = await screen.findByRole("button", { name: "OpenCode を展開" });
+    fireEvent.click(openCodeButton);
     expect(await screen.findByText("OpenCode")).not.toBeNull();
-    const openCodeRow = screen.getByRole("button", { name: /OpenCode/ }).closest("li");
+    const openCodeRow = openCodeButton.closest("li");
     expect(openCodeRow).not.toBeNull();
     expect(openCodeRow!.textContent).toContain("74%");
     expect(openCodeRow!.textContent).not.toContain("エラー");

@@ -432,6 +432,22 @@ export function CodexBarWidget() {
       const data = await getJson<CodexBarUsage>("/api/addons/codexbar/usage");
       if (!mounted.current) return;
       setUsage(data);
+      if (data.providers.length > 0) {
+        setProviderCollapsed((prev) => {
+          let saved: string | null = null;
+          try {
+            saved = readMigratedItem(PROVIDERS_KEY, LEGACY_PROVIDERS_KEY);
+          } catch {
+            /* ignore */
+          }
+          if (saved !== null) return prev;
+
+          const next = { ...prev };
+          for (const provider of data.providers) next[provider.id] = true;
+          saveProviderCollapsed(next);
+          return next;
+        });
+      }
       setLoadError(null);
     } catch (err) {
       if (!mounted.current) return;
