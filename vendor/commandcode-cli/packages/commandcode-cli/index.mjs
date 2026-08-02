@@ -17,7 +17,7 @@ function readBody(req) {
   });
 }
 
-function runCli(prompt, model) {
+function runCliOnce(prompt, model) {
   return new Promise((resolve, reject) => {
     const args = ["-p", "--output-format", "json", "--skip-onboarding", "--no-auto-update", "--max-turns", "1"];
     if (model) args.push("--model", model);
@@ -42,6 +42,24 @@ function runCli(prompt, model) {
     });
     child.stdin.end(prompt);
   });
+}
+
+async function runCli(prompt, model) {
+  const normalizedModel = typeof model === "string" && model.startsWith("commandcode/")
+    ? model.slice("commandcode/".length)
+    : model;
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await runCliOnce(prompt, normalizedModel);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === 1 || !/API server encountered|try again|network|timeout/i.test(message)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+  throw lastError;
 }
 
 function promptFromMessages(messages) {
