@@ -126,6 +126,8 @@ export type TaskStatus =
   | "archived"
   | "unknown";
 
+export type TaskExecutionMode = "standard" | "workflow";
+
 export type TaskSummary = {
   id: string; // workspace id
   projectId: string;
@@ -135,6 +137,8 @@ export type TaskSummary = {
   isolation: "current_folder" | "git_worktree" | "temporary_copy" | "devcontainer";
   status: TaskStatus;
   sessionId: string | null;
+  /** Execution mode. Optional for compatibility with existing API fixtures. */
+  executionMode?: TaskExecutionMode;
   /** Whether the bound session is marked as a favorite. */
   favorite?: boolean;
   branch: string | null;

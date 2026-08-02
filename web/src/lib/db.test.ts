@@ -14,6 +14,7 @@ const {
   deleteProject,
   getDb,
   listSessionBindings,
+  primaryBindings,
   setSessionFavorite,
   touchSessionActivity,
   upsertProject,
@@ -104,6 +105,30 @@ test("upsertProject does not update last_opened_at when toggling favorite", () =
   // Open without favorite toggle (favorite=undefined SHOULD update last_opened_at)
   const opened = upsertProject({ name: "FavTest", rootPath });
   expect(opened.last_opened_at).not.toBe(initialLastOpened);
+});
+
+test("the first binding becomes primary and later bindings do not replace it", () => {
+  const project = upsertProject({
+    name: "Primary",
+    rootPath: path.join(testDataDir, "primary"),
+  });
+  createWorkspace({
+    id: "ws-primary",
+    projectId: project.id,
+    displayName: "Primary Workspace",
+    absolutePath: testDataDir,
+    isolation: "current_folder",
+  });
+
+  bindSession("ws-primary", "ses-implement", "Implement", "2026-07-22T10:00:00.000Z");
+  bindSession("ws-primary", "ses-review", "Review", "2026-07-22T11:00:00.000Z");
+
+  expect(
+    (getDb().prepare("SELECT primary_session_id FROM workspaces WHERE id = ?").get("ws-primary") as {
+      primary_session_id: string;
+    }).primary_session_id,
+  ).toBe("ses-implement");
+  expect(primaryBindings().get("ws-primary")?.opencode_session_id).toBe("ses-implement");
 });
 
 test("foreign_keys pragma is ON so ON DELETE CASCADE fires", () => {

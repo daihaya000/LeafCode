@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { dbPath, ensureDataDir } from "./paths";
+import type { TaskExecutionMode } from "./types";
 
 let db: Database.Database | null = null;
 
@@ -22,6 +23,9 @@ export type WorkspaceRow = {
   base_branch: string | null;
   worktree_path: string | null;
   status: "active" | "merging" | "archived" | "orphaned";
+  execution_mode: TaskExecutionMode;
+  primary_session_id: string | null;
+  revision: number;
   created_at: string;
 };
 
@@ -31,6 +35,77 @@ export type SessionBindingRow = {
   title: string;
   favorite: number;
   updated_at: string;
+};
+
+export type WorkflowRunRow = {
+  id: string;
+  workspace_id: string;
+  template_key: string;
+  definition_snapshot: string;
+  task_context_snapshot: string;
+  status: string;
+  cycle_count: number;
+  max_cycles: number;
+  primary_node_key: string;
+  revision: number;
+  pause_reason: string;
+  error: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowNodeRunRow = {
+  id: string;
+  workflow_run_id: string;
+  node_key: string;
+  kind: string;
+  config: string;
+  latest_attempt_no: number;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowNodeAttemptRow = {
+  id: string;
+  node_run_id: string;
+  attempt_no: number;
+  opencode_session_id: string | null;
+  session_create_marker: string | null;
+  status: string;
+  outcome: string | null;
+  config_snapshot: string;
+  input: string | null;
+  result: string | null;
+  error: string;
+  last_message_id: string | null;
+  prompt_marker: string | null;
+  prompt_template_version: string | null;
+  output_schema_version: string | null;
+  input_hash: string | null;
+  input_truncated: string;
+  output_mode: string;
+  prompt_generated_at: string | null;
+  dispatch_status: string;
+  base_head: string | null;
+  start_head: string | null;
+  finish_head: string | null;
+  dirty_fingerprint: string | null;
+  revision: number;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type WorkflowArtifactRow = {
+  id: string;
+  workflow_run_id: string;
+  node_attempt_id: string | null;
+  kind: string;
+  label: string;
+  opaque_ref: string | null;
+  expires_at: string | null;
+  metadata: string;
+  created_at: string;
 };
 
 export function getDb(): Database.Database {
@@ -68,6 +143,9 @@ export function getDb(): Database.Database {
       base_branch TEXT,
       worktree_path TEXT,
       status TEXT NOT NULL DEFAULT 'active',
+      execution_mode TEXT NOT NULL DEFAULT 'standard',
+      primary_session_id TEXT,
+      revision INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS session_bindings (
@@ -106,9 +184,114 @@ export function getDb(): Database.Database {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      template_key TEXT NOT NULL,
+      definition_snapshot TEXT NOT NULL,
+      task_context_snapshot TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL,
+      cycle_count INTEGER NOT NULL DEFAULT 0,
+      max_cycles INTEGER NOT NULL DEFAULT 3,
+      primary_node_key TEXT NOT NULL DEFAULT 'implement_ui',
+      revision INTEGER NOT NULL DEFAULT 0,
+      pause_reason TEXT NOT NULL DEFAULT '',
+      error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS workflow_node_runs (
+      id TEXT PRIMARY KEY,
+      workflow_run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+      node_key TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      config TEXT NOT NULL DEFAULT '{}',
+      latest_attempt_no INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (workflow_run_id, node_key)
+    );
+    CREATE TABLE IF NOT EXISTS workflow_node_attempts (
+      id TEXT PRIMARY KEY,
+      node_run_id TEXT NOT NULL REFERENCES workflow_node_runs(id) ON DELETE CASCADE,
+      attempt_no INTEGER NOT NULL,
+      opencode_session_id TEXT,
+      session_create_marker TEXT,
+      status TEXT NOT NULL,
+      outcome TEXT,
+      config_snapshot TEXT NOT NULL DEFAULT '{}',
+      input TEXT,
+      result TEXT,
+      error TEXT NOT NULL DEFAULT '',
+      last_message_id TEXT,
+      prompt_marker TEXT,
+      prompt_template_version TEXT,
+      output_schema_version TEXT,
+      input_hash TEXT,
+      input_truncated TEXT NOT NULL DEFAULT '{"omittedCount":0}',
+      output_mode TEXT NOT NULL DEFAULT 'fenced_json',
+      prompt_generated_at TEXT,
+      dispatch_status TEXT NOT NULL DEFAULT 'not_sent',
+      base_head TEXT,
+      start_head TEXT,
+      finish_head TEXT,
+      dirty_fingerprint TEXT,
+      revision INTEGER NOT NULL DEFAULT 0,
+      started_at TEXT,
+      finished_at TEXT,
+      UNIQUE (node_run_id, attempt_no)
+    );
+    CREATE TABLE IF NOT EXISTS workflow_artifacts (
+      id TEXT PRIMARY KEY,
+      workflow_run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+      node_attempt_id TEXT REFERENCES workflow_node_attempts(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      opaque_ref TEXT,
+      expires_at TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_workspace ON workflow_runs(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_status ON workflow_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_workflow_node_runs_workflow ON workflow_node_runs(workflow_run_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_node ON workflow_node_attempts(node_run_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_attempt ON workflow_artifacts(node_attempt_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_runs_one_active
+      ON workflow_runs(workspace_id)
+      WHERE status NOT IN ('completed', 'failed', 'stopped', 'detached');
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_attempts_one_active
+      ON workflow_node_attempts(node_run_id)
+      WHERE status IN ('creating_session', 'dispatching', 'running');
+  `);
+  const workspaceColumns = db
+    .prepare("PRAGMA table_info(workspaces)")
+    .all() as { name: string }[];
+  const hasWorkspaceColumn = (name: string): boolean =>
+    workspaceColumns.some((column) => column.name === name);
+  if (!hasWorkspaceColumn("execution_mode")) {
+    db.exec("ALTER TABLE workspaces ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'standard'");
+  }
+  if (!hasWorkspaceColumn("primary_session_id")) {
+    db.exec("ALTER TABLE workspaces ADD COLUMN primary_session_id TEXT");
+  }
+  if (!hasWorkspaceColumn("revision")) {
+    db.exec("ALTER TABLE workspaces ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  }
+  db.exec(`
+    UPDATE workspaces
+    SET primary_session_id = (
+      SELECT sb.opencode_session_id
+      FROM session_bindings sb
+      WHERE sb.workspace_id = workspaces.id
+      ORDER BY sb.updated_at DESC, sb.opencode_session_id DESC
+      LIMIT 1
+    )
+    WHERE primary_session_id IS NULL;
   `);
   const goalLoopColumns = db
     .prepare("PRAGMA table_info(goal_loops)")
@@ -289,15 +472,25 @@ export function bindSession(
       `unsafe opencode_session_id: ${JSON.stringify(opencodeSessionId)}`,
     );
   }
-  getDb()
-    .prepare(
-      `INSERT INTO session_bindings (workspace_id, opencode_session_id, title, updated_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(workspace_id, opencode_session_id) DO UPDATE SET
-         title = excluded.title,
-         updated_at = excluded.updated_at`,
-    )
-    .run(workspaceId, opencodeSessionId, title, updatedAt ?? new Date().toISOString());
+  const database = getDb();
+  database.transaction(() => {
+    database
+      .prepare(
+        `INSERT INTO session_bindings (workspace_id, opencode_session_id, title, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(workspace_id, opencode_session_id) DO UPDATE SET
+           title = excluded.title,
+           updated_at = excluded.updated_at`,
+      )
+      .run(workspaceId, opencodeSessionId, title, updatedAt ?? new Date().toISOString());
+    database
+      .prepare(
+        `UPDATE workspaces
+         SET primary_session_id = ?, revision = revision + 1
+         WHERE id = ? AND primary_session_id IS NULL`,
+      )
+      .run(opencodeSessionId, workspaceId);
+  })();
 }
 
 /** Update the favorite state without changing session recency. */
@@ -429,11 +622,55 @@ export function listWorkspacesJoined(): WorkspaceJoinedRow[] {
 /** Latest session binding per workspace. */
 export function latestBindings(): Map<string, SessionBindingRow> {
   const rows = getDb()
-    .prepare(`SELECT * FROM session_bindings ORDER BY updated_at ASC`)
+    .prepare(
+      `SELECT * FROM session_bindings
+       ORDER BY updated_at ASC, opencode_session_id ASC`,
+    )
     .all() as SessionBindingRow[];
   const map = new Map<string, SessionBindingRow>();
   for (const row of rows) map.set(row.workspace_id, row);
   return map;
+}
+
+/** The explicitly selected primary binding for each workspace. */
+export function primaryBindings(): Map<string, SessionBindingRow> {
+  const rows = getDb()
+    .prepare(
+      `SELECT sb.*
+       FROM workspaces w
+       JOIN session_bindings sb
+         ON sb.workspace_id = w.id
+        AND sb.opencode_session_id = w.primary_session_id
+       ORDER BY w.id ASC`,
+    )
+    .all() as SessionBindingRow[];
+  return new Map(rows.map((row) => [row.workspace_id, row]));
+}
+
+/**
+ * Change the primary session using a workspace revision CAS. The target must
+ * already be bound to the workspace, so a reviewer cannot become primary by
+ * merely touching its session binding.
+ */
+export function setPrimarySession(
+  workspaceId: string,
+  opencodeSessionId: string,
+  expectedRevision: number,
+): boolean {
+  if (!isSafeOpenCodeSessionId(opencodeSessionId)) return false;
+  const info = getDb()
+    .prepare(
+      `UPDATE workspaces
+       SET primary_session_id = ?, revision = revision + 1
+       WHERE id = ? AND revision = ?
+         AND EXISTS (
+           SELECT 1 FROM session_bindings sb
+           WHERE sb.workspace_id = workspaces.id
+             AND sb.opencode_session_id = ?
+         )`,
+    )
+    .run(opencodeSessionId, workspaceId, expectedRevision, opencodeSessionId);
+  return info.changes > 0;
 }
 
 export function touchProjectOpened(projectId: string): void {

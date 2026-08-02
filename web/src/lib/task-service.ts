@@ -1,8 +1,8 @@
 import {
   SessionBindingRow,
   WorkspaceJoinedRow,
-  latestBindings,
   listWorkspacesJoined,
+  primaryBindings,
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
@@ -132,6 +132,7 @@ function toTask(
     isolation: ws.isolation,
     status,
     sessionId: binding?.opencode_session_id ?? null,
+    executionMode: ws.execution_mode,
     favorite: binding?.favorite === 1,
     branch: stat.branch,
     additions: stat.additions,
@@ -171,7 +172,7 @@ export async function listTasks(): Promise<{
   const workspaces = listWorkspacesJoined().filter(
     (w) => w.status !== "archived",
   );
-  const bindings = latestBindings();
+  const bindings = primaryBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
 
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
@@ -202,7 +203,7 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
     (ws) => ws.status === "archived",
   );
   if (workspaces.length === 0) return [];
-  const bindings = latestBindings();
+  const bindings = primaryBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
 
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
@@ -231,7 +232,7 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
 export async function getTask(id: string): Promise<TaskSummary | null> {
   const ws = listWorkspacesJoined().find((w) => w.id === id);
   if (!ws) return null;
-  const binding = latestBindings().get(ws.id);
+  const binding = primaryBindings().get(ws.id);
   // Reuse sessionStatusFor so engineOk here matches listTasks exactly: a
   // non-503 API error still means the engine is up. The previous inline fetch
   // treated any /session/status failure as engineOk=false, which made a single
