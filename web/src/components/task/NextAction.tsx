@@ -99,19 +99,20 @@ function CountSelect({
   );
 }
 
-const panelClass =
-  "mt-3 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm";
+const panelClass = "mt-2";
+const quietPanelClass =
+  "mt-2 rounded-lg border border-border bg-surface-2/50 px-3 py-2";
 
 function PanelMark({ busy = false }: { busy?: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-fg"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted"
     >
       {busy ? (
-        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
       ) : (
-        <Sparkles className="h-4 w-4" />
+        <Sparkles className="h-3.5 w-3.5" />
       )}
     </span>
   );
@@ -130,8 +131,8 @@ function PanelIntro({
     <div className="flex min-w-0 items-start gap-3">
       <PanelMark busy={busy} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-text">{title}</p>
-        <p className="mt-0.5 text-xs leading-5 text-muted">{description}</p>
+        <p className="text-xs font-medium text-text">{title}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-muted">{description}</p>
       </div>
     </div>
   );
@@ -261,21 +262,21 @@ export function NextAction({
   if (state.kind === "idle") {
     return (
       <section className={panelClass} aria-label="次の一手">
-        <div className="px-3 pt-3 sm:px-4 sm:pt-4">
+        <div className="px-1 pt-0">
           <PanelIntro
             title="次の一手"
             description="会話の流れを読み取り、すぐ使える指示を提案します。"
           />
         </div>
-        <div className="mt-3 flex flex-col gap-2 border-t border-border px-3 py-3 sm:flex-row sm:items-center sm:px-4">
+        <div className="mt-1 flex flex-col gap-2 px-1 py-0.5 sm:flex-row sm:items-center">
           <Button
-            variant="primary"
-            size="md"
+            variant="secondary"
+            size="sm"
             onClick={generate}
             aria-label="次の指示を提案"
             className="w-full sm:w-auto"
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-3.5 w-3.5" />
             次の指示を提案
           </Button>
           <div className="flex items-center justify-between gap-2 sm:ml-auto">
@@ -290,11 +291,11 @@ export function NextAction({
   if (state.kind === "loading") {
     return (
       <div
-        className={panelClass}
+        className={quietPanelClass}
         aria-label="次の一手"
         aria-busy="true"
       >
-        <div className="px-3 py-3 sm:px-4 sm:py-4">
+        <div className="px-1 py-0">
           <PanelIntro
             title="次の一手を準備中"
             description="会話の文脈から、実行しやすい指示を整理しています。"
@@ -324,10 +325,10 @@ export function NextAction({
   if (state.kind === "error") {
     return (
       <div
-        className={panelClass}
+        className={quietPanelClass}
         aria-label="次の一手"
       >
-        <div className="px-3 pt-3 sm:px-4 sm:pt-4">
+        <div className="px-1 pt-0">
           <PanelIntro
             title="次の一手を生成できませんでした"
             description="会話の内容は変わっていません。もう一度試せます。"
@@ -364,7 +365,7 @@ export function NextAction({
   const isCollapsed = collapsible && collapsed;
   return (
     <section className={panelClass} aria-label="次の一手">
-      <div className="flex items-start gap-2 px-3 pt-3 sm:px-4 sm:pt-4">
+      <div className="flex items-start gap-2 px-1 pt-0">
         {collapsible ? (
           <button
             type="button"
@@ -372,20 +373,20 @@ export function NextAction({
             aria-controls={panelId}
             aria-label={isCollapsed ? "次の指示を展開" : "次の指示を折りたたむ"}
             onClick={() => setCollapsed((value) => !value)}
-            className="flex min-h-11 min-w-0 flex-1 items-start gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+            className="flex min-h-9 min-w-0 flex-1 items-start gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
             <PanelMark />
             <span className="min-w-0 flex-1 pt-0.5">
-              <span className="block text-sm font-semibold text-text">
+              <span className="block text-xs font-medium text-text">
                 次の指示
               </span>
-              <span className="mt-0.5 block truncate text-xs leading-5 text-muted">
+              <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted">
                 会話の文脈に合わせた提案
               </span>
             </span>
             <ChevronDown
               aria-hidden="true"
-              className={`mt-1 h-4 w-4 shrink-0 text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""} motion-reduce:transition-none`}
+              className={`mt-0.5 h-3.5 w-3.5 shrink-0 text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""} motion-reduce:transition-none`}
             />
           </button>
         ) : (
@@ -402,7 +403,7 @@ export function NextAction({
         <div
           id={panelId}
           aria-live="polite"
-          className="mt-3 border-t border-border px-3 py-3 sm:px-4 sm:py-4"
+          className="mt-2 border-t border-border px-1 pt-2"
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium text-muted">
