@@ -3503,7 +3503,14 @@ export function TaskView({ taskId }: { taskId: string }) {
       </div>
 
       {stream.sessionError && (
-        <div className="shrink-0 border-b border-danger/30 bg-danger-bg px-4 py-2 text-sm text-danger">
+        <div
+          className={cx(
+            "shrink-0 border-b px-3 py-1.5 text-xs",
+            stream.sessionError === "ハング検知後に自動再開しました"
+              ? "border-border bg-surface-2 text-muted"
+              : "border-danger/30 bg-danger-bg text-danger",
+          )}
+        >
           {stream.sessionError}
         </div>
       )}
