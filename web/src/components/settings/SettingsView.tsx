@@ -801,11 +801,11 @@ export function SettingsView() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={health?.webui.ok ? "success" : "danger"}>
+                      {health?.webui.ok ? "WebUI 接続中" : "WebUI 停止"}
+                    </Badge>
                     <Badge tone={health?.opencode.ok ? "success" : "danger"}>
                       {health?.opencode.ok ? "OpenCode 接続中" : "OpenCode 停止"}
-                    </Badge>
-                    <Badge tone={hostOk ? "success" : "warning"}>
-                      {hostOk ? "トレイホスト接続中" : "トレイホスト未検出"}
                     </Badge>
                   </div>
                 </div>

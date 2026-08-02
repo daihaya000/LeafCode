@@ -103,7 +103,10 @@ function mockGetJson(
 ) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/health") {
-      return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
+      return Promise.resolve({
+        webui: { ok: true },
+        opencode: { ok: true, version: "1.0.0" },
+      });
     }
     if (path === "/api/projects") {
       return Promise.resolve({ projects: overrides?.projects ?? [] });
@@ -460,7 +463,7 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
 
-    await screen.findByText("トレイホスト接続中");
+    await screen.findByText("WebUI 接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
     expect(
@@ -492,7 +495,7 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
 
-    await screen.findByText("トレイホスト接続中");
+    await screen.findByText("WebUI 接続中");
     fireEvent.click(screen.getByRole("button", { name: "WebUI を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
     expect(
@@ -530,7 +533,7 @@ describe("SettingsView", () => {
     });
 
     render(<SettingsView />);
-    await screen.findByText("トレイホスト接続中");
+    await screen.findByText("WebUI 接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
     fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
 
