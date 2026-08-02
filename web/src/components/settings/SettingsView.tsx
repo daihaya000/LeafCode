@@ -453,6 +453,7 @@ export function SettingsView() {
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
+        mode?: "git" | "release";
         stdout?: string;
         stderr?: string;
         result?: { version?: unknown };
@@ -467,8 +468,10 @@ export function SettingsView() {
         kind: "success",
         message:
           target === "webui"
-            ? "WebUI のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
-            : `OpenCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には OpenCode の再起動が必要です。`,
+            ? data.mode === "release"
+              ? "WebUI の最新版リリースを取得しました。必要に応じてビルド/再起動してください。"
+              : "WebUI のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
+          : `OpenCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には OpenCode の再起動が必要です。`,
         detail: detail || undefined,
       });
       await refresh();
