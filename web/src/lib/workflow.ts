@@ -86,14 +86,34 @@ export function mergeWorkflowNodeConfig(
 }
 
 function validateModelRequest(model: WorkflowModelRequest, errors: string[]): void {
+  if (!model || typeof model !== "object") {
+    errors.push("model is required");
+    return;
+  }
   if (model.mode === "auto") {
-    if (!Object.hasOwn({ quality: true, cost: true, speed: true }, model.optimizeFor)) {
+    for (const key of Object.keys(model as unknown as Record<string, unknown>)) {
+      if (key !== "mode" && key !== "optimizeFor") errors.push(`unknown model field: ${key}`);
+    }
+    if (!("quality" === model.optimizeFor || "cost" === model.optimizeFor || "speed" === model.optimizeFor)) {
       errors.push("model.optimizeFor is invalid");
     }
     return;
   }
-  if (!model.providerID.trim()) errors.push("model.providerID is required");
-  if (!model.modelID.trim()) errors.push("model.modelID is required");
+  if (model.mode !== "explicit") {
+    errors.push("model.mode is invalid");
+    return;
+  }
+  for (const key of Object.keys(model as unknown as Record<string, unknown>)) {
+    if (key !== "mode" && key !== "providerID" && key !== "modelID" && key !== "variant") {
+      errors.push(`unknown model field: ${key}`);
+    }
+  }
+  if (typeof model.providerID !== "string" || !model.providerID.trim()) {
+    errors.push("model.providerID is required");
+  }
+  if (typeof model.modelID !== "string" || !model.modelID.trim()) {
+    errors.push("model.modelID is required");
+  }
   if (model.variant !== undefined && !String(model.variant).trim()) {
     errors.push("model.variant must not be empty");
   }
@@ -104,25 +124,56 @@ export function validateWorkflowNodeConfig(
   nodeKey?: WorkflowNodeKey,
 ): string[] {
   const errors: string[] = [];
-  if (!config.agentName.trim() || config.agentName.length > 256) {
+  const allowedKeys = new Set([
+    "agentName",
+    "instructions",
+    "contextFiles",
+    "reasoningEffort",
+    "model",
+    "permissions",
+    "gate",
+  ]);
+  for (const key of Object.keys(config as unknown as Record<string, unknown>)) {
+    if (!allowedKeys.has(key)) errors.push(`unknown node config field: ${key}`);
+  }
+  if (
+    typeof config.agentName !== "string" ||
+    !config.agentName.trim() ||
+    config.agentName.length > 256
+  ) {
     errors.push("agentName must be 1-256 characters");
   }
-  if (config.instructions.length > 8_000) {
+  if (typeof config.instructions !== "string") {
+    errors.push("instructions must be a string");
+  } else if (config.instructions.length > 8_000) {
     errors.push("instructions exceeds 8000 characters");
   }
-  if (!Array.isArray(config.contextFiles) || config.contextFiles.some((file) => !file.trim())) {
+  if (
+    !Array.isArray(config.contextFiles) ||
+    config.contextFiles.some((file) => typeof file !== "string" || !file.trim())
+  ) {
     errors.push("contextFiles must contain non-empty paths");
   }
   if (config.reasoningEffort !== undefined && !isWorkflowReasoningEffort(config.reasoningEffort)) {
     errors.push("reasoningEffort is invalid");
   }
   validateModelRequest(config.model, errors);
+  if (!config.permissions || typeof config.permissions !== "object") {
+    errors.push("permissions is required");
+  }
   for (const key of ["write", "subagent", "browser"] as const) {
-    if (typeof config.permissions[key] !== "boolean") {
+    if (!config.permissions || typeof config.permissions[key] !== "boolean") {
       errors.push(`permissions.${key} must be boolean`);
     }
   }
-  if (!Array.isArray(config.gate.blockingSeverities)) {
+  for (const key of Object.keys((config.permissions ?? {}) as unknown as Record<string, unknown>)) {
+    if (key !== "write" && key !== "subagent" && key !== "browser") {
+      errors.push(`unknown permissions field: ${key}`);
+    }
+  }
+  if (!config.gate || typeof config.gate !== "object") {
+    errors.push("gate is required");
+  } else if (!Array.isArray(config.gate.blockingSeverities)) {
     errors.push("gate.blockingSeverities must be an array");
   } else {
     const seen = new Set<string>();
@@ -132,8 +183,13 @@ export function validateWorkflowNodeConfig(
       seen.add(String(severity));
     }
   }
-  if (typeof config.gate.optional !== "boolean") errors.push("gate.optional must be boolean");
-  if (nodeKey && nodeKey !== "implement_ui" && config.permissions.write) {
+  for (const key of Object.keys((config.gate ?? {}) as unknown as Record<string, unknown>)) {
+    if (key !== "blockingSeverities" && key !== "optional") {
+      errors.push(`unknown gate field: ${key}`);
+    }
+  }
+  if (!config.gate || typeof config.gate.optional !== "boolean") errors.push("gate.optional must be boolean");
+  if (nodeKey && nodeKey !== "implement_ui" && config.permissions?.write) {
     errors.push(`${nodeKey} cannot have write permission`);
   }
   return errors;
