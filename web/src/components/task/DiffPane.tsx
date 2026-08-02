@@ -31,6 +31,13 @@ type BranchInfo = {
   defaultTarget: string | null;
 };
 
+type SessionRow = {
+  opencodeSessionId: string;
+  title: string;
+};
+
+type SessionFilter = "all" | "current" | "external";
+
 function FileDiffBlock({
   file,
   expanded,
@@ -192,6 +199,7 @@ function FileDiffBlock({
 export function DiffPane({
   directory,
   workspaceId,
+  sessionId,
   agent,
   refreshKey,
   focusFile,
@@ -201,6 +209,7 @@ export function DiffPane({
 }: {
   directory: string;
   workspaceId: string;
+  sessionId?: string | null;
   agent?: string;
   refreshKey?: number;
   focusFile?: string | null;
@@ -224,6 +233,8 @@ export function DiffPane({
   const [prAvailable, setPrAvailable] = useState<boolean | null>(null);
   const [sideBySide, setSideBySide] = useState(false);
   const [filter, setFilter] = useState<"all" | "tracked" | "untracked">("all");
+  const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [baseCompare, setBaseCompare] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -293,6 +304,23 @@ export function DiffPane({
   }, [directory]);
 
   useEffect(() => {
+    let active = true;
+    setSessions([]);
+    void getJson<{ sessions?: SessionRow[] }>(
+      `/api/workspaces/${workspaceId}/sessions`,
+    )
+      .then((data) => {
+        if (active) setSessions(data.sessions ?? []);
+      })
+      .catch(() => {
+        // The diff remains useful when session metadata is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaceId]);
+
+  useEffect(() => {
     void load();
   }, [load, refreshKey]);
 
@@ -347,11 +375,20 @@ export function DiffPane({
 
   const files = useMemo(() => {
     const all = payload?.files ?? [];
-    if (filter === "untracked") return all.filter((f) => f.untracked);
-    if (filter === "tracked") return all.filter((f) => !f.untracked);
-    return all;
-  }, [payload, filter]);
+    const byType =
+      filter === "untracked"
+        ? all.filter((f) => f.untracked)
+        : filter === "tracked"
+          ? all.filter((f) => !f.untracked)
+          : all;
+    if (sessionFilter === "all" || !touchedPaths?.size) return byType;
+    return byType.filter((f) =>
+      sessionFilter === "current" ? touchedPaths.has(f.path) : !touchedPaths.has(f.path),
+    );
+  }, [payload, filter, sessionFilter, touchedPaths]);
   const hasChanges = files.length > 0;
+  const currentSession = sessions.find((s) => s.opencodeSessionId === sessionId);
+  const hasSessionOwnership = Boolean(touchedPaths?.size);
   const selectedPaths = useMemo(
     () => files.filter((f) => !deselected[f.path]).map((f) => f.path),
     [files, deselected],
@@ -465,6 +502,30 @@ export function DiffPane({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
+      <div className="shrink-0 border-b border-border bg-surface-2 px-3 py-2 text-[11px]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-semibold text-muted">変更の所有者</span>
+          <span className="min-w-0 truncate text-text" title={currentSession?.title || agent || undefined}>
+            {currentSession?.title || agent || "現在のセッション"}
+          </span>
+          <span className="font-semibold text-muted">Session ID</span>
+          <code className="max-w-full truncate rounded bg-surface px-1.5 py-0.5 font-mono text-faint" title={sessionId ?? "未接続"}>
+            {sessionId ?? "未接続"}
+          </code>
+          {sessions.length > 1 && (
+            <span className="text-faint">同一ワークスペース: {sessions.length} セッション</span>
+          )}
+        </div>
+        {sessions.length > 1 && (
+          <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-faint" aria-label="同一ワークスペースのセッション">
+            {sessions.map((session) => (
+              <span key={session.opencodeSessionId} className={cx(session.opencodeSessionId === sessionId && "font-semibold text-text")} title={session.title}>
+                {session.opencodeSessionId === sessionId ? "現在: " : "別: "}{session.title || session.opencodeSessionId.slice(0, 10)} ({session.opencodeSessionId.slice(0, 10)})
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
       {/* Action bar */}
       <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-surface px-3 py-2">
         <span className="mr-1 shrink-0 text-xs font-semibold text-muted">変更</span>
@@ -510,6 +571,17 @@ export function DiffPane({
           <option value="all">すべての変更</option>
           <option value="tracked">既存の変更</option>
           <option value="untracked">新規ファイル</option>
+        </select>
+        <select
+          value={sessionFilter}
+          onChange={(e) => setSessionFilter(e.target.value as SessionFilter)}
+          title={hasSessionOwnership ? "変更したセッションで絞り込む" : "セッション別の変更情報はまだありません"}
+          aria-label="表示するセッションの変更"
+          className="h-8 min-w-0 max-w-full flex-[1_1_8rem] cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-[11px] text-muted outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary sm:max-w-[10rem]"
+        >
+          <option value="all">全セッションの変更</option>
+          <option value="current" disabled={!hasSessionOwnership}>現在のセッション</option>
+          <option value="external" disabled={!hasSessionOwnership}>別セッション・未特定</option>
         </select>
         <Button
           variant={sideBySide ? "secondary" : "ghost"}

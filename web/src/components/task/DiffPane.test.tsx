@@ -47,6 +47,14 @@ function mockMetaApis() {
     if (String(url).includes("/api/git/pr")) {
       return Promise.resolve({ available: false });
     }
+    if (String(url).includes("/api/workspaces/")) {
+      return Promise.resolve({
+        sessions: [
+          { opencodeSessionId: "session-current", title: "実装担当" },
+          { opencodeSessionId: "session-other", title: "レビュー担当" },
+        ],
+      });
+    }
     return Promise.resolve({});
   });
 }
@@ -138,6 +146,52 @@ describe("DiffPane directory race", () => {
     render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
     await screen.findByText("file.ts");
     expect(screen.queryByText("セッション外?")).toBeNull();
+  });
+
+  it("shows the current session identity and filters changes by session ownership", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          ...payload("current"),
+          files: [
+            payload("current").files[0],
+            { ...payload("current").files[0], path: "src/external.ts" },
+          ],
+        });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({
+          sessions: [
+            { opencodeSessionId: "session-current", title: "実装担当" },
+            { opencodeSessionId: "session-other", title: "レビュー担当" },
+          ],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({ branches: [], current: "main", defaultTarget: "main" });
+      }
+      if (String(url).includes("/api/git/pr")) return Promise.resolve({ available: false });
+      return Promise.resolve({});
+    });
+
+    render(
+      <DiffPane
+        directory="/repo-a"
+        workspaceId="ws-a"
+        sessionId="session-current"
+        refreshKey={0}
+        touchedPaths={new Set(["src/current.ts"])}
+      />,
+    );
+    await screen.findByText("実装担当");
+    expect(screen.getByText("session-current")).toBeTruthy();
+    expect(screen.getByText(/レビュー担当/)).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "表示するセッションの変更" }), {
+      target: { value: "external" },
+    });
+    expect(screen.queryByText("current.ts")).toBeNull();
+    expect(screen.getByText("external.ts")).toBeTruthy();
   });
 
   it("starts each changed file minimized", async () => {
