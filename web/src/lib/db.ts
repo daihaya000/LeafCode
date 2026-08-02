@@ -255,6 +255,51 @@ export function getDb(): Database.Database {
       metadata TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS workflow_graphs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      schema_version TEXT NOT NULL,
+      registry_version TEXT NOT NULL,
+      graph_revision INTEGER NOT NULL DEFAULT 1,
+      viewport TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (workspace_id),
+      CHECK (graph_revision >= 1)
+    );
+    CREATE TABLE IF NOT EXISTS workflow_graph_nodes (
+      graph_id TEXT NOT NULL REFERENCES workflow_graphs(id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      node_type TEXT NOT NULL,
+      node_type_version INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      position_x REAL NOT NULL,
+      position_y REAL NOT NULL,
+      config TEXT NOT NULL,
+      disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
+      presentation TEXT,
+      node_revision INTEGER NOT NULL DEFAULT 1 CHECK (node_revision >= 1),
+      PRIMARY KEY (graph_id, id),
+      CHECK (position_x BETWEEN -100000 AND 100000),
+      CHECK (position_y BETWEEN -100000 AND 100000),
+      CHECK (node_type_version >= 1)
+    );
+    CREATE TABLE IF NOT EXISTS workflow_graph_edges (
+      graph_id TEXT NOT NULL REFERENCES workflow_graphs(id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      source_node_id TEXT NOT NULL,
+      source_handle TEXT NOT NULL,
+      target_node_id TEXT NOT NULL,
+      target_handle TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('dependency', 'success', 'feedback', 'control')),
+      label TEXT,
+      edge_revision INTEGER NOT NULL DEFAULT 1 CHECK (edge_revision >= 1),
+      PRIMARY KEY (graph_id, id),
+      FOREIGN KEY (graph_id, source_node_id)
+        REFERENCES workflow_graph_nodes(graph_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (graph_id, target_node_id)
+        REFERENCES workflow_graph_nodes(graph_id, id) ON DELETE CASCADE
+    );
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
@@ -263,6 +308,9 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_workflow_node_runs_workflow ON workflow_node_runs(workflow_run_id);
     CREATE INDEX IF NOT EXISTS idx_workflow_node_attempts_node ON workflow_node_attempts(node_run_id);
     CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_attempt ON workflow_artifacts(node_attempt_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_graphs_workspace ON workflow_graphs(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_graph_nodes_graph ON workflow_graph_nodes(graph_id);
+    CREATE INDEX IF NOT EXISTS idx_workflow_graph_edges_graph ON workflow_graph_edges(graph_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_runs_one_active
       ON workflow_runs(workspace_id)
       WHERE status NOT IN ('completed', 'failed', 'stopped', 'detached');

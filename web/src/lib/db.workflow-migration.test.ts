@@ -128,10 +128,27 @@ test("creates workflow tables and prevents multiple active runs or attempts", ()
     "workflow_node_runs",
     "workflow_node_attempts",
     "workflow_artifacts",
+    "workflow_graphs",
+    "workflow_graph_nodes",
+    "workflow_graph_edges",
   ]) {
     expect(tableColumns(table).size).toBeGreaterThan(0);
   }
   expect(tableColumns("workflow_node_attempts")).toContain("usage_snapshot");
+  expect(tableColumns("workflow_graphs")).toEqual(
+    new Set([
+      "id",
+      "workspace_id",
+      "schema_version",
+      "registry_version",
+      "graph_revision",
+      "viewport",
+      "created_at",
+      "updated_at",
+    ]),
+  );
+  expect(tableColumns("workflow_graph_nodes")).toContain("presentation");
+  expect(tableColumns("workflow_graph_edges")).toContain("source_handle");
 
   const database = getDb();
   database
@@ -220,8 +237,12 @@ test("workflow schema migration is idempotent for existing tables", () => {
   const attemptColumns = database
     .prepare("PRAGMA table_info(workflow_node_attempts)")
     .all() as { name: string }[];
+  const graphColumns = database
+    .prepare("PRAGMA table_info(workflow_graphs)")
+    .all() as { name: string }[];
   database.close();
 
   expect(new Set(workflowRunColumns.map((row) => row.name)).size).toBe(workflowRunColumns.length);
   expect(new Set(attemptColumns.map((row) => row.name)).size).toBe(attemptColumns.length);
+  expect(new Set(graphColumns.map((row) => row.name)).size).toBe(graphColumns.length);
 });
