@@ -37,6 +37,7 @@ describe("WorkflowGraphEditor", () => {
         selectedNodeId={null}
         selectedEdgeId="implement_ui-to-code_review"
         onRefresh={onRefresh}
+        direction="LR"
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Nodeを追加" }));
@@ -62,6 +63,7 @@ describe("WorkflowGraphEditor", () => {
         selectedNodeId="implement_ui"
         selectedEdgeId={null}
         onRefresh={vi.fn().mockResolvedValue(undefined)}
+        direction="LR"
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "選択Nodeを削除" }));
@@ -74,5 +76,24 @@ describe("WorkflowGraphEditor", () => {
     mocks.sendJson.mockRejectedValueOnce(new ApiError("conflict", 409));
     fireEvent.click(screen.getByRole("button", { name: "選択Nodeを移動" }));
     expect((await screen.findByRole("alert")).getAttribute("data-graph-conflict")).toBe("layout");
+  });
+
+  it("persists the Dagre layout as layout-only operations", async () => {
+    mocks.sendJson.mockResolvedValue({ graph });
+    render(
+      <WorkflowGraphEditor
+        taskId="ws-editor"
+        graph={graph}
+        selectedNodeId={null}
+        selectedEdgeId={null}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        direction="TB"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "自動レイアウト（TB）" }));
+    await waitFor(() => expect(mocks.sendJson).toHaveBeenCalledTimes(1));
+    const operations = mocks.sendJson.mock.calls[0]?.[2].operations as Array<{ op: string }>;
+    expect(operations).toHaveLength(graph.nodes.length);
+    expect(operations.every((operation) => operation.op === "move_node")).toBe(true);
   });
 });

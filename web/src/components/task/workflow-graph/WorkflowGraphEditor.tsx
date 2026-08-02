@@ -3,6 +3,8 @@ import { ApiError, sendJson } from "@/lib/client";
 import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 import type { WorkflowGraphDraft, WorkflowGraphEdge, WorkflowGraphNode } from "@/lib/workflow-graph-types";
 import type { WorkflowGraphOperation } from "@/lib/workflow-graph-mutations";
+import type { WorkflowGraphDirection } from "@/lib/workflow-graph-react-flow";
+import { layoutWorkflowGraph } from "@/lib/workflow-graph-layout";
 import { cx } from "@/components/ui";
 
 type MutationResponse = { graph: WorkflowGraphDraft };
@@ -47,12 +49,14 @@ export function WorkflowGraphEditor({
   selectedNodeId,
   selectedEdgeId,
   onRefresh,
+  direction,
 }: {
   taskId: string;
   graph: WorkflowGraphDraft;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   onRefresh: () => Promise<void>;
+  direction: WorkflowGraphDirection;
 }) {
   const [pending, setPending] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -106,6 +110,14 @@ export function WorkflowGraphEditor({
     const node = graph.nodes.find((candidate) => candidate.id === selectedNodeId);
     if (node) void mutate([{ op: "move_node", nodeId: node.id, position: { x: node.position.x + 40, y: node.position.y } }]);
   };
+  const autoLayout = () => {
+    const positions = layoutWorkflowGraph(graph, direction);
+    void mutate([...graph.nodes].map((node) => ({
+      op: "move_node" as const,
+      nodeId: node.id,
+      position: positions.get(node.id) ?? node.position,
+    })));
+  };
   const addEdge = () => void mutate([edgeOperation]);
   const removeEdge = () => {
     if (selectedEdgeId) void mutate([{ op: "remove_edge", edgeId: selectedEdgeId }]);
@@ -118,6 +130,7 @@ export function WorkflowGraphEditor({
         <button type="button" disabled={pending} onClick={addNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">Nodeを追加</button>
         <button type="button" disabled={pending || !selectedNodeId} onClick={removeNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">選択Nodeを削除</button>
         <button type="button" disabled={pending || !selectedNodeId} onClick={moveNode} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">選択Nodeを移動</button>
+        <button type="button" disabled={pending} onClick={autoLayout} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">自動レイアウト（{direction}）</button>
         <button type="button" disabled={pending || !selectedEdgeId} onClick={removeEdge} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">選択Edgeを削除</button>
         <label className="flex items-center gap-1 text-[11px] text-muted">
           From

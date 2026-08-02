@@ -134,6 +134,7 @@ export function WorkflowGraphPanel({
           selectedNodeId={selectedNodeId}
           selectedEdgeId={selectedEdgeId}
           onRefresh={onRefresh}
+          direction={direction}
         />
         <div className="relative grid min-h-0 flex-1 gap-3 md:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem_20rem]">
           <WorkflowGraphCanvas
@@ -142,6 +143,9 @@ export function WorkflowGraphPanel({
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
             direction={direction}
+            taskId={taskId}
+            graphRevision={graph.graphRevision}
+            onRefresh={onRefresh}
           />
           <WorkflowGraphList
             graph={graph}

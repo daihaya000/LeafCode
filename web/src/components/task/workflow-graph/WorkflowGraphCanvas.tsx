@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -9,6 +9,7 @@ import {
   Panel,
   ReactFlow,
   type NodeMouseHandler,
+  type Viewport,
 } from "@xyflow/react";
 import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import {
@@ -19,6 +20,8 @@ import {
 } from "@/lib/workflow-graph-react-flow";
 import { WorkflowGraphEdge } from "./WorkflowGraphEdge";
 import { WorkflowGraphNode } from "./WorkflowGraphNode";
+import { sendJson } from "@/lib/client";
+import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 
 const nodeTypes = { workflowGraphNode: WorkflowGraphNode };
 const edgeTypes = { workflowGraphEdge: WorkflowGraphEdge };
@@ -41,12 +44,18 @@ export function WorkflowGraphCanvas({
   selectedNodeId,
   onSelectNode,
   direction,
+  taskId,
+  graphRevision,
+  onRefresh,
 }: {
   graph: WorkflowGraphDraft;
   states: readonly WorkflowGraphRuntimeState[];
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   direction: WorkflowGraphDirection;
+  taskId: string;
+  graphRevision: number;
+  onRefresh: () => Promise<void>;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const elements = useMemo(
@@ -61,6 +70,20 @@ export function WorkflowGraphCanvas({
       })),
     [elements.nodes, selectedNodeId],
   );
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+  }, []);
+  const persistViewport = (_event: unknown, viewport: Viewport) => {
+    if (!isWorkflowGraphEditEnabled()) return;
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      void sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
+        expectedGraphRevision: graphRevision,
+        operations: [{ op: "set_viewport", viewport }],
+      }).then(() => onRefresh()).catch(() => undefined);
+    }, 250);
+  };
   const handleNodeClick: NodeMouseHandler<WorkflowGraphReactNode> = (_event, node) => {
     onSelectNode(node.id);
   };
@@ -90,6 +113,7 @@ export function WorkflowGraphCanvas({
         edgesFocusable={false}
         onNodeClick={handleNodeClick}
         onPaneClick={() => onSelectNode(null)}
+        onMoveEnd={persistViewport}
         defaultViewport={graph.viewport}
         aria-label="Workflow Graphを移動・拡大縮小できます"
       >

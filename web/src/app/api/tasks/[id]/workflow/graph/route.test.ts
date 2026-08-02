@@ -29,6 +29,8 @@ function contextFor(id: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.update.mockReset();
+  mocks.update.mockReturnValue(mocks.graph);
   mocks.editEnabled = true;
   mocks.getOrMaterialize.mockReturnValue(mocks.graph);
   mocks.update.mockReturnValue(mocks.graph);
@@ -98,5 +100,21 @@ describe("/api/tasks/[id]/workflow/graph", () => {
     );
     expect(response.status).toBe(409);
     expect((await response.json()).conflictKind).toBe("layout");
+  });
+
+  it("forwards viewport persistence through the Graph API", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/tasks/ws1/workflow/graph", {
+        method: "PATCH",
+        body: JSON.stringify({ expectedGraphRevision: 2, operations: [{ op: "set_viewport", viewport: { x: 12, y: 8, zoom: 1.1 } }] }),
+      }),
+      contextFor("ws1"),
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith({
+      workspaceId: "ws1",
+      expectedGraphRevision: 2,
+      operations: [{ op: "set_viewport", viewport: { x: 12, y: 8, zoom: 1.1 } }],
+    });
   });
 });

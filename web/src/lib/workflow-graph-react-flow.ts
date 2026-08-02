@@ -8,6 +8,7 @@ import type {
   WorkflowGraphEdge,
   WorkflowGraphNode,
 } from "./workflow-graph-types";
+import { layoutWorkflowGraph } from "./workflow-graph-layout";
 
 export type WorkflowGraphRuntimeState = {
   nodeId: string;
@@ -73,21 +74,7 @@ export function toWorkflowGraphReactFlow(
 } {
   const runtimeStates = stateMap(states);
   const nodeStates = new Map<string, string>();
-  const verticalPositions = new Map<string, { x: number; y: number }>();
-  if (direction === "TB") {
-    const ranks = [...new Set(graph.nodes.map((node) => node.position.x))].sort((a, b) => a - b);
-    for (const [rank, x] of ranks.entries()) {
-      const nodesAtRank = graph.nodes
-        .filter((node) => node.position.x === x)
-        .sort((a, b) => a.position.y - b.position.y);
-      nodesAtRank.forEach((node, index) => {
-        verticalPositions.set(node.id, {
-          x: (index - (nodesAtRank.length - 1) / 2) * 280,
-          y: rank * 220,
-        });
-      });
-    }
-  }
+  const layoutPositions = direction === "TB" ? layoutWorkflowGraph(graph, direction) : undefined;
   const nodes = graph.nodes.map<WorkflowGraphReactNode>((graphNode) => {
     const definition = WORKFLOW_NODE_REGISTRY.get(
       graphNode.type,
@@ -99,7 +86,7 @@ export function toWorkflowGraphReactFlow(
     return {
       id: graphNode.id,
       type: "workflowGraphNode",
-      position: verticalPositions.get(graphNode.id) ?? { ...graphNode.position },
+      position: layoutPositions?.get(graphNode.id) ?? { ...graphNode.position },
       data: {
         graphNode,
         definition,
