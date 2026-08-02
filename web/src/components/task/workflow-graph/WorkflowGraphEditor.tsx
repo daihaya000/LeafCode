@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError, sendJson } from "@/lib/client";
 import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 import {
@@ -7,7 +7,12 @@ import {
   type WorkflowNodeRegistryDefinition,
   type WorkflowPortDefinition,
 } from "@/lib/workflow-node-registry";
-import type { WorkflowGraphDraft, WorkflowGraphEdge, WorkflowGraphNode } from "@/lib/workflow-graph-types";
+import type {
+  WorkflowGraphDraft,
+  WorkflowGraphEdge,
+  WorkflowGraphEdgeKind,
+  WorkflowGraphNode,
+} from "@/lib/workflow-graph-types";
 import type { WorkflowGraphOperation } from "@/lib/workflow-graph-mutations";
 import type { WorkflowGraphDirection } from "@/lib/workflow-graph-react-flow";
 import { layoutWorkflowGraph } from "@/lib/workflow-graph-layout";
@@ -31,17 +36,36 @@ function nodeDefinition(node: WorkflowGraphNode | undefined) {
 function compatiblePorts(
   source: WorkflowGraphNode | undefined,
   target: WorkflowGraphNode | undefined,
+  edgeKind: WorkflowGraphEdgeKind = "dependency",
 ): { source: WorkflowPortDefinition; target: WorkflowPortDefinition } | null {
   const outputs = nodeDefinition(source)?.outputs ?? [];
   const inputs = nodeDefinition(target)?.inputs ?? [];
   for (const output of outputs) {
     const input = inputs.find(
       (candidate) => candidate.dataType === output.dataType &&
-        candidate.edgeKinds.includes("dependency") && output.edgeKinds.includes("dependency"),
+        candidate.edgeKinds.includes(edgeKind) && output.edgeKinds.includes(edgeKind),
     );
     if (input) return { source: output, target: input };
   }
   return null;
+}
+
+function compatibleEdgeKinds(
+  source: WorkflowGraphNode | undefined,
+  target: WorkflowGraphNode | undefined,
+): WorkflowGraphEdgeKind[] {
+  const outputs = nodeDefinition(source)?.outputs ?? [];
+  const inputs = nodeDefinition(target)?.inputs ?? [];
+  const kinds = new Set<WorkflowGraphEdgeKind>();
+  for (const output of outputs) {
+    for (const input of inputs) {
+      if (input.dataType !== output.dataType) continue;
+      for (const kind of output.edgeKinds) {
+        if (input.edgeKinds.includes(kind)) kinds.add(kind);
+      }
+    }
+  }
+  return [...kinds];
 }
 
 function nextWorkflowNode(
@@ -101,12 +125,15 @@ export function WorkflowGraphEditor({
   const [conflict, setConflict] = useState<ConflictKind | null>(null);
   const [sourceId, setSourceId] = useState("implement_ui");
   const [targetId, setTargetId] = useState("code_review");
+  const [edgeKind, setEdgeKind] = useState<WorkflowGraphEdgeKind>("dependency");
   const [nodeType, setNodeType] = useState("opencode.code_review");
   const addableDefinitions = WORKFLOW_NODE_REGISTRY.definitions.filter((definition) => definition.userAddable);
 
   const source = graph.nodes.find((node) => node.id === sourceId);
   const target = graph.nodes.find((node) => node.id === targetId);
-  const ports = useMemo(() => compatiblePorts(source, target), [source, target]);
+  const edgeKinds = useMemo(() => compatibleEdgeKinds(source, target), [source, target]);
+  const effectiveEdgeKind = edgeKinds.includes(edgeKind) ? edgeKind : (edgeKinds[0] ?? "dependency");
+  const ports = useMemo(() => compatiblePorts(source, target, effectiveEdgeKind), [effectiveEdgeKind, source, target]);
   const edgeOperation = useMemo<WorkflowGraphOperation | null>(() => ports && ({
     op: "add_edge",
     edge: {
@@ -115,9 +142,18 @@ export function WorkflowGraphEditor({
       sourceHandle: ports.source.id,
       target: targetId,
       targetHandle: ports.target.id,
-      kind: "dependency",
+      kind: effectiveEdgeKind,
     },
-  }), [graph.graphRevision, ports, sourceId, targetId]);
+  }), [effectiveEdgeKind, graph.graphRevision, ports, sourceId, targetId]);
+
+  useEffect(() => {
+    if (!source && graph.nodes[0]) setSourceId(graph.nodes[0].id);
+    if (!target && graph.nodes[1]) setTargetId(graph.nodes[1].id);
+  }, [graph.graphRevision, graph.nodes, source, target]);
+
+  useEffect(() => {
+    if (edgeKinds.length > 0 && !edgeKinds.includes(edgeKind)) setEdgeKind(edgeKinds[0]);
+  }, [edgeKind, edgeKinds]);
 
   if (!editingEnabled || !isWorkflowGraphEditEnabled()) return null;
 
@@ -177,6 +213,11 @@ export function WorkflowGraphEditor({
         <label className="flex items-center gap-1 text-[11px] text-muted">To
           <select aria-label="Edge target" value={targetId} onChange={(event) => setTargetId(event.target.value)} className="max-w-32 rounded border border-border bg-surface px-1.5 py-1 text-xs text-text">
             {graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.id}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-muted">種別
+          <select aria-label="Edge kind" value={effectiveEdgeKind} disabled={edgeKinds.length === 0} onChange={(event) => setEdgeKind(event.target.value as WorkflowGraphEdgeKind)} className="max-w-28 rounded border border-border bg-surface px-1.5 py-1 text-xs text-text disabled:opacity-50">
+            {edgeKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
           </select>
         </label>
         <button type="button" disabled={pending || sourceId === targetId || !edgeOperation} onClick={addEdge} className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text disabled:opacity-50">接続を追加</button>

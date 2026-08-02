@@ -121,4 +121,36 @@ describe("WorkflowGraphEditor", () => {
       edge: { sourceHandle: "result", targetHandle: "implementation" },
     });
   });
+
+  it("adds a compatible control Edge between reviewer and gate Nodes", async () => {
+    mocks.sendJson.mockResolvedValue({ graph });
+    render(
+      <WorkflowGraphEditor
+        taskId="ws-editor"
+        graph={graph}
+        selectedNodeId={null}
+        selectedEdgeId={null}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        direction="LR"
+      />,
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Edge source" }), { target: { value: "code_review" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Edge target" }), { target: { value: "review_gate" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Edge kind" }), { target: { value: "control" } });
+    expect((screen.getByRole("combobox", { name: "Edge kind" }) as HTMLSelectElement).value).toBe("control");
+    fireEvent.click(screen.getByRole("button", { name: "接続を追加" }));
+    await waitFor(() => expect(mocks.sendJson).toHaveBeenCalledTimes(1));
+    expect(mocks.sendJson.mock.calls[0]?.[2].operations).toEqual([
+      {
+        op: "add_edge",
+        edge: expect.objectContaining({
+          source: "code_review",
+          target: "review_gate",
+          sourceHandle: "result",
+          targetHandle: "code_review",
+          kind: "control",
+        }),
+      },
+    ]);
+  });
 });

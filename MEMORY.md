@@ -4393,3 +4393,10 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - 外部JSON境界のGraph validatorで、Node／Edgeの必須フィールド型を検証し、非文字列IDやnull Edgeを`.trim()`例外にせず`invalid_node_shape`／`invalid_edge_shape`として返すようにした。
 - malformed Graph regression testを追加。
 - 検証: Graph validation／repository／WorkflowPanel tests、TypeScript、Lint、diff checkを通過。
+
+## 2026-08-02: Workflow Graph editor interaction hardening
+
+- 手動Edge追加をRegistryのポート互換性から動的に判定し、`dependency`固定を廃止して`control`／`feedback`／`success`を選択可能にした。ReviewerからReview Gateへのcontrol接続を回帰テストで確認した。
+- Graph更新後にFrom／To選択やNode／Edge選択が削除済みIDを保持し続けないよう自動解除・補正した。
+- ViewportのCAS競合・保存失敗をCanvas上で通知し、最新Graph再読込を可能にした。編集モードの凡例も実際の保存動作に合わせた。
+- 検証: 関連Vitest 33件、TypeScript、Lint、Host test 192件、Graph E2E 1件、diff checkを通過。

@@ -107,6 +107,15 @@ export function WorkflowGraphPanel({
   const selectedGraphNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedNodeRun = workflow.nodes.find((node) => node.nodeKey === selectedNodeId);
 
+  useEffect(() => {
+    if (selectedNodeId && !graph.nodes.some((node) => node.id === selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
+    if (selectedEdgeId && !graph.edges.some((edge) => edge.id === selectedEdgeId)) {
+      setSelectedEdgeId(null);
+    }
+  }, [graph.edges, graph.nodes, selectedEdgeId, selectedNodeId]);
+
   return (
     <section aria-label="Workflow Graph進捗" data-graph-viewport={viewportMode} data-graph-direction={direction} className="flex min-h-0 flex-1 flex-col overflow-auto bg-surface-2 p-3 sm:p-4">
       <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-1 flex-col">

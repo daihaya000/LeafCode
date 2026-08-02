@@ -22,7 +22,7 @@ import {
 } from "@/lib/workflow-graph-react-flow";
 import { WorkflowGraphEdge } from "./WorkflowGraphEdge";
 import { WorkflowGraphNode } from "./WorkflowGraphNode";
-import { sendJson } from "@/lib/client";
+import { ApiError, sendJson } from "@/lib/client";
 import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 
 const nodeTypes = { workflowGraphNode: WorkflowGraphNode };
@@ -66,6 +66,7 @@ export function WorkflowGraphCanvas({
   editingEnabled?: boolean;
 }) {
   const reducedMotion = usePrefersReducedMotion();
+  const [viewportError, setViewportError] = useState<string | null>(null);
   const elements = useMemo(
     () => toWorkflowGraphReactFlow(graph, states, reducedMotion, direction),
     [direction, graph, reducedMotion, states],
@@ -97,7 +98,19 @@ export function WorkflowGraphCanvas({
       void sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
         expectedGraphRevision: graphRevisionRef.current,
         operations: [{ op: "set_viewport", viewport }],
-      }).then(() => onRefresh()).catch(() => onRefresh().catch(() => undefined));
+      }).then(() => {
+        setViewportError(null);
+        return onRefresh();
+      }).catch((error: unknown) => {
+        setViewportError(
+          error instanceof ApiError && error.status === 409
+            ? "Graphが更新されたためViewportを保存できませんでした。最新Graphを再読込してください。"
+            : error instanceof Error
+              ? error.message
+              : "Viewportの保存に失敗しました。",
+        );
+        return onRefresh().catch(() => undefined);
+      });
     }, 250);
   };
   const handleNodeClick: NodeMouseHandler<WorkflowGraphReactNode> = (_event, node) => {
@@ -155,8 +168,14 @@ export function WorkflowGraphCanvas({
           aria-label="Workflow Graph全体図"
         />
         <Panel position="top-left" className="workflow-graph-legend">
-          <p className="text-[11px] font-medium text-muted">読み取り専用 · Nodeを選択して詳細を確認</p>
+          <p className="text-[11px] font-medium text-muted">{editingEnabled ? "Nodeを選択して詳細を確認 · Canvasは移動・拡大縮小を保存" : "読み取り専用 · Nodeを選択して詳細を確認"}</p>
         </Panel>
+        {viewportError && (
+          <Panel position="top-right" className="max-w-[min(22rem,calc(100%-1rem))] rounded-md border border-warning/40 bg-warning-bg px-2.5 py-2 text-[11px] text-warning shadow-sm" role="alert">
+            <p>{viewportError}</p>
+            <button type="button" className="mt-1 underline underline-offset-2" onClick={() => { setViewportError(null); void onRefresh(); }}>最新Graphを再読込</button>
+          </Panel>
+        )}
       </ReactFlow>
     </div>
   );
