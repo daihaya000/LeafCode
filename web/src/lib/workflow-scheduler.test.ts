@@ -80,7 +80,13 @@ describe("workflow scheduler", () => {
     expect(ocServer.mock.calls[0]?.[1]).toBe("/session/ses-scheduler-send/prompt_async");
 
     await runWorkflowSchedulerTick();
-    expect(ocServer).toHaveBeenCalledTimes(1);
+    expect(ocServer).toHaveBeenCalledTimes(2);
+    expect(ocServer.mock.calls[1]?.[1]).toBe("/session/ses-scheduler-send/message");
+    updateWorkflow({
+      workspaceId: "scheduler-send",
+      action: "stop",
+      workflowRevision: getWorkflow("scheduler-send")!.run!.revision,
+    });
   });
 
   test("pauses on ambiguous delivery without retrying", async () => {

@@ -196,6 +196,7 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
   } catch {
     return;
   }
+  if (!Array.isArray(messages)) return;
   const result = extractWorkflowResult(messages, attempt.prompt_marker, info.node_key);
   if (!result) return;
   const now = new Date().toISOString();
