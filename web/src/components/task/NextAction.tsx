@@ -262,13 +262,7 @@ export function NextAction({
   if (state.kind === "idle") {
     return (
       <section className={panelClass} aria-label="次の一手">
-        <div className="px-1 pt-0">
-          <PanelIntro
-            title="次の一手"
-            description="会話の流れを読み取り、すぐ使える指示を提案します。"
-          />
-        </div>
-        <div className="mt-1 flex flex-col gap-2 px-1 py-0.5 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-2 px-1 py-0.5 sm:flex-row sm:items-center">
           <Button
             variant="secondary"
             size="sm"

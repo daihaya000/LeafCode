@@ -3097,7 +3097,7 @@ describe("TaskView voice input", () => {
     expect((micBtn as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("does not show NextAction in the composer", async () => {
+  it("shows NextAction button when idle, loaded, with messages and no attention", async () => {
     taskStatus = "idle";
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
@@ -3115,7 +3115,7 @@ describe("TaskView voice input", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    expect(screen.queryByLabelText("次の指示を提案")).toBeNull();
+    expect(screen.getByLabelText("次の指示を提案")).toBeTruthy();
     const deliveryMode = screen.getByRole("button", { name: "送信方式" });
     expect(deliveryMode.getAttribute("aria-haspopup")).toBe("listbox");
     fireEvent.click(deliveryMode);
