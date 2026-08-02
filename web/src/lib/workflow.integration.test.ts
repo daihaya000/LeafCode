@@ -18,6 +18,7 @@ process.env.OPENCODE_WEBUI_BROWSER_BROKER_TOKEN = "x".repeat(40);
 
 const { bindSession, createWorkspace, getDb, getWorkspace, upsertProject } = await import("./db");
 const { createWorkflow, getWorkflow, updateWorkflow } = await import("./workflow-service");
+const { getOrMaterializeWorkflowGraph } = await import("./workflow-graph-repository");
 const { saveWorkflowArtifact, verifyBrowserBridgeScreenshot, workflowArtifactsForPrompt } = await import("./workflow-artifacts");
 const { runWorkflowSchedulerTick } = await import("./workflow-scheduler");
 
@@ -133,5 +134,34 @@ describe("Workflow full execution integration", () => {
     expect(finalWorkflow.run?.status, `${finalWorkflow.run?.pauseReason} ${JSON.stringify(finalWorkflow.nodes.map((node) => [node.nodeKey, node.attempts.at(-1)?.status, node.attempts.at(-1)?.result]))}`).toBe("completed");
     expect(getWorkflow(workspaceId)!.nodes.find((node) => node.nodeKey === "code_review")!.attempts).toHaveLength(2);
     expect(getWorkflow(workspaceId)!.nodes.find((node) => node.nodeKey === "visual_judge")!.attempts).toHaveLength(2);
+  });
+
+  test("runs the same path through a published v2 snapshot and Executor Registry", async () => {
+    const workspaceId = "workflow-v2-e2e";
+    const workspaceRevision = setupWorkspace(workspaceId);
+    const created = createWorkflow({ workspaceId, workspaceRevision, taskContext: { goal: "Build UI", acceptance: ["renders"], constraints: [] } });
+    getOrMaterializeWorkflowGraph(workspaceId);
+    updateWorkflow({ workspaceId, action: "start", workflowRevision: created.run!.revision, workspaceRevision: created.workspaceRevision });
+
+    await runWorkflowSchedulerTick();
+    let workflow = getWorkflow(workspaceId)!;
+    const implement = workflow.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts.at(-1)!;
+    responses.set(implement.opencodeSessionId!, resultMessage(implement.promptMarker!, "v2-implement", { status: "completed", summary: "implemented", evidence: ["tests"] }));
+    await runWorkflowSchedulerTick();
+    workflow = getWorkflow(workspaceId)!;
+    const visual = workflow.nodes.find((node) => node.nodeKey === "visual_judge")!.attempts.at(-1)!;
+    saveWorkflowArtifact({ workflowRunId: workflow.run!.id, nodeAttemptId: visual.id, kind: "screenshot", label: "v2 preview", opaqueRef: "browser-bridge:tab-e2e", origin: "browser_bridge", metadata: { tabId: "tab-e2e", origin: "https://preview.test" } });
+    await runWorkflowSchedulerTick();
+    workflow = getWorkflow(workspaceId)!;
+    const code = workflow.nodes.find((node) => node.nodeKey === "code_review")!.attempts.at(-1)!;
+    const visualJudge = workflow.nodes.find((node) => node.nodeKey === "visual_judge")!.attempts.at(-1)!;
+    responses.set(code.opencodeSessionId!, resultMessage(code.promptMarker!, "v2-code", { verdict: "pass", summary: "pass", evidence: ["tests"], findings: [] }));
+    responses.set(visualJudge.opencodeSessionId!, resultMessage(visualJudge.promptMarker!, "v2-visual", { verdict: "pass", summary: "pass", evidence: ["screenshot"], findings: [] }));
+    await runWorkflowSchedulerTick();
+
+    const finalWorkflow = getWorkflow(workspaceId)!;
+    expect(finalWorkflow.run?.status, finalWorkflow.run?.pauseReason).toBe("completed");
+    expect(finalWorkflow.run?.definitionSnapshot).toMatchObject({ schemaVersion: "workflow-execution-v2" });
+    expect(finalWorkflow.nodes.find((node) => node.nodeKey === "review_gate")?.attempts.at(-1)).toMatchObject({ status: "succeeded", opencodeSessionId: null });
   });
 });

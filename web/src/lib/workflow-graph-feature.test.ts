@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   isWorkflowGraphEditEnabled,
   isWorkflowGraphEnabled,
+  resolveWorkflowGraphRollout,
 } from "./workflow-feature";
 import {
   WORKFLOW_EXECUTION_SCHEMA_VERSION,
@@ -49,6 +50,15 @@ describe("workflow graph feature flags", () => {
 
     vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_GRAPH", "true");
     expect(isWorkflowGraphEditEnabled()).toBe(true);
+  });
+
+  test.each([
+    [{ mode: "false", graph: "true", graphEdit: "true" }, "legacy", "workflow_disabled"],
+    [{ mode: "true", graph: "false", graphEdit: "true" }, "legacy", "graph_disabled"],
+    [{ mode: "true", graph: "true", graphEdit: "false" }, "graph_readonly", "graph_readonly"],
+    [{ mode: "true", graph: "true", graphEdit: "true" }, "graph_edit", "graph_edit_enabled"],
+  ] as const)("applies staged rollout guard %j", (raw, phase, reason) => {
+    expect(resolveWorkflowGraphRollout(raw)).toMatchObject({ phase, reason });
   });
 });
 
