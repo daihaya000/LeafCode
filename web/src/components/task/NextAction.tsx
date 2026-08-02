@@ -7,6 +7,7 @@ import {
   RefreshCw,
   ArrowDownToLine,
   ChevronDown,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui";
 import { sendJson } from "@/lib/client";
@@ -87,7 +88,7 @@ function CountSelect({
         const n = Number(e.target.value);
         if (Number.isFinite(n)) onChange(n);
       }}
-      className="h-8 shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs text-text outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+      className="h-9 min-w-16 shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-text outline-none transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary motion-reduce:transition-none"
     >
       {options.map((n) => (
         <option key={n} value={n}>
@@ -95,6 +96,44 @@ function CountSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+const panelClass =
+  "mt-3 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm";
+
+function PanelMark({ busy = false }: { busy?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-fg"
+    >
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Sparkles className="h-4 w-4" />
+      )}
+    </span>
+  );
+}
+
+function PanelIntro({
+  title,
+  description,
+  busy = false,
+}: {
+  title: string;
+  description: string;
+  busy?: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <PanelMark busy={busy} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-text">{title}</p>
+        <p className="mt-0.5 text-xs leading-5 text-muted">{description}</p>
+      </div>
+    </div>
   );
 }
 
@@ -124,6 +163,9 @@ export function NextAction({
   // Suggestions already shown for the current conversation state. Sent back
   // on regeneration so the API can tell the model to avoid repeating them.
   const [previousSuggestions, setPreviousSuggestions] = useState<string[]>([]);
+  // Keep the chosen card visibly acknowledged until the conversation changes
+  // or another generation replaces the result.
+  const [appliedIndex, setAppliedIndex] = useState<number | null>(null);
   // Mobile-only collapse for the success state. Desktop (isMd=true) always
   // renders the suggestions expanded and never shows the toggle.
   const [collapsed, setCollapsed] = useState(false);
@@ -157,6 +199,7 @@ export function NextAction({
     // Invalidate an in-flight generation before clearing the old suggestion.
     generationRef.current += 1;
     setPreviousSuggestions([]);
+    setAppliedIndex(null);
     setState({ kind: "idle" });
     if (!isMd) setCollapsed(true);
   }, [taskId, sessionId, invalidateKey, isMd]);
@@ -164,6 +207,7 @@ export function NextAction({
   const generate = useCallback(async () => {
     if (!mountedRef.current) return;
     const generation = ++generationRef.current;
+    setAppliedIndex(null);
     setState({ kind: "loading" });
     try {
       const body: Record<string, unknown> = { sessionId, count };
@@ -216,29 +260,63 @@ export function NextAction({
 
   if (state.kind === "idle") {
     return (
-      <div className="mt-2 flex items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={generate}
-          aria-label="次の指示を提案"
-        >
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          次の指示を提案
-        </Button>
-        <CountSelect value={count} onChange={setCount} />
-      </div>
+      <section className={panelClass} aria-label="次の一手">
+        <div className="px-3 pt-3 sm:px-4 sm:pt-4">
+          <PanelIntro
+            title="次の一手"
+            description="会話の流れを読み取り、すぐ使える指示を提案します。"
+          />
+        </div>
+        <div className="mt-3 flex flex-col gap-2 border-t border-border px-3 py-3 sm:flex-row sm:items-center sm:px-4">
+          <Button
+            variant="primary"
+            size="md"
+            onClick={generate}
+            aria-label="次の指示を提案"
+            className="w-full sm:w-auto"
+          >
+            <Sparkles className="h-4 w-4" />
+            次の指示を提案
+          </Button>
+          <div className="flex items-center justify-between gap-2 sm:ml-auto">
+            <span className="text-xs text-muted">提案数</span>
+            <CountSelect value={count} onChange={setCount} />
+          </div>
+        </div>
+      </section>
     );
   }
 
   if (state.kind === "loading") {
     return (
       <div
-        className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted"
+        className={panelClass}
+        aria-label="次の一手"
         aria-busy="true"
       >
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span role="status">提案を作成中…</span>
+        <div className="px-3 py-3 sm:px-4 sm:py-4">
+          <PanelIntro
+            title="次の一手を準備中"
+            description="会話の文脈から、実行しやすい指示を整理しています。"
+            busy
+          />
+          <div
+            className="mt-3 flex items-center gap-2 text-xs text-muted"
+            aria-busy="true"
+          >
+            <span
+              role="status"
+              className="inline-flex items-center gap-1.5"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+              提案を作成中…
+            </span>
+            <span aria-hidden="true" className="text-faint">
+              ·
+            </span>
+            <span>しばらくお待ちください</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -246,21 +324,32 @@ export function NextAction({
   if (state.kind === "error") {
     return (
       <div
-        className="mt-2 flex flex-col gap-2 rounded-xl border border-danger/30 bg-danger-bg px-3 py-2 text-sm sm:flex-row sm:items-center"
-        role="alert"
+        className={panelClass}
+        aria-label="次の一手"
       >
-        <span className="text-danger">{state.message}</span>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={generate}
-            aria-label="再試行"
-          >
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            再試行
-          </Button>
-          <CountSelect value={count} onChange={setCount} />
+        <div className="px-3 pt-3 sm:px-4 sm:pt-4">
+          <PanelIntro
+            title="次の一手を生成できませんでした"
+            description="会話の内容は変わっていません。もう一度試せます。"
+          />
+        </div>
+        <div
+          className="mt-3 flex flex-col gap-3 border-t border-danger/30 bg-danger-bg px-3 py-3 sm:flex-row sm:items-center sm:px-4"
+          role="alert"
+        >
+          <p className="min-w-0 flex-1 text-sm text-danger">{state.message}</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={generate}
+              aria-label="再試行"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              再試行
+            </Button>
+            <CountSelect value={count} onChange={setCount} />
+          </div>
         </div>
       </div>
     );
@@ -274,8 +363,8 @@ export function NextAction({
   const collapsible = !isMd;
   const isCollapsed = collapsible && collapsed;
   return (
-    <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
+    <section className={panelClass} aria-label="次の一手">
+      <div className="flex items-start gap-2 px-3 pt-3 sm:px-4 sm:pt-4">
         {collapsible ? (
           <button
             type="button"
@@ -283,21 +372,46 @@ export function NextAction({
             aria-controls={panelId}
             aria-label={isCollapsed ? "次の指示を展開" : "次の指示を折りたたむ"}
             onClick={() => setCollapsed((value) => !value)}
-            className="flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-lg text-left text-xs font-medium text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+            className="flex min-h-11 min-w-0 flex-1 items-start gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
+            <PanelMark />
+            <span className="min-w-0 flex-1 pt-0.5">
+              <span className="block text-sm font-semibold text-text">
+                次の指示
+              </span>
+              <span className="mt-0.5 block truncate text-xs leading-5 text-muted">
+                会話の文脈に合わせた提案
+              </span>
+            </span>
             <ChevronDown
               aria-hidden="true"
-              className={`h-3.5 w-3.5 shrink-0 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+              className={`mt-1 h-4 w-4 shrink-0 text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""} motion-reduce:transition-none`}
             />
-            <span className="min-w-0 flex-1 truncate">次の指示</span>
           </button>
         ) : (
-          <p className="text-xs font-medium text-muted">次の指示</p>
+          <PanelIntro
+            title="次の指示"
+            description="会話の文脈に合わせた提案"
+          />
         )}
-        <CountSelect value={count} onChange={setCount} />
+        <div className="shrink-0 pt-0.5">
+          <CountSelect value={count} onChange={setCount} />
+        </div>
       </div>
       {!isCollapsed && (
-        <div id={panelId} aria-live="polite" className="mt-1">
+        <div
+          id={panelId}
+          aria-live="polite"
+          className="mt-3 border-t border-border px-3 py-3 sm:px-4 sm:py-4"
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted">
+              {multiple
+                ? `${state.suggestions.length}つの候補から選べます`
+                : "そのまま使える指示です"}
+            </p>
+            <p className="text-[11px] text-faint">入力欄に入れて編集できます</p>
+          </div>
           <div
             role="list"
             aria-label="次の指示の提案一覧"
@@ -307,43 +421,71 @@ export function NextAction({
               <div
                 key={`${i}-${suggestion}`}
                 role="listitem"
-                className="rounded-lg border border-border bg-surface-2 px-2.5 py-2"
+                className="rounded-xl border border-border bg-surface-2 p-3 transition-colors hover:border-border-strong hover:bg-surface-3 sm:p-4 motion-reduce:transition-none"
               >
-                {multiple && (
-                  <p className="text-[10px] font-medium text-faint">
-                    提案 {i + 1}
-                  </p>
-                )}
-                <p className="whitespace-pre-wrap text-sm text-text">
-                  {suggestion}
-                </p>
-                <div className="mt-1.5">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => onApply(suggestion)}
-                    aria-label={multiple ? `入力欄に入れる ${i + 1}` : "入力欄に入れる"}
+                <div className="flex items-start gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-xs font-semibold text-muted"
                   >
-                    <ArrowDownToLine className="mr-1.5 h-3.5 w-3.5" />
-                    入力欄に入れる
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-[11px] font-medium text-faint">
+                      {multiple ? `提案 ${i + 1}` : "おすすめの一手"}
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-text">
+                      {suggestion}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex sm:justify-end">
+                  <Button
+                    variant={appliedIndex === i ? "secondary" : "primary"}
+                    size="sm"
+                    onClick={() => {
+                      onApply(suggestion);
+                      setAppliedIndex(i);
+                    }}
+                    aria-label={
+                      appliedIndex === i
+                        ? multiple
+                          ? `入力欄に追加済み ${i + 1}`
+                          : "入力欄に追加済み"
+                        : multiple
+                          ? `入力欄に入れる ${i + 1}`
+                          : "入力欄に入れる"
+                    }
+                    className={`w-full sm:w-auto ${appliedIndex === i ? "border border-success/30 text-success" : ""}`}
+                  >
+                    {appliedIndex === i ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowDownToLine className="h-3.5 w-3.5" />
+                    )}
+                    {appliedIndex === i ? "入力欄に追加済み" : "入力欄に入れる"}
                   </Button>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] leading-5 text-faint">
+              期待と違う場合は、別の切り口で作り直せます。
+            </p>
             <Button
               variant="secondary"
               size="sm"
               onClick={generate}
               aria-label="再生成"
+              className="w-full sm:w-auto"
             >
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" />
               再生成
             </Button>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

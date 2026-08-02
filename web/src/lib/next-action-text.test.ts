@@ -38,6 +38,12 @@ describe("NEXT_ACTION_SYSTEM_INSTRUCTION", () => {
     expect(NEXT_ACTION_SYSTEM_INSTRUCTION).toContain(
       "単なる確認作業を汎用的な次の一手として提案しない",
     );
+    expect(NEXT_ACTION_SYSTEM_INSTRUCTION).toContain(
+      "目的や成果物に直接つながる具体的な動作",
+    );
+    expect(NEXT_ACTION_SYSTEM_INSTRUCTION).toContain(
+      "対象や動作が曖昧な指示は禁止",
+    );
   });
 });
 

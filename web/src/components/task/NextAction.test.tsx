@@ -80,6 +80,7 @@ describe("NextAction", () => {
     });
     fireEvent.click(screen.getByLabelText("入力欄に入れる"));
     expect(onApply).toHaveBeenCalledWith("テストを実行してください");
+    expect(screen.getByLabelText("入力欄に追加済み")).toBeTruthy();
   });
 
   it("shows error state with retry button on failure", async () => {
