@@ -1339,6 +1339,10 @@ async function spawnWeb() {
       OPENCODE_WEBUI_HOST: WEBUI_HOST,
       OPENCODE_WEBUI_PORT: String(WEBUI_PORT),
       OPENCODE_WEBUI_HOST_CONTROL_URL: CONTROL_URL,
+      // Packaged WebUI launches should expose the Workflow entry point by
+      // default. Preserve an explicit false/0 override for safe rollout.
+      OPENCODE_WEBUI_WORKFLOW_MODE:
+        process.env.OPENCODE_WEBUI_WORKFLOW_MODE ?? 'true',
       ...browserBridgeEnvironment(),
       PORT: String(WEBUI_PORT),
       // `next start` must serve the same distDir that was built. Do NOT set it
