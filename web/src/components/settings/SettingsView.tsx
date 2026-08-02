@@ -921,7 +921,7 @@ export function SettingsView() {
                     {updateState && (
                       <div
                         className={cx(
-                          "rounded-lg border px-3 py-2 text-xs",
+                          "rounded-md border px-2 py-1.5 text-[11px] leading-snug",
                           updateState.kind === "error"
                             ? "border-danger/30 bg-danger-bg text-diff-del-text"
                             : updateState.kind === "success"
@@ -937,7 +937,7 @@ export function SettingsView() {
                             : updateState.message}
                         </p>
                         {updateState.detail && (
-                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg/60 p-2 font-mono text-[11px] text-muted">
+                          <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-bg/60 px-1.5 py-1 font-mono text-[10px] leading-snug text-muted">
                             {updateState.detail}
                           </pre>
                         )}
