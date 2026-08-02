@@ -50,13 +50,13 @@ export function CommandCodeAuth() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-text">CommandCode API</h3>
+              <h3 className="text-sm font-semibold text-text">CommandCode CLI認証</h3>
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
-            <p className="mt-1 text-xs text-faint">APIキーはCommandCode CLIの認証ストアへ保存します。CLI経由のローカルプロキシを使用し、キー自体は表示・ログ出力しません。</p>
+            <p className="mt-1 text-xs text-faint">CommandCode CLIの認証キーをCLI互換の認証ストアへ保存します。APIへ直接接続せず、CLI経由のローカルプロキシを使用します。</p>
           </div>
           <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode APIキー" aria-label="CommandCode APIキー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
+            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode CLI認証キー" aria-label="CommandCode CLI認証キー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
             <Button size="sm" onClick={() => void save()} disabled={!key.trim() || state === "saving"} busy={state === "saving"}>保存</Button>
           </div>
         </div>
