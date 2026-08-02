@@ -755,3 +755,26 @@ export function isTerminalWorkflowStatus(status: string): boolean {
 export function isInFlightAttemptStatus(status: string): boolean {
   return IN_FLIGHT_ATTEMPT_STATUSES.includes(status as (typeof IN_FLIGHT_ATTEMPT_STATUSES)[number]);
 }
+
+export function pauseWorkflowForManualInput(input: {
+  workspaceId: string;
+  attemptId: string;
+  workflowRevision: unknown;
+}): WorkflowView {
+  const workflow = getWorkflow(input.workspaceId);
+  if (!workflow?.run) throw new WorkflowServiceError("workflow not found", 404);
+  const expectedRevision = requireExpectedRevision(input.workflowRevision, "workflowRevision");
+  if (workflow.run.revision !== expectedRevision) throw new WorkflowServiceError("workflow revision conflict", 409);
+  const attempt = getDb().prepare(
+    `SELECT a.id FROM workflow_node_attempts a
+     JOIN workflow_node_runs n ON n.id = a.node_run_id
+     WHERE a.id = ? AND n.workflow_run_id = ? AND a.status = 'running'`,
+  ).get(input.attemptId, workflow.run.id);
+  if (!attempt) throw new WorkflowServiceError("running Attempt not found", 409);
+  const updated = getDb().prepare(
+    `UPDATE workflow_runs SET status = 'paused', pause_reason = 'manual_send', revision = revision + 1, updated_at = ?
+     WHERE id = ? AND status = 'running' AND revision = ?`,
+  ).run(new Date().toISOString(), workflow.run.id, expectedRevision);
+  if (updated.changes !== 1) throw new WorkflowServiceError("workflow revision conflict", 409);
+  return getWorkflow(input.workspaceId)!;
+}
