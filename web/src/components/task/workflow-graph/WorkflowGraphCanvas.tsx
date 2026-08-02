@@ -112,6 +112,7 @@ export function WorkflowGraphCanvas({
   return (
     <div
       className="workflow-graph-canvas h-full min-h-[22rem] w-full overflow-hidden rounded-lg border border-border bg-surface-2"
+      data-testid="workflow-graph-canvas"
       aria-label="Workflow Graph canvas"
     >
       <ReactFlow

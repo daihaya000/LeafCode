@@ -7,11 +7,16 @@ import { isWorkflowGraphEnabled } from "@/lib/workflow-feature";
 import { synthesizeWorkflowGraph } from "@/lib/workflow-graph-compat";
 import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import type { WorkflowView } from "@/lib/workflow-service";
+import type { WorkflowDefinitionSnapshot } from "@/lib/workflow-types";
 import { cx } from "@/components/ui";
 import { WorkflowGraphPanel } from "./workflow-graph/WorkflowGraphPanel";
 
 type WorkflowResponse = { workflow: WorkflowView };
 type GraphResponse = { graph: WorkflowGraphDraft };
+
+function isLegacyWorkflowDefinitionSnapshot(value: unknown): value is WorkflowDefinitionSnapshot {
+  return Boolean(value && typeof value === "object" && "templateKey" in value);
+}
 
 const labels: Record<string, string> = {
   implement_ui: "Implement UI",
@@ -93,7 +98,8 @@ export function WorkflowPanel({
   const graphState = useMemo(() => {
     if (!graphEnabled || !workflow?.run) return null;
     if (graphDraft) return { graph: graphDraft, error: null, editable: true };
-    if (!("templateKey" in workflow.run.definitionSnapshot)) {
+    const snapshot = workflow.run.definitionSnapshot;
+    if (!isLegacyWorkflowDefinitionSnapshot(snapshot)) {
       return {
         graph: null,
         error: "Execution SnapshotをGraphへ変換できないため、従来のWorkflow表示を使用しています。",
@@ -102,7 +108,7 @@ export function WorkflowPanel({
     }
     try {
       return {
-        graph: synthesizeWorkflowGraph(workflow.run.definitionSnapshot, {
+        graph: synthesizeWorkflowGraph(snapshot, {
           id: `compat:${workflow.run.id}`,
           workspaceId: workflow.workspaceId,
           graphRevision: workflow.run.revision,

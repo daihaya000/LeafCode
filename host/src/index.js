@@ -1347,10 +1347,10 @@ async function spawnWeb() {
       // opt-in separately in the WebUI environment.
       OPENCODE_WEBUI_WORKFLOW_GRAPH:
         process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH ?? 'true',
-      // Enable the Node Editor in packaged EXE builds. Preserve an explicit
-      // false/0 override for emergency rollback.
+      // Keep semantic Graph editing opt-in until all acceptance gates pass.
+      // Preserve an explicit true/1 override for controlled rollout.
       OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT:
-        process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? 'true',
+        process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? 'false',
       ...browserBridgeEnvironment(),
       PORT: String(WEBUI_PORT),
       // `next start` must serve the same distDir that was built. Do NOT set it

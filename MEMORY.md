@@ -4376,6 +4376,13 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Graph APIからDraftを取得できずcompat Graphへfallbackした場合、互換Graphを読み取り専用として明示し、Node設定編集・Graph mutation・viewport保存を無効化した。
 - persisted Graph Draftが取得できた場合だけ編集可能とし、WorkflowPanelのfallback回帰テストを追加した。
 - 検証: WorkflowPanel／GraphPanel 6テスト、TypeScript、Lintを通過。
+
+## 2026-08-02: Workflow Graph rollout・E2E fixture修正
+
+- EXE hostのGraph Edit既定値が`true`でREADME／段階公開方針と矛盾していたため`false`へ修正。明示的なtrue指定による制御 rolloutは維持する。
+- Graph API障害時にlegacy Workflow responseの`definitionSnapshot`が未定義でも`in`演算子でクラッシュしないようfallback判定を防御化した。
+- Graph E2E fixtureにGit Graphの必須payloadを追加し、既定のWorkflowタブを明示選択するよう修正した。
+- CanvasにE2E／診断用の安定した`workflow-graph-canvas` test idを追加し、Graph E2E 1件がviewport検証まで成功した。
 - やったこと: EXE起動時のWorkflow/Graph/Graph Edit既定値をbatchに設定し、Next.jsのclient公開環境変数とfeature flag fallbackを追加。調査用debug instrumentationは原因確認後に削除した。
 - 判断理由: サーバー側環境変数だけでは静的にbuildされたクライアントのGraph判定に届かず、実機ログで3つのflagがfalseになっていたため。
 - 検証: host test 192件、Workflow関連Vitest 18件、TypeScriptチェック、diff checkを通過。コミット`c6d06e4`を確認。

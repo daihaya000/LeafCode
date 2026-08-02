@@ -67,9 +67,11 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === `/api/tasks/${task.id}`) return route.fulfill({ json: { task, goalLoop: null } });
-    if (url.pathname === `/api/tasks/${task.id}/workflow/graph`) return route.fulfill({ json: { graph } });
+    if (url.pathname.endsWith(`/tasks/${task.id}/workflow/graph`)) return route.fulfill({ json: { graph } });
     if (url.pathname === `/api/tasks/${task.id}/workflow`) return route.fulfill({ json: { workflow } });
     if (url.pathname === `/api/tasks/${task.id}/workflow/events`) return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": heartbeat\n\n" });
+    if (url.pathname === "/api/git/log") return route.fulfill({ json: { commits: [], refs: [], hasMore: false, currentBranch: "main" } });
+    if (url.pathname === "/api/settings/sidepanel-width") return route.fulfill({ json: { value: null } });
     if (url.pathname === "/api/tasks") return route.fulfill({ json: { tasks: [task] } });
     if (url.pathname.includes("/api/opencode/provider")) return route.fulfill({ json: { all: [], connected: [], default: {} } });
     if (url.pathname.includes("/api/opencode/config")) return route.fulfill({ json: { model: "", agent: "build" } });
@@ -82,6 +84,7 @@ test.beforeEach(async ({ page }) => {
 
 test("renders Graph Draft and keeps it within the viewport", async ({ page }) => {
   await page.goto(`/task/${task.id}`);
+  await page.getByRole("tab", { name: "Workflow" }).click();
   await expect(page.getByRole("heading", { name: "Workflow Graph" })).toBeVisible();
   await expect(page.getByTestId("workflow-graph-canvas")).toBeVisible();
   await expect(page.getByRole("region", { name: "Graph Editor" })).toHaveCount(0);
