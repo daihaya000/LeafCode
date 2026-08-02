@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED,
+  DEFAULT_WORKFLOW_GRAPH_ENABLED,
   DEFAULT_WORKFLOW_MODE_ENABLED,
   isWorkflowModeEnabled,
   resolveWorkflowModeEnabled,
 } from "./workflow-feature";
 
 describe("resolveWorkflowModeEnabled", () => {
+  test("keeps graph rollout defaults disabled", () => {
+    expect(DEFAULT_WORKFLOW_GRAPH_ENABLED).toBe(false);
+    expect(DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED).toBe(false);
+  });
+
   test.each([
     ["true", true],
     [" TRUE ", true],

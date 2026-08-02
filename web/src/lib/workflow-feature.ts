@@ -4,6 +4,8 @@
  * cannot drift.
  */
 export const DEFAULT_WORKFLOW_MODE_ENABLED = false;
+export const DEFAULT_WORKFLOW_GRAPH_ENABLED = false;
+export const DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED = false;
 
 export function resolveWorkflowModeEnabled(
   raw: string | undefined,
@@ -17,4 +19,24 @@ export function resolveWorkflowModeEnabled(
 
 export function isWorkflowModeEnabled(): boolean {
   return resolveWorkflowModeEnabled(process.env.OPENCODE_WEBUI_WORKFLOW_MODE);
+}
+
+export function isWorkflowGraphEnabled(): boolean {
+  return (
+    isWorkflowModeEnabled() &&
+    resolveWorkflowModeEnabled(
+      process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH,
+      DEFAULT_WORKFLOW_GRAPH_ENABLED,
+    )
+  );
+}
+
+export function isWorkflowGraphEditEnabled(): boolean {
+  return (
+    isWorkflowGraphEnabled() &&
+    resolveWorkflowModeEnabled(
+      process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT,
+      DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED,
+    )
+  );
 }
