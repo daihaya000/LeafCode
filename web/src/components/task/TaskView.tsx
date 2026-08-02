@@ -482,6 +482,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     taskRef.current = cached;
     setTask(cached);
     setViewTab("chat");
+    setWorkflowFocusNode(null);
     setLoadError(null);
     return () => {
       refreshSequenceRef.current += 1;
@@ -500,6 +501,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, []);
   const [tab, setTab] = useState<ChatTab>("chat");
   const [viewTab, setViewTab] = useState<"chat" | "workflow" | "diff">("chat");
+  const [workflowFocusNode, setWorkflowFocusNode] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(true);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
@@ -1100,6 +1102,19 @@ export function TaskView({ taskId }: { taskId: string }) {
     },
     [sidePanel, showDiff, tab, changeShowDiff, changeTab, changeSidePanel],
   );
+
+  const openWorkflowChat = useCallback((nodeId: string) => {
+    setWorkflowFocusNode(nodeId);
+    setViewTab("chat");
+    changeTab("chat");
+  }, [changeTab]);
+
+  const openWorkflowDiff = useCallback((nodeId: string) => {
+    setWorkflowFocusNode(nodeId);
+    changeSidePanel("diff");
+    setViewTab("diff");
+    changeTab("diff");
+  }, [changeSidePanel, changeTab]);
 
   const { permissions, replyPermission, replyQuestion, rejectQuestion } = stream;
   const attention = useOptionalGlobalAttention();
@@ -3510,7 +3525,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        {workflowVisible ? <WorkflowPanel taskId={taskId} /> : <>
+        {workflowVisible ? <WorkflowPanel taskId={taskId} onOpenChat={openWorkflowChat} onOpenDiff={openWorkflowDiff} /> : <>
         {/* Chat column */}
         <div
           className={cx(
@@ -3518,6 +3533,12 @@ export function TaskView({ taskId }: { taskId: string }) {
             chatVisible ? "flex" : "hidden lg:flex",
           )}
         >
+          {workflowFocusNode && chatVisible && (
+            <div role="status" className="flex shrink-0 items-center justify-between gap-2 border-b border-primary/20 bg-primary/5 px-4 py-2 text-xs text-muted">
+              <span>Workflow Node <strong className="text-text">{workflowFocusNode}</strong> を選択中</span>
+              <button type="button" className="text-primary underline underline-offset-2" onClick={() => setWorkflowFocusNode(null)}>解除</button>
+            </div>
+          )}
           {!task.sessionId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4">
               <p className="text-sm text-muted">
@@ -4176,6 +4197,12 @@ export function TaskView({ taskId }: { taskId: string }) {
           )}
           {sidePanel === "diff" && (
             <div className="flex min-h-0 w-full flex-1 flex-col">
+              {workflowFocusNode && diffVisible && (
+                <div role="status" className="flex shrink-0 items-center justify-between gap-2 border-b border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted">
+                  <span>Workflow Node <strong className="text-text">{workflowFocusNode}</strong> のDiff</span>
+                  <button type="button" className="text-primary underline underline-offset-2" onClick={() => setWorkflowFocusNode(null)}>解除</button>
+                </div>
+              )}
               <DiffPane
                 directory={task.directory}
                 workspaceId={task.id}

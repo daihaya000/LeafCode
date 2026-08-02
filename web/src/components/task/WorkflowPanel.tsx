@@ -35,7 +35,15 @@ function statusIcon(status: string) {
   return <Circle className="h-4 w-4 text-faint" aria-hidden="true" />;
 }
 
-export function WorkflowPanel({ taskId }: { taskId: string }) {
+export function WorkflowPanel({
+  taskId,
+  onOpenChat = () => undefined,
+  onOpenDiff = () => undefined,
+}: {
+  taskId: string;
+  onOpenChat?: (nodeId: string) => void;
+  onOpenDiff?: (nodeId: string) => void;
+}) {
   const graphEnabled = isWorkflowGraphEnabled();
   const [workflow, setWorkflow] = useState<WorkflowView | null>(null);
   const [graphDraft, setGraphDraft] = useState<WorkflowGraphDraft | null>(null);
@@ -117,6 +125,10 @@ export function WorkflowPanel({ taskId }: { taskId: string }) {
         graph={graphState.graph}
         workflow={workflow}
         graphError={graphState.error}
+        taskId={taskId}
+        onOpenChat={onOpenChat}
+        onOpenDiff={onOpenDiff}
+        onRefresh={load}
       />
     );
   }

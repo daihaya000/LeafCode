@@ -1,0 +1,99 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { WorkflowGraphInspector } from "./WorkflowGraphInspector";
+
+const { sendJson } = vi.hoisted(() => ({ sendJson: vi.fn() }));
+vi.mock("@/lib/client", () => ({ sendJson }));
+
+const graphNode = {
+  id: "implement_ui",
+  type: "opencode.implement_ui",
+  typeVersion: 1,
+  label: "Implement UI",
+  position: { x: 0, y: 0 },
+  config: { instructions: "Build it" },
+  disabled: false,
+};
+
+const workflow = {
+  workspaceId: "ws1",
+  executionMode: "workflow",
+  workspaceRevision: 2,
+  primarySessionId: "ses1",
+  run: { id: "run1", revision: 7, status: "paused", primaryNodeKey: "implement_ui", pauseReason: "Review required" },
+  nodes: [],
+} as never;
+
+const nodeRun = {
+  nodeKey: "implement_ui",
+  latestAttemptNo: 2,
+  attempts: [{
+    status: "failed",
+    opencodeSessionId: "ses-node",
+    input: { prompt: "Build it" },
+    result: { findings: [{ severity: "major", message: "Fix this" }], artifacts: [{ id: "art-1" }] },
+    usageSnapshot: { inputTokens: 100, outputTokens: 40 },
+  }],
+} as never;
+
+describe("WorkflowGraphInspector", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("shows evidence sections, Attention, and Chat/Diff/Retry actions", async () => {
+    sendJson.mockResolvedValue({ workflow: {} });
+    const onOpenChat = vi.fn();
+    const onOpenDiff = vi.fn();
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphNode={graphNode}
+        nodeRun={nodeRun}
+        workflow={workflow}
+        onOpenChat={onOpenChat}
+        onOpenDiff={onOpenDiff}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.getByText("Prompt")).toBeTruthy();
+    expect(screen.getByText("Finding / Result")).toBeTruthy();
+    expect(screen.getByText("Artifact")).toBeTruthy();
+    expect(screen.getByText("Usage")).toBeTruthy();
+    expect(screen.getByText("Attentionが必要です")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Chatで回答を確認" }));
+    fireEvent.click(screen.getByRole("button", { name: "Diffで確認" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chatを開く" }));
+    expect(onOpenChat).toHaveBeenCalledWith("implement_ui");
+    expect(onOpenDiff).toHaveBeenCalledWith("implement_ui");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
+      "POST",
+      "/api/tasks/ws1/workflow/nodes/implement_ui/retry",
+      { workflowRevision: 7 },
+    ));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+
+  it("disables Chat and Retry for a control Node", () => {
+    render(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphNode={{ ...graphNode, id: "review_gate", type: "control.review_gate", label: "Review Gate" }}
+        nodeRun={undefined}
+        workflow={workflow}
+        onOpenChat={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getAllByRole("button", { name: "Chatを開く" }).at(-1)).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Retry" })).toHaveProperty("disabled", true);
+    expect(screen.getByText("Control NodeはRetry対象外です。")).toBeTruthy();
+  });
+});

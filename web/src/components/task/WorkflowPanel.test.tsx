@@ -147,7 +147,7 @@ describe("WorkflowPanel", () => {
     render(<WorkflowPanel taskId="ws1" />);
 
     expect(await screen.findByRole("heading", { name: "Workflow Graph" })).toBeTruthy();
-    expect(screen.getByTestId("workflow-graph-canvas").textContent).toContain("4 nodes");
+    expect((await screen.findByTestId("workflow-graph-canvas")).textContent).toContain("4 nodes");
     expect(screen.getByRole("complementary", { name: "Workflow Nodeと接続の一覧" })).toBeTruthy();
     expect(screen.getByText("接続一覧")).toBeTruthy();
     expect(screen.getByText("Review Gate")).toBeTruthy();

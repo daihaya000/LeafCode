@@ -8,6 +8,7 @@ import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import type { WorkflowGraphRuntimeState } from "@/lib/workflow-graph-react-flow";
 import { cx } from "@/components/ui";
 import { WorkflowGraphList } from "./WorkflowGraphList";
+import { WorkflowGraphInspector } from "./WorkflowGraphInspector";
 
 const WorkflowGraphCanvas = dynamic(
   () => import("./WorkflowGraphCanvas").then((module) => module.WorkflowGraphCanvas),
@@ -54,15 +55,25 @@ export function WorkflowGraphPanel({
   graph,
   workflow,
   graphError,
+  taskId,
+  onOpenChat,
+  onOpenDiff,
+  onRefresh,
 }: {
   graph: WorkflowGraphDraft;
   workflow: WorkflowView;
   graphError?: string | null;
+  taskId: string;
+  onOpenChat: (nodeId: string) => void;
+  onOpenDiff: (nodeId: string) => void;
+  onRefresh: () => Promise<void>;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const states = useMemo(() => runtimeStates(workflow), [workflow]);
   const completed = states.filter((state) => ["succeeded", "completed"].includes(state.status)).length;
   const attention = workflow.run?.status === "paused";
+  const selectedGraphNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedNodeRun = workflow.nodes.find((node) => node.nodeKey === selectedNodeId);
 
   return (
     <section aria-label="Workflow Graph進捗" className="flex min-h-0 flex-1 flex-col overflow-auto bg-surface-2 p-3 sm:p-4">
@@ -87,7 +98,7 @@ export function WorkflowGraphPanel({
             {graphError}
           </p>
         )}
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_17rem_20rem]">
           <WorkflowGraphCanvas
             graph={graph}
             states={states}
@@ -99,6 +110,15 @@ export function WorkflowGraphPanel({
             states={states}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
+          />
+          <WorkflowGraphInspector
+            taskId={taskId}
+            graphNode={selectedGraphNode}
+            nodeRun={selectedNodeRun}
+            workflow={workflow}
+            onOpenChat={onOpenChat}
+            onOpenDiff={onOpenDiff}
+            onRefresh={onRefresh}
           />
         </div>
       </div>
