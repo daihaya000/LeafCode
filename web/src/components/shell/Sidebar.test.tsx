@@ -151,6 +151,12 @@ describe("Sidebar", () => {
     await screen.findByText("Repo");
     fireEvent.click(screen.getByRole("button", { name: "Repoを展開" }));
     const favorite = await screen.findByRole("button", { name: "「Task title」をお気に入りに追加" });
+    const taskButton = screen.getByText("Task title").closest("button");
+    const actionGroup = screen.getByTestId("task-row-actions");
+    expect(taskButton?.className).toContain("flex-1");
+    expect(actionGroup.className).toContain("shrink-0");
+    expect(actionGroup.className).not.toContain("absolute");
+    expect(actionGroup.parentElement).toBe(taskButton?.parentElement);
     fireEvent.click(favorite);
 
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
