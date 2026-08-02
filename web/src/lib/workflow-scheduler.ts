@@ -9,6 +9,7 @@ import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
 import { isWorkflowModeEnabled } from "./workflow-feature";
 import { workflowArtifactsForPrompt } from "./workflow-artifacts";
 import { recordReviewGateAttempt } from "./workflow-control";
+import { evaluateWorkflowGraphRuntime } from "./workflow-graph-runtime";
 import { executeReviewGate, parseReviewGateInput } from "./workflow-control-executor";
 import {
   resolveLegacyExecutor,
@@ -46,6 +47,27 @@ function executorForRun(workflowRunId: string, nodeKey: string): WorkflowExecuto
   }
   if (nodeKey === "review_gate") return resolveLegacyControlExecutor();
   throw new WorkflowExecutorResolutionError(`No legacy executor for Node ${nodeKey}`);
+}
+
+function graphRuntimeForRun(workflowRunId: string) {
+  const run = getDb().prepare("SELECT definition_snapshot FROM workflow_runs WHERE id = ?").get(workflowRunId) as { definition_snapshot: string } | undefined;
+  const snapshot = parseJson(run?.definition_snapshot, null) as WorkflowExecutionSnapshot | null;
+  if (snapshot?.schemaVersion !== "workflow-execution-v2") return null;
+  const rows = getDb()
+    .prepare(
+      `SELECT n.node_key AS node_id, COALESCE(a.status, 'pending') AS status,
+              COALESCE(a.attempt_no, 0) AS attempt_no, a.result
+       FROM workflow_node_runs n
+       LEFT JOIN workflow_node_attempts a ON a.node_run_id = n.id AND a.attempt_no = n.latest_attempt_no
+       WHERE n.workflow_run_id = ?`,
+    )
+    .all(workflowRunId) as Array<{ node_id: string; status: string; attempt_no: number; result: string | null }>;
+  return evaluateWorkflowGraphRuntime(snapshot, rows.map((row) => ({
+    nodeId: row.node_id,
+    status: row.status,
+    attemptNo: row.attempt_no,
+    result: parseJson(row.result, null),
+  })));
 }
 
 function readyAttempts(): WorkflowNodeAttemptRow[] {
@@ -567,6 +589,13 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
       }
       if (executor.runtime !== "opencode_session") {
         if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "scheduler_error", `Executor ${executor.key} cannot dispatch a Session.`);
+        continue;
+      }
+      const graphRuntime = graphRuntimeForRun(node.workflow_run_id);
+      if (graphRuntime && !graphRuntime.readyNodeIds.includes(node.node_key)) {
+        if (graphRuntime.blockedNodeIds.includes(node.node_key) && graphRuntime.pauseReason) {
+          if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, graphRuntime.pauseReason, `Graph dependency blocked Node ${node.node_key}.`);
+        }
         continue;
       }
       if (node?.node_key === "implement_ui" && attempt.attempt_no > IMPLEMENT_ATTEMPT_LIMIT) {
