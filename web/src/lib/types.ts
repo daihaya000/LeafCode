@@ -27,6 +27,7 @@ export type Part = {
   type: string;
   text?: string;
   synthetic?: boolean;
+  metadata?: Record<string, unknown>;
   tool?: string;
   callID?: string;
   state?: ToolState;

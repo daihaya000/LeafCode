@@ -3,6 +3,7 @@ import {
   ACTIVE_SESSION_RECONCILE_MS,
   classifyToolFailureStatus,
   createInitialStreamState,
+  filterCompactionContinueMessages,
   filterGoalLoopMessages,
   MAX_ACTIVE_RECONCILE_MS,
   MESSAGE_REFETCH_TRUST_SSE_MS,
@@ -647,6 +648,58 @@ describe("filterGoalLoopMessages", () => {
     ];
     const out = filterGoalLoopMessages(msgs);
     expect(out.map((m) => m.info.id)).toEqual(["u1"]);
+  });
+});
+
+describe("filterCompactionContinueMessages", () => {
+  it("drops OpenCode's synthetic post-compaction continuation user turn", () => {
+    const messages: MessageWithParts[] = [
+      {
+        info: { id: "u1", role: "user" },
+        parts: [
+          {
+            id: "u1-p1",
+            messageID: "u1",
+            type: "text",
+            text: "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
+            synthetic: true,
+            metadata: { compaction_continue: true },
+          },
+        ],
+      },
+      {
+        info: { id: "a1", role: "assistant" },
+        parts: [{ id: "a1-p1", messageID: "a1", type: "text", text: "続行します" }],
+      },
+    ];
+
+    expect(filterCompactionContinueMessages(messages).map((message) => message.info.id)).toEqual([
+      "a1",
+    ]);
+  });
+
+  it("keeps manual text and unrelated synthetic messages", () => {
+    const messages: MessageWithParts[] = [
+      {
+        info: { id: "u1", role: "user" },
+        parts: [{ id: "u1-p1", messageID: "u1", type: "text", text: "続けて" }],
+      },
+      {
+        info: { id: "u2", role: "user" },
+        parts: [
+          {
+            id: "u2-p1",
+            messageID: "u2",
+            type: "text",
+            text: "other internal text",
+            synthetic: true,
+            metadata: { other: true },
+          },
+        ],
+      },
+    ];
+
+    expect(filterCompactionContinueMessages(messages)).toEqual(messages);
   });
 });
 

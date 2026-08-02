@@ -360,6 +360,26 @@ export function filterGoalLoopMessages(
 }
 
 /**
+ * Hide OpenCode's internal post-compaction continuation turn. OpenCode stores
+ * this as a synthetic user text part with `compaction_continue` metadata so
+ * the model can resume after automatic context compaction; it is not a user
+ * submission and must not be rendered as one.
+ */
+export function filterCompactionContinueMessages(
+  messages: MessageWithParts[],
+): MessageWithParts[] {
+  return messages.filter((message) => {
+    if (message.info.role !== "user") return true;
+    return !message.parts.some(
+      (part) =>
+        part.type === "text" &&
+        part.synthetic === true &&
+        part.metadata?.compaction_continue === true,
+    );
+  });
+}
+
+/**
  * Strip the trailing fenced JSON block the goal loop asks the model to emit.
  * The block carries the structured turn result
  * (`{"status","summary","next","evidence"}`) and is noise in a normal chat.
@@ -2086,8 +2106,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     state.scopeKey === scopeKey ? state : createInitialStreamState(scopeKey);
   const visibleMessages = useMemo(
     () =>
-      filterGoalLoopMessages(
-        filterRevertedMessages(visibleState.messages, visibleState.revert),
+      filterCompactionContinueMessages(
+        filterGoalLoopMessages(
+          filterRevertedMessages(visibleState.messages, visibleState.revert),
+        ),
       ),
     [visibleState.messages, visibleState.revert],
   );
