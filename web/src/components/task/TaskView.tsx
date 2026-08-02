@@ -176,6 +176,7 @@ import { PartView } from "./PartView";
 import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
 import { PtyPanel } from "./PtyPanel";
+import { WorkflowPanel } from "./WorkflowPanel";
 import { QuestionCard } from "./QuestionCard";
 import {
   CompactButton,
@@ -480,6 +481,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     const cached = readCachedTaskSummary(taskId);
     taskRef.current = cached;
     setTask(cached);
+    setViewTab("chat");
     setLoadError(null);
     return () => {
       refreshSequenceRef.current += 1;
@@ -497,6 +499,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     };
   }, []);
   const [tab, setTab] = useState<ChatTab>("chat");
+  const [viewTab, setViewTab] = useState<"chat" | "workflow" | "diff">("chat");
   const [showDiff, setShowDiff] = useState(true);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
@@ -1068,6 +1071,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   // Persist right-panel display state so it survives task/session switches.
   const changeTab = useCallback((next: ChatTab) => {
     setTab(next);
+    setViewTab(next === "diff" ? "diff" : "chat");
     writeChatTab(next);
   }, []);
   const changeShowDiff = useCallback((next: boolean) => {
@@ -2997,8 +3001,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     );
   }
 
-  const chatVisible = tab === "chat";
-  const diffVisible = tab === "diff";
+  const chatVisible = tab === "chat" && viewTab === "chat";
+  const diffVisible = tab === "diff" && viewTab === "diff";
+  const workflowVisible = task.executionMode === "workflow" && viewTab === "workflow";
 
   return (
     <div className="flex h-full flex-col">
@@ -3351,8 +3356,28 @@ export function TaskView({ taskId }: { taskId: string }) {
         </p>
       )}
 
-      {/* Mobile tabs */}
-      <div className="flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
+      {task.executionMode === "workflow" && (
+        <div role="tablist" aria-label="タスク表示" className="flex shrink-0 overflow-x-auto border-b border-border bg-surface px-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {([ ["chat", "会話"], ["workflow", "Workflow"], ["diff", "Diff"] ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={viewTab === key}
+              onClick={() => {
+                if (key === "workflow") { setViewTab("workflow"); return; }
+                changeTab(key);
+              }}
+              className={cx("shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium", viewTab === key ? "border-primary text-text" : "border-transparent text-faint hover:text-muted")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Mobile tabs for standard tasks */}
+      <div className={cx("flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", task.executionMode === "workflow" ? "hidden" : "lg:hidden")}>
         {(
           [
             { key: "chat" as const, label: "会話", panel: null },
@@ -3416,6 +3441,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       )}
 
       <div className="flex min-h-0 flex-1">
+        {workflowVisible ? <WorkflowPanel taskId={taskId} /> : <>
         {/* Chat column */}
         <div
           className={cx(
@@ -4120,6 +4146,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
+        </>}
       </div>
 
       {sessionDialogOpen && task.sessionId && (
