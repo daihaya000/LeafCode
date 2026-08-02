@@ -84,6 +84,8 @@ export function WorkflowGraphCanvas({
     [elements.edges, selectedEdgeId],
   );
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingViewport = useRef<Viewport | null>(null);
+  const viewportSaveInFlight = useRef(false);
   const moveStarted = useRef(false);
   const graphRevisionRef = useRef(graphRevision);
   graphRevisionRef.current = graphRevision;
@@ -95,31 +97,42 @@ export function WorkflowGraphCanvas({
   useEffect(() => () => {
     if (persistTimer.current) clearTimeout(persistTimer.current);
   }, []);
+  const flushViewport = () => {
+    if (viewportSaveInFlight.current || !pendingViewport.current) return;
+    const nextViewport = pendingViewport.current;
+    pendingViewport.current = null;
+    viewportSaveInFlight.current = true;
+    void sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
+      expectedGraphRevision: graphRevisionRef.current,
+      operations: [{ op: "set_viewport", viewport: nextViewport }],
+    }).then(() => {
+      setViewportError(null);
+      return onRefresh();
+    }).catch((error: unknown) => {
+      setViewportError(
+        error instanceof ApiError && error.status === 409
+          ? "Graphが更新されたためViewportを保存できませんでした。最新Graphを再読込してください。"
+          : error instanceof Error
+            ? error.message
+            : "Viewportの保存に失敗しました。",
+      );
+      return onRefresh().catch(() => undefined);
+    }).finally(() => {
+      viewportSaveInFlight.current = false;
+      if (pendingViewport.current) {
+        persistTimer.current = setTimeout(flushViewport, 250);
+      }
+    });
+  };
   const persistViewport = (_event: unknown, viewport: Viewport) => {
     // #region debug log
     void fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'A,B',location:'WorkflowGraphCanvas.tsx:103',message:'move end viewport',data:{viewport,moveStarted:moveStarted.current,graphRevision:graphRevisionRef.current},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     if (!editingEnabled || !isWorkflowGraphEditEnabled() || !moveStarted.current) return;
     moveStarted.current = false;
+    pendingViewport.current = viewport;
     if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => {
-      void sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
-        expectedGraphRevision: graphRevisionRef.current,
-        operations: [{ op: "set_viewport", viewport }],
-      }).then(() => {
-        setViewportError(null);
-        return onRefresh();
-      }).catch((error: unknown) => {
-        setViewportError(
-          error instanceof ApiError && error.status === 409
-            ? "Graphが更新されたためViewportを保存できませんでした。最新Graphを再読込してください。"
-            : error instanceof Error
-              ? error.message
-              : "Viewportの保存に失敗しました。",
-        );
-        return onRefresh().catch(() => undefined);
-      });
-    }, 250);
+    persistTimer.current = setTimeout(flushViewport, 250);
   };
   const handleNodeClick: NodeMouseHandler<WorkflowGraphReactNode> = (_event, node) => {
     onSelectNode(node.id);
