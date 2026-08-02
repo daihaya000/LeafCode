@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { invalidateDirStat } from "@/lib/dirstat";
 import { assertSafeBranchName, runGit } from "@/lib/git";
+import {
+  assertNoActiveWorkflowForDirectory,
+  WorkflowServiceError,
+} from "@/lib/workflow-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +45,14 @@ export async function POST(req: NextRequest) {
   const check = assertAllowedDirectory(body.directory);
   if (!check.ok) {
     return NextResponse.json({ error: check.error }, { status: check.status });
+  }
+  try {
+    assertNoActiveWorkflowForDirectory(check.path);
+  } catch (error) {
+    if (error instanceof WorkflowServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
 
   const branch = body.branch.trim();

@@ -5,6 +5,9 @@ const { getWorkspaceMock, archiveWorkspaceMock } = vi.hoisted(() => ({
   getWorkspaceMock: vi.fn(),
   archiveWorkspaceMock: vi.fn(),
 }));
+const { assertNoActiveWorkflowMock } = vi.hoisted(() => ({
+  assertNoActiveWorkflowMock: vi.fn(),
+}));
 
 vi.mock("@/lib/db", () => ({
   getWorkspace: getWorkspaceMock,
@@ -13,6 +16,17 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/workspace-service", () => ({
   archiveWorkspace: archiveWorkspaceMock,
   ServiceError: class ServiceError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
+}));
+
+vi.mock("@/lib/workflow-service", () => ({
+  assertNoActiveWorkflow: assertNoActiveWorkflowMock,
+  WorkflowServiceError: class WorkflowServiceError extends Error {
     status: number;
     constructor(message: string, status: number) {
       super(message);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getGoalLoop } from "@/lib/goal-loop";
 import { getTask } from "@/lib/task-service";
 import { ServiceError, destroyWorkspace } from "@/lib/workspace-service";
+import { WorkflowServiceError, assertNoActiveWorkflow } from "@/lib/workflow-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +26,14 @@ export async function DELETE(
 ) {
   const { id } = await context.params;
   try {
+    assertNoActiveWorkflow(id);
     await destroyWorkspace(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof ServiceError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    if (err instanceof WorkflowServiceError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     throw err;

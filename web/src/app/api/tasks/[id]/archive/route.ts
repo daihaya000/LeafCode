@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace } from "@/lib/db";
 import { archiveWorkspace } from "@/lib/workspace-service";
+import { WorkflowServiceError, assertNoActiveWorkflow } from "@/lib/workflow-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,14 @@ export async function PATCH(
       { status: 409 },
     );
   }
-  await archiveWorkspace(id);
+  try {
+    assertNoActiveWorkflow(id);
+    await archiveWorkspace(id);
+  } catch (error) {
+    if (error instanceof WorkflowServiceError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
   return NextResponse.json({ ok: true });
 }

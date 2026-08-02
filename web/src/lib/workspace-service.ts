@@ -24,6 +24,7 @@ import { dataDir, ensureDataDir } from "./paths";
 import { persistProjectSessions } from "./project-session-sync";
 import { deleteProjectManifest } from "./project-session-store";
 import { makeWorktreeBranchName } from "./workspace-branch";
+import { assertNoActiveWorkflow } from "./workflow-service";
 
 /**
  * Resolve the worktree directory for a new git worktree session.
@@ -279,6 +280,7 @@ async function deleteBoundOpenCodeSessions(row: WorkspaceRow): Promise<void> {
 export async function archiveWorkspace(id: string): Promise<void> {
   const row = getWorkspace(id);
   if (!row) throw new ServiceError("workspace not found", 404);
+  assertNoActiveWorkflow(id);
   setWorkspaceStatus(id, "archived");
   persistProjectSessions(row.project_id);
 }
@@ -295,6 +297,7 @@ export async function restoreWorkspace(id: string): Promise<void> {
 export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   const row = getWorkspace(id);
   if (!row) throw new ServiceError("workspace not found", 404);
+  assertNoActiveWorkflow(id);
 
   await deleteBoundOpenCodeSessions(row);
 

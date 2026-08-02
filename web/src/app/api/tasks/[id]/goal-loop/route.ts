@@ -6,6 +6,7 @@ import {
   updateGoalLoopStatus,
 } from "@/lib/goal-loop";
 import { OcError } from "@/lib/oc-server";
+import { workspaceHasActiveWorkflow } from "@/lib/workflow-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,12 @@ export async function GET(_req: NextRequest, context: Ctx) {
 
 export async function POST(req: NextRequest, context: Ctx) {
   const { id } = await context.params;
+  if (workspaceHasActiveWorkflow(id)) {
+    return NextResponse.json(
+      { error: "Goal Loop cannot run while Workflow is active" },
+      { status: 409 },
+    );
+  }
   const body = (await req.json().catch(() => null)) as {
     sessionId?: unknown;
     goal?: unknown;
@@ -72,6 +79,12 @@ export async function PATCH(req: NextRequest, context: Ctx) {
   }
   if (action !== "pause" && action !== "resume" && action !== "stop") {
     return NextResponse.json({ error: "invalid action" }, { status: 400 });
+  }
+  if (action === "resume" && workspaceHasActiveWorkflow(id)) {
+    return NextResponse.json(
+      { error: "Goal Loop cannot resume while Workflow is active" },
+      { status: 409 },
+    );
   }
   const loop = await updateGoalLoopStatus(id, action);
   if (!loop) {
