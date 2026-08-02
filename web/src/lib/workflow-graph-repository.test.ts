@@ -23,6 +23,7 @@ const {
   readWorkflowGraph,
   readWorkflowGraphByWorkspace,
 } = await import("./workflow-graph-repository");
+const { updateWorkflowGraph } = await import("./workflow-graph-mutations");
 const { createWorkflowDefinitionSnapshot } = await import("./workflow-types");
 const { synthesizeWorkflowGraph } = await import("./workflow-graph-compat");
 
@@ -214,5 +215,65 @@ describe("workflow graph repository", () => {
         .sort(),
     ).toEqual(["workflow_graph_edges", "workflow_graph_nodes", "workflow_graphs"]);
     reopened.close();
+  });
+
+  test("applies multiple Graph operations in one revisioned transaction", () => {
+    const workspaceId = "ws-repository-cas";
+    createLegacyWorkspace(workspaceId);
+    const initial = getOrMaterializeWorkflowGraph(workspaceId)!;
+    const updated = updateWorkflowGraph({
+      workspaceId,
+      expectedGraphRevision: initial.graphRevision,
+      operations: [
+        { op: "move_node", nodeId: "implement_ui", position: { x: 240, y: 80 } },
+        { op: "set_viewport", viewport: { x: 10, y: 20, zoom: 1.25 } },
+      ],
+    });
+
+    expect(updated.graphRevision).toBe(initial.graphRevision + 1);
+    expect(updated.nodes.find((node) => node.id === "implement_ui")?.position).toEqual({ x: 240, y: 80 });
+    expect(readWorkflowGraphByWorkspace(workspaceId)).toEqual(updated);
+  });
+
+  test("returns the latest Graph on a revision conflict and does not apply operations", () => {
+    const workspaceId = "ws-repository-cas-conflict";
+    createLegacyWorkspace(workspaceId);
+    const initial = getOrMaterializeWorkflowGraph(workspaceId)!;
+    const current = updateWorkflowGraph({
+      workspaceId,
+      expectedGraphRevision: initial.graphRevision,
+      operations: [{ op: "move_node", nodeId: "implement_ui", position: { x: 300, y: 40 } }],
+    });
+
+    expect(() =>
+      updateWorkflowGraph({
+        workspaceId,
+        expectedGraphRevision: initial.graphRevision,
+        operations: [{ op: "move_node", nodeId: "implement_ui", position: { x: 900, y: 900 } }],
+      }),
+    ).toThrowError(expect.objectContaining({ code: "revision_conflict", latestGraph: current }));
+    expect(readWorkflowGraphByWorkspace(workspaceId)?.nodes.find((node) => node.id === "implement_ui")?.position).toEqual({
+      x: 300,
+      y: 40,
+    });
+  });
+
+  test("rolls back all operations when the final Graph is invalid", () => {
+    const workspaceId = "ws-repository-cas-rollback";
+    createLegacyWorkspace(workspaceId);
+    const initial = getOrMaterializeWorkflowGraph(workspaceId)!;
+
+    expect(() =>
+      updateWorkflowGraph({
+        workspaceId,
+        expectedGraphRevision: initial.graphRevision,
+        operations: [
+          { op: "move_node", nodeId: "implement_ui", position: { x: 500, y: 500 } },
+          { op: "set_node_label", nodeId: "implement_ui", label: "temporary" },
+          { op: "add_edge", edge: { id: "invalid-edge", source: "implement_ui", sourceHandle: "missing", target: "code_review", targetHandle: "input", kind: "dependency" } },
+        ],
+      }),
+    ).toThrowError(expect.objectContaining({ code: "invalid_graph" }));
+    expect(readWorkflowGraphByWorkspace(workspaceId)).toEqual(initial);
   });
 });

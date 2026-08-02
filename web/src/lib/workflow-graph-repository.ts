@@ -231,6 +231,13 @@ function insertGraphAggregate(graph: WorkflowGraphDraft, ignoreConflict = false)
       );
     if (graphInsert.changes === 0) return false;
 
+    insertGraphChildren(database, graph);
+    return true;
+  });
+  return transaction() as boolean;
+}
+
+function insertGraphChildren(database: ReturnType<typeof getDb>, graph: WorkflowGraphDraft): void {
     const insertNode = database.prepare(
       `INSERT INTO workflow_graph_nodes
        (graph_id, id, node_type, node_type_version, label, position_x, position_y, config, disabled, presentation, node_revision)
@@ -269,6 +276,40 @@ function insertGraphAggregate(graph: WorkflowGraphDraft, ignoreConflict = false)
         1,
       );
     }
+}
+
+export function updateWorkflowGraphCas(
+  graph: WorkflowGraphDraft,
+  expectedGraphRevision: number,
+): boolean {
+  validateForWrite(graph);
+  if (graph.graphRevision !== expectedGraphRevision + 1) {
+    throw new WorkflowGraphRepositoryError(
+      "Graph revision must increment by exactly one",
+      "invalid_graph",
+    );
+  }
+  const database = getDb();
+  const transaction = database.transaction(() => {
+    const update = database
+      .prepare(
+        `UPDATE workflow_graphs
+         SET schema_version = ?, registry_version = ?, graph_revision = ?, viewport = ?, updated_at = ?
+         WHERE id = ? AND graph_revision = ?`,
+      )
+      .run(
+        graph.schemaVersion,
+        graph.registryVersion,
+        graph.graphRevision,
+        graph.viewport ? JSON.stringify(graph.viewport) : null,
+        graph.updatedAt,
+        graph.id,
+        expectedGraphRevision,
+      );
+    if (update.changes === 0) return false;
+    database.prepare("DELETE FROM workflow_graph_edges WHERE graph_id = ?").run(graph.id);
+    database.prepare("DELETE FROM workflow_graph_nodes WHERE graph_id = ?").run(graph.id);
+    insertGraphChildren(database, graph);
     return true;
   });
   return transaction() as boolean;
