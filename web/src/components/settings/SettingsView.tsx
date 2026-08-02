@@ -920,13 +920,11 @@ export function SettingsView() {
                         role="status"
                         aria-live="polite"
                       >
-                        <p className="font-medium">新しいアップデートがあります</p>
-                        <p className="mt-0.5">
-                          {[updateAvailability.webui.available && "WebUI", updateAvailability.opencode.available && "OpenCode"]
-                            .filter(Boolean)
-                            .join(" / ")}
-                          の最新版を取得できます。
-                        </p>
+                        <p className="font-medium">利用可能なアップデート</p>
+                        <ul className="mt-0.5 list-disc pl-4">
+                          {updateAvailability.webui.available && <li>WebUI の最新版を取得できます。</li>}
+                          {updateAvailability.opencode.available && <li>OpenCode CLI の最新版を取得できます。</li>}
+                        </ul>
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2">
@@ -938,7 +936,7 @@ export function SettingsView() {
                         disabled={updating !== null || restarting !== null}
                         onClick={() => void updateService("webui")}
                       >
-                        WebUI をリモートからプル
+                        WebUI を更新
                       </Button>
                       <Button
                         type="button"
@@ -948,7 +946,7 @@ export function SettingsView() {
                         disabled={updating !== null || restarting !== null || health?.opencode?.ok !== true}
                         onClick={() => void updateService("opencode")}
                       >
-                        OpenCode CLI をアップデート
+                        OpenCode CLI を更新
                       </Button>
                     </div>
                     {updateState && (
