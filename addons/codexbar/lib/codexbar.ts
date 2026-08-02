@@ -164,6 +164,8 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
 const PROVIDER_LABELS: Record<string, string> = {
   codex: "Codex",
   claude: "Claude",
+  commandcode: "CommandCode",
+  "command-code": "CommandCode",
   cursor: "Cursor",
   "opencode-go": "OpenCode",
   ollama: "Ollama",
@@ -183,6 +185,8 @@ export function providerLabel(id: string): string {
 const PROVIDER_ICONS: Record<string, string> = {
   codex: "codex.png",
   claude: "claude.png",
+  commandcode: "commandcode.svg",
+  "command-code": "commandcode.svg",
   cursor: "cursor.png",
   ollama: "ollama.png",
   "opencode-go": "opencode.png",
@@ -209,6 +213,8 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   openai: "codex",
   anthropic: "claude",
   claude: "claude",
+  commandcode: "commandcode",
+  "command-code": "commandcode",
   codex: "codex",
   cursor: "cursor",
   "cursor-acp": "cursor",

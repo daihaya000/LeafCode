@@ -368,6 +368,8 @@ describe("providerLabel", () => {
 describe("providerIconSrc", () => {
   it("maps known providers to bundled icons and null otherwise", () => {
     expect(providerIconSrc("codex")).toBe("/icons/codex.png");
+    expect(providerIconSrc("commandcode")).toBe("/icons/commandcode.svg");
+    expect(providerIconSrc("command-code")).toBe("/icons/commandcode.svg");
     expect(providerIconSrc("opencode-go")).toBe("/icons/opencode.png");
     expect(providerIconSrc("cursor")).toBe("/icons/cursor.png");
     expect(providerIconSrc("synthetic")).toBe("/icons/synthetic.png");
@@ -385,6 +387,8 @@ describe("providerIconSrcForOpencodeId", () => {
   it("aliases OpenCode provider ids to bundled brand icons", () => {
     expect(providerIconSrcForOpencodeId("openai")).toBe("/icons/codex.png");
     expect(providerIconSrcForOpencodeId("anthropic")).toBe("/icons/claude.png");
+    expect(providerIconSrcForOpencodeId("commandcode")).toBe("/icons/commandcode.svg");
+    expect(providerIconSrcForOpencodeId("command-code")).toBe("/icons/commandcode.svg");
     expect(providerIconSrcForOpencodeId("cursor")).toBe("/icons/cursor.png");
     expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/icons/cursor.png");
     expect(providerIconSrcForOpencodeId("ollama")).toBe("/icons/ollama.png");
