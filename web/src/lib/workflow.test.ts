@@ -6,6 +6,7 @@ import {
   parseImplementResult,
   parseReviewResult,
   resolveWorkflowNodeConfig,
+  validateWorkflowNodeConfig,
   validateWorkflowNodeKind,
 } from "./workflow";
 import {
@@ -91,6 +92,13 @@ describe("workflow definition and config", () => {
       },
     });
     expect(resolved.permissions).toEqual({ write: false, subagent: false, browser: true });
+  });
+
+  test("keeps the shared config field allowlist aligned with manual validation", () => {
+    const config = { ...implementConfig(), unexpected: true } as WorkflowNodeConfig;
+    expect(validateWorkflowNodeConfig(config)).toContain(
+      "unknown node config field: unexpected",
+    );
   });
 });
 

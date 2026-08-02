@@ -2,6 +2,9 @@ import {
   isWorkflowNodeKey,
   isWorkflowReasoningEffort,
   isWorkflowSeverity,
+  WORKFLOW_GATE_FIELDS,
+  WORKFLOW_NODE_CONFIG_FIELDS,
+  WORKFLOW_PERMISSION_FIELDS,
   type ImplementResult,
   type ResolvedWorkflowModel,
   type ResolvedWorkflowNodeConfig,
@@ -124,15 +127,7 @@ export function validateWorkflowNodeConfig(
   nodeKey?: WorkflowNodeKey,
 ): string[] {
   const errors: string[] = [];
-  const allowedKeys = new Set([
-    "agentName",
-    "instructions",
-    "contextFiles",
-    "reasoningEffort",
-    "model",
-    "permissions",
-    "gate",
-  ]);
+  const allowedKeys = new Set<string>(WORKFLOW_NODE_CONFIG_FIELDS);
   for (const key of Object.keys(config as unknown as Record<string, unknown>)) {
     if (!allowedKeys.has(key)) errors.push(`unknown node config field: ${key}`);
   }
@@ -161,13 +156,13 @@ export function validateWorkflowNodeConfig(
   if (!config.permissions || typeof config.permissions !== "object") {
     errors.push("permissions is required");
   }
-  for (const key of ["write", "subagent", "browser"] as const) {
+  for (const key of WORKFLOW_PERMISSION_FIELDS) {
     if (!config.permissions || typeof config.permissions[key] !== "boolean") {
       errors.push(`permissions.${key} must be boolean`);
     }
   }
   for (const key of Object.keys((config.permissions ?? {}) as unknown as Record<string, unknown>)) {
-    if (key !== "write" && key !== "subagent" && key !== "browser") {
+    if (!WORKFLOW_PERMISSION_FIELDS.includes(key as (typeof WORKFLOW_PERMISSION_FIELDS)[number])) {
       errors.push(`unknown permissions field: ${key}`);
     }
   }
@@ -184,7 +179,7 @@ export function validateWorkflowNodeConfig(
     }
   }
   for (const key of Object.keys((config.gate ?? {}) as unknown as Record<string, unknown>)) {
-    if (key !== "blockingSeverities" && key !== "optional") {
+    if (!WORKFLOW_GATE_FIELDS.includes(key as (typeof WORKFLOW_GATE_FIELDS)[number])) {
       errors.push(`unknown gate field: ${key}`);
     }
   }

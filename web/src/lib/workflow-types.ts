@@ -35,6 +35,29 @@ export type WorkflowNodePermissions = {
   browser: boolean;
 };
 
+export const WORKFLOW_NODE_CONFIG_FIELDS = [
+  "agentName",
+  "instructions",
+  "contextFiles",
+  "reasoningEffort",
+  "model",
+  "permissions",
+  "gate",
+] as const;
+
+export const WORKFLOW_PERMISSION_FIELDS = [
+  "write",
+  "subagent",
+  "browser",
+] as const;
+
+export const WORKFLOW_GATE_FIELDS = ["blockingSeverities", "optional"] as const;
+
+export type WorkflowResultParserKey =
+  | "implement-result-v1"
+  | "review-result-v1"
+  | "review-gate-result-v1";
+
 export type WorkflowGateConfig = {
   blockingSeverities: WorkflowSeverity[];
   optional: boolean;
