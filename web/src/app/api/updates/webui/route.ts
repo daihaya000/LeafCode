@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = 64 * 1024;
 const GITHUB_REPO = "daihaya000/OpenCodeWebUI";
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const GITHUB_MAIN_ZIP = `https://codeload.github.com/${GITHUB_REPO}/zip/refs/heads/main`;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,15 +34,17 @@ async function updateFromLatestRelease(root: string) {
     headers: { Accept: "application/vnd.github+json", "User-Agent": "OpenCodeWebUI" },
     signal: AbortSignal.timeout(120_000),
   });
-  if (!response.ok) throw new Error(`GitHub Releasesの取得に失敗しました（HTTP ${response.status}）`);
-  const release = (await response.json()) as {
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`GitHub Releasesの取得に失敗しました（HTTP ${response.status}）`);
+  }
+  const release = response.ok ? (await response.json()) as {
     tag_name?: string;
     zipball_url?: string;
     assets?: Array<{ name?: string; browser_download_url?: string }>;
-  };
-  const asset = release.assets?.find((item) => item.name?.toLowerCase().endsWith(".zip"));
-  const downloadUrl = asset?.browser_download_url ?? release.zipball_url;
-  if (!downloadUrl) throw new Error("利用可能なリリースZIPが見つかりません");
+  } : undefined;
+  const asset = release?.assets?.find((item) => item.name?.toLowerCase().endsWith(".zip"));
+  const downloadUrl = asset?.browser_download_url ?? release?.zipball_url ?? GITHUB_MAIN_ZIP;
+  const source = asset ? "release-asset" : release ? "release-source" : "main-branch";
 
   const work = await mkdtemp(join(tmpdir(), "opencode-webui-update-"));
   try {
@@ -69,7 +72,7 @@ async function updateFromLatestRelease(root: string) {
         return !name.startsWith(".git") && !name.startsWith("node_modules") && !name.startsWith(".next");
       },
     });
-    return { tag: release.tag_name ?? "latest", source: asset ? "release-asset" : "source-archive" };
+    return { tag: release?.tag_name ?? "main", source };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
