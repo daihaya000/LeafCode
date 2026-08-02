@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("./db", () => ({
   listWorkspacesJoined: () => h.workspaces,
-  latestBindings: () => h.bindings,
+  primaryBindings: () => h.bindings,
 }));
 
 vi.mock("./dirstat", () => ({

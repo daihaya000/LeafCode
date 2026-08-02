@@ -88,6 +88,12 @@ beforeEach(() => {
   h.dataDir = data;
   process.env.OPENCODE_CONFIG_DIR = data;
   fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
+  // These tests exercise explicit state transitions; keep new-profile defaults
+  // covered separately by provider-model-state.test.ts.
+  fs.writeFileSync(
+    statePath(),
+    JSON.stringify({ disabled: {}, providerOrder: [], modelOrder: {}, providerIcons: {} }),
+  );
   h.ocServer.mockReset();
   h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
 });

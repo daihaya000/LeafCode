@@ -125,8 +125,9 @@ function gitWorktreeRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   getDb.mockReturnValue({
-    prepare: () => ({
-      get: () => ({ root_path: "C:\\repo" }),
+    prepare: (sql: string) => ({
+      get: () =>
+        sql.includes("FROM projects") ? { root_path: "C:\\repo" } : undefined,
     }),
   });
   deleteWorkspace.mockImplementation((id: string) => getWorkspace(id));

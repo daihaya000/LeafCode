@@ -790,6 +790,7 @@ export function SettingsView() {
                     max={MAX_HANG_TIMEOUT_MS / 60_000}
                     step={0.5}
                     value={hangTimeoutMinutes}
+                    aria-label="ハング判定時間"
                     onChange={(event) => setHangTimeoutMinutes(event.target.value)}
                     onBlur={commitHangTimeout}
                     onKeyDown={(event) => {
@@ -817,11 +818,11 @@ export function SettingsView() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={health?.webui.ok ? "success" : "danger"}>
-                      {health?.webui.ok ? "WebUI 接続中" : "WebUI 停止"}
+                    <Badge tone={health?.webui?.ok ? "success" : "danger"}>
+                      {health?.webui?.ok ? "WebUI 接続中" : "WebUI 停止"}
                     </Badge>
-                    <Badge tone={health?.opencode.ok ? "success" : "danger"}>
-                      {health?.opencode.ok ? "OpenCode 接続中" : "OpenCode 停止"}
+                    <Badge tone={health?.opencode?.ok ? "success" : "danger"}>
+                      {health?.opencode?.ok ? "OpenCode 接続中" : "OpenCode 停止"}
                     </Badge>
                   </div>
                 </div>
@@ -944,7 +945,7 @@ export function SettingsView() {
                         size="sm"
                         variant="secondary"
                         busy={updating === "opencode"}
-                        disabled={updating !== null || restarting !== null || health?.opencode.ok !== true}
+                        disabled={updating !== null || restarting !== null || health?.opencode?.ok !== true}
                         onClick={() => void updateService("opencode")}
                       >
                         OpenCode CLI をアップデート
@@ -1038,6 +1039,7 @@ export function SettingsView() {
                     max={1000}
                     step={0.1}
                     value={rateDraft}
+                    aria-label="USD/JPY レート"
                     disabled={costPrefs.rateMode === "auto"}
                     onChange={(e) => setRateDraft(e.target.value)}
                     onBlur={() => commitRate()}

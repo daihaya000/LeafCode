@@ -392,7 +392,9 @@ describe("SettingsView", () => {
     render(<SettingsView />);
 
     expect(await screen.findByText("本日 156.2円（2026-07-19）")).toBeTruthy();
-    expect(screen.getByRole("spinbutton")).toHaveProperty("disabled", true);
+    expect(
+      screen.getByRole("spinbutton", { name: "USD/JPY レート" }),
+    ).toHaveProperty("disabled", true);
   });
 
   it("keeps the latest auto-rate response when requests resolve out of order", async () => {
