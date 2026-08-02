@@ -81,7 +81,7 @@ export function toWorkflowGraphReactFlow(
       graphNode.typeVersion,
     );
     const state = runtimeStates.get(graphNode.id);
-    const status = definition ? state?.status ?? "ready" : "unsupported";
+    const status = graphNode.disabled ? "disabled" : definition ? state?.status ?? "ready" : "unsupported";
     nodeStates.set(graphNode.id, status);
     return {
       id: graphNode.id,

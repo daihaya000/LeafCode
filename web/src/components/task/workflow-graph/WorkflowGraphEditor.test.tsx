@@ -53,6 +53,8 @@ describe("WorkflowGraphEditor", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "選択Edgeを削除" }));
+    expect(screen.getByRole("alertdialog").textContent).toContain("接続を削除しますか");
+    fireEvent.click(screen.getByRole("button", { name: "削除する" }));
     await waitFor(() => expect(mocks.sendJson).toHaveBeenCalledTimes(2));
     expect(mocks.sendJson.mock.calls[1]?.[2].operations).toEqual([{ op: "remove_edge", edgeId: "implement_ui-to-code_review" }]);
   });
@@ -71,14 +73,16 @@ describe("WorkflowGraphEditor", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "選択Nodeを削除" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除する" }));
     expect((await screen.findByRole("alert")).textContent).toContain("missing_required_input");
 
     mocks.sendJson.mockRejectedValueOnce(new ApiError("conflict", 409));
     fireEvent.click(screen.getByRole("button", { name: "選択Nodeを削除" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除する" }));
     expect((await screen.findByRole("alert")).getAttribute("data-graph-conflict")).toBe("semantic");
 
     mocks.sendJson.mockRejectedValueOnce(new ApiError("conflict", 409));
-    fireEvent.click(screen.getByRole("button", { name: "選択Nodeを移動" }));
+    fireEvent.click(screen.getByRole("button", { name: "右へ移動" }));
     expect((await screen.findByRole("alert")).getAttribute("data-graph-conflict")).toBe("layout");
   });
 
@@ -152,5 +156,36 @@ describe("WorkflowGraphEditor", () => {
         }),
       },
     ]);
+  });
+
+  it("supports keyboard movement and protects text inputs from Delete", async () => {
+    mocks.sendJson.mockResolvedValue({ graph });
+    render(
+      <WorkflowGraphEditor
+        taskId="ws-editor"
+        graph={graph}
+        selectedNodeId="implement_ui"
+        selectedEdgeId={null}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        direction="LR"
+      />,
+    );
+
+    const nodeType = screen.getByRole("combobox", { name: "Node type" });
+    fireEvent.keyDown(nodeType, { key: "Delete" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+
+    fireEvent.keyDown(window, { key: "ArrowRight", ctrlKey: true });
+    await waitFor(() => expect(mocks.sendJson).toHaveBeenCalledTimes(1));
+    expect(mocks.sendJson.mock.calls[0]?.[2].operations).toEqual([{
+      op: "move_node",
+      nodeId: "implement_ui",
+      position: { x: graph.nodes[0].position.x + 20, y: graph.nodes[0].position.y },
+    }]);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(screen.getByRole("alertdialog").textContent).toContain("Nodeを削除しますか");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

@@ -61,4 +61,13 @@ describe("toWorkflowGraphReactFlow", () => {
       data: { status: "unsupported", unsupported: true },
     });
   });
+
+  test("marks disabled Nodes explicitly even when runtime state is ready", () => {
+    const disabled = structuredClone(graph);
+    disabled.nodes[0].disabled = true;
+    const result = toWorkflowGraphReactFlow(disabled, [
+      { nodeId: "implement_ui", status: "ready", attemptNo: 0 },
+    ]);
+    expect(result.nodes[0]).toMatchObject({ data: { status: "disabled" } });
+  });
 });

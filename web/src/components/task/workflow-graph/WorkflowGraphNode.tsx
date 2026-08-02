@@ -17,6 +17,7 @@ function statusLabel(status: string): string {
   if (status === "paused") return "一時停止";
   if (status === "failed") return "失敗";
   if (status === "skipped") return "スキップ";
+  if (status === "disabled") return "無効";
   if (status === "unsupported") return "未対応";
   return "待機中";
 }
@@ -37,7 +38,7 @@ function StatusIcon({ status, reducedMotion }: { status: string; reducedMotion: 
   if (status === "failed") return <AlertCircle className={cx(className, "text-danger")} aria-hidden="true" />;
   if (status === "paused") return <PauseCircle className={cx(className, "text-warning")} aria-hidden="true" />;
   if (status === "unsupported") return <TriangleAlert className={cx(className, "text-warning")} aria-hidden="true" />;
-  if (status === "skipped") return <CircleOff className={cx(className, "text-muted")} aria-hidden="true" />;
+  if (status === "skipped" || status === "disabled") return <CircleOff className={cx(className, "text-muted")} aria-hidden="true" />;
   return <Circle className={cx(className, "text-faint")} aria-hidden="true" />;
 }
 
@@ -48,10 +49,11 @@ export function WorkflowGraphNode({ data }: NodeProps<WorkflowGraphReactNode>) {
   return (
     <div
       aria-label={`${data.graphNode.label}、${statusLabel(data.status)}`}
-      aria-disabled={data.unsupported ? "true" : undefined}
+      aria-disabled={data.unsupported || data.graphNode.disabled ? "true" : undefined}
       className={cx(
         "relative min-w-52 rounded-xl border bg-surface px-3 py-3 text-text shadow-sm transition-shadow",
         data.unsupported ? "border-warning/60 bg-warning-bg" : "border-border",
+        data.graphNode.disabled && "opacity-65",
         data.attention && "ring-2 ring-warning/50",
         !data.unsupported && "hover:shadow-md",
       )}

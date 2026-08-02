@@ -4400,3 +4400,11 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - Graph更新後にFrom／To選択やNode／Edge選択が削除済みIDを保持し続けないよう自動解除・補正した。
 - ViewportのCAS競合・保存失敗をCanvas上で通知し、最新Graph再読込を可能にした。編集モードの凡例も実際の保存動作に合わせた。
 - 検証: 関連Vitest 33件、TypeScript、Lint、Host test 192件、Graph E2E 1件、diff checkを通過。
+
+## 2026-08-02: Workflow Graph Node UI/UX監査・改善
+
+- 仕様と実装を照合し、未実装だった削除確認、入力中のDelete誤発火防止、`Ctrl`＋矢印キー移動、操作結果のlive region通知、Inspectorの閉じる操作／Escape対応を追加した。
+- EditorをNode／接続の操作群に整理し、4方向移動、44px以上の主要タッチターゲット、mobile時のMiniMap抑制、Node／Edge選択の排他制御、無効Nodeの明示表示を追加した。
+- InspectorにNode Registryメタデータ、Attempt履歴切替、Node有効／無効編集、実行中は次回Runから適用される旨の表示、保存成功通知を追加した。
+- Graph EditをE2E環境変数で明示的に切り替えられるfixtureを追加し、有効時の安全な編集・削除キャンセル・390px幅の横overflowなしと、無効時のread-only復帰を確認した。
+- 検証: Workflow Graph Vitest 24件、TypeScript、Lint、diff check、Graph E2E有効時2件／無効時1件を通過（無効時の編集シナリオ1件は意図どおりskip）。

@@ -102,6 +102,32 @@ describe("WorkflowGraphInspector", () => {
     expect(screen.getByText("Control NodeはRetry対象外です。")).toBeTruthy();
   });
 
+  it("switches between historical Attempts", () => {
+    const historyNodeRun = {
+      nodeKey: "implement_ui",
+      latestAttemptNo: 2,
+      attempts: [
+        { id: "attempt-1", attemptNo: 1, status: "failed", input: { prompt: "Build older" }, result: null, usageSnapshot: null },
+        { id: "attempt-2", attemptNo: 2, status: "running", input: { prompt: "Build latest" }, result: null, usageSnapshot: null },
+      ],
+    } as never;
+    render(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphNode={graphNode}
+        nodeRun={historyNodeRun}
+        workflow={workflow}
+        onOpenChat={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        mode="desktop"
+      />,
+    );
+    expect(screen.getByText(/Build latest/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "表示するAttempt" }), { target: { value: "1" } });
+    expect(screen.getByText(/Build older/)).toBeTruthy();
+  });
+
   it("saves edited label and config through the Graph CAS API", async () => {
     feature.editEnabled = true;
     sendJson.mockResolvedValue({ graph: {} });
@@ -121,6 +147,8 @@ describe("WorkflowGraphInspector", () => {
     );
     fireEvent.change(screen.getByRole("textbox", { name: "Node label" }), { target: { value: "Updated implementation" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Node config JSON" }), { target: { value: '{"instructions":"Updated"}' } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Nodeを無効化" }));
+    expect(screen.getByText("Draft編集 · 次回実行から適用")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Node設定を保存" }));
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
       "PATCH",
@@ -130,10 +158,47 @@ describe("WorkflowGraphInspector", () => {
         operations: [
           { op: "set_node_label", nodeId: "implement_ui", label: "Updated implementation" },
           { op: "update_node_config", nodeId: "implement_ui", config: { instructions: "Updated" } },
+          { op: "set_node_disabled", nodeId: "implement_ui", disabled: true },
         ],
       },
     ));
     expect(onRefresh).toHaveBeenCalled();
+    expect(await screen.findByText("Node設定を保存しました。")).toBeTruthy();
+  });
+
+  it("closes the Inspector with its button and Escape", () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphNode={graphNode}
+        nodeRun={nodeRun}
+        workflow={workflow}
+        onOpenChat={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onClose={onClose}
+        mode="tablet"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Inspectorを閉じる" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <WorkflowGraphInspector
+        taskId="ws1"
+        graphNode={graphNode}
+        nodeRun={nodeRun}
+        workflow={workflow}
+        onOpenChat={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onClose={onClose}
+        mode="tablet"
+      />,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   it.each([

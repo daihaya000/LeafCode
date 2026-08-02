@@ -33,7 +33,7 @@ export default defineConfig({
       NEXT_DIST_DIR: ".next-e2e",
       OPENCODE_WEBUI_WORKFLOW_MODE: "true",
       OPENCODE_WEBUI_WORKFLOW_GRAPH: "true",
-      OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: "false",
+      OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: process.env.E2E_WORKFLOW_GRAPH_EDIT ?? "false",
     },
     url: BASE_URL,
     timeout: 180_000,

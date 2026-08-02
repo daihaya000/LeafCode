@@ -128,6 +128,9 @@ export function WorkflowGraphPanel({
             {attention ? "Attention待ち" : statusLabel(workflow.run?.status ?? "ready")}
           </span>
         </div>
+        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          Workflowは{statusLabel(workflow.run?.status ?? "ready")}です。{completed}/{states.length} Node完了。{attention ? "確認が必要です。" : ""}
+        </p>
         {attention && workflow.run?.pauseReason && (
           <p role="status" className="mb-3 rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-sm text-warning">
             確認が必要です: {workflow.run.pauseReason}
@@ -181,6 +184,7 @@ export function WorkflowGraphPanel({
             onOpenChat={onOpenChat}
             onOpenDiff={onOpenDiff}
             onRefresh={onRefresh}
+            onClose={() => setSelectedNodeId(null)}
           />
         </div>
       </div>

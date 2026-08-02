@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+const graphEditEnabled = process.env.E2E_WORKFLOW_GRAPH_EDIT === "true";
+let graphPatchBodies: unknown[] = [];
+
 const task = {
   id: "workflow-graph-e2e",
   projectId: "project-graph",
@@ -56,6 +59,7 @@ const graph = {
 };
 
 test.beforeEach(async ({ page }) => {
+  graphPatchBodies = [];
   await page.addInitScript(() => {
     class StableEventSource {
       addEventListener() {}
@@ -67,7 +71,12 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === `/api/tasks/${task.id}`) return route.fulfill({ json: { task, goalLoop: null } });
-    if (url.pathname.endsWith(`/tasks/${task.id}/workflow/graph`)) return route.fulfill({ json: { graph } });
+    if (url.pathname.endsWith(`/tasks/${task.id}/workflow/graph`)) {
+      if (route.request().method() === "PATCH") {
+        graphPatchBodies.push(route.request().postDataJSON());
+      }
+      return route.fulfill({ json: { graph } });
+    }
     if (url.pathname === `/api/tasks/${task.id}/workflow`) return route.fulfill({ json: { workflow } });
     if (url.pathname === `/api/tasks/${task.id}/workflow/events`) return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": heartbeat\n\n" });
     if (url.pathname === "/api/git/log") return route.fulfill({ json: { commits: [], refs: [], hasMore: false, currentBranch: "main" } });
@@ -87,9 +96,38 @@ test("renders Graph Draft and keeps it within the viewport", async ({ page }) =>
   await page.getByRole("tab", { name: "Workflow" }).click();
   await expect(page.getByRole("heading", { name: "Workflow Graph" })).toBeVisible();
   await expect(page.getByTestId("workflow-graph-canvas")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Graph Editor" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Graph Editor" })).toHaveCount(graphEditEnabled ? 1 : 0);
   for (const width of [1280, 768, 390]) {
     await page.setViewportSize({ width, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
+});
+
+test("supports safe Graph editing interactions without page overflow", async ({ page }) => {
+  test.skip(!graphEditEnabled, "Graph Edit E2E is opt-in");
+  await page.goto(`/task/${task.id}`);
+  await page.getByRole("tab", { name: "Workflow" }).click();
+  await expect(page.getByRole("region", { name: "Graph Editor" })).toBeVisible();
+
+  await page.locator('[data-node-id="implement_ui"]').click();
+  await expect(page.getByRole("button", { name: "右へ移動" })).toBeEnabled();
+  await page.getByRole("button", { name: "右へ移動" }).click();
+  await expect.poll(() => graphPatchBodies.length).toBe(1);
+  expect(graphPatchBodies[0]).toMatchObject({
+    expectedGraphRevision: graph.graphRevision,
+    operations: [{ op: "move_node", nodeId: "implement_ui", position: { x: 20, y: 0 } }],
+  });
+
+  await page.getByRole("button", { name: "選択Nodeを削除" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Nodeを削除しますか");
+  await page.getByRole("button", { name: "キャンセル" }).click();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  expect(graphPatchBodies).toHaveLength(1);
+
+  await expect(page.getByRole("button", { name: "Inspectorを閉じる" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Inspectorを閉じる" })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

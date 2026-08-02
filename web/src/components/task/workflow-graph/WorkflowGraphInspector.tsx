@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, RefreshCw, TriangleAlert } from "lucide-react";
+import { MessageSquare, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { sendJson } from "@/lib/client";
 import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
 import type { WorkflowAttemptView, WorkflowNodeView, WorkflowView } from "@/lib/workflow-service";
 import type { WorkflowGraphNode } from "@/lib/workflow-graph-types";
+import { WORKFLOW_NODE_REGISTRY } from "@/lib/workflow-node-registry";
 import { cx } from "@/components/ui";
 
 function json(value: unknown): string {
@@ -32,6 +33,7 @@ export function WorkflowGraphInspector({
   onOpenChat,
   onOpenDiff,
   onRefresh,
+  onClose,
   mode,
   graphRevision,
   editingEnabled = true,
@@ -45,16 +47,27 @@ export function WorkflowGraphInspector({
   onOpenChat: (nodeId: string) => void;
   onOpenDiff: (nodeId: string) => void;
   onRefresh: () => Promise<void>;
+  onClose?: () => void;
   mode: "mobile" | "tablet" | "desktop";
 }) {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
   const [configDraft, setConfigDraft] = useState("{}");
+  const [disabledDraft, setDisabledDraft] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editSaved, setEditSaved] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [selectedAttemptNo, setSelectedAttemptNo] = useState<number | null>(null);
   const previousNodeId = useRef<string | null>(null);
-  const attempt: WorkflowAttemptView | undefined = nodeRun?.attempts.at(-1);
+  const attemptEntries = (nodeRun?.attempts ?? []).map((entry, index) => ({
+    attempt: entry,
+    number: entry.attemptNo || index + 1,
+  }));
+  const selectedAttempt = selectedAttemptNo === null
+    ? attemptEntries.at(-1)
+    : attemptEntries.find((entry) => entry.number === selectedAttemptNo) ?? attemptEntries.at(-1);
+  const attempt: WorkflowAttemptView | undefined = selectedAttempt?.attempt;
   const editEnabled = editingEnabled && graphRevision !== undefined && isWorkflowGraphEditEnabled();
 
   useEffect(() => {
@@ -62,8 +75,22 @@ export function WorkflowGraphInspector({
     previousNodeId.current = graphNode.id;
     setLabelDraft(graphNode.label);
     setConfigDraft(json(graphNode.config));
+    setDisabledDraft(graphNode.disabled);
     setEditError(null);
+    setEditSaved(false);
+    setSelectedAttemptNo(null);
   }, [graphNode]);
+
+  useEffect(() => {
+    if (!graphNode || !onClose) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [graphNode, onClose]);
 
   if (!graphNode) {
     return (
@@ -75,6 +102,8 @@ export function WorkflowGraphInspector({
   }
 
   const isAttention = workflow.run?.status === "paused" && workflow.run.primaryNodeKey === graphNode.id;
+  const definition = WORKFLOW_NODE_REGISTRY.get(graphNode.type, graphNode.typeVersion);
+  const runIsActive = Boolean(workflow.run && !["completed", "failed", "stopped", "detached"].includes(workflow.run.status));
   const canRetry = Boolean(nodeRun && workflow.run && graphNode.type.startsWith("opencode."));
   const retry = async () => {
     if (!canRetry || !workflow.run) return;
@@ -109,15 +138,18 @@ export function WorkflowGraphInspector({
     }
     setSavingEdit(true);
     setEditError(null);
+    setEditSaved(false);
     try {
       await sendJson("PATCH", `/api/tasks/${encodeURIComponent(taskId)}/workflow/graph`, {
         expectedGraphRevision: graphRevision,
         operations: [
           { op: "set_node_label", nodeId: graphNode.id, label: labelDraft.trim() },
           { op: "update_node_config", nodeId: graphNode.id, config },
+          { op: "set_node_disabled", nodeId: graphNode.id, disabled: disabledDraft },
         ],
       });
       await onRefresh();
+      setEditSaved(true);
     } catch (error) {
       setEditError(error instanceof Error ? error.message : "Node設定の保存に失敗しました。");
     } finally {
@@ -132,9 +164,12 @@ export function WorkflowGraphInspector({
           <h3 className="truncate text-sm font-semibold text-text">{graphNode.label}</h3>
           <p className="mt-0.5 truncate text-[11px] text-muted">{graphNode.type}@{graphNode.typeVersion}</p>
         </div>
-        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">
-          {attempt?.status ?? (graphNode.type.startsWith("control.") ? "監査" : "待機中")}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">
+            {attempt?.status ?? (graphNode.type.startsWith("control.") ? "監査" : "待機中")}
+          </span>
+          {onClose && <button type="button" aria-label="Inspectorを閉じる" aria-keyshortcuts="Escape" onClick={onClose} className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-primary"><X className="h-4 w-4" aria-hidden="true" /></button>}
+        </div>
       </div>
 
       {isAttention && (
@@ -146,18 +181,40 @@ export function WorkflowGraphInspector({
       )}
 
       <div className="mt-3 space-y-3">
+        <Section title="Registry">
+          <div className="rounded-md bg-surface-2 p-2 text-[10px] text-muted">
+            <p className="font-medium text-text">{definition?.displayName ?? "未対応Node"}</p>
+            {definition?.description && <p className="mt-1 leading-relaxed">{definition.description}</p>}
+            <p className="mt-1">{definition ? `${definition.category} · ${definition.runtime}` : `${graphNode.type}@${graphNode.typeVersion}`}</p>
+          </div>
+        </Section>
         <Section title="Node設定">
           <div className="space-y-2">
+            {editEnabled && runIsActive && <p className="inline-flex rounded-full border border-primary/30 bg-primary/5 px-2 py-1 text-[10px] font-medium text-primary">Draft編集 · 次回実行から適用</p>}
             <label className="block text-[10px] text-muted">ラベル
               <input aria-label="Node label" value={labelDraft} disabled={!editEnabled || savingEdit} onChange={(event) => setLabelDraft(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-text disabled:opacity-50" />
             </label>
             <label className="block text-[10px] text-muted">Config JSON
               <textarea aria-label="Node config JSON" value={configDraft} disabled={!editEnabled || savingEdit} onChange={(event) => setConfigDraft(event.target.value)} rows={6} spellCheck={false} className="mt-1 w-full resize-y rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-[10px] text-text disabled:opacity-50" />
             </label>
+            <label className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-2 text-xs text-text">
+              <input type="checkbox" aria-label="Nodeを無効化" checked={disabledDraft} disabled={!editEnabled || savingEdit} onChange={(event) => setDisabledDraft(event.target.checked)} className="h-4 w-4 accent-primary" />
+              このNodeを無効化する
+            </label>
             {editEnabled && <button type="button" disabled={savingEdit} onClick={() => void saveEdit()} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text hover:bg-surface-2 disabled:opacity-50">{savingEdit ? "保存中…" : "Node設定を保存"}</button>}
             {editError && <p role="alert" className="text-xs text-danger">{editError}</p>}
+            {editSaved && <p role="status" className="text-xs text-success">Node設定を保存しました。</p>}
           </div>
         </Section>
+        {attemptEntries.length > 0 && (
+          <Section title="Attempt履歴">
+            <label className="block text-[10px] text-muted">表示するAttempt
+              <select aria-label="表示するAttempt" value={String(selectedAttempt?.number ?? "")} onChange={(event) => setSelectedAttemptNo(Number(event.target.value))} className="mt-1 min-h-10 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-text">
+                {attemptEntries.map((entry) => <option key={`${entry.number}-${entry.attempt.id ?? "attempt"}`} value={entry.number}>Attempt {entry.number} · {entry.attempt.status}</option>)}
+              </select>
+            </label>
+          </Section>
+        )}
         <Section title="Prompt">
           <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 text-[10px] text-muted">{json(attempt?.input)}</pre>
         </Section>

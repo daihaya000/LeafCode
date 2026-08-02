@@ -158,15 +158,18 @@ export function WorkflowGraphCanvas({
         <Controls
           showInteractive={false}
           position="bottom-left"
+          className="workflow-graph-controls [&_button]:!h-11 [&_button]:!w-11"
           aria-label="Workflow Graph操作"
         />
-        <MiniMap
-          position="bottom-right"
-          nodeColor="var(--accent)"
-          nodeStrokeColor="var(--border-strong)"
-          nodeBorderRadius={8}
-          aria-label="Workflow Graph全体図"
-        />
+        {direction === "LR" && (
+          <MiniMap
+            position="bottom-right"
+            nodeColor="var(--accent)"
+            nodeStrokeColor="var(--border-strong)"
+            nodeBorderRadius={8}
+            aria-label="Workflow Graph全体図"
+          />
+        )}
         <Panel position="top-left" className="workflow-graph-legend">
           <p className="text-[11px] font-medium text-muted">{editingEnabled ? "Nodeを選択して詳細を確認 · Canvasは移動・拡大縮小を保存" : "読み取り専用 · Nodeを選択して詳細を確認"}</p>
         </Panel>
