@@ -21,7 +21,11 @@ function runCli(prompt, model) {
   return new Promise((resolve, reject) => {
     const args = ["-p", "--output-format", "json", "--skip-onboarding", "--no-auto-update", "--max-turns", "1"];
     if (model) args.push("--model", model);
-    const child = spawn(executable(), args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(executable(), args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      shell: process.platform === "win32",
+    });
     const stdout = [];
     const stderr = [];
     child.stdout.on("data", (chunk) => stdout.push(chunk));
