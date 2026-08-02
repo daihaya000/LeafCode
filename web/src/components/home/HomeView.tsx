@@ -72,6 +72,7 @@ import {
 import {
   filterEnabledModelOptions,
   formatModelLabel,
+  mergeConfiguredModelOptions,
   modelOrderPreferenceFromProviders,
   sortModelOptions,
   type ModelOption,
@@ -433,7 +434,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             }
           }
           const enabledOptions = filterEnabledModelOptions(
-            options,
+            mergeConfiguredModelOptions(options, providerModels?.providers),
             providerModels?.providers,
           );
           // Auto is inserted *after* filter/sort on purpose: providerSortKey

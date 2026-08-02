@@ -17,6 +17,35 @@ export type ModelOrderPreference = {
   modelOrder?: Record<string, string[]>;
 };
 
+export function mergeConfiguredModelOptions<T extends ModelOption>(
+  options: T[],
+  providers: {
+    id: string;
+    name: string;
+    enabled?: boolean;
+    models?: { id: string; name?: string; enabled?: boolean }[];
+  }[] | undefined | null,
+): T[] {
+  if (!providers || providers.length === 0) return options;
+
+  const merged = [...options];
+  const known = new Set(options.map((option) => option.value));
+  for (const provider of providers) {
+    if (provider.enabled === false) continue;
+    for (const model of provider.models ?? []) {
+      const value = `${provider.id}::${model.id}`;
+      if (model.enabled === false || known.has(value)) continue;
+      known.add(value);
+      merged.push({
+        value,
+        label: formatModelLabel(model.name, model.id),
+        group: provider.name || provider.id,
+      } as T);
+    }
+  }
+  return merged;
+}
+
 export function modelOrderPreferenceFromProviders(
   providers: { id: string; models?: { id: string }[] }[] | undefined | null,
 ): ModelOrderPreference | undefined {

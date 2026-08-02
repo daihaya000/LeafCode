@@ -2,12 +2,40 @@ import { describe, expect, it } from "vitest";
 import {
   filterEnabledModelOptions,
   formatModelLabel,
+  mergeConfiguredModelOptions,
   modelIntelligenceScore,
   normalizeProviderBucket,
   providerSortKey,
   sortModelOptions,
   type ModelOption,
 } from "./model-options";
+
+describe("mergeConfiguredModelOptions", () => {
+  it("adds configured providers missing from the live connected provider list", () => {
+    const options = mergeConfiguredModelOptions(
+      [{ value: "cursor-acp::auto", label: "Auto", group: "Cursor" }],
+      [{
+        id: "commandcode",
+        name: "CommandCode",
+        models: [{ id: "gpt-5.6-terra", name: "GPT-5.6 Terra" }],
+      }],
+    );
+
+    expect(options.map((option) => option.value)).toEqual([
+      "cursor-acp::auto",
+      "commandcode::gpt-5.6-terra",
+    ]);
+  });
+
+  it("does not add disabled configured providers or models", () => {
+    const options = mergeConfiguredModelOptions([], [
+      { id: "disabled", name: "Disabled", enabled: false, models: [{ id: "m" }] },
+      { id: "commandcode", name: "CommandCode", models: [{ id: "hidden", enabled: false }] },
+    ]);
+
+    expect(options).toEqual([]);
+  });
+});
 
 describe("filterEnabledModelOptions", () => {
   const options: ModelOption[] = [
