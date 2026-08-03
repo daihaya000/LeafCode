@@ -17,6 +17,8 @@ type UpdateStatus = {
   available: boolean;
   current?: string;
   latest?: string;
+  currentDate?: string;
+  latestDate?: string;
   error?: string;
 };
 
@@ -34,17 +36,40 @@ async function checkWebUi(): Promise<UpdateStatus> {
     const separator = upstreamName.indexOf("/");
     const remote = separator > 0 ? upstreamName.slice(0, separator) : "";
     const ref = separator > 0 ? upstreamName.slice(separator + 1) : "";
-    if (!remote || !ref) return { available: false, current: current.trim().slice(0, 7) };
+    const currentHash = current.trim();
+    const currentDate = await commitDate(cwd, currentHash);
+    if (!remote || !ref) return { available: false, current: currentHash.slice(0, 7), currentDate };
     const { stdout: latest } = await execFileAsync("git", ["ls-remote", remote, `refs/heads/${ref}`], { cwd, timeout: 10_000 });
     const latestHash = latest.trim().split(/\s+/, 1)[0];
-    const currentHash = current.trim();
+    const latestDate = latestHash ? await commitDate(cwd, latestHash) : undefined;
     return {
       available: Boolean(latestHash && latestHash !== currentHash),
       current: currentHash.slice(0, 7),
       latest: latestHash ? latestHash.slice(0, 7) : undefined,
+      currentDate,
+      latestDate,
     };
   } catch (err) {
     return { available: false, error: err instanceof Error ? err.message : "WebUIの更新確認に失敗しました" };
+  }
+}
+
+async function commitDate(cwd: string, hash: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("git", ["log", "-1", "--format=%cI", hash], { cwd, timeout: 5000 });
+    const iso = stdout.trim();
+    if (!iso) return undefined;
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date.toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return undefined;
   }
 }
 

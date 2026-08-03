@@ -106,6 +106,8 @@ type UpdateAvailability = {
   available: boolean;
   current?: string;
   latest?: string;
+  currentDate?: string;
+  latestDate?: string;
   error?: string;
 };
 
@@ -416,11 +418,15 @@ export function SettingsView() {
   // once so an existing user's configured threshold is honoured without them
   // having to re-save it. See docs/specs/hang-watchdog-server-side.md.
   useEffect(() => {
+    const local = readHangTimeoutMs();
+    // Only a customised local value needs migrating: the client and the
+    // watchdog already agree on the default, so never write in that case.
+    if (local === DEFAULT_HANG_TIMEOUT_MS) return;
     let cancelled = false;
     void (async () => {
       const stored = await readHangTimeoutFromServer();
       if (cancelled || stored !== null) return;
-      await syncHangTimeoutToServer(readHangTimeoutMs());
+      await syncHangTimeoutToServer(local);
     })();
     return () => {
       cancelled = true;
@@ -941,7 +947,7 @@ export function SettingsView() {
                         <ul className="mt-0.5 list-disc pl-4">
                           {updateAvailability.webui.available && (
                             <li>
-                              WebUI: コミット {updateAvailability.webui.current ?? "不明"} → {updateAvailability.webui.latest ?? "不明"}
+                              WebUI: コミット {updateAvailability.webui.current ?? "不明"}（{updateAvailability.webui.currentDate ?? "日時不明"}） → {updateAvailability.webui.latest ?? "不明"}（{updateAvailability.webui.latestDate ?? "日時不明"}）
                             </li>
                           )}
                           {updateAvailability.opencode.available && (
