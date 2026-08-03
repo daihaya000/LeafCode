@@ -27,6 +27,17 @@ function installationRoot(): string {
   return existsSync(join(root, "scripts")) ? root : process.cwd();
 }
 
+async function isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd, timeout: 5000 });
+    return true;
+  } catch (err) {
+    const e = err as Error & { code?: number };
+    if (e.code === 1) return false;
+    throw err;
+  }
+}
+
 async function checkWebUi(): Promise<UpdateStatus> {
   const cwd = installationRoot();
   try {
@@ -42,8 +53,11 @@ async function checkWebUi(): Promise<UpdateStatus> {
     const { stdout: latest } = await execFileAsync("git", ["ls-remote", remote, `refs/heads/${ref}`], { cwd, timeout: 10_000 });
     const latestHash = latest.trim().split(/\s+/, 1)[0];
     const latestDate = latestHash ? await commitDate(cwd, latestHash) : undefined;
+    // 旧バージョンへの回帰を避ける: upstream が現在の ancestor でない場合のみ更新ありとみなす。
+    // つまり latest は current の descendant（current より新しい）必要がある。
+    const available = Boolean(latestHash && latestHash !== currentHash && await isAncestor(cwd, currentHash, latestHash));
     return {
-      available: Boolean(latestHash && latestHash !== currentHash),
+      available,
       current: currentHash.slice(0, 7),
       latest: latestHash ? latestHash.slice(0, 7) : undefined,
       currentDate,
