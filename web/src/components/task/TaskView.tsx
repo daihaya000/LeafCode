@@ -529,6 +529,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     "remove" | "session" | "restore" | "workflow" | null
   >(null);
   const [workflowConfirmOpen, setWorkflowConfirmOpen] = useState(false);
+  const [taskToStandardConfirmOpen, setTaskToStandardConfirmOpen] = useState(false);
   const [pendingTaskDelete, setPendingTaskDelete] = useState<{
     id: string;
     title: string;
@@ -2595,6 +2596,46 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [refreshTask, task, taskActionBusy]);
 
+  const convertToTask = useCallback(async () => {
+    if (!task || taskActionBusy) return;
+    setTaskActionBusy("workflow");
+    try {
+      type WorkflowSnapshot = {
+        workspaceRevision: number;
+        run: { status: string; revision: number } | null;
+      };
+      const current = await getJson<{ workflow: WorkflowSnapshot }>(
+        `/api/tasks/${encodeURIComponent(task.id)}/workflow`,
+      );
+      const run = current.workflow.run;
+      if (!run) throw new Error("このTaskはすでにTaskモードです");
+      const activeStatuses = ["ready", "running", "pause_requested"];
+      if (activeStatuses.includes(run.status)) {
+        await sendJson("PATCH", `/api/tasks/${encodeURIComponent(task.id)}/workflow`, {
+          action: "pause",
+          workflowRevision: run.revision,
+        });
+      }
+      const paused = await getJson<{ workflow: WorkflowSnapshot }>(
+        `/api/tasks/${encodeURIComponent(task.id)}/workflow`,
+      );
+      if (!paused.workflow.run) throw new Error("Workflow状態を取得できませんでした");
+      await sendJson("PATCH", `/api/tasks/${encodeURIComponent(task.id)}/workflow`, {
+        action: "detach",
+        workflowRevision: paused.workflow.run.revision,
+        workspaceRevision: paused.workflow.workspaceRevision,
+      });
+      setTaskToStandardConfirmOpen(false);
+      await refreshTask();
+      setViewTab("chat");
+      notifyTasksChanged();
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : "Taskモードへの変換に失敗しました");
+    } finally {
+      setTaskActionBusy(null);
+    }
+  }, [refreshTask, task, taskActionBusy]);
+
   const ensureSession = useCallback(async () => {
     if (!task || taskActionBusy) return;
     setTaskActionBusy("session");
@@ -2864,7 +2905,13 @@ export function TaskView({ taskId }: { taskId: string }) {
             onSelect: () => setWorkflowConfirmOpen(true),
             disabled: working || taskActionBusy !== null,
           }]
-        : []),
+        : [{
+            id: "convert-task",
+            label: "Taskモードへ変換",
+            icon: <GitGraph className="h-4 w-4" />,
+            onSelect: () => setTaskToStandardConfirmOpen(true),
+            disabled: working || taskActionBusy !== null,
+          }]),
       {
         id: "copy-path",
         label: copied ? "コピーしました" : "作業パスをコピー",
@@ -2955,6 +3002,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     removeTask,
     lastRevertMessageId,
     setWorkflowConfirmOpen,
+    setTaskToStandardConfirmOpen,
   ]);
 
   const openFileInDiff = useCallback(
@@ -3412,6 +3460,37 @@ export function TaskView({ taskId }: { taskId: string }) {
               variant="ghost"
               size="sm"
               onClick={() => setWorkflowConfirmOpen(false)}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {taskToStandardConfirmOpen && task && (
+        <div
+          role="alertdialog"
+          aria-label="Taskモード変換の確認"
+          className="shrink-0 border-b border-primary/30 bg-primary/5 px-4 py-3 text-sm text-text"
+        >
+          <p>
+            タスク「{task.title}」をTaskモードへ変換しますか？
+            <br />
+            Workflowを停止・デタッチし、標準の会話ベースへ戻します。進行中のAttemptは停止されます。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              busy={taskActionBusy === "workflow"}
+              onClick={() => void convertToTask()}
+            >
+              Taskへ変換
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTaskToStandardConfirmOpen(false)}
             >
               キャンセル
             </Button>
