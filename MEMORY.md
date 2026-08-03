@@ -4468,3 +4468,66 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - ハング判定時間と USD/JPY レート入力へ aria-label を追加し、入力が増えても対象を特定できる回帰テストへ更新した。
 - プロバイダー状態の新規プロファイル既定値をテスト用空状態から分離し、`primaryBindings` とワークフロー監視SQLのテストモックを現行実装に合わせた。
 - 検証: Web Vitest 全件、TypeScript、ESLint、host tests、browser-bridge tests、encoding tests を通過。
+
+## 2026-08-02: アップデート対象の明確化
+- やったこと: 設定画面の更新通知を、WebUIとOpenCode CLIを別々の箇条書きで表示し、更新ボタンの文言も対象名＋「更新」に統一した。型チェックを通過し、コミット`2a46da1`を確認。
+- 判断理由: 「WebUI / OpenCodeの最新版」という一続きの表示では、どちらの更新が利用可能か判別しづらかったため。
+- 教訓: 複数対象の状態通知はスラッシュ区切りでまとめず、対象ごとにラベルと状態を分離して表示する。
+
+## 2026-08-02: 更新識別情報の表示
+- やったこと: 更新通知にWebUIの現在／最新コミットIDと、OpenCode CLIの現在／最新バージョン番号を追加した。型チェックを通過し、コミット`47e6790`を確認。
+- 判断理由: 更新対象だけでなく、どのコミットやバージョンへ更新されるかを確認できるようにするため。
+- 教訓: 更新通知では対象名とともに、現在値から最新値への遷移を明示すると判断しやすい。
+
+
+## 2026-08-03: CommandCode認証の新規プロファイル対応
+- やったこと: 新規プロファイル作成時のセットアップ設定にCommandCode Authを追加し、opencommand-plugin@0.0.24を自動登録するようにした。プロバイダー設定にはCommandCode APIキーの保存・状態表示UIとローカル認証ストアAPIを追加した。
+- 判断理由: OpenCommandプラグインは~/.opencommand/opencommand-secrets.jsonのopencommand.command_code_tokenを読むため、opencode.jsoncへ秘密情報を書かず既存の認証モデルに合わせた。
+- 教訓: プラグインが起動時に動的プロバイダーを登録する場合は、セットアップでプラグインを確実に追加し、認証UIはプロバイダーIDの別名も受け入れる。
+
+
+## 2026-08-03: CommandCode Goプラン向けCLIプロキシ化
+- やったこと: Provider APIを直接呼ぶopencommand-plugin依存をやめ、CommandCode CLI（command-code/cmdc）を呼び出すローカルOpenAI互換プロキシをvendor/commandcode-cliへ追加した。認証情報も~/.commandcode/auth.jsonへCLI互換形式で保存するよう変更した。
+- 判断理由: GoプランはProvider APIが利用できず、API直結ではupgrade_requiredになるため。CLIの通常認証・CLI経路を維持する必要がある。
+- 教訓: サービスのCLIプランとProvider APIプランは別契約なので、OpenAI互換プロキシを追加する場合もバックエンドの呼び出し経路を確認する。
+
+
+## 2026-08-03: CommandCode CLIプロキシの502疎通修正
+- やったこと: Windowsのspawn EINVALを`.cmd`実行時のshell有効化で修正し、プロバイダーID付きモデル名（commandcode/）をCLIモデル名へ正規化した。CLI側の一時的なAPIエラーには1回の再試行を追加した。
+- 検証: `command-code status --json`で認証済みを確認し、ローカル`/v1/models`が200、`/v1/chat/completions`へ実リクエストを送り200・応答OKを確認した。
+- 教訓: Windowsではspawn対象がcmdラッパーの場合shell指定が必要。CLIプロキシの疎通はCLI単体ではなく、実際のHTTPエンドポイントとプロバイダー形式のモデルIDで確認する。
+
+
+## 2026-08-03: WebUIのCommandCodeモデルが無反応だった原因
+- やったこと: 実行中WebUIのprovider一覧を確認し、commandcodeのbaseURLが`https://api.commandcode.ai/provider/v1`のままであることを特定した。CLIプラグインのconfig hookで既存のprovider.commandcode設定を127.0.0.1のCLIプロキシへ上書きするよう修正した。
+- 判断理由: 既存プロファイルに残ったProvider API設定が、プラグインのprovider登録より優先されていた。CLIプロキシ自体の実チャットは200/OKで成功済み。
+- 教訓: providerの表示名やモデル一覧だけでなく、実行中providerのbaseURLを確認し、既存設定の優先順位を検証する。
+
+
+## 2026-08-03: 既存defaultプロファイルへのCLIプラグイン反映
+- やったこと: 再起動後も実行中providerのbaseURLがProvider APIのままだったため、active profileが新規作成時の依存適用対象外で、`profiles/default/plugin`にCLIプラグインが存在しないことを確認した。default profileへCLIプラグインとruntimeを反映した。
+- 判断理由: WebUIのprovider一覧はモデルを表示できても、実行中OpenCodeの設定がAPI URLのままだとCommandCode CLIプロキシへ到達しない。
+- 教訓: 新規プロファイル用の依存インストールだけでは既存active profileは移行されない。既存profileのplugin実体と実行中baseURLを別々に確認する。
+
+
+## 2026-08-03: CommandCodeセットアップをCLIプロキシへ統一
+- やったこと: プロファイル依存セットアップ時に旧`plugin/commandcode.js`と`packages/commandcode`を削除し、`commandcode-cli.js`とCLI runtimeだけを残すようにした。active default profileにも同じ移行を適用した。
+- 判断理由: 旧プラグインとCLIプロキシが同時に自動読込されるとprovider登録が競合し、Provider API URLが残ってCLIプロキシへ到達しないため。
+- 検証: 依存セットアップテスト8件、TypeScriptチェック通過。active profileのCommandCode関連ファイルは`commandcode-cli.js`のみ。
+
+## 2026-08-03: 完成度評価と改善方針
+- やったこと: WebUIをソース・ユニットテスト・E2E・稼働中DOM・health APIのローカル証拠で監査した。typecheck/lint/Vitestは成功し、state coverageの機械チェックも全8状態を検出した。一方、E2Eは54件中41成功・12失敗・1スキップ、稼働中3000番ポートはHEADの`af5fcb0`ではなく`26e3082`を配信していた。Remote Workspaceは501、Browser Bridgeの切断/revoke・タブ共有/監査ログ、Web Push、Dev Containerの完全ライフサイクルは未実装またはプレースホルダーだった。
+- 判断理由: 実装済み機能の多さだけで完成扱いにせず、リリース判定には「現在のビルドが配信されていること」「自動テストが緑であること」「未実装範囲が製品仕様と明示的に一致すること」を優先した。E2E失敗の一部は現UIの`combobox`/`tab`/直接ボタン化に追随していないテストセレクタのドリフトだったため、UI回帰とテスト不整合を分離して扱う。
+- 教訓: 完成度レビューでは、ソースのHEAD・稼働中ビルド識別子・ブラウザの実DOM・CI対象を同時に照合する。テスト失敗は機能欠陥、古い期待値、共有fixture/環境汚染に分類してから改善優先度を決める。
+## 2026-08-03: ハング判定を5分基準へ修正
+- やったこと: コマンドのBFFタイムアウトを290秒、クライアントタイムアウトを295秒へ戻し、shellツールの警告閾値を設定値（既定5分）に統一した。関連テスト111件とtypecheckを通過し、コミット`0d7e8b2`を確認。
+- 判断理由: 2分タイムアウトでは5分未満の正当な長時間コマンドまで`Aborted`になり、UI警告も設定値と不一致だったため。
+- 教訓: 長時間処理の閾値はUI警告・BFF・クライアントで同じ契約を共有し、設定可能な値をハードコードしない。
+## 2026-08-03: 復元済みセッションのハング停止を補強
+- やったこと: 元の送信リクエスト情報が失われた復元・再接続済みセッションでも、busy状態が設定閾値を超えたらabortし、リクエスト本文なしの自動再実行は行わないようにした。関連テスト72件とtypecheckを通過し、コミット`2b389fa`を確認。
+- 判断理由: 旧実装は自動再実行用のリクエスト本文が存在しない場合、ハングタイマー自体を開始しなかったため、13分以上busyのまま残る経路があった。
+- 教訓: 自動復旧に必要な再実行情報と、停止だけで成立する安全弁を分離する。復元状態では盲目的な再実行を避ける。
+## 2026-08-03: WebUIクラッシュ／ハング時の自動復旧
+- WebUIホストに10秒間隔のHTTPヘルス監視を追加。起動後60秒は猶予し、3回連続失敗でハングと判定する。
+- ハング判定時はWebUIのプロセスツリーとポートリスナーを停止し、既存のバックオフ／クールダウン付き自動再起動へ接続した。
+- `host/src/web-runtime.test.js` の回帰テスト、構文チェック、`git diff --check` は成功。`host npm test` 全体は既存のindexテストが終了しないため中断し、対象テストを個別実行した。
