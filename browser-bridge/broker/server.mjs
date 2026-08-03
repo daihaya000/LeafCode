@@ -218,6 +218,37 @@ export function createBrowserBridgeBroker({
       json(res, 200, { entries: audit.list() });
       return;
     }
+    if (req.method === 'GET' && url.pathname === '/internal/tabs') {
+      json(res, 200, { tabs: [...sharedTabs.values()] });
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/internal/revoke') {
+      // Revoke the active pairing: clears device key, shared tabs, pending
+      // approvals, and tells the extension (if connected) to unpair.
+      pairedOrigin = null;
+      deviceKey = null;
+      sharedTabs.clear();
+      snapshots.clear();
+      screenshots.clear();
+      for (const approval of pendingApprovals.values()) clearTimeout(approval.timer);
+      pendingApprovals.clear();
+      for (const command of dispatchedCommands.values()) clearTimeout(command.timer);
+      dispatchedCommands.clear();
+      persistPairing();
+      if (extensionSocket && extensionSocket.readyState === 1) {
+        extensionSocket.send(JSON.stringify({ type: 'revoked' }));
+        extensionSocket.close(1000, 'revoked');
+        extensionSocket = null;
+      }
+      audit.record({
+        commandId: 'revoke',
+        tool: 'revoke',
+        origin: 'local',
+        outcome: 'revoked',
+      });
+      json(res, 200, { revoked: true });
+      return;
+    }
     const tool = /^\/internal\/tools\/([^/]+)$/.exec(url.pathname)?.[1];
     if (req.method === 'POST' && tool) {
       let args;

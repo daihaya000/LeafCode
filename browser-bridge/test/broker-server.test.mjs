@@ -511,3 +511,42 @@ function authenticateSocket(url, origin, deviceKey) {
     });
   });
 }
+
+test('lists shared tabs and clears them on revoke', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const headers = { Authorization: `Bearer ${broker.internalToken}` };
+
+  const empty = await fetch(`${broker.url}/internal/tabs`, { headers }).then((res) => res.json());
+  assert.deepEqual(empty, { tabs: [] });
+
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  t.after(() => socket.close());
+  socket.send(JSON.stringify({ type: 'tab_shared', tab: { id: 'tab_opaque', origin: 'https://example.test', title: 'Example' } }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const tabs = await fetch(`${broker.url}/internal/tabs`, { headers }).then((res) => res.json());
+  assert.deepEqual(tabs, { tabs: [{ id: 'tab_opaque', origin: 'https://example.test', title: 'Example' }] });
+
+  // The close may fire before the revoke response resolves, so register the
+  // close listener up-front and race it against a short timeout.
+  const closed = new Promise((resolve) => {
+    socket.once('close', () => resolve(true));
+    setTimeout(() => resolve(false), 2000);
+  });
+  const revoked = await fetch(`${broker.url}/internal/revoke`, {
+    method: 'POST',
+    headers,
+  }).then((res) => res.json());
+  assert.deepEqual(revoked, { revoked: true });
+  assert.equal(await closed, true);
+
+  const after = await fetch(`${broker.url}/internal/tabs`, { headers }).then((res) => res.json());
+  assert.deepEqual(after, { tabs: [] });
+  const status = await fetch(`${broker.url}/internal/status`, { headers }).then((res) => res.json());
+  assert.deepEqual(status.extension, { connected: false, paired: false });
+
+  const audit = await fetch(`${broker.url}/internal/audit`, { headers }).then((res) => res.json());
+  assert.equal(audit.entries.some((entry) => entry.tool === 'revoke' && entry.outcome === 'revoked'), true);
+});
