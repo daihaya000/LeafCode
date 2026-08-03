@@ -122,6 +122,8 @@ import {
 } from "@/lib/auto-task-record";
 
 import { copyText } from "@/lib/clipboard";
+import { countHangRetryUserMessages } from "@/lib/hang-retry";
+import { formatHangTimeout, readHangTimeoutMs, subscribeHangTimeout } from "@/lib/hang-timeout";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
@@ -1919,6 +1921,23 @@ export function TaskView({ taskId }: { taskId: string }) {
     [stream.messages, task?.directory],
   );
 
+  // The server-side watchdog stops a hung turn and resumes the same request
+  // once, marking the resumed prompt so it is not rendered twice. Surface that
+  // it happened — otherwise the recovery is invisible.
+  // See docs/specs/hang-watchdog-server-side.md.
+  const hangResumeCount = useMemo(
+    () => countHangRetryUserMessages(stream.messages),
+    [stream.messages],
+  );
+  const [hangTimeoutLabel, setHangTimeoutLabel] = useState(() =>
+    formatHangTimeout(readHangTimeoutMs()),
+  );
+  useEffect(
+    () =>
+      subscribeHangTimeout(() => setHangTimeoutLabel(formatHangTimeout(readHangTimeoutMs()))),
+    [],
+  );
+
   // Context window usage, derived from the most recent assistant turn's
   // token usage against that model's known context limit (see
   // computeContextUsage for why this uses the last turn, not a sum).
@@ -3537,6 +3556,19 @@ export function TaskView({ taskId }: { taskId: string }) {
           >
             <X aria-hidden="true" className="h-3.5 w-3.5" />
           </button>
+        </div>
+      )}
+
+      {hangResumeCount > 0 && (
+        <div
+          role="status"
+          data-testid="hang-resume-notice"
+          className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning/5 px-4 py-2 text-xs text-muted"
+        >
+          <span className="min-w-0 break-words">
+            応答が{hangTimeoutLabel}止まったため自動的に停止し、同じ処理を再開しました
+            {hangResumeCount > 1 ? `（${hangResumeCount}回）` : ""}
+          </span>
         </div>
       )}
 

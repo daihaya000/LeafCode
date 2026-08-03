@@ -12,6 +12,13 @@ export function clampHangTimeoutMs(value: number): number {
   return Math.min(MAX_HANG_TIMEOUT_MS, Math.max(MIN_HANG_TIMEOUT_MS, Math.round(value)));
 }
 
+/** Human-readable threshold for notices, e.g. `5分` / `30秒`. */
+export function formatHangTimeout(ms: number): string {
+  const clamped = clampHangTimeoutMs(ms);
+  if (clamped < 60_000) return `${Math.round(clamped / 1_000)}秒`;
+  return `${Number((clamped / 60_000).toFixed(1))}分`;
+}
+
 export function readHangTimeoutMs(): number {
   if (typeof window === "undefined") return DEFAULT_HANG_TIMEOUT_MS;
   try {

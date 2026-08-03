@@ -48,6 +48,7 @@ import {
   DEFAULT_HANG_TIMEOUT_MS,
   MAX_HANG_TIMEOUT_MS,
   MIN_HANG_TIMEOUT_MS,
+  readHangTimeoutFromServer,
   readHangTimeoutMs,
   syncHangTimeoutToServer,
   writeHangTimeoutMs,
@@ -409,6 +410,22 @@ export function SettingsView() {
     setError(null);
     setPendingRestart(target);
   };
+
+  // The server-side hang watchdog reads the `hang-timeout` setting from the
+  // database, but the value used to live only in localStorage. Seed the server
+  // once so an existing user's configured threshold is honoured without them
+  // having to re-save it. See docs/specs/hang-watchdog-server-side.md.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = await readHangTimeoutFromServer();
+      if (cancelled || stored !== null) return;
+      await syncHangTimeoutToServer(readHangTimeoutMs());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const commitHangTimeout = () => {
     const minutes = Number(hangTimeoutMinutes);

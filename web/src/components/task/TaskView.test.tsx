@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { writeLastUsedModel } from "@/lib/default-model";
+import { HANG_RETRY_METADATA_KEY } from "@/lib/hang-retry";
 import type { TaskSummary } from "@/lib/types";
 import { GOAL_LOOP_TOGGLE_LABEL } from "@/components/GoalLoopComposer";
 import { TaskView, __clearTaskViewCachesForTest } from "./TaskView";
@@ -1324,6 +1325,88 @@ describe("TaskView", () => {
     expect(within(header).getByText("cost $0.2500")).toBeTruthy();
     expect(screen.queryByText("build")).toBeNull();
     expect(screen.getAllByText("cost $0.2500")).toHaveLength(1);
+  });
+
+  // The server-side watchdog hides the prompt it re-sent (it would otherwise
+  // appear twice), so the notice is the only trace of the recovery.
+  // See docs/specs/hang-watchdog-server-side.md.
+  it("reports that the hang watchdog automatically resumed the turn", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    const resumed = {
+      info: { id: "user-retry", role: "user", time: { created: 2 } },
+      parts: [
+        {
+          id: "text-retry",
+          type: "text",
+          text: "続けて",
+          metadata: { [HANG_RETRY_METADATA_KEY]: true },
+        },
+      ],
+    };
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      status: { type: "idle" },
+      messages: [resumed],
+      visibleMessages: [],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const notice = await screen.findByTestId("hang-resume-notice");
+    expect(notice.textContent).toContain("自動的に停止し、同じ処理を再開しました");
+    expect(notice.textContent).toContain("5分");
+    expect(notice.textContent).not.toContain("回）");
+  });
+
+  it("counts repeated automatic resumes", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    const resumed = (id: string) => ({
+      info: { id, role: "user", time: { created: 2 } },
+      parts: [
+        {
+          id: `text-${id}`,
+          type: "text",
+          text: "続けて",
+          metadata: { [HANG_RETRY_METADATA_KEY]: true },
+        },
+      ],
+    });
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      status: { type: "idle" },
+      messages: [resumed("r1"), resumed("r2")],
+      visibleMessages: [],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const notice = await screen.findByTestId("hang-resume-notice");
+    expect(notice.textContent).toContain("（2回）");
+  });
+
+  it("shows no hang notice for an ordinary turn", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      status: { type: "idle" },
+      messages: [
+        {
+          info: { id: "user-1", role: "user", time: { created: 1 } },
+          parts: [{ id: "text-1", type: "text", text: "hello" }],
+        },
+      ],
+      visibleMessages: [],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.queryByTestId("hang-resume-notice")).toBeNull();
   });
 
   it("keeps resync and terminal as standalone header buttons", async () => {
