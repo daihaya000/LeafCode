@@ -300,6 +300,23 @@ export function getDb(): Database.Database {
       FOREIGN KEY (graph_id, target_node_id)
         REFERENCES workflow_graph_nodes(graph_id, id) ON DELETE CASCADE
     );
+    -- Server-side hang watchdog. One row per session = the newest turn that is
+    -- eligible for automatic stop + single resume.
+    -- See docs/specs/hang-watchdog-server-side.md.
+    CREATE TABLE IF NOT EXISTS session_hang_watches (
+      session_id TEXT PRIMARY KEY,
+      directory TEXT NOT NULL,
+      request_path TEXT NOT NULL,
+      request_body TEXT NOT NULL,
+      request_timeout_ms INTEGER NOT NULL,
+      resume_allowed INTEGER NOT NULL DEFAULT 1,
+      started_at INTEGER NOT NULL,
+      last_progress_at INTEGER NOT NULL,
+      progress_fingerprint TEXT NOT NULL DEFAULT '',
+      retry_used INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT 'armed' CHECK (state IN ('armed', 'resolving')),
+      updated_at INTEGER NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
