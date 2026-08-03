@@ -1096,7 +1096,7 @@ export function Sidebar({
                             <li key={task.id}>
                               <div
                                 className={cx(
-                                  "flex min-w-0 items-end rounded-lg",
+                                  "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] rounded-lg",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
@@ -1105,10 +1105,10 @@ export function Sidebar({
                                 <button
                                   type="button"
                                   onClick={() => nav(`/task/${task.id}`)}
-                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                  title={task.title}
+                                  className="col-span-2 flex min-w-0 cursor-pointer items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                                  <span className="flex h-3 w-3 shrink-0 items-center justify-center">
                                       {!waitingForAttention &&
                                       task.status === "working" ? (
                                         <Loader2
@@ -1145,19 +1145,19 @@ export function Sidebar({
                                           )}
                                         />
                                       )}
-                                    </span>
-                                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                                      {task.title}
-                                    </span>
-                                  </div>
-                                  <div
-                                    className="flex min-w-0 items-center gap-1 pl-3 text-[10px] text-muted"
-                                    title={
-                                      task.branch
-                                        ? `${task.isolation}: ${task.branch}`
-                                        : task.isolation
-                                    }
-                                  >
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                                    {task.title}
+                                  </span>
+                                </button>
+                                <div
+                                  className="flex min-w-0 items-center gap-1 self-center pb-1 pl-5 text-[10px] text-muted"
+                                  title={
+                                    task.branch
+                                      ? `${task.isolation}: ${task.branch}`
+                                      : task.isolation
+                                  }
+                                >
                                     <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
                                     <span className="min-w-0 truncate font-mono">
                                       {sidebarBranchLabel(task)}
@@ -1204,11 +1204,10 @@ export function Sidebar({
                                           }}
                                         />
                                       ))}
-                                  </div>
-                                </button>
+                                </div>
                                 <div
                                   data-testid="task-row-actions"
-                                  className="flex shrink-0 items-center pb-1 pr-0.5"
+                                  className="col-start-2 row-start-2 flex shrink-0 items-center self-end pb-1 pr-0.5"
                                 >
                                   <button
                                     type="button"

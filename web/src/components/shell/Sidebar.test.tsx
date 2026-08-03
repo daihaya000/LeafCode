@@ -153,9 +153,10 @@ describe("Sidebar", () => {
     const favorite = await screen.findByRole("button", { name: "「Task title」をお気に入りに追加" });
     const taskButton = screen.getByText("Task title").closest("button");
     const actionGroup = screen.getByTestId("task-row-actions");
-    expect(taskButton?.className).toContain("flex-1");
+    expect(taskButton?.className).toContain("col-span-2");
     expect(actionGroup.className).toContain("shrink-0");
     expect(actionGroup.className).not.toContain("absolute");
+    expect(actionGroup.className).toContain("row-start-2");
     expect(actionGroup.parentElement).toBe(taskButton?.parentElement);
     fireEvent.click(favorite);
 
@@ -456,8 +457,8 @@ describe("Sidebar", () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
     const cost = await screen.findByTitle("このセッションの累計コスト");
-    const freeRow = screen.getByText("Free").closest("button")!;
-    const spacer = freeRow.querySelector<HTMLElement>("span[aria-hidden]")!;
+    const freeCard = screen.getByText("Free").closest("button")!.parentElement!;
+    const spacer = freeCard.querySelector<HTMLElement>("span[aria-hidden]")!;
     expect(spacer).toBeTruthy();
     expect(spacer.textContent).toBe("");
     // Same reserved width on both rows => provider icons share one column.
