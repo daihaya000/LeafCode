@@ -804,7 +804,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
   useEffect(() => {
     const busy = state.status?.type === "busy" || state.status?.type === "retry";
-    if (!busy || !directory || !sessionId || !autoRetryRequestRef.current || autoRetryUsedRef.current) {
+    if (!busy || !directory || !sessionId || autoRetryUsedRef.current) {
       if (!busy) {
         mutationStartedAtRef.current = null;
         autoRetryRequestRef.current = null;
@@ -816,13 +816,19 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     const remaining = Math.max(0, hangTimeoutMs - (Date.now() - startedAt));
     const timer = window.setTimeout(() => {
       const request = autoRetryRequestRef.current;
-      if (!request || autoRetryUsedRef.current) return;
+      if (autoRetryUsedRef.current) return;
       autoRetryUsedRef.current = true;
       autoRetryRequestRef.current = null;
       void (async () => {
         await abortRef.current(
           `${Number((hangTimeoutMs / 60_000).toFixed(1))}分間応答がないため停止し、同じ処理を1回だけ再開します`,
         );
+        // A restored/reconnected session may still be busy after the original
+        // request body has been discarded. Stop it, but do not retry blindly.
+        if (!request) {
+          dispatch({ kind: "sessionError", message: "ハング検知後に処理を停止しました" });
+          return;
+        }
         if (sessionRef.current !== sessionId || scopeRef.current !== scopeKey) return;
         mutationStartedAtRef.current = Date.now();
         dispatch({ kind: "status", status: { type: "busy" } });
