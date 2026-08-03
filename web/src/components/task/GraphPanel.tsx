@@ -489,10 +489,10 @@ export function GraphPanel({
                     <div className="min-w-0 break-words text-xs text-text">
                       {row.commit.subject || "(no subject)"}
                     </div>
-                    <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-faint">
-                      <div className="min-w-0 flex-1 truncate">
+                    <div className="mt-0.5 min-w-0 text-[10px] text-faint">
+                      <div className="flex min-w-0 items-center gap-1">
                         <span
-                          className="truncate"
+                          className="min-w-0 flex-1 truncate"
                           title={
                             row.commit.authorEmail
                               ? `作者: ${row.commit.author} <${row.commit.authorEmail}>`
@@ -502,21 +502,22 @@ export function GraphPanel({
                           作者: {row.commit.author}
                           {row.commit.authorEmail && ` <${row.commit.authorEmail}>`}
                         </span>
-                        {commitDate && (
-                          <>
-                            <span className="mx-1">·</span>
-                            <time dateTime={row.commit.date} title={row.commit.date}>
-                              {commitDate}
-                            </time>
-                          </>
-                        )}
+                        <span
+                          title={row.commit.hash}
+                          className="inline-flex max-w-full shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
+                        >
+                          {row.commit.shortHash}
+                        </span>
                       </div>
-                      <span
-                        title={row.commit.hash}
-                        className="inline-flex max-w-full shrink-0 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-faint"
-                      >
-                        {row.commit.shortHash}
-                      </span>
+                      {commitDate && (
+                        <time
+                          dateTime={row.commit.date}
+                          title={row.commit.date}
+                          className="mt-0.5 block truncate"
+                        >
+                          {commitDate}
+                        </time>
+                      )}
                     </div>
                     <div className="mt-1 flex max-w-full flex-wrap items-center gap-1">
                       {shown.map((name) => (
