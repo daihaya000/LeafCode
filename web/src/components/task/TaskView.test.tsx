@@ -298,6 +298,19 @@ describe("TaskView", () => {
     expect(menus[0].className).toContain("w-11");
   });
 
+  it("allows the hang detection notice to be dismissed", async () => {
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      sessionError: "ハング検知後に処理を停止しました",
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByText("ハング検知後に処理を停止しました")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("セッションエラーを閉じる"));
+    expect(screen.queryByText("ハング検知後に処理を停止しました")).toBeNull();
+  });
+
   it("keeps a mobile menu button when loading the task fails", async () => {
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/sidepanel-width") {

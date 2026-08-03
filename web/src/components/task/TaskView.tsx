@@ -518,6 +518,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [dismissedSessionError, setDismissedSessionError] = useState<string | null>(null);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("queue");
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [queuedAutoSend, setQueuedAutoSend] = useState(false);
@@ -3502,16 +3503,24 @@ export function TaskView({ taskId }: { taskId: string }) {
         })}
       </div>
 
-      {stream.sessionError && (
+      {stream.sessionError && stream.sessionError !== dismissedSessionError && (
         <div
           className={cx(
-            "shrink-0 border-b px-3 py-1.5 text-xs",
+            "mx-3 my-2 flex w-fit max-w-[min(100%-1.5rem,42rem)] shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-xs",
             stream.sessionError === "ハング検知後に自動再開しました"
               ? "border-border bg-surface-2 text-muted"
               : "border-danger/30 bg-danger-bg text-danger",
           )}
         >
-          {stream.sessionError}
+          <span className="min-w-0 break-words">{stream.sessionError}</span>
+          <button
+            type="button"
+            aria-label="セッションエラーを閉じる"
+            onClick={() => setDismissedSessionError(stream.sessionError)}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-current/70 transition-colors hover:bg-black/5 hover:text-current focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
