@@ -4531,3 +4531,4 @@ await 位置移動による回帰ゼロ。スキャナの SCAN_CLEAN（143ファ
 - WebUIホストに10秒間隔のHTTPヘルス監視を追加。起動後60秒は猶予し、3回連続失敗でハングと判定する。
 - ハング判定時はWebUIのプロセスツリーとポートリスナーを停止し、既存のバックオフ／クールダウン付き自動再起動へ接続した。
 - `host/src/web-runtime.test.js` の回帰テスト、構文チェック、`git diff --check` は成功。`host npm test` 全体は既存のindexテストが終了しないため中断し、対象テストを個別実行した。
+- 2026-08-03: OpenCode の `MaxListenersExceededWarning` 発生時にホストも終了した件を調査。添付操作で実行された `taskkill /F /IM node.exe /T` が、OpenCode だけでなく同じ node.exe の WebUI host も巻き込んで終了させた。リポジトリ内の停止処理は PID 指定の `taskkill /PID` のみで、広域イメージ停止は存在しない。警告は OpenCode 側の listener 蓄積の兆候だが、今回の host 終了の直接原因ではない。
