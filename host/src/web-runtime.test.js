@@ -8,6 +8,7 @@ import {
   decideWebReuseOnStale,
   webRestartDelay,
   webRestartSchedule,
+  webHealthDecision,
 } from './web-runtime.js';
 
 test('prod mode rebuilds when BUILD_ID is absent', () => {
@@ -132,6 +133,12 @@ test('webRestartSchedule clamps invalid attempt to 1', () => {
   assert.deepEqual(webRestartSchedule(NaN), { delayMs: 1000, coolingDown: false });
 });
 
+test('webHealthDecision tolerates startup failures and restarts after repeated failures', () => {
+  assert.deepEqual(webHealthDecision({ httpUp: false, consecutiveFailures: 2, startedAt: 9_500, now: 10_000, startupGraceMs: 1_000 }), { consecutiveFailures: 0, shouldRestart: false });
+  assert.deepEqual(webHealthDecision({ httpUp: false, consecutiveFailures: 2, startedAt: 0, now: 2_000, startupGraceMs: 1_000, failureLimit: 3 }), { consecutiveFailures: 3, shouldRestart: true });
+  assert.deepEqual(webHealthDecision({ httpUp: true, consecutiveFailures: 99, startedAt: 0 }), { consecutiveFailures: 0, shouldRestart: false });
+});
+
 test('isWebBuildStale is false when BUILD_ID is missing', () => {
   const distDir = join('C:', 'appdata', 'opencode-webui', 'web-build');
   assert.equal(
@@ -245,4 +252,3 @@ test('decideWebReuseOnStale: dev mode never takes over (no build needed)', () =>
     { reuse: true },
   );
 });
-

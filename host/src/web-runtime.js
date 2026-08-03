@@ -138,6 +138,25 @@ export function webRestartSchedule(attempt, maxBurst = 5) {
   return { delayMs: 60_000, coolingDown: true };
 }
 
+export function webHealthDecision({
+  httpUp,
+  consecutiveFailures,
+  startedAt,
+  now = Date.now(),
+  startupGraceMs = 60_000,
+  failureLimit = 3,
+}) {
+  if (httpUp) return { consecutiveFailures: 0, shouldRestart: false };
+  if (Number.isFinite(startedAt) && now - startedAt < startupGraceMs) {
+    return { consecutiveFailures: 0, shouldRestart: false };
+  }
+  const failures = Math.max(0, Number(consecutiveFailures) || 0) + 1;
+  return {
+    consecutiveFailures: failures,
+    shouldRestart: failures >= Math.max(1, failureLimit),
+  };
+}
+
 /**
  * True when a production BUILD_ID exists but watched sources are newer.
  * Missing BUILD_ID is not "stale" — callers treat absence via hasBuild.

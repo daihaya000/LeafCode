@@ -21,6 +21,7 @@ import {
   decideWebReuseOnStale,
   webRestartDelay,
   webRestartSchedule,
+  webHealthDecision,
 } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
 import { readPort } from './port-config.js';
@@ -370,6 +371,14 @@ let webCoolDownAnnounced = false;
 let webRestartTimer = null;
 /** @type {NodeJS.Timeout | null} */
 let webStableTimer = null;
+/** @type {NodeJS.Timeout | null} */
+let webWatchdogTimer = null;
+let webHealthFailures = 0;
+let webStartedAt = 0;
+let webHealthCheckInFlight = false;
+const WEB_WATCHDOG_INTERVAL_MS = 10_000;
+const WEB_WATCHDOG_FAILURE_LIMIT = 3;
+const WEB_WATCHDOG_STARTUP_GRACE_MS = 60_000;
 const expectedWebExitPids = new Set();
 const expectedOpencodeExitPids = new Set();
 
@@ -1370,6 +1379,8 @@ async function spawnWeb() {
     },
   });
   webProc = child;
+  webStartedAt = Date.now();
+  webHealthFailures = 0;
   armWebStableReset(child);
 
   child.on('error', (err) => {
@@ -1400,6 +1411,46 @@ async function spawnWeb() {
     refreshStatusMenu();
     if (!quitting && !expected && wasCurrent) scheduleWebRestart();
   });
+}
+
+async function checkWebHealth() {
+  if (quitting || restartingServices || webHealthCheckInFlight || !procRunning(webProc)) return;
+  webHealthCheckInFlight = true;
+  try {
+    const decision = webHealthDecision({
+      httpUp: await isHttpUp(WEBUI_URL),
+      consecutiveFailures: webHealthFailures,
+      startedAt: webStartedAt,
+      startupGraceMs: WEB_WATCHDOG_STARTUP_GRACE_MS,
+      failureLimit: WEB_WATCHDOG_FAILURE_LIMIT,
+    });
+    webHealthFailures = decision.consecutiveFailures;
+    if (!decision.shouldRestart || webProc == null) return;
+
+    error(`WebUI health check failed ${webHealthFailures} times; recovering the hung process`);
+    restartingServices = true;
+    try {
+      await stopWebOnly({ preserveRestartBudget: true });
+      scheduleWebRestart();
+    } catch (err) {
+      error(`WebUI hang recovery failed: ${err instanceof Error ? err.message : String(err)}`);
+      scheduleWebRestart();
+    } finally {
+      restartingServices = false;
+    }
+  } finally {
+    webHealthCheckInFlight = false;
+  }
+}
+
+function startWebWatchdog() {
+  if (webWatchdogTimer) return;
+  webWatchdogTimer = setInterval(() => {
+    void checkWebHealth().catch((err) => {
+      error(`WebUI health check failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }, WEB_WATCHDOG_INTERVAL_MS);
+  webWatchdogTimer.unref?.();
 }
 
 function scheduleWebRestart() {
@@ -1787,7 +1838,7 @@ async function waitForPortFree(port, attempts = 40) {
   return !isPortInUse(port);
 }
 
-async function stopWebOnly() {
+async function stopWebOnly({ preserveRestartBudget = false } = {}) {
   if (webRestartTimer) {
     clearTimeout(webRestartTimer);
     webRestartTimer = null;
@@ -1796,8 +1847,11 @@ async function stopWebOnly() {
     clearTimeout(webStableTimer);
     webStableTimer = null;
   }
-  webRestarts = 0;
-  webCoolDownAnnounced = false;
+  if (!preserveRestartBudget) {
+    webRestarts = 0;
+    webCoolDownAnnounced = false;
+  }
+  webHealthFailures = 0;
 
   if (webBuildProc?.pid) {
     killProcessTree(webBuildProc.pid);
@@ -1844,6 +1898,7 @@ async function stopChildren() {
   }
   webRestarts = 0;
   webCoolDownAnnounced = false;
+  webHealthFailures = 0;
   if (webProc?.pid) expectedWebExitPids.add(webProc.pid);
 
   const opencodePids = resolveKillPids({
@@ -2456,6 +2511,11 @@ async function main() {
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
+
+  // Keep monitoring even while the initial readiness wait is in progress.
+  // The watchdog has a startup grace period so slow production launches are
+  // not mistaken for hangs.
+  startWebWatchdog();
 
   const headless = isHeadless();
 
