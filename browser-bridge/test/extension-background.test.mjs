@@ -79,6 +79,7 @@ test('resyncs shared tabs and resets command dedupe on a new connection generati
     storage: { local: { get: async () => stored, set: async () => {}, remove: async () => {} } },
     tabs: {
       sendMessage: async () => { delivered += 1; return { ok: true }; },
+      get: async (id) => ({ id, active: true }),
       onRemoved: { addListener: () => {} },
       onUpdated: { addListener: () => {} },
     },
@@ -112,6 +113,58 @@ test('resyncs shared tabs and resets command dedupe on a new connection generati
   assert.equal(delivered, 2);
   assert.equal(socket.sent.filter((message) => message.type === 'result').length, 2);
   assert.equal(socket.sent.filter((message) => message.type === 'tab_shared').length, 2);
+});
+
+test('prunes stale persisted shared tabs on authenticate before re-announcing', async () => {
+  const stored = {
+    browserBridge: {
+      brokerUrl: 'ws://127.0.0.1:18766/extension',
+      deviceKey: 'device_key',
+      sharedTabs: {
+        tab_alive: { id: 'tab_alive', origin: 'https://alive.test', title: 'Alive', browserTabId: 42 },
+        tab_dead: { id: 'tab_dead', origin: 'https://dead.test', title: 'Dead', browserTabId: 99 },
+      },
+    },
+  };
+  let persisted = JSON.parse(JSON.stringify(stored.browserBridge));
+  const chromeApi = {
+    storage: { local: { get: async () => stored, set: async (value) => Object.assign(stored, value), remove: async () => {} } },
+    tabs: {
+      get: async (id) => {
+        if (id === 42) return { id: 42, active: true };
+        throw new Error('No tab with id: ' + id);
+      },
+      onRemoved: { addListener: () => {} },
+      onUpdated: { addListener: () => {} },
+    },
+  };
+  void persisted;
+  class FakeSocket {
+    static OPEN = 1;
+    static instances = [];
+    constructor() { this.readyState = FakeSocket.OPEN; this.listeners = {}; this.sent = []; FakeSocket.instances.push(this); }
+    addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+    send(message) { this.sent.push(JSON.parse(message)); }
+    close() {}
+    emit(type, event = {}) { for (const listener of this.listeners[type] ?? []) listener(event); }
+  }
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: FakeSocket });
+  await controller.load();
+  const socket = FakeSocket.instances[0];
+  socket.emit('open');
+  socket.emit('message', { data: JSON.stringify({ type: 'authenticated', connectionGeneration: 1 }) });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // The dead tab (browserTabId 99) should be unshared before the alive one is re-announced.
+  assert.ok(socket.sent.some((message) => message.type === 'tab_unshared' && message.tabId === 'tab_dead'));
+  assert.deepEqual(
+    socket.sent.filter((message) => message.type === 'tab_shared').map((message) => message.tab.id),
+    ['tab_alive'],
+  );
+  const state = controller.publicState();
+  assert.deepEqual(state.sharedTabs, [{ id: 'tab_alive', origin: 'https://alive.test', title: 'Alive' }]);
+  assert.equal(stored.browserBridge.sharedTabs.tab_dead, undefined);
+  assert.ok(stored.browserBridge.sharedTabs.tab_alive);
 });
 
 test('forgets a stale pairing when the Broker rejects it as NOT_PAIRED instead of looping "reconnecting" forever', async () => {

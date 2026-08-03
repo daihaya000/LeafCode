@@ -75,6 +75,13 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
         handledCommandIds = new Set();
         reconnectDelay = 500;
         pairingRequested = false;
+        // Re-validate persisted shared tabs before re-announcing them. A tab
+        // closed while the extension socket was disconnected (service worker
+        // idle, browser restart, crash, etc.) leaves a stale browserTabId in
+        // chrome.storage.local. Re-announcing it would register a phantom tab
+        // on the Broker that can never be snapshotted or controlled, and
+        // never be unshared (no onRemoved fires for an already-closed tab).
+        await pruneStaleSharedTabs();
         for (const tab of Object.values(state.sharedTabs)) send({ type: 'tab_shared', tab });
       } else if (message.type === 'paired' && typeof message.deviceKey === 'string') {
         // The WebUI allowed our pairing request. Persist the device key and
@@ -203,6 +210,25 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
     await persist();
     send({ type: 'tab_unshared', tabId });
     return publicState();
+  }
+
+  // Drop persisted shared tabs whose browserTabId no longer resolves to a
+  // live Chrome tab. Called on `authenticated` so a browser restart (or any
+  // disconnection that outlived a tab close) cannot leave phantom tabs that
+  // the Broker accepts but can never operate on. Reuses `unshare()` so
+  // persistence, `tab_unshared` delivery, and `publicState` stay consistent.
+  async function pruneStaleSharedTabs() {
+    if (typeof chromeApi.tabs.get !== 'function') return;
+    const stale = [];
+    for (const [tabId, shared] of Object.entries(state.sharedTabs)) {
+      try {
+        const tab = await chromeApi.tabs.get(shared.browserTabId);
+        if (!tab?.id) throw new Error('tab gone');
+      } catch {
+        stale.push(tabId);
+      }
+    }
+    for (const tabId of stale) await unshare(tabId);
   }
 
   async function collectSnapshot(tabId) {
