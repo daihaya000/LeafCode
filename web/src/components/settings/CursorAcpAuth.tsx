@@ -1,65 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Badge, Button } from "@/components/ui";
-import { getJson, sendJson } from "@/lib/client";
-
-type ProviderResponse = { connected?: unknown };
-
-function isConnected(value: unknown): boolean {
-  return Array.isArray(value) && value.includes("cursor-acp");
-}
+import { Badge } from "@/components/ui";
 
 export function CursorAcpAuth() {
-  const [connected, setConnected] = useState(false);
-  const mountedRef = useRef(false);
-  const savingRef = useRef(false);
-  const [key, setKey] = useState("");
-  const [state, setState] = useState<"loading" | "ready" | "saving" | "saved" | "error">("loading");
-  const [message, setMessage] = useState<string | null>(null);
-
-  const load = async () => {
-    setState("loading");
-    try {
-      const provider = await getJson<ProviderResponse>("/api/opencode/provider");
-      if (!mountedRef.current) return;
-      setConnected(isConnected(provider.connected));
-      setState("ready");
-    } catch {
-      if (!mountedRef.current) return;
-      setState("error");
-      setMessage("Cursorの認証状態を取得できませんでした");
-    }
-  };
-
-  useEffect(() => {
-    mountedRef.current = true;
-    void load();
-    return () => {
-      mountedRef.current = false;
-      savingRef.current = false;
-    };
-  }, []);
-
-  const save = async () => {
-    if (!key.trim() || state === "saving" || savingRef.current) return;
-    savingRef.current = true;
-    setState("saving");
-    setMessage(null);
-    try {
-      await sendJson("POST", "/api/provider/cursor-acp/auth", { key });
-      if (!mountedRef.current) return;
-      setKey("");
-      setConnected(true);
-      setState("saved");
-      setMessage("保存しました。反映にはOpenCodeの再起動が必要です。");
-    } catch (cause) {
-      if (!mountedRef.current) return;
-      setState("error");
-      setMessage(cause instanceof Error ? cause.message : "Cursor APIキーを保存できませんでした");
-    } finally {
-      savingRef.current = false;
-    }
-  };
-
   return (
     <section aria-labelledby="cursor-acp-auth-heading">
       <h2 id="cursor-acp-auth-heading" className="mb-3 text-sm font-semibold text-muted">Cursor ACP</h2>
@@ -67,26 +8,17 @@ export function CursorAcpAuth() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-text">Cursor API</h3>
-              {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
+              <h3 className="text-sm font-semibold text-text">Cursor Agent CLI</h3>
+              <Badge tone="success">CLIプロキシ</Badge>
             </div>
-            <p className="mt-1 text-xs text-faint">CursorのAPIキーをWebUIから安全に保存します。キー自体は表示・保存ログ出力しません。</p>
-          </div>
-          <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-            <input
-              type="password"
-              value={key}
-              onChange={(event) => setKey(event.target.value)}
-              placeholder="Cursor APIキー"
-              aria-label="Cursor APIキー"
-              autoComplete="off"
-              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56"
-            />
-            <Button size="sm" onClick={() => void save()} disabled={!key.trim() || state === "saving"} busy={state === "saving"}>保存</Button>
+            <p className="mt-1 text-xs text-faint">
+              Cursor Agent CLIをローカルプロキシ経由で使用します。認証情報はCursor CLI側で管理されるため、WebUIでAPIキーを入力・保存する必要はありません。
+            </p>
           </div>
         </div>
-        {state === "saved" && message && <p className="mt-3 text-xs text-success" aria-live="polite">{message}</p>}
-        {state === "error" && message && <p className="mt-3 text-xs text-danger" role="alert">{message}</p>}
+        <p className="mt-3 text-xs text-muted">
+          未認証の場合はターミナルで <code className="rounded bg-bg px-1.5 py-0.5 font-mono text-text">cursor-agent login</code> を実行し、認証後にOpenCodeを再起動してください。
+        </p>
       </div>
     </section>
   );
