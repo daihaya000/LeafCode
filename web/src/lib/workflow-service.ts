@@ -252,6 +252,32 @@ export function assertNoActiveWorkflow(workspaceId: string): void {
   }
 }
 
+/** Stop an active run before an explicit archive action hides the task. */
+export function stopActiveWorkflowForArchive(workspaceId: string): void {
+  const database = getDb();
+  database.transaction(() => {
+    const run = activeRunRow(workspaceId);
+    if (!run) return;
+    const now = new Date().toISOString();
+    const updated = database
+      .prepare(
+        `UPDATE workflow_runs SET status = 'stopped', revision = revision + 1, updated_at = ?
+         WHERE id = ? AND revision = ? AND status NOT IN ('completed', 'failed', 'stopped', 'detached')`,
+      )
+      .run(now, run.id, run.revision);
+    if (updated.changes !== 1) {
+      throw new WorkflowServiceError("workflow revision conflict", 409);
+    }
+    database
+      .prepare(
+        `UPDATE workflow_node_attempts SET status = 'stopped', revision = revision + 1, finished_at = ?
+         WHERE node_run_id IN (SELECT id FROM workflow_node_runs WHERE workflow_run_id = ?)
+           AND status IN ('creating_session', 'dispatching', 'running')`,
+      )
+      .run(now, run.id);
+  })();
+}
+
 export function assertNoActiveWorkflowForDirectory(directory: string): void {
   const rows = getDb()
     .prepare(

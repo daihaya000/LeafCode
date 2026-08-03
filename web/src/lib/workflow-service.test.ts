@@ -21,6 +21,7 @@ const {
   getWorkflow,
   reattachWorkflow,
   retryWorkflowNode,
+  stopActiveWorkflowForArchive,
   updateWorkflow,
   updateWorkflowNode,
   WorkflowServiceError,
@@ -250,5 +251,18 @@ describe("workflow service", () => {
     expect(() =>
       updateWorkflow({ workspaceId: "missing", action: "stop", workflowRevision: 0 }),
     ).toThrow(WorkflowServiceError);
+  });
+
+  test("stops an active workflow when archiving is explicitly requested", () => {
+    const workspaceRevision = setupWorkspace("ws-archive-active", "ses-archive-active");
+    createWorkflow({
+      workspaceId: "ws-archive-active",
+      workspaceRevision,
+      taskContext: { goal: "goal", acceptance: [], constraints: [] },
+    });
+
+    expect(() => stopActiveWorkflowForArchive("ws-archive-active")).not.toThrow();
+    expect(getWorkflow("ws-archive-active")?.run?.status).toBe("stopped");
+    expect(() => stopActiveWorkflowForArchive("ws-archive-active")).not.toThrow();
   });
 });
