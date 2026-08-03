@@ -108,19 +108,10 @@ export function markHangRetryBody(body: Record<string, unknown>): Record<string,
  * mutation with up to a 290s upstream timeout (see
  * `LONG_RUNNING_UPSTREAM_TIMEOUT_MS` in `app/api/opencode/[...path]/route.ts`).
  * The default 60s client timeout aborts the request well before the BFF can
- * legitimately finish (e.g. `/loop 2m`), so `sendCommand` alone uses this
- * longer timeout, kept just above the BFF's 290s (and within the route's
- * 300s `maxDuration`) so the BFF—not the client—produces the terminal
- * (Japanese 408) response when the upstream truly times out.
+ * legitimately finish, so `sendCommand` alone uses this longer timeout just
+ * above the BFF's 290s timeout and within the route's 300s `maxDuration`.
  */
-/**
- * `session.command` is proxied by the BFF with a shorter timeout (see
- * LONG_RUNNING_UPSTREAM_TIMEOUT_MS in app/api/opencode/[...path]/route.ts).
- * Keep the client timeout just above the BFF timeout so the BFF produces the
- * terminal (Japanese 408) response, but short enough that a hung command does
- * not leave the session unresponsive for many minutes.
- */
-export const SESSION_COMMAND_TIMEOUT_MS = 125_000;
+export const SESSION_COMMAND_TIMEOUT_MS = 295_000;
 
 /**
  * While a visible session is busy, periodically reconcile from REST. Some

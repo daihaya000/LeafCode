@@ -22,12 +22,10 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
 
 /**
  * Synchronous mutations (session.command / session.prompt) block until the
- * engine finishes running the command. Previously this was 290s under
- * maxDuration 300s, which left hung commands (e.g. detached `start` processes)
- * visible as "working" for 5+ minutes. Shorten to 2 minutes so the BFF returns
- * a clear Japanese 408 before the user perceives the session as frozen.
+ * engine finishes running the command. Keep this below the route's 300s
+ * maxDuration while allowing legitimate five-minute commands to finish.
  */
-const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 120_000;
+const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
 
 /**
  * A prompt/command written straight into a session. Any of these is a "manual

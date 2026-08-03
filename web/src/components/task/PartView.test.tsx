@@ -197,7 +197,7 @@ describe("PartView cancelled tool display", () => {
 });
 
 describe("PartView long-running tool display", () => {
-  it("warns when a shell tool has run for two minutes", () => {
+  it("warns when a shell tool has run for the configured five-minute threshold", () => {
     vi.useFakeTimers();
     const startedAt = new Date("2026-08-01T00:00:00Z").getTime();
     vi.setSystemTime(startedAt);
@@ -217,7 +217,7 @@ describe("PartView long-running tool display", () => {
     expect(screen.queryByTestId("long-running-tool-warning")).toBeNull();
 
     act(() => {
-      vi.advanceTimersByTime(120_000);
+      vi.advanceTimersByTime(300_000);
     });
 
     expect(screen.getByTestId("long-running-tool-warning").textContent).toContain(

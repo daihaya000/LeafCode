@@ -28,6 +28,7 @@ import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { formatElapsed, stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
 import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
+import { readHangTimeoutMs, subscribeHangTimeout } from "@/lib/hang-timeout";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
 import { ProviderIcon } from "./ProviderIcon";
@@ -174,8 +175,6 @@ function toolLabel(tool: string): string {
 }
 
 const EMPTY_TASK_CALL_IDS: string[] = [];
-const LONG_RUNNING_TOOL_SECONDS = 2 * 60;
-
 const ToolPartView = memo(function ToolPartView({
   part,
   directory,
@@ -198,6 +197,7 @@ const ToolPartView = memo(function ToolPartView({
   const tool = part.tool ?? "tool";
   const isShellTool = /bash|shell/i.test(tool);
   const active = status === "running" || status === "pending";
+  const [hangTimeoutMs, setHangTimeoutMs] = useState(readHangTimeoutMs);
   const [elapsedSeconds, setElapsedSeconds] = useState(() => elapsedForTool(state) ?? 0);
   useEffect(() => {
     if (!active || state?.time?.start == null) return;
@@ -206,8 +206,12 @@ const ToolPartView = memo(function ToolPartView({
     const timer = window.setInterval(update, 1_000);
     return () => window.clearInterval(timer);
   }, [active, state]);
+  useEffect(() => {
+    const onChange = () => setHangTimeoutMs(readHangTimeoutMs());
+    return subscribeHangTimeout(onChange);
+  }, []);
   const longRunning =
-    isShellTool && active && elapsedSeconds >= LONG_RUNNING_TOOL_SECONDS;
+    isShellTool && active && elapsedSeconds * 1_000 >= hangTimeoutMs;
   const isTaskTool = isTaskToolName(tool);
   const nestedActive =
     isTaskTool &&
@@ -350,7 +354,7 @@ const ToolPartView = memo(function ToolPartView({
         >
           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            2分以上実行中です。ログが増えていない場合はハングの可能性があります。
+            {Math.round(hangTimeoutMs / 60_000)}分以上実行中です。ログが増えていない場合はハングの可能性があります。
             必要なら上部の停止ボタンで中断できます。
           </span>
         </div>

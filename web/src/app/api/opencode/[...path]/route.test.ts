@@ -668,7 +668,7 @@ describe("upstream timeout handling", () => {
 
     expect(response.status).toBe(408);
     const body = (await response.json()) as { error: string; detail?: string };
-    expect(body.error).toMatch(/120秒/);
+    expect(body.error).toMatch(/290秒/);
     expect(body.error).toMatch(/タイムアウト/);
     expect(body.error).not.toContain("The operation was aborted");
     fetchMock.mockRestore();
