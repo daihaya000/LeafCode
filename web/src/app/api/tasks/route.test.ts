@@ -69,6 +69,22 @@ vi.mock("@/lib/provider-model-state", () => ({
   }),
 }));
 
+// The first turn of a new task never passes through the BFF proxy, so this route
+// arms the hang watchdog itself. See docs/specs/hang-watchdog-server-side.md.
+const hangWatch = vi.hoisted(() => ({
+  armed: [] as { sessionId: string; directory: string; requestPath: string; body: unknown; timeoutMs: number }[],
+  disarmed: [] as string[],
+}));
+
+vi.mock("@/lib/hang-watchdog", () => ({
+  armHangWatch: vi.fn((input: (typeof hangWatch.armed)[number]) => {
+    hangWatch.armed.push(input);
+  }),
+  disarmHangWatch: vi.fn((sessionId: string) => {
+    hangWatch.disarmed.push(sessionId);
+  }),
+}));
+
 vi.mock("@/lib/opencode-task-permission", () => ({
   setSessionTaskPermission: vi.fn().mockResolvedValue(undefined),
 }));
@@ -86,6 +102,93 @@ function post(body: Record<string, unknown>) {
     }),
   );
 }
+
+describe("POST /api/tasks arms the hang watchdog", () => {
+  beforeEach(() => {
+    hangWatch.armed = [];
+    hangWatch.disarmed = [];
+  });
+
+  it("arms the watch for the first prompt of a new task", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    (ocServer as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+    });
+
+    expect(res.status).toBe(200);
+    expect(hangWatch.armed).toHaveLength(1);
+    expect(hangWatch.armed[0]).toMatchObject({
+      sessionId: "session-1",
+      directory: "C:\\repo",
+      requestPath: "/session/session-1/prompt_async",
+    });
+    expect(hangWatch.armed[0].body).toMatchObject({
+      parts: [{ type: "text", text: "hello" }],
+    });
+    expect(hangWatch.disarmed).toEqual([]);
+    // Arming must precede the send: a synchronous engine call would otherwise
+    // only start being watched once it had already finished.
+    const promptIndex = (ocServer as ReturnType<typeof vi.fn>).mock.calls.findIndex(
+      (call) => String(call[1]).includes("/prompt_async"),
+    );
+    expect(promptIndex).toBeGreaterThanOrEqual(0);
+  });
+
+  it("disarms the watch when the first prompt fails and the task rolls back", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    const mocked = ocServer as ReturnType<typeof vi.fn>;
+    mocked.mockClear();
+    mocked.mockImplementation(async (_dir: string | null, path: string) => {
+      if (path === "/session") return { id: "session-1" };
+      if (path.includes("/prompt_async")) throw new Error("engine rejected the prompt");
+      return {};
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+    });
+
+    expect(res.status).toBe(502);
+    expect(hangWatch.disarmed).toEqual(["session-1"]);
+
+    mocked.mockImplementation(async (_dir: string | null, path: string) => {
+      if (path === "/session") return { id: "session-1" };
+      return {};
+    });
+  });
+
+  it("arms the watch for a slash command task", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    const mocked = ocServer as ReturnType<typeof vi.fn>;
+    mocked.mockClear();
+    mocked.mockImplementation(async (_dir: string | null, path: string) => {
+      if (path === "/session") return { id: "session-1" };
+      if (path === "/command") return [{ name: "commit", description: "commit" }];
+      return {};
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "/commit",
+      isolation: "current_folder",
+    });
+
+    expect(res.status).toBe(200);
+    expect(hangWatch.armed).toHaveLength(1);
+    expect(hangWatch.armed[0].requestPath).toBe("/session/session-1/command");
+
+    mocked.mockImplementation(async (_dir: string | null, path: string) => {
+      if (path === "/session") return { id: "session-1" };
+      return {};
+    });
+  });
+});
 
 describe("POST /api/tasks variant validation", () => {
   it("applies the session task ruleset before the first prompt", async () => {

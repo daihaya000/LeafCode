@@ -27,6 +27,22 @@ vi.mock("@/lib/goal-loop", () => ({
   }),
 }));
 
+// The proxy arms the server-side hang watchdog for every send it forwards.
+// See docs/specs/hang-watchdog-server-side.md.
+const hangWatch = vi.hoisted(() => ({
+  armed: [] as { sessionId: string; directory: string; requestPath: string; body: unknown; timeoutMs: number }[],
+  disarmed: [] as string[],
+}));
+
+vi.mock("@/lib/hang-watchdog", () => ({
+  armHangWatch: vi.fn((input: (typeof hangWatch.armed)[number]) => {
+    hangWatch.armed.push(input);
+  }),
+  disarmHangWatch: vi.fn((sessionId: string) => {
+    hangWatch.disarmed.push(sessionId);
+  }),
+}));
+
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { SSE_UPSTREAM_CONNECT_TIMEOUT_MS } from "@/lib/sse-health";
 import { GET, POST } from "./route";
@@ -35,6 +51,8 @@ beforeEach(() => {
   goalLoopHook.workspaceIds = [];
   goalLoopHook.outcomes = [];
   goalLoopHook.calls = [];
+  hangWatch.armed = [];
+  hangWatch.disarmed = [];
 });
 
 function post(body: string, contentType = "application/json") {
@@ -997,6 +1015,88 @@ describe("manual send pauses a live goal loop (docs/specs/goal-loop.md 是正 D)
 
     expect(response.status).toBe(200);
     expect(goalLoopHook.calls).toEqual([]);
+    fetchMock.mockRestore();
+  });
+});
+
+describe("arms the server-side hang watchdog (docs/specs/hang-watchdog-server-side.md)", () => {
+  it("arms the watch for a forwarded prompt_async", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ ok: true }));
+
+    const response = await sessionPost("prompt_async", {
+      parts: [{ type: "text", text: "go" }],
+      agent: "build",
+    });
+
+    expect(response.status).toBe(200);
+    expect(hangWatch.armed).toHaveLength(1);
+    expect(hangWatch.armed[0]).toMatchObject({
+      sessionId: "session-1",
+      directory: "C:\\\\repo",
+      requestPath: "/session/session-1/prompt_async",
+      body: { parts: [{ type: "text", text: "go" }], agent: "build" },
+    });
+    expect(hangWatch.disarmed).toEqual([]);
+    fetchMock.mockRestore();
+  });
+
+  it("arms the watch for a synchronous command with the long-running timeout", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ ok: true }));
+
+    await sessionPost("command", { command: "commit", arguments: "" });
+
+    expect(hangWatch.armed).toHaveLength(1);
+    expect(hangWatch.armed[0].requestPath).toBe("/session/session-1/command");
+    expect(hangWatch.armed[0].timeoutMs).toBe(290_000);
+    fetchMock.mockRestore();
+  });
+
+  it("disarms the watch when the engine rejects the send", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ error: "unknown session" }, 404));
+
+    const response = await sessionPost("prompt_async", {
+      parts: [{ type: "text", text: "go" }],
+    });
+
+    expect(response.status).toBe(404);
+    expect(hangWatch.armed).toHaveLength(1);
+    expect(hangWatch.disarmed).toEqual(["session-1"]);
+    fetchMock.mockRestore();
+  });
+
+  it("disarms the watch when the engine is unreachable", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("connect ECONNREFUSED"));
+
+    const response = await sessionPost("prompt_async", {
+      parts: [{ type: "text", text: "go" }],
+    });
+
+    expect(response.status).toBe(503);
+    expect(hangWatch.disarmed).toEqual(["session-1"]);
+    fetchMock.mockRestore();
+  });
+
+  it("does not arm a watch for session reads", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse([]));
+
+    await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/session/session-1/message?directory=C%3A%5C%5Crepo",
+      ) as never,
+      { params: Promise.resolve({ path: ["session", "session-1", "message"] }) },
+    );
+
+    expect(hangWatch.armed).toEqual([]);
     fetchMock.mockRestore();
   });
 });

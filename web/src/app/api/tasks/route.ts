@@ -10,6 +10,7 @@ import {
   type AutoProviderUsage,
 } from "@/lib/auto-model";
 import { bindSession, touchProjectOpened } from "@/lib/db";
+import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
 import { isIntelligenceVariant, type IntelligenceVariant } from "@/lib/model-variants";
 import { OcError, ocServer } from "@/lib/oc-server";
 import { readProviderModelState } from "@/lib/provider-model-state";
@@ -34,6 +35,13 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Resume timeouts stored on the hang watch for this task's first turn. They
+ * mirror the client-side send timeouts in `useSessionStream.ts`.
+ */
+const SESSION_PROMPT_TIMEOUT_MS = 60_000;
+const SESSION_COMMAND_TIMEOUT_MS = 290_000;
 
 type ImageFile = { uri: string; mime: string; name?: string };
 type ModelReference = { providerID?: string; modelID?: string };
@@ -487,6 +495,16 @@ export async function POST(req: NextRequest) {
       }
       if (body.agent?.trim()) commandBody.agent = body.agent.trim();
       if (variant) commandBody.variant = variant;
+      // The first turn of a new task is fired here, not through the BFF proxy,
+      // so it has to arm the hang watchdog itself.
+      // See docs/specs/hang-watchdog-server-side.md.
+      armHangWatch({
+        sessionId: session.id,
+        directory: workspace.absolute_path,
+        requestPath: `/session/${session.id}/command`,
+        body: commandBody,
+        timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
+      });
       await ocServer(
         workspace.absolute_path,
         `/session/${session.id}/command`,
@@ -512,6 +530,15 @@ export async function POST(req: NextRequest) {
       }
       if (body.agent?.trim()) promptBody.agent = body.agent.trim();
       if (variant) promptBody.variant = variant;
+      // Same as the command branch: arm before the send so a first turn that
+      // hangs is still stopped and resumed once.
+      armHangWatch({
+        sessionId: session.id,
+        directory: workspace.absolute_path,
+        requestPath: `/session/${session.id}/prompt_async`,
+        body: promptBody,
+        timeoutMs: SESSION_PROMPT_TIMEOUT_MS,
+      });
       await ocServer(
         workspace.absolute_path,
         `/session/${session.id}/prompt_async`,
@@ -533,6 +560,7 @@ export async function POST(req: NextRequest) {
     // Roll back the freshly provisioned workspace so no orphan remains.
     // If bind never ran, still best-effort delete the OpenCode session.
     if (createdSessionId) {
+      disarmHangWatch(createdSessionId);
       await ocServer(
         workspace.absolute_path,
         `/session/${createdSessionId}`,

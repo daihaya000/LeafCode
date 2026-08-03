@@ -3,6 +3,7 @@ import { assertAllowedDirectory } from "@/lib/allowlist";
 import { findWorkspaceIdsBySession } from "@/lib/db";
 import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
 import { pauseGoalLoopForManualSend } from "@/lib/goal-loop";
+import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
 import { isIntelligenceVariant } from "@/lib/model-variants";
 import { ocServer } from "@/lib/oc-server";
 import {
@@ -38,6 +39,20 @@ const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
 function manualSendSessionId(method: string, pathname: string): string | null {
   if (method !== "POST") return null;
   const match = /^\/session\/([^/]+)\/(?:prompt_async|prompt|command)$/.exec(pathname);
+  return match ? match[1] : null;
+}
+
+/**
+ * POST paths that start a turn, and therefore arm the server-side hang watchdog.
+ * Wider than `manualSendSessionId` on purpose: every path that can leave a
+ * session busy must be recoverable. See
+ * docs/specs/hang-watchdog-server-side.md.
+ */
+function hangWatchSessionId(method: string, pathname: string): string | null {
+  if (method !== "POST") return null;
+  const match = /^(?:\/api)?\/session\/([^/]+)\/(?:prompt_async|prompt|command|message)$/.exec(
+    pathname,
+  );
   return match ? match[1] : null;
 }
 
@@ -420,6 +435,8 @@ async function proxy(
 
   let requestBody: ArrayBuffer | undefined;
   let upstream: Response;
+  /** Session whose hang watch this request armed, so a rejected send can undo it. */
+  let armedWatchSessionId: string | null = null;
   /**
    * Bounds only the wait for upstream SSE response headers; cleared the moment
    * they arrive so an established stream is never timed out.
@@ -508,6 +525,29 @@ async function proxy(
           }
         }
       }
+
+      // Arm the server-side hang watchdog before the send is forwarded:
+      // `session.command` / `session.prompt` block until the turn finishes, so
+      // arming afterwards would start watching only once it is already over.
+      // See docs/specs/hang-watchdog-server-side.md.
+      const watchSessionId = hangWatchSessionId(req.method, pathname);
+      if (watchSessionId && directory) {
+        try {
+          const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;
+          armHangWatch({
+            sessionId: watchSessionId,
+            directory,
+            requestPath: pathname,
+            body,
+            timeoutMs: isLongRunningSyncMutation(req.method, pathname)
+              ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
+              : UPSTREAM_TIMEOUT_MS,
+          });
+          armedWatchSessionId = watchSessionId;
+        } catch {
+          // A non-JSON body cannot be replayed; leave this turn unwatched.
+        }
+      }
     }
     const upstreamTimeoutMs = isLongRunningSyncMutation(req.method, pathname)
       ? LONG_RUNNING_UPSTREAM_TIMEOUT_MS
@@ -561,6 +601,12 @@ async function proxy(
     clearSseConnectTimer();
   } catch (err) {
     clearSseConnectTimer();
+    // The send never reached the engine, so there is no turn to watch. A client
+    // abort/timeout on a synchronous command is deliberately *not* treated as a
+    // failure here: the engine keeps running that turn.
+    if (armedWatchSessionId && !(err instanceof DOMException && err.name === "TimeoutError")) {
+      disarmHangWatch(armedWatchSessionId);
+    }
     // A stalled engine that never starts the stream must surface as a fast,
     // retryable error. Holding the request open instead leaves the browser's
     // EventSource in CONNECTING with no `error` event to reconnect from.
@@ -598,6 +644,11 @@ async function proxy(
       { error: "OpenCode engine unavailable", detail: message },
       { status: 503 },
     );
+  }
+
+  // A rejected send (invalid model, unknown session…) never started a turn.
+  if (armedWatchSessionId && !upstream.ok) {
+    disarmHangWatch(armedWatchSessionId);
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
