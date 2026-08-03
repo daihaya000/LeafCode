@@ -5,7 +5,7 @@ import { apiUrl, ApiError, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import { isSseConnectStalled, isSseSilent, SSE_SILENCE_MS } from "./sse-health";
-import { readHangTimeoutMs, subscribeHangTimeout } from "./hang-timeout";
+import { HANG_RETRY_METADATA_KEY as HANG_RETRY_KEY } from "./hang-retry";
 import type {
   MessageInfo,
   MessageWithParts,
@@ -72,36 +72,14 @@ export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
 
 /** Backwards-compatible default; the active value is read from Settings. */
 export const SESSION_HANG_TIMEOUT_MS = 5 * 60_000;
-/** Metadata written to the retry prompt so the UI can hide only that copy. */
-export const HANG_RETRY_METADATA_KEY = "webui_hang_retry";
 
-type AutoRetryRequest = {
-  path: string;
-  body: Record<string, unknown>;
-  timeoutMs: number;
-};
-
-/** Clone a prompt body and mark its text parts as an automatic hang retry. */
-export function markHangRetryBody(body: Record<string, unknown>): Record<string, unknown> {
-  const parts = body.parts;
-  if (!Array.isArray(parts)) return body;
-  return {
-    ...body,
-    parts: parts.map((part) => {
-      if (!part || typeof part !== "object" || Array.isArray(part)) return part;
-      const value = part as Record<string, unknown>;
-      if (value.type !== "text") return part;
-      const metadata =
-        value.metadata && typeof value.metadata === "object" && !Array.isArray(value.metadata)
-          ? value.metadata
-          : {};
-      return {
-        ...value,
-        metadata: { ...metadata, [HANG_RETRY_METADATA_KEY]: true },
-      };
-    }),
-  };
-}
+/**
+ * Hang detection and the single automatic resume now run server-side
+ * (`hang-watchdog.ts`), so a hung turn is recovered even when no browser tab is
+ * showing that task. These re-exports keep the existing client import surface.
+ * See docs/specs/hang-watchdog-server-side.md.
+ */
+export { HANG_RETRY_METADATA_KEY, markHangRetryBody } from "./hang-retry";
 
 /**
  * `session.command` is proxied by the BFF as a long-running synchronous
@@ -390,7 +368,7 @@ export function filterCompactionContinueMessages(
       (part) =>
         part.type === "text" &&
         ((part.synthetic === true && part.metadata?.compaction_continue === true) ||
-          part.metadata?.[HANG_RETRY_METADATA_KEY] === true),
+          part.metadata?.[HANG_RETRY_KEY] === true),
     );
   });
 }
@@ -735,7 +713,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const pendingMutationRef = useRef(false);
   const abortingRef = useRef(false);
   const [aborting, setAborting] = useState(false);
-  const [hangTimeoutMs, setHangTimeoutMs] = useState(readHangTimeoutMs);
   const connectionRef = useRef<ConnectionState>(state.connection);
   /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
   const preferRestStatusRef = useRef(false);
@@ -748,8 +725,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   /** Tracks elapsed-time tick for the in-flight mutation. */
   const mutationElapsedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutationStartedAtRef = useRef<number | null>(null);
-  const autoRetryRequestRef = useRef<AutoRetryRequest | null>(null);
-  const autoRetryUsedRef = useRef(false);
   /** Stable ref to the latest abort() so sendPrompt/sendCommand can call it without a circular dep. */
   const abortRef = useRef<(reason?: string) => Promise<void>>(async () => {});
   /** The single in-flight resync pass, if any — see the `resync` wrapper. */
@@ -782,8 +757,6 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     dispatch({ kind: "reset", scopeKey, cached: readCachedSessionState(scopeKey) });
     pendingMutationRef.current = false;
     mutationStartedAtRef.current = null;
-    autoRetryRequestRef.current = null;
-    autoRetryUsedRef.current = false;
     preferRestStatusRef.current = false;
     idleStreakRef.current = 0;
     sessionActivityAtRef.current = Date.now();
@@ -793,62 +766,16 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     clearMutationTimers();
   }, [scopeKey, clearMutationTimers]);
 
-  // A session can keep its SSE connection alive while the active turn itself
-  // is stuck (for example, a detached shell process). Abort only after the
-  // full turn has been busy for five minutes, then retry the exact request
-  // once after abort() has completed and resync has observed the idle state.
+  // A session can keep its SSE connection alive while the active turn itself is
+  // stuck (for example, a detached shell process). Detection and the single
+  // automatic resume live in the server-side watchdog (`hang-watchdog.ts`) so
+  // they survive navigating away from the task, closing the tab, and a WebUI
+  // restart — see docs/specs/hang-watchdog-server-side.md. The client keeps only
+  // the elapsed-time display.
   useEffect(() => {
-    const onChange = () => setHangTimeoutMs(readHangTimeoutMs());
-    return subscribeHangTimeout(onChange);
-  }, []);
-
-  useEffect(() => {
-    const busy = state.status?.type === "busy" || state.status?.type === "retry";
-    if (!busy || !directory || !sessionId || autoRetryUsedRef.current) {
-      if (!busy) {
-        mutationStartedAtRef.current = null;
-        autoRetryRequestRef.current = null;
-        autoRetryUsedRef.current = false;
-      }
-      return;
-    }
-    const startedAt = mutationStartedAtRef.current ?? Date.now();
-    const remaining = Math.max(0, hangTimeoutMs - (Date.now() - startedAt));
-    const timer = window.setTimeout(() => {
-      const request = autoRetryRequestRef.current;
-      if (autoRetryUsedRef.current) return;
-      autoRetryUsedRef.current = true;
-      autoRetryRequestRef.current = null;
-      void (async () => {
-        await abortRef.current(
-          `${Number((hangTimeoutMs / 60_000).toFixed(1))}分間応答がないため停止し、同じ処理を1回だけ再開します`,
-        );
-        // A restored/reconnected session may still be busy after the original
-        // request body has been discarded. Stop it, but do not retry blindly.
-        if (!request) {
-          dispatch({ kind: "sessionError", message: "ハング検知後に処理を停止しました" });
-          return;
-        }
-        if (sessionRef.current !== sessionId || scopeRef.current !== scopeKey) return;
-        mutationStartedAtRef.current = Date.now();
-        dispatch({ kind: "status", status: { type: "busy" } });
-        dispatch({ kind: "sessionError", message: "ハング検知後に自動再開しました" });
-        try {
-          await ocJson(request.path, directory, {
-            method: "POST",
-            body: markHangRetryBody(request.body),
-            timeoutMs: request.timeoutMs,
-          });
-        } catch (error) {
-          dispatch({
-            kind: "sessionError",
-            message: error instanceof Error ? error.message : "自動再開に失敗しました",
-          });
-        }
-      })();
-    }, remaining);
-    return () => window.clearTimeout(timer);
-  }, [directory, hangTimeoutMs, scopeKey, sessionId, state.status?.type]);
+    if (state.status?.type === "busy" || state.status?.type === "retry") return;
+    mutationStartedAtRef.current = null;
+  }, [state.status?.type]);
 
   useEffect(() => {
     rememberSessionState(state);
@@ -1864,12 +1791,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (opts?.variant) {
         body.variant = opts.variant;
       }
-      autoRetryRequestRef.current = {
-        path: `/session/${sid}/prompt_async`,
-        body,
-        timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
-      };
-      autoRetryUsedRef.current = false;
+      // The BFF proxy arms the server-side hang watchdog for this send.
       const stopMutationElapsed = startMutationElapsed(startedAt);
       try {
         await ocJson(`/session/${sid}/prompt_async`, directory, {
@@ -1938,12 +1860,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           ...(f.name ? { filename: f.name } : {}),
         }));
       }
-      autoRetryRequestRef.current = {
-        path: `/session/${sid}/command`,
-        body,
-        timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
-      };
-      autoRetryUsedRef.current = false;
+      // The BFF proxy arms the server-side hang watchdog for this send.
       const stopMutationElapsed = startMutationElapsed(startedAt);
       try {
         await ocJson(`/session/${sid}/command`, directory, {
