@@ -8,7 +8,13 @@ import { ensureRegistry } from "./registry";
 // `spawnSync` is used to invoke PowerShell for Recycle Bin on Windows. Mock
 // it so the tests don't actually touch the real Recycle Bin.
 const spawnSyncMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", () => ({ spawnSync: spawnSyncMock }));
+vi.mock("node:child_process", () => {
+  const mocked = { spawnSync: spawnSyncMock };
+  // Some transitive import in this test's module graph uses the default
+  // export form; without it vitest's interop throws "No default export is
+  // defined on the mock" before any test runs.
+  return { ...mocked, default: mocked };
+});
 
 import {
   activate,

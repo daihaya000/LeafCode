@@ -84,4 +84,10 @@ describe("looksLikeCompletionReport", () => {
       looksLikeCompletionReport("前置き\n\n# 完了報告\n\nやったこと\n- 修正した"),
     ).toBe(true);
   });
+
+  it("matches a heading padded with full-width spaces (U+3000)", () => {
+    // \s doesn't cover U+3000, which is common padding around a Japanese
+    // heading typed with a full-width IME.
+    expect(looksLikeCompletionReport("　完了報告　\n\nやったこと")).toBe(true);
+  });
 });

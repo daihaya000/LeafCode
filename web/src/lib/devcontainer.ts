@@ -48,12 +48,25 @@ export function stripJsoncComments(input: string): string {
   return out;
 }
 
+/**
+ * Drop a trailing comma before `}`/`]` — common in hand-edited
+ * `devcontainer.json` files and otherwise a JSON.parse failure. Runs after
+ * comment stripping, so the input has no comments left to misinterpret;
+ * the regex still only touches a `,` immediately followed by closing
+ * whitespace + bracket, which a string's own content essentially never is.
+ */
+function stripTrailingCommas(input: string): string {
+  return input.replace(/,(\s*[}\]])/g, "$1");
+}
+
 export type DevcontainerInfo = {
   present: boolean;
   configPath: string | null;
   name: string | null;
   mode: "host-fallback" | "unsupported";
   message: string;
+  /** True when a config file exists but couldn't be read/parsed as JSONC. */
+  parseError: boolean;
 };
 
 export function detectDevcontainer(projectRoot: string): DevcontainerInfo {
@@ -68,17 +81,19 @@ export function detectDevcontainer(projectRoot: string): DevcontainerInfo {
       configPath: null,
       name: null,
       mode: "unsupported",
+      parseError: false,
       message: "No .devcontainer config found",
     };
   }
 
   let name: string | null = null;
+  let parseError = false;
   try {
     const raw = fs.readFileSync(configPath, "utf8");
-    const json = JSON.parse(stripJsoncComments(raw));
+    const json = JSON.parse(stripTrailingCommas(stripJsoncComments(raw)));
     if (typeof json.name === "string") name = json.name;
   } catch {
-    /* ignore parse errors */
+    parseError = true;
   }
 
   return {
@@ -86,6 +101,7 @@ export function detectDevcontainer(projectRoot: string): DevcontainerInfo {
     configPath,
     name,
     mode: "host-fallback",
+    parseError,
     message:
       "Dev Container detected. OpenCode WebUI Phase 3 attaches the host project path for now; full container lifecycle is not implemented yet.",
   };

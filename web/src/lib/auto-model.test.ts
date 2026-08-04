@@ -6,6 +6,7 @@ import {
   chooseAutoModel,
   classifyPrompt,
   DEFAULT_AUTO_OPTIMIZE_MODE,
+  EMPTY_ROUTE_OVERRIDES,
   isAutoOptimizeMode,
   isRouteOverridesEmpty,
   modelCostTier,
@@ -1265,5 +1266,13 @@ describe("chooseAutoModel with overrides", () => {
     const without = choose({ mode: "cost", tier: "standard" });
     expect(withOverrides?.modelID).toBe(without?.modelID);
     expect(withOverrides?.variant).toBe(without?.variant);
+  });
+});
+
+describe("EMPTY_ROUTE_OVERRIDES", () => {
+  it("is frozen so an accidental in-place mutation throws instead of corrupting every caller's default", () => {
+    expect(() => {
+      (EMPTY_ROUTE_OVERRIDES as Record<string, unknown>).standard = { variantOrder: ["high"] };
+    }).toThrow();
   });
 });

@@ -37,5 +37,7 @@ export function lastAssistantText(messages: MessageWithParts[]): string {
  * actually delivering one.
  */
 export function looksLikeCompletionReport(text: string): boolean {
-  return /^\s*#{0,6}\s*完了報告\s*$/m.test(text);
+  // `\s` doesn't cover U+3000 (full-width space), which is common padding
+  // around a Japanese heading — match it explicitly alongside ASCII whitespace.
+  return /^[\s　]*#{0,6}[\s　]*完了報告[\s　]*$/m.test(text);
 }

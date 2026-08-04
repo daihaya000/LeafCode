@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { stripJsoncComments } from "./devcontainer";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { detectDevcontainer, stripJsoncComments } from "./devcontainer";
 
 describe("stripJsoncComments", () => {
   it("removes line comments", () => {
@@ -44,5 +47,51 @@ describe("stripJsoncComments", () => {
     const parsed = JSON.parse(stripJsoncComments(raw));
     expect(parsed.name).toBe("my-app");
     expect(parsed.customizations.docs).toBe("https://aka.ms/devcontainer");
+  });
+});
+
+describe("detectDevcontainer", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "devcontainer-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  function writeConfig(content: string) {
+    fs.mkdirSync(path.join(root, ".devcontainer"));
+    fs.writeFileSync(path.join(root, ".devcontainer", "devcontainer.json"), content);
+  }
+
+  it("reports no config found with parseError false", () => {
+    expect(detectDevcontainer(root)).toEqual(
+      expect.objectContaining({ present: false, parseError: false, name: null }),
+    );
+  });
+
+  it("parses a config with a trailing comma (common hand-edited style)", () => {
+    // Regression: JSON.parse alone rejects a trailing comma, which is common
+    // enough in hand-edited devcontainer.json that it shouldn't be treated
+    // as a parse failure.
+    writeConfig('{\n  "name": "my-app",\n  "image": "ubuntu",\n}\n');
+    const info = detectDevcontainer(root);
+    expect(info).toEqual(
+      expect.objectContaining({ present: true, name: "my-app", parseError: false }),
+    );
+  });
+
+  it("distinguishes an unparsable config from a config with no name field", () => {
+    writeConfig("{ this is not json");
+    const broken = detectDevcontainer(root);
+    expect(broken.name).toBeNull();
+    expect(broken.parseError).toBe(true);
+
+    fs.writeFileSync(path.join(root, ".devcontainer", "devcontainer.json"), "{}");
+    const noName = detectDevcontainer(root);
+    expect(noName.name).toBeNull();
+    expect(noName.parseError).toBe(false);
   });
 });

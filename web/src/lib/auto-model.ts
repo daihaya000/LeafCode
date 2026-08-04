@@ -93,8 +93,14 @@ export type TierRouteOverride = {
 /** Full override map. Missing tiers fall back to the preset. */
 export type RouteOverrides = Partial<Record<AutoTier, TierRouteOverride>>;
 
-/** Empty override (all presets). The canonical "no customization" value. */
-export const EMPTY_ROUTE_OVERRIDES: RouteOverrides = {};
+/**
+ * Empty override (all presets). The canonical "no customization" value,
+ * returned by reference from multiple call sites — frozen so a caller that
+ * mutates its result in place (e.g. `overrides[tier] = {...}`) throws
+ * instead of silently corrupting every other caller's "no customization"
+ * default.
+ */
+export const EMPTY_ROUTE_OVERRIDES: RouteOverrides = Object.freeze({});
 
 function isModelCostTier(value: unknown): value is ModelCostTier {
   return value === "cheap" || value === "mid" || value === "premium";

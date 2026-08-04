@@ -12,7 +12,11 @@ export async function GET(req: Request, context: Ctx): Promise<Response> {
   if (!initial) return Response.json({ error: "task not found" }, { status: 404 });
   const encoder = new TextEncoder();
   let closed = false;
-  const parsedLastEventId = Number(req.headers.get("last-event-id") ?? "");
+  // `Number("")` is 0 (not NaN), so a missing header must be checked
+  // explicitly — otherwise a brand-new workflow at revision 0 looks like an
+  // already-seen revision and the initial snapshot never gets published.
+  const lastEventIdHeader = req.headers.get("last-event-id");
+  const parsedLastEventId = lastEventIdHeader === null ? NaN : Number(lastEventIdHeader);
   let lastRevision = Number.isFinite(parsedLastEventId) ? parsedLastEventId : -1;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
