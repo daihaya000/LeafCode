@@ -504,14 +504,18 @@ export function DiffPane({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
       <div className="shrink-0 border-b border-border bg-surface-2 px-3 py-2 text-[11px]">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-semibold text-muted">変更の所有者</span>
-          <span className="min-w-0 truncate text-text" title={currentSession?.title || agent || undefined}>
-            {currentSession?.title || agent || "現在のセッション"}
-          </span>
-          <span className="font-semibold text-muted">Session ID</span>
-          <code className="max-w-full truncate rounded bg-surface px-1.5 py-0.5 font-mono text-faint" title={sessionId ?? "未接続"}>
-            {sessionId ?? "未接続"}
-          </code>
+          <div className="flex min-w-0 items-center gap-x-1">
+            <span className="font-semibold text-muted">変更の所有者</span>
+            <span className="min-w-0 truncate text-text" title={currentSession?.title || agent || undefined}>
+              {currentSession?.title || agent || "現在のセッション"}
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center gap-x-1">
+            <span className="font-semibold text-muted">Session ID</span>
+            <code className="min-w-0 max-w-full truncate rounded bg-surface px-1.5 py-0.5 font-mono text-faint" title={sessionId ?? "未接続"}>
+              {sessionId ?? "未接続"}
+            </code>
+          </div>
           {sessions.length > 1 && (
             <span className="text-faint">同一ワークスペース: {sessions.length} セッション</span>
           )}
