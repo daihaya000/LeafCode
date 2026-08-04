@@ -432,6 +432,14 @@ export function createBrowserBridgeBroker({
       }
 
       if (message.type === 'request_pairing' && Object.keys(message).length === 1) {
+        // If this extension origin is already paired, skip creating a new human
+        // approval request and tell the extension to authenticate with the
+        // existing device key. This prevents the WebUI from re-showing a pairing
+        // card when the same extension reconnects (e.g. service worker restart).
+        if (pairedOrigin === origin && deviceKey !== null) {
+          socket.send(JSON.stringify({ type: 'paired', deviceKey }));
+          return;
+        }
         const existingRequestId = socketPairingRequestId.get(socket);
         if (existingRequestId) {
           socket.send(JSON.stringify({ type: 'pairing_requested', requestId: existingRequestId }));

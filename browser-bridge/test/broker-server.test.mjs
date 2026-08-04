@@ -165,6 +165,28 @@ test('expires an undecided pairing request and drops it from the pending list wh
   assert.deepEqual(afterDisconnect.requests, []);
 });
 
+test('an already-paired extension origin does not create a new pending pairing request', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const origin = 'chrome-extension://abcdefghijklmno';
+  const paired = await pairOnly(broker, origin);
+  assert.equal(paired.type, 'paired');
+  assert.match(paired.deviceKey, /^[A-Za-z0-9_-]{20,}$/);
+
+  // A fresh unauthenticated socket from the same extension origin should not
+  // surface another approval card in the WebUI; it is told to use the existing
+  // pairing immediately.
+  const reconnect = await connectSocket(broker.wsUrl, origin);
+  t.after(() => reconnect.close());
+  const reissued = await nextMessage(reconnect, () => reconnect.send(JSON.stringify({ type: 'request_pairing' })));
+  assert.deepEqual(reissued, { type: 'paired', deviceKey: paired.deviceKey });
+
+  const list = await fetch(`${broker.url}/internal/pairing-requests`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(list.requests, []);
+});
+
 test('pins reconnect authentication to the paired extension origin and device key', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
