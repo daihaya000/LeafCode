@@ -14,15 +14,26 @@ const cache = new Map<string, { at: number; stat: DirStat }>();
 const EMPTY: DirStat = { git: false, branch: null, additions: 0, deletions: 0, files: 0 };
 
 /** True for a `git status --porcelain` line that refers to our own metadata. */
-function isWebuiMeta(line: string): boolean {
-  // Porcelain line is "XY <path>"; strip the 2-char status + space.
-  const p = line.slice(3).replace(/^"|"$/g, "").replace(/\\/g, "/");
+function isMetaPath(p: string): boolean {
+  const norm = p.replace(/^"|"$/g, "").replace(/\\/g, "/");
   return (
-    p === ".opencode-webui" ||
-    p.startsWith(".opencode-webui/") ||
-    p === ".webui-worktrees" ||
-    p.startsWith(".webui-worktrees/")
+    norm === ".opencode-webui" ||
+    norm.startsWith(".opencode-webui/") ||
+    norm === ".webui-worktrees" ||
+    norm.startsWith(".webui-worktrees/")
   );
+}
+
+/** True for a `git status --porcelain` line that refers to our own metadata. */
+function isWebuiMeta(line: string): boolean {
+  // Porcelain line is "XY <path>"; strip the 2-char status + space. Renames
+  // and copies are "XY orig -> new" — check both sides, not just the whole
+  // "orig -> new" string, or a rename into/out of our metadata dir leaks
+  // into the visible file count.
+  const rest = line.slice(3);
+  const arrow = rest.indexOf(" -> ");
+  if (arrow === -1) return isMetaPath(rest);
+  return isMetaPath(rest.slice(0, arrow)) || isMetaPath(rest.slice(arrow + 4));
 }
 
 function parseShortstat(text: string): { additions: number; deletions: number } {

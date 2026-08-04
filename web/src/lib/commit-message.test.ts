@@ -35,4 +35,16 @@ describe("suggestCommitMessage", () => {
       ]),
     ).toBe("Update 2 files");
   });
+
+  it("handles Windows backslash-separated paths the same as forward-slash paths", () => {
+    expect(
+      suggestCommitMessage([{ path: "web\\src\\lib\\git.ts", untracked: false }]),
+    ).toBe("Update git.ts");
+    expect(
+      suggestCommitMessage([
+        { path: "web\\src\\lib\\a.ts", untracked: false },
+        { path: "web\\src\\lib\\b.ts", untracked: false },
+      ]),
+    ).toBe("Update 2 files in web/src/lib");
+  });
 });

@@ -73,28 +73,36 @@ async function moveGitDir(src: string, dest: string): Promise<void> {
 
 async function cloneToTemp(): Promise<{ tmpDir: string; defaultBranch: string }> {
   const tmpDir = await mkdtemp(join(tmpdir(), "opencode-webui-git-restore-"));
-  await execFileAsync(
-    "git",
-    ["clone", "--origin", "origin", "--no-checkout", GITHUB_REPO_URL, tmpDir],
-    {
+  try {
+    await execFileAsync(
+      "git",
+      ["clone", "--origin", "origin", "--no-checkout", GITHUB_REPO_URL, tmpDir],
+      {
+        encoding: "utf8",
+        timeout: CLONE_TIMEOUT_MS,
+        windowsHide: true,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      },
+    );
+    const gitDir = join(tmpDir, ".git");
+    await execFileAsync("git", ["--git-dir", gitDir, "rev-parse", "--verify", "HEAD"], {
       encoding: "utf8",
-      timeout: CLONE_TIMEOUT_MS,
+      timeout: 10_000,
       windowsHide: true,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-    },
-  );
-  const gitDir = join(tmpDir, ".git");
-  await execFileAsync("git", ["--git-dir", gitDir, "rev-parse", "--verify", "HEAD"], {
-    encoding: "utf8",
-    timeout: 10_000,
-    windowsHide: true,
-  });
-  const { stdout } = await execFileAsync(
-    "git",
-    ["--git-dir", gitDir, "symbolic-ref", "--short", "HEAD"],
-    { encoding: "utf8", timeout: 10_000, windowsHide: true },
-  );
-  return { tmpDir, defaultBranch: stdout.trim() };
+    });
+    const { stdout } = await execFileAsync(
+      "git",
+      ["--git-dir", gitDir, "symbolic-ref", "--short", "HEAD"],
+      { encoding: "utf8", timeout: 10_000, windowsHide: true },
+    );
+    return { tmpDir, defaultBranch: stdout.trim() };
+  } catch (err) {
+    // The clone itself (or a post-clone check) failed — the caller never
+    // gets tmpDir to move/clean up, so this would otherwise leak a scratch
+    // clone into the OS temp dir on every failed attempt.
+    await rm(tmpDir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 async function detectDefaultBranchFromExistingGit(root: string): Promise<string> {
@@ -140,8 +148,13 @@ async function attempt(root: string): Promise<void> {
         lastAttemptAt: attemptStartedAt,
         attemptCount,
       });
-      await moveGitDir(join(cloned.tmpDir, ".git"), join(root, ".git"));
-      await rm(cloned.tmpDir, { recursive: true, force: true });
+      try {
+        await moveGitDir(join(cloned.tmpDir, ".git"), join(root, ".git"));
+      } finally {
+        // Always clean up the scratch clone, whether or not the move
+        // succeeded — a failed move must not leave it behind either.
+        await rm(cloned.tmpDir, { recursive: true, force: true });
+      }
     } else {
       defaultBranch = progress?.defaultBranch ?? (await detectDefaultBranchFromExistingGit(root));
       writeGitRestoreProgress(root, {

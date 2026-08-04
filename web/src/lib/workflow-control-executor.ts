@@ -15,7 +15,7 @@ export type ReviewGateDecision =
 export function executeReviewGate(inputs: ReviewGateExecutorInput[]): ReviewGateDecision {
   const decisions = inputs.map((input) => evaluateReviewGate({
     status: input.status === "succeeded" || input.status === "failed" || input.status === "skipped" ? input.status : "failed",
-    result: input.result ? parseReviewResult(input.result) : null,
+    result: input.result != null ? parseReviewResult(input.result) : null,
     config: input.config,
   }));
   const pause = decisions.find((decision) => decision.decision === "pause");

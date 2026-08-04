@@ -37,6 +37,13 @@ export async function resolveRemoteHead(
   repoUrl: string,
   opts: { timeoutMs?: number } = {},
 ): Promise<RemoteHead> {
+  // repoUrl is passed straight through to `git ls-remote` as a positional
+  // argument; a value starting with `-` would be parsed as a git option
+  // instead (e.g. `--upload-pack=...`) if this is ever called with anything
+  // other than the hardcoded GITHUB_REPO_URL.
+  if (repoUrl.startsWith("-")) {
+    throw new Error(`invalid repository URL: ${repoUrl}`);
+  }
   const { stdout } = await execFileAsync(
     "git",
     ["ls-remote", "--symref", repoUrl, "HEAD"],

@@ -196,6 +196,46 @@ describe("runStartupGitRestore", () => {
     );
   });
 
+  it("removes the scratch clone dir when the post-clone verify step fails", async () => {
+    // Regression: cloneToTemp() only returned tmpDir on success, so a failure
+    // in `rev-parse --verify` / `symbolic-ref` after a successful clone left
+    // the scratch directory behind on every failed attempt.
+    isGitInstallMock.mockReturnValue(false);
+    readGitRestoreProgressMock.mockReturnValue(null);
+    mockGit((args) => {
+      if (args.includes("clone")) return { stdout: "" };
+      if (args.includes("--verify")) return new Error("fatal: HEAD not found");
+      throw new Error(`unexpected git invocation: ${args.join(" ")}`);
+    });
+
+    await runStartupGitRestore(ROOT);
+
+    expect(rmMock).toHaveBeenCalledWith(
+      "C:\\tmp\\opencode-webui-git-restore-xxx",
+      expect.objectContaining({ recursive: true, force: true }),
+    );
+    expect(writeGitRestoreProgressMock).toHaveBeenCalledWith(
+      ROOT,
+      expect.objectContaining({ lastError: expect.stringContaining("HEAD not found") }),
+    );
+  });
+
+  it("removes the scratch clone dir when moving .git into place fails", async () => {
+    isGitInstallMock.mockReturnValue(false);
+    readGitRestoreProgressMock.mockReturnValue(null);
+    mockHappyPathGit();
+    // A non-retryable error (moveGitDir only retries EBUSY/EPERM) so the
+    // failure surfaces immediately instead of waiting through the retry delays.
+    renameMock.mockRejectedValue(Object.assign(new Error("no such device"), { code: "ENODEV" }));
+
+    await runStartupGitRestore(ROOT);
+
+    expect(rmMock).toHaveBeenCalledWith(
+      "C:\\tmp\\opencode-webui-git-restore-xxx",
+      expect.objectContaining({ recursive: true, force: true }),
+    );
+  });
+
   it("guards against overlapping runs within the same process", async () => {
     isGitInstallMock.mockReturnValue(false);
     readGitRestoreProgressMock.mockReturnValue(null);

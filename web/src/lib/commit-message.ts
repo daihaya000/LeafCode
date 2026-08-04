@@ -3,17 +3,24 @@ export type CommitFileInfo = {
   untracked: boolean;
 };
 
+/** Normalize Windows `\` separators so index-relative paths from any source parse the same. */
+function toSlash(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
 function basename(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i >= 0 ? path.slice(i + 1) : path;
+  const normalized = toSlash(path);
+  const i = normalized.lastIndexOf("/");
+  return i >= 0 ? normalized.slice(i + 1) : normalized;
 }
 
 /** Longest shared directory prefix (segment-wise) across paths, "" if none. */
 function commonDir(paths: string[]): string {
   if (paths.length === 0) return "";
   const dirs = paths.map((p) => {
-    const i = p.lastIndexOf("/");
-    return i >= 0 ? p.slice(0, i).split("/") : [];
+    const normalized = toSlash(p);
+    const i = normalized.lastIndexOf("/");
+    return i >= 0 ? normalized.slice(0, i).split("/") : [];
   });
   const first = dirs[0];
   let end = first.length;

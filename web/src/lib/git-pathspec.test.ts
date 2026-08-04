@@ -22,4 +22,11 @@ describe("gitPathspecError", () => {
   it("allows ordinary relative paths", () => {
     expect(gitPathspecError("src/app.ts")).toBeNull();
   });
+
+  it("rejects absolute paths so callers can't escape the repo", () => {
+    expect(gitPathspecError("/etc/passwd")).toMatch(/unsafe/);
+    expect(gitPathspecError("\\Windows\\System32")).toMatch(/unsafe/);
+    expect(gitPathspecError("C:\\Users\\x\\secrets.txt")).toMatch(/unsafe/);
+    expect(gitPathspecError("C:/Users/x/secrets.txt")).toMatch(/unsafe/);
+  });
 });

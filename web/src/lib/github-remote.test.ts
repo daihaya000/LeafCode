@@ -46,4 +46,12 @@ describe("resolveRemoteHead", () => {
       commit: "deadbeef",
     });
   });
+
+  it("rejects a URL that would be parsed as a git option", async () => {
+    execFileMock.mockClear();
+    await expect(resolveRemoteHead("--upload-pack=touch /tmp/pwned")).rejects.toThrow(
+      /invalid repository URL/,
+    );
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
 });
