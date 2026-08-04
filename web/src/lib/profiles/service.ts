@@ -121,7 +121,7 @@ function dirExists(dir: string): boolean {
 // activate
 // ---------------------------------------------------------------------------
 
-export type ActivateError = { status: 409; error: string };
+export type ActivateError = { status: 409 | 500; error: string };
 
 export function activate(id: string): { ok: true } | ActivateError {
   const { state, link } = ensureRegistry();
@@ -378,21 +378,34 @@ export function renameProfile(
 }
 
 /**
- * Remove a profile from the registry only.
+ * Delete a profile: remove its directory from disk, then drop it from the registry.
  *
- * Never deletes the directory — that is the user's responsibility.
+ * The active profile is refused. `external` profiles (outside `dataDir()/profiles`)
+ * are also deleted — the UI confirmation makes that explicit.
  */
-export function unregisterProfile(id: string): { ok: true } | ActivateError {
+export async function deleteProfile(
+  id: string,
+): Promise<{ ok: true } | ActivateError> {
   const { state, link } = ensureRegistry();
   const activeId = resolveActiveId(state, link);
   if (id === activeId) {
-    return { status: 409, error: "アクティブなプロファイルは除外できません。" };
+    return { status: 409, error: "アクティブなプロファイルは削除できません。" };
   }
   const index = state.profiles.findIndex((p) => p.id === id);
   if (index === -1) {
     return { status: 409, error: "プロファイルが見つかりません。" };
   }
-  state.profiles.splice(index, 1);
+  const [profile] = state.profiles.splice(index, 1);
   writeState(state);
+  try {
+    await fsp.rm(profile.path, { recursive: true, force: true });
+  } catch (err) {
+    // Registry entry already removed; surface the filesystem failure so the
+    // user knows the directory may still be on disk.
+    return {
+      status: 500,
+      error: `一覧からは削除しましたがディレクトリの削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
   return { ok: true };
 }

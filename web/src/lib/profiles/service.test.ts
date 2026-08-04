@@ -10,7 +10,7 @@ import {
   listProfiles,
   migrateDefault,
   renameProfile,
-  unregisterProfile,
+  deleteProfile,
 } from "./service";
 
 let sandbox: string;
@@ -395,7 +395,7 @@ describe("migrateDefault", () => {
 });
 
 // ---------------------------------------------------------------------------
-// renameProfile / unregisterProfile
+// renameProfile / deleteProfile
 // ---------------------------------------------------------------------------
 
 describe("renameProfile", () => {
@@ -442,8 +442,8 @@ describe("renameProfile", () => {
   });
 });
 
-describe("unregisterProfile", () => {
-  it("removes from registry without deleting the directory", () => {
+describe("deleteProfile", () => {
+  it("removes the directory and the registry entry", async () => {
     const a = makeConfigDir(path.join(sandbox, "A"), "A");
     const b = makeConfigDir(path.join(sandbox, "B"), "B");
     setupLink(a);
@@ -454,18 +454,18 @@ describe("unregisterProfile", () => {
     state.profiles.push({ id: "b-id", name: "B", path: b });
     fs.writeFileSync(statePath, JSON.stringify(state));
 
-    const result = unregisterProfile("b-id");
+    const result = await deleteProfile("b-id");
     expect(result).toEqual({ ok: true });
 
-    // Directory still exists
-    expect(fs.existsSync(path.join(b, "opencode.jsonc"))).toBe(true);
+    // Directory deleted
+    expect(fs.existsSync(path.join(b, "opencode.jsonc"))).toBe(false);
 
-    // But removed from registry
+    // And removed from registry
     const updated = JSON.parse(fs.readFileSync(statePath, "utf8"));
     expect(updated.profiles).toHaveLength(1);
   });
 
-  it("refuses to unregister the active profile", () => {
+  it("refuses to delete the active profile", async () => {
     const a = makeConfigDir(path.join(sandbox, "A"), "A");
     setupLink(a);
     seedRegistry();
@@ -476,7 +476,7 @@ describe("unregisterProfile", () => {
         "utf8",
       ),
     );
-    const result = unregisterProfile(state.profiles[0].id);
+    const result = await deleteProfile(state.profiles[0].id);
     expect(result).toMatchObject({ status: 409 });
     expect((result as { error: string }).error).toMatch(/アクティブ/);
   });

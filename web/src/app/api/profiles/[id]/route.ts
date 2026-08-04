@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
-import { renameProfile, unregisterProfile } from "@/lib/profiles/service";
+import { renameProfile, deleteProfile } from "@/lib/profiles/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await params;
-  const result = unregisterProfile(id);
+  const result = await deleteProfile(id);
   if ("status" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

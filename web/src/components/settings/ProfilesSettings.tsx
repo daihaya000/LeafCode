@@ -364,11 +364,11 @@ export function ProfilesSettings() {
     [load, renameValue],
   );
 
-  const doUnregister = useCallback(
+  const doDelete = useCallback(
     async (profile: ProfileDto) => {
       if (actionBusyRef.current !== null || busyIdRef.current !== null) return;
       setUnregisterConfirm(null);
-      const operation = `unregister:${profile.id}`;
+      const operation = `delete:${profile.id}`;
       actionBusyRef.current = operation;
       setActionBusy(operation);
       setActionError(null);
@@ -378,7 +378,7 @@ export function ProfilesSettings() {
         await load();
       } catch (err) {
         if (!mountedRef.current) return;
-        setActionError(err instanceof Error ? err.message : "除外に失敗しました");
+        setActionError(err instanceof Error ? err.message : "削除に失敗しました");
       } finally {
         if (actionBusyRef.current === operation) {
           actionBusyRef.current = null;
@@ -704,11 +704,11 @@ export function ProfilesSettings() {
                           variant="ghost"
                           size="sm"
                           className="justify-center"
-                          aria-label={`${p.name}をプロファイルから除外`}
+                          aria-label={`${p.name}を削除`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => setUnregisterConfirm(p)}
                         >
-                          一覧から除外
+                          削除
                         </Button>
                       )}
                     </div>
@@ -777,11 +777,11 @@ export function ProfilesSettings() {
                     variant="ghost"
                     size="sm"
                     className="justify-center"
-                    aria-label={`${p.name}をプロファイルから除外`}
+                    aria-label={`${p.name}を削除`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => setUnregisterConfirm(p)}
                   >
-                    一覧から除外
+                    削除
                   </Button>
                 )}
               </div>
@@ -890,25 +890,25 @@ export function ProfilesSettings() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="プロファイル除外の確認"
+          aria-label="プロファイル削除の確認"
         >
           <div ref={dialogRef} className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
             <h3 className="text-base font-semibold text-text">
-              「{unregisterConfirm.name}」を一覧から除外しますか？
+              「{unregisterConfirm.name}」を削除しますか？
             </h3>
             <p className="mt-2 text-sm text-muted">
-              実体ディレクトリ（<code className="font-mono text-xs">{unregisterConfirm.path}</code>）は
-              <strong className="text-text">削除されません</strong>。一覧から削除するだけです。
+              実体ディレクトリ（<code className="font-mono text-xs">{unregisterConfirm.path}</code>）も
+              <strong className="text-text">完全に削除</strong>されます。この操作は取り消せません。
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" disabled={actionBusy !== null} onClick={() => setUnregisterConfirm(null)}>キャンセル</Button>
               <Button
                 variant="danger"
-                busy={actionBusy === `unregister:${unregisterConfirm.id}`}
+                busy={actionBusy === `delete:${unregisterConfirm.id}`}
                 disabled={busyId !== null}
-                onClick={() => void doUnregister(unregisterConfirm)}
+                onClick={() => void doDelete(unregisterConfirm)}
               >
-                除外する
+                削除する
               </Button>
             </div>
           </div>
