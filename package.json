@@ -9,6 +9,8 @@
     "smoke": "node scripts/smoke-api.mjs",
     "smoke:browser-bridge": "node scripts/smoke-browser-bridge.mjs",
     "install:browser-bridge-mcp": "node browser-bridge/scripts/install-mcp.mjs",
-    "test:encoding": "npm --prefix host run test:encoding"
+    "test:encoding": "npm --prefix host run test:encoding",
+    "sync:profiles": "node scripts/sync-profiles.mjs",
+    "sync:profiles:check": "node scripts/sync-profiles.mjs --check"
   }
 }
