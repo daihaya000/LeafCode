@@ -140,6 +140,14 @@ function readConfigAgentMap(): Record<string, unknown> {
   }
 }
 
+/** True when a config `agent.<name>` entry sets `disable: true`. */
+function isConfigDisabled(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return false;
+  }
+  return (entry as Record<string, unknown>).disable === true;
+}
+
 /**
  * Build a listing entry for an agent that only exists in `opencode.jsonc`.
  * `snapshot` fills the gaps the config override does not carry (a disabled
@@ -215,7 +223,17 @@ export async function listAgents(): Promise<AgentDto[]> {
     mergeSnapshots(snapshots[name], snapshotFromDefinition(name));
 
   for (const [name, entry] of Object.entries(agentsConfig)) {
-    if (byName.has(name)) continue;
+    const existing = byName.get(name);
+    if (existing) {
+      // The engine hasn't restarted yet, so it still reports this agent as
+      // active — but the config's `disable` flag is what the user just set
+      // and is what will take effect on restart. Reflect that intent now,
+      // otherwise a toggle looks like it did nothing until restart.
+      if (isConfigDisabled(entry)) {
+        byName.set(name, { ...existing, enabled: false });
+      }
+      continue;
+    }
     const dto = agentEntryFromConfig(name, entry, recall(name));
     if (dto && !dto.enabled) {
       byName.set(name, dto);

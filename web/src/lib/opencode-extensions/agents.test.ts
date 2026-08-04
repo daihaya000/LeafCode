@@ -81,6 +81,19 @@ describe("agents extension", () => {
     expect(Object.keys(state.disabled)).toContain("build");
   });
 
+  it("reflects a disabled state immediately even while the engine still reports the agent (pre-restart)", async () => {
+    // Regression: before restart the engine keeps listing a just-disabled
+    // agent as active. The config override must win so the toggle isn't
+    // invisible until the user restarts OpenCode.
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    fs.writeFileSync(configPath, "{}");
+    await setAgentEnabled("build", false);
+
+    mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+    const agents = await listAgents();
+    expect(agents.find((a) => a.name === "build")?.enabled).toBe(false);
+  });
+
   it("enables a previously disabled agent", async () => {
     mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
     fs.writeFileSync(
