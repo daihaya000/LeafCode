@@ -46,7 +46,7 @@ import {
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
-import { readCodexBarAutoUsage } from "@/lib/codexbar-auto";
+import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import {
   AUTO_MODEL_OPTION,
   AUTO_MODEL_VALUE,
@@ -1009,6 +1009,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     return getIntelligenceVariants(modelMeta);
   }, [effectiveModelKey, providerModelsMap]);
 
+  // CodexBar の使用率スナップショットから、レートリミット到達プロバイダを抽出。
+  // モールドロップダウンで該当モデルを赤字表示するために ModelSelect へ渡す。
+  const modelLimitedProviders = useMemo(
+    () => limitedProviderSet(codexBarUsage),
+    [codexBarUsage],
+  );
+
   useEffect(() => {
     if (!intelligence) return;
     if (!intelligenceVariants.some((v) => v === intelligence)) {
@@ -1244,6 +1251,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     }}
                     className="max-w-[11rem] shrink-0 sm:max-w-48"
                     title={selectedModel?.label ?? "モデル"}
+                    limitedProviders={modelLimitedProviders}
                   />
                 )}
                 {intelligenceVariants.length > 0 && (

@@ -87,4 +87,55 @@ describe("ModelSelect", () => {
     expect(document.activeElement).toBe(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
+
+  it("renders limited-provider models in danger color", () => {
+    render(
+      <ModelSelect
+        value="openai::gpt-5.5"
+        options={options}
+        onChange={vi.fn()}
+        limitedProviders={new Set(["openai"])}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
+
+    const openaiOption = screen.getByRole("option", { name: /GPT-5\.5/ });
+    expect(openaiOption.className).toContain("text-danger");
+    expect(openaiOption.getAttribute("title")).toContain("制限中");
+
+    const anthropicOption = screen.getByRole("option", { name: /Claude/ });
+    expect(anthropicOption.className).not.toContain("text-danger");
+  });
+
+  it("paints the trigger label danger when the selected model's provider is limited", () => {
+    render(
+      <ModelSelect
+        value="openai::gpt-5.5"
+        options={options}
+        onChange={vi.fn()}
+        limitedProviders={new Set(["openai"])}
+      />,
+    );
+    const trigger = screen.getByRole("combobox", { name: "モデル" });
+    expect(trigger.className).toContain("text-danger");
+    expect(trigger.getAttribute("title")).toContain("プロバイダ制限中");
+  });
+
+  it("never marks the Auto option as limited", () => {
+    render(
+      <ModelSelect
+        value="auto"
+        options={options}
+        onChange={vi.fn()}
+        limitedProviders={new Set(["auto"])}
+      />,
+    );
+    const trigger = screen.getByRole("combobox", { name: "モデル" });
+    expect(trigger.className).not.toContain("text-danger");
+
+    fireEvent.click(trigger);
+    const autoOption = screen.getByRole("option", { name: /^Auto$/ });
+    expect(autoOption.className).not.toContain("text-danger");
+  });
 });

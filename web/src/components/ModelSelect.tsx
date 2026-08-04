@@ -19,6 +19,8 @@ function providerIDFromValue(value: string): string {
   return value ? value.split("::")[0] ?? "" : "";
 }
 
+const EMPTY_PROVIDER_SET: ReadonlySet<string> = new Set();
+
 function ModelProviderIcon({ value }: { value: string }) {
   const providerID = providerIDFromValue(value);
   const src =
@@ -55,6 +57,7 @@ export function ModelSelect({
   title,
   ariaLabel = "モデル",
   emptyLabel = "モデル",
+  limitedProviders,
 }: {
   value: string;
   options: ModelOption[];
@@ -64,6 +67,12 @@ export function ModelSelect({
   title?: string;
   ariaLabel?: string;
   emptyLabel?: string;
+  /**
+   * OpenCode provider ids whose CodexBar snapshot reports the provider at/over
+   * its rate limit. Models under a limited provider render in danger color in
+   * the dropdown so the user can avoid picking a model that will 429.
+   */
+  limitedProviders?: ReadonlySet<string>;
 }) {
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -77,6 +86,7 @@ export function ModelSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
   const selected = options.find((option) => option.value === value);
+  const limitedSet = limitedProviders ?? EMPTY_PROVIDER_SET;
   const groupedOptions = useMemo(
     () =>
       [...new Set(options.map((option) => option.group))].map((group) => ({
@@ -204,6 +214,9 @@ export function ModelSelect({
             const optionIndex = flattenedOptions.findIndex(
               (candidate) => candidate.value === option.value,
             );
+            const optionProviderID = providerIDFromValue(option.value);
+            const optionLimited =
+              option.value !== "auto" && limitedSet.has(optionProviderID);
             return (
             <button
               key={option.value}
@@ -213,10 +226,12 @@ export function ModelSelect({
               id={`${listboxId}-option-${optionIndex}`}
               onMouseEnter={() => setHighlightedIndex(optionIndex)}
               onClick={() => chooseOption(option)}
+              title={optionLimited ? "プロバイダが制限中（レートリミット到達）" : undefined}
               className={cx(
                 "flex w-full appearance-none items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1.5 text-left text-muted hover:bg-surface-2 hover:text-text focus:bg-surface-2 focus:text-text focus:outline-none",
                 option.value === value && "bg-surface-2 text-text",
                 optionIndex === highlightedIndex && "ring-1 ring-primary/40",
+                optionLimited && "text-danger",
               )}
             >
               <ModelProviderIcon value={option.value} />
@@ -256,7 +271,12 @@ export function ModelSelect({
         }
         aria-label={ariaLabel}
         value={value}
-        title={title ?? selected?.label ?? "モデル"}
+        title={
+          title ??
+          (selected && limitedSet.has(providerIDFromValue(selected.value))
+            ? `${selected.label ?? "モデル"}（プロバイダ制限中）`
+            : selected?.label ?? "モデル")
+        }
         onClick={() =>
           setOpen((current) => {
             if (!current) setHighlightedIndex(selectedIndex);
@@ -294,6 +314,9 @@ export function ModelSelect({
         className={cx(
           "group inline-flex h-8 min-w-0 appearance-none items-center gap-1.5 rounded-lg border border-border bg-bg px-2 text-xs font-medium text-muted transition-colors focus:ring-2 focus:ring-primary/30 focus:outline-none hover:bg-surface-2 hover:text-text focus:border-border-strong focus:bg-surface-2 focus:text-text",
           disabled && "cursor-not-allowed opacity-40",
+          value !== "auto" &&
+            limitedSet.has(providerIDFromValue(value)) &&
+            "text-danger",
         )}
       >
         <ModelProviderIcon value={value} />

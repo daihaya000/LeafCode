@@ -84,7 +84,7 @@ import {
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { formatTokens } from "@addons/codexbar";
-import { readCodexBarAutoUsage } from "@/lib/codexbar-auto";
+import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import { computeContextUsage } from "@/lib/context-usage";
 import {
   readChatTab,
@@ -2442,6 +2442,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     return getIntelligenceVariants(modelMeta);
   }, [effectiveModelKey, providerModelsMap]);
 
+  // CodexBar の使用率スナップショットから、レートリミット到達プロバイダを抽出。
+  // モールドロップダウンで該当モデルを赤字表示するために ModelSelect へ渡す。
+  const modelLimitedProviders = useMemo(
+    () => limitedProviderSet(autoInputs?.usage),
+    [autoInputs?.usage],
+  );
+
   useEffect(() => {
     if (!intelligence) return;
     if (!intelligenceVariants.some((v) => v === intelligence)) {
@@ -4190,6 +4197,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         }}
                         disabled={!task.sessionId}
                         className="max-w-[11rem] shrink-0 sm:max-w-48"
+                        limitedProviders={modelLimitedProviders}
                       />
                     )}
                     {intelligenceVariants.length > 0 && (

@@ -12,7 +12,7 @@ vi.mock("@/lib/addons/state", () => ({
   readAddonPrefs,
 }));
 
-import { readCodexBarAutoUsage } from "./codexbar-auto";
+import { limitedProviderSet, readCodexBarAutoUsage } from "./codexbar-auto";
 
 describe("readCodexBarAutoUsage", () => {
   beforeEach(() => {
@@ -45,5 +45,29 @@ describe("readCodexBarAutoUsage", () => {
   it("falls back to normal Auto routing when the snapshot is unavailable", async () => {
     getJson.mockResolvedValue({ available: false, providers: [] });
     await expect(readCodexBarAutoUsage()).resolves.toBeUndefined();
+  });
+});
+
+describe("limitedProviderSet", () => {
+  it("returns an empty set when usage is undefined", () => {
+    expect(limitedProviderSet(undefined).size).toBe(0);
+  });
+
+  it("returns an empty set when no provider is limited", () => {
+    expect(
+      limitedProviderSet({ openai: { usedPercent: 50, limited: false } }).size,
+    ).toBe(0);
+  });
+
+  it("collects provider ids whose limited flag is true", () => {
+    const set = limitedProviderSet({
+      openai: { usedPercent: 100, limited: true },
+      anthropic: { usedPercent: 30, limited: false },
+      ollama: { usedPercent: 99, limited: true },
+    });
+    expect(set.size).toBe(2);
+    expect(set.has("openai")).toBe(true);
+    expect(set.has("ollama")).toBe(true);
+    expect(set.has("anthropic")).toBe(false);
   });
 });
