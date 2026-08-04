@@ -2785,19 +2785,23 @@ export function TaskView({ taskId }: { taskId: string }) {
     task?.id,
   ]);
 
-  const restoreToComposer = useCallback((text: string) => {
-    setInput(text);
-    stickRef.current = true;
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-      el.focus();
-      const len = text.length;
-      el.setSelectionRange(len, len);
-    });
-  }, []);
+  const restoreToComposer = useCallback(
+    (text: string, attachments: Attachment[] = []) => {
+      setInput(text);
+      setAttachments(attachments);
+      stickRef.current = true;
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+        el.focus();
+        const len = text.length;
+        el.setSelectionRange(len, len);
+      });
+    },
+    [],
+  );
 
   const onVoiceTranscript = useCallback(
     (text: string) => {
@@ -2831,7 +2835,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           sessionId: task.sessionId,
           lastUserMessageId: lastRevertMessageId,
           messages: stream.visibleMessages,
-          onRestoreText: restoreToComposer,
+          onRestore: restoreToComposer,
           onDone: () => {
             void stream.resync();
             setDiffKey((k) => k + 1);
@@ -2842,7 +2846,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           sessionId: "",
           lastUserMessageId: null,
           messages: stream.visibleMessages,
-          onRestoreText: restoreToComposer,
+          onRestore: restoreToComposer,
           onDone: () => {
             void stream.resync();
             setDiffKey((k) => k + 1);
@@ -3866,7 +3870,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                           messageId={m.info.id}
                           messages={stream.visibleMessages}
                           disabled={working}
-                          onRestoreText={restoreToComposer}
+                          onRestore={restoreToComposer}
                           onDone={() => {
                             void stream.resync();
                             setDiffKey((k) => k + 1);

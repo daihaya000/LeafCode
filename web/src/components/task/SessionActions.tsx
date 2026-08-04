@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
+import type { ComposerAttachment } from "@/components/Composer";
 import { ocJson } from "@/lib/client";
+import { isImageFilePart } from "@/lib/message-parts";
 import type { MessageWithParts } from "@/lib/types";
 
 export async function revertMessage(
@@ -36,26 +38,42 @@ export function messagePlainText(msg: MessageWithParts | undefined): string {
     .join("\n\n");
 }
 
+/** Collect image attachments from a user message for the composer. */
+export function messageImageAttachments(
+  msg: MessageWithParts | undefined,
+): ComposerAttachment[] {
+  if (!msg) return [];
+  return msg.parts
+    .filter((p) => isImageFilePart(p))
+    .map((p) => ({
+      uri: p.url,
+      mime: p.mime ?? "",
+      name: p.filename,
+      preview: p.url,
+    }));
+}
+
 /**
  * Undo from this user message onward (message is hidden), return its text
- * so the caller can put it in the composer.
+ * and image attachments so the caller can put them in the composer.
  */
 export async function revertUserMessageToComposer(
   directory: string,
   sessionId: string,
   messageId: string,
   messages: MessageWithParts[],
-): Promise<string> {
+): Promise<{ text: string; attachments: ComposerAttachment[] }> {
   const msg = messages.find((m) => m.info.id === messageId);
   if (!msg) throw new Error("対象メッセージが見つかりません");
   if (msg.info.role !== "user") {
     throw new Error("ユーザーメッセージのみ入力欄に戻せます");
   }
   const text = messagePlainText(msg);
-  if (!text) throw new Error("戻すテキストがありません");
+  const attachments = messageImageAttachments(msg);
+  if (!text && attachments.length === 0) throw new Error("戻す内容がありません");
   // Inclusive revert: hide this message and everything after
   await revertMessage(directory, sessionId, messageId);
-  return text;
+  return { text, attachments };
 }
 
 export type SessionActionKey = "compact" | "revert" | "unrevert";
@@ -65,14 +83,14 @@ export function useSessionActions({
   sessionId,
   lastUserMessageId,
   messages,
-  onRestoreText,
+  onRestore,
   onDone,
 }: {
   directory: string;
   sessionId: string;
   lastUserMessageId?: string | null;
   messages: MessageWithParts[];
-  onRestoreText?: (text: string) => void;
+  onRestore?: (text: string, attachments: ComposerAttachment[]) => void;
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState<SessionActionKey | null>(null);
@@ -148,16 +166,16 @@ export function useSessionActions({
     }
     setRevertConfirmOpen(false);
     void run("revert", async () => {
-      const text = await revertUserMessageToComposer(
+      const { text, attachments } = await revertUserMessageToComposer(
         directory,
         sessionId,
         lastUserMessageId,
         messages,
       );
-      onRestoreText?.(text);
+      onRestore?.(text, attachments);
       return "ok" as const;
     });
-  }, [run, directory, sessionId, lastUserMessageId, messages, onRestoreText]);
+  }, [run, directory, sessionId, lastUserMessageId, messages, onRestore]);
 
   const cancelRevert = useCallback(() => {
     setRevertConfirmOpen(false);
@@ -217,7 +235,7 @@ export function MessageRevertButton({
   messageId,
   messages,
   disabled,
-  onRestoreText,
+  onRestore,
   onDone,
 }: {
   directory: string;
@@ -225,7 +243,7 @@ export function MessageRevertButton({
   messageId: string;
   messages: MessageWithParts[];
   disabled?: boolean;
-  onRestoreText?: (text: string) => void;
+  onRestore?: (text: string, attachments: ComposerAttachment[]) => void;
   onDone?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -270,14 +288,14 @@ export function MessageRevertButton({
     setBusy(true);
     setError(null);
     try {
-      const text = await revertUserMessageToComposer(
+      const { text, attachments } = await revertUserMessageToComposer(
         directory,
         sessionId,
         messageId,
         messages,
       );
       if (!mountedRef.current) return;
-      onRestoreText?.(text);
+      onRestore?.(text, attachments);
       onDone?.();
     } catch (err) {
       if (mountedRef.current) setError(

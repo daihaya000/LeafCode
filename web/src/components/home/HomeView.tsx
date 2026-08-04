@@ -143,6 +143,25 @@ type AgentResponse = {
 
 type Attachment = ComposerAttachment;
 
+// HomeView は単一インスタンス（スコープ切替なし）なので、Map ではなく
+// モジュールスコープ変数1つで十分。Home→Task→Home と遷移すると HomeView は
+// アンマウント→リマウントされるため、入力中の prompt/attachments を保持する。
+type HomeComposerDraft = { prompt: string; attachments: Attachment[] };
+let homeComposerDraft: HomeComposerDraft | null = null;
+
+function rememberHomeComposerDraft(draft: HomeComposerDraft) {
+  homeComposerDraft = draft;
+}
+
+function readHomeComposerDraft(): HomeComposerDraft | null {
+  return homeComposerDraft;
+}
+
+/** テスト専用: モジュールスコープの draft キャッシュをクリアする。 */
+export function __clearHomeComposerDraftForTest() {
+  homeComposerDraft = null;
+}
+
 const IMAGE_MIME_RE = /^image\//i;
 // Match POST /api/tasks R28 / TaskView limits.
 const MAX_IMAGE_COUNT = 10;
@@ -171,12 +190,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [isolation, setIsolation] = useState<"current_folder" | "git_worktree">(
     "current_folder",
   );
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(() => readHomeComposerDraft()?.prompt ?? "");
   const [startMode, setStartMode] = useState<"task" | "workflow">("task");
   const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
   const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
   const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>(
+    () => readHomeComposerDraft()?.attachments ?? [],
+  );
   const attachmentsRef = useRef(attachments);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -247,6 +268,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       projectsRequestRef.current += 1;
     };
   }, []);
+
+  // 入力中の prompt/attachments をモジュールスコープへ保持する。
+  // Home→Task→Home 遷移で HomeView がアンマウント→リマウントされても
+  // 入力内容が消えないようにする（送信成功時は submit 内でクリア）。
+  useEffect(() => {
+    rememberHomeComposerDraft({ prompt, attachments });
+  }, [prompt, attachments]);
 
   useEffect(() => {
     setSlashIndex(0);
@@ -827,6 +855,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       // new session preselects it.
       writeLastUsedModel(sendingModelKey || null);
       notifyTasksChanged();
+      // 送信成功: キャッシュをクリアしてからアンマウントする。
+      // 画面はこの直後 router.push で TaskView へ遷移するため、
+      // setPrompt("") 等のローカル state 更新は不要。
+      rememberHomeComposerDraft({ prompt: "", attachments: [] });
       router.push(`/task/${data.taskId}`);
     } catch (err) {
       if (startMode === "workflow" && createdTaskId) {

@@ -12,6 +12,20 @@ const messages: MessageWithParts[] = [
     info: { id: "msg-1", role: "user" },
     parts: [{ id: "part-1", messageID: "msg-1", type: "text", text: "hello" }],
   },
+  {
+    info: { id: "msg-2", role: "user" },
+    parts: [
+      { id: "part-2a", messageID: "msg-2", type: "text", text: "look" },
+      {
+        id: "part-2b",
+        messageID: "msg-2",
+        type: "file",
+        mime: "image/png",
+        url: "data:image/png;base64,AA",
+        filename: "shot.png",
+      },
+    ],
+  },
 ];
 
 describe("SessionActions error UX", () => {
@@ -88,6 +102,36 @@ describe("SessionActions error UX", () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
+  it("passes text and image attachments to onRestore on revert", async () => {
+    const onRestore = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionActions({
+        directory: "/repo",
+        sessionId: "ses-1",
+        lastUserMessageId: "msg-2",
+        messages,
+        onRestore,
+      }),
+    );
+
+    act(() => {
+      result.current.revert();
+      result.current.confirmRevert();
+    });
+    await waitFor(() => expect(ocJson).toHaveBeenCalledTimes(1));
+    expect(onRestore).toHaveBeenCalledTimes(1);
+    const [text, attachments] = onRestore.mock.calls[0]!;
+    expect(text).toBe("look");
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        uri: "data:image/png;base64,AA",
+        mime: "image/png",
+        name: "shot.png",
+        preview: "data:image/png;base64,AA",
+      }),
+    ]);
+  });
+
   it("renders message revert failures as an accessible inline alert", async () => {
     ocJson.mockRejectedValueOnce(new Error("revert failed"));
     const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
@@ -130,5 +174,32 @@ describe("SessionActions error UX", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("passes text and image attachments to onRestore via MessageRevertButton", async () => {
+    const onRestore = vi.fn();
+    render(
+      <MessageRevertButton
+        directory="/repo"
+        sessionId="ses-1"
+        messageId="msg-2"
+        messages={messages}
+        onRestore={onRestore}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("dialog").querySelector("button")!);
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledTimes(1));
+    const [text, attachments] = onRestore.mock.calls[0]!;
+    expect(text).toBe("look");
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        uri: "data:image/png;base64,AA",
+        mime: "image/png",
+        name: "shot.png",
+        preview: "data:image/png;base64,AA",
+      }),
+    ]);
   });
 });

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HomeView } from "./HomeView";
+import { HomeView, __clearHomeComposerDraftForTest } from "./HomeView";
 
 const { getJson, sendJson, push, timedFetch } = vi.hoisted(() => ({
   getJson: vi.fn(),
@@ -55,6 +55,12 @@ vi.mock("@/components/shell/ShellContext", () => ({
     closeMobileNav: vi.fn(),
   }),
 }));
+
+// モジュールスコープの draft キャッシュがテスト間で漏れないように
+// ファイル全体でクリアする（describe ごとの afterEach より前に効かせる）。
+afterEach(() => {
+  __clearHomeComposerDraftForTest();
+});
 
 describe("HomeView image attachments", () => {
   beforeEach(() => {
@@ -736,6 +742,116 @@ describe("HomeView image attachments", () => {
 
       rejectRequest(new Error("network failed"));
     });
+  });
+});
+
+describe("HomeView composer draft persistence", () => {
+  beforeEach(() => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [
+            {
+              id: "project-1",
+              name: "Project",
+              rootPath: "/repo",
+              favorite: false,
+            },
+          ],
+        });
+      }
+      if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/git/branches") {
+        return Promise.resolve({
+          branches: ["main"],
+          defaultTarget: "main",
+          current: "main",
+        });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    sendJson.mockResolvedValue({ taskId: "task-1" });
+    timedFetch.mockReset();
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  vision: {
+                    name: "Vision",
+                    capabilities: { input: { image: true } },
+                  },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "vision" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("keeps prompt and image attachment across unmount/remount (session switch)", async () => {
+    const { unmount } = render(<HomeView />);
+    const prompt = screen.getByRole("combobox", { name: "タスクの説明" });
+    fireEvent.change(prompt, { target: { value: "draft text" } });
+
+    const image = new File(["image"], "keep.png", { type: "image/png" });
+    const input = await screen.findByLabelText("画像ファイルを選択");
+    fireEvent.change(input, { target: { files: [image] } });
+
+    expect(await screen.findByRole("img", { name: "keep.png" })).toBeTruthy();
+    expect((prompt as HTMLTextAreaElement).value).toBe("draft text");
+
+    // 別画面（タスク）へ遷移して Home に戻る = アンマウント→リマウント
+    unmount();
+    render(<HomeView />);
+
+    const restoredPrompt = screen.getByRole("combobox", {
+      name: "タスクの説明",
+    }) as HTMLTextAreaElement;
+    expect(restoredPrompt.value).toBe("draft text");
+    expect(await screen.findByRole("img", { name: "keep.png" })).toBeTruthy();
+  });
+
+  it("clears the draft cache after a successful task submission", async () => {
+    render(<HomeView />);
+    const prompt = screen.getByRole("combobox", { name: "タスクの説明" });
+    fireEvent.change(prompt, { target: { value: "submit me" } });
+
+    const submit = screen.getByRole("button", { name: "タスク開始" });
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks",
+        expect.objectContaining({ prompt: "submit me" }),
+      ),
+    );
+    // router.push はモックなので HomeView はアンマウントされない。
+    // 送信成功後キャッシュがクリアされていることを、新規 render で検証する。
+    cleanup();
+    render(<HomeView />);
+    const restoredPrompt = screen.getByRole("combobox", {
+      name: "タスクの説明",
+    }) as HTMLTextAreaElement;
+    expect(restoredPrompt.value).toBe("");
   });
 });
 
