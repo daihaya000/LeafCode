@@ -44,19 +44,19 @@ export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: 
   };
 
   return (
-    <section aria-label={showHeading ? undefined : "CommandCode Proxy"} aria-labelledby={showHeading ? "commandcode-cli-proxy-heading" : undefined}>
-      {showHeading && <h2 id="commandcode-cli-proxy-heading" className="mb-3 text-sm font-semibold text-muted">CommandCode Proxy</h2>}
+    <section aria-label={showHeading ? undefined : "CommandCode CLI Proxy"} aria-labelledby={showHeading ? "commandcode-cli-proxy-heading" : undefined}>
+      {showHeading && <h2 id="commandcode-cli-proxy-heading" className="mb-3 text-sm font-semibold text-muted">CommandCode CLI Proxy</h2>}
       <div className="rounded-xl border border-border bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-text">CommandCode Proxy</h3>
+              <h3 className="text-sm font-semibold text-text">CommandCode CLI Proxy</h3>
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
             <p className="mt-1 text-xs text-faint">CommandCode CLIをローカルプロキシ経由で使用します。認証キーをCLI互換の認証ストアへ保存します。APIへ直接接続せず、CLI経由のローカルプロキシを使用します。</p>
           </div>
           <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode Proxy認証キー" aria-label="CommandCode Proxy認証キー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
+            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode CLI Proxy認証キー" aria-label="CommandCode CLI Proxy認証キー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
             <Button size="sm" onClick={() => void save()} disabled={!key.trim() || state === "saving"} busy={state === "saving"}>保存</Button>
           </div>
         </div>

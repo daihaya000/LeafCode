@@ -118,7 +118,7 @@ export default async function commandcodeCliPlugin() {
   const server = await start();
   const port = server.address().port;
   const baseURL = `http://127.0.0.1:${port}/v1`;
-  const provider = { npm: "@ai-sdk/openai-compatible", name: "CommandCode", options: { apiKey: "commandcode-cli", baseURL }, models };
+  const provider = { npm: "@ai-sdk/openai-compatible", name: "CommandCode CLI", options: { apiKey: "commandcode-cli", baseURL }, models };
   return {
     provider: { commandcode: provider },
     auth: { provider: "commandcode", loader: async () => ({ apiKey: "commandcode-cli", baseURL }), methods: [] },
