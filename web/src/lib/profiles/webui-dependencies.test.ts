@@ -165,8 +165,8 @@ describe("installWebUiDependencies", () => {
       claudeAuth: false,
     });
 
-    expect(installed).toContain("removed:plugin/commandcode.js");
-    expect(installed).toContain("removed:packages/commandcode");
+    expect(installed).toContain("replaced:plugin/commandcode.js->plugin/commandcode-cli-proxy.js");
+    expect(installed).toContain("replaced:packages/commandcode->packages/commandcode-cli-proxy");
     expect(fs.existsSync(path.join(target, "plugin", "commandcode.js"))).toBe(false);
     expect(fs.existsSync(path.join(target, "packages", "commandcode"))).toBe(false);
   });

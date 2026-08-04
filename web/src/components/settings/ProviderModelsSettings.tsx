@@ -37,8 +37,8 @@ import {
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { OpenAISubscriptionAuth } from "./OpenAISubscriptionAuth";
 import { ClaudeSubscriptionAuth } from "./ClaudeSubscriptionAuth";
-import { CursorAcpAuth } from "./CursorAcpAuth";
-import { CommandCodeAuth } from "./CommandCodeAuth";
+import { CursorCliProxyAuth } from "./CursorCliProxyAuth";
+import { CommandCodeCliProxyAuth } from "./CommandCodeCliProxyAuth";
 
 type ModelDto = {
   id: string;
@@ -1149,8 +1149,8 @@ export function ProviderModelsSettings() {
         <section aria-labelledby="cli-proxy-heading">
           <h2 id="cli-proxy-heading" className="mb-3 text-sm font-semibold text-muted">CLI Proxy</h2>
           <div className="space-y-3">
-            {providers.some((provider) => provider.id === "cursor-acp") && <CursorAcpAuth showHeading={false} />}
-            {(providers.some((provider) => provider.id === "opencommand") || providers.some((provider) => provider.id === "commandcode")) && <CommandCodeAuth showHeading={false} />}
+            {providers.some((provider) => provider.id === "cursor-acp") && <CursorCliProxyAuth showHeading={false} />}
+            {(providers.some((provider) => provider.id === "opencommand") || providers.some((provider) => provider.id === "commandcode")) && <CommandCodeCliProxyAuth showHeading={false} />}
           </div>
         </section>
       )}

@@ -89,17 +89,6 @@ function copyVendorFiles(targetDir: string, sourceDirs: string[], relatives: str
   return copied;
 }
 
-function removeLegacyCommandcodeFiles(targetDir: string): string[] {
-  const removed: string[] = [];
-  for (const relative of ["plugin/commandcode.js", "packages/commandcode"]) {
-    const target = path.join(targetDir, relative);
-    if (!fs.existsSync(target)) continue;
-    fs.rmSync(target, { recursive: true, force: true });
-    removed.push(`removed:${relative}`);
-  }
-  return removed;
-}
-
 /** Remove old-named vendor plugin files before copying the renamed versions. */
 function replaceOldVendorFiles(targetDir: string): string[] {
   const removed: string[] = [];
@@ -110,6 +99,9 @@ function replaceOldVendorFiles(targetDir: string): string[] {
     ["packages/claude-auth", "packages/claude-cli-proxy"],
     ["plugin/commandcode-cli.js", "plugin/commandcode-cli-proxy.js"],
     ["packages/commandcode-cli", "packages/commandcode-cli-proxy"],
+    // Legacy commandcode.js (pre-CLI-proxy era)
+    ["plugin/commandcode.js", "plugin/commandcode-cli-proxy.js"],
+    ["packages/commandcode", "packages/commandcode-cli-proxy"],
   ];
   for (const [oldRel, newRel] of oldNew) {
     const oldPath = path.join(targetDir, oldRel);
@@ -158,7 +150,6 @@ export function installWebUiDependencies(
   const installed: string[] = [];
   // Replace old-named vendor files before copying new ones
   installed.push(...replaceOldVendorFiles(profileDir));
-  if (options.commandcodeAuth !== false) installed.push(...removeLegacyCommandcodeFiles(profileDir));
   if (options.cursorAcp !== false) {
     installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
   }

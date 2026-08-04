@@ -4,7 +4,7 @@ import { getJson, sendJson } from "@/lib/client";
 
 type AuthResponse = { connected?: boolean };
 
-export function CommandCodeAuth({ showHeading = true }: { showHeading?: boolean }) {
+export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: boolean }) {
   const [connected, setConnected] = useState(false);
   const [key, setKey] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "saving" | "saved" | "error">("loading");
@@ -44,8 +44,8 @@ export function CommandCodeAuth({ showHeading = true }: { showHeading?: boolean 
   };
 
   return (
-    <section aria-label={showHeading ? undefined : "CommandCode CLI Proxy"} aria-labelledby={showHeading ? "commandcode-auth-heading" : undefined}>
-      {showHeading && <h2 id="commandcode-auth-heading" className="mb-3 text-sm font-semibold text-muted">CommandCode CLI Proxy</h2>}
+    <section aria-label={showHeading ? undefined : "CommandCode CLI Proxy"} aria-labelledby={showHeading ? "commandcode-cli-proxy-heading" : undefined}>
+      {showHeading && <h2 id="commandcode-cli-proxy-heading" className="mb-3 text-sm font-semibold text-muted">CommandCode CLI Proxy</h2>}
       <div className="rounded-xl border border-border bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
