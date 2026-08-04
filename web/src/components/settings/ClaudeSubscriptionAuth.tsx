@@ -157,18 +157,18 @@ export function ClaudeSubscriptionAuth({ showHeading = true }: { showHeading?: b
 
   return (
     <section
-      aria-label={showHeading ? undefined : "Claude サブスクリプション"}
-      aria-labelledby={showHeading ? "claude-subscription-heading" : undefined}
+      aria-label={showHeading ? undefined : "Claude CLI Proxy"}
+      aria-labelledby={showHeading ? "claude-cli-proxy-heading" : undefined}
     >
-      {showHeading && <h2 id="claude-subscription-heading" className="mb-3 text-sm font-semibold text-muted">Claude サブスクリプション</h2>}
+      {showHeading && <h2 id="claude-cli-proxy-heading" className="mb-3 text-sm font-semibold text-muted">Claude CLI Proxy</h2>}
       <div className="rounded-xl border border-border bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-text">Claude Pro / Max</h3>
+              <h3 className="text-sm font-semibold text-text">Claude CLI Proxy</h3>
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
-            <p className="mt-1 text-xs text-faint">APIキーを入力せず、Anthropicのアカウントをブラウザで認証します。</p>
+            <p className="mt-1 text-xs text-faint">Claude CLIをローカルプロキシ経由で使用します。APIキーを入力せず、Anthropicのアカウントをブラウザで認証します。</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             {state === "loading" && <span className="text-xs text-faint">確認中…</span>}
