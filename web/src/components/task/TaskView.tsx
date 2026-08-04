@@ -3212,10 +3212,14 @@ export function TaskView({ taskId }: { taskId: string }) {
           </div>
           <div className="mt-0.5 hidden min-w-0 items-center gap-1 text-xs text-faint sm:flex">
             <StatusBadge status={working ? "working" : task.status} />
-            {working && currentTool && (
+            {working && (
+              // Reserve this slot for the whole "working" span (not just
+              // while currentTool is truthy) so trailing items (elapsed
+              // timer, branch, tokens, cost) don't jitter left/right every
+              // time the tool momentarily flickers to null between calls.
               <span
                 className="inline-flex w-24 shrink-0 truncate text-working"
-                title={currentTool}
+                title={currentTool ?? undefined}
               >
                 {currentTool}
               </span>
