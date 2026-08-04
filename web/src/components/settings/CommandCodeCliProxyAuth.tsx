@@ -56,7 +56,7 @@ export function CommandCodeCliProxyAuth({ showHeading = true }: { showHeading?: 
             <p className="mt-1 text-xs text-faint">CommandCode CLIをローカルプロキシ経由で使用します。認証キーをCLI互換の認証ストアへ保存します。APIへ直接接続せず、CLI経由のローカルプロキシを使用します。</p>
           </div>
           <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode CLI認証キー" aria-label="CommandCode CLI認証キー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
+            <input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="CommandCode CLI Proxy認証キー" aria-label="CommandCode CLI Proxy認証キー" autoComplete="off" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-primary sm:w-56" />
             <Button size="sm" onClick={() => void save()} disabled={!key.trim() || state === "saving"} busy={state === "saving"}>保存</Button>
           </div>
         </div>
