@@ -1,35 +1,79 @@
-#!/usr/bin/env node
 /**
- * sync-profiles.mjs (CLI entry point)
+ * Profile sync engine — opencode.jsonc (master) -> codex/claude.
  *
- * opencode.jsonc (master) -> codex config.toml / claude settings.json
- *
- * Master:  ~/.config/opencode/opencode.jsonc
- * Targets: ~/.codex/config.toml        (overwrite only [mcp_servers.*] tables)
- *          ~/.claude/settings.json      (overwrite only mcpServers key)
- *
- * Product-specific fields (codex plugins/projects, claude permissions/theme)
- * are preserved. Only the MCP server layer is synchronized.
- *
- * Usage: node scripts/sync-profiles.mjs [--check]
- *   --check  dry-run; print plan and exit non-zero if changes would be made
- *
- * Note: The WebUI API endpoint (web/src/app/api/profiles/sync/route.ts) shares
- * the same logic via web/src/lib/profiles/sync-engine.ts. Keep both in sync
- * when changing behavior.
+ * Exported functions are used by:
+ *   - scripts/sync-profiles.mjs  (CLI entry point)
+ *   - web/src/app/api/profiles/sync/route.ts  (WebUI endpoint)
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 const HOME = homedir();
-const OPENCODE_CONFIG = join(HOME, ".config", "opencode", "opencode.jsonc");
-const CODEX_CONFIG = join(HOME, ".codex", "config.toml");
-const CLAUDE_SETTINGS = join(HOME, ".claude", "settings.json");
 
-const dryRun = process.argv.includes("--check");
+type EnvMap = Record<string, string>;
 
-function stripJsonc(text) {
+type McpDefinition = {
+  type?: "local" | "remote";
+  command?: string[];
+  url?: string;
+  headers?: EnvMap;
+  environment?: EnvMap;
+  enabled?: boolean;
+};
+
+type OpendcodeConfig = {
+  mcp?: Record<string, McpDefinition>;
+};
+
+type CodexTargetStatus = {
+  exists: boolean;
+  inSync: boolean;
+  wouldChange: boolean;
+  message: string;
+};
+
+type CodexApplyResult = {
+  exists: boolean;
+  updated: boolean;
+  message: string;
+};
+
+export type SyncStatus = {
+  master: {
+    path: string;
+    exists: boolean;
+    servers: string[];
+    error: string | null;
+  };
+  codex: { path: string; exists: boolean };
+  claude: { path: string; exists: boolean };
+};
+
+export type SyncPlan = {
+  ok: boolean;
+  masterServers: string[];
+  targets: Record<string, CodexTargetStatus>;
+  error?: string;
+};
+
+export type SyncApplyResult = {
+  ok: boolean;
+  masterServers: string[];
+  changedFiles: number;
+  targets: Record<string, CodexApplyResult>;
+  error?: string;
+};
+
+export function profilePaths() {
+  return {
+    opencode: join(HOME, ".config", "opencode", "opencode.jsonc"),
+    codex: join(HOME, ".codex", "config.toml"),
+    claude: join(HOME, ".claude", "settings.json"),
+  };
+}
+
+function stripJsonc(text: string): string {
   let out = "";
   let i = 0;
   let inStr = false;
@@ -70,39 +114,38 @@ function stripJsonc(text) {
   return out;
 }
 
-function readJsonc(path) {
+function readJsonc(path: string): OpendcodeConfig {
   const raw = readFileSync(path, "utf8");
-  return JSON.parse(stripJsonc(raw));
+  return JSON.parse(stripJsonc(raw)) as OpendcodeConfig;
 }
 
-function tomlString(v) {
-  if (typeof v !== "string") return String(v);
+function tomlString(v: string): string {
   const single = v.indexOf("'") === -1 && v.indexOf("\n") === -1;
   if (single) return `'${v}'`;
   const esc = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `"${esc}"`;
 }
 
-function tomlArray(arr) {
+function tomlArray(arr: string[]): string {
   if (arr.length === 0) return "[]";
   return "[" + arr.map((x) => tomlString(String(x))).join(", ") + "]";
 }
 
-function isEnvRef(v) {
-  return typeof v === "string" && /^\{env:[A-Z0-9_]+\}$/i.test(v);
+function isEnvRef(v: string): boolean {
+  return /^\{env:[A-Z0-9_]+\}$/i.test(v);
 }
 
-function envValueToCodex(v) {
+function envValueToCodex(v: string): string {
   return tomlString(String(v));
 }
 
-function envValueToClaude(v) {
+function envValueToClaude(v: string): string {
   return String(v);
 }
 
-function filterEnv(env) {
+function filterEnv(env: EnvMap | undefined): EnvMap {
   if (!env) return {};
-  const out = {};
+  const out: EnvMap = {};
   for (const [k, v] of Object.entries(env)) {
     if (isEnvRef(v)) continue;
     out[k] = v;
@@ -110,9 +153,9 @@ function filterEnv(env) {
   return out;
 }
 
-function opencodeMcpToCodex(name, def) {
+function opencodeMcpToCodex(name: string, def: McpDefinition): string | null {
   if (def.enabled === false) return null;
-  const lines = [];
+  const lines: string[] = [];
   lines.push(`[mcp_servers.${name}]`);
   if (def.type === "remote") {
     if (def.url) lines.push(`url = ${tomlString(def.url)}`);
@@ -140,9 +183,18 @@ function opencodeMcpToCodex(name, def) {
   return lines.join("\n");
 }
 
-function opencodeMcpToClaude(name, def) {
+type ClaudeMcpEntry = {
+  type?: string;
+  url?: string;
+  headers?: EnvMap;
+  command?: string;
+  args?: string[];
+  env?: EnvMap;
+};
+
+function opencodeMcpToClaude(name: string, def: McpDefinition): ClaudeMcpEntry | null {
   if (def.enabled === false) return null;
-  const entry = {};
+  const entry: ClaudeMcpEntry = {};
   if (def.type === "remote") {
     entry.type = "sse";
     if (def.url) entry.url = def.url;
@@ -168,9 +220,9 @@ function opencodeMcpToClaude(name, def) {
   return entry;
 }
 
-function replaceCodexMcpTables(tomlText, newBlocks) {
+function replaceCodexMcpTables(tomlText: string, newBlocks: string[]): string {
   const lines = tomlText.split(/\r?\n/);
-  const out = [];
+  const out: string[] = [];
   let skip = false;
   for (const line of lines) {
     const head = line.trim().match(/^\[mcp_servers\.([^\]]+)\]/);
@@ -196,10 +248,10 @@ function replaceCodexMcpTables(tomlText, newBlocks) {
   return cleaned;
 }
 
-function buildTargets(mcp) {
-  const codexBlocks = [];
-  const claudeServers = {};
-  const names = [];
+function buildTargets(mcp: Record<string, McpDefinition>) {
+  const codexBlocks: string[] = [];
+  const claudeServers: Record<string, ClaudeMcpEntry> = {};
+  const names: string[] = [];
   for (const [name, def] of Object.entries(mcp)) {
     if (def.enabled === false) continue;
     const c = opencodeMcpToCodex(name, def);
@@ -211,23 +263,63 @@ function buildTargets(mcp) {
   return { codexBlocks, claudeServers, names };
 }
 
-function planSync() {
-  if (!existsSync(OPENCODE_CONFIG)) {
+/**
+ * Read the current master opencode MCP config and the targets' sync state.
+ * Returns status info without writing anything.
+ */
+export function readSyncStatus(): SyncStatus {
+  const paths = profilePaths();
+  const masterExists = existsSync(paths.opencode);
+  const codexExists = existsSync(paths.codex);
+  const claudeExists = existsSync(paths.claude);
+
+  let masterServers: string[] = [];
+  let masterError: string | null = null;
+  if (masterExists) {
+    try {
+      const master = readJsonc(paths.opencode);
+      const mcp = master.mcp || {};
+      masterServers = Object.entries(mcp)
+        .filter(([, d]) => d.enabled !== false)
+        .map(([name]) => name);
+    } catch (err) {
+      masterError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  return {
+    master: {
+      path: paths.opencode,
+      exists: masterExists,
+      servers: masterServers,
+      error: masterError,
+    },
+    codex: { path: paths.codex, exists: codexExists },
+    claude: { path: paths.claude, exists: claudeExists },
+  };
+}
+
+/**
+ * Compute sync plan without writing. Returns per-target inSync + messages.
+ */
+export function planSync(): SyncPlan {
+  const paths = profilePaths();
+  if (!existsSync(paths.opencode)) {
     return {
       ok: false,
-      error: `master not found: ${OPENCODE_CONFIG}`,
+      error: `master not found: ${paths.opencode}`,
       masterServers: [],
       targets: {},
     };
   }
-  const master = readJsonc(OPENCODE_CONFIG);
+  const master = readJsonc(paths.opencode);
   const mcp = master.mcp || {};
   const { codexBlocks, claudeServers, names } = buildTargets(mcp);
 
-  const targets = {};
+  const targets: Record<string, CodexTargetStatus> = {};
 
-  if (existsSync(CODEX_CONFIG)) {
-    const original = readFileSync(CODEX_CONFIG, "utf8");
+  if (existsSync(paths.codex)) {
+    const original = readFileSync(paths.codex, "utf8");
     const next = replaceCodexMcpTables(original, codexBlocks);
     const inSync = next === original;
     targets.codex = {
@@ -243,13 +335,13 @@ function planSync() {
       exists: false,
       inSync: false,
       wouldChange: false,
-      message: `skip: ${CODEX_CONFIG} not found`,
+      message: `skip: ${paths.codex} not found`,
     };
   }
 
-  if (existsSync(CLAUDE_SETTINGS)) {
-    const original = readFileSync(CLAUDE_SETTINGS, "utf8");
-    const settings = JSON.parse(original);
+  if (existsSync(paths.claude)) {
+    const original = readFileSync(paths.claude, "utf8");
+    const settings = JSON.parse(original) as { mcpServers?: unknown };
     const before = JSON.stringify(settings.mcpServers ?? null);
     settings.mcpServers = claudeServers;
     const after = JSON.stringify(settings.mcpServers);
@@ -267,35 +359,44 @@ function planSync() {
       exists: false,
       inSync: false,
       wouldChange: false,
-      message: `skip: ${CLAUDE_SETTINGS} not found`,
+      message: `skip: ${paths.claude} not found`,
     };
   }
 
-  return { ok: true, masterServers: names, targets };
+  return {
+    ok: true,
+    masterServers: names,
+    targets,
+  };
 }
 
-function applySync() {
-  if (!existsSync(OPENCODE_CONFIG)) {
+/**
+ * Apply sync: write the MCP layer of codex/claude from the opencode master.
+ * Returns per-target results.
+ */
+export function applySync(): SyncApplyResult {
+  const paths = profilePaths();
+  if (!existsSync(paths.opencode)) {
     return {
       ok: false,
-      error: `master not found: ${OPENCODE_CONFIG}`,
+      error: `master not found: ${paths.opencode}`,
       masterServers: [],
       changedFiles: 0,
       targets: {},
     };
   }
-  const master = readJsonc(OPENCODE_CONFIG);
+  const master = readJsonc(paths.opencode);
   const mcp = master.mcp || {};
   const { codexBlocks, claudeServers, names } = buildTargets(mcp);
 
-  const targets = {};
+  const targets: Record<string, CodexApplyResult> = {};
   let changed = 0;
 
-  if (existsSync(CODEX_CONFIG)) {
-    const original = readFileSync(CODEX_CONFIG, "utf8");
+  if (existsSync(paths.codex)) {
+    const original = readFileSync(paths.codex, "utf8");
     const next = replaceCodexMcpTables(original, codexBlocks);
     if (next !== original) {
-      writeFileSync(CODEX_CONFIG, next, "utf8");
+      writeFileSync(paths.codex, next, "utf8");
       changed++;
       targets.codex = {
         exists: true,
@@ -313,18 +414,18 @@ function applySync() {
     targets.codex = {
       exists: false,
       updated: false,
-      message: `skip: ${CODEX_CONFIG} not found`,
+      message: `skip: ${paths.codex} not found`,
     };
   }
 
-  if (existsSync(CLAUDE_SETTINGS)) {
-    const original = readFileSync(CLAUDE_SETTINGS, "utf8");
-    const settings = JSON.parse(original);
+  if (existsSync(paths.claude)) {
+    const original = readFileSync(paths.claude, "utf8");
+    const settings = JSON.parse(original) as { mcpServers?: unknown };
     const before = JSON.stringify(settings.mcpServers ?? null);
     settings.mcpServers = claudeServers;
     const after = JSON.stringify(settings.mcpServers);
     if (before !== after) {
-      writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + "\n", "utf8");
+      writeFileSync(paths.claude, JSON.stringify(settings, null, 2) + "\n", "utf8");
       changed++;
       targets.claude = {
         exists: true,
@@ -342,35 +443,14 @@ function applySync() {
     targets.claude = {
       exists: false,
       updated: false,
-      message: `skip: ${CLAUDE_SETTINGS} not found`,
+      message: `skip: ${paths.claude} not found`,
     };
   }
 
-  return { ok: true, masterServers: names, changedFiles: changed, targets };
+  return {
+    ok: true,
+    masterServers: names,
+    changedFiles: changed,
+    targets,
+  };
 }
-
-if (dryRun) {
-  const plan = planSync();
-  if (!plan.ok) {
-    console.error(`[sync-profiles] ${plan.error}`);
-    process.exit(2);
-  }
-  let wouldChange = 0;
-  for (const [name, t] of Object.entries(plan.targets)) {
-    console.log(`[${name}] ${t.message}`);
-    if (t.wouldChange) wouldChange++;
-  }
-  console.log(`[sync-profiles] plan: ${plan.masterServers.length} master server(s), ${wouldChange} file(s) would change`);
-  if (wouldChange > 0) process.exit(1);
-  process.exit(0);
-}
-
-const result = applySync();
-if (!result.ok) {
-  console.error(`[sync-profiles] ${result.error}`);
-  process.exit(2);
-}
-for (const [name, t] of Object.entries(result.targets)) {
-  console.log(`[${name}] ${t.message}`);
-}
-console.log(`[sync-profiles] done (${result.changedFiles} file(s) updated)`);
