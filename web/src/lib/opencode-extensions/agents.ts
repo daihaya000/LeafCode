@@ -385,9 +385,11 @@ export async function setAgentEnabled(
   } catch {
     // Engine unavailable; rely on config/state.
   }
+  const projectConfigAgents = readConfigAgentMapAt(projectConfigFilePath());
+  const inProjectConfig = projectConfigAgents[name] !== undefined;
   if (!known) {
     const configAgents = readConfigAgentMap();
-    if (configAgents[name] !== undefined) known = true;
+    if (configAgents[name] !== undefined || inProjectConfig) known = true;
   }
   if (!known) {
     const state = readAgentState();
@@ -400,7 +402,15 @@ export async function setAgentEnabled(
     );
   }
 
-  await updateConfigFile(opencodeConfigFilePath(), (content) =>
+  // A project-scoped agent's `opencode.jsonc` takes precedence over the
+  // global config (see resolveAgentSource), so the disable flag must be
+  // written there — writing it to the global file only would have no
+  // effect once the project config overrides it.
+  const targetConfigPath = inProjectConfig
+    ? (projectConfigFilePath() as string)
+    : opencodeConfigFilePath();
+
+  await updateConfigFile(targetConfigPath, (content) =>
     updateAgentDisable(content, name, !enabled),
   );
 

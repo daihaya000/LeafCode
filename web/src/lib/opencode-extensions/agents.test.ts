@@ -149,6 +149,26 @@ describe("agents extension", () => {
     expect(agents.find((a) => a.name === "build")?.enabled).toBe(false);
   });
 
+  it("disables a project-scoped agent in the project config, not the global one", async () => {
+    // Regression: project config takes precedence over global config (see
+    // resolveAgentSource), so writing `disable: true` to the global file only
+    // had no effect once a project opencode.jsonc defined the same agent.
+    const projectConfigPath = path.join(projectRoot, "opencode.jsonc");
+    fs.writeFileSync(
+      projectConfigPath,
+      JSON.stringify({ agent: { reviewer: { mode: "subagent" } } }, null, 2),
+    );
+    fs.writeFileSync(configPath, "{}");
+    mockOcServer.mockResolvedValueOnce([{ name: "reviewer", mode: "subagent" }]);
+
+    await setAgentEnabled("reviewer", false);
+
+    const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, "utf8"));
+    expect(projectConfig.agent.reviewer.disable).toBe(true);
+    const globalConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(globalConfig.agent?.reviewer).toBeUndefined();
+  });
+
   it("enables a previously disabled agent", async () => {
     mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
     fs.writeFileSync(
