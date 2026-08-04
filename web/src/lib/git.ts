@@ -60,7 +60,17 @@ export function runGit(
       if (settled) return;
       settled = true;
       try {
-        child.kill("SIGKILL");
+        if (process.platform === "win32" && child.pid) {
+          // `child.kill()` only signals the `git` process itself; a
+          // credential helper or ssh subprocess it spawned survives and can
+          // keep files locked. `taskkill /T` kills the whole process tree.
+          spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+            windowsHide: true,
+            stdio: "ignore",
+          }).on("error", () => undefined);
+        } else {
+          child.kill("SIGKILL");
+        }
       } catch {
         /* already gone */
       }

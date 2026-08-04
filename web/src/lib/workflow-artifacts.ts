@@ -24,6 +24,11 @@ export type WorkflowArtifactInput = {
 
 const OPAQUE_REF = /^[A-Za-z0-9_:/.-]{1,512}$/;
 const SAFE_CODES = new Set(["APPROVAL_REQUIRED", "TAB_NOT_SHARED", "EXTENSION_DISCONNECTED", "NOT_PAIRED", "POLICY_BLOCKED", "COMMAND_TIMEOUT", "PAYLOAD_TOO_LARGE", "INVALID_REQUEST", "PROTOCOL_MISMATCH"]);
+const WORKFLOW_ARTIFACT_ORIGINS: ReadonlySet<WorkflowArtifactOrigin> = new Set([
+  "task_attachment",
+  "shared_tab",
+  "browser_bridge",
+]);
 
 export function mapBrowserBridgeError(code: string): BrowserBridgeArtifactState {
   if (code === "APPROVAL_REQUIRED") return "attention";
@@ -35,6 +40,7 @@ export function validateWorkflowArtifact(input: WorkflowArtifactInput): void {
   if (input.kind !== "screenshot") throw new TypeError("Only screenshot artifacts are supported");
   if (!input.label.trim() || input.label.length > 256) throw new TypeError("Invalid artifact label");
   if (!OPAQUE_REF.test(input.opaqueRef) || input.opaqueRef.startsWith("data:") || input.opaqueRef.includes("base64")) throw new TypeError("Artifact must use an opaque reference");
+  if (!WORKFLOW_ARTIFACT_ORIGINS.has(input.origin)) throw new TypeError("Invalid artifact origin");
   if (input.metadata && JSON.stringify(input.metadata).length > 2_000) throw new TypeError("Artifact metadata is too large");
 }
 
@@ -81,7 +87,11 @@ export async function verifyBrowserBridgeScreenshot(input: {
     throw new BrowserBridgeArtifactError(code, mapBrowserBridgeError(code), response.status === 428 ? 428 : 503);
   }
   const tab = payload?.tabs?.find((candidate) => candidate.id === input.tabId);
-  if (!tab?.origin || !tab.title) throw new BrowserBridgeArtifactError("TAB_NOT_SHARED", "blocked", 409);
+  // A blank tab title (e.g. a page still loading) is a legitimate value, not
+  // "not shared" — check presence via typeof, not truthiness.
+  if (!tab?.origin || typeof tab.title !== "string") {
+    throw new BrowserBridgeArtifactError("TAB_NOT_SHARED", "blocked", 409);
+  }
   if (input.expectedOrigin && input.expectedOrigin !== tab.origin) {
     throw new BrowserBridgeArtifactError("TAB_OWNERSHIP_MISMATCH", "blocked", 409);
   }

@@ -59,15 +59,25 @@ export function readAddonPrefs(): AddonPrefs {
   }
 }
 
+/**
+ * Serializes read-modify-write access to `STORAGE_KEY` within this tab.
+ * Without it, two near-simultaneous `writeAddonEnabled` calls (e.g. toggling
+ * two addons in quick succession) can both read the same pre-update prefs
+ * and the second `setItem` silently drops the first call's change.
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+
 export function writeAddonEnabled(id: string, enabled: boolean): void {
-  try {
-    const prefs = readAddonPrefs();
-    prefs[id] = enabled;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-    window.dispatchEvent(
-      new CustomEvent<AddonPrefs>(ADDONS_CHANGED_EVENT, { detail: prefs }),
-    );
-  } catch {
-    /* ignore */
-  }
+  writeQueue = writeQueue.then(() => {
+    try {
+      const prefs = readAddonPrefs();
+      prefs[id] = enabled;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+      window.dispatchEvent(
+        new CustomEvent<AddonPrefs>(ADDONS_CHANGED_EVENT, { detail: prefs }),
+      );
+    } catch {
+      /* ignore */
+    }
+  });
 }

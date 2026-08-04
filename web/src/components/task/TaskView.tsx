@@ -2773,44 +2773,83 @@ export function TaskView({ taskId }: { taskId: string }) {
   // Desktop notifications when the tab is backgrounded
   const prevWorkingRef = useRef(false);
   const prevAttentionRef = useRef(false);
+  // Tracked as state (not read directly from `document.hidden`) so
+  // visibilitychange re-runs the effect below — otherwise a state change
+  // that happens right as the tab gets hidden could evaluate against the
+  // hidden-ness from before the switch and miss the notification.
+  const [documentHidden, setDocumentHidden] = useState(() =>
+    typeof document !== "undefined" ? document.hidden : false,
+  );
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibilityChange = () => setDocumentHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+  // Bumped once `requestPermission()` below resolves, so the effect re-runs
+  // and re-evaluates against the now-decided permission — otherwise, since
+  // `Notification.permission` isn't a React dependency, a rising edge that
+  // arrived while still "default" would never be re-checked once the user
+  // answers the (async) browser prompt.
+  const [permissionTick, setPermissionTick] = useState(0);
+  // Guards against a tight request/resolve/re-render loop: without it, each
+  // resolved requestPermission() bumps permissionTick, which re-runs this
+  // effect, which — while permission is still "default" — would call
+  // requestPermission() again immediately.
+  const permissionRequestedRef = useRef(false);
+  // An edge detected while permission wasn't "granted" yet — remembered so
+  // it can still fire once the (async) permission prompt is answered,
+  // instead of being silently dropped.
+  const pendingKindRef = useRef<ReturnType<typeof decideNotification>>(null);
   useEffect(() => {
     if (typeof Notification === "undefined") return;
     const attention =
       stream.permissions.length > 0 || stream.questions.length > 0;
+    const permission = Notification.permission;
 
-    if (
-      Notification.permission === "default" &&
-      (working || attention)
-    ) {
-      void Notification.requestPermission().catch(() => undefined);
+    if (permission === "default" && (working || attention) && !permissionRequestedRef.current) {
+      permissionRequestedRef.current = true;
+      void Notification.requestPermission()
+        .catch(() => undefined)
+        .then(() => {
+          permissionRequestedRef.current = false;
+          setPermissionTick((n) => n + 1);
+        });
     }
 
-    const kind = decideNotification({
+    // Detect the edge unconditionally (bypassing the permission gate) so the
+    // prev-state refs always reflect reality — otherwise holding them back
+    // while permission is undecided would also hide a *later* transition
+    // (e.g. work finishing) that depends on the true previous value.
+    const edgeKind = decideNotification({
       prevAttention: prevAttentionRef.current,
       attention,
       prevWorking: prevWorkingRef.current,
       working,
-      documentHidden:
-        typeof document !== "undefined" ? document.hidden : false,
-      permission: Notification.permission,
+      documentHidden,
+      permission: "granted",
     });
-    if (kind) {
-      const { title, body } = notificationText(kind, task?.title ?? "");
+    prevWorkingRef.current = working;
+    prevAttentionRef.current = attention;
+    if (edgeKind) pendingKindRef.current = edgeKind;
+
+    if (permission === "granted" && pendingKindRef.current) {
+      const { title, body } = notificationText(pendingKindRef.current, task?.title ?? "");
       try {
         new Notification(title, { body, tag: `task-${task?.id ?? "x"}` });
       } catch {
         // ignore construction errors (e.g. unsupported context)
       }
+      pendingKindRef.current = null;
     }
-
-    prevWorkingRef.current = working;
-    prevAttentionRef.current = attention;
   }, [
     working,
     stream.permissions.length,
     stream.questions.length,
     task?.title,
     task?.id,
+    documentHidden,
+    permissionTick,
   ]);
 
   const restoreToComposer = useCallback(

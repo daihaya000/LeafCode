@@ -18,4 +18,13 @@ describe("Browser Bridge Visual Judge artifact contract", () => {
     await expect(verifyBrowserBridgeScreenshot({ tabId: "tab-2", opaqueRef: "browser-bridge:tab-2" })).rejects.toHaveProperty("code", "TAB_NOT_SHARED");
     await expect(verifyBrowserBridgeScreenshot({ tabId: "tab-1", opaqueRef: "browser-bridge:tab-1", expectedOrigin: "https://other.test" })).rejects.toHaveProperty("code", "TAB_OWNERSHIP_MISMATCH");
   });
+
+  test("accepts a tab with a blank title (regression: falsy-title check treated an empty title as not-shared)", async () => {
+    browserBrokerFetch.mockImplementation(
+      () => new Response(JSON.stringify({ tabs: [{ id: "tab-1", origin: "https://example.test", title: "" }] }), { status: 200 }),
+    );
+    await expect(
+      verifyBrowserBridgeScreenshot({ tabId: "tab-1", opaqueRef: "browser-bridge:tab-1" }),
+    ).resolves.toEqual({ origin: "https://example.test", title: "" });
+  });
 });

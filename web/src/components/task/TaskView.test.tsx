@@ -3500,4 +3500,95 @@ describe("TaskView voice input", () => {
       expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/tasks/ws1");
     });
   });
+
+  describe("desktop notifications", () => {
+    let requestPermission: ReturnType<typeof vi.fn>;
+    let notificationCtor: ReturnType<typeof vi.fn>;
+    let permission: NotificationPermission;
+    let permissionRequest: ReturnType<typeof deferred<NotificationPermission>>;
+
+    // jsdom's `document.hidden` doesn't derive from `visibilityState` the
+    // way real browsers do (`setVisible` above only overrides
+    // visibilityState), and the component reads `.hidden` directly — so
+    // simulate hidden-ness by overriding both.
+    function setHidden(hidden: boolean) {
+      setVisible(!hidden);
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => hidden,
+      });
+    }
+
+    beforeEach(() => {
+      permission = "default";
+      permissionRequest = deferred<NotificationPermission>();
+      // Controlled by the test (not auto-resolving) so exactly one
+      // request/resolve cycle happens — an always-resolving mock let the
+      // permissionTick -> effect -> requestPermission cascade spin as fast
+      // as the microtask queue allows while permission stayed "default".
+      requestPermission = vi.fn(() => permissionRequest.promise);
+      notificationCtor = vi.fn();
+      (notificationCtor as unknown as { requestPermission: typeof requestPermission }).requestPermission =
+        requestPermission;
+      // Object.assign would evaluate a `get permission()` accessor once and
+      // copy its *current* value as a static property — later reassigning
+      // the outer `permission` variable would then have no effect.
+      // defineProperty keeps it a live accessor.
+      Object.defineProperty(notificationCtor, "permission", {
+        configurable: true,
+        get: () => permission,
+      });
+      vi.stubGlobal("Notification", notificationCtor);
+      setHidden(true);
+    });
+
+    it("still notifies the rising attention edge once permission is granted after the async prompt resolves", async () => {
+      // Regression: the effect used to advance its prev-state refs on every
+      // run regardless of permission. Requesting permission is async, so a
+      // state change that happened while permission was still "default"
+      // got its rising edge consumed before the user ever answered the
+      // browser prompt — the notification that should fire once granted
+      // never did.
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        status: { type: "busy" },
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(requestPermission).toHaveBeenCalledTimes(1);
+      expect(notificationCtor).not.toHaveBeenCalled();
+
+      // The user answers the browser's permission prompt, and the task
+      // finishes in the same tick.
+      permission = "granted";
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        status: { type: "idle" },
+      });
+      await act(async () => {
+        permissionRequest.resolve("granted");
+        await permissionRequest.promise;
+      });
+
+      expect(notificationCtor).toHaveBeenCalled();
+    });
+
+    it("tracks visibilitychange without erroring, so a later state change is evaluated against fresh hidden-ness", async () => {
+      setHidden(false);
+      permission = "granted";
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      expect(notificationCtor).not.toHaveBeenCalled();
+
+      setHidden(true);
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      // No attention/working transition happened, so still no notification —
+      // this only proves the visibilitychange listener doesn't throw or loop.
+      expect(notificationCtor).not.toHaveBeenCalled();
+    });
+  });
 });

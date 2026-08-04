@@ -15,6 +15,12 @@ describe("workflow artifacts", () => {
     expect(() => validateWorkflowArtifact({ ...input, opaqueRef: "data:image/png;base64,AAAA" })).toThrow();
   });
 
+  test("rejects an origin outside the known set (regression: origin wasn't validated at runtime)", () => {
+    expect(() =>
+      validateWorkflowArtifact({ ...input, origin: "not_a_real_origin" as never }),
+    ).toThrow();
+  });
+
   test("maps Browser Bridge outcomes to safe Workflow states", () => {
     expect(mapBrowserBridgeError("APPROVAL_REQUIRED")).toBe("attention");
     expect(mapBrowserBridgeError("TAB_NOT_SHARED")).toBe("blocked");
