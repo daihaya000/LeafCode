@@ -82,6 +82,101 @@ function describePluginValue(value: unknown): {
   return { name: "(unsupported plugin entry)" };
 }
 
+const REEXPORT_RE = /^export\s*(?:\{[^{}]*\}|\*)\s*from\s*["'](\.\.?\/[^"']+)["']/;
+const JS_EXT_RE = /\.(js|mjs|cjs|ts|tsx|jsx)$/i;
+const PATH_LABEL_RE = /^[\w./-]+\.(?:js|mjs|cjs|ts|tsx)$/;
+const MAX_CHAIN_DEPTH = 6;
+const MAX_HEAD_CHARS = 4000;
+const MAX_DESCRIPTION_CHARS = 200;
+
+function readFileHead(filePath: string): string | undefined {
+  try {
+    return fs.readFileSync(filePath, "utf8").slice(0, MAX_HEAD_CHARS);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Leading `//` comment lines (prefix stripped) and the remaining source text. */
+function extractLeadingComment(source: string): { lines: string[]; rest: string } {
+  const all = source.split(/\r?\n/);
+  let i = 0;
+  const lines: string[] = [];
+  for (; i < all.length; i++) {
+    const trimmed = all[i].trim();
+    if (!trimmed.startsWith("//")) break;
+    lines.push(trimmed.replace(/^\/\/\s?/, ""));
+  }
+  return { lines, rest: all.slice(i).join("\n") };
+}
+
+/** First real paragraph of a leading comment, skipping a bare "path/to/file.js" label line. */
+function firstCommentParagraph(lines: string[]): string | undefined {
+  let started = false;
+  const para: string[] = [];
+  for (const line of lines) {
+    if (line === "") {
+      if (started) break;
+      continue;
+    }
+    if (!started && para.length === 0 && PATH_LABEL_RE.test(line)) continue;
+    started = true;
+    para.push(line);
+  }
+  if (!para.length) return undefined;
+  const text = para.join(" ").replace(/\s+/g, " ").trim();
+  return text.length > MAX_DESCRIPTION_CHARS
+    ? `${text.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`
+    : text;
+}
+
+/**
+ * When `source` is (close to) nothing but a thin `export ... from "./rel"`
+ * re-export, resolve the relative target so the caller can chase it for a
+ * more useful description than "this file just re-exports something".
+ */
+function resolveReexportTarget(fromFile: string, rest: string): string | undefined {
+  const trimmed = rest.trim();
+  const nonBlankLines = trimmed.split("\n").filter((l) => l.trim() !== "");
+  if (nonBlankLines.length > 2) return undefined;
+  const match = REEXPORT_RE.exec(trimmed);
+  if (!match) return undefined;
+  let target = path.resolve(path.dirname(fromFile), match[1]);
+  if (!JS_EXT_RE.test(target)) {
+    for (const ext of [".js", ".mjs", ".cjs", ".ts"]) {
+      if (fs.existsSync(target + ext)) {
+        target += ext;
+        break;
+      }
+    }
+  }
+  return target;
+}
+
+/**
+ * Best-effort human description for a plugin source file: its leading
+ * comment's first paragraph, following thin re-export chains (bounded
+ * depth) toward the real implementation when the entry file has none of its
+ * own. Read-only — the file is never executed or `require`d.
+ */
+function descriptionFromFile(filePath: string, depth = 0): string | undefined {
+  if (depth > MAX_CHAIN_DEPTH) return undefined;
+  const head = readFileHead(filePath);
+  if (head === undefined) return undefined;
+  const { lines, rest } = extractLeadingComment(head);
+  const target = resolveReexportTarget(filePath, rest);
+  if (target) {
+    const chained = descriptionFromFile(target, depth + 1);
+    if (chained) return chained;
+  }
+  return firstCommentParagraph(lines);
+}
+
+/** True for path-like plugin values (absolute or "./"/"../" relative); false for bare npm specs. */
+function looksLikeFilePath(name: string): boolean {
+  return path.isAbsolute(name) || name.startsWith("./") || name.startsWith("../");
+}
+
 function isValidStateEntry(entry: unknown): entry is StateEntry {
   if (!entry || typeof entry !== "object") return false;
   const e = entry as Record<string, unknown>;
@@ -137,12 +232,17 @@ async function scanLocalPlugins(
   }
   return entries
     .filter((e) => e.isFile() && LOCAL_FILE_RE.test(e.name))
-    .map((e) => ({
-      id: `${LOCAL_ID_PREFIX}${e.name}`,
-      name: e.name,
-      kind: "local" as const,
-      enabled,
-    }))
+    .map((e) => {
+      const dto: PluginDto = {
+        id: `${LOCAL_ID_PREFIX}${e.name}`,
+        name: e.name,
+        kind: "local",
+        enabled,
+      };
+      const description = descriptionFromFile(path.join(dir, e.name));
+      if (description) dto.description = description;
+      return dto;
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -156,6 +256,16 @@ function toConfiguredDto(
   const dto: PluginDto = { id, name: info.name, kind: "config", enabled };
   if (info.hasOptions) dto.hasOptions = true;
   if (managedByWebui) dto.managedByWebui = true;
+  const rawName =
+    typeof value === "string"
+      ? value
+      : Array.isArray(value) && typeof value[0] === "string"
+        ? value[0]
+        : undefined;
+  if (rawName && looksLikeFilePath(rawName)) {
+    const description = descriptionFromFile(rawName);
+    if (description) dto.description = description;
+  }
   return dto;
 }
 

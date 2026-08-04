@@ -120,6 +120,67 @@ describe("listPlugins", () => {
     ]);
   });
 
+  it("derives a description from a local plugin's leading comment", async () => {
+    fs.mkdirSync(path.join(base, "plugin"));
+    fs.writeFileSync(
+      path.join(base, "plugin", "foo.js"),
+      "// Guards against bad things happening.\n// More detail on a second line.\n\nexport default {};\n",
+    );
+
+    const plugins = await listPlugins();
+    const foo = plugins.find((p) => p.name === "foo.js");
+    expect(foo?.description).toBe(
+      "Guards against bad things happening. More detail on a second line.",
+    );
+  });
+
+  it("follows a thin re-export chain to a richer description, skipping a bare path-label line", async () => {
+    fs.mkdirSync(path.join(base, "plugin"));
+    fs.mkdirSync(path.join(base, "packages", "bar"), { recursive: true });
+    fs.writeFileSync(
+      path.join(base, "plugin", "bar.js"),
+      '// Thin re-export so it loads from disk.\nexport { default } from "../packages/bar/index.js";\n',
+    );
+    fs.writeFileSync(
+      path.join(base, "packages", "bar", "index.js"),
+      "// packages/bar/index.js\n//\n// Does the real bar thing.\n\nexport default {};\n",
+    );
+
+    const plugins = await listPlugins();
+    const bar = plugins.find((p) => p.name === "bar.js");
+    expect(bar?.description).toBe("Does the real bar thing.");
+  });
+
+  it("omits the description when there is no leading comment to extract", async () => {
+    fs.mkdirSync(path.join(base, "plugin"));
+    fs.writeFileSync(path.join(base, "plugin", "cursor-acp.js"), "export {}");
+
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "cursor-acp.js");
+    expect(target?.description).toBeUndefined();
+  });
+
+  it("derives a description for a path-type configured plugin but not for a bare npm spec", async () => {
+    fs.writeFileSync(
+      path.join(base, "standalone.mjs"),
+      "// A standalone path-based plugin.\nexport default {};\n",
+    );
+    const raw = fs.readFileSync(path.join(base, "opencode.jsonc"), "utf8");
+    fs.writeFileSync(
+      path.join(base, "opencode.jsonc"),
+      raw.replace(
+        '"plugin": [',
+        `"plugin": [\n    ${JSON.stringify(path.join(base, "standalone.mjs"))},`,
+      ),
+    );
+
+    const plugins = await listPlugins();
+    const standalone = plugins.find((p) => p.name.endsWith("standalone.mjs"));
+    expect(standalone?.description).toBe("A standalone path-based plugin.");
+    const bareNpm = plugins.find((p) => p.name === "opencode-claude-auth@latest");
+    expect(bareNpm?.description).toBeUndefined();
+  });
+
   it("diagnoses a corrupt state file and falls back to empty state", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

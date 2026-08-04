@@ -974,6 +974,11 @@ export function ExtensionsSettings({
                         <Badge tone="warning">WebUI 管理</Badge>
                       )}
                     </div>
+                    {p.description && (
+                      <p className="mt-0.5 text-xs break-words text-faint">
+                        {p.description}
+                      </p>
+                    )}
                     {p.managedByWebui && (
                       <p className="mt-0.5 text-[11px] text-faint">
                         無効状態と元設定は WebUI のローカル管理情報です。状態を一覧から削除すると元設定（オプションを含む）は失われ、再有効化しても復元できません。
