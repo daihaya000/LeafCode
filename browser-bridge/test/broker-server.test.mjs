@@ -470,6 +470,22 @@ test('expires an unapproved action without dispatching it later', async (t) => {
   assert.equal(command, null);
 });
 
+test('close() completes while an unauthenticated extension socket is still connected', async (t) => {
+  const broker = await startBroker();
+  const socket = await connectSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno');
+  t.after(() => socket.close());
+  await nextMessage(socket, () => socket.send(JSON.stringify({ type: 'request_pairing' })));
+
+  // An upgraded socket the Broker never authenticated is still a live HTTP
+  // connection; if close() ignored it, server.close() would never call back.
+  const closed = await Promise.race([
+    broker.close().then(() => 'closed'),
+    new Promise((resolve) => setTimeout(() => resolve('hung'), 2_000)),
+  ]);
+  assert.equal(closed, 'closed');
+  assert.equal(socket.readyState > 1, true);
+});
+
 function openSocket(url, origin, message) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { origin });

@@ -519,7 +519,6 @@ export function createBrowserBridgeBroker({
     },
     async close() {
       if (!listening) return;
-      extensionSocket?.close(1001, 'broker_shutdown');
       extensionSocket = null;
       for (const request of pendingPairingRequests.values()) clearTimeout(request.timer);
       pendingPairingRequests.clear();
@@ -532,7 +531,24 @@ export function createBrowserBridgeBroker({
         pending.reject(new Error('broker shutdown'));
       }
       pendingSnapshots.clear();
-      await new Promise((resolve) => server.close(() => resolve()));
+      // Close every live socket, not just the authenticated one: an
+      // unauthenticated socket (an extension still waiting for its pairing
+      // approval, or one that was denied) is an upgraded connection the HTTP
+      // server still counts, so `server.close()` would never call back.
+      for (const client of wss.clients) client.close(1001, 'broker_shutdown');
+      await new Promise((resolve) => {
+        // A peer that never answers the close handshake must not hold shutdown
+        // open; ws would otherwise wait out its own 30s close timeout.
+        const force = setTimeout(() => {
+          for (const client of wss.clients) client.terminate();
+          server.closeAllConnections();
+        }, 1_000);
+        force.unref?.();
+        server.close(() => {
+          clearTimeout(force);
+          resolve();
+        });
+      });
       wss.close();
       listening = false;
     },
