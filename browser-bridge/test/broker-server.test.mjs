@@ -120,6 +120,48 @@ test('offers no code: an unpaired extension requests pairing and only the WebUI-
   socket.close();
 });
 
+test('grants pairing state even if the extension socket is already closing when "allow" is decided', async (t) => {
+  // Regression test: the WebUI showed the pairing request as allowed, but a
+  // service-worker restart racing with the click meant the extension's
+  // socket was mid-close by the time the decision reached the Broker. The
+  // old code only recorded the pairing when `socket.readyState === OPEN`,
+  // silently no-opping otherwise while still returning HTTP 200 - so the
+  // extension stayed unpaired and immediately re-announced itself with a
+  // fresh pairing card that looked like the same request looping forever.
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const origin = 'chrome-extension://abcdefghijklmno';
+  const socket = await connectSocket(broker.wsUrl, origin);
+  const requested = await nextMessage(socket, () => socket.send(JSON.stringify({ type: 'request_pairing' })));
+  assert.equal(requested.type, 'pairing_requested');
+
+  // Start closing the socket, then immediately (before the close handshake
+  // completes) send the allow decision, matching the observed race.
+  socket.close();
+  const decision = await fetch(`${broker.url}/internal/pairing-requests/${requested.requestId}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: 'allow' }),
+  });
+  assert.equal(decision.status, 200);
+  assert.deepEqual(await decision.json(), { requestId: requested.requestId, decision: 'allow' });
+
+  // A fresh reconnect from the same origin must be recognized as already
+  // paired, not asked to re-request pairing, exactly like the real
+  // extension's `paired` handler which authenticates on the same reply.
+  const reconnect = await connectSocket(broker.wsUrl, origin);
+  t.after(() => reconnect.close());
+  const reissued = await nextMessage(reconnect, () => reconnect.send(JSON.stringify({ type: 'request_pairing' })));
+  assert.equal(reissued.type, 'paired');
+  const authenticated = await nextMessage(reconnect, () => reconnect.send(JSON.stringify({ type: 'authenticate', deviceKey: reissued.deviceKey })));
+  assert.equal(authenticated.type, 'authenticated');
+
+  const status = await fetch(`${broker.url}/internal/status`, {
+    headers: { Authorization: `Bearer ${broker.internalToken}` },
+  }).then((res) => res.json());
+  assert.deepEqual(status.extension, { connected: true, paired: true });
+});
+
 test('denying a pairing request tells the extension without granting a device key', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());

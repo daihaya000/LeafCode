@@ -159,16 +159,21 @@ export function createBrowserBridgeBroker({
         pendingPairingRequests.delete(request.requestId);
         clearTimeout(request.timer);
         socketPairingRequestId.delete(request.socket);
-        if (request.socket.readyState === 1) {
-          if (body.decision === 'allow') {
-            pairedOrigin = request.origin;
-            deviceKey = createSecret();
-            persistPairing();
+        if (body.decision === 'allow') {
+          // Grant pairing even if the extension's socket already closed (e.g.
+          // a service-worker restart racing with this decision). Otherwise
+          // the WebUI shows the request as allowed while the extension is
+          // still unpaired, and it immediately re-announces itself with a
+          // fresh pairing card that looks like the same request looping.
+          pairedOrigin = request.origin;
+          deviceKey = createSecret();
+          persistPairing();
+          if (request.socket.readyState === 1) {
             request.socket.send(JSON.stringify({ type: 'paired', deviceKey }));
-          } else {
-            request.socket.send(JSON.stringify({ type: 'pairing_denied' }));
-            request.socket.close(1000, 'pairing_denied');
           }
+        } else if (request.socket.readyState === 1) {
+          request.socket.send(JSON.stringify({ type: 'pairing_denied' }));
+          request.socket.close(1000, 'pairing_denied');
         }
         json(res, 200, { requestId: request.requestId, decision: body.decision });
       }
