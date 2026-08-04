@@ -12,6 +12,7 @@
 import { modelIntelligenceScore, type ModelOption } from "./model-options";
 import {
   getIntelligenceVariants,
+  isIntelligenceVariant,
   type IntelligenceVariant,
 } from "./model-variants";
 
@@ -33,6 +34,12 @@ export const AUTO_MODEL_OPTION: ModelOption = {
 };
 
 export type AutoTier = "light" | "standard" | "heavy";
+
+/** Cost band of a model, derived from its id via name heuristics. */
+export type ModelCostTier = "cheap" | "mid" | "premium";
+
+/** Ordered tiers, lowest effort first. */
+const TIER_LADDER: readonly AutoTier[] = ["light", "standard", "heavy"];
 
 /**
  * "Optimize For" mode, mirroring Cursor Router.
@@ -68,6 +75,122 @@ const AUTO_OPTIMIZE_MODE_LABEL: Record<AutoOptimizeMode, string> = {
 /** Japanese display name for an optimize mode. */
 export function autoOptimizeModeLabel(mode: AutoOptimizeMode): string {
   return AUTO_OPTIMIZE_MODE_LABEL[mode];
+}
+
+/**
+ * Per-tier routing override. A missing field falls back to the preset
+ * (`MODE_COST_ORDER` / `MODE_VARIANT_ORDER`) for the selected optimize mode.
+ * Both arrays are deduped to their first occurrence; unknown entries are
+ * rejected by {@link normalizeRouteOverride}.
+ */
+export type TierRouteOverride = {
+  /** Cost band preference, first = primary. `null` = strongest candidate. */
+  costOrder?: readonly ModelCostTier[] | null;
+  /** Reasoning effort preference, first = primary. */
+  variantOrder?: readonly IntelligenceVariant[];
+};
+
+/** Full override map. Missing tiers fall back to the preset. */
+export type RouteOverrides = Partial<Record<AutoTier, TierRouteOverride>>;
+
+/** Empty override (all presets). The canonical "no customization" value. */
+export const EMPTY_ROUTE_OVERRIDES: RouteOverrides = {};
+
+function isModelCostTier(value: unknown): value is ModelCostTier {
+  return value === "cheap" || value === "mid" || value === "premium";
+}
+
+/**
+ * Dedupe an array to first-occurrence order, keeping only entries `guard`
+ * accepts. Priority-order fields (which entry wins ties) must preserve the
+ * caller's array order, not a canonical one — that IS the setting.
+ */
+function dedupeInOrder<T extends string>(
+  entries: readonly unknown[],
+  guard: (value: unknown) => value is T,
+): T[] {
+  const seen = new Set<T>();
+  const result: T[] = [];
+  for (const entry of entries) {
+    if (guard(entry) && !seen.has(entry)) {
+      seen.add(entry);
+      result.push(entry);
+    }
+  }
+  return result;
+}
+
+/**
+ * Normalize a single tier override: drop unknown / duplicate entries and
+ * preserve only the first occurrence, in the caller's priority order.
+ * Returns `undefined` when the input carries no usable field, so callers can
+ * omit the tier entirely.
+ */
+function normalizeTierOverride(
+  raw: unknown,
+): TierRouteOverride | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+  let costOrder: readonly ModelCostTier[] | null | undefined;
+  if (obj.costOrder === null) {
+    costOrder = null;
+  } else if (Array.isArray(obj.costOrder)) {
+    const ordered = dedupeInOrder(obj.costOrder, isModelCostTier);
+    if (ordered.length > 0) costOrder = ordered;
+  }
+  let variantOrder: readonly IntelligenceVariant[] | undefined;
+  if (Array.isArray(obj.variantOrder)) {
+    const ordered = dedupeInOrder(obj.variantOrder, isIntelligenceVariant);
+    if (ordered.length > 0) variantOrder = ordered;
+  }
+  if (costOrder === undefined && variantOrder === undefined) return undefined;
+  const result: TierRouteOverride = {};
+  if (costOrder !== undefined) result.costOrder = costOrder;
+  if (variantOrder !== undefined) result.variantOrder = variantOrder;
+  return result;
+}
+
+/**
+ * Validate and normalize a raw (JSON-parsed) override map. Unknown tiers and
+ * unknown entries are silently dropped, so a corrupted payload never blocks
+ * routing — it just falls back to the preset.
+ */
+export function normalizeRouteOverrides(raw: unknown): RouteOverrides {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const obj = raw as Record<string, unknown>;
+  const result: RouteOverrides = {};
+  for (const tier of TIER_LADDER) {
+    const override = normalizeTierOverride(obj[tier]);
+    if (override) result[tier] = override;
+  }
+  return result;
+}
+
+/** Whether the override map is effectively empty. */
+export function isRouteOverridesEmpty(overrides: RouteOverrides): boolean {
+  return Object.keys(overrides).length === 0;
+}
+
+/** Resolve the effective cost band order for a tier, honoring override. */
+function resolveCostOrder(
+  mode: AutoOptimizeMode,
+  tier: AutoTier,
+  overrides: RouteOverrides,
+): ModelCostTier[] | null {
+  const override = overrides[tier]?.costOrder;
+  if (override !== undefined) return override === null ? null : [...override];
+  return MODE_COST_ORDER[mode][tier];
+}
+
+/** Resolve the effective variant order for a tier, honoring override. */
+function resolveVariantOrder(
+  mode: AutoOptimizeMode,
+  tier: AutoTier,
+  overrides: RouteOverrides,
+): IntelligenceVariant[] {
+  const override = overrides[tier]?.variantOrder;
+  if (override !== undefined) return [...override];
+  return MODE_VARIANT_ORDER[mode][tier];
 }
 
 export type AutoDecision = {
@@ -195,8 +318,6 @@ function countMatches(text: string, re: RegExp): number {
   return count;
 }
 
-const TIER_LADDER: readonly AutoTier[] = ["light", "standard", "heavy"];
-
 /** One step up the ladder; `heavy` stays `heavy`. */
 function bumpTier(tier: AutoTier): AutoTier {
   const index = TIER_LADDER.indexOf(tier);
@@ -245,8 +366,6 @@ export function classifyPrompt(prompt: string, signals: AutoSignals): AutoTier {
     (signals.historyMessageCount ?? 0) >= SIGNAL_HISTORY_THRESHOLD;
   return escalate ? bumpTier(base) : base;
 }
-
-export type ModelCostTier = "cheap" | "mid" | "premium";
 
 const CHEAP_RE = /flash|mini|nano|lite|haiku|\bfast\b/;
 const PREMIUM_RE = /fable|opus|ultra|\bsol\b/;
@@ -438,8 +557,11 @@ export function chooseAutoModel(input: {
   hasImages: boolean;
   /** CodexBar utilization, when its addon is enabled and snapshot is usable. */
   usage?: AutoProviderUsage;
+  /** Per-tier overrides; missing fields fall back to the preset for `mode`. */
+  overrides?: RouteOverrides;
 }): AutoDecision | null {
   const { providers, connected, disabled, tier, mode, hasImages, usage } = input;
+  const overrides = input.overrides ?? EMPTY_ROUTE_OVERRIDES;
   const connectedSet = connected === undefined ? null : new Set(connected);
 
   // Candidate construction mirrors `listProviderModels`.
@@ -465,7 +587,7 @@ export function chooseAutoModel(input: {
   }
   if (candidates.length === 0) return null;
 
-  const costOrder = MODE_COST_ORDER[mode][tier];
+  const costOrder = resolveCostOrder(mode, tier, overrides);
   let chosen: Candidate | undefined;
   let fellBack = false;
   if (costOrder === null) {
@@ -485,7 +607,10 @@ export function chooseAutoModel(input: {
   }
   if (!chosen) return null;
 
-  const variant = pickVariant(chosen.model, MODE_VARIANT_ORDER[mode][tier]);
+  const variant = pickVariant(
+    chosen.model,
+    resolveVariantOrder(mode, tier, overrides),
+  );
 
   let reason = `${TIER_LABEL[tier]}のため${autoOptimizeModeLabel(mode)}で選択しました`;
   if (hasImages) reason += REASON_IMAGES_SUFFIX;

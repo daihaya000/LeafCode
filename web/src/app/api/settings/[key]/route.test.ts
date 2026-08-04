@@ -289,6 +289,61 @@ describe("/api/settings/[key] auto mode settings", () => {
     }
   });
 
+  describe("auto-route-overrides", () => {
+    it("stores a normalized override map", async () => {
+      const res = await PUT(
+        putReq(
+          { value: JSON.stringify({ light: { costOrder: ["cheap", "cheap"] } }) },
+          "auto-route-overrides",
+        ) as never,
+        ctx("auto-route-overrides"),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(
+        "auto-route-overrides",
+        JSON.stringify({ light: { costOrder: ["cheap"] } }),
+      );
+    });
+
+    it("drops unknown tiers and entries instead of rejecting", async () => {
+      const res = await PUT(
+        putReq(
+          {
+            value: JSON.stringify({
+              extreme: { costOrder: ["cheap"] },
+              light: { costOrder: ["bogus"] },
+            }),
+          },
+          "auto-route-overrides",
+        ) as never,
+        ctx("auto-route-overrides"),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("auto-route-overrides", "{}");
+    });
+
+    it("treats an empty string as unset", async () => {
+      const res = await PUT(
+        putReq({ value: "" }, "auto-route-overrides") as never,
+        ctx("auto-route-overrides"),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("auto-route-overrides", "");
+    });
+
+    it("rejects malformed JSON with 400", async () => {
+      const res = await PUT(
+        putReq({ value: "{not json" }, "auto-route-overrides") as never,
+        ctx("auto-route-overrides"),
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        error: "auto-route-overrides must be JSON",
+      });
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+  });
+
   for (const key of ["auto-show-model"]) {
     describe(key, () => {
       it("stores 1", async () => {

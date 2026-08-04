@@ -5,21 +5,24 @@ import { GripVertical, Trash2 } from "lucide-react";
 import { Badge, Button, cx } from "@/components/ui";
 import { ModelSelect } from "@/components/ModelSelect";
 import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
+import { AutoRouteOverridesEditor } from "@/components/settings/AutoRouteOverridesEditor";
 import { getJson, sendJson } from "@/lib/client";
 import {
   AUTO_OPTIMIZE_SETTING_KEY,
+  AUTO_ROUTE_OVERRIDES_SETTING_KEY,
   AUTO_SHOW_MODEL_SETTING_KEY,
   hasStoredAutoSetting,
   readAutoOptimizeMode,
+  readAutoRouteOverrides,
   readAutoSettingsFromServer,
   readAutoShowModel,
   subscribeAutoSetting,
   writeAutoOptimizeMode,
+  writeAutoRouteOverrides,
   writeAutoSettingToServer,
   writeAutoShowModel,
 } from "@/lib/auto-settings";
-import type { AutoOptimizeMode } from "@/lib/auto-model";
-import { AUTO_MODEL_OPTION } from "@/lib/auto-model";
+import { AUTO_MODEL_OPTION, type AutoOptimizeMode, type RouteOverrides } from "@/lib/auto-model";
 import {
   readDefaultModel,
   readDefaultModelFromServer,
@@ -323,7 +326,14 @@ export function ProviderModelsSettings() {
     readAutoOptimizeMode(),
   );
   const [autoShowModel, setAutoShowModel] = useState(() => readAutoShowModel());
-  const autoSettingsTouched = useRef({ mode: false, showModel: false });
+  const [routeOverrides, setRouteOverrides] = useState<RouteOverrides>(() =>
+    readAutoRouteOverrides(),
+  );
+  const autoSettingsTouched = useRef({
+    mode: false,
+    showModel: false,
+    routeOverrides: false,
+  });
   const defaultModelTouched = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -390,6 +400,10 @@ export function ProviderModelsSettings() {
       autoSettingsTouched.current.showModel = true;
       setAutoShowModel(readAutoShowModel());
     };
+    const onRouteOverrides = () => {
+      autoSettingsTouched.current.routeOverrides = true;
+      setRouteOverrides(readAutoRouteOverrides());
+    };
     const unsubscribeMode = subscribeAutoSetting(
       AUTO_OPTIMIZE_SETTING_KEY,
       onMode,
@@ -398,9 +412,14 @@ export function ProviderModelsSettings() {
       AUTO_SHOW_MODEL_SETTING_KEY,
       onShowModel,
     );
+    const unsubscribeRouteOverrides = subscribeAutoSetting(
+      AUTO_ROUTE_OVERRIDES_SETTING_KEY,
+      onRouteOverrides,
+    );
     return () => {
       unsubscribeMode();
       unsubscribeShowModel();
+      unsubscribeRouteOverrides();
     };
   }, []);
 
@@ -424,6 +443,14 @@ export function ProviderModelsSettings() {
       ) {
         writeAutoShowModel(snapshot.showModel);
         setAutoShowModel(snapshot.showModel);
+      }
+      if (
+        snapshot.routeOverrides &&
+        !autoSettingsTouched.current.routeOverrides &&
+        !hasStoredAutoSetting(AUTO_ROUTE_OVERRIDES_SETTING_KEY)
+      ) {
+        writeAutoRouteOverrides(snapshot.routeOverrides);
+        setRouteOverrides(snapshot.routeOverrides);
       }
     })();
   }, []);
@@ -841,6 +868,21 @@ export function ProviderModelsSettings() {
                 void writeAutoSettingToServer(
                   AUTO_SHOW_MODEL_SETTING_KEY,
                   next ? "1" : "",
+                );
+              }}
+            />
+          </div>
+          <div className="py-3">
+            <AutoRouteOverridesEditor
+              mode={autoOptimize}
+              overrides={routeOverrides}
+              onChange={(next) => {
+                autoSettingsTouched.current.routeOverrides = true;
+                setRouteOverrides(next);
+                writeAutoRouteOverrides(next);
+                void writeAutoSettingToServer(
+                  AUTO_ROUTE_OVERRIDES_SETTING_KEY,
+                  Object.keys(next).length === 0 ? "" : JSON.stringify(next),
                 );
               }}
             />

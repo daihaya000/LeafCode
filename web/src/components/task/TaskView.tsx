@@ -105,11 +105,14 @@ import {
   type AutoCandidateProvider,
   type AutoDecision,
   type AutoOptimizeMode,
+  type RouteOverrides,
 } from "@/lib/auto-model";
 import {
   AUTO_OPTIMIZE_SETTING_KEY,
+  AUTO_ROUTE_OVERRIDES_SETTING_KEY,
   AUTO_SHOW_MODEL_SETTING_KEY,
   readAutoOptimizeMode,
+  readAutoRouteOverrides,
   readAutoShowModel,
   subscribeAutoSetting,
   writeAutoOptimizeMode,
@@ -597,6 +600,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
+  /** Per-tier routing overrides; shared with HomeView and Settings. */
+  const [routeOverrides, setRouteOverrides] = useState<RouteOverrides>(() =>
+    readAutoRouteOverrides(),
+  );
   /**
    * Whether to name the model Auto picked. Off by default (Cursor parity), so
    * the composer stays quiet unless the user opts in from Settings.
@@ -670,6 +677,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     const onMode = () => setAutoOptimize(readAutoOptimizeMode());
     const onShow = () => setAutoShowModel(readAutoShowModel());
+    const onRouteOverrides = () =>
+      setRouteOverrides(readAutoRouteOverrides());
     const unsubscribeMode = subscribeAutoSetting(
       AUTO_OPTIMIZE_SETTING_KEY,
       onMode,
@@ -678,9 +687,14 @@ export function TaskView({ taskId }: { taskId: string }) {
       AUTO_SHOW_MODEL_SETTING_KEY,
       onShow,
     );
+    const unsubscribeRouteOverrides = subscribeAutoSetting(
+      AUTO_ROUTE_OVERRIDES_SETTING_KEY,
+      onRouteOverrides,
+    );
     return () => {
       unsubscribeMode();
       unsubscribeShow();
+      unsubscribeRouteOverrides();
     };
   }, []);
 
@@ -1548,9 +1562,16 @@ export function TaskView({ taskId }: { taskId: string }) {
         mode: autoOptimize,
         hasImages,
         usage: autoInputs.usage,
+        overrides: routeOverrides,
       });
     },
-    [autoInputs, autoOptimize, streamMessages.length, streamSessionError],
+    [
+      autoInputs,
+      autoOptimize,
+      routeOverrides,
+      streamMessages.length,
+      streamSessionError,
+    ],
   );
 
   /** Start a loop with `goal`. Returns true when the loop was created. */

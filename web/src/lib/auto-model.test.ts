@@ -7,7 +7,9 @@ import {
   classifyPrompt,
   DEFAULT_AUTO_OPTIMIZE_MODE,
   isAutoOptimizeMode,
+  isRouteOverridesEmpty,
   modelCostTier,
+  normalizeRouteOverrides,
   SIGNAL_ATTACHMENT_THRESHOLD,
   SIGNAL_HISTORY_THRESHOLD,
   type AutoCandidateProvider,
@@ -1131,5 +1133,137 @@ describe("classifyPrompt context signals", () => {
 
   it("still ignores hasImages for the tier", () => {
     expect(classifyPrompt(LIGHT, { hasImages: true })).toBe("light");
+  });
+});
+
+describe("normalizeRouteOverrides", () => {
+  it("returns an empty map for non-object input", () => {
+    expect(normalizeRouteOverrides(null)).toEqual({});
+    expect(normalizeRouteOverrides(undefined)).toEqual({});
+    expect(normalizeRouteOverrides("nope")).toEqual({});
+    expect(normalizeRouteOverrides([1, 2, 3])).toEqual({});
+  });
+
+  it("drops unknown tier keys", () => {
+    expect(
+      normalizeRouteOverrides({ extreme: { costOrder: ["cheap"] } }),
+    ).toEqual({});
+  });
+
+  it("keeps a valid costOrder, deduped, preserving the caller's priority order", () => {
+    expect(
+      normalizeRouteOverrides({
+        light: { costOrder: ["premium", "cheap", "premium", "mid"] },
+      }),
+    ).toEqual({ light: { costOrder: ["premium", "cheap", "mid"] } });
+  });
+
+  it("drops unknown costOrder entries", () => {
+    expect(
+      normalizeRouteOverrides({ light: { costOrder: ["cheap", "bogus"] } }),
+    ).toEqual({ light: { costOrder: ["cheap"] } });
+  });
+
+  it("treats costOrder: null as 'strongest candidate'", () => {
+    expect(
+      normalizeRouteOverrides({ heavy: { costOrder: null } }),
+    ).toEqual({ heavy: { costOrder: null } });
+  });
+
+  it("keeps a valid variantOrder, deduped, preserving the caller's priority order", () => {
+    expect(
+      normalizeRouteOverrides({
+        standard: { variantOrder: ["high", "low", "high", "medium"] },
+      }),
+    ).toEqual({ standard: { variantOrder: ["high", "low", "medium"] } });
+  });
+
+  it("drops unknown variantOrder entries", () => {
+    expect(
+      normalizeRouteOverrides({
+        standard: { variantOrder: ["low", "bogus"] },
+      }),
+    ).toEqual({ standard: { variantOrder: ["low"] } });
+  });
+
+  it("drops a tier whose fields are all invalid", () => {
+    expect(
+      normalizeRouteOverrides({ light: { costOrder: ["bogus"] } }),
+    ).toEqual({});
+  });
+
+  it("drops an empty costOrder array (never an empty list)", () => {
+    expect(
+      normalizeRouteOverrides({ light: { costOrder: [] } }),
+    ).toEqual({});
+  });
+
+  it("keeps both fields together when both are valid", () => {
+    expect(
+      normalizeRouteOverrides({
+        heavy: { costOrder: ["mid"], variantOrder: ["max"] },
+      }),
+    ).toEqual({ heavy: { costOrder: ["mid"], variantOrder: ["max"] } });
+  });
+});
+
+describe("isRouteOverridesEmpty", () => {
+  it("is true for {}", () => {
+    expect(isRouteOverridesEmpty({})).toBe(true);
+  });
+
+  it("is false once any tier is present", () => {
+    expect(isRouteOverridesEmpty({ light: { costOrder: null } })).toBe(false);
+  });
+});
+
+describe("chooseAutoModel with overrides", () => {
+  it("ignores overrides for tiers it does not mention", () => {
+    // cost + standard preset is [cheap, mid, premium]; an override for
+    // `light` must not affect the `standard` decision.
+    const decision = choose({
+      mode: "cost",
+      tier: "standard",
+      overrides: { light: { costOrder: ["premium"] } },
+    });
+    expect(decision?.modelID).toBe(CHEAP_MODEL);
+  });
+
+  it("overrides the cost order for the matching tier", () => {
+    // cost + standard preset prefers cheap; force premium instead.
+    const decision = choose({
+      mode: "cost",
+      tier: "standard",
+      overrides: { standard: { costOrder: ["premium", "mid", "cheap"] } },
+    });
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+  });
+
+  it("overrides costOrder: null to pick the strongest candidate overall", () => {
+    // cost + heavy already means null (strongest); use light instead where
+    // the preset is [cheap, mid, premium] to prove the override, not the preset.
+    const decision = choose({
+      mode: "cost",
+      tier: "light",
+      overrides: { light: { costOrder: null } },
+    });
+    expect(decision?.modelID).toBe(PREMIUM_MODEL);
+  });
+
+  it("overrides the variant order for the matching tier", () => {
+    // cost + standard preset prefers "low"; force "high" instead.
+    const decision = choose({
+      mode: "cost",
+      tier: "standard",
+      overrides: { standard: { variantOrder: ["high"] } },
+    });
+    expect(decision?.variant).toBe("high");
+  });
+
+  it("falls back to the mode preset when overrides is omitted", () => {
+    const withOverrides = choose({ mode: "cost", tier: "standard", overrides: {} });
+    const without = choose({ mode: "cost", tier: "standard" });
+    expect(withOverrides?.modelID).toBe(without?.modelID);
+    expect(withOverrides?.variant).toBe(without?.variant);
   });
 });

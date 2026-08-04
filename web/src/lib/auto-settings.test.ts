@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTO_OPTIMIZE_EVENT,
+  AUTO_ROUTE_OVERRIDES_EVENT,
   AUTO_SHOW_MODEL_EVENT,
   hasStoredAutoSetting,
   readAutoOptimizeMode,
+  readAutoRouteOverrides,
   readAutoSettingsFromServer,
   readAutoShowModel,
   subscribeAutoSetting,
   writeAutoOptimizeMode,
+  writeAutoRouteOverrides,
   writeAutoSettingToServer,
   writeAutoShowModel,
 } from "./auto-settings";
@@ -164,6 +167,61 @@ describe("auto boolean toggles", () => {
   });
 });
 
+describe("auto route overrides storage", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("defaults to {} when nothing is stored", () => {
+    expect(readAutoRouteOverrides()).toEqual({});
+  });
+
+  it("round-trips a non-empty override map", () => {
+    writeAutoRouteOverrides({ light: { costOrder: ["cheap"] } });
+    expect(readAutoRouteOverrides()).toEqual({
+      light: { costOrder: ["cheap"] },
+    });
+  });
+
+  it("removes the key when written back to {}", () => {
+    writeAutoRouteOverrides({ light: { costOrder: ["cheap"] } });
+    writeAutoRouteOverrides({});
+    expect(localStorage.getItem("webui:auto-route-overrides")).toBeNull();
+    expect(readAutoRouteOverrides()).toEqual({});
+  });
+
+  it("falls back to {} for corrupted JSON", () => {
+    localStorage.setItem("webui:auto-route-overrides", "{not json");
+    expect(readAutoRouteOverrides()).toEqual({});
+  });
+
+  it("drops unknown fields via normalization on read", () => {
+    localStorage.setItem(
+      "webui:auto-route-overrides",
+      JSON.stringify({ light: { costOrder: ["bogus"] }, extreme: {} }),
+    );
+    expect(readAutoRouteOverrides()).toEqual({});
+  });
+
+  it("dispatches a CustomEvent with the JSON payload on write", () => {
+    expect(
+      captureEvent(AUTO_ROUTE_OVERRIDES_EVENT, () =>
+        writeAutoRouteOverrides({ heavy: { costOrder: null } }),
+      ),
+    ).toEqual([JSON.stringify({ heavy: { costOrder: null } })]);
+  });
+
+  it("reports whether a local choice exists", () => {
+    expect(hasStoredAutoSetting("auto-route-overrides")).toBe(false);
+    writeAutoRouteOverrides({ light: { costOrder: ["cheap"] } });
+    expect(hasStoredAutoSetting("auto-route-overrides")).toBe(true);
+  });
+});
+
 describe("auto setting subscriptions", () => {
   it("handles same-document and matching cross-tab events", () => {
     const listener = vi.fn();
@@ -224,6 +282,27 @@ describe("auto settings server sync", () => {
   it("omits an invalid mode but keeps valid toggles", async () => {
     serverValues({ "auto-optimize": "balance", "auto-show-model": "1" });
     expect(await readAutoSettingsFromServer()).toEqual({ showModel: true });
+  });
+
+  it("reads and normalizes route overrides", async () => {
+    serverValues({
+      "auto-route-overrides": JSON.stringify({
+        light: { costOrder: ["cheap", "bogus"] },
+      }),
+    });
+    expect(await readAutoSettingsFromServer()).toEqual({
+      routeOverrides: { light: { costOrder: ["cheap"] } },
+    });
+  });
+
+  it("omits route overrides for corrupted JSON", async () => {
+    serverValues({ "auto-route-overrides": "{not json" });
+    expect(await readAutoSettingsFromServer()).toEqual({});
+  });
+
+  it("omits route overrides that normalize to empty", async () => {
+    serverValues({ "auto-route-overrides": JSON.stringify({ extreme: {} }) });
+    expect(await readAutoSettingsFromServer()).toEqual({});
   });
 
   it("swallows per-key request failures", async () => {

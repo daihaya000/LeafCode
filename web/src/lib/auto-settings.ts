@@ -12,19 +12,25 @@
 import { getJson, sendJson } from "./client";
 import {
   DEFAULT_AUTO_OPTIMIZE_MODE,
+  EMPTY_ROUTE_OVERRIDES,
   isAutoOptimizeMode,
+  normalizeRouteOverrides,
   type AutoOptimizeMode,
+  type RouteOverrides,
 } from "./auto-model";
 
 const OPTIMIZE_STORAGE_KEY = "webui:auto-optimize";
 const SHOW_MODEL_STORAGE_KEY = "webui:auto-show-model";
+const ROUTE_OVERRIDES_STORAGE_KEY = "webui:auto-route-overrides";
 
 export const AUTO_OPTIMIZE_EVENT = "webui:auto-optimize";
 export const AUTO_SHOW_MODEL_EVENT = "webui:auto-show-model";
+export const AUTO_ROUTE_OVERRIDES_EVENT = "webui:auto-route-overrides";
 
 /** Server-side `settings` keys, mirrored in the settings route allowlist. */
 export const AUTO_OPTIMIZE_SETTING_KEY = "auto-optimize";
 export const AUTO_SHOW_MODEL_SETTING_KEY = "auto-show-model";
+export const AUTO_ROUTE_OVERRIDES_SETTING_KEY = "auto-route-overrides";
 const autoSettingWriteQueues = new Map<AutoSettingKey, Promise<void>>();
 
 /** Stored form of the boolean toggles: `"1"` on, `""` (or absent) off. */
@@ -75,18 +81,42 @@ export function writeAutoShowModel(enabled: boolean): void {
   writeRaw(SHOW_MODEL_STORAGE_KEY, AUTO_SHOW_MODEL_EVENT, enabled ? ON : "");
 }
 
+/**
+ * Per-tier routing overrides. Stored as JSON in localStorage. Corrupted or
+ * unknown entries are dropped by {@link normalizeRouteOverrides}, so a bad
+ * payload always falls back to the preset instead of breaking routing.
+ */
+export function readAutoRouteOverrides(): RouteOverrides {
+  const raw = readRaw(ROUTE_OVERRIDES_STORAGE_KEY);
+  if (!raw) return EMPTY_ROUTE_OVERRIDES;
+  try {
+    return normalizeRouteOverrides(JSON.parse(raw));
+  } catch {
+    return EMPTY_ROUTE_OVERRIDES;
+  }
+}
+
+export function writeAutoRouteOverrides(overrides: RouteOverrides): void {
+  const json =
+    Object.keys(overrides).length === 0 ? "" : JSON.stringify(overrides);
+  writeRaw(ROUTE_OVERRIDES_STORAGE_KEY, AUTO_ROUTE_OVERRIDES_EVENT, json);
+}
+
 const LOCAL_KEY_BY_SETTING = {
   "auto-optimize": OPTIMIZE_STORAGE_KEY,
   "auto-show-model": SHOW_MODEL_STORAGE_KEY,
+  "auto-route-overrides": ROUTE_OVERRIDES_STORAGE_KEY,
 } as const;
 
 export type AutoSettingKey =
   | typeof AUTO_OPTIMIZE_SETTING_KEY
-  | typeof AUTO_SHOW_MODEL_SETTING_KEY;
+  | typeof AUTO_SHOW_MODEL_SETTING_KEY
+  | typeof AUTO_ROUTE_OVERRIDES_SETTING_KEY;
 
 const EVENT_BY_SETTING: Record<AutoSettingKey, string> = {
   "auto-optimize": AUTO_OPTIMIZE_EVENT,
   "auto-show-model": AUTO_SHOW_MODEL_EVENT,
+  "auto-route-overrides": AUTO_ROUTE_OVERRIDES_EVENT,
 };
 
 /**
@@ -116,6 +146,7 @@ export function subscribeAutoSetting(
 export type AutoSettingsSnapshot = {
   mode?: AutoOptimizeMode;
   showModel?: boolean;
+  routeOverrides?: RouteOverrides;
 };
 
 /**
@@ -145,13 +176,22 @@ async function readServerSetting(key: AutoSettingKey): Promise<string | null> {
  */
 export async function readAutoSettingsFromServer(): Promise<AutoSettingsSnapshot> {
   if (typeof window === "undefined") return {};
-  const [mode, showModel] = await Promise.all([
+  const [mode, showModel, routeOverridesRaw] = await Promise.all([
     readServerSetting(AUTO_OPTIMIZE_SETTING_KEY),
     readServerSetting(AUTO_SHOW_MODEL_SETTING_KEY),
+    readServerSetting(AUTO_ROUTE_OVERRIDES_SETTING_KEY),
   ]);
   const snapshot: AutoSettingsSnapshot = {};
   if (isAutoOptimizeMode(mode)) snapshot.mode = mode;
   if (showModel !== null) snapshot.showModel = showModel === ON;
+  if (routeOverridesRaw) {
+    try {
+      const overrides = normalizeRouteOverrides(JSON.parse(routeOverridesRaw));
+      if (Object.keys(overrides).length > 0) snapshot.routeOverrides = overrides;
+    } catch {
+      /* ignore corrupted JSON; preset is used */
+    }
+  }
   return snapshot;
 }
 

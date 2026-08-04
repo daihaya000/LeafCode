@@ -1610,4 +1610,104 @@ describe("POST /api/tasks auto model selection", () => {
     });
   });
 
+  describe("autoRouteOverrides", () => {
+    it("overrides the cost order for the matching tier", async () => {
+      const ocServer = await mockOc();
+
+      // cost + light preset prefers cheap; force premium via override.
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "cost",
+        autoRouteOverrides: { light: { costOrder: ["premium", "mid", "cheap"] } },
+      });
+
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: PREMIUM },
+      });
+    });
+
+    it("overrides the variant order for the matching tier", async () => {
+      const ocServer = await mockOc();
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "cost",
+        autoRouteOverrides: { light: { variantOrder: ["high"] } },
+      });
+
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: CHEAP },
+        variant: "high",
+      });
+    });
+
+    it("leaves tiers with no override on the preset", async () => {
+      const ocServer = await mockOc();
+
+      // Override targets `heavy`; the light-tier prompt must stay unaffected.
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "cost",
+        autoRouteOverrides: { heavy: { costOrder: null } },
+      });
+
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: CHEAP },
+      });
+    });
+
+    it("drops unknown tiers/entries instead of rejecting", async () => {
+      const ocServer = await mockOc();
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        autoOptimize: "cost",
+        autoRouteOverrides: {
+          extreme: { costOrder: ["cheap"] },
+          light: { costOrder: ["bogus"] },
+        },
+      });
+
+      // The malformed override normalizes to {}, so the cost preset applies.
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: CHEAP },
+      });
+    });
+
+    it("rejects autoRouteOverrides without auto before provisioning", async () => {
+      await mockOc();
+      const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        model: { providerID: "anthropic", modelID: MID },
+        autoRouteOverrides: { light: { costOrder: null } },
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: "autoRouteOverrides requires auto",
+      });
+      expect(provisionWorkspace).not.toHaveBeenCalled();
+    });
+  });
+
 });

@@ -4,10 +4,12 @@ import {
   classifyPrompt,
   DEFAULT_AUTO_OPTIMIZE_MODE,
   isAutoOptimizeMode,
+  normalizeRouteOverrides,
   type AutoCandidateProvider,
   type AutoDecision,
   type AutoOptimizeMode,
   type AutoProviderUsage,
+  type RouteOverrides,
 } from "@/lib/auto-model";
 import { bindSession, touchProjectOpened } from "@/lib/db";
 import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
@@ -187,6 +189,7 @@ async function resolveAutoModel(
   files: readonly unknown[],
   mode: AutoOptimizeMode,
   usage?: AutoProviderUsage,
+  overrides?: RouteOverrides,
 ): Promise<AutoDecision | null> {
   const hasImages = files.length > 0;
   let providers: AutoCandidateProvider[] = [];
@@ -214,6 +217,7 @@ async function resolveAutoModel(
     }),
     mode,
     hasImages,
+    overrides,
     usage,
   });
 }
@@ -259,6 +263,7 @@ export async function POST(req: NextRequest) {
     files?: unknown;
     auto?: unknown;
     autoOptimize?: unknown;
+    autoRouteOverrides?: unknown;
     codexBarUsage?: unknown;
   } | null;
 
@@ -365,6 +370,19 @@ export async function POST(req: NextRequest) {
     }
     autoOptimize = autoOptimizeRaw;
   }
+  // Per-tier routing overrides. Absent means "use the preset for the mode".
+  // Any JSON shape is accepted; unknown tiers/entries are dropped by
+  // normalizeRouteOverrides so a corrupted payload never blocks routing.
+  let autoRouteOverrides: RouteOverrides | undefined;
+  if (body?.autoRouteOverrides !== undefined) {
+    if (!auto) {
+      return NextResponse.json(
+        { error: "autoRouteOverrides requires auto" },
+        { status: 400 },
+      );
+    }
+    autoRouteOverrides = normalizeRouteOverrides(body.autoRouteOverrides);
+  }
   const codexBarUsage = auto ? parseCodexBarUsage(body?.codexBarUsage) : undefined;
 
   // From here on the resolved Auto model is indistinguishable from a manually
@@ -384,6 +402,7 @@ export async function POST(req: NextRequest) {
         files,
         autoOptimize,
         codexBarUsage,
+        autoRouteOverrides,
       );
       if (!decision) {
         return NextResponse.json(

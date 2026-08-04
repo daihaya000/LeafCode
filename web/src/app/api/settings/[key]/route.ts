@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAutoOptimizeMode } from "@/lib/auto-model";
+import { isAutoOptimizeMode, normalizeRouteOverrides } from "@/lib/auto-model";
 import {
   COMMIT_AUTHOR_EMAIL_KEY,
   COMMIT_AUTHOR_NAME_KEY,
@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 const ALLOWED_KEYS = new Set<string>([
   "auto-optimize",
   "auto-show-model",
+  "auto-route-overrides",
   "default-model",
   "sidebar",
   "sidepanel-width",
@@ -108,6 +109,16 @@ function normalizeSettingValue(
       };
     }
     return { ok: true, value };
+  }
+
+  if (key === "auto-route-overrides") {
+    try {
+      const parsed = JSON.parse(value);
+      const normalized = normalizeRouteOverrides(parsed);
+      return { ok: true, value: JSON.stringify(normalized) };
+    } catch {
+      return { ok: false, error: "auto-route-overrides must be JSON" };
+    }
   }
 
   if (BOOLEAN_SETTING_KEYS.has(key)) {
