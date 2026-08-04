@@ -28,7 +28,8 @@
 
 `package.json` は `@opencode-ai/plugin` / `jsonc-parser` / `yaml` などの実行時依存と、`file:` 参照のローカルパッケージ 4 件（`model-fallback`・`subagent-guard`・`cursor-acp`・`aa-cursor-model-guard`）を持つ。
 
-- 対応する `node_modules/<name>` は **symlink** で、ターゲットは実体パスではなく **`C:\Users\Daichi\.config\opencode\packages\<name>`**、すなわち**切替リンク経由の絶対パス**。
+- **新規プロファイル作成時は `package.json` / `node_modules` を配置しない設計**（完全自立フォーク）。3つの vendor プラグイン（cursor-cli-proxy / claude-cli-proxy / commandcode-cli-proxy）は全て npm 依存をインライン化済みで、Node.js 標準モジュールのみで動作する。
+- 既存プロファイルの `node_modules` 内部リンクは **symlink** で、ターゲットは実体パスではなく **`C:\Users\Daichi\.config\opencode\packages\<name>`**、すなわち**切替リンク経由の絶対パス**。
 - このため各プロファイルの `node_modules` 内リンクは、**常にその時点でアクティブなプロファイルの `packages/` へ解決される**。コピーしても壊れず、切替に対して自己修復的に働く。
 - プラグインはこれらの依存を読み込むため、**`node_modules` を除外したプロファイルはプラグインが動作しない**。コピー対象に含める。
 - 本機は Developer Mode 有効・管理者権限なしで `dir` / `file` / `junction` すべての symlink 作成に成功する（実測）。

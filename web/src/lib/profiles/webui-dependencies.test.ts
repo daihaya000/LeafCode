@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installWebUiDependencies, migrateProviderIds } from "./webui-dependencies";
 
@@ -195,4 +196,52 @@ describe("installWebUiDependencies", () => {
     expect(agent).toContain("model: cursor::auto");
     expect(agent).not.toContain("cursor-acp::");
   });
+});
+
+describe("vendored plugin self-containment", () => {
+  const repoRoot = path.resolve(__dirname, "../../..");
+  const vendorPlugins = [
+    ["cursor-cli-proxy", "packages/cursor-cli-proxy/index.js"],
+    ["claude-cli-proxy", "packages/claude-cli-proxy/dist/index.js"],
+    ["commandcode-cli-proxy", "packages/commandcode-cli-proxy/index.mjs"],
+  ] as const;
+
+  for (const [vendorName, relPath] of vendorPlugins) {
+    it(`${vendorName} bundled file has no external npm imports (fully self-contained)`, () => {
+      const filePath = path.join(repoRoot, "vendor", vendorName, relPath);
+      if (!fs.existsSync(filePath)) return; // skip if not installed
+      const src = fs.readFileSync(filePath, "utf8");
+      // Strip BOM
+      const content = src.charCodeAt(0) === 0xfeff ? src.slice(1) : src;
+      // Find all import ... from "..." statements
+      const importRegex = /^\s*import\s.*?\sfrom\s+"([^"]+)"/gm;
+      const imports: string[] = [];
+      let m: RegExpExecArray | null;
+      while ((m = importRegex.exec(content)) !== null) {
+        imports.push(m[1]);
+      }
+      // All imports must be node: builtins or relative paths
+      const external = imports.filter(
+        (spec) => !spec.startsWith("node:") && !spec.startsWith(".") && !spec.startsWith("/"),
+      );
+      expect(external).toEqual([]);
+    });
+
+    it(`${vendorName} bundled file passes node --check`, () => {
+      const filePath = path.join(repoRoot, "vendor", vendorName, relPath);
+      if (!fs.existsSync(filePath)) return; // skip if not installed
+      const result = spawnSync("node", ["--check", filePath], {
+        encoding: "utf8",
+        timeout: 10000,
+      });
+      // node --check may warn about ESM; only fail on SyntaxError
+      if (result.status !== 0) {
+        // ESM warning is fine, real syntax errors are not
+        const stderr = result.stderr || "";
+        if (/SyntaxError/.test(stderr)) {
+          throw new Error(`SyntaxError in ${filePath}:\n${stderr}`);
+        }
+      }
+    });
+  }
 });
