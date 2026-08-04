@@ -1930,6 +1930,12 @@ export function TaskView({ taskId }: { taskId: string }) {
     () => countHangRetryUserMessages(stream.messages),
     [stream.messages],
   );
+  // Dismissal is keyed by the count that was on screen, so closing the notice
+  // hides only what the user acknowledged: a further automatic resume bumps
+  // the count and brings the notice back.
+  const [dismissedHangResumeCount, setDismissedHangResumeCount] = useState(0);
+  useEffect(() => setDismissedHangResumeCount(0), [taskId]);
+  const hangResumeVisible = hangResumeCount > 0 && hangResumeCount !== dismissedHangResumeCount;
   const [hangTimeoutLabel, setHangTimeoutLabel] = useState(() =>
     formatHangTimeout(readHangTimeoutMs()),
   );
@@ -3638,16 +3644,24 @@ export function TaskView({ taskId }: { taskId: string }) {
         </div>
       )}
 
-      {hangResumeCount > 0 && (
+      {hangResumeVisible && (
         <div
           role="status"
           data-testid="hang-resume-notice"
-          className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning/5 px-4 py-2 text-xs text-muted"
+          className="flex shrink-0 items-start justify-between gap-2 border-b border-warning/30 bg-warning/5 px-4 py-2 text-xs text-muted"
         >
           <span className="min-w-0 break-words">
             応答が{hangTimeoutLabel}止まったため自動的に停止し、同じ処理を再開しました
             {hangResumeCount > 1 ? `（${hangResumeCount}回）` : ""}
           </span>
+          <button
+            type="button"
+            aria-label="自動再開の通知を閉じる"
+            onClick={() => setDismissedHangResumeCount(hangResumeCount)}
+            className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-surface-3 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 

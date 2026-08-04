@@ -1388,6 +1388,43 @@ describe("TaskView", () => {
     expect(notice.textContent).toContain("（2回）");
   });
 
+  // The notice is informational and never clears itself, so it must be
+  // closable — but only for the resumes the user actually acknowledged.
+  it("closes the automatic-resume notice and reopens it after a further resume", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    const resumed = (id: string) => ({
+      info: { id, role: "user", time: { created: 2 } },
+      parts: [
+        {
+          id: `text-${id}`,
+          type: "text",
+          text: "続けて",
+          metadata: { [HANG_RETRY_METADATA_KEY]: true },
+        },
+      ],
+    });
+    const withMessages = (messages: unknown[]) => ({
+      ...streamMock,
+      status: { type: "idle" },
+      messages,
+      visibleMessages: [],
+    });
+    useSessionStream.mockReturnValue(withMessages([resumed("r1")]));
+
+    const view = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    await screen.findByTestId("hang-resume-notice");
+
+    fireEvent.click(screen.getByLabelText("自動再開の通知を閉じる"));
+    expect(screen.queryByTestId("hang-resume-notice")).toBeNull();
+
+    useSessionStream.mockReturnValue(withMessages([resumed("r1"), resumed("r2")]));
+    view.rerender(<TaskView taskId="ws1" />);
+    const reopened = await screen.findByTestId("hang-resume-notice");
+    expect(reopened.textContent).toContain("（2回）");
+  });
+
   it("shows no hang notice for an ordinary turn", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();
