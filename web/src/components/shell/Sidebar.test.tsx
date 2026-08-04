@@ -153,10 +153,12 @@ describe("Sidebar", () => {
     const favorite = await screen.findByRole("button", { name: "「Task title」をお気に入りに追加" });
     const taskButton = screen.getByText("Task title").closest("button");
     const actionGroup = screen.getByTestId("task-row-actions");
-    expect(taskButton?.className).toContain("col-span-2");
+    // The whole card (title row + branch/session info row) must be one
+    // clickable button, not just the title text, so the branch info text
+    // is inside the same <button> as the title.
+    expect(taskButton?.textContent).toContain("main");
     expect(actionGroup.className).toContain("shrink-0");
     expect(actionGroup.className).not.toContain("absolute");
-    expect(actionGroup.className).toContain("row-start-2");
     expect(actionGroup.parentElement).toBe(taskButton?.parentElement);
     fireEvent.click(favorite);
 
