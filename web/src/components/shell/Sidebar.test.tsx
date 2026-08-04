@@ -153,16 +153,17 @@ describe("Sidebar", () => {
     const favorite = await screen.findByRole("button", { name: "「Task title」をお気に入りに追加" });
     const taskButton = screen.getByText("Task title").closest("button");
     const actionGroup = screen.getByTestId("task-row-actions");
-    // The whole card (title row + branch/session info row) must be one
-    // clickable button, not just the title text, so the branch info text
-    // is inside the same <button> as the title.
-    expect(taskButton?.textContent).toContain("main");
-    // Actions render as a normal flex sibling (not absolutely positioned)
-    // so a stacked action group can never overflow the row's height.
+    // The title row is its own full-width button so the title never shares
+    // width with the archive/favorite icons; branch/session info (and the
+    // action icons) live in a second row below it instead.
+    expect(taskButton?.textContent).not.toContain("main");
+    const infoRow = taskButton?.nextElementSibling;
+    expect(infoRow?.textContent).toContain("main");
+    // Actions render as a normal flex child (not absolutely positioned) at
+    // the end of the info row, next to the cost/provider icons.
     expect(actionGroup.className).not.toContain("absolute");
     expect(actionGroup.className).toContain("shrink-0");
-    expect(actionGroup.parentElement).toBe(taskButton?.parentElement);
-    expect(taskButton?.nextElementSibling).toBe(actionGroup);
+    expect(actionGroup.parentElement).toBe(infoRow);
     fireEvent.click(favorite);
 
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith(
@@ -412,9 +413,14 @@ describe("Sidebar", () => {
     await screen.findByText("Task title");
     expect(screen.queryByTitle("このセッションの累計コスト")).toBeNull();
     // No task in the group has a cost, so no cost column is reserved; only the
-    // always-visible timestamp follows the branch label.
+    // always-visible timestamp follows the branch label. The archive/favorite
+    // action icons are the actual last child of the info row.
     const row = screen.getByText("main").parentElement!;
-    expect(row.children[row.children.length - 1].textContent).toMatch(/前$/);
+    const timestamp = row.children[row.children.length - 2];
+    expect(timestamp.textContent).toMatch(/前$/);
+    expect(row.children[row.children.length - 1].getAttribute("data-testid")).toBe(
+      "task-row-actions",
+    );
   });
 
   it("reserves the same cost column on rows without a cost so icons align", async () => {

@@ -1096,7 +1096,7 @@ export function Sidebar({
                             <li key={task.id}>
                               <div
                                 className={cx(
-                                  "flex min-w-0 items-start rounded-lg",
+                                  "flex min-w-0 flex-col rounded-lg",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
@@ -1106,147 +1106,145 @@ export function Sidebar({
                                   type="button"
                                   onClick={() => nav(`/task/${task.id}`)}
                                   title={task.title}
-                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 pt-1.5 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                  className="flex min-w-0 w-full cursor-pointer items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
-                                  <span className="flex min-w-0 items-center gap-1.5">
-                                    <span className="flex h-3 w-3 shrink-0 items-center justify-center">
-                                        {!waitingForAttention &&
-                                        task.status === "working" ? (
-                                          <Loader2
-                                            aria-label="エージェントが処理中"
-                                            className="h-3 w-3 animate-spin text-working"
-                                          />
-                                        ) : (
-                                          <span
-                                            aria-label={
-                                              waitingForQuestion
-                                                ? "質問への回答待ち"
-                                                : waitingForAttention
-                                                  ? "権限の承認待ち"
-                                                  : `状態: ${task.status}`
-                                            }
-                                            className={cx(
-                                              "h-1.5 w-1.5 rounded-full",
-                                              task.status === "working" &&
-                                                "animate-pulse",
-                                              waitingForAttention && "bg-warning",
-                                              !waitingForAttention &&
-                                                task.status === "ready" &&
-                                                "bg-success",
-                                              !waitingForAttention &&
-                                                task.status === "merged" &&
-                                                "bg-success",
-                                              !waitingForAttention &&
-                                                task.status === "error" &&
-                                                "bg-danger",
-                                              !waitingForAttention &&
-                                                (task.status === "idle" ||
-                                                  task.status === "unknown") &&
-                                                "bg-faint",
-                                            )}
-                                          />
-                                        )}
-                                    </span>
-                                    <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                                      {task.title}
-                                    </span>
-                                  </span>
-                                  <span
-                                    className="flex min-w-0 items-center gap-1 pl-5 text-[10px] text-muted"
-                                    title={
-                                      task.branch
-                                        ? `${task.isolation}: ${task.branch}`
-                                        : task.isolation
-                                    }
-                                  >
-                                      <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
-                                      <span className="min-w-0 truncate font-mono">
-                                        {sidebarBranchLabel(task)}
-                                      </span>
-                                      <span className="ml-auto shrink-0 text-[10px] text-muted">
-                                        {timeAgo(task.updatedAt)}
-                                      </span>
-                                      {task.providerID && (
+                                  <span className="flex h-3 w-3 shrink-0 items-center justify-center">
+                                      {!waitingForAttention &&
+                                      task.status === "working" ? (
+                                        <Loader2
+                                          aria-label="エージェントが処理中"
+                                          className="h-3 w-3 animate-spin text-working"
+                                        />
+                                      ) : (
                                         <span
-                                          className="flex shrink-0 items-center"
-                                          title={
-                                            task.agent
-                                              ? `エージェント: ${task.agent}`
-                                              : `プロバイダ: ${task.providerID}`
+                                          aria-label={
+                                            waitingForQuestion
+                                              ? "質問への回答待ち"
+                                              : waitingForAttention
+                                                ? "権限の承認待ち"
+                                                : `状態: ${task.status}`
                                           }
-                                        >
-                                          <ProviderIcon
-                                            key={task.providerID}
-                                            providerID={task.providerID}
-                                          />
-                                        </span>
+                                          className={cx(
+                                            "h-1.5 w-1.5 rounded-full",
+                                            task.status === "working" &&
+                                              "animate-pulse",
+                                            waitingForAttention && "bg-warning",
+                                            !waitingForAttention &&
+                                              task.status === "ready" &&
+                                              "bg-success",
+                                            !waitingForAttention &&
+                                              task.status === "merged" &&
+                                              "bg-success",
+                                            !waitingForAttention &&
+                                              task.status === "error" &&
+                                              "bg-danger",
+                                            !waitingForAttention &&
+                                              (task.status === "idle" ||
+                                                task.status === "unknown") &&
+                                              "bg-faint",
+                                          )}
+                                        />
                                       )}
-                                      {costColumnCh > 0 &&
-                                        ((task.cost ?? 0) > 0 ? (
-                                          <span
-                                            className={cx(
-                                              "shrink-0 text-left tabular-nums whitespace-nowrap text-faint",
-                                            )}
-                                            style={{
-                                              minWidth: `${costColumnCh}ch`,
-                                            }}
-                                            title="このセッションの累計コスト"
-                                          >
-                                            {formatCostValue(task.cost!, costPrefs)}
-                                          </span>
-                                        ) : (
-                                          // Reserve the same cost column so the provider
-                                          // icon stays in the same place on every row.
-                                          <span
-                                            aria-hidden
-                                            className="shrink-0"
-                                            style={{
-                                              minWidth: `${costColumnCh}ch`,
-                                            }}
-                                          />
-                                        ))}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                                    {task.title}
                                   </span>
                                 </button>
                                 <div
-                                  data-testid="task-row-actions"
-                                  className="flex shrink-0 items-center pt-0.5 pr-0.5"
+                                  className="flex min-w-0 items-center gap-1 px-2 pb-0.5 pl-5 text-[10px] text-muted"
+                                  title={
+                                    task.branch
+                                      ? `${task.isolation}: ${task.branch}`
+                                      : task.isolation
+                                  }
                                 >
-                                  <button
-                                    type="button"
-                                    aria-label={`「${task.title}」をアーカイブ`}
-                                    title={`「${task.title}」をアーカイブ`}
-                                    aria-busy={actionBusyKey === `archive:${task.id}`}
-                                    disabled={actionBusyKey !== null}
-                                    onClick={(e) => void archiveTask(task, e)}
-                                    className={cx(
-                                      TASK_ROW_ACTION_BTN,
-                                      "text-muted hover:bg-surface-2 hover:text-text",
+                                    <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                                    <span className="min-w-0 truncate font-mono">
+                                      {sidebarBranchLabel(task)}
+                                    </span>
+                                    <span className="ml-auto shrink-0 text-[10px] text-muted">
+                                      {timeAgo(task.updatedAt)}
+                                    </span>
+                                    {task.providerID && (
+                                      <span
+                                        className="flex shrink-0 items-center"
+                                        title={
+                                          task.agent
+                                            ? `エージェント: ${task.agent}`
+                                            : `プロバイダ: ${task.providerID}`
+                                        }
+                                      >
+                                        <ProviderIcon
+                                          key={task.providerID}
+                                          providerID={task.providerID}
+                                        />
+                                      </span>
                                     )}
-                                  >
-                                    <Archive className="h-3 w-3" />
-                                  </button>
-                                  {task.sessionId && (
-                                    <button
-                                      type="button"
-                                      aria-label={`「${task.title}」を${task.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
-                                      title={task.favorite ? "お気に入りから外す" : "お気に入りに追加"}
-                                      aria-busy={actionBusyKey === `session-favorite:${task.id}`}
-                                      disabled={actionBusyKey !== null}
-                                      onClick={(e) => void toggleSessionFavorite(task, e)}
-                                      className={cx(
-                                        TASK_ROW_ACTION_BTN,
-                                        "text-muted hover:bg-surface-2 hover:text-text",
-                                      )}
+                                    {costColumnCh > 0 &&
+                                      ((task.cost ?? 0) > 0 ? (
+                                        <span
+                                          className={cx(
+                                            "shrink-0 text-left tabular-nums whitespace-nowrap text-faint",
+                                          )}
+                                          style={{
+                                            minWidth: `${costColumnCh}ch`,
+                                          }}
+                                          title="このセッションの累計コスト"
+                                        >
+                                          {formatCostValue(task.cost!, costPrefs)}
+                                        </span>
+                                      ) : (
+                                        // Reserve the same cost column so the provider
+                                        // icon stays in the same place on every row.
+                                        <span
+                                          aria-hidden
+                                          className="shrink-0"
+                                          style={{
+                                            minWidth: `${costColumnCh}ch`,
+                                          }}
+                                        />
+                                      ))}
+                                    <div
+                                      data-testid="task-row-actions"
+                                      className="flex shrink-0 items-center"
                                     >
-                                      <Star
+                                      <button
+                                        type="button"
+                                        aria-label={`「${task.title}」をアーカイブ`}
+                                        title={`「${task.title}」をアーカイブ`}
+                                        aria-busy={actionBusyKey === `archive:${task.id}`}
+                                        disabled={actionBusyKey !== null}
+                                        onClick={(e) => void archiveTask(task, e)}
                                         className={cx(
-                                          "h-3 w-3",
-                                          task.favorite && "fill-warning text-warning",
+                                          TASK_ROW_ACTION_BTN,
+                                          "text-muted hover:bg-surface-2 hover:text-text",
                                         )}
-                                        aria-hidden="true"
-                                      />
-                                    </button>
-                                  )}
+                                      >
+                                        <Archive className="h-3 w-3" />
+                                      </button>
+                                      {task.sessionId && (
+                                        <button
+                                          type="button"
+                                          aria-label={`「${task.title}」を${task.favorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+                                          title={task.favorite ? "お気に入りから外す" : "お気に入りに追加"}
+                                          aria-busy={actionBusyKey === `session-favorite:${task.id}`}
+                                          disabled={actionBusyKey !== null}
+                                          onClick={(e) => void toggleSessionFavorite(task, e)}
+                                          className={cx(
+                                            TASK_ROW_ACTION_BTN,
+                                            "text-muted hover:bg-surface-2 hover:text-text",
+                                          )}
+                                        >
+                                          <Star
+                                            className={cx(
+                                              "h-3 w-3",
+                                              task.favorite && "fill-warning text-warning",
+                                            )}
+                                            aria-hidden="true"
+                                          />
+                                        </button>
+                                      )}
+                                    </div>
                                 </div>
                               </div>
                             </li>
