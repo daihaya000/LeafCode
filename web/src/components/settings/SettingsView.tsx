@@ -14,7 +14,6 @@ import {
   Monitor,
   Moon,
   Plus,
-  Save,
   Star,
   Sun,
   Trash2,
@@ -215,7 +214,7 @@ function ThemeSettings() {
 }
 
 export function SettingsView() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("engine");
   const [health, setHealth] = useState<HealthDto | null>(null);
   const [hostOk, setHostOk] = useState<boolean | null>(null);
   const [restarting, setRestarting] = useState<"webui" | "opencode" | "all" | null>(
@@ -255,20 +254,6 @@ export function SettingsView() {
   const [commitAuthorName, setCommitAuthorName] = useState("");
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitIdentityError, setCommitIdentityError] = useState<string | null>(null);
-  // 確定済みスナップショット: 入力値と比較して dirty 判定に使う。
-  // ハングタイムアウト/コミット作者/USD-JPYレートは onBlur 保存のため、
-  // フォーカスを外さずにページ離脱すると未保存になる（再起動でリセット報告の主因）。
-  // 保存ボタンで明示確定できるようにこれらの「最後に保存した値」を保持する。
-  const [committedHangTimeoutMinutes, setCommittedHangTimeoutMinutes] = useState(() =>
-    String(readHangTimeoutMs() / 60_000),
-  );
-  const [committedRate, setCommittedRate] = useState(() =>
-    String(readCostDisplayPrefs().usdJpyRate),
-  );
-  const [committedAuthorName, setCommittedAuthorName] = useState("");
-  const [committedAuthorEmail, setCommittedAuthorEmail] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveFlash, setSaveFlash] = useState<"idle" | "saved" | "error">("idle");
   const [fxStatus, setFxStatus] = useState<
     | { kind: "idle" }
     | { kind: "loading" }
@@ -335,13 +320,11 @@ export function SettingsView() {
     const prefs = readCostDisplayPrefs();
     setCostPrefs(prefs);
     setRateDraft(String(prefs.usdJpyRate));
-    setCommittedRate(String(prefs.usdJpyRate));
   }, []);
 
   const applyCostPrefs = useCallback((next: CostDisplayPrefs) => {
     setCostPrefs(next);
     setRateDraft(String(next.usdJpyRate));
-    setCommittedRate(String(next.usdJpyRate));
     writeCostDisplayPrefs(next);
   }, []);
 
@@ -392,9 +375,7 @@ export function SettingsView() {
     // Without this, out-of-range values are saved as-is but displayed clamped,
     // causing a mismatch between the input and the actual rate used.
     const usdJpyRate = clampUsdJpyRate(Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE);
-    const rateStr = String(usdJpyRate);
-    setRateDraft(rateStr);
-    setCommittedRate(rateStr);
+    setRateDraft(String(usdJpyRate));
     applyCostPrefs({ ...costPrefs, rateMode: "manual", usdJpyRate });
   };
 
@@ -471,9 +452,7 @@ export function SettingsView() {
       (Number.isFinite(minutes) ? minutes : DEFAULT_HANG_TIMEOUT_MS / 60_000) * 60_000,
     );
     writeHangTimeoutMs(milliseconds);
-    const minutesStr = String(milliseconds / 60_000);
-    setHangTimeoutMinutes(minutesStr);
-    setCommittedHangTimeoutMinutes(minutesStr);
+    setHangTimeoutMinutes(String(milliseconds / 60_000));
     void syncHangTimeoutToServer(milliseconds);
   };
 
@@ -489,8 +468,6 @@ export function SettingsView() {
       if (cancelled) return;
       if (name.status === "fulfilled") setCommitAuthorName(name.value.value ?? "");
       if (email.status === "fulfilled") setCommitAuthorEmail(email.value.value ?? "");
-      if (name.status === "fulfilled") setCommittedAuthorName(name.value.value ?? "");
-      if (email.status === "fulfilled") setCommittedAuthorEmail(email.value.value ?? "");
     })();
     return () => {
       cancelled = true;
@@ -506,91 +483,18 @@ export function SettingsView() {
     const value = raw.trim();
     if (value.length > 0 && !isValid(value)) {
       setCommitIdentityError(invalidMessage);
-      return false;
+      return;
     }
     setCommitIdentityError(null);
     try {
       await sendJson("PUT", `/api/settings/${key}`, { value });
-      return true;
     } catch (err) {
       if (mountedRef.current) {
         setCommitIdentityError(
           err instanceof Error ? err.message : "コミット作者の保存に失敗しました",
         );
       }
-      return false;
     }
-  };
-
-  // 保存ボタン用: onBlur 系の未確定入力を一括確定する。
-  // dirty 判定は入力値と committed スナップショットの比較で行う。
-  const isDirty =
-    hangTimeoutMinutes !== committedHangTimeoutMinutes ||
-    rateDraft !== committedRate ||
-    commitAuthorName !== committedAuthorName ||
-    commitAuthorEmail !== committedAuthorEmail;
-
-  const saveAllDirty = async () => {
-    if (saving || !isDirty) return;
-    setSaving(true);
-    setSaveFlash("idle");
-    try {
-      let failed = false;
-      if (hangTimeoutMinutes !== committedHangTimeoutMinutes) {
-        commitHangTimeout();
-        // commitHangTimeout 内で clamp して setHangTimeoutMinutes するが、
-        // state 更新は非同期のため committed には clamp 後の値を計算して入れる。
-        const minutesNum = Number(hangTimeoutMinutes);
-        const ms = clampHangTimeoutMs(
-          (Number.isFinite(minutesNum) ? minutesNum : DEFAULT_HANG_TIMEOUT_MS / 60_000) * 60_000,
-        );
-        setCommittedHangTimeoutMinutes(String(ms / 60_000));
-      }
-      if (rateDraft !== committedRate) {
-        commitRate();
-        // commitRate 内で clamp して setRateDraft するため、committed も clamp 後。
-        const n = Number(rateDraft);
-        const usdJpyRate = clampUsdJpyRate(Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE);
-        setCommittedRate(String(usdJpyRate));
-      }
-      if (commitAuthorName !== committedAuthorName) {
-        const ok = await commitIdentityField(
-          COMMIT_AUTHOR_NAME_KEY,
-          commitAuthorName,
-          isValidCommitAuthorName,
-          "コミット作者名に使用できない文字が含まれています",
-        );
-        if (ok) setCommittedAuthorName(commitAuthorName);
-        else failed = true;
-      }
-      if (commitAuthorEmail !== committedAuthorEmail) {
-        const ok = await commitIdentityField(
-          COMMIT_AUTHOR_EMAIL_KEY,
-          commitAuthorEmail,
-          isValidCommitAuthorEmail,
-          "コミット作者メールアドレスの形式が不正です",
-        );
-        if (ok) setCommittedAuthorEmail(commitAuthorEmail);
-        else failed = true;
-      }
-      if (mountedRef.current) {
-        setSaveFlash(failed ? "error" : "saved");
-        if (!failed) {
-          setTimeout(() => {
-            if (mountedRef.current) setSaveFlash("idle");
-          }, 1500);
-        }
-      }
-    } finally {
-      if (mountedRef.current) setSaving(false);
-    }
-  };
-
-  // タブ切り替え時: 未確定の onBlur 系入力があれば自動確定（リセット防止）。
-  // onChange 即時保存系は切り替え前に既に永続化済みのため対象外。
-  const handleTabChange = (next: SettingsTab) => {
-    if (isDirty && !saving) void saveAllDirty();
-    setActiveTab(next);
   };
 
   const restartService = async (target: "webui" | "opencode" | "all") => {
@@ -834,6 +738,7 @@ export function SettingsView() {
   const setScrollTarget = useMobileScrollTarget();
 
   const tabs: { key: SettingsTab; label: string; badge?: number }[] = [
+    { key: "engine", label: "エンジン" },
     { key: "general", label: "全般" },
     { key: "profiles", label: "プロファイル" },
     {
@@ -842,6 +747,7 @@ export function SettingsView() {
       badge: requiresAttention > 0 ? requiresAttention : undefined,
     },
     { key: "connectivity", label: "接続" },
+    { key: "git", label: "Git" },
     { key: "providers", label: "プロバイダー/モデル" },
     { key: "ranking", label: "コスパランキング" },
     { key: "agents", label: "エージェント" },
@@ -884,40 +790,8 @@ export function SettingsView() {
       >
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4">
-          <div className="flex h-14 items-center justify-between gap-3">
+          <div className="flex h-14 items-center">
             <h1 className="text-sm font-semibold">設定</h1>
-            <div className="flex items-center gap-2">
-              {saveFlash === "saved" && (
-                <span
-                  className="text-[11px] text-success"
-                  role="status"
-                  aria-live="polite"
-                >
-                  保存しました
-                </span>
-              )}
-              {saveFlash === "error" && (
-                <span
-                  className="text-[11px] text-danger"
-                  role="status"
-                  aria-live="polite"
-                >
-                  保存に失敗した項目があります
-                </span>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                variant="primary"
-                busy={saving}
-                disabled={!isDirty || saving}
-                onClick={() => void saveAllDirty()}
-                aria-label="設定を保存"
-              >
-                <Save className="h-3.5 w-3.5" />
-                保存
-              </Button>
-            </div>
           </div>
           <div className="relative">
             <div
@@ -939,7 +813,7 @@ export function SettingsView() {
                 aria-selected={activeTab === t.key}
                 aria-controls={`settings-panel-${t.key}`}
                 tabIndex={activeTab === t.key ? 0 : -1}
-                onClick={() => handleTabChange(t.key)}
+                onClick={() => setActiveTab(t.key)}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={cx(
                   "shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap",
@@ -982,108 +856,9 @@ export function SettingsView() {
           </p>
         )}
 
-        {activeTab === "general" && (
-          <>
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted">実行</h2>
-              <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">
-                <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                  <span className="shrink-0 text-sm text-muted">ハング判定時間</span>
-                  <input
-                    type="number"
-                    min={MIN_HANG_TIMEOUT_MS / 60_000}
-                    max={MAX_HANG_TIMEOUT_MS / 60_000}
-                    step={0.5}
-                    value={hangTimeoutMinutes}
-                    aria-label="ハング判定時間"
-                    onChange={(event) => setHangTimeoutMinutes(event.target.value)}
-                    onBlur={commitHangTimeout}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                    className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
-                    aria-describedby="hang-timeout-help"
-                  />
-                  <span className="text-xs text-faint">分</span>
-                </label>
-                <p id="hang-timeout-help" className="mt-2 text-[11px] text-faint">
-                  応答がない状態がこの時間続いた場合、自動停止して同じ処理を1回だけ再開します（0.17〜30分）。
-                </p>
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted">Git</h2>
-              <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">
-                <h3 className="text-sm font-semibold text-text">コミット作者</h3>
-                <p className="mt-1 text-[11px] text-faint">
-                  未設定の場合は実行エージェント名（例:
-                  <code className="mx-1 font-mono">build &lt;build@opencode.local&gt;</code>）
-                  で記録されます。GitHub などに push するリポジトリでは、ここに実ユーザーの名前とメールアドレスを設定してください。
-                </p>
-                <div className="mt-3 flex flex-col gap-3">
-                  <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                    <span className="w-28 shrink-0 text-sm text-muted">名前</span>
-                    <input
-                      type="text"
-                      value={commitAuthorName}
-                      maxLength={COMMIT_AUTHOR_NAME_MAX_CHARS}
-                      placeholder="エージェント名を使用"
-                      aria-label="コミット作者名"
-                      onChange={(event) => setCommitAuthorName(event.target.value)}
-                      onBlur={() =>
-                        void commitIdentityField(
-                          COMMIT_AUTHOR_NAME_KEY,
-                          commitAuthorName,
-                          isValidCommitAuthorName,
-                          "コミット作者名に使用できない文字が含まれています",
-                        )
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                      }}
-                      className="h-9 w-full max-w-[22rem] rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                    <span className="w-28 shrink-0 text-sm text-muted">メールアドレス</span>
-                    <input
-                      type="email"
-                      value={commitAuthorEmail}
-                      maxLength={COMMIT_AUTHOR_EMAIL_MAX_CHARS}
-                      placeholder="エージェント名@opencode.local を使用"
-                      aria-label="コミット作者メールアドレス"
-                      onChange={(event) => setCommitAuthorEmail(event.target.value)}
-                      onBlur={() =>
-                        void commitIdentityField(
-                          COMMIT_AUTHOR_EMAIL_KEY,
-                          commitAuthorEmail,
-                          isValidCommitAuthorEmail,
-                          "コミット作者メールアドレスの形式が不正です",
-                        )
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                      }}
-                      className="h-9 w-full max-w-[22rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
-                    />
-                  </label>
-                </div>
-                {commitIdentityError && (
-                  <p className="mt-2 text-[11px] text-danger" role="alert">
-                    {commitIdentityError}
-                  </p>
-                )}
-                <p className="mt-2 text-[11px] text-faint">
-                  設定後に作成したワークスペース、および以降のコミットに適用されます。
-                </p>
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted">エンジン</h2>
-              <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {activeTab === "engine" && (
+          <section className="overflow-hidden rounded-xl border border-border bg-surface">
+            <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-text">接続状態</h3>
                     <p className="mt-1 text-xs text-faint">
@@ -1257,6 +1032,36 @@ export function SettingsView() {
                     )}
                   </div>
                 </div>
+          </section>
+        )}
+
+        {activeTab === "general" && (
+          <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">実行</h2>
+              <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">
+                <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="shrink-0 text-sm text-muted">ハング判定時間</span>
+                  <input
+                    type="number"
+                    min={MIN_HANG_TIMEOUT_MS / 60_000}
+                    max={MAX_HANG_TIMEOUT_MS / 60_000}
+                    step={0.5}
+                    value={hangTimeoutMinutes}
+                    aria-label="ハング判定時間"
+                    onChange={(event) => setHangTimeoutMinutes(event.target.value)}
+                    onBlur={commitHangTimeout}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
+                    aria-describedby="hang-timeout-help"
+                  />
+                  <span className="text-xs text-faint">分</span>
+                </label>
+                <p id="hang-timeout-help" className="mt-2 text-[11px] text-faint">
+                  応答がない状態がこの時間続いた場合、自動停止して同じ処理を1回だけ再開します（0.17〜30分）。
+                </p>
               </div>
             </section>
 
@@ -1365,6 +1170,75 @@ export function SettingsView() {
             <ThemeSettings />
             <HostLogPanel />
           </>
+        )}
+
+        {activeTab === "git" && (
+          <section>
+            <h2 className="mb-3 text-sm font-semibold text-muted">コミット作者</h2>
+            <div className="rounded-xl border border-border bg-surface px-4 py-3">
+              <p className="text-[11px] text-faint">
+                未設定の場合は実行エージェント名（例:
+                <code className="mx-1 font-mono">build &lt;build@opencode.local&gt;</code>）
+                で記録されます。GitHub などに push するリポジトリでは、ここに実ユーザーの名前とメールアドレスを設定してください。
+              </p>
+              <div className="mt-3 flex flex-col gap-3">
+                <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="w-28 shrink-0 text-sm text-muted">名前</span>
+                  <input
+                    type="text"
+                    value={commitAuthorName}
+                    maxLength={COMMIT_AUTHOR_NAME_MAX_CHARS}
+                    placeholder="エージェント名を使用"
+                    aria-label="コミット作者名"
+                    onChange={(event) => setCommitAuthorName(event.target.value)}
+                    onBlur={() =>
+                      void commitIdentityField(
+                        COMMIT_AUTHOR_NAME_KEY,
+                        commitAuthorName,
+                        isValidCommitAuthorName,
+                        "コミット作者名に使用できない文字が含まれています",
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="h-9 w-full max-w-[22rem] rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="w-28 shrink-0 text-sm text-muted">メールアドレス</span>
+                  <input
+                    type="email"
+                    value={commitAuthorEmail}
+                    maxLength={COMMIT_AUTHOR_EMAIL_MAX_CHARS}
+                    placeholder="エージェント名@opencode.local を使用"
+                    aria-label="コミット作者メールアドレス"
+                    onChange={(event) => setCommitAuthorEmail(event.target.value)}
+                    onBlur={() =>
+                      void commitIdentityField(
+                        COMMIT_AUTHOR_EMAIL_KEY,
+                        commitAuthorEmail,
+                        isValidCommitAuthorEmail,
+                        "コミット作者メールアドレスの形式が不正です",
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="h-9 w-full max-w-[22rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
+                  />
+                </label>
+              </div>
+              {commitIdentityError && (
+                <p className="mt-2 text-[11px] text-danger" role="alert">
+                  {commitIdentityError}
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-faint">
+                設定後に作成したワークスペース、および以降のコミットに適用されます。
+              </p>
+            </div>
+          </section>
         )}
 
         {activeTab === "project" && (

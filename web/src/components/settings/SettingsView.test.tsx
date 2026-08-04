@@ -231,15 +231,15 @@ describe("SettingsView", () => {
     expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("shows the 全般 tab by default and hides other tabs' content", async () => {
+  it("shows the エンジン tab by default and hides other tabs' content", async () => {
     render(<SettingsView />);
 
-    await screen.findByText("エンジン");
+    await screen.findByText("接続状態");
     // "プロジェクト" appears as a tab label regardless of the active tab;
-    // its section heading should NOT be rendered on the 全般 tab.
+    // its section heading should NOT be rendered on the エンジン tab.
     expect(screen.queryAllByText("プロジェクト")).toHaveLength(1);
     expect(screen.queryByTestId("addon-settings")).toBeNull();
-    expect(screen.getByTestId("host-log-panel")).toBeTruthy();
+    expect(screen.queryByTestId("host-log-panel")).toBeNull();
   });
 
   it("exposes the mobile-scrollable settings categories as a tablist", async () => {
@@ -249,7 +249,7 @@ describe("SettingsView", () => {
 
     expect(tablist.getAttribute("tabindex")).toBe("0");
     expect(tablist.className).toContain("overflow-x-auto");
-    expect(screen.getByRole("tab", { name: "全般" }).getAttribute("aria-selected")).toBe(
+    expect(screen.getByRole("tab", { name: "エンジン" }).getAttribute("aria-selected")).toBe(
       "true",
     );
   });
@@ -258,20 +258,25 @@ describe("SettingsView", () => {
     render(<SettingsView />);
 
     const tabs = await screen.findAllByRole("tab");
-    expect(tabs[0]?.getAttribute("tabindex")).toBe("0");
-    expect(tabs[1]?.getAttribute("tabindex")).toBe("-1");
-    expect(tabs[0]?.getAttribute("aria-controls")).toBe("settings-panel-general");
+    const engineTab = tabs.find(
+      (t) => t.getAttribute("aria-controls") === "settings-panel-engine",
+    )!;
+    expect(engineTab.getAttribute("tabindex")).toBe("0");
+    const generalTab = tabs.find(
+      (t) => t.getAttribute("aria-controls") === "settings-panel-general",
+    )!;
+    expect(generalTab.getAttribute("tabindex")).toBe("-1");
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(
-      "settings-tab-general",
+      "settings-tab-engine",
     );
 
-    fireEvent.keyDown(tabs[0]!, { key: "ArrowRight" });
-    expect(tabs[1]?.getAttribute("aria-selected")).toBe("true");
-    expect(tabs[0]?.getAttribute("tabindex")).toBe("-1");
-    expect(tabs[1]?.getAttribute("tabindex")).toBe("0");
-    expect(screen.getByRole("tabpanel").id).toBe("settings-panel-profiles");
+    fireEvent.keyDown(engineTab, { key: "ArrowRight" });
+    expect(generalTab.getAttribute("aria-selected")).toBe("true");
+    expect(engineTab.getAttribute("tabindex")).toBe("-1");
+    expect(generalTab.getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("tabpanel").id).toBe("settings-panel-general");
 
-    fireEvent.keyDown(tabs[1]!, { key: "End" });
+    fireEvent.keyDown(generalTab, { key: "End" });
     expect(tabs.at(-1)?.getAttribute("aria-selected")).toBe("true");
   });
 
@@ -282,12 +287,13 @@ describe("SettingsView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "アドオン" }));
 
     expect(await screen.findByTestId("addon-settings")).toBeTruthy();
-    expect(screen.queryByText("エンジン")).toBeNull();
+    expect(screen.queryByText("接続状態")).toBeNull();
   });
 
   it("shows theme switching inside the 全般 tab", async () => {
     render(<SettingsView />);
 
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
     expect(await screen.findByRole("heading", { name: "表示テーマ" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "テーマ" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /ライト/ }));
@@ -297,6 +303,7 @@ describe("SettingsView", () => {
   it("exposes selected cost display options as pressed toggle buttons", async () => {
     render(<SettingsView />);
 
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
     await screen.findByRole("heading", { name: "表示テーマ" });
     const currencyButtons = screen
       .getAllByRole("button")
@@ -313,12 +320,12 @@ describe("SettingsView", () => {
 
   it("shows the エージェント tab and lists agents when selected", async () => {
     render(<SettingsView />);
-    await screen.findByText("エンジン");
+    await screen.findByRole("tab", { name: "エンジン" });
 
     fireEvent.click(screen.getByRole("tab", { name: "エージェント" }));
 
     expect(await screen.findByRole("heading", { name: "Rank A" })).toBeTruthy();
-    expect(screen.queryByText("エンジン")).toBeNull();
+    expect(screen.queryByText("接続状態")).toBeNull();
   });
 
   it("orders the settings tabs by category", async () => {
@@ -329,11 +336,14 @@ describe("SettingsView", () => {
       screen.getAllByRole("tab").map((button) => button.textContent),
     ).toEqual(
       expect.arrayContaining([
+        "エンジン",
         "全般",
         "プロファイル",
         "プロジェクト",
         "接続",
+        "Git",
         "プロバイダー/モデル",
+        "コスパランキング",
         "エージェント",
         "スキル",
         "MCP",
@@ -346,11 +356,14 @@ describe("SettingsView", () => {
       .map((button) => button.textContent ?? "")
       .filter((label) =>
         [
+          "エンジン",
           "全般",
           "プロファイル",
           "プロジェクト",
           "接続",
+          "Git",
           "プロバイダー/モデル",
+          "コスパランキング",
           "エージェント",
           "スキル",
           "MCP",
@@ -359,11 +372,14 @@ describe("SettingsView", () => {
         ].includes(label),
       );
     expect(tabLabels).toEqual([
+      "エンジン",
       "全般",
       "プロファイル",
       "プロジェクト",
       "接続",
+      "Git",
       "プロバイダー/モデル",
+      "コスパランキング",
       "エージェント",
       "スキル",
       "MCP",
@@ -391,6 +407,7 @@ describe("SettingsView", () => {
   it("shows the daily rate and disables editing in auto mode", async () => {
     render(<SettingsView />);
 
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
     expect(await screen.findByText("本日 156.2円（2026-07-19）")).toBeTruthy();
     expect(
       screen.getByRole("spinbutton", { name: "USD/JPY レート" }),
@@ -431,6 +448,7 @@ describe("SettingsView", () => {
     render(<SettingsView />);
     await waitFor(() => expect(responses).toHaveLength(1));
 
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
     fireEvent.click(screen.getByRole("button", { name: "手動" }));
     fireEvent.click(screen.getByRole("button", { name: "自動（本日）" }));
     await waitFor(() => expect(responses).toHaveLength(2));
@@ -465,6 +483,8 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
 
+    await screen.findByRole("tab", { name: "エンジン" });
+    fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
     await screen.findByText("WebUI 接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
@@ -497,6 +517,8 @@ describe("SettingsView", () => {
 
     render(<SettingsView />);
 
+    await screen.findByRole("tab", { name: "エンジン" });
+    fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
     await screen.findByText("WebUI 接続中");
     fireEvent.click(screen.getByRole("button", { name: "WebUI を再起動" }));
     expect(screen.getByRole("dialog", { name: "再起動の確認" })).toBeTruthy();
@@ -535,6 +557,8 @@ describe("SettingsView", () => {
     });
 
     render(<SettingsView />);
+    await screen.findByRole("tab", { name: "エンジン" });
+    fireEvent.click(screen.getByRole("tab", { name: "エンジン" }));
     await screen.findByText("WebUI 接続中");
     fireEvent.click(screen.getByRole("button", { name: "OpenCode を再起動" }));
     fireEvent.click(screen.getByRole("button", { name: "再起動する" }));
@@ -695,7 +719,7 @@ describe("SettingsView", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "スキル" }));
     expect(await screen.findByTestId("extensions-skills")).toBeTruthy();
-    expect(screen.queryByText("エンジン")).toBeNull();
+    expect(screen.queryByText("接続状態")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: "MCP" }));
     expect(await screen.findByTestId("extensions-mcp")).toBeTruthy();
