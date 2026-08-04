@@ -6,20 +6,20 @@ import { installWebUiDependencies } from "./webui-dependencies";
 
 const dirs: string[] = [];
 let previousConfigDir: string | undefined;
-let previousCursorAcpDir: string | undefined;
-let previousClaudeAuthDir: string | undefined;
+let previousCursorCliProxyDir: string | undefined;
+let previousClaudeCliProxyDir: string | undefined;
 let previousRoot: string | undefined;
 
 beforeEach(() => {
   previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
-  previousCursorAcpDir = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
-  previousClaudeAuthDir = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR;
+  previousCursorCliProxyDir = process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR;
+  previousClaudeCliProxyDir = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR;
   previousRoot = process.env.OPENCODE_WEBUI_ROOT;
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-source-"));
   dirs.push(source);
   process.env.OPENCODE_CONFIG_DIR = source;
-  process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = path.join(source, "bundled");
-  process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR = path.join(source, "claude-bundled");
+  process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR = path.join(source, "bundled");
+  process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR = path.join(source, "claude-bundled");
   process.env.OPENCODE_WEBUI_ROOT = source;
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli", "plugin"), { recursive: true });
   fs.mkdirSync(path.join(source, "vendor", "commandcode-cli", "packages", "commandcode-cli"), { recursive: true });
@@ -30,10 +30,10 @@ beforeEach(() => {
 afterEach(() => {
   if (previousConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
   else process.env.OPENCODE_CONFIG_DIR = previousConfigDir;
-  if (previousCursorAcpDir === undefined) delete process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR;
-  else process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR = previousCursorAcpDir;
-  if (previousClaudeAuthDir === undefined) delete process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR;
-  else process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR = previousClaudeAuthDir;
+  if (previousCursorCliProxyDir === undefined) delete process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR;
+  else process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR = previousCursorCliProxyDir;
+  if (previousClaudeCliProxyDir === undefined) delete process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR;
+  else process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR = previousClaudeCliProxyDir;
   if (previousRoot === undefined) delete process.env.OPENCODE_WEBUI_ROOT;
   else process.env.OPENCODE_WEBUI_ROOT = previousRoot;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -63,40 +63,40 @@ describe("installWebUiDependencies", () => {
     expect(fs.readFileSync(configPath, "utf8")).toContain("custom");
   });
 
-  it("copies Cursor ACP plugin files and provider settings from the active profile", () => {
+  it("copies Cursor CLI Proxy plugin files and provider settings from the active profile", () => {
     const source = process.env.OPENCODE_CONFIG_DIR!;
     fs.writeFileSync(
       path.join(source, "opencode.jsonc"),
       JSON.stringify({ provider: { "cursor-acp": { name: "Cursor", models: { auto: {} } } } }),
     );
     fs.mkdirSync(path.join(source, "plugin"), { recursive: true });
-    fs.writeFileSync(path.join(source, "plugin", "cursor-acp.js"), "export default {};\n");
-    fs.mkdirSync(path.join(source, "packages", "cursor-acp"), { recursive: true });
-    fs.writeFileSync(path.join(source, "packages", "cursor-acp", "index.js"), "export default {};\n");
+    fs.writeFileSync(path.join(source, "plugin", "cursor-cli-proxy.js"), "export default {};\n");
+    fs.mkdirSync(path.join(source, "packages", "cursor-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(source, "packages", "cursor-cli-proxy", "index.js"), "export default {};\n");
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
     const installed = installWebUiDependencies(target, { commandcodeAuth: false });
 
-    expect(installed).toContain("plugin/cursor-acp.js");
-    expect(installed).toContain("packages/cursor-acp");
+    expect(installed).toContain("plugin/cursor-cli-proxy.js");
+    expect(installed).toContain("packages/cursor-cli-proxy");
     expect(installed).toContain("provider.cursor-acp");
-    expect(fs.existsSync(path.join(target, "packages", "cursor-acp", "index.js"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "packages", "cursor-cli-proxy", "index.js"))).toBe(true);
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
     expect(config.provider["cursor-acp"].name).toBe("Cursor");
   });
 
-  it("uses the repository bundle when the active profile has no Cursor ACP", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR!;
+  it("uses the repository bundle when the active profile has no Cursor CLI Proxy", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR!;
     fs.mkdirSync(bundle, { recursive: true });
     fs.writeFileSync(
       path.join(bundle, "opencode.jsonc"),
       JSON.stringify({ provider: { "cursor-acp": { name: "Bundled Cursor" } } }),
     );
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "plugin", "cursor-acp.js"), "export default {};\n");
-    fs.mkdirSync(path.join(bundle, "packages", "cursor-acp"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "packages", "cursor-acp", "index.js"), "export default {};\n");
+    fs.writeFileSync(path.join(bundle, "plugin", "cursor-cli-proxy.js"), "export default {};\n");
+    fs.mkdirSync(path.join(bundle, "packages", "cursor-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "packages", "cursor-cli-proxy", "index.js"), "export default {};\n");
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
@@ -104,7 +104,7 @@ describe("installWebUiDependencies", () => {
 
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
     expect(config.provider["cursor-acp"].name).toBe("Bundled Cursor");
-    expect(fs.readFileSync(path.join(target, "plugin", "cursor-acp.js"), "utf8")).toContain("export default");
+    expect(fs.readFileSync(path.join(target, "plugin", "cursor-cli-proxy.js"), "utf8")).toContain("export default");
   });
 
   it("skips optional dependencies when disabled", () => {
@@ -121,24 +121,24 @@ describe("installWebUiDependencies", () => {
     });
   });
 
-  it("copies the bundled Claude Auth plugin and runtime", () => {
-    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR!;
+  it("copies the bundled Claude CLI Proxy plugin and runtime", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR!;
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
-    fs.mkdirSync(path.join(bundle, "packages", "claude-auth"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "plugin", "claude-auth.js"), "export default {};");
-    fs.writeFileSync(path.join(bundle, "packages", "claude-auth", "index.js"), "export default {};");
+    fs.mkdirSync(path.join(bundle, "packages", "claude-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "claude-cli-proxy.js"), "export default {};");
+    fs.writeFileSync(path.join(bundle, "packages", "claude-cli-proxy", "index.js"), "export default {};");
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
 
     expect(installWebUiDependencies(target)).toEqual([
-      "plugin/claude-auth.js",
-      "packages/claude-auth",
+      "plugin/claude-cli-proxy.js",
+      "packages/claude-cli-proxy",
       "plugin/commandcode-cli.js",
       "packages/commandcode-cli",
       "mcp.browser-bridge",
     ]);
-    expect(fs.existsSync(path.join(target, "plugin", "claude-auth.js"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "packages", "claude-auth", "index.js"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "plugin", "claude-cli-proxy.js"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "packages", "claude-cli-proxy", "index.js"))).toBe(true);
   });
 
   it("adds the CommandCode auth plugin to a new profile", () => {

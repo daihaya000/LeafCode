@@ -110,8 +110,8 @@ export function installWebUiDependencies(
   if (!fs.existsSync(targetConfigPath)) fs.writeFileSync(targetConfigPath, CONFIG_SKELETON, "utf8");
 
   const activeDir = opencodeConfigDir();
-  const bundledDir = bundledVendorDir("cursor-acp", "OPENCODE_WEBUI_CURSOR_ACP_DIR");
-  const bundledClaudeAuth = bundledVendorDir("claude-auth", "OPENCODE_WEBUI_CLAUDE_AUTH_DIR");
+  const bundledDir = bundledVendorDir("cursor-cli-proxy", "OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR");
+  const bundledClaudeAuth = bundledVendorDir("claude-cli-proxy", "OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR");
   const bundledCommandcodeCli = bundledVendorDir("commandcode-cli");
   const sourceDirs = [activeDir, bundledDir].filter(
     (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
@@ -134,10 +134,10 @@ export function installWebUiDependencies(
   let content = fs.readFileSync(targetConfigPath, "utf8");
   const installed = options.commandcodeAuth === false ? [] : removeLegacyCommandcodeFiles(profileDir);
   if (options.cursorAcp !== false) {
-    installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-acp.js", "packages/cursor-acp"]));
+    installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
   }
   if (options.claudeAuth !== false && bundledClaudeAuth) {
-    installed.push(...copyVendorFiles(profileDir, [bundledClaudeAuth], ["plugin/claude-auth.js", "packages/claude-auth"]));
+    installed.push(...copyVendorFiles(profileDir, [bundledClaudeAuth], ["plugin/claude-cli-proxy.js", "packages/claude-cli-proxy"]));
   }
   if (options.commandcodeAuth !== false && bundledCommandcodeCli) {
     installed.push(...copyVendorFiles(profileDir, [bundledCommandcodeCli], ["plugin/commandcode-cli.js", "packages/commandcode-cli"]));
