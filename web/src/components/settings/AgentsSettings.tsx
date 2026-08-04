@@ -74,11 +74,13 @@ function AgentSwitch({
 function AgentGroupTable({
   group,
   busyName,
+  busyProvider,
   actionError,
   onToggle,
 }: {
   group: AgentGroup;
   busyName: string | null;
+  busyProvider: string | null;
   actionError: string | null;
   onToggle: (agent: AgentRowModel, enabled: boolean) => void;
 }) {
@@ -158,7 +160,7 @@ function AgentGroupTable({
                         <AgentSwitch
                           name={row.name}
                           enabled={row.enabled}
-                          busy={busyName !== null}
+                          busy={busyName !== null || busyProvider !== null}
                           onToggle={() => onToggle(row, !row.enabled)}
                         />
                       )}
@@ -215,7 +217,7 @@ function AgentGroupTable({
                   <AgentSwitch
                     name={row.name}
                     enabled={row.enabled}
-                    busy={busyName !== null}
+                    busy={busyName !== null || busyProvider !== null}
                     onToggle={() => onToggle(row, !row.enabled)}
                   />
                 )}
@@ -259,6 +261,7 @@ export function AgentsSettings() {
   const [query, setQuery] = useState("");
   const [retrying, setRetrying] = useState(false);
   const [busyName, setBusyName] = useState<string | null>(null);
+  const [busyProvider, setBusyProvider] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -267,6 +270,7 @@ export function AgentsSettings() {
   const loadRequestRef = useRef(0);
   const mountedRef = useRef(false);
   const busyNameRef = useRef<string | null>(null);
+  const busyProviderRef = useRef<string | null>(null);
   const restartingRef = useRef(false);
 
   useEffect(() => {
@@ -316,7 +320,13 @@ export function AgentsSettings() {
 
   const toggleAgent = useCallback(
     async (agent: AgentRowModel, enabled: boolean) => {
-      if (busyNameRef.current !== null || restartingRef.current) return;
+      if (
+        busyNameRef.current !== null ||
+        busyProviderRef.current !== null ||
+        restartingRef.current
+      ) {
+        return;
+      }
       busyNameRef.current = agent.name;
       setBusyName(agent.name);
       setActionError(null);
@@ -340,8 +350,47 @@ export function AgentsSettings() {
     [load],
   );
 
+  const toggleProvider = useCallback(
+    async (providerID: string, enabled: boolean) => {
+      if (
+        busyNameRef.current !== null ||
+        busyProviderRef.current !== null ||
+        restartingRef.current
+      ) {
+        return;
+      }
+      busyProviderRef.current = providerID;
+      setBusyProvider(providerID);
+      setActionError(null);
+      try {
+        await sendJson("PATCH", "/api/extensions/agents/by-provider", {
+          providerID,
+          enabled,
+        });
+        await load();
+        if (mountedRef.current) setRestartNeeded(true);
+      } catch (err) {
+        if (mountedRef.current) {
+          setActionError(
+            err instanceof Error ? err.message : "操作に失敗しました",
+          );
+        }
+      } finally {
+        busyProviderRef.current = null;
+        if (mountedRef.current) setBusyProvider(null);
+      }
+    },
+    [load],
+  );
+
   const restartOpencode = useCallback(async () => {
-    if (restartingRef.current || busyNameRef.current !== null) return;
+    if (
+      restartingRef.current ||
+      busyNameRef.current !== null ||
+      busyProviderRef.current !== null
+    ) {
+      return;
+    }
     restartingRef.current = true;
     setRestarting(true);
     setRestartError(null);
@@ -400,6 +449,28 @@ export function AgentsSettings() {
     [agents, query],
   );
   const groups = useMemo(() => groupAgents(filtered), [filtered]);
+
+  const providerGroups = useMemo(() => {
+    const counts = new Map<
+      string,
+      { total: number; enabledCount: number }
+    >();
+    for (const agent of agents) {
+      const providerID = agent.model?.providerID;
+      if (!providerID || !agent.toggleable) continue;
+      const entry = counts.get(providerID) ?? { total: 0, enabledCount: 0 };
+      entry.total += 1;
+      if (agent.enabled) entry.enabledCount += 1;
+      counts.set(providerID, entry);
+    }
+    return Array.from(counts.entries())
+      .map(([providerID, c]) => ({
+        providerID,
+        ...c,
+        allEnabled: c.enabledCount === c.total,
+      }))
+      .sort((a, b) => a.providerID.localeCompare(b.providerID));
+  }, [agents]);
 
   if (state === "loading") {
     return (
@@ -470,6 +541,48 @@ export function AgentsSettings() {
         </div>
       )}
 
+      {providerGroups.length > 0 && (
+        <section
+          aria-labelledby="agents-provider-heading"
+          className="rounded-xl border border-border bg-surface p-4"
+        >
+          <h2
+            id="agents-provider-heading"
+            className="mb-3 text-sm font-semibold text-muted"
+          >
+            提供元ごとの一括操作
+          </h2>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {providerGroups.map((group) => (
+              <li
+                key={group.providerID}
+                className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-text">
+                    {group.providerID}
+                  </div>
+                  <div className="text-xs text-muted">
+                    {group.enabledCount}/{group.total} 有効
+                  </div>
+                </div>
+                <AgentSwitch
+                  name={`${group.providerID} の全エージェント`}
+                  enabled={group.allEnabled}
+                  busy={busyName !== null || busyProvider !== null}
+                  onToggle={() =>
+                    void toggleProvider(
+                      group.providerID,
+                      !group.allEnabled,
+                    )
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted">{agents.length} 件のエージェント</p>
         <input
@@ -500,6 +613,7 @@ export function AgentsSettings() {
             key={group.key}
             group={group}
             busyName={busyName}
+            busyProvider={busyProvider}
             actionError={actionError}
             onToggle={toggleAgent}
           />

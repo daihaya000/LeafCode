@@ -85,3 +85,35 @@ export function parseEnabledBody(
   }
   return { enabled };
 }
+
+/** Parse a per-provider bulk toggle body: `{ providerID, enabled }`. */
+export function parseProviderEnabledBody(
+  body: unknown,
+): { providerID: string; enabled: boolean } | { error: NextResponse } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return {
+      error: NextResponse.json({ error: "invalid body" }, { status: 400 }),
+    };
+  }
+  const { providerID, enabled } = body as {
+    providerID?: unknown;
+    enabled?: unknown;
+  };
+  if (typeof providerID !== "string" || !providerID.trim()) {
+    return {
+      error: NextResponse.json(
+        { error: "providerID は文字列で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  if (typeof enabled !== "boolean") {
+    return {
+      error: NextResponse.json(
+        { error: "enabled は真偽値で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  return { providerID, enabled };
+}

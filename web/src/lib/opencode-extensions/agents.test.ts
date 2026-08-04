@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listAgents, setAgentEnabled } from "./agents";
+import { listAgents, setAgentEnabled, setProviderEnabled } from "./agents";
 
 const mockOcServer = vi.fn();
 vi.mock("@/lib/oc-server", () => ({
@@ -246,5 +246,58 @@ describe("agents extension", () => {
     await expect(setAgentEnabled("ghost", false)).rejects.toMatchObject({
       code: "not-found",
     });
+  });
+
+  it("bulk disables every agent of a provider", async () => {
+    const openaiAgents = [
+      { name: "a-explorer-openai-gpt-5", mode: "subagent", model: { providerID: "openai", modelID: "gpt-5" } },
+      { name: "b-lead-openai-gpt-5", mode: "subagent", model: { providerID: "openai", modelID: "gpt-5" } },
+      { name: "c-other-anthropic-claude", mode: "subagent", model: { providerID: "anthropic", modelID: "claude" } },
+    ] as const;
+    // setAgentEnabled calls the engine once per target; mock each.
+    mockOcServer.mockResolvedValueOnce(openaiAgents);
+    mockOcServer.mockResolvedValueOnce(openaiAgents);
+    mockOcServer.mockResolvedValueOnce(openaiAgents);
+    fs.writeFileSync(configPath, "{}");
+
+    const count = await setProviderEnabled("openai", false);
+    expect(count).toBe(2);
+
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(config.agent["a-explorer-openai-gpt-5"].disable).toBe(true);
+    expect(config.agent["b-lead-openai-gpt-5"].disable).toBe(true);
+    expect(config.agent["c-other-anthropic-claude"]).toBeUndefined();
+  });
+
+  it("bulk enable is idempotent and skips already-enabled agents", async () => {
+    // Engine reports only b-lead active; a-explorer is disabled in config with
+    // its model preserved in the disable-time snapshot (real-system shape).
+    const active = [
+      { name: "b-lead-openai-gpt-5", mode: "subagent", model: { providerID: "openai", modelID: "gpt-5" } },
+    ] as const;
+    // listAgents (1st call) + setAgentEnabled's known-check (2nd call).
+    mockOcServer.mockResolvedValueOnce(active);
+    mockOcServer.mockResolvedValueOnce(active);
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ agent: { "a-explorer-openai-gpt-5": { disable: true } } }, null, 2),
+    );
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        disabled: {
+          "a-explorer-openai-gpt-5": {
+            mode: "subagent",
+            model: { providerID: "openai", modelID: "gpt-5" },
+          },
+        },
+      }),
+    );
+
+    const count = await setProviderEnabled("openai", true);
+    expect(count).toBe(1);
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(config.agent["a-explorer-openai-gpt-5"].disable).toBe(false);
   });
 });

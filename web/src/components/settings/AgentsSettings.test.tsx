@@ -211,9 +211,11 @@ describe("AgentsSettings", () => {
     render(<AgentsSettings />);
     await screen.findByRole("heading", { name: "Rank A" });
 
-    const switches = screen.getAllByRole("switch");
-    expect(switches.length).toBeGreaterThan(0);
-    fireEvent.click(switches[0]);
+    // Click the per-agent switch for the explorer row, not the provider switch.
+    // Desktop table and mobile cards each render one switch per agent.
+    fireEvent.click(
+      screen.getAllByRole("switch", { name: /a-explorer-openai-gpt-5/ })[0],
+    );
 
     await waitFor(() => {
       expect(screen.getByText("OpenCode を再起動")).toBeTruthy();
@@ -223,6 +225,51 @@ describe("AgentsSettings", () => {
       String(call[0]).includes("/api/extensions/agents/"),
     );
     expect(patchCall).toBeTruthy();
+  });
+
+  it("bulk toggles all agents of a provider via by-provider endpoint", async () => {
+    const openaiPatch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, count: 1 }), { status: 200 }),
+    );
+    let lastProviderBody: unknown;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/extensions/agents/by-provider")) {
+          lastProviderBody = init?.body
+            ? JSON.parse(String(init.body))
+            : undefined;
+          return openaiPatch();
+        }
+        if (url.includes("/api/extensions/agents")) {
+          return new Response(JSON.stringify({ agents: AGENTS }), { status: 200 });
+        }
+        if (url.includes("/api/host")) {
+          return new Response(JSON.stringify(HOST_OK), { status: 200 });
+        }
+        return new Response("{}", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+
+    expect(
+      screen.getByRole("heading", { name: "提供元ごとの一括操作" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("switch", { name: /openai の全エージェント/ }),
+    );
+
+    await waitFor(() => {
+      expect(openaiPatch).toHaveBeenCalled();
+    });
+    expect(lastProviderBody).toEqual({ providerID: "openai", enabled: false });
+
+    await waitFor(() => {
+      expect(screen.getByText("OpenCode を再起動")).toBeTruthy();
+    });
   });
 
   it("locks every agent switch while one toggle request is pending", async () => {
@@ -247,7 +294,9 @@ describe("AgentsSettings", () => {
     render(<AgentsSettings />);
     await screen.findByRole("heading", { name: "Rank A" });
     const switches = screen.getAllByRole("switch") as HTMLButtonElement[];
-    fireEvent.click(switches[0]);
+    fireEvent.click(
+      screen.getAllByRole("switch", { name: /a-explorer-openai-gpt-5/ })[0],
+    );
 
     await waitFor(() => {
       expect(switches.every((button) => button.disabled)).toBe(true);

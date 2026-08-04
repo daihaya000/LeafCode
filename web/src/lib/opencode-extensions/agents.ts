@@ -297,6 +297,35 @@ export async function setAgentEnabled(
   writeAgentState({ ...state, disabled: sorted });
 }
 
+/**
+ * Enable/disable every toggleable agent that resolves to `providerID`.
+ * Idempotent: agents already in the target state are skipped. Returns the
+ * number of agents whose state actually changed.
+ *
+ * ponytail: sequential per-agent config rewrites are fine for the handful of
+ * agents per provider; batch the opencode.jsonc rewrite only if a single
+ * provider grows past ~50 agents.
+ */
+export async function setProviderEnabled(
+  providerID: string,
+  enabled: boolean,
+): Promise<number> {
+  if (!providerID || typeof providerID !== "string") {
+    throw new ExtensionsError("not-found", "提供元の指定が必要です");
+  }
+  const agents = await listAgents();
+  const targets = agents.filter(
+    (a) =>
+      a.toggleable &&
+      a.model?.providerID === providerID &&
+      a.enabled !== enabled,
+  );
+  for (const agent of targets) {
+    await setAgentEnabled(agent.name, enabled);
+  }
+  return targets.length;
+}
+
 function snapshotFromLive(
   entry: AgentResponse[number] | undefined,
 ): AgentSnapshot | undefined {
