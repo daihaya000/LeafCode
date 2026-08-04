@@ -3,6 +3,7 @@ import {
   filterAgents,
   groupAgents,
   parseAgent,
+  scopeLabel,
   type AgentDto,
 } from "./agent-utils";
 
@@ -124,6 +125,35 @@ describe("filterAgents", () => {
 
   it("returns nothing when no field matches", () => {
     expect(filterAgents(agents, "zzz")).toHaveLength(0);
+  });
+
+  it("matches by scope label and source path", () => {
+    const scoped = [
+      parseAgent({
+        name: "reviewer",
+        mode: "subagent",
+        scope: "project",
+        sourcePath: ".opencode/agents/reviewer.md",
+      }),
+      parseAgent({
+        name: "helper",
+        mode: "subagent",
+        scope: "global",
+        sourcePath: "~/agents/helper.md",
+      }),
+    ];
+    expect(filterAgents(scoped, "プロジェクト")).toHaveLength(1);
+    expect(filterAgents(scoped, "reviewer.md")).toHaveLength(1);
+    expect(filterAgents(scoped, "グローバル")).toHaveLength(1);
+  });
+});
+
+describe("scopeLabel", () => {
+  it("labels each scope in Japanese, defaulting unresolved agents to builtin", () => {
+    expect(scopeLabel("project")).toBe("プロジェクト");
+    expect(scopeLabel("global")).toBe("グローバル");
+    expect(scopeLabel("builtin")).toBe("ビルトイン");
+    expect(scopeLabel(undefined)).toBe("ビルトイン");
   });
 });
 

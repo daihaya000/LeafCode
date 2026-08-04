@@ -1,8 +1,12 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { ocServer } from "@/lib/oc-server";
 import { dataDir } from "@/lib/paths";
-import type { AgentDto as BaseAgentDto } from "@/components/settings/agent-utils";
+import type {
+  AgentDto as BaseAgentDto,
+  AgentScope,
+} from "@/components/settings/agent-utils";
 import { ExtensionsError } from "./safe-move";
 import {
   applyEdits,
@@ -11,7 +15,13 @@ import {
   updateConfigFile,
   detectFormatting,
 } from "./jsonc-edit";
-import { agentDefinitionDirs, opencodeConfigFilePath } from "./paths";
+import {
+  agentDefinitionDirs,
+  opencodeConfigFilePath,
+  projectAgentDefinitionDirs,
+  projectConfigFilePath,
+  projectRoot,
+} from "./paths";
 
 export type AgentDto = BaseAgentDto & {
   enabled: boolean;
@@ -127,8 +137,16 @@ function parseModelValue(
 }
 
 function readConfigAgentMap(): Record<string, unknown> {
+  return readConfigAgentMapAt(opencodeConfigFilePath());
+}
+
+/** Same as `readConfigAgentMap()` but for an arbitrary (or missing) config path. */
+function readConfigAgentMapAt(
+  configPath: string | null,
+): Record<string, unknown> {
+  if (!configPath) return {};
   try {
-    const content = fs.readFileSync(opencodeConfigFilePath(), "utf8");
+    const content = fs.readFileSync(configPath, "utf8");
     const root = parseJsoncConfig(content);
     const agents = root.agent;
     if (!agents || typeof agents !== "object" || Array.isArray(agents)) {
@@ -138,6 +156,79 @@ function readConfigAgentMap(): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Rewrite an absolute path under the user's home dir as `~/...` for display,
+ * else return it with forward slashes for a consistent cross-platform look
+ * (relevant when `OPENCODE_CONFIG_DIR` points somewhere outside the home dir).
+ */
+function homeRelative(absPath: string): string {
+  const normalized = absPath.split(path.sep).join("/");
+  const home = os.homedir();
+  if (!home) return normalized;
+  const homeNormalized = home.split(path.sep).join("/");
+  if (normalized === homeNormalized || normalized.startsWith(`${homeNormalized}/`)) {
+    return `~${normalized.slice(homeNormalized.length)}`;
+  }
+  return normalized;
+}
+
+/** Rewrite an absolute path under the project root as a relative display path. */
+function projectRelative(absPath: string): string {
+  const rel = path.relative(projectRoot(), absPath);
+  return rel.split(path.sep).join("/");
+}
+
+/**
+ * Resolve where an agent is defined: this project's `.opencode/agents/` or
+ * `opencode.jsonc`, the global equivalents under `~/.config/opencode`, or
+ * neither (a built-in agent shipped with OpenCode itself).
+ *
+ * Project sources take precedence over global ones, matching OpenCode's own
+ * config precedence (see https://opencode.ai/docs/config#locations). Paths
+ * are shortened for display (`~/...` / relative to the project root) rather
+ * than shown as full machine-specific absolute paths.
+ */
+function resolveAgentSource(
+  name: string,
+  projectConfigAgents: Record<string, unknown>,
+  globalConfigAgents: Record<string, unknown>,
+): { scope: AgentScope; sourcePath: string | null } {
+  if (projectConfigAgents[name] !== undefined) {
+    const configPath = projectConfigFilePath();
+    return {
+      scope: "project",
+      sourcePath: configPath ? projectRelative(configPath) : null,
+    };
+  }
+  const projectMd = findDefinitionFile(projectAgentDefinitionDirs(), name);
+  if (projectMd) {
+    return { scope: "project", sourcePath: projectRelative(projectMd) };
+  }
+
+  if (globalConfigAgents[name] !== undefined) {
+    return {
+      scope: "global",
+      sourcePath: homeRelative(opencodeConfigFilePath()),
+    };
+  }
+  const globalMd = findDefinitionFile(agentDefinitionDirs(), name);
+  if (globalMd) {
+    return { scope: "global", sourcePath: homeRelative(globalMd) };
+  }
+
+  return { scope: "builtin", sourcePath: null };
+}
+
+/** First `<name>.md` found across `dirs`, or `null` when none exist. */
+function findDefinitionFile(dirs: string[], name: string): string | null {
+  if (!SAFE_AGENT_NAME.test(name)) return null;
+  for (const dir of dirs) {
+    const file = path.join(dir, `${name}.md`);
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
 }
 
 /** True when a config `agent.<name>` entry sets `disable: true`. */
@@ -214,6 +305,7 @@ export async function listAgents(): Promise<AgentDto[]> {
 
   const byName = new Map(active.map((a) => [a.name, a]));
   const agentsConfig = readConfigAgentMap();
+  const projectAgentsConfig = readConfigAgentMapAt(projectConfigFilePath());
   const state = readAgentState();
   const snapshots = state.disabled ?? {};
 
@@ -253,9 +345,12 @@ export async function listAgents(): Promise<AgentDto[]> {
     });
   }
 
-  return Array.from(byName.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  return Array.from(byName.values())
+    .map((agent) => ({
+      ...agent,
+      ...resolveAgentSource(agent.name, projectAgentsConfig, agentsConfig),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function setAgentEnabled(

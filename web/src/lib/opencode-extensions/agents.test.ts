@@ -13,17 +13,22 @@ describe("agents extension", () => {
   let base: string;
   let configPath: string;
   let statePath: string;
+  let projectRoot: string;
   let origAppData: string | undefined;
   let origConfigDir: string | undefined;
+  let origProjectRoot: string | undefined;
 
   beforeEach(() => {
     base = fs.mkdtempSync(path.join(os.tmpdir(), "agents-ext-"));
     configPath = path.join(base, "opencode.jsonc");
     statePath = path.join(base, "opencode-webui", "agent-state.json");
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agents-ext-project-"));
     origAppData = process.env.APPDATA;
     origConfigDir = process.env.OPENCODE_CONFIG_DIR;
+    origProjectRoot = process.env.OPENCODE_WEBUI_PROJECT_ROOT;
     process.env.APPDATA = base;
     process.env.OPENCODE_CONFIG_DIR = base;
+    process.env.OPENCODE_WEBUI_PROJECT_ROOT = projectRoot;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("{}", { status: 200 })),
@@ -33,8 +38,10 @@ describe("agents extension", () => {
   afterEach(() => {
     process.env.APPDATA = origAppData;
     process.env.OPENCODE_CONFIG_DIR = origConfigDir;
+    process.env.OPENCODE_WEBUI_PROJECT_ROOT = origProjectRoot;
     vi.unstubAllGlobals();
     fs.rmSync(base, { recursive: true, force: true });
+    fs.rmSync(projectRoot, { recursive: true, force: true });
   });
 
   it("lists active agents from engine", async () => {
@@ -312,5 +319,100 @@ describe("agents extension", () => {
     expect(count).toBe(1);
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     expect(config.agent["a-explorer-openai-gpt-5"].disable).toBe(false);
+  });
+
+  describe("scope resolution", () => {
+    it("marks an agent with no matching config/definition file as builtin", async () => {
+      mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+      fs.writeFileSync(configPath, "{}");
+      const agents = await listAgents();
+      expect(agents.find((a) => a.name === "build")).toMatchObject({
+        scope: "builtin",
+        sourcePath: null,
+      });
+    });
+
+    it("marks an agent defined in the global config as global", async () => {
+      // `~/...` display shortening only applies when the config dir is
+      // actually under the home dir; spoof that so we can assert it here
+      // (the outer suite overrides `OPENCODE_CONFIG_DIR` to a plain tmpdir).
+      const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(base);
+      mockOcServer.mockResolvedValueOnce([
+        { name: "review", mode: "subagent" },
+      ]);
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({ agent: { review: { description: "x" } } }),
+      );
+      try {
+        const agents = await listAgents();
+        expect(agents.find((a) => a.name === "review")).toMatchObject({
+          scope: "global",
+          sourcePath: "~/opencode.jsonc",
+        });
+      } finally {
+        homedirSpy.mockRestore();
+      }
+    });
+
+    it("marks an agent defined by a global markdown file as global", async () => {
+      const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(base);
+      mockOcServer.mockResolvedValueOnce([
+        { name: "docs-writer", mode: "subagent" },
+      ]);
+      fs.writeFileSync(configPath, "{}");
+      fs.mkdirSync(path.join(base, "agents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(base, "agents", "docs-writer.md"),
+        "---\ndescription: writes docs\n---\n",
+      );
+      try {
+        const agents = await listAgents();
+        expect(agents.find((a) => a.name === "docs-writer")).toMatchObject({
+          scope: "global",
+          sourcePath: "~/agents/docs-writer.md",
+        });
+      } finally {
+        homedirSpy.mockRestore();
+      }
+    });
+
+    it("marks an agent defined in the project config as project, taking precedence over global", async () => {
+      mockOcServer.mockResolvedValueOnce([
+        { name: "review", mode: "subagent" },
+      ]);
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({ agent: { review: { description: "global" } } }),
+      );
+      fs.writeFileSync(
+        path.join(projectRoot, "opencode.jsonc"),
+        JSON.stringify({ agent: { review: { description: "project" } } }),
+      );
+      const agents = await listAgents();
+      expect(agents.find((a) => a.name === "review")).toMatchObject({
+        scope: "project",
+        sourcePath: "opencode.jsonc",
+      });
+    });
+
+    it("marks an agent defined by a project markdown file as project", async () => {
+      mockOcServer.mockResolvedValueOnce([
+        { name: "code-reviewer", mode: "subagent" },
+      ]);
+      fs.writeFileSync(configPath, "{}");
+      fs.mkdirSync(path.join(projectRoot, ".opencode", "agents"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(projectRoot, ".opencode", "agents", "code-reviewer.md"),
+        "---\ndescription: reviews code\n---\n",
+      );
+      const agents = await listAgents();
+      expect(agents.find((a) => a.name === "code-reviewer")).toMatchObject({
+        scope: "project",
+        sourcePath: ".opencode/agents/code-reviewer.md",
+      });
+    });
   });
 });

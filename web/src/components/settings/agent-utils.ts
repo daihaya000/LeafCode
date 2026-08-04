@@ -9,6 +9,15 @@
  * matches the kebab-cased provider/model pair.
  */
 
+/**
+ * Where an agent's definition lives:
+ * - "project": this project's `.opencode/agents/` or its `opencode.jsonc`.
+ * - "global": `~/.config/opencode/agents/` or its `opencode.jsonc`.
+ * - "builtin": shipped with OpenCode itself (e.g. `build`, `plan`, `general`);
+ *   not backed by any file on disk.
+ */
+export type AgentScope = "global" | "project" | "builtin";
+
 export type AgentDto = {
   name: string;
   description?: string;
@@ -16,6 +25,11 @@ export type AgentDto = {
   model?: { providerID: string; modelID: string };
   enabled?: boolean;
   toggleable?: boolean;
+  /** Omitted when the source hasn't been resolved (e.g. hand-built fixtures). */
+  scope?: AgentScope;
+  /** Display-friendly path (e.g. `~/.config/opencode/agents/foo.md` or
+   *  `.opencode/agents/foo.md`); `null` for "builtin" or when unresolved. */
+  sourcePath?: string | null;
 };
 
 export type AgentRank = "A" | "B" | "C" | "D" | "E";
@@ -81,7 +95,19 @@ export function parseAgent(dto: AgentDto): ParsedAgent {
   return { ...dto, rank, role, displayName: role };
 }
 
-/** Case-insensitive substring search over name/role/provider/model/desc/mode/state. */
+/** Japanese label for an agent's scope, used by the settings table and search. */
+export function scopeLabel(scope: AgentScope | undefined): string {
+  switch (scope) {
+    case "project":
+      return "プロジェクト";
+    case "global":
+      return "グローバル";
+    default:
+      return "ビルトイン";
+  }
+}
+
+/** Case-insensitive substring search over name/role/provider/model/desc/mode/state/scope/path. */
 export function filterAgents(
   agents: ParsedAgent[],
   query: string,
@@ -98,6 +124,8 @@ export function filterAgents(
       a.description ?? "",
       a.mode,
       stateLabel,
+      scopeLabel(a.scope),
+      a.sourcePath ?? "",
     ]
       .join(" ")
       .toLowerCase();

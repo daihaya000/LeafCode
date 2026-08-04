@@ -8,8 +8,10 @@ import {
   filterAgents,
   groupAgents,
   parseAgent,
+  scopeLabel,
   type AgentDto,
   type AgentGroup,
+  type AgentScope,
   type ParsedAgent,
 } from "./agent-utils";
 
@@ -26,6 +28,30 @@ function modeTone(mode: ParsedAgent["mode"]): "working" | "neutral" {
 
 function enabledTone(enabled: boolean): "success" | "neutral" {
   return enabled ? "success" : "neutral";
+}
+
+function scopeTone(scope: AgentScope | undefined): "working" | "neutral" {
+  return scope === "project" ? "working" : "neutral";
+}
+
+/** Scope badge + (optional) source file path, shown wherever an agent's
+ *  origin needs to be visible — the settings table's "保存先" column. */
+function SourceInfo({ agent }: { agent: ParsedAgent }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <Badge tone={scopeTone(agent.scope)} className="w-fit">
+        {scopeLabel(agent.scope)}
+      </Badge>
+      {agent.sourcePath && (
+        <span
+          className="truncate font-mono text-xs text-faint"
+          title={agent.sourcePath}
+        >
+          {agent.sourcePath}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function ModelLabel({ agent }: { agent: ParsedAgent }) {
@@ -96,17 +122,19 @@ function AgentGroupTable({
         <table className="w-full table-fixed text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted">
-              <th scope="col" className="w-24 px-4 py-2 font-medium">
-                Rank
-              </th>
-              <th scope="col" className="w-1/4 px-4 py-2 font-medium">
+              {/* Rank is already the group heading above this table, so a
+                  per-row column would just repeat it on every line. */}
+              <th scope="col" className="w-1/5 px-4 py-2 font-medium">
                 エージェント
               </th>
               <th scope="col" className="w-1/5 px-4 py-2 font-medium">
                 モデル
               </th>
-              <th scope="col" className="w-24 px-4 py-2 font-medium">
+              <th scope="col" className="w-20 px-4 py-2 font-medium">
                 Mode
+              </th>
+              <th scope="col" className="w-1/5 px-4 py-2 font-medium">
+                保存先
               </th>
               {/* Wide enough for badge + 44px switch: a narrower cell makes the
                   switch spill into the 説明 column under table-fixed. */}
@@ -129,13 +157,6 @@ function AgentGroupTable({
                   className="border-b border-border last:border-0 align-top"
                 >
                   <td className="px-4 py-2.5">
-                    {row.rank ? (
-                      <Badge tone="neutral">Rank {row.rank}</Badge>
-                    ) : (
-                      <span className="text-faint">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
                     <div className="truncate font-medium text-text">
                       {row.displayName}
                     </div>
@@ -150,6 +171,9 @@ function AgentGroupTable({
                   </td>
                   <td className="px-4 py-2.5">
                     <Badge tone={modeTone(row.mode)}>{row.mode}</Badge>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <SourceInfo agent={row} />
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2 whitespace-nowrap">
@@ -190,7 +214,6 @@ function AgentGroupTable({
               className="rounded-xl border border-border bg-surface px-4 py-3"
             >
               <div className="flex flex-wrap items-center gap-2">
-                {row.rank && <Badge tone="neutral">Rank {row.rank}</Badge>}
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">
                   {row.displayName}
                 </span>
@@ -204,6 +227,9 @@ function AgentGroupTable({
               <p className="mt-1 text-xs">
                 <ModelLabel agent={row} />
               </p>
+              <div className="mt-2">
+                <SourceInfo agent={row} />
+              </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Badge tone={enabledTone(row.enabled)}>

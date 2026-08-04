@@ -17,6 +17,8 @@ const AGENTS: AgentDto[] = [
     model: { providerID: "ollama-cloud", modelID: "glm-5.2" },
     enabled: true,
     toggleable: true,
+    scope: "global",
+    sourcePath: "~/opencode.jsonc",
   },
   {
     name: "a-explorer-openai-gpt-5",
@@ -25,6 +27,8 @@ const AGENTS: AgentDto[] = [
     model: { providerID: "openai", modelID: "gpt-5" },
     enabled: true,
     toggleable: true,
+    scope: "project",
+    sourcePath: ".opencode/agents/a-explorer-openai-gpt-5.md",
   },
   {
     name: "general",
@@ -32,6 +36,8 @@ const AGENTS: AgentDto[] = [
     description: "Default primary agent",
     enabled: true,
     toggleable: true,
+    scope: "builtin",
+    sourcePath: null,
   },
 ];
 
@@ -71,6 +77,24 @@ describe("AgentsSettings", () => {
     ).toBeTruthy();
     expect(screen.getByText("3 件のエージェント")).toBeTruthy();
     expect(screen.getAllByText("lead-programmer").length).toBeGreaterThan(0);
+  });
+
+  it("shows each agent's scope and source path, without a redundant per-row rank badge", async () => {
+    render(<AgentsSettings />);
+    await screen.findByRole("heading", { name: "Rank A" });
+
+    // Rank is already the section heading; it must not also repeat as a
+    // per-row badge (desktop table + mobile card would double the count).
+    expect(screen.getAllByText("Rank B")).toHaveLength(1);
+
+    expect(screen.getAllByText("グローバル").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("プロジェクト").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("ビルトイン").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("~/opencode.jsonc").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(".opencode/agents/a-explorer-openai-gpt-5.md")
+        .length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows enabled/disabled badges", async () => {
