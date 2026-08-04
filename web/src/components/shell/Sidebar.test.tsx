@@ -157,9 +157,12 @@ describe("Sidebar", () => {
     // clickable button, not just the title text, so the branch info text
     // is inside the same <button> as the title.
     expect(taskButton?.textContent).toContain("main");
-    expect(actionGroup.className).toContain("absolute");
-    expect(actionGroup.className).toContain("right-0");
+    // Actions render as a normal flex sibling (not absolutely positioned)
+    // so a stacked action group can never overflow the row's height.
+    expect(actionGroup.className).not.toContain("absolute");
+    expect(actionGroup.className).toContain("shrink-0");
     expect(actionGroup.parentElement).toBe(taskButton?.parentElement);
+    expect(taskButton?.nextElementSibling).toBe(actionGroup);
     fireEvent.click(favorite);
 
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith(

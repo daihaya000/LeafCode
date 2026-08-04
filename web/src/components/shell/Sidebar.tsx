@@ -1096,7 +1096,7 @@ export function Sidebar({
                             <li key={task.id}>
                               <div
                                 className={cx(
-                                  "relative flex min-w-0 rounded-lg",
+                                  "flex min-w-0 items-start rounded-lg",
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
@@ -1106,7 +1106,7 @@ export function Sidebar({
                                   type="button"
                                   onClick={() => nav(`/task/${task.id}`)}
                                   title={task.title}
-                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 pt-1.5 pr-7 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                  className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 px-2 pt-1.5 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                                 >
                                   <span className="flex min-w-0 items-center gap-1.5">
                                     <span className="flex h-3 w-3 shrink-0 items-center justify-center">
@@ -1209,7 +1209,7 @@ export function Sidebar({
                                 </button>
                                 <div
                                   data-testid="task-row-actions"
-                                  className="absolute top-0 right-0 flex flex-col items-center pt-1.5 pr-0.5"
+                                  className="flex shrink-0 items-center pt-0.5 pr-0.5"
                                 >
                                   <button
                                     type="button"
