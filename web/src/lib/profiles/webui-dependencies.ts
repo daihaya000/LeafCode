@@ -192,7 +192,7 @@ function migrateAgentModels(profileDir: string): string[] {
   return migrated;
 }
 
-/** Install WebUI MCP and the Cursor/Claude/CommandCode CLI Proxy dependencies without overwriting settings. */
+/** Install WebUI MCP and the Cursor/Claude/CommandCode Proxy dependencies without overwriting settings. */
 export function installWebUiDependencies(
   profileDir: string,
   options: WebUiDependencyOptions = {},
