@@ -1,31 +1,21 @@
 import { execFile } from "node:child_process";
 import { cp, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
+import { GITHUB_REPO, GITHUB_REPO_URL, installationRoot, isGitInstall } from "@/lib/install-root";
+import { resolveRemoteHead } from "@/lib/github-remote";
+import { isGitRestoreInFlight } from "@/lib/git-restore";
+import { writeUpdateRecord } from "@/lib/install-state";
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = 64 * 1024;
-const GITHUB_REPO = "daihaya000/OpenCodeWebUI";
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-// "HEAD" resolves to whatever the default branch is (main/master/etc.),
-// so this doesn't break if the repo's default branch name changes.
-const GITHUB_MAIN_ZIP = `https://codeload.github.com/${GITHUB_REPO}/zip/HEAD`;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function installationRoot(): string {
-  const root = resolve(process.cwd(), "..");
-  return existsSync(join(root, "scripts")) ? root : process.cwd();
-}
-
-function isGitInstall(root: string): boolean {
-  return existsSync(join(root, ".git"));
-}
 
 function powershellLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
@@ -45,8 +35,16 @@ async function updateFromLatestRelease(root: string) {
     assets?: Array<{ name?: string; browser_download_url?: string }>;
   } : undefined;
   const asset = release?.assets?.find((item) => item.name?.toLowerCase().endsWith(".zip"));
-  const downloadUrl = asset?.browser_download_url ?? release?.zipball_url ?? GITHUB_MAIN_ZIP;
-  const source = asset ? "release-asset" : release ? "release-source" : "main-branch";
+
+  // No release asset/source to pin to: resolve + pin to a specific commit
+  // (rather than a moving `HEAD` ref) so the branch can't advance between
+  // resolving the download URL and actually fetching the zip.
+  const remoteHead = asset || release ? undefined : await resolveRemoteHead(GITHUB_REPO_URL);
+  const downloadUrl =
+    asset?.browser_download_url ??
+    release?.zipball_url ??
+    `https://codeload.github.com/${GITHUB_REPO}/zip/${remoteHead?.commit}`;
+  const source = asset ? "release-asset" : release ? "release-source" : "default-branch";
 
   const work = await mkdtemp(join(tmpdir(), "opencode-webui-update-"));
   try {
@@ -74,7 +72,14 @@ async function updateFromLatestRelease(root: string) {
         return !name.startsWith(".git") && !name.startsWith("node_modules") && !name.startsWith(".next");
       },
     });
-    return { tag: release?.tag_name ?? "main", source };
+    if (remoteHead) {
+      writeUpdateRecord(root, {
+        commit: remoteHead.commit,
+        fetchedAt: new Date().toISOString(),
+        source: "zip-update",
+      });
+    }
+    return { tag: release?.tag_name ?? "HEAD", source };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -88,6 +93,13 @@ function trimOutput(value: string): string {
 export async function POST(req: Request) {
   const denied = rejectUnlessLocal(req);
   if (denied) return denied;
+
+  if (isGitRestoreInFlight()) {
+    return NextResponse.json(
+      { ok: false, error: "起動時の自動復元処理を実行中です。しばらくしてから再度お試しください。" },
+      { status: 503 },
+    );
+  }
 
   const cwd = installationRoot();
   if (!isGitInstall(cwd)) {

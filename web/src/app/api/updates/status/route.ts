@@ -1,13 +1,14 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
 import { rejectUnlessLocal } from "@/lib/local-request";
+import { GITHUB_REPO, GITHUB_REPO_URL, installationRoot, isGitInstall } from "@/lib/install-root";
+import { resolveRemoteHead } from "@/lib/github-remote";
+import { readUpdateRecord } from "@/lib/install-state";
 
 const execFileAsync = promisify(execFile);
-const WEBUI_REPO = "daihaya000/OpenCodeWebUI";
+const WEBUI_REPO = GITHUB_REPO;
 const OPENCODE_PACKAGE = "opencode-ai";
 
 export const runtime = "nodejs";
@@ -22,11 +23,6 @@ type UpdateStatus = {
   error?: string;
 };
 
-function installationRoot(): string {
-  const root = resolve(process.cwd(), "..");
-  return existsSync(join(root, "scripts")) ? root : process.cwd();
-}
-
 async function isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
   try {
     await execFileAsync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd, timeout: 5000 });
@@ -38,28 +34,72 @@ async function isAncestor(cwd: string, ancestor: string, descendant: string): Pr
   }
 }
 
+/** `.git` install with a tracked upstream (`origin/master` etc.): the original check. */
+async function checkWebUiViaUpstream(cwd: string): Promise<string | null> {
+  const { stdout: upstream } = await execFileAsync("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], { cwd, timeout: 5000 });
+  const upstreamName = upstream.trim();
+  const separator = upstreamName.indexOf("/");
+  const remote = separator > 0 ? upstreamName.slice(0, separator) : "";
+  const ref = separator > 0 ? upstreamName.slice(separator + 1) : "";
+  if (!remote || !ref) return null;
+  const { stdout: latest } = await execFileAsync("git", ["ls-remote", remote, `refs/heads/${ref}`], { cwd, timeout: 10_000 });
+  return latest.trim().split(/\s+/, 1)[0] || null;
+}
+
+/** `.git` install without a usable upstream: fall back to the hardcoded repo URL. */
+async function checkWebUiViaHardcodedRemote(cwd: string): Promise<string | null> {
+  await execFileAsync("git", ["fetch", GITHUB_REPO_URL, "HEAD"], {
+    cwd,
+    timeout: 15_000,
+    windowsHide: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+  const { stdout } = await execFileAsync("git", ["rev-parse", "FETCH_HEAD"], { cwd, timeout: 5000 });
+  return stdout.trim() || null;
+}
+
+/** No `.git` yet (zip install, startup git-restore not done/failed): compare against the locally recorded commit. */
+async function checkWebUiWithoutGit(cwd: string): Promise<UpdateStatus> {
+  const record = readUpdateRecord(cwd);
+  if (!record) {
+    return { available: false, error: "バージョン情報がありません" };
+  }
+  try {
+    const remoteHead = await resolveRemoteHead(GITHUB_REPO_URL);
+    // Note: unlike the `.git` path, there's no local object history here, so
+    // this can't check ancestry (old-version regression). A plain mismatch
+    // is treated as "update available".
+    return {
+      available: remoteHead.commit !== record.commit,
+      current: record.commit.slice(0, 7),
+      latest: remoteHead.commit.slice(0, 7),
+    };
+  } catch (err) {
+    return { available: false, error: err instanceof Error ? err.message : "WebUIの更新確認に失敗しました" };
+  }
+}
+
 async function checkWebUi(): Promise<UpdateStatus> {
   const cwd = installationRoot();
+  if (!isGitInstall(cwd)) return checkWebUiWithoutGit(cwd);
+
   try {
     const { stdout: current } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd, timeout: 5000 });
-    const { stdout: upstream } = await execFileAsync("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], { cwd, timeout: 5000 });
-    const upstreamName = upstream.trim();
-    const separator = upstreamName.indexOf("/");
-    const remote = separator > 0 ? upstreamName.slice(0, separator) : "";
-    const ref = separator > 0 ? upstreamName.slice(separator + 1) : "";
     const currentHash = current.trim();
     const currentDate = await commitDate(cwd, currentHash);
-    if (!remote || !ref) return { available: false, current: currentHash.slice(0, 7), currentDate };
-    const { stdout: latest } = await execFileAsync("git", ["ls-remote", remote, `refs/heads/${ref}`], { cwd, timeout: 10_000 });
-    const latestHash = latest.trim().split(/\s+/, 1)[0];
-    const latestDate = latestHash ? await commitDate(cwd, latestHash) : undefined;
+
+    let latestHash = await checkWebUiViaUpstream(cwd).catch(() => null);
+    if (!latestHash) latestHash = await checkWebUiViaHardcodedRemote(cwd).catch(() => null);
+    if (!latestHash) return { available: false, current: currentHash.slice(0, 7), currentDate };
+
+    const latestDate = await commitDate(cwd, latestHash);
     // 旧バージョンへの回帰を避ける: upstream が現在の ancestor でない場合のみ更新ありとみなす。
     // つまり latest は current の descendant（current より新しい）必要がある。
-    const available = Boolean(latestHash && latestHash !== currentHash && await isAncestor(cwd, currentHash, latestHash));
+    const available = Boolean(latestHash !== currentHash && await isAncestor(cwd, currentHash, latestHash));
     return {
       available,
       current: currentHash.slice(0, 7),
-      latest: latestHash ? latestHash.slice(0, 7) : undefined,
+      latest: latestHash.slice(0, 7),
       currentDate,
       latestDate,
     };
