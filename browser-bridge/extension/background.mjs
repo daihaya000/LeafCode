@@ -37,10 +37,11 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   let pairingRequested = false;
   let state = { brokerUrl: DEFAULT_BROKER_URL, deviceKey: null, sharedTabs: {}, autoShareEnabled: false };
   const intentionalCloses = new WeakSet();
+  const hasWebSocket = typeof WebSocketImpl === 'function';
 
   const persist = async () => chromeApi.storage.local.set({ [STORAGE_KEY]: state });
   const send = (message) => {
-    if (socket?.readyState === WebSocketImpl.OPEN) socket.send(JSON.stringify(message));
+    if (hasWebSocket && socket?.readyState === WebSocketImpl.OPEN) socket.send(JSON.stringify(message));
   };
 
   async function load() {
@@ -51,7 +52,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   }
 
   function connect() {
-    if (!isSafeBrokerSocketUrl(state.brokerUrl)) return;
+    if (!hasWebSocket || !isSafeBrokerSocketUrl(state.brokerUrl)) return;
     if (socket) {
       intentionalCloses.add(socket);
       socket.close();
@@ -303,7 +304,7 @@ export function createBackgroundController({ chromeApi, WebSocketImpl, randomId 
   function publicState() {
     return {
       paired: Boolean(state.deviceKey),
-      connected: socket?.readyState === WebSocketImpl.OPEN,
+      connected: hasWebSocket && socket?.readyState === WebSocketImpl.OPEN,
       pairingRequested,
       connectionGeneration,
       autoShareEnabled: Boolean(state.autoShareEnabled),

@@ -35,6 +35,23 @@ test('only permits loopback WebSocket Broker URLs', () => {
   assert.equal(isSafeBrokerSocketUrl('http://127.0.0.1:18766/extension'), false);
 });
 
+test('does not throw when the extension runtime has no WebSocket constructor', async () => {
+  const chromeApi = {
+    storage: { local: { get: async () => ({}), set: async () => {} } },
+    tabs: { onRemoved: { addListener: () => {} }, onUpdated: { addListener: () => {} } },
+  };
+  const controller = createBackgroundController({ chromeApi, WebSocketImpl: undefined });
+  await controller.load();
+  assert.deepEqual(controller.publicState(), {
+    paired: false,
+    connected: false,
+    pairingRequested: false,
+    connectionGeneration: 0,
+    autoShareEnabled: false,
+    sharedTabs: [],
+  });
+});
+
 test('shares only an explicitly selected active HTTPS tab and never exposes its browser tab id', async () => {
   const stored = {};
   const listeners = { removed: null, updated: null };
@@ -308,4 +325,3 @@ test('does not nuke a fresh socket when the previous intentionally-closed socket
   assert.equal(controller.publicState().paired, true);
   assert.equal(controller.publicState().connected, true);
 });
-
