@@ -186,6 +186,64 @@ describe("ProviderModelsSettings", () => {
     expect(localStorage.getItem("webui:default-model")).toBe("local::model");
   });
 
+  it("does not resurrect the old server value when the settings section remounts (e.g. a Settings tab switch) before a Clear PUT lands", async () => {
+    let serverValue: string | null = "openai::gpt-5";
+    let releasePut!: () => void;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: serverValue });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({ providers: PROVIDERS });
+      }
+      if (
+        path === "/api/settings/auto-optimize" ||
+        path === "/api/settings/auto-show-model"
+      ) {
+        return Promise.resolve({ value: null });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    sendJson.mockImplementation(
+      (_method: string, path: string, body: { value: string | null }) => {
+        if (path === "/api/settings/default-model") {
+          return new Promise((resolve) => {
+            releasePut = () => {
+              serverValue = body.value;
+              resolve({ ok: true });
+            };
+          });
+        }
+        return Promise.resolve({ ok: true });
+      },
+    );
+
+    const { unmount } = render(<ProviderModelsSettings />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "デフォルトモデル" }).textContent,
+      ).toContain("GPT-5");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "クリア" }));
+    expect(localStorage.getItem("webui:default-model")).toBeNull();
+    await waitFor(() => expect(typeof releasePut).toBe("function"));
+
+    // Simulate switching Settings tabs away and back before the Clear PUT
+    // resolves: unmount and remount re-runs the server-hydration effect.
+    unmount();
+    render(<ProviderModelsSettings />);
+    releasePut();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "デフォルトモデル" }).textContent,
+      ).not.toContain("GPT-5");
+    });
+    expect(localStorage.getItem("webui:default-model")).toBeNull();
+  });
+
   it("uses local Auto settings immediately and keeps their defaults", async () => {
     localStorage.setItem("webui:auto-optimize", "intelligence");
     localStorage.setItem("webui:auto-show-model", "1");

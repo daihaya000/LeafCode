@@ -60,9 +60,14 @@ export function writeDefaultModel(value: string | null): void {
  * Read the durable default-model from the server `settings` table. Returns
  * null when unset, when the request fails, or when running outside the
  * browser. Non-fatal: callers should fall back to `readDefaultModel()`.
+ *
+ * Waits for any write already queued from this tab (e.g. a Clear click just
+ * before a Settings tab remount re-triggers this fetch) so the GET can't
+ * land ahead of an in-flight PUT and resurrect the value it just replaced.
  */
 export async function readDefaultModelFromServer(): Promise<string | null> {
   if (typeof window === "undefined") return null;
+  await defaultModelWriteQueue.catch(() => undefined);
   try {
     const data = await getJson<{ value: string | null }>(
       "/api/settings/default-model",

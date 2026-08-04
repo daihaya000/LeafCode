@@ -175,4 +175,30 @@ describe("default-model server sync", () => {
     await expect(writeDefaultModelToServer("openai::gpt-5")).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalled();
   });
+
+  it("readDefaultModelFromServer waits for an in-flight write from this tab so a remount-triggered GET can't resurrect the value a pending Clear PUT is about to replace", async () => {
+    let releasePut!: (value: unknown) => void;
+    sendJson.mockImplementation(() =>
+      new Promise((resolve) => {
+        releasePut = resolve;
+      }),
+    );
+    getJson.mockResolvedValue({ value: "openai::gpt-5" });
+
+    // Simulates: user clicks Clear (fire-and-forget PUT queued), then
+    // switches Settings tabs and back, remounting and re-fetching before
+    // the PUT has landed.
+    const write = writeDefaultModelToServer(null);
+    const read = readDefaultModelFromServer();
+
+    // The GET must not resolve until the queued PUT has settled.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getJson).not.toHaveBeenCalled();
+
+    releasePut({ ok: true });
+    await write;
+    expect(await read).toBe("openai::gpt-5");
+    expect(getJson).toHaveBeenCalledTimes(1);
+  });
 });
