@@ -112,7 +112,7 @@ export function installWebUiDependencies(
   const activeDir = opencodeConfigDir();
   const bundledDir = bundledVendorDir("cursor-cli-proxy", "OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR");
   const bundledClaudeAuth = bundledVendorDir("claude-cli-proxy", "OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR");
-  const bundledCommandcodeCli = bundledVendorDir("commandcode-cli");
+  const bundledCommandcodeCli = bundledVendorDir("commandcode-cli-proxy");
   const sourceDirs = [activeDir, bundledDir].filter(
     (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
   );
@@ -140,7 +140,7 @@ export function installWebUiDependencies(
     installed.push(...copyVendorFiles(profileDir, [bundledClaudeAuth], ["plugin/claude-cli-proxy.js", "packages/claude-cli-proxy"]));
   }
   if (options.commandcodeAuth !== false && bundledCommandcodeCli) {
-    installed.push(...copyVendorFiles(profileDir, [bundledCommandcodeCli], ["plugin/commandcode-cli.js", "packages/commandcode-cli"]));
+    installed.push(...copyVendorFiles(profileDir, [bundledCommandcodeCli], ["plugin/commandcode-cli-proxy.js", "packages/commandcode-cli-proxy"]));
   }
   const formattingOptions = {
     insertSpaces: true,

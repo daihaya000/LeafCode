@@ -21,10 +21,10 @@ beforeEach(() => {
   process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR = path.join(source, "bundled");
   process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR = path.join(source, "claude-bundled");
   process.env.OPENCODE_WEBUI_ROOT = source;
-  fs.mkdirSync(path.join(source, "vendor", "commandcode-cli", "plugin"), { recursive: true });
-  fs.mkdirSync(path.join(source, "vendor", "commandcode-cli", "packages", "commandcode-cli"), { recursive: true });
-  fs.writeFileSync(path.join(source, "vendor", "commandcode-cli", "plugin", "commandcode-cli.js"), "export default {};");
-  fs.writeFileSync(path.join(source, "vendor", "commandcode-cli", "packages", "commandcode-cli", "index.mjs"), "export default {};");
+  fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin"), { recursive: true });
+  fs.mkdirSync(path.join(source, "vendor", "commandcode-cli-proxy", "packages", "commandcode-cli-proxy"), { recursive: true });
+  fs.writeFileSync(path.join(source, "vendor", "commandcode-cli-proxy", "plugin", "commandcode-cli-proxy.js"), "export default {};");
+  fs.writeFileSync(path.join(source, "vendor", "commandcode-cli-proxy", "packages", "commandcode-cli-proxy", "index.mjs"), "export default {};");
 });
 
 afterEach(() => {
@@ -133,8 +133,8 @@ describe("installWebUiDependencies", () => {
     expect(installWebUiDependencies(target)).toEqual([
       "plugin/claude-cli-proxy.js",
       "packages/claude-cli-proxy",
-      "plugin/commandcode-cli.js",
-      "packages/commandcode-cli",
+      "plugin/commandcode-cli-proxy.js",
+      "packages/commandcode-cli-proxy",
       "mcp.browser-bridge",
     ]);
     expect(fs.existsSync(path.join(target, "plugin", "claude-cli-proxy.js"))).toBe(true);
@@ -146,10 +146,10 @@ describe("installWebUiDependencies", () => {
     dirs.push(target);
 
     expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false })).toEqual([
-      "plugin/commandcode-cli.js",
-      "packages/commandcode-cli",
+      "plugin/commandcode-cli-proxy.js",
+      "packages/commandcode-cli-proxy",
     ]);
-    expect(fs.existsSync(path.join(target, "plugin", "commandcode-cli.js"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "plugin", "commandcode-cli-proxy.js"))).toBe(true);
   });
 
   it("removes the legacy CommandCode plugin when installing the CLI proxy", () => {
