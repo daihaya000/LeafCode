@@ -26,7 +26,7 @@ import {
   writeState,
 } from "./registry";
 import type { LinkInfo, Profile, ProfileDto, ProfilesState } from "./types";
-import { installWebUiDependencies } from "./webui-dependencies";
+import { installWebUiDependencies, migrateProviderIds } from "./webui-dependencies";
 import { readProfileSetupSettings } from "./settings";
 
 // ---------------------------------------------------------------------------
@@ -69,6 +69,18 @@ export async function listProfiles(): Promise<ListResult> {
     active: p.id === activeId,
     exists: dirExists(p.path),
   }));
+
+  // Best-effort one-shot migration of renamed provider keys across all
+  // known profile config files (cursor-acp → cursor). Failures are swallowed
+  // so a corrupt profile cannot brick the listing endpoint.
+  for (const profile of state.profiles) {
+    if (!dirExists(profile.path)) continue;
+    try {
+      migrateProviderIds(profile.path);
+    } catch {
+      /* best effort */
+    }
+  }
 
   // Migration is needed when the active profile lives outside profilesRoot.
   const activeProfile = state.profiles.find((p) => p.id === activeId);

@@ -128,6 +128,55 @@ describe("listProfiles", () => {
     expect(result.reason).toMatch(/実体ディレクトリ/);
   });
 
+  it("migrates legacy provider cursor-acp → cursor across all profiles", async () => {
+    const current = makeConfigDir(path.join(sandbox, "onedrive"), "D");
+    fs.writeFileSync(
+      path.join(current, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          "cursor-acp": { name: "Cursor", models: { auto: {} } },
+        },
+      }),
+    );
+    setupLink(current);
+    await listProfiles();
+
+    // Add a second profile with the legacy key too.
+    const second = makeConfigDir(path.join(profilesDir(), "work"), "W");
+    fs.writeFileSync(
+      path.join(second, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          "cursor-acp": { name: "Cursor Work" },
+        },
+      }),
+    );
+    const state = JSON.parse(
+      fs.readFileSync(
+        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        "utf8",
+      ),
+    );
+    state.profiles.push({ id: "work-id", name: "work", path: second });
+    fs.writeFileSync(
+      path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+      JSON.stringify(state),
+    );
+
+    await listProfiles();
+
+    const currentConfig = JSON.parse(
+      fs.readFileSync(path.join(current, "opencode.jsonc"), "utf8"),
+    );
+    expect(currentConfig.provider["cursor"].name).toBe("Cursor");
+    expect(currentConfig.provider["cursor-acp"]).toBeUndefined();
+    const secondConfig = JSON.parse(
+      fs.readFileSync(path.join(second, "opencode.jsonc"), "utf8"),
+    );
+    expect(secondConfig.provider["cursor"].name).toBe("Cursor Work");
+    expect(secondConfig.provider["cursor-acp"]).toBeUndefined();
+  });
+
   it("reports OPENCODE_CONFIG_DIR override", async () => {
     const current = makeConfigDir(path.join(sandbox, "onedrive"), "D");
     setupLink(current);

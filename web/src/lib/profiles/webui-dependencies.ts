@@ -115,6 +115,46 @@ function replaceOldVendorFiles(targetDir: string): string[] {
   return removed;
 }
 
+/**
+ * Migrate renamed provider keys in a profile's opencode.jsonc.
+ * Currently: `provider.cursor-acp` → `provider.cursor` (when `cursor` not yet set).
+ * Idempotent: returns an empty array when no change is needed.
+ * Atomic: temp file + rename.
+ */
+export function migrateProviderIds(profileDir: string): string[] {
+  const targetConfigPath = configPath(profileDir);
+  if (!fs.existsSync(targetConfigPath)) return [];
+  const content = fs.readFileSync(targetConfigPath, "utf8");
+  const root = parse(content) as Record<string, unknown>;
+  const provider = root.provider;
+  const providerObj = provider && typeof provider === "object" && !Array.isArray(provider)
+    ? provider as Record<string, unknown>
+    : undefined;
+  if (!providerObj || providerObj["cursor-acp"] === undefined || providerObj["cursor"] !== undefined) {
+    return [];
+  }
+  providerObj["cursor"] = providerObj["cursor-acp"];
+  delete providerObj["cursor-acp"];
+  const edits = modify(content, ["provider"], providerObj, {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+      eol: content.includes("\r\n") ? "\r\n" : "\n",
+    },
+  });
+  const next = applyEdits(content, edits);
+  if (next === content) return [];
+  const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tempPath, next, "utf8");
+  try {
+    fs.renameSync(tempPath, targetConfigPath);
+  } catch (error) {
+    fs.rmSync(tempPath, { force: true });
+    throw error;
+  }
+  return ["migrated:provider.cursor-acp->cursor"];
+}
+
 /** Install WebUI MCP and the Cursor/Claude/CommandCode CLI Proxy dependencies without overwriting settings. */
 export function installWebUiDependencies(
   profileDir: string,
@@ -137,38 +177,23 @@ export function installWebUiDependencies(
     if (!fs.existsSync(sourceConfigPath) || path.resolve(sourceConfigPath) === path.resolve(targetConfigPath)) continue;
     const sourceRoot = parse(fs.readFileSync(sourceConfigPath, "utf8")) as Record<string, unknown>;
     const provider = sourceRoot.provider;
-    const value = provider && typeof provider === "object" && !Array.isArray(provider)
-      ? (provider as Record<string, unknown>)["cursor"]
+    // Fall back to the legacy `cursor-acp` key when `cursor` is not present.
+    const providerMap = provider && typeof provider === "object" && !Array.isArray(provider)
+      ? (provider as Record<string, unknown>)
       : undefined;
+    const value = providerMap?.["cursor"] ?? providerMap?.["cursor-acp"];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       cursorProvider = value as Record<string, unknown>;
       break;
     }
   }
 
-  let content = fs.readFileSync(targetConfigPath, "utf8");
   const installed: string[] = [];
   // Replace old-named vendor files before copying new ones
   installed.push(...replaceOldVendorFiles(profileDir));
-  // Migrate provider key "cursor-acp" → "cursor" in the target config
-  const root = parse(content) as Record<string, unknown>;
-  const provider = root.provider;
-  const providerObj = provider && typeof provider === "object" && !Array.isArray(provider)
-    ? provider as Record<string, unknown>
-    : undefined;
-  if (providerObj?.["cursor-acp"] !== undefined && providerObj["cursor"] === undefined) {
-    providerObj["cursor"] = providerObj["cursor-acp"];
-    delete providerObj["cursor-acp"];
-    const edits = modify(content, ["provider"], providerObj, {
-      formattingOptions: {
-        insertSpaces: true,
-        tabSize: 2,
-        eol: content.includes("\r\n") ? "\r\n" : "\n",
-      },
-    });
-    content = applyEdits(content, edits);
-    installed.push("migrated:provider.cursor-acp->cursor");
-  }
+  // Migrate renamed provider keys (cursor-acp → cursor) in the target config.
+  installed.push(...migrateProviderIds(profileDir));
+  let content = fs.readFileSync(targetConfigPath, "utf8");
   if (options.cursorAcp !== false) {
     installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
   }
