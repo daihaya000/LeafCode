@@ -11,12 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui";
 import { sendJson } from "@/lib/client";
-import {
-  NEXT_ACTION_COUNT_DEFAULT,
-  NEXT_ACTION_COUNT_MAX,
-  NEXT_ACTION_COUNT_MIN,
-  NEXT_ACTION_PREVIOUS_MAX_COUNT,
-} from "@/lib/next-action-text";
+import { NEXT_ACTION_PREVIOUS_MAX_COUNT } from "@/lib/next-action-text";
 
 type NextActionState =
   | { kind: "idle" }
@@ -65,40 +60,6 @@ function parseSuggestions(res: {
   return out;
 }
 
-/**
- * Native select for the number of suggestions to request (1–3). The choice
- * is transient component state — it is never persisted.
- */
-function CountSelect({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (n: number) => void;
-}) {
-  const options: number[] = [];
-  for (let n = NEXT_ACTION_COUNT_MIN; n <= NEXT_ACTION_COUNT_MAX; n++) {
-    options.push(n);
-  }
-  return (
-    <select
-      aria-label="提案の件数"
-      value={String(value)}
-      onChange={(e) => {
-        const n = Number(e.target.value);
-        if (Number.isFinite(n)) onChange(n);
-      }}
-      className="h-9 min-w-16 shrink-0 cursor-pointer rounded-lg border border-border bg-surface-2 px-2 text-xs font-medium text-text outline-none transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary motion-reduce:transition-none"
-    >
-      {options.map((n) => (
-        <option key={n} value={n}>
-          {n}件
-        </option>
-      ))}
-    </select>
-  );
-}
-
 const panelClass = "mt-2";
 const quietPanelClass =
   "mt-2 rounded-lg border border-border bg-surface-2/50 px-3 py-2";
@@ -124,7 +85,7 @@ function PanelIntro({
   busy = false,
 }: {
   title: string;
-  description: string;
+  description?: string;
   busy?: boolean;
 }) {
   return (
@@ -132,7 +93,9 @@ function PanelIntro({
       <PanelMark busy={busy} />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-text">{title}</p>
-        <p className="mt-0.5 text-[11px] leading-4 text-muted">{description}</p>
+        {description && (
+          <p className="mt-0.5 text-[11px] leading-4 text-muted">{description}</p>
+        )}
       </div>
     </div>
   );
@@ -158,9 +121,6 @@ export function NextAction({
   isMd = true,
 }: NextActionProps) {
   const [state, setState] = useState<NextActionState>({ kind: "idle" });
-  // How many suggestions to request. Transient UI state (default 1), not
-  // persisted; the server validates and clamps it anyway.
-  const [count, setCount] = useState<number>(NEXT_ACTION_COUNT_DEFAULT);
   // Suggestions already shown for the current conversation state. Sent back
   // on regeneration so the API can tell the model to avoid repeating them.
   const [previousSuggestions, setPreviousSuggestions] = useState<string[]>([]);
@@ -211,7 +171,7 @@ export function NextAction({
     setAppliedIndex(null);
     setState({ kind: "loading" });
     try {
-      const body: Record<string, unknown> = { sessionId, count };
+      const body: Record<string, unknown> = { sessionId };
       if (model) {
         const [providerID, modelID] = model.split("::");
         if (providerID && modelID) {
@@ -257,27 +217,21 @@ export function NextAction({
         message: "提案の生成に失敗しました。",
       });
     }
-  }, [taskId, sessionId, count, model, agent, previousSuggestions]);
+  }, [taskId, sessionId, model, agent, previousSuggestions]);
 
   if (state.kind === "idle") {
     return (
       <section className={panelClass} aria-label="次の一手">
-        <div className="flex flex-col gap-2 px-1 py-0.5 sm:flex-row sm:items-center">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={generate}
-            aria-label="次の指示を提案"
-            className="w-full sm:w-auto"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            次の指示を提案
-          </Button>
-          <div className="flex items-center justify-between gap-2 sm:ml-auto">
-            <span className="text-xs text-muted">提案数</span>
-            <CountSelect value={count} onChange={setCount} />
-          </div>
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={generate}
+          aria-label="次の指示を提案"
+          className="w-full sm:w-auto"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          次の指示を提案
+        </Button>
       </section>
     );
   }
@@ -333,18 +287,15 @@ export function NextAction({
           role="alert"
         >
           <p className="min-w-0 flex-1 text-sm text-danger">{state.message}</p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={generate}
-              aria-label="再試行"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              再試行
-            </Button>
-            <CountSelect value={count} onChange={setCount} />
-          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={generate}
+            aria-label="再試行"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            再試行
+          </Button>
         </div>
       </div>
     );
@@ -374,9 +325,6 @@ export function NextAction({
               <span className="block text-xs font-medium text-text">
                 次の指示
               </span>
-              <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted">
-                会話の文脈に合わせた提案
-              </span>
             </span>
             <ChevronDown
               aria-hidden="true"
@@ -384,14 +332,8 @@ export function NextAction({
             />
           </button>
         ) : (
-          <PanelIntro
-            title="次の指示"
-            description="会話の文脈に合わせた提案"
-          />
+          <PanelIntro title="次の指示" />
         )}
-        <div className="shrink-0 pt-0.5">
-          <CountSelect value={count} onChange={setCount} />
-        </div>
       </div>
       {!isCollapsed && (
         <div
@@ -399,14 +341,6 @@ export function NextAction({
           aria-live="polite"
           className="mt-2 border-t border-border px-1 pt-2"
         >
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-medium text-muted">
-              {multiple
-                ? `${state.suggestions.length}つの候補から選べます`
-                : "そのまま使える指示です"}
-            </p>
-            <p className="text-[11px] text-faint">入力欄に入れて編集できます</p>
-          </div>
           <div
             role="list"
             aria-label="次の指示の提案一覧"
@@ -419,16 +353,20 @@ export function NextAction({
                 className="rounded-xl border border-border bg-surface-2 p-3 transition-colors hover:border-border-strong hover:bg-surface-3 sm:p-4 motion-reduce:transition-none"
               >
                 <div className="flex items-start gap-3">
-                  <span
-                    aria-hidden="true"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-xs font-semibold text-muted"
-                  >
-                    {i + 1}
-                  </span>
+                  {multiple && (
+                    <span
+                      aria-hidden="true"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-xs font-semibold text-muted"
+                    >
+                      {i + 1}
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-[11px] font-medium text-faint">
-                      {multiple ? `提案 ${i + 1}` : "おすすめの一手"}
-                    </p>
+                    {multiple && (
+                      <p className="mb-1 text-[11px] font-medium text-faint">
+                        提案 {i + 1}
+                      </p>
+                    )}
                     <p className="whitespace-pre-wrap text-sm leading-6 text-text">
                       {suggestion}
                     </p>
@@ -466,7 +404,7 @@ export function NextAction({
           </div>
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[11px] leading-5 text-faint">
-              期待と違う場合は、別の切り口で作り直せます。
+              違う場合は再生成できます。
             </p>
             <Button
               variant="secondary"
