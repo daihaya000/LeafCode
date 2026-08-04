@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   filterEnabledModelOptions,
   formatModelLabel,
+  isFastModelId,
   mergeConfiguredModelOptions,
   modelIntelligenceScore,
   normalizeProviderBucket,
+  parseModelVersion,
   providerSortKey,
+  shouldDefaultDisableModel,
   sortModelOptions,
   type ModelOption,
 } from "./model-options";
@@ -159,6 +162,83 @@ describe("modelIntelligenceScore", () => {
     for (let i = 0; i < scores.length - 1; i++) {
       expect(scores[i]).toBeGreaterThan(scores[i + 1]);
     }
+  });
+});
+
+describe("parseModelVersion", () => {
+  it("extracts major.minor from GPT ids", () => {
+    expect(parseModelVersion("gpt-5.6-sol")).toEqual([5, 6]);
+    expect(parseModelVersion("gpt-5.5")).toEqual([5, 5]);
+    expect(parseModelVersion("gpt-5.4-mini-fast")).toEqual([5, 4]);
+  });
+
+  it("extracts major.minor from Claude ids", () => {
+    expect(parseModelVersion("claude-haiku-4-5")).toEqual([4, 5]);
+    expect(parseModelVersion("claude-opus-5")).toEqual([5, 0]);
+  });
+
+  it("returns null when no version pattern is found", () => {
+    expect(parseModelVersion("auto")).toBeNull();
+    expect(parseModelVersion("big-pickle")).toBeNull();
+  });
+});
+
+describe("isFastModelId", () => {
+  it("flags ids with a delimited fast token", () => {
+    expect(isFastModelId("gpt-5.6-sol-fast")).toBe(true);
+    expect(isFastModelId("gpt-5.4-mini-fast")).toBe(true);
+    expect(isFastModelId("claude-opus-5-fast")).toBe(true);
+    expect(isFastModelId("zai-org/GLM-5.2-Fast")).toBe(true);
+  });
+
+  it("does not flag ids merely containing the substring fast", () => {
+    expect(isFastModelId("fastly-model")).toBe(false);
+    expect(isFastModelId("ultrafast")).toBe(false);
+  });
+
+  it("does not flag ids without fast", () => {
+    expect(isFastModelId("gpt-5.6-sol")).toBe(false);
+  });
+});
+
+describe("shouldDefaultDisableModel", () => {
+  const openaiModels = [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+    "gpt-5.6-sol-fast",
+    "gpt-5.6-terra-fast",
+    "gpt-5.6-luna-fast",
+    "gpt-5.4",
+    "gpt-5.3-codex-spark",
+    "gpt-5.5-fast",
+    "gpt-5.4-fast",
+    "gpt-5.4-mini",
+    "gpt-5.4-mini-fast",
+  ];
+
+  it("keeps the newest and second-newest generations enabled", () => {
+    expect(shouldDefaultDisableModel("gpt-5.6-sol", openaiModels)).toBe(false);
+    expect(shouldDefaultDisableModel("gpt-5.6-terra", openaiModels)).toBe(false);
+    expect(shouldDefaultDisableModel("gpt-5.6-luna", openaiModels)).toBe(false);
+    expect(shouldDefaultDisableModel("gpt-5.5", openaiModels)).toBe(false);
+  });
+
+  it("disables models 2+ generations behind the newest sibling", () => {
+    expect(shouldDefaultDisableModel("gpt-5.4", openaiModels)).toBe(true);
+    expect(shouldDefaultDisableModel("gpt-5.3-codex-spark", openaiModels)).toBe(true);
+    expect(shouldDefaultDisableModel("gpt-5.4-mini", openaiModels)).toBe(true);
+  });
+
+  it("disables fast variants regardless of generation", () => {
+    expect(shouldDefaultDisableModel("gpt-5.6-sol-fast", openaiModels)).toBe(true);
+    expect(shouldDefaultDisableModel("gpt-5.5-fast", openaiModels)).toBe(true);
+  });
+
+  it("leaves unversioned models enabled by default", () => {
+    expect(shouldDefaultDisableModel("auto", ["auto"])).toBe(false);
+    expect(shouldDefaultDisableModel("big-pickle", ["big-pickle"])).toBe(false);
   });
 });
 

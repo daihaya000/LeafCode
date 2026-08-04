@@ -7,6 +7,16 @@ type StateFile = {
   providerOrder: string[];
   modelOrder: Record<string, string[]>;
   providerIcons: Record<string, string>;
+  /**
+   * `providerID::modelID` keys whose default enabled/disabled state has
+   * already been decided (either by an explicit user toggle, or by the
+   * automatic "fast/old generation" default rule the first time the model
+   * was seen). `undefined` only happens for state files written before this
+   * field existed; callers must treat that as "grandfather every
+   * currently-listed model" so upgrading never flips an existing profile's
+   * models that were implicitly enabled.
+   */
+  knownModelKeys: string[] | undefined;
 };
 
 /**
@@ -30,6 +40,7 @@ const DEFAULT_STATE: StateFile = {
     ],
   },
   providerIcons: {},
+  knownModelKeys: [],
 };
 
 function emptyState(): StateFile {
@@ -43,6 +54,9 @@ function emptyState(): StateFile {
       ]),
     ),
     providerIcons: {},
+    // Brand-new profiles have nothing to grandfather, so the auto
+    // fast/old-generation default rule applies from the very first list.
+    knownModelKeys: [],
   };
 }
 
@@ -130,7 +144,16 @@ export function readProviderModelState(): StateFile {
           if (typeof icon === "string" && icon) providerIcons[providerID] = icon;
         }
       }
-      return { disabled, providerOrder, modelOrder, providerIcons };
+      // Missing/non-array `knownModelKeys` means this file predates the
+      // field (a used profile from an older build): treat as "legacy" so
+      // listProviderModels grandfathers in every model it currently sees
+      // instead of retroactively applying the fast/old-generation default.
+      const knownModelKeys = Array.isArray(parsed.knownModelKeys)
+        ? (parsed.knownModelKeys as unknown[]).filter(
+            (id): id is string => typeof id === "string",
+          )
+        : undefined;
+      return { disabled, providerOrder, modelOrder, providerIcons, knownModelKeys };
     }
     console.warn(
       "[provider-model] 状態ファイルの形式が不正なため無視します",
@@ -196,6 +219,25 @@ export async function setProviderModelDisabled(
   await writeProviderModelState(state);
 }
 
+/**
+ * Persist the result of evaluating newly-seen `providerID::modelID` keys:
+ * mark them all as known (so they are never re-evaluated by the
+ * fast/old-generation default rule), and record any that the rule decided
+ * should default to disabled.
+ */
+export async function recordKnownModels(input: {
+  newlyKnown: string[];
+  newlyDisabled: string[];
+}): Promise<void> {
+  if (input.newlyKnown.length === 0) return;
+  const state = readProviderModelState();
+  const known = new Set(state.knownModelKeys ?? []);
+  for (const key of input.newlyKnown) known.add(key);
+  state.knownModelKeys = [...known];
+  for (const key of input.newlyDisabled) state.disabled[key] = true;
+  await writeProviderModelState(state);
+}
+
 function mergeKnownOrder(next: string[], existing: string[]): string[] {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -258,5 +300,10 @@ export async function removeProviderState(providerID: string): Promise<void> {
   state.providerOrder = state.providerOrder.filter((id) => id !== providerID);
   delete state.modelOrder[providerID];
   delete state.providerIcons[providerID];
+  if (state.knownModelKeys) {
+    state.knownModelKeys = state.knownModelKeys.filter(
+      (key) => key !== providerID && !key.startsWith(prefix),
+    );
+  }
   await writeProviderModelState(state);
 }

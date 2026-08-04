@@ -247,6 +247,114 @@ describe("listProviderModels", () => {
   });
 });
 
+describe("listProviderModels fast/old-generation default", () => {
+  const GENERATIONS_RESPONSE = {
+    all: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        models: {
+          "gpt-5.6-sol": { name: "GPT-5.6 Sol" },
+          "gpt-5.5": { name: "GPT-5.5" },
+          "gpt-5.6-sol-fast": { name: "GPT-5.6 Sol Fast" },
+          "gpt-5.4": { name: "GPT-5.4" },
+        },
+      },
+    ],
+    connected: ["openai"],
+    default: { provider: "openai", model: "gpt-5.6-sol" },
+  };
+
+  it("grandfathers every currently-visible model on the first call (legacy state, no knownModelKeys)", async () => {
+    // beforeEach already wrote a state file without `knownModelKeys`,
+    // simulating a profile that existed before this feature shipped.
+    h.ocServer.mockResolvedValue(GENERATIONS_RESPONSE);
+
+    const providers = await listProviderModels();
+    const openai = providers.find((p) => p.id === "openai")!;
+    // None are auto-disabled: an old profile's already-visible models must
+    // not flip from implicitly-enabled to disabled just from upgrading.
+    expect(openai.models.every((m) => m.enabled)).toBe(true);
+
+    const state = readState();
+    expect(state.disabled).toEqual({});
+  });
+
+  it("marks the first-call models as known so future calls can apply the default rule", async () => {
+    h.ocServer.mockResolvedValue(GENERATIONS_RESPONSE);
+    await listProviderModels();
+
+    const stateAfterFirstCall = JSON.parse(
+      fs.readFileSync(statePath(), "utf8"),
+    ) as { knownModelKeys?: string[] };
+    expect(stateAfterFirstCall.knownModelKeys).toEqual(
+      expect.arrayContaining([
+        "openai::gpt-5.6-sol",
+        "openai::gpt-5.5",
+        "openai::gpt-5.6-sol-fast",
+        "openai::gpt-5.4",
+      ]),
+    );
+  });
+
+  it("applies the fast/old-generation default only to models not yet known", async () => {
+    // Simulate a profile that has already gone through the migration pass:
+    // gpt-5.6-sol and gpt-5.5 are already known (and implicitly enabled).
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({
+        disabled: {},
+        providerOrder: [],
+        modelOrder: {},
+        providerIcons: {},
+        knownModelKeys: ["openai::gpt-5.6-sol", "openai::gpt-5.5"],
+      }),
+    );
+    h.ocServer.mockResolvedValue(GENERATIONS_RESPONSE);
+
+    const providers = await listProviderModels();
+    const openai = providers.find((p) => p.id === "openai")!;
+    // Already-known models are untouched.
+    expect(openai.models.find((m) => m.id === "gpt-5.6-sol")!.enabled).toBe(true);
+    expect(openai.models.find((m) => m.id === "gpt-5.5")!.enabled).toBe(true);
+    // Newly-seen fast variant and 2-generations-old model default off.
+    expect(openai.models.find((m) => m.id === "gpt-5.6-sol-fast")!.enabled).toBe(
+      false,
+    );
+    expect(openai.models.find((m) => m.id === "gpt-5.4")!.enabled).toBe(false);
+
+    const state = readState();
+    expect(state.disabled).toEqual({
+      "openai::gpt-5.6-sol-fast": true,
+      "openai::gpt-5.4": true,
+    });
+  });
+
+  it("does not re-evaluate a model once it has been decided (toggling back on sticks)", async () => {
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({
+        disabled: {},
+        providerOrder: [],
+        modelOrder: {},
+        providerIcons: {},
+        knownModelKeys: ["openai::gpt-5.6-sol", "openai::gpt-5.5"],
+      }),
+    );
+    h.ocServer.mockResolvedValue(GENERATIONS_RESPONSE);
+
+    await listProviderModels();
+    // User explicitly re-enables the fast model the heuristic disabled.
+    await setProviderModelEnabled("openai::gpt-5.6-sol-fast", true);
+
+    const providers = await listProviderModels();
+    const openai = providers.find((p) => p.id === "openai")!;
+    expect(openai.models.find((m) => m.id === "gpt-5.6-sol-fast")!.enabled).toBe(
+      true,
+    );
+  });
+});
+
 describe("setProviderModelEnabled", () => {
   it("disables a provider by writing to state file", async () => {
     await setProviderModelEnabled("openai", false);

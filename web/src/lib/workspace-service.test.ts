@@ -133,6 +133,10 @@ beforeEach(() => {
       get: () =>
         sql.includes("FROM projects") ? { root_path: "C:\\repo" } : undefined,
     }),
+    // Mirrors better-sqlite3's Database.transaction(fn): returns a function
+    // that, when called, runs fn synchronously and returns its result.
+    transaction: (fn: (...args: unknown[]) => unknown) =>
+      (...args: unknown[]) => fn(...args),
   });
   deleteWorkspace.mockImplementation((id: string) => getWorkspace(id));
   listSessionBindings.mockReturnValue([

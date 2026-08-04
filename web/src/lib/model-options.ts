@@ -131,6 +131,76 @@ export function providerSortKey(providerID: string): number {
  * Ollama/OpenCode cloud coding ability (OpenCode/Codex 系の目安):
  * GLM → DeepSeek Pro → Kimi → DeepSeek Flash.
  */
+/**
+ * Extract a `[major, minor]` version pair from a model id, using the same
+ * heuristics `modelIntelligenceScore` uses for ordering. Returns `null` when
+ * no version-like pattern is found.
+ */
+export function parseModelVersion(modelID: string): [number, number] | null {
+  const id = modelID.toLowerCase().replaceAll("_", "-");
+  const version =
+    id.match(/gpt-(\d+)\.(\d+)/) ??
+    id.match(/gpt-(\d+)/) ??
+    id.match(/claude-[\w]+-(\d+)[.-](\d+)/) ??
+    id.match(/claude-[\w]+-(\d+)/) ??
+    id.match(/glm-(\d+)\.(\d+)/) ??
+    id.match(/glm-(\d+)/) ??
+    id.match(/v(\d+)(?:[.-](\d+))?/) ??
+    id.match(/(?:^|-)(\d+)\.(\d+)/);
+  if (!version) return null;
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
+  if (!Number.isFinite(major)) return null;
+  return [major, minor];
+}
+
+/**
+ * True when a model id is a "fast"/speed-optimized variant (e.g.
+ * `gpt-5.6-sol-fast`, `claude-opus-5-fast`). Matched as a delimited token so
+ * unrelated ids like `fastly-model` are not flagged.
+ */
+export function isFastModelId(modelID: string): boolean {
+  const id = modelID.toLowerCase().replaceAll("_", "-");
+  return /(^|[^a-z0-9])fast([^a-z0-9]|$)/.test(id);
+}
+
+/**
+ * Decide whether a newly-discovered model should default to disabled:
+ * "fast" variants, and models whose version is 2+ generations behind the
+ * newest version seen among its provider siblings, default off. Models
+ * without a parseable version are left enabled (can't judge staleness).
+ *
+ * `siblingModelIDs` should include every model id returned for the same
+ * provider (including the model itself) so the newest version can be
+ * determined.
+ */
+export function shouldDefaultDisableModel(
+  modelID: string,
+  siblingModelIDs: string[],
+): boolean {
+  if (isFastModelId(modelID)) return true;
+  const version = parseModelVersion(modelID);
+  if (!version) return false;
+  const distinctVersions = Array.from(
+    new Set(
+      siblingModelIDs
+        .map((id) => parseModelVersion(id))
+        .filter((v): v is [number, number] => v !== null)
+        .map(([major, minor]) => `${major}.${minor}`),
+    ),
+  )
+    .map((key): [number, number] => {
+      const [major, minor] = key.split(".").map(Number);
+      return [major, minor];
+    })
+    .sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  const rank = distinctVersions.findIndex(
+    ([major, minor]) => major === version[0] && minor === version[1],
+  );
+  // 2 or more generations older than the newest sibling version.
+  return rank >= 2;
+}
+
 export function modelIntelligenceScore(modelID: string): number {
   const id = modelID.toLowerCase().replaceAll("_", "-");
   let score = 0;
@@ -172,20 +242,10 @@ export function modelIntelligenceScore(modelID: string): number {
   if (/\bfast\b/.test(id)) score -= 20_000;
   if (/\blite\b/.test(id)) score -= 30_000;
 
-  const version =
-    id.match(/gpt-(\d+)\.(\d+)/) ??
-    id.match(/gpt-(\d+)/) ??
-    id.match(/claude-[\w]+-(\d+)[.-](\d+)/) ??
-    id.match(/claude-[\w]+-(\d+)/) ??
-    id.match(/glm-(\d+)\.(\d+)/) ??
-    id.match(/glm-(\d+)/) ??
-    id.match(/v(\d+)(?:[.-](\d+))?/) ??
-    id.match(/(?:^|-)(\d+)\.(\d+)/);
-
+  const version = parseModelVersion(id);
   if (version) {
-    const major = Number(version[1]);
-    const minor = Number(version[2] ?? 0);
-    if (Number.isFinite(major)) score += major * 1_000 + minor * 10;
+    const [major, minor] = version;
+    score += major * 1_000 + minor * 10;
   }
 
   return score;

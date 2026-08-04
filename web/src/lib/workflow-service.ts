@@ -727,35 +727,42 @@ function nextAttempt(input: {
 }): WorkflowView {
   const { run, node } = getNodeRow(input.workspaceId, input.nodeKey);
   requireWorkflowRevision(run, input.workflowRevision);
-  const activeAttempt = getDb()
-    .prepare(
-      `SELECT 1 FROM workflow_node_attempts
-       WHERE node_run_id = ? AND status IN ('creating_session', 'dispatching', 'running')
-       LIMIT 1`,
-    )
-    .get(node.id);
-  if (activeAttempt) throw new WorkflowServiceError("node has an in-flight Attempt", 409);
+  const database = getDb();
   const attemptNo = node.latest_attempt_no + 1;
   const attemptId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const update = getDb()
-    .prepare(
-      `UPDATE workflow_node_runs
-       SET latest_attempt_no = ?, revision = revision + 1, updated_at = ?
-       WHERE id = ? AND workflow_run_id = ?`,
-    )
-    .run(attemptNo, now, node.id, run.id);
-  if (update.changes !== 1) throw new WorkflowServiceError("node revision conflict", 409);
-  getDb()
-    .prepare(
-      `INSERT INTO workflow_node_attempts
-       (id, node_run_id, attempt_no, status, config_snapshot, output_mode, dispatch_status)
-       VALUES (?, ?, ?, 'ready', ?, ?, 'not_sent')`,
-    )
-    .run(attemptId, node.id, attemptNo, node.config, "fenced_json");
-  getDb()
-    .prepare("UPDATE workflow_runs SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
-    .run(now, run.id, input.workflowRevision);
+  database.transaction(() => {
+    // Re-check for an in-flight Attempt inside the transaction: two
+    // concurrent retry requests can both pass the earlier check before
+    // either writes, creating two attempts with the same attempt_no.
+    const activeAttempt = database
+      .prepare(
+        `SELECT 1 FROM workflow_node_attempts
+         WHERE node_run_id = ? AND status IN ('creating_session', 'dispatching', 'running')
+         LIMIT 1`,
+      )
+      .get(node.id);
+    if (activeAttempt) throw new WorkflowServiceError("node has an in-flight Attempt", 409);
+    const update = database
+      .prepare(
+        `UPDATE workflow_node_runs
+         SET latest_attempt_no = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND workflow_run_id = ? AND revision = ?`,
+      )
+      .run(attemptNo, now, node.id, run.id, node.revision);
+    if (update.changes !== 1) throw new WorkflowServiceError("node revision conflict", 409);
+    database
+      .prepare(
+        `INSERT INTO workflow_node_attempts
+         (id, node_run_id, attempt_no, status, config_snapshot, output_mode, dispatch_status)
+         VALUES (?, ?, ?, 'ready', ?, ?, 'not_sent')`,
+      )
+      .run(attemptId, node.id, attemptNo, node.config, "fenced_json");
+    const runUpdated = database
+      .prepare("UPDATE workflow_runs SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
+      .run(now, run.id, input.workflowRevision);
+    if (runUpdated.changes !== 1) throw new WorkflowServiceError("workflow revision conflict", 409);
+  })();
   return getWorkflow(input.workspaceId)!;
 }
 
@@ -776,37 +783,53 @@ export function skipWorkflowNode(input: {
   requireWorkflowRevision(run, input.workflowRevision);
   const config = parseJson(node.config, {}) as WorkflowNodeConfig;
   if (!config.gate?.optional) throw new WorkflowServiceError("required node cannot be skipped", 409);
+  const database = getDb();
   const attemptNo = node.latest_attempt_no + 1;
   const now = new Date().toISOString();
-  getDb()
-    .prepare(
-      `UPDATE workflow_node_runs SET latest_attempt_no = ?, revision = revision + 1, updated_at = ? WHERE id = ?`,
-    )
-    .run(attemptNo, now, node.id);
   const result: ReviewResult = {
     verdict: "skipped",
     summary: "Skipped by user",
     evidence: [],
     findings: [],
   };
-  getDb()
-    .prepare(
-      `INSERT INTO workflow_node_attempts
-       (id, node_run_id, attempt_no, status, outcome, result, config_snapshot, output_mode, dispatch_status, finished_at)
-       VALUES (?, ?, ?, 'skipped', ?, ?, ?, 'fenced_json', 'not_sent', ?)`,
-    )
-    .run(
-      crypto.randomUUID(),
-      node.id,
-      attemptNo,
-      JSON.stringify({ kind: "review", value: "skipped" }),
-      JSON.stringify(result),
-      node.config,
-      now,
-    );
-  getDb()
-    .prepare("UPDATE workflow_runs SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
-    .run(now, run.id, input.workflowRevision);
+  database.transaction(() => {
+    // A node with a running/dispatching Attempt must not be skipped out from
+    // under it — mirrors the guard nextAttempt() applies before retrying.
+    const activeAttempt = database
+      .prepare(
+        `SELECT 1 FROM workflow_node_attempts
+         WHERE node_run_id = ? AND status IN ('creating_session', 'dispatching', 'running')
+         LIMIT 1`,
+      )
+      .get(node.id);
+    if (activeAttempt) throw new WorkflowServiceError("node has an in-flight Attempt", 409);
+    const update = database
+      .prepare(
+        `UPDATE workflow_node_runs SET latest_attempt_no = ?, revision = revision + 1, updated_at = ?
+         WHERE id = ? AND revision = ?`,
+      )
+      .run(attemptNo, now, node.id, node.revision);
+    if (update.changes !== 1) throw new WorkflowServiceError("node revision conflict", 409);
+    database
+      .prepare(
+        `INSERT INTO workflow_node_attempts
+         (id, node_run_id, attempt_no, status, outcome, result, config_snapshot, output_mode, dispatch_status, finished_at)
+         VALUES (?, ?, ?, 'skipped', ?, ?, ?, 'fenced_json', 'not_sent', ?)`,
+      )
+      .run(
+        crypto.randomUUID(),
+        node.id,
+        attemptNo,
+        JSON.stringify({ kind: "review", value: "skipped" }),
+        JSON.stringify(result),
+        node.config,
+        now,
+      );
+    const runUpdated = database
+      .prepare("UPDATE workflow_runs SET revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?")
+      .run(now, run.id, input.workflowRevision);
+    if (runUpdated.changes !== 1) throw new WorkflowServiceError("workflow revision conflict", 409);
+  })();
   return getWorkflow(input.workspaceId)!;
 }
 

@@ -2,7 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { ocServer } from "../oc-server";
 import type { ProviderModelsDto } from "../extensions";
-import { formatModelLabel, sortModelOptions } from "../model-options";
+import {
+  formatModelLabel,
+  shouldDefaultDisableModel,
+  sortModelOptions,
+} from "../model-options";
 import {
   applyEdits,
   detectFormatting,
@@ -15,6 +19,7 @@ import { opencodeConfigFilePath } from "./paths";
 import { ExtensionsError } from "./safe-move";
 import {
   readProviderModelState,
+  recordKnownModels,
   setProviderModelOrder,
   setProviderModelDisabled,
   setProviderIcon,
@@ -68,12 +73,22 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
   });
 
   const state = readProviderModelState();
-  const disabled = state.disabled;
+  // Mutable copy: newly-discovered models may get an automatic default
+  // (disabled) applied below, reflected immediately in this response.
+  const disabled = { ...state.disabled };
   const configured = configuredProvidersFromContent(
     readConfigContentForProviders(),
     disabled,
     state.providerIcons,
   );
+
+  // `knownModelKeys` missing entirely means this state file predates the
+  // field: grandfather in every model this profile can currently see so
+  // upgrading never flips a model that was implicitly enabled before.
+  const legacyGrandfather = state.knownModelKeys === undefined;
+  const known = new Set(state.knownModelKeys ?? []);
+  const newlyKnown: string[] = [];
+  const newlyDisabled: string[] = [];
 
   // Determine which providers to include.
   const connectedSet =
@@ -89,6 +104,18 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
     const providerEnabled = !disabled[id];
 
     const modelEntries = Object.entries(p.models ?? {});
+    const siblingModelIDs = modelEntries.map(([modelID]) => modelID);
+    for (const modelID of siblingModelIDs) {
+      const key = `${id}::${modelID}`;
+      if (known.has(key)) continue;
+      newlyKnown.push(key);
+      if (legacyGrandfather || disabled[key] !== undefined) continue;
+      if (shouldDefaultDisableModel(modelID, siblingModelIDs)) {
+        disabled[key] = true;
+        newlyDisabled.push(key);
+      }
+    }
+
     const models = modelEntries.map(([modelID, model]) => ({
       id: modelID,
       name: formatModelLabel(model.name, modelID),
@@ -134,6 +161,12 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
     }
     return a.name.localeCompare(b.name);
   });
+
+  if (newlyKnown.length > 0) {
+    await recordKnownModels({ newlyKnown, newlyDisabled }).catch((err) => {
+      console.warn("[provider-model] 新規モデルの既定状態を保存できません", err);
+    });
+  }
 
   return providers;
 }
