@@ -225,7 +225,6 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   "command-code": "commandcode",
   codex: "codex",
   cursor: "cursor",
-  "cursor-acp": "cursor",
   ollama: "ollama",
   "ollama-cloud": "ollama",
   "opencode-go": "opencode-go",

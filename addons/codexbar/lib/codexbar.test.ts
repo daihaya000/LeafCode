@@ -34,7 +34,7 @@ const SAMPLE = {
       updatedAt: "2026-07-17T03:34:32Z",
     },
     {
-      opencodeProviderId: "cursor-acp",
+      opencodeProviderId: "cursor",
       codexBarProviderId: "cursor",
       usedPercent: 100,
       limited: true,
@@ -397,7 +397,6 @@ describe("providerIconSrcForOpencodeId", () => {
     expect(providerIconSrcForOpencodeId("commandcode")).toBe("/icons/commandcode.svg");
     expect(providerIconSrcForOpencodeId("command-code")).toBe("/icons/commandcode.svg");
     expect(providerIconSrcForOpencodeId("cursor")).toBe("/icons/cursor.png");
-    expect(providerIconSrcForOpencodeId("cursor-acp")).toBe("/icons/cursor.png");
     expect(providerIconSrcForOpencodeId("ollama")).toBe("/icons/ollama.png");
     expect(providerIconSrcForOpencodeId("ollama-cloud")).toBe("/icons/ollama.png");
     expect(providerIconSrcForOpencodeId("opencode-go")).toBe("/icons/opencode.png");

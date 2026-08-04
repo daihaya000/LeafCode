@@ -67,7 +67,7 @@ describe("installWebUiDependencies", () => {
     const source = process.env.OPENCODE_CONFIG_DIR!;
     fs.writeFileSync(
       path.join(source, "opencode.jsonc"),
-      JSON.stringify({ provider: { "cursor-acp": { name: "Cursor", models: { auto: {} } } } }),
+      JSON.stringify({ provider: { "cursor": { name: "Cursor", models: { auto: {} } } } }),
     );
     fs.mkdirSync(path.join(source, "plugin"), { recursive: true });
     fs.writeFileSync(path.join(source, "plugin", "cursor-cli-proxy.js"), "export default {};\n");
@@ -80,10 +80,10 @@ describe("installWebUiDependencies", () => {
 
     expect(installed).toContain("plugin/cursor-cli-proxy.js");
     expect(installed).toContain("packages/cursor-cli-proxy");
-    expect(installed).toContain("provider.cursor-acp");
+    expect(installed).toContain("provider.cursor");
     expect(fs.existsSync(path.join(target, "packages", "cursor-cli-proxy", "index.js"))).toBe(true);
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
-    expect(config.provider["cursor-acp"].name).toBe("Cursor");
+    expect(config.provider["cursor"].name).toBe("Cursor");
   });
 
   it("uses the repository bundle when the active profile has no Cursor CLI Proxy", () => {
@@ -91,7 +91,7 @@ describe("installWebUiDependencies", () => {
     fs.mkdirSync(bundle, { recursive: true });
     fs.writeFileSync(
       path.join(bundle, "opencode.jsonc"),
-      JSON.stringify({ provider: { "cursor-acp": { name: "Bundled Cursor" } } }),
+      JSON.stringify({ provider: { "cursor": { name: "Bundled Cursor" } } }),
     );
     fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
     fs.writeFileSync(path.join(bundle, "plugin", "cursor-cli-proxy.js"), "export default {};\n");
@@ -103,7 +103,7 @@ describe("installWebUiDependencies", () => {
     installWebUiDependencies(target, { commandcodeAuth: false });
 
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
-    expect(config.provider["cursor-acp"].name).toBe("Bundled Cursor");
+    expect(config.provider["cursor"].name).toBe("Bundled Cursor");
     expect(fs.readFileSync(path.join(target, "plugin", "cursor-cli-proxy.js"), "utf8")).toContain("export default");
   });
 

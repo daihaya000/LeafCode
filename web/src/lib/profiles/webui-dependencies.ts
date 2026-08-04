@@ -138,7 +138,7 @@ export function installWebUiDependencies(
     const sourceRoot = parse(fs.readFileSync(sourceConfigPath, "utf8")) as Record<string, unknown>;
     const provider = sourceRoot.provider;
     const value = provider && typeof provider === "object" && !Array.isArray(provider)
-      ? (provider as Record<string, unknown>)["cursor-acp"]
+      ? (provider as Record<string, unknown>)["cursor"]
       : undefined;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       cursorProvider = value as Record<string, unknown>;
@@ -150,6 +150,25 @@ export function installWebUiDependencies(
   const installed: string[] = [];
   // Replace old-named vendor files before copying new ones
   installed.push(...replaceOldVendorFiles(profileDir));
+  // Migrate provider key "cursor-acp" → "cursor" in the target config
+  const root = parse(content) as Record<string, unknown>;
+  const provider = root.provider;
+  const providerObj = provider && typeof provider === "object" && !Array.isArray(provider)
+    ? provider as Record<string, unknown>
+    : undefined;
+  if (providerObj?.["cursor-acp"] !== undefined && providerObj["cursor"] === undefined) {
+    providerObj["cursor"] = providerObj["cursor-acp"];
+    delete providerObj["cursor-acp"];
+    const edits = modify(content, ["provider"], providerObj, {
+      formattingOptions: {
+        insertSpaces: true,
+        tabSize: 2,
+        eol: content.includes("\r\n") ? "\r\n" : "\n",
+      },
+    });
+    content = applyEdits(content, edits);
+    installed.push("migrated:provider.cursor-acp->cursor");
+  }
   if (options.cursorAcp !== false) {
     installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
   }
@@ -168,7 +187,7 @@ export function installWebUiDependencies(
   if (options.browserBridge !== false) {
     entries.push(["mcp", "browser-bridge", webUiMcpEntry()]);
   }
-  if (options.cursorAcp !== false && cursorProvider) entries.push(["provider", "cursor-acp", cursorProvider]);
+  if (options.cursorAcp !== false && cursorProvider) entries.push(["provider", "cursor", cursorProvider]);
   for (const [parent, name, value] of entries) {
     const root = parse(content) as Record<string, unknown>;
     const current = root[parent];

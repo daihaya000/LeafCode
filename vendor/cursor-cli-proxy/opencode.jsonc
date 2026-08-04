@@ -1,6 +1,6 @@
 {
   "provider": {
-    "cursor-acp": {
+    "cursor": {
       "name": "Cursor",
       "npm": "@ai-sdk/openai-compatible",
       "options": {

@@ -1140,14 +1140,14 @@ export function ProviderModelsSettings() {
           </div>
         </section>
       )}
-      {(providers.some((provider) => provider.id === "cursor-acp") ||
+      {(providers.some((provider) => provider.id === "cursor") ||
         providers.some((provider) => provider.id === "anthropic") ||
         providers.some((provider) => provider.id === "opencommand") ||
         providers.some((provider) => provider.id === "commandcode")) && (
         <section aria-labelledby="cli-proxy-heading">
           <h2 id="cli-proxy-heading" className="mb-3 text-sm font-semibold text-muted">CLI Proxy</h2>
           <div className="space-y-3">
-            {providers.some((provider) => provider.id === "cursor-acp") && <CursorCliProxyAuth showHeading={false} />}
+            {providers.some((provider) => provider.id === "cursor") && <CursorCliProxyAuth showHeading={false} />}
             {providers.some((provider) => provider.id === "anthropic") && <ClaudeSubscriptionAuth showHeading={false} />}
             {(providers.some((provider) => provider.id === "opencommand") || providers.some((provider) => provider.id === "commandcode")) && <CommandCodeCliProxyAuth showHeading={false} />}
           </div>

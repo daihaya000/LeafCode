@@ -13,7 +13,7 @@ import {
 describe("mergeConfiguredModelOptions", () => {
   it("adds configured providers missing from the live connected provider list", () => {
     const options = mergeConfiguredModelOptions(
-      [{ value: "cursor-acp::auto", label: "Auto", group: "Cursor" }],
+      [{ value: "cursor::auto", label: "Auto", group: "Cursor" }],
       [{
         id: "commandcode",
         name: "CommandCode",
@@ -22,7 +22,7 @@ describe("mergeConfiguredModelOptions", () => {
     );
 
     expect(options.map((option) => option.value)).toEqual([
-      "cursor-acp::auto",
+      "cursor::auto",
       "commandcode::gpt-5.6-terra",
     ]);
   });
@@ -100,14 +100,14 @@ describe("normalizeProviderBucket", () => {
     expect(normalizeProviderBucket("anthropic")).toBe("anthropic");
     expect(normalizeProviderBucket("ollama-cloud")).toBe("ollama");
     expect(normalizeProviderBucket("opencode-go")).toBe("opencode");
-    expect(normalizeProviderBucket("cursor-acp")).toBe("cursor");
+    expect(normalizeProviderBucket("cursor")).toBe("cursor");
   });
 });
 
 describe("providerSortKey", () => {
   it("orders OpenAI > Anthropic > Ollama > OpenCode > Cursor", () => {
     const keys = [
-      "cursor-acp",
+      "cursor",
       "opencode-go",
       "ollama-cloud",
       "anthropic",
@@ -165,7 +165,7 @@ describe("modelIntelligenceScore", () => {
 describe("sortModelOptions", () => {
   it("orders providers then models by preferred / coding ability", () => {
     const input: ModelOption[] = [
-      { value: "cursor-acp::auto", label: "Auto", group: "Cursor" },
+      { value: "cursor::auto", label: "Auto", group: "Cursor" },
       {
         value: "ollama-cloud::deepseek-v4-flash",
         label: "DeepSeek V4 Flash",
@@ -236,7 +236,7 @@ describe("sortModelOptions", () => {
       "ollama-cloud::kimi-k2.7-code",
       "ollama-cloud::deepseek-v4-flash",
       "opencode-go::glm-5.2",
-      "cursor-acp::auto",
+      "cursor::auto",
     ]);
   });
 

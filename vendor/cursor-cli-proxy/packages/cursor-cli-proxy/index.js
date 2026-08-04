@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+﻿import { createRequire } from "node:module";
 var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
@@ -162,7 +162,7 @@ function shouldEnableCursorPlugin(env = process.env) {
     };
   }
 }
-var CURSOR_PROVIDER_ID = "cursor-acp", NPM_PACKAGE_NAME = "@rama_nigg/open-cursor";
+var CURSOR_PROVIDER_ID = "cursor", NPM_PACKAGE_NAME = "@rama_nigg/open-cursor";
 var init_plugin_toggle = () => {};
 
 // src/utils/logger.ts
@@ -872,7 +872,7 @@ function parseAgentError(stderr) {
       message: clean,
       userMessage: "Not authenticated with Cursor",
       details: {},
-      suggestion: "Run: opencode auth login → Other → cursor-acp, or: cursor-agent login"
+      suggestion: "Run: opencode auth login 竊・Other 竊・cursor-acp, or: cursor-agent login"
     };
   }
   if (clean.includes("ECONNREFUSED") || clean.includes("network") || clean.includes("fetch failed")) {
@@ -995,7 +995,7 @@ var init_errors = __esm(() => {
     /\binvalid\s+(?:session|chat|conversation|thread)(?:\s+id)?/i,
     /\b(?:session|chat|conversation|thread)\s+invalid(?:\s+id)?/i,
     /\b(?:session|chat|conversation|thread)\s+id\s+(?:is\s+)?(?:invalid|not\s+found|expired|missing)/i,
-    /\b(?:session|chat|conversation|thread)\s+(?:isn['’]t|wasn['’]t)\s+found/i,
+    /\b(?:session|chat|conversation|thread)\s+(?:isn['窶兢t|wasn['窶兢t)\s+found/i,
     /\b(?:session|chat|conversation|thread)\s+(?:can(?:not|\s+not)|could\s+not)\s+(?:be\s+)?resumed/i,
     /\bunable\s+to\s+resume\b/i,
     /\bcan(?:not|\s+not)\s+resume\b/i
@@ -3889,7 +3889,7 @@ async function autoRefreshModels(deps = {}) {
 function modelsEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
-var log11, PROVIDER_ID = "cursor-acp", defaultDeps;
+var log11, PROVIDER_ID = "cursor", defaultDeps;
 var init_sync = __esm(() => {
   init_sdk_child();
   init_auth();
@@ -14210,7 +14210,7 @@ var separatorArrayExplode = (style) => {
     return "";
   }
   if (typeof value === "object") {
-    throw new Error("Deeply-nested arrays/objects aren’t supported. Provide your own `querySerializer()` to handle these.");
+    throw new Error("Deeply-nested arrays/objects aren窶冲 supported. Provide your own `querySerializer()` to handle these.");
   }
   return `${name}=${allowReserved ? value : encodeURIComponent(value)}`;
 }, serializeObjectParam = ({ allowReserved, explode, name, style, value, valueOnly }) => {
@@ -17204,7 +17204,7 @@ class ToastService {
     const errorList = errors.length <= 2 ? errors.join("; ") : `${errors.slice(0, 2).join("; ")} +${errors.length - 2} more`;
     await this.show({
       title: "MCP Errors",
-      message: `⚠️ ${errors.length} MCP tool${errors.length > 1 ? "s" : ""} failed: ${errorList}`,
+      message: `笞・・${errors.length} MCP tool${errors.length > 1 ? "s" : ""} failed: ${errorList}`,
       variant: "warning"
     });
   }
@@ -17834,7 +17834,7 @@ class CursorAgentPoolRunner {
     const nodeBin = resolveNodeBinary2();
     const runnerPath = resolveCursorAgentRunnerPath();
     log22.info("spawning persistent cursor-agent runner", {
-      poolKeyHash: this.poolKey.slice(0, 8) + "…",
+      poolKeyHash: this.poolKey.slice(0, 8) + "窶ｦ",
       runnerPath,
       nodeBin
     });
@@ -17853,7 +17853,7 @@ class CursorAgentPoolRunner {
       }
     });
     this.runnerProcess.on("close", (code) => {
-      log22.error(`cursor-agent runner exited with code ${code}`, { poolKeyHash: this.poolKey.slice(0, 8) + "…" });
+      log22.error(`cursor-agent runner exited with code ${code}`, { poolKeyHash: this.poolKey.slice(0, 8) + "窶ｦ" });
       this.runnerProcess = null;
       for (const [, pending] of this.pendingRequests.entries()) {
         pending.promiseRejector(new Error(`Runner exited with code ${code}`));
@@ -18013,7 +18013,7 @@ class CursorAgentPoolManager {
       runner.kill();
       this.runners.delete(poolKey);
       log22.debug("evicted idle cursor-agent runner", {
-        poolKeyHash: poolKey.slice(0, 8) + "…",
+        poolKeyHash: poolKey.slice(0, 8) + "窶ｦ",
         idleMs
       });
     }, idleMs);
@@ -18098,7 +18098,7 @@ var init_cursor_agent_child = __esm(() => {
               this.emit("close", 1);
             });
             log22.debug("cursor-agent pool fallback to SDK runner", {
-              poolKeyHash: options.poolKey.slice(0, 8) + "…"
+              poolKeyHash: options.poolKey.slice(0, 8) + "窶ｦ"
             });
             return;
           } catch (sdkErr) {
@@ -18133,7 +18133,7 @@ var init_cursor_agent_child = __esm(() => {
         runner.sendRequest(requestId, options);
         log22.debug("cursor-agent pool request dispatched", {
           requestId,
-          poolKeyHash: options.poolKey.slice(0, 8) + "…",
+          poolKeyHash: options.poolKey.slice(0, 8) + "窶ｦ",
           resume: !!options.resumeChatId
         });
       } catch (err) {
@@ -18385,7 +18385,7 @@ function buildAvailableToolsSystemMessage(lastToolNames, lastToolMap, mcpToolDef
       servers.set(s.serverName, list);
     }
     const lines = [
-      `MCP TOOLS — Call these tools by their FULL exact name (e.g. mcp__filesystem__read_file).`,
+      `MCP TOOLS 窶・Call these tools by their FULL exact name (e.g. mcp__filesystem__read_file).`,
       `Important: There is NO tool named 'mcp'. Every MCP tool has the format mcp__<server>__<tool>.`,
       "Do NOT call a tool named 'mcp' with parameters. Always use the complete tool name below.",
       ""
@@ -18395,7 +18395,7 @@ function buildAvailableToolsSystemMessage(lastToolNames, lastToolMap, mcpToolDef
       for (const t of tools) {
         const paramHint = t.params?.length ? ` (params: ${t.params.join(", ")})` : "";
         const sourceHint = t.callName === t.toolName ? "" : ` (server: ${t.serverName}; tool: ${t.toolName})`;
-        lines.push(`  - ${t.callName}${paramHint}${t.description ? " — " + t.description : ""}${sourceHint}`);
+        lines.push(`  - ${t.callName}${paramHint}${t.description ? " 窶・" + t.description : ""}${sourceHint}`);
       }
       lines.push("");
     }
@@ -19072,7 +19072,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
   g[key] = state;
   const existingBaseURL = state.baseURLByWorkspace[normalizedWorkspace] ?? state.baseURL;
   if (typeof existingBaseURL === "string" && existingBaseURL.length > 0) {
-    // Re-validate cached proxy — a hung/zombie listener must not be reused
+    // Re-validate cached proxy 窶・a hung/zombie listener must not be reused
     // (Windows ghost sockets accept TCP but never answer /health).
     try {
       const healthUrl = existingBaseURL.replace(/\/v1\/?$/, "/health");
@@ -20331,7 +20331,7 @@ function buildToolHookEntries(registry, fallbackBaseDir) {
   }
   return entries;
 }
-var log23, CURSOR_PROVIDER_ID2 = "cursor-acp", CURSOR_PROVIDER_PREFIX, CURSOR_PROXY_HOST = "127.0.0.1", CURSOR_PROXY_DEFAULT_PORT = Number(process.env.CURSOR_ACP_PROXY_PORT) || 32124, CURSOR_PROXY_DEFAULT_BASE_URL, CURSOR_PROXY_HEALTH_TIMEOUT_MS = 3000, REUSE_EXISTING_PROXY, storedApiKey, cursorAgentAvailabilityCache, SESSION_WORKSPACE_CACHE_LIMIT = 200, FORCE_TOOL_MODE, EMIT_TOOL_UPDATES, FORWARD_TOOL_CALLS, TOOL_LOOP_MODE_RAW, TOOL_LOOP_MODE, TOOL_LOOP_MODE_VALID, PROVIDER_BOUNDARY_MODE_RAW, PROVIDER_BOUNDARY_MODE, PROVIDER_BOUNDARY_MODE_VALID, LEGACY_PROVIDER_BOUNDARY, PROVIDER_BOUNDARY, ENABLE_PROVIDER_BOUNDARY_AUTOFALLBACK, TOOL_LOOP_MAX_REPEAT_RAW, TOOL_LOOP_MAX_REPEAT, TOOL_LOOP_MAX_REPEAT_VALID, PROXY_EXECUTE_TOOL_CALLS, SUPPRESS_CONVERTER_TOOL_EVENTS, SHOULD_EMIT_TOOL_UPDATES, TOOL_HOOK_EXCLUSIONS, OPENCODE_NATIVE_TOOL_HOOK_EXCLUSIONS, CursorPlugin = async ({ $, directory, worktree, client: client3, serverUrl }) => {
+var log23, CURSOR_PROVIDER_ID2 = "cursor", CURSOR_PROVIDER_PREFIX, CURSOR_PROXY_HOST = "127.0.0.1", CURSOR_PROXY_DEFAULT_PORT = Number(process.env.CURSOR_ACP_PROXY_PORT) || 32124, CURSOR_PROXY_DEFAULT_BASE_URL, CURSOR_PROXY_HEALTH_TIMEOUT_MS = 3000, REUSE_EXISTING_PROXY, storedApiKey, cursorAgentAvailabilityCache, SESSION_WORKSPACE_CACHE_LIMIT = 200, FORCE_TOOL_MODE, EMIT_TOOL_UPDATES, FORWARD_TOOL_CALLS, TOOL_LOOP_MODE_RAW, TOOL_LOOP_MODE, TOOL_LOOP_MODE_VALID, PROVIDER_BOUNDARY_MODE_RAW, PROVIDER_BOUNDARY_MODE, PROVIDER_BOUNDARY_MODE_VALID, LEGACY_PROVIDER_BOUNDARY, PROVIDER_BOUNDARY, ENABLE_PROVIDER_BOUNDARY_AUTOFALLBACK, TOOL_LOOP_MAX_REPEAT_RAW, TOOL_LOOP_MAX_REPEAT, TOOL_LOOP_MAX_REPEAT_VALID, PROXY_EXECUTE_TOOL_CALLS, SUPPRESS_CONVERTER_TOOL_EVENTS, SHOULD_EMIT_TOOL_UPDATES, TOOL_HOOK_EXCLUSIONS, OPENCODE_NATIVE_TOOL_HOOK_EXCLUSIONS, CursorPlugin = async ({ $, directory, worktree, client: client3, serverUrl }) => {
   const workspaceDirectory = resolveWorkspaceDirectory(worktree, directory);
   log23.debug("Plugin initializing", {
     directory,
