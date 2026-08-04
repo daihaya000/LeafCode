@@ -11,7 +11,9 @@ const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = 64 * 1024;
 const GITHUB_REPO = "daihaya000/OpenCodeWebUI";
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-const GITHUB_MAIN_ZIP = `https://codeload.github.com/${GITHUB_REPO}/zip/refs/heads/main`;
+// "HEAD" resolves to whatever the default branch is (main/master/etc.),
+// so this doesn't break if the repo's default branch name changes.
+const GITHUB_MAIN_ZIP = `https://codeload.github.com/${GITHUB_REPO}/zip/HEAD`;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
