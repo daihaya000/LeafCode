@@ -14,6 +14,7 @@ import {
   Monitor,
   Moon,
   Plus,
+  Save,
   Star,
   Sun,
   Trash2,
@@ -90,9 +91,11 @@ type AccessInfo = {
 };
 
 type SettingsTab =
+  | "engine"
   | "general"
   | "project"
   | "connectivity"
+  | "git"
   | "skills"
   | "mcp"
   | "plugins"
@@ -252,6 +255,20 @@ export function SettingsView() {
   const [commitAuthorName, setCommitAuthorName] = useState("");
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitIdentityError, setCommitIdentityError] = useState<string | null>(null);
+  // 確定済みスナップショット: 入力値と比較して dirty 判定に使う。
+  // ハングタイムアウト/コミット作者/USD-JPYレートは onBlur 保存のため、
+  // フォーカスを外さずにページ離脱すると未保存になる（再起動でリセット報告の主因）。
+  // 保存ボタンで明示確定できるようにこれらの「最後に保存した値」を保持する。
+  const [committedHangTimeoutMinutes, setCommittedHangTimeoutMinutes] = useState(() =>
+    String(readHangTimeoutMs() / 60_000),
+  );
+  const [committedRate, setCommittedRate] = useState(() =>
+    String(readCostDisplayPrefs().usdJpyRate),
+  );
+  const [committedAuthorName, setCommittedAuthorName] = useState("");
+  const [committedAuthorEmail, setCommittedAuthorEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveFlash, setSaveFlash] = useState<"idle" | "saved" | "error">("idle");
   const [fxStatus, setFxStatus] = useState<
     | { kind: "idle" }
     | { kind: "loading" }
@@ -318,11 +335,13 @@ export function SettingsView() {
     const prefs = readCostDisplayPrefs();
     setCostPrefs(prefs);
     setRateDraft(String(prefs.usdJpyRate));
+    setCommittedRate(String(prefs.usdJpyRate));
   }, []);
 
   const applyCostPrefs = useCallback((next: CostDisplayPrefs) => {
     setCostPrefs(next);
     setRateDraft(String(next.usdJpyRate));
+    setCommittedRate(String(next.usdJpyRate));
     writeCostDisplayPrefs(next);
   }, []);
 
@@ -373,7 +392,9 @@ export function SettingsView() {
     // Without this, out-of-range values are saved as-is but displayed clamped,
     // causing a mismatch between the input and the actual rate used.
     const usdJpyRate = clampUsdJpyRate(Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE);
-    setRateDraft(String(usdJpyRate));
+    const rateStr = String(usdJpyRate);
+    setRateDraft(rateStr);
+    setCommittedRate(rateStr);
     applyCostPrefs({ ...costPrefs, rateMode: "manual", usdJpyRate });
   };
 
@@ -450,7 +471,9 @@ export function SettingsView() {
       (Number.isFinite(minutes) ? minutes : DEFAULT_HANG_TIMEOUT_MS / 60_000) * 60_000,
     );
     writeHangTimeoutMs(milliseconds);
-    setHangTimeoutMinutes(String(milliseconds / 60_000));
+    const minutesStr = String(milliseconds / 60_000);
+    setHangTimeoutMinutes(minutesStr);
+    setCommittedHangTimeoutMinutes(minutesStr);
     void syncHangTimeoutToServer(milliseconds);
   };
 
@@ -466,6 +489,8 @@ export function SettingsView() {
       if (cancelled) return;
       if (name.status === "fulfilled") setCommitAuthorName(name.value.value ?? "");
       if (email.status === "fulfilled") setCommitAuthorEmail(email.value.value ?? "");
+      if (name.status === "fulfilled") setCommittedAuthorName(name.value.value ?? "");
+      if (email.status === "fulfilled") setCommittedAuthorEmail(email.value.value ?? "");
     })();
     return () => {
       cancelled = true;
@@ -481,18 +506,91 @@ export function SettingsView() {
     const value = raw.trim();
     if (value.length > 0 && !isValid(value)) {
       setCommitIdentityError(invalidMessage);
-      return;
+      return false;
     }
     setCommitIdentityError(null);
     try {
       await sendJson("PUT", `/api/settings/${key}`, { value });
+      return true;
     } catch (err) {
       if (mountedRef.current) {
         setCommitIdentityError(
           err instanceof Error ? err.message : "コミット作者の保存に失敗しました",
         );
       }
+      return false;
     }
+  };
+
+  // 保存ボタン用: onBlur 系の未確定入力を一括確定する。
+  // dirty 判定は入力値と committed スナップショットの比較で行う。
+  const isDirty =
+    hangTimeoutMinutes !== committedHangTimeoutMinutes ||
+    rateDraft !== committedRate ||
+    commitAuthorName !== committedAuthorName ||
+    commitAuthorEmail !== committedAuthorEmail;
+
+  const saveAllDirty = async () => {
+    if (saving || !isDirty) return;
+    setSaving(true);
+    setSaveFlash("idle");
+    try {
+      let failed = false;
+      if (hangTimeoutMinutes !== committedHangTimeoutMinutes) {
+        commitHangTimeout();
+        // commitHangTimeout 内で clamp して setHangTimeoutMinutes するが、
+        // state 更新は非同期のため committed には clamp 後の値を計算して入れる。
+        const minutesNum = Number(hangTimeoutMinutes);
+        const ms = clampHangTimeoutMs(
+          (Number.isFinite(minutesNum) ? minutesNum : DEFAULT_HANG_TIMEOUT_MS / 60_000) * 60_000,
+        );
+        setCommittedHangTimeoutMinutes(String(ms / 60_000));
+      }
+      if (rateDraft !== committedRate) {
+        commitRate();
+        // commitRate 内で clamp して setRateDraft するため、committed も clamp 後。
+        const n = Number(rateDraft);
+        const usdJpyRate = clampUsdJpyRate(Number.isFinite(n) ? n : DEFAULT_USD_JPY_RATE);
+        setCommittedRate(String(usdJpyRate));
+      }
+      if (commitAuthorName !== committedAuthorName) {
+        const ok = await commitIdentityField(
+          COMMIT_AUTHOR_NAME_KEY,
+          commitAuthorName,
+          isValidCommitAuthorName,
+          "コミット作者名に使用できない文字が含まれています",
+        );
+        if (ok) setCommittedAuthorName(commitAuthorName);
+        else failed = true;
+      }
+      if (commitAuthorEmail !== committedAuthorEmail) {
+        const ok = await commitIdentityField(
+          COMMIT_AUTHOR_EMAIL_KEY,
+          commitAuthorEmail,
+          isValidCommitAuthorEmail,
+          "コミット作者メールアドレスの形式が不正です",
+        );
+        if (ok) setCommittedAuthorEmail(commitAuthorEmail);
+        else failed = true;
+      }
+      if (mountedRef.current) {
+        setSaveFlash(failed ? "error" : "saved");
+        if (!failed) {
+          setTimeout(() => {
+            if (mountedRef.current) setSaveFlash("idle");
+          }, 1500);
+        }
+      }
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
+  };
+
+  // タブ切り替え時: 未確定の onBlur 系入力があれば自動確定（リセット防止）。
+  // onChange 即時保存系は切り替え前に既に永続化済みのため対象外。
+  const handleTabChange = (next: SettingsTab) => {
+    if (isDirty && !saving) void saveAllDirty();
+    setActiveTab(next);
   };
 
   const restartService = async (target: "webui" | "opencode" | "all") => {
@@ -786,8 +884,40 @@ export function SettingsView() {
       >
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4">
-          <div className="flex h-14 items-center">
+          <div className="flex h-14 items-center justify-between gap-3">
             <h1 className="text-sm font-semibold">設定</h1>
+            <div className="flex items-center gap-2">
+              {saveFlash === "saved" && (
+                <span
+                  className="text-[11px] text-success"
+                  role="status"
+                  aria-live="polite"
+                >
+                  保存しました
+                </span>
+              )}
+              {saveFlash === "error" && (
+                <span
+                  className="text-[11px] text-danger"
+                  role="status"
+                  aria-live="polite"
+                >
+                  保存に失敗した項目があります
+                </span>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                busy={saving}
+                disabled={!isDirty || saving}
+                onClick={() => void saveAllDirty()}
+                aria-label="設定を保存"
+              >
+                <Save className="h-3.5 w-3.5" />
+                保存
+              </Button>
+            </div>
           </div>
           <div className="relative">
             <div
@@ -809,7 +939,7 @@ export function SettingsView() {
                 aria-selected={activeTab === t.key}
                 aria-controls={`settings-panel-${t.key}`}
                 tabIndex={activeTab === t.key ? 0 : -1}
-                onClick={() => setActiveTab(t.key)}
+                onClick={() => handleTabChange(t.key)}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={cx(
                   "shrink-0 cursor-pointer border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap",
