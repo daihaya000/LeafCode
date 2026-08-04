@@ -181,6 +181,29 @@ export async function writeProviderModelState(
 }
 
 /**
+ * Serializes every read-modify-write against the state file within this
+ * process. `atomicWrite` only makes a single write atomic at the filesystem
+ * level — it does nothing to stop two concurrent callers from both reading
+ * the pre-update state and one overwriting the other's change (a lost
+ * update). Every mutator below must go through this queue instead of calling
+ * `readProviderModelState`/`writeProviderModelState` directly.
+ */
+let stateWriteQueue: Promise<unknown> = Promise.resolve();
+
+function withStateLock<T>(mutate: (state: StateFile) => T | StateFile): Promise<T | void> {
+  const run = stateWriteQueue.then(async () => {
+    const state = readProviderModelState();
+    const result = mutate(state);
+    await writeProviderModelState(state);
+    return result as T;
+  });
+  // Keep the chain alive even if this step rejected, so later callers still
+  // run (each awaits its own `run` and observes its own rejection).
+  stateWriteQueue = run.catch(() => undefined);
+  return run;
+}
+
+/**
  * Check whether a provider is disabled.
  */
 export function isProviderDisabled(providerID: string): boolean {
@@ -210,13 +233,13 @@ export async function setProviderModelDisabled(
   key: string,
   disabled: boolean,
 ): Promise<void> {
-  const state = readProviderModelState();
-  if (disabled) {
-    state.disabled[key] = true;
-  } else {
-    delete state.disabled[key];
-  }
-  await writeProviderModelState(state);
+  await withStateLock((state) => {
+    if (disabled) {
+      state.disabled[key] = true;
+    } else {
+      delete state.disabled[key];
+    }
+  });
 }
 
 /**
@@ -230,12 +253,12 @@ export async function recordKnownModels(input: {
   newlyDisabled: string[];
 }): Promise<void> {
   if (input.newlyKnown.length === 0) return;
-  const state = readProviderModelState();
-  const known = new Set(state.knownModelKeys ?? []);
-  for (const key of input.newlyKnown) known.add(key);
-  state.knownModelKeys = [...known];
-  for (const key of input.newlyDisabled) state.disabled[key] = true;
-  await writeProviderModelState(state);
+  await withStateLock((state) => {
+    const known = new Set(state.knownModelKeys ?? []);
+    for (const key of input.newlyKnown) known.add(key);
+    state.knownModelKeys = [...known];
+    for (const key of input.newlyDisabled) state.disabled[key] = true;
+  });
 }
 
 function mergeKnownOrder(next: string[], existing: string[]): string[] {
@@ -258,30 +281,30 @@ export async function setProviderModelOrder(input: {
   providerOrder?: string[];
   modelOrder?: Record<string, string[]>;
 }): Promise<void> {
-  const state = readProviderModelState();
-  if (input.providerOrder) {
-    state.providerOrder = mergeKnownOrder(input.providerOrder, state.providerOrder);
-  }
-  if (input.modelOrder) {
-    for (const [providerID, order] of Object.entries(input.modelOrder)) {
-      state.modelOrder[providerID] = mergeKnownOrder(
-        order,
-        state.modelOrder[providerID] ?? [],
-      );
+  await withStateLock((state) => {
+    if (input.providerOrder) {
+      state.providerOrder = mergeKnownOrder(input.providerOrder, state.providerOrder);
     }
-  }
-  await writeProviderModelState(state);
+    if (input.modelOrder) {
+      for (const [providerID, order] of Object.entries(input.modelOrder)) {
+        state.modelOrder[providerID] = mergeKnownOrder(
+          order,
+          state.modelOrder[providerID] ?? [],
+        );
+      }
+    }
+  });
 }
 
 export async function setProviderIcon(
   providerID: string,
   icon: string | undefined,
 ): Promise<void> {
-  const state = readProviderModelState();
-  const trimmed = icon?.trim();
-  if (trimmed) state.providerIcons[providerID] = trimmed;
-  else delete state.providerIcons[providerID];
-  await writeProviderModelState(state);
+  await withStateLock((state) => {
+    const trimmed = icon?.trim();
+    if (trimmed) state.providerIcons[providerID] = trimmed;
+    else delete state.providerIcons[providerID];
+  });
 }
 
 /**
@@ -291,19 +314,19 @@ export async function setProviderIcon(
  * and its icon override.
  */
 export async function removeProviderState(providerID: string): Promise<void> {
-  const state = readProviderModelState();
-  delete state.disabled[providerID];
-  const prefix = `${providerID}::`;
-  for (const key of Object.keys(state.disabled)) {
-    if (key.startsWith(prefix)) delete state.disabled[key];
-  }
-  state.providerOrder = state.providerOrder.filter((id) => id !== providerID);
-  delete state.modelOrder[providerID];
-  delete state.providerIcons[providerID];
-  if (state.knownModelKeys) {
-    state.knownModelKeys = state.knownModelKeys.filter(
-      (key) => key !== providerID && !key.startsWith(prefix),
-    );
-  }
-  await writeProviderModelState(state);
+  await withStateLock((state) => {
+    delete state.disabled[providerID];
+    const prefix = `${providerID}::`;
+    for (const key of Object.keys(state.disabled)) {
+      if (key.startsWith(prefix)) delete state.disabled[key];
+    }
+    state.providerOrder = state.providerOrder.filter((id) => id !== providerID);
+    delete state.modelOrder[providerID];
+    delete state.providerIcons[providerID];
+    if (state.knownModelKeys) {
+      state.knownModelKeys = state.knownModelKeys.filter(
+        (key) => key !== providerID && !key.startsWith(prefix),
+      );
+    }
+  });
 }

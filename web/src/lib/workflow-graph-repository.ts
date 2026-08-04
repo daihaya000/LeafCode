@@ -152,18 +152,19 @@ function toDraft(row: WorkflowGraphRow): WorkflowGraphDraft {
     )
     .all(row.id) as WorkflowGraphEdgeRow[];
 
-  const nodes: WorkflowGraphNode[] = nodeRows.map((node) => ({
-    id: node.id,
-    type: node.node_type,
-    typeVersion: node.node_type_version,
-    label: node.label,
-    position: { x: node.position_x, y: node.position_y },
-    config: parseObject(node.config, `node ${node.id} config`),
-    disabled: node.disabled === 1,
-    ...(parsePresentation(node.presentation)
-      ? { presentation: parsePresentation(node.presentation) }
-      : {}),
-  }));
+  const nodes: WorkflowGraphNode[] = nodeRows.map((node) => {
+    const presentation = parsePresentation(node.presentation);
+    return {
+      id: node.id,
+      type: node.node_type,
+      typeVersion: node.node_type_version,
+      label: node.label,
+      position: { x: node.position_x, y: node.position_y },
+      config: parseObject(node.config, `node ${node.id} config`),
+      disabled: node.disabled === 1,
+      ...(presentation ? { presentation } : {}),
+    };
+  });
   const edges: WorkflowGraphEdge[] = edgeRows.map((edge) => ({
     id: edge.id,
     source: edge.source_node_id,
@@ -173,6 +174,7 @@ function toDraft(row: WorkflowGraphRow): WorkflowGraphDraft {
     kind: edge.kind,
     ...(edge.label !== null ? { label: edge.label } : {}),
   }));
+  const viewport = parseViewport(row.viewport);
   const graph: WorkflowGraphDraft = {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -181,7 +183,7 @@ function toDraft(row: WorkflowGraphRow): WorkflowGraphDraft {
     registryVersion: row.registry_version,
     nodes,
     edges,
-    ...(parseViewport(row.viewport) ? { viewport: parseViewport(row.viewport) } : {}),
+    ...(viewport ? { viewport } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -61,6 +61,10 @@ describe("sanitizeTitle", () => {
     expect(sanitizeTitle('"Hello"')).toBe("Hello");
     expect(sanitizeTitle("「タイトル」")).toBe("タイトル");
   });
+  it("strips doubly-wrapped quotes (regression: only the outer pair was stripped before)", () => {
+    expect(sanitizeTitle('""Fix login bug""')).toBe("Fix login bug");
+    expect(sanitizeTitle('"「タイトル」"')).toBe("タイトル");
+  });
   it("caps length by code points", () => {
     expect(sanitizeTitle("x".repeat(80), 60)).toHaveLength(60);
   });

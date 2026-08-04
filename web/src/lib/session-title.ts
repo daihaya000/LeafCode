@@ -37,7 +37,9 @@ export function sanitizeTitle(
     .find((l) => l.length > 0);
   if (!firstLine) return "";
   let s = firstLine;
-  // strip surrounding quotes / brackets
+  // strip surrounding quotes / brackets, repeatedly — an LLM-generated title
+  // can come back double-wrapped (e.g. `"“Fix login bug”"`), and stopping
+  // after one pair left the inner one in place.
   const pairs: [string, string][] = [
     ['"', '"'],
     ["'", "'"],
@@ -45,11 +47,15 @@ export function sanitizeTitle(
     ["「", "」"],
     ["『", "』"],
   ];
-  for (const [open, close] of pairs) {
-    if (s.startsWith(open) && s.endsWith(close) && s.length >= 2) {
-      s = s.slice(open.length, s.length - close.length).trim();
-      break;
+  for (let guard = 0; guard < 5; guard++) {
+    const before = s;
+    for (const [open, close] of pairs) {
+      if (s.startsWith(open) && s.endsWith(close) && s.length >= open.length + close.length) {
+        s = s.slice(open.length, s.length - close.length).trim();
+        break;
+      }
     }
+    if (s === before) break;
   }
   const cps = Array.from(s);
   if (cps.length > maxCodePoints) s = cps.slice(0, maxCodePoints).join("");

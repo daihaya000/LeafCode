@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,14 +47,14 @@ const PS_UTF8 =
   "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); " +
   "$OutputEncoding = [Console]::OutputEncoding; ";
 
-function resolveLnkTargets(linksDir: string): QuickAccessEntry[] {
+async function resolveLnkTargets(linksDir: string): Promise<QuickAccessEntry[]> {
   if (!fs.existsSync(linksDir)) return [];
   // R33付記: WScript.Shell via PowerShell is the reliable way to resolve .lnk on Windows
-  // This is a synchronous fallback when listLinksFolder() fails
+  // This is a fallback when listLinksFolder() fails
   try {
     const files = fs.readdirSync(linksDir).filter(f => f.endsWith('.lnk'));
     if (files.length === 0) return [];
-    
+
     const script = `
 ${PS_UTF8}
 $sh = New-Object -ComObject WScript.Shell
@@ -72,18 +72,20 @@ if (-not $out -or @($out).Count -eq 0) { Write-Output '[]' }
 elseif (@($out).Count -eq 1) { Write-Output ('[' + ($out | ConvertTo-Json -Compress) + ']') }
 else { $out | ConvertTo-Json -Compress }
 `;
-    
-    const result = execSync(`powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -Command "${script.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf8',
-      timeout: POWERSHELL_TIMEOUT_MS,
-    });
-    
-    const data = JSON.parse(result.trim());
+
+    // Runs through spawn+shell:false (same as runPsJson), not execSync with a
+    // shell-quoted -Command string: the previous `"${script.replace(/"/g,
+    // '\\"')}"` escaping is cmd.exe's quoting rule, not PowerShell's, and
+    // breaks on scripts containing shell metacharacters. spawn passes the
+    // script as a single argv entry with no shell re-interpretation, and
+    // avoids blocking the event loop for up to POWERSHELL_TIMEOUT_MS.
+    const data = await runPsJson(script);
     if (!Array.isArray(data)) return [];
-    
+
     return data
-      .map((x: { name?: string; path?: string }) => x.name && x.path ? { name: x.name, path: path.resolve(x.path) } : null)
-      .filter((x: QuickAccessEntry | null): x is QuickAccessEntry => x !== null);
+      .map((x) => x as { name?: string; path?: string })
+      .map((x) => (x.name && x.path ? { name: x.name, path: path.resolve(x.path) } : null))
+      .filter((x): x is QuickAccessEntry => x !== null);
   } catch {
     return [];
   }
@@ -166,7 +168,7 @@ else { $out | ConvertTo-Json -Compress }
       .filter((x) => x.name && x.path)
       .map((x) => ({ name: x.name!, path: path.resolve(x.path!) }));
   } catch {
-    return resolveLnkTargets(path.join(os.homedir(), "Links"));
+    return await resolveLnkTargets(path.join(os.homedir(), "Links"));
   }
 }
 
