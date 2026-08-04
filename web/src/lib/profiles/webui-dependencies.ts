@@ -100,6 +100,29 @@ function removeLegacyCommandcodeFiles(targetDir: string): string[] {
   return removed;
 }
 
+/** Remove old-named vendor plugin files before copying the renamed versions. */
+function replaceOldVendorFiles(targetDir: string): string[] {
+  const removed: string[] = [];
+  const oldNew: [string, string][] = [
+    ["plugin/cursor-acp.js", "plugin/cursor-cli-proxy.js"],
+    ["packages/cursor-acp", "packages/cursor-cli-proxy"],
+    ["plugin/claude-auth.js", "plugin/claude-cli-proxy.js"],
+    ["packages/claude-auth", "packages/claude-cli-proxy"],
+    ["plugin/commandcode-cli.js", "plugin/commandcode-cli-proxy.js"],
+    ["packages/commandcode-cli", "packages/commandcode-cli-proxy"],
+  ];
+  for (const [oldRel, newRel] of oldNew) {
+    const oldPath = path.join(targetDir, oldRel);
+    if (!fs.existsSync(oldPath)) continue;
+    // Remove the new-name target first if it exists (stale from partial rename)
+    const newPath = path.join(targetDir, newRel);
+    if (fs.existsSync(newPath)) fs.rmSync(newPath, { recursive: true, force: true });
+    fs.rmSync(oldPath, { recursive: true, force: true });
+    removed.push(`replaced:${oldRel}->${newRel}`);
+  }
+  return removed;
+}
+
 /** Install WebUI MCP and the Cursor/Claude/CommandCode CLI Proxy dependencies without overwriting settings. */
 export function installWebUiDependencies(
   profileDir: string,
@@ -132,7 +155,10 @@ export function installWebUiDependencies(
   }
 
   let content = fs.readFileSync(targetConfigPath, "utf8");
-  const installed = options.commandcodeAuth === false ? [] : removeLegacyCommandcodeFiles(profileDir);
+  const installed: string[] = [];
+  // Replace old-named vendor files before copying new ones
+  installed.push(...replaceOldVendorFiles(profileDir));
+  if (options.commandcodeAuth !== false) installed.push(...removeLegacyCommandcodeFiles(profileDir));
   if (options.cursorAcp !== false) {
     installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
   }
