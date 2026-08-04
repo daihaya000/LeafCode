@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { installWebUiDependencies } from "./webui-dependencies";
+import { installWebUiDependencies, migrateProviderIds } from "./webui-dependencies";
 
 const dirs: string[] = [];
 let previousConfigDir: string | undefined;
@@ -169,5 +169,30 @@ describe("installWebUiDependencies", () => {
     expect(installed).toContain("replaced:packages/commandcode->packages/commandcode-cli-proxy");
     expect(fs.existsSync(path.join(target, "plugin", "commandcode.js"))).toBe(false);
     expect(fs.existsSync(path.join(target, "packages", "commandcode"))).toBe(false);
+  });
+
+  it("migrates provider.cursor-acp to cursor and agent model references", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-migrate-"));
+    dirs.push(dir);
+    fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "opencode.jsonc"),
+      JSON.stringify({ provider: { "cursor-acp": { name: "Cursor" } } }),
+    );
+    fs.writeFileSync(
+      path.join(dir, "agents", "worker.md"),
+      "---\nmodel: cursor-acp::auto\ndescription: cursor worker\n---\n",
+    );
+
+    const installed = migrateProviderIds(dir);
+
+    expect(installed).toContain("migrated:provider.cursor-acp->cursor");
+    expect(installed).toContain("migrated:agent-model:agents/worker.md");
+    const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
+    expect(config.provider["cursor"].name).toBe("Cursor");
+    expect(config.provider["cursor-acp"]).toBeUndefined();
+    const agent = fs.readFileSync(path.join(dir, "agents", "worker.md"), "utf8");
+    expect(agent).toContain("model: cursor::auto");
+    expect(agent).not.toContain("cursor-acp::");
   });
 });

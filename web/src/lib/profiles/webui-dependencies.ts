@@ -122,6 +122,13 @@ function replaceOldVendorFiles(targetDir: string): string[] {
  * Atomic: temp file + rename.
  */
 export function migrateProviderIds(profileDir: string): string[] {
+  const result: string[] = [];
+  result.push(...migrateProviderConfig(profileDir));
+  result.push(...migrateAgentModels(profileDir));
+  return result;
+}
+
+function migrateProviderConfig(profileDir: string): string[] {
   const targetConfigPath = configPath(profileDir);
   if (!fs.existsSync(targetConfigPath)) return [];
   const content = fs.readFileSync(targetConfigPath, "utf8");
@@ -153,6 +160,36 @@ export function migrateProviderIds(profileDir: string): string[] {
     throw error;
   }
   return ["migrated:provider.cursor-acp->cursor"];
+}
+
+function migrateAgentModels(profileDir: string): string[] {
+  const migrated: string[] = [];
+  const OLD_MODEL = /cursor-acp::/g;
+  for (const dirName of ["agents", "agent"]) {
+    const dir = path.join(profileDir, dirName);
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      const filePath = path.join(dir, entry.name);
+      const original = fs.readFileSync(filePath, "utf8");
+      const frontMatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(original);
+      if (!frontMatter) continue;
+      const oldBlock = frontMatter[1];
+      const newBlock = oldBlock.replace(OLD_MODEL, "cursor::");
+      if (newBlock === oldBlock) continue;
+      const replaced = original.replace(frontMatter[0], `---\n${newBlock}\n---`);
+      const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+      fs.writeFileSync(tempPath, replaced, "utf8");
+      try {
+        fs.renameSync(tempPath, filePath);
+      } catch (error) {
+        fs.rmSync(tempPath, { force: true });
+        throw error;
+      }
+      migrated.push(`migrated:agent-model:${dirName}/${entry.name}`);
+    }
+  }
+  return migrated;
 }
 
 /** Install WebUI MCP and the Cursor/Claude/CommandCode CLI Proxy dependencies without overwriting settings. */
