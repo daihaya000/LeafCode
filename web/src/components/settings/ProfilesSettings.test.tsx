@@ -269,7 +269,7 @@ describe("ProfilesSettings", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "作成" })).toBeNull());
   });
 
-  it("renders Browser Bridge and Cursor ACP setup checkboxes", async () => {
+  it("renders Browser Bridge and Cursor CLI Proxy setup checkboxes", async () => {
     global.fetch = mockFetch({
       "/api/profiles": BASE_LIST,
       "/api/host": HOST_OK,
@@ -279,7 +279,7 @@ describe("ProfilesSettings", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Browser Bridgeの自動セットアップ")).toBeTruthy();
-      expect(screen.getByLabelText("Cursor ACPの自動セットアップ")).toBeTruthy();
+      expect(screen.getByLabelText("Cursor CLI Proxyの自動セットアップ")).toBeTruthy();
     });
     expect(
       (screen.getByLabelText("Browser Bridgeの自動セットアップ") as HTMLInputElement).checked,

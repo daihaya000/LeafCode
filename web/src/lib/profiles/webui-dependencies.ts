@@ -41,31 +41,14 @@ function configPath(dir: string): string {
     .find((candidate) => fs.existsSync(candidate)) ?? path.join(dir, "opencode.jsonc");
 }
 
-function bundledCursorAcpDir(): string | undefined {
-  const explicit = process.env.OPENCODE_WEBUI_CURSOR_ACP_DIR?.trim();
+/** Locate a vendored CLI-proxy plugin dir (repo bundle, optionally overridden by env var). */
+function bundledVendorDir(vendorName: string, envVar?: string): string | undefined {
+  const explicit = envVar ? process.env[envVar]?.trim() : undefined;
   if (explicit) return path.resolve(explicit);
   const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
     ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
     : path.resolve(process.cwd());
-  const candidates = [path.join(root, "vendor", "cursor-acp"), path.join(root, "..", "vendor", "cursor-acp")];
-  return candidates.find((candidate) => fs.existsSync(candidate));
-}
-
-function bundledClaudeAuthDir(): string | undefined {
-  const explicit = process.env.OPENCODE_WEBUI_CLAUDE_AUTH_DIR?.trim();
-  if (explicit) return path.resolve(explicit);
-  const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
-    ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
-    : path.resolve(process.cwd());
-  const candidates = [path.join(root, "vendor", "claude-auth"), path.join(root, "..", "vendor", "claude-auth")];
-  return candidates.find((candidate) => fs.existsSync(candidate));
-}
-
-function bundledCommandcodeCliDir(): string | undefined {
-  const root = process.env.OPENCODE_WEBUI_ROOT?.trim()
-    ? path.resolve(process.env.OPENCODE_WEBUI_ROOT)
-    : path.resolve(process.cwd());
-  const candidates = [path.join(root, "vendor", "commandcode-cli"), path.join(root, "..", "vendor", "commandcode-cli")];
+  const candidates = [path.join(root, "vendor", vendorName), path.join(root, "..", "vendor", vendorName)];
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
@@ -88,9 +71,10 @@ function copyEntry(source: string, target: string): void {
   fs.copyFileSync(source, target);
 }
 
-function copyCursorAcpFiles(targetDir: string, sourceDirs: string[]): string[] {
+/** Copy a CLI-proxy plugin's runtime files into a profile dir from the first matching source dir. */
+function copyVendorFiles(targetDir: string, sourceDirs: string[], relatives: string[]): string[] {
   const copied: string[] = [];
-  for (const relative of ["plugin/cursor-acp.js", "packages/cursor-acp"]) {
+  for (const relative of relatives) {
     const target = path.join(targetDir, relative);
     if (fs.existsSync(target)) continue;
     for (const sourceDir of sourceDirs) {
@@ -101,34 +85,6 @@ function copyCursorAcpFiles(targetDir: string, sourceDirs: string[]): string[] {
       copied.push(relative);
       break;
     }
-  }
-  return copied;
-}
-
-function copyClaudeAuthFiles(targetDir: string, sourceDir: string | undefined): string[] {
-  if (!sourceDir) return [];
-  const copied: string[] = [];
-  for (const relative of ["plugin/claude-auth.js", "packages/claude-auth"]) {
-    const target = path.join(targetDir, relative);
-    if (fs.existsSync(target)) continue;
-    const source = path.join(sourceDir, relative);
-    if (!fs.existsSync(source)) continue;
-    copyEntry(source, target);
-    copied.push(relative);
-  }
-  return copied;
-}
-
-function copyCommandcodeCliFiles(targetDir: string, sourceDir: string | undefined): string[] {
-  if (!sourceDir) return [];
-  const copied: string[] = [];
-  for (const relative of ["plugin/commandcode-cli.js", "packages/commandcode-cli"]) {
-    const target = path.join(targetDir, relative);
-    if (fs.existsSync(target)) continue;
-    const source = path.join(sourceDir, relative);
-    if (!fs.existsSync(source)) continue;
-    copyEntry(source, target);
-    copied.push(relative);
   }
   return copied;
 }
@@ -144,7 +100,7 @@ function removeLegacyCommandcodeFiles(targetDir: string): string[] {
   return removed;
 }
 
-/** Install WebUI MCP, Cursor ACP, and Claude Auth dependencies without overwriting settings. */
+/** Install WebUI MCP and the Cursor/Claude/CommandCode CLI Proxy dependencies without overwriting settings. */
 export function installWebUiDependencies(
   profileDir: string,
   options: WebUiDependencyOptions = {},
@@ -154,9 +110,9 @@ export function installWebUiDependencies(
   if (!fs.existsSync(targetConfigPath)) fs.writeFileSync(targetConfigPath, CONFIG_SKELETON, "utf8");
 
   const activeDir = opencodeConfigDir();
-  const bundledDir = bundledCursorAcpDir();
-  const bundledClaudeAuth = bundledClaudeAuthDir();
-  const bundledCommandcodeCli = bundledCommandcodeCliDir();
+  const bundledDir = bundledVendorDir("cursor-acp", "OPENCODE_WEBUI_CURSOR_ACP_DIR");
+  const bundledClaudeAuth = bundledVendorDir("claude-auth", "OPENCODE_WEBUI_CLAUDE_AUTH_DIR");
+  const bundledCommandcodeCli = bundledVendorDir("commandcode-cli");
   const sourceDirs = [activeDir, bundledDir].filter(
     (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
   );
@@ -177,12 +133,14 @@ export function installWebUiDependencies(
 
   let content = fs.readFileSync(targetConfigPath, "utf8");
   const installed = options.commandcodeAuth === false ? [] : removeLegacyCommandcodeFiles(profileDir);
-  if (options.cursorAcp !== false) installed.push(...copyCursorAcpFiles(profileDir, sourceDirs));
-  if (options.claudeAuth !== false) {
-    installed.push(...copyClaudeAuthFiles(profileDir, bundledClaudeAuth));
+  if (options.cursorAcp !== false) {
+    installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-acp.js", "packages/cursor-acp"]));
   }
-  if (options.commandcodeAuth !== false) {
-    installed.push(...copyCommandcodeCliFiles(profileDir, bundledCommandcodeCli));
+  if (options.claudeAuth !== false && bundledClaudeAuth) {
+    installed.push(...copyVendorFiles(profileDir, [bundledClaudeAuth], ["plugin/claude-auth.js", "packages/claude-auth"]));
+  }
+  if (options.commandcodeAuth !== false && bundledCommandcodeCli) {
+    installed.push(...copyVendorFiles(profileDir, [bundledCommandcodeCli], ["plugin/commandcode-cli.js", "packages/commandcode-cli"]));
   }
   const formattingOptions = {
     insertSpaces: true,
@@ -209,16 +167,6 @@ export function installWebUiDependencies(
     );
     content = applyEdits(content, edits);
     installed.push(`${parent}.${name}`);
-  }
-  if (content !== fs.readFileSync(targetConfigPath, "utf8")) {
-    const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tempPath, content, "utf8");
-    try {
-      fs.renameSync(tempPath, targetConfigPath);
-    } catch (error) {
-      fs.rmSync(tempPath, { force: true });
-      throw error;
-    }
   }
   if (content !== fs.readFileSync(targetConfigPath, "utf8")) {
     const tempPath = `${targetConfigPath}.tmp-${process.pid}-${Date.now()}`;
