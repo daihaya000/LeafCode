@@ -112,6 +112,52 @@ describe("/api/settings/[key]", () => {
       expect(setSetting).toHaveBeenCalledWith("sidebar", json);
     });
 
+    it("stores the commit author identity", async () => {
+      const name = await PUT(
+        putReq({ value: "Daichi" }, "commit-author-name") as never,
+        ctx("commit-author-name"),
+      );
+      expect(name.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("commit-author-name", "Daichi");
+
+      const email = await PUT(
+        putReq({ value: "daichi@estprime.com" }, "commit-author-email") as never,
+        ctx("commit-author-email"),
+      );
+      expect(email.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(
+        "commit-author-email",
+        "daichi@estprime.com",
+      );
+    });
+
+    it("rejects a commit author name that would break the commit header", async () => {
+      const res = await PUT(
+        putReq({ value: "Evil <injected@example.com>" }, "commit-author-name") as never,
+        ctx("commit-author-name"),
+      );
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed commit author email", async () => {
+      const res = await PUT(
+        putReq({ value: "not-an-email" }, "commit-author-email") as never,
+        ctx("commit-author-email"),
+      );
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+
+    it("clears the commit author override with an empty value", async () => {
+      const res = await PUT(
+        putReq({ value: "" }, "commit-author-name") as never,
+        ctx("commit-author-name"),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("commit-author-name", "");
+    });
+
     it("stores the sidepanel-width string", async () => {
       const res = await PUT(putReq({ value: "520" }, "sidepanel-width") as never, ctx("sidepanel-width"));
       expect(res.status).toBe(200);

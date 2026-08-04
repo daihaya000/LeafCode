@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { resolveCommitIdentity } from "@/lib/commit-identity";
 import { invalidateDirStat } from "@/lib/dirstat";
 import { runGit } from "@/lib/git";
 import { commitPathError } from "./path-guard";
@@ -89,14 +90,17 @@ export async function POST(req: NextRequest) {
 
   // Enforce the execution agent as the commit author so every WebUI-driven
   // commit is attributable even when the workspace shares the user's directory
-  // (current_folder) or overrides may exist in the repo's Git config.
+  // (current_folder) or overrides may exist in the repo's Git config. The user
+  // can pin a real identity in settings (see lib/commit-identity) when the
+  // repository is pushed somewhere that needs a resolvable author.
   const agentName = body.agent?.trim() || "build";
+  const identity = resolveCommitIdentity(agentName);
   const gitEnv: Record<string, string> | undefined = SAFE_AGENT.test(agentName)
     ? {
-        GIT_AUTHOR_NAME: agentName,
-        GIT_AUTHOR_EMAIL: `${agentName}@opencode.local`,
-        GIT_COMMITTER_NAME: agentName,
-        GIT_COMMITTER_EMAIL: `${agentName}@opencode.local`,
+        GIT_AUTHOR_NAME: identity.name,
+        GIT_AUTHOR_EMAIL: identity.email,
+        GIT_COMMITTER_NAME: identity.name,
+        GIT_COMMITTER_EMAIL: identity.email,
       }
     : undefined;
 

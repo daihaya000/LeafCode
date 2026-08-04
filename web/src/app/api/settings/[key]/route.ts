@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAutoOptimizeMode } from "@/lib/auto-model";
+import {
+  COMMIT_AUTHOR_EMAIL_KEY,
+  COMMIT_AUTHOR_NAME_KEY,
+  isValidCommitAuthorEmail,
+  isValidCommitAuthorName,
+} from "@/lib/commit-identity-keys";
 import { getSetting, setSetting } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -17,6 +23,8 @@ const ALLOWED_KEYS = new Set<string>([
   "sidebar",
   "sidepanel-width",
   "hang-timeout",
+  COMMIT_AUTHOR_NAME_KEY,
+  COMMIT_AUTHOR_EMAIL_KEY,
 ]);
 
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
@@ -71,6 +79,25 @@ function normalizeSettingValue(
       return { ok: false, error: "hang-timeout must be between 10000 and 1800000 milliseconds" };
     }
     return { ok: true, value: String(Math.round(n)) };
+  }
+
+  if (key === COMMIT_AUTHOR_NAME_KEY) {
+    // Reject rather than silently trim: the value ends up in a Git commit
+    // header, so the user should see exactly what will be stamped.
+    if (!isValidCommitAuthorName(value)) {
+      return {
+        ok: false,
+        error: "commit-author-name contains characters Git cannot store",
+      };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === COMMIT_AUTHOR_EMAIL_KEY) {
+    if (!isValidCommitAuthorEmail(value)) {
+      return { ok: false, error: "commit-author-email must be an email address" };
+    }
+    return { ok: true, value };
   }
 
   if (key === "auto-optimize") {

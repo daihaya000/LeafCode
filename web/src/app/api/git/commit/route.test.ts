@@ -10,7 +10,10 @@ const h = vi.hoisted(() => ({
     path: "C:\\repo",
   })),
   invalidateDirStat: vi.fn<(...args: unknown[]) => void>(() => undefined),
+  getSetting: vi.fn<(key: string) => string | null>(() => null),
 }));
+
+vi.mock("@/lib/db", () => ({ getSetting: (key: string) => h.getSetting(key) }));
 
 vi.mock("@/lib/git", () => ({ runGit: (...a: unknown[]) => h.runGit(...a) }));
 vi.mock("@/lib/allowlist", () => ({
@@ -37,6 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.assertAllowedDirectory.mockReturnValue({ ok: true, path: "C:\\repo" });
   h.runGit.mockResolvedValue({ code: 0, stdout: "abc123 message", stderr: "" });
+  h.getSetting.mockReturnValue(null);
 });
 
 function lastGitEnv() {
@@ -66,6 +70,42 @@ describe("commit author stamping", () => {
       GIT_AUTHOR_NAME: "lead-programmer",
       GIT_AUTHOR_EMAIL: "lead-programmer@opencode.local",
     });
+  });
+
+  it("uses the configured real-user identity when set", async () => {
+    h.getSetting.mockImplementation((key) =>
+      key === "commit-author-name"
+        ? "Daichi"
+        : key === "commit-author-email"
+          ? "daichi@estprime.com"
+          : null,
+    );
+    await post({ directory: "C:\\repo", message: "fix", paths: ["src/a.ts"] });
+    expect(lastGitEnv()).toMatchObject({
+      GIT_AUTHOR_NAME: "Daichi",
+      GIT_AUTHOR_EMAIL: "daichi@estprime.com",
+      GIT_COMMITTER_NAME: "Daichi",
+      GIT_COMMITTER_EMAIL: "daichi@estprime.com",
+    });
+  });
+
+  it("keeps the agent-derived email when only the name is configured", async () => {
+    h.getSetting.mockImplementation((key) =>
+      key === "commit-author-name" ? "Daichi" : null,
+    );
+    await post({ directory: "C:\\repo", message: "fix", paths: ["src/a.ts"] });
+    expect(lastGitEnv()).toMatchObject({
+      GIT_AUTHOR_NAME: "Daichi",
+      GIT_AUTHOR_EMAIL: "build@opencode.local",
+    });
+  });
+
+  it("ignores a stored identity that Git could not store safely", async () => {
+    h.getSetting.mockImplementation((key) =>
+      key === "commit-author-name" ? "Evil <x>" : null,
+    );
+    await post({ directory: "C:\\repo", message: "fix", paths: ["src/a.ts"] });
+    expect(lastGitEnv()).toMatchObject({ GIT_AUTHOR_NAME: "build" });
   });
 
   it("falls back to build for an invalid agent name", async () => {

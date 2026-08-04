@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { assertAllowedDirectory } from "./allowlist";
+import { resolveCommitIdentity } from "./commit-identity";
 import { createTemporaryCopy, removeTemporaryCopy, resolveTemporaryCopyPath } from "./copy";
 import { detectDevcontainer } from "./devcontainer";
 import {
@@ -92,9 +93,10 @@ export async function configureAgentGitIdentity(input: {
       throw new ServiceError(enable.stderr.trim() || "git worktree config failed", 500);
     }
   }
+  const identity = resolveCommitIdentity(input.agentName);
   for (const [key, value] of [
-    ["user.name", input.agentName],
-    ["user.email", `${input.agentName}@opencode.local`],
+    ["user.name", identity.name],
+    ["user.email", identity.email],
   ]) {
     const result = await runGit(input.workspacePath, ["config", scope, key, value]);
     if (result.code !== 0) {

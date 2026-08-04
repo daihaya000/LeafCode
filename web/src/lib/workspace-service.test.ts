@@ -17,6 +17,7 @@ const {
   persistProjectSessions,
   ocServer,
   assertAllowedDirectory,
+  getSetting,
 } = vi.hoisted(() => ({
   getWorkspace: vi.fn(),
   getDb: vi.fn(),
@@ -34,6 +35,7 @@ const {
   persistProjectSessions: vi.fn(),
   ocServer: vi.fn(),
   assertAllowedDirectory: vi.fn(),
+  getSetting: vi.fn<(key: string) => string | null>(() => null),
 }));
 
 vi.mock("./db", () => ({
@@ -48,6 +50,7 @@ vi.mock("./db", () => ({
   deleteProject: vi.fn(),
   listProjects: vi.fn(),
   listWorkspaces: vi.fn(),
+  getSetting,
 }));
 
 vi.mock("./git", () => ({
@@ -124,6 +127,7 @@ function gitWorktreeRow(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getSetting.mockReturnValue(null);
   getDb.mockReturnValue({
     prepare: (sql: string) => ({
       get: () =>
@@ -198,6 +202,34 @@ describe("configureAgentGitIdentity", () => {
       3,
       WT,
       ["config", "--worktree", "user.email", "lead-programmer@opencode.local"],
+    );
+  });
+
+  it("prefers the configured real-user identity over the agent name", async () => {
+    getSetting.mockImplementation((key: string) =>
+      key === "commit-author-name"
+        ? "Daichi"
+        : key === "commit-author-email"
+          ? "daichi@estprime.com"
+          : null,
+    );
+
+    await configureAgentGitIdentity({
+      repoRoot: "C:\\repo",
+      workspacePath: WT,
+      isolation: "git_worktree",
+      agentName: "lead-programmer",
+    });
+
+    expect(runGit).toHaveBeenNthCalledWith(
+      2,
+      WT,
+      ["config", "--worktree", "user.name", "Daichi"],
+    );
+    expect(runGit).toHaveBeenNthCalledWith(
+      3,
+      WT,
+      ["config", "--worktree", "user.email", "daichi@estprime.com"],
     );
   });
 
