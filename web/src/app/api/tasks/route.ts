@@ -20,6 +20,8 @@ import {
 } from "@/lib/opencode-task-permission";
 import { setSessionSkillPermission } from "@/lib/opencode-skill-permission";
 import type { SkillPermission } from "@/lib/skill-permission";
+import { setSessionEditPermission } from "@/lib/opencode-access-mode";
+import type { AccessMode } from "@/lib/access-mode";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import {
   normalizeCommands,
@@ -76,6 +78,10 @@ function isTaskPermission(value: unknown): value is TaskPermission {
 
 function isSkillPermission(value: unknown): value is SkillPermission {
   return value === "allow" || value === "deny";
+}
+
+function isAccessMode(value: unknown): value is AccessMode {
+  return value === "ask" || value === "full";
 }
 
 const IMAGE_MIME_RE = /^image\/[a-z0-9.+-]+$/i;
@@ -248,6 +254,7 @@ export async function POST(req: NextRequest) {
     agent?: string;
     subagentPermission?: unknown;
     skillPermission?: unknown;
+    accessMode?: unknown;
     variant?: unknown;
     files?: unknown;
     auto?: unknown;
@@ -267,6 +274,9 @@ export async function POST(req: NextRequest) {
     !isSkillPermission(body.skillPermission)
   ) {
     return NextResponse.json({ error: "invalid skill permission" }, { status: 400 });
+  }
+  if (body?.accessMode !== undefined && !isAccessMode(body.accessMode)) {
+    return NextResponse.json({ error: "invalid access mode" }, { status: 400 });
   }
   // Neither subagentPermission nor skillPermission requires `agent`:
   // setSessionTaskPermission / setSessionSkillPermission are session-scoped
@@ -465,6 +475,16 @@ export async function POST(req: NextRequest) {
         workspace.absolute_path,
         session.id,
         body.skillPermission,
+      );
+    }
+    // Same reason, for file writes: OpenCode's default ruleset allows `edit`
+    // outright, so without this rule the very first prompt could apply_patch /
+    // write with no permission event — no approval card, even in 確認する.
+    if (body?.accessMode !== undefined) {
+      await setSessionEditPermission(
+        workspace.absolute_path,
+        session.id,
+        body.accessMode,
       );
     }
 

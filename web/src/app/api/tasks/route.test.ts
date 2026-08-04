@@ -91,6 +91,9 @@ vi.mock("@/lib/opencode-task-permission", () => ({
 vi.mock("@/lib/opencode-skill-permission", () => ({
   setSessionSkillPermission: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/lib/opencode-access-mode", () => ({
+  setSessionEditPermission: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { POST } from "./route";
 
@@ -351,6 +354,52 @@ describe("POST /api/tasks variant validation", () => {
       "session-1",
       "deny",
     );
+  });
+
+  it("applies the session edit ruleset before the first prompt", async () => {
+    // Regression: 確認する was client-only, and OpenCode's default ruleset
+    // allows `edit`, so apply_patch / edit / write on the first prompt never
+    // produced a permission event and ran with no approval card.
+    const { ocServer } = await import("@/lib/oc-server");
+    const { setSessionEditPermission } = await import("@/lib/opencode-access-mode");
+    (ocServer as ReturnType<typeof vi.fn>).mockClear();
+    (setSessionEditPermission as ReturnType<typeof vi.fn>).mockClear();
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      accessMode: "ask",
+    });
+
+    expect(res.status).toBe(200);
+    expect(setSessionEditPermission).toHaveBeenCalledWith(
+      "C:\\repo",
+      "session-1",
+      "ask",
+    );
+    const promptIndex = (ocServer as ReturnType<typeof vi.fn>).mock.calls.findIndex(
+      (call) => String(call[1]).includes("/prompt_async"),
+    );
+    expect(promptIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      (setSessionEditPermission as ReturnType<typeof vi.fn>).mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      (ocServer as ReturnType<typeof vi.fn>).mock.invocationCallOrder[promptIndex],
+    );
+  });
+
+  it("returns 400 for an invalid accessMode", async () => {
+    const res = await post({
+      projectId: "project-1",
+      prompt: "hello",
+      isolation: "current_folder",
+      accessMode: "allow",
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/invalid access mode/i);
   });
 
   it("accepts request without variant", async () => {

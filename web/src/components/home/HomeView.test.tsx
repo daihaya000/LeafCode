@@ -859,6 +859,30 @@ describe("HomeView subagent permission", () => {
     expect(sentBody.agent).toBeUndefined();
   });
 
+  it("sends accessMode on submit so 確認する reaches the new session", async () => {
+    // Regression: アクセスモード was client-only. OpenCode's default ruleset
+    // allows `edit`, so without this field the first prompt could apply_patch
+    // with no approval card even though the composer said 確認する.
+    render(<HomeView />);
+    const prompt = await screen.findByPlaceholderText(
+      "タスクを説明してください…（Ctrl+Enter で開始）",
+    );
+    fireEvent.change(prompt, { target: { value: "hello" } });
+    const submit = screen.getByRole("button", {
+      name: "タスク開始",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks",
+        expect.objectContaining({ accessMode: "ask" }),
+      ),
+    );
+  });
+
   it("updates the composer when the shared subagent preference changes elsewhere", async () => {
     render(<HomeView />);
     const select = (await screen.findByLabelText(

@@ -760,6 +760,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         // session's first prompt.
         subagentPermission,
         skillPermission,
+        // 確認する is not self-enforcing: OpenCode allows `edit` by default, so
+        // the mode has to be pushed to the new session as an `edit` ruleset or
+        // the first prompt writes files with no approval card.
+        accessMode,
         ...(agent ? { agent } : {}),
         // Auto decides the effort server-side and the API rejects both being
         // set. `intelligence` is normally "" for Auto, but an agent-scoped
@@ -856,6 +860,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     startMode,
     subagentPermission,
     skillPermission,
+    accessMode,
     submitting,
     engineOk,
     router,

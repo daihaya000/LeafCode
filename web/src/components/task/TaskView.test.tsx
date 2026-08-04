@@ -597,6 +597,23 @@ describe("TaskView", () => {
     }
   });
 
+  it("syncs the access mode to the session as an edit ruleset", async () => {
+    // Regression: 確認する only stopped the WebUI from auto-approving. OpenCode
+    // allows `edit` by default, so edit / write / apply_patch never emitted a
+    // permission event and ran with no approval card.
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+      taskId: "ws1",
+      sessionId: "sess1",
+      mode: "ask",
+    });
+  });
+
   it("auto-rejects skill permission when skill use is denied, leaving others manual", async () => {
     localStorage.setItem("webui:skill-permission", "deny");
     try {

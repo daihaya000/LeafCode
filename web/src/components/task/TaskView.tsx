@@ -997,6 +997,32 @@ export function TaskView({ taskId }: { taskId: string }) {
     };
   }, [task?.id, task?.sessionId]);
 
+  // アクセスモードを OpenCode 側の `edit` ルールとして同期する。
+  // OpenCode の既定ルールセットは `{"*": "allow"}` 始まりで `edit` を素通しする
+  // ため、これを送らないと「確認する」でも edit / write / apply_patch が承認
+  // カードなしで実行される（`permission.asked` が発行されない）。
+  // 依存に accessMode を含めるので、AttentionQueueModal の
+  // writeAccessMode("full") 経由の切替もイベント → state 更新で追従する。
+  useEffect(() => {
+    if (!task?.id || !task.sessionId) return;
+    let cancelled = false;
+    void sendJson("POST", "/api/access-mode", {
+      taskId: task.id,
+      sessionId: task.sessionId,
+      mode: accessMode,
+    }).catch((err) => {
+      if (cancelled) return;
+      setSendError(
+        err instanceof Error
+          ? `アクセスモードを同期できませんでした: ${err.message}`
+          : "アクセスモードを同期できませんでした。",
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id, task?.sessionId, accessMode]);
+
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.
   useEffect(() => {

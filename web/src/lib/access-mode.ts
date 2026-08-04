@@ -10,7 +10,9 @@ export const ACCESS_MODE_OPTIONS: {
   {
     value: "ask",
     label: "確認する",
-    title: "権限が必要な操作は毎回承認を求めます",
+    title:
+      "ファイル書き込み（edit / write / apply_patch）は毎回承認を求めます。" +
+      "bash などは OpenCode の設定に従います",
   },
   {
     value: "full",
