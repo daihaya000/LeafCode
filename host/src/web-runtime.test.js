@@ -9,6 +9,7 @@ import {
   webRestartDelay,
   webRestartSchedule,
   webHealthDecision,
+  pullLatestGitSource,
 } from './web-runtime.js';
 
 test('prod mode rebuilds when BUILD_ID is absent', () => {
@@ -251,4 +252,68 @@ test('decideWebReuseOnStale: dev mode never takes over (no build needed)', () =>
     decideWebReuseOnStale({ reuse: true, mode: 'dev', hasBuild: true, buildStale: true, ownedListenerPids: [1] }),
     { reuse: true },
   );
+});
+
+test('pullLatestGitSource: no .git is a silent no-op', async () => {
+  const result = await pullLatestGitSource('/nope', {
+    existsSync: () => false,
+    execFileAsync: async () => { throw new Error('should not be called'); },
+  });
+  assert.deepEqual(result, { attempted: false });
+});
+
+test('pullLatestGitSource: success returns ok with stdout', async () => {
+  const calls = [];
+  const result = await pullLatestGitSource('/repo', {
+    existsSync: (p) => p === join('/repo', '.git'),
+    execFileAsync: async (file, args, opts) => {
+      calls.push({ file, args, cwd: opts?.cwd });
+      return { stdout: 'Updating abc..def\nFast-forward\n', stderr: '' };
+    },
+  });
+  assert.equal(result.attempted, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, 'Updating abc..def\nFast-forward\n');
+  assert.deepEqual(calls, [{ file: 'git', args: ['pull', '--ff-only'], cwd: '/repo' }]);
+});
+
+test('pullLatestGitSource: Already up to date is ok', async () => {
+  const result = await pullLatestGitSource('/repo', {
+    existsSync: () => true,
+    execFileAsync: async () => ({ stdout: 'Already up to date.\n', stderr: '' }),
+  });
+  assert.equal(result.attempted, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, 'Already up to date.\n');
+});
+
+test('pullLatestGitSource: rejected exec returns ok=false without throwing', async () => {
+  const result = await pullLatestGitSource('/repo', {
+    existsSync: () => true,
+    execFileAsync: async () => { throw new Error('fatal: not a git repository'); },
+  });
+  assert.equal(result.attempted, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'fatal: not a git repository');
+});
+
+test('pullLatestGitSource: missing execFileAsync returns ok=false', async () => {
+  const result = await pullLatestGitSource('/repo', { existsSync: () => true });
+  assert.equal(result.attempted, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'execFileAsync not provided');
+});
+
+test('pullLatestGitSource: passes GIT_TERMINAL_PROMPT=0 and windowsHide', async () => {
+  let observed;
+  await pullLatestGitSource('/repo', {
+    existsSync: () => true,
+    execFileAsync: async (_f, _a, opts) => {
+      observed = opts;
+      return { stdout: '', stderr: '' };
+    },
+  });
+  assert.equal(observed.windowsHide, true);
+  assert.equal(observed.env.GIT_TERMINAL_PROMPT, '0');
+  assert.equal(Number.isFinite(observed.timeout), true);
 });

@@ -1,4 +1,7 @@
-import { spawn, execFileSync, execSync } from 'child_process';
+import { spawn, execFile, execFileSync, execSync } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 import {
   existsSync,
   mkdirSync,
@@ -22,6 +25,7 @@ import {
   webRestartDelay,
   webRestartSchedule,
   webHealthDecision,
+  pullLatestGitSource,
 } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
 import { readPort } from './port-config.js';
@@ -1713,6 +1717,33 @@ async function acquireLock() {
   throw new Error('Could not acquire the host lock after 3 attempts');
 }
 
+/**
+ * Pull the latest commit from the remote into the repo's existing `.git`
+ * before the port/reuse plan is decided. Updating sources here lets the
+ * existing `isWebBuildStale` checks in `resolvePortPlan` and `spawnWeb`
+ * observe the freshly pulled tree, so a pull that brings in newer source
+ * files automatically triggers the production rebuild — no separate build
+ * trigger needed.
+ *
+ * Failures (no network, non-fast-forward, local uncommitted edits) are
+ * logged once and swallowed: the host continues starting with whatever
+ * sources are already on disk, matching the `--ff-only` safety of the
+ * manual update route (`POST /api/updates/webui`). No `.git` (zip
+ * distribution before git-restore) is a silent no-op.
+ */
+async function pullLatestWebSource() {
+  const result = await pullLatestGitSource(REPO_ROOT, { execFileAsync });
+  if (!result.attempted) return; // no .git — zip distribution, handled elsewhere
+  if (result.ok) {
+    const stdout = (result.stdout ?? '').trim();
+    if (stdout && !/^Already up to date\b/.test(stdout)) {
+      log(`Git pull updated sources: ${stdout.split('\n')[0]}`);
+    }
+  } else {
+    log(`Git pull skipped: ${result.error ?? 'unknown error'}`);
+  }
+}
+
 async function resolvePortPlan() {
   const plan = { startOpencode: true, startWeb: true };
 
@@ -1815,6 +1846,7 @@ function procRunning(proc) {
 }
 
 async function startChildren() {
+  await pullLatestWebSource();
   const plan = await resolvePortPlan();
   if (plan.startOpencode) {
     const opencodePath = findOpencode();

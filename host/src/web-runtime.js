@@ -213,6 +213,59 @@ export function isWebBuildStale(webDir, distDir, fsApi = {}) {
   return false;
 }
 
+/**
+ * Pull the latest commit from the remote into an existing `.git` checkout.
+ *
+ * Runs `git pull --ff-only` so local uncommitted work is never destroyed
+ * (a non-fast-forward rejection is reported as a failed pull, not an
+ * overwrite). When `.git` is absent (zip distribution before the
+ * git-restore flow has run, or a plain unpack), this is a no-op — the
+ * Next.js instrumentation handles first-run restore separately.
+ *
+ * The function never throws: network failure, non-fast-forward, local
+ * modifications, or timeout all return `{ attempted: true, ok: false }`
+ * so the host can continue starting with whatever sources are present.
+ *
+ * `existsSync` and `execFileAsync` are injected so the helper mirrors the
+ * fsApi-injection pattern of `isWebBuildStale` and stays unit-testable
+ * without touching the network.
+ *
+ * @param {string} cwd repository root to pull
+ * @param {{
+ *   existsSync?: (path: string) => boolean,
+ *   execFileAsync?: (file: string, args: string[], options: object) => Promise<{ stdout: string, stderr: string }>,
+ *   timeoutMs?: number,
+ * }} [deps]
+ * @returns {Promise<{ attempted: boolean, ok?: boolean, stdout?: string, error?: string }>}
+ */
+export async function pullLatestGitSource(cwd, deps = {}) {
+  const existsSync = deps.existsSync ?? defaultExistsSync;
+  const execFileAsync = deps.execFileAsync;
+  const timeoutMs = Number.isFinite(deps.timeoutMs) ? deps.timeoutMs : 20_000;
+
+  if (!existsSync(join(cwd, '.git'))) {
+    return { attempted: false };
+  }
+  if (typeof execFileAsync !== 'function') {
+    return { attempted: true, ok: false, error: 'execFileAsync not provided' };
+  }
+  try {
+    const { stdout } = await execFileAsync('git', ['pull', '--ff-only'], {
+      cwd,
+      timeout: timeoutMs,
+      windowsHide: true,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+    return { attempted: true, ok: true, stdout: String(stdout ?? '') };
+  } catch (err) {
+    return {
+      attempted: true,
+      ok: false,
+      error: err && typeof err.message === 'string' ? err.message : String(err),
+    };
+  }
+}
+
 function hasNewerFile(dir, buildMtimeMs, distDir, fsApi) {
   let entries;
   try {
