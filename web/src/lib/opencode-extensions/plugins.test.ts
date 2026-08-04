@@ -42,6 +42,7 @@ import {
   setPluginEnabled,
   updateConfiguredPlugin,
 } from "./plugins";
+import { extensionsStatePath } from "./paths";
 
 const CONFIG = `{
   // top comment
@@ -65,7 +66,9 @@ function readConfig(): Record<string, unknown> {
 }
 
 function statePath(): string {
-  return path.join(data, "opencode-extensions.json");
+  // Computed via the real helper (not a hardcoded name): the path is keyed
+  // on the resolved config directory, so it must be derived dynamically.
+  return extensionsStatePath();
 }
 
 function readState(): { disabledPlugins: { id: string; value: unknown; index: number }[] } {
@@ -184,6 +187,7 @@ describe("listPlugins", () => {
   it("diagnoses a corrupt state file and falls back to empty state", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
+      fs.mkdirSync(path.dirname(statePath()), { recursive: true });
       fs.writeFileSync(statePath(), "{ corrupted");
       const plugins = await listPlugins();
       // The listing still works; configured plugins come from the config.
@@ -554,6 +558,38 @@ describe("concurrent operations", () => {
     expect(
       after.find((p) => p.name === "opencode-claude-auth@latest"),
     ).toMatchObject({ enabled: false, managedByWebui: true });
+  });
+});
+
+describe("state isolation across config directories", () => {
+  it("keys the disabled-plugin state file per config directory so switching profiles doesn't leak ghost entries", async () => {
+    // Regression: the profiles feature (docs/specs/opencode-config-profiles.md)
+    // repoints OPENCODE_CONFIG_DIR between entirely different directories.
+    // Disabled-plugin bookkeeping must not be a single shared file, or a
+    // plugin disabled while one profile was active reappears as a
+    // "disabled" ghost row after switching to an unrelated profile that
+    // never configured it at all.
+    const plugins = await listPlugins();
+    const target = plugins.find((p) => p.name === "opencode-claude-auth@latest")!;
+    await setPluginEnabled(target.id, false);
+    const firstStatePath = extensionsStatePath();
+    expect(fs.existsSync(firstStatePath)).toBe(true);
+
+    const otherBase = fs.mkdtempSync(path.join(os.tmpdir(), "plugins-svc-other-"));
+    process.env.OPENCODE_CONFIG_DIR = otherBase;
+    fs.writeFileSync(path.join(otherBase, "opencode.jsonc"), "{}");
+    try {
+      const secondStatePath = extensionsStatePath();
+      expect(secondStatePath).not.toBe(firstStatePath);
+      expect(fs.existsSync(secondStatePath)).toBe(false);
+
+      const otherPlugins = await listPlugins();
+      expect(
+        otherPlugins.find((p) => p.name === "opencode-claude-auth@latest"),
+      ).toBeUndefined();
+    } finally {
+      fs.rmSync(otherBase, { recursive: true, force: true });
+    }
   });
 });
 

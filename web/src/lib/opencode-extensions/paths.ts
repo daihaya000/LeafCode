@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -55,13 +56,46 @@ export function opencodeConfigFilePath(): string {
 }
 
 /**
+ * Resolve the config directory's real identity for keying WebUI-local state
+ * that must not leak between OpenCode config profiles.
+ *
+ * `~/.config/opencode` (or `OPENCODE_CONFIG_DIR`) can be a junction/symlink
+ * that the profiles feature (`docs/specs/opencode-config-profiles.md`)
+ * repoints to switch between entirely different OpenCode config
+ * directories. Resolving through the link (rather than keying on the link
+ * path itself) ensures each profile gets its own bookkeeping instead of
+ * sharing one file that would otherwise "leak" WebUI-local records (e.g. a
+ * disabled agent or plugin) from whichever profile was active when the
+ * record was created into every other profile.
+ */
+export function configDirStateKey(): string {
+  const dir = opencodeConfigDir();
+  let real: string;
+  try {
+    real = fs.realpathSync(dir);
+  } catch {
+    // Not created yet (e.g. brand-new profile) — the raw path is still a
+    // stable, profile-specific identity.
+    real = path.resolve(dir);
+  }
+  // Windows paths are case-insensitive; normalize so the same directory
+  // always hashes to the same key regardless of case.
+  const identity = process.platform === "win32" ? real.toLowerCase() : real;
+  return crypto.createHash("sha256").update(identity).digest("hex").slice(0, 16);
+}
+
+/**
  * WebUI-local state for disabled configured plugins. Lives in the
  * machine-local data dir (never in the repo or the OpenCode config dir),
  * because "a configured plugin is disabled" is a WebUI-managed fact, not an
  * OpenCode config value.
+ *
+ * Keyed per config directory (see `configDirStateKey()`) so switching
+ * OpenCode config profiles doesn't resurrect another profile's disabled
+ * plugins as ghost entries.
  */
 export function extensionsStatePath(): string {
-  return path.join(dataDir(), "opencode-extensions.json");
+  return path.join(dataDir(), "opencode-extensions", `${configDirStateKey()}.json`);
 }
 
 /**

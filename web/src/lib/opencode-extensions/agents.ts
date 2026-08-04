@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +17,7 @@ import {
 } from "./jsonc-edit";
 import {
   agentDefinitionDirs,
-  opencodeConfigDir,
+  configDirStateKey,
   opencodeConfigFilePath,
   projectAgentDefinitionDirs,
   projectConfigFilePath,
@@ -62,50 +61,18 @@ type AgentStateFile = {
 };
 
 /**
- * Resolve the config directory's real identity for keying WebUI-local state.
- *
- * `~/.config/opencode` can be a junction/symlink that the profiles feature
- * (`docs/specs/opencode-config-profiles.md`) repoints to switch between
- * entirely different OpenCode config directories. Resolving through the
- * link (rather than keying on the link path itself) ensures each profile
- * gets its own agent-disable bookkeeping instead of sharing one file that
- * would otherwise "leak" disabled-agent ghosts from whichever profile was
- * active when they were disabled into every other profile.
- */
-function configDirIdentity(): string {
-  const dir = opencodeConfigDir();
-  let real: string;
-  try {
-    real = fs.realpathSync(dir);
-  } catch {
-    // Not created yet (e.g. brand-new profile) — the raw path is still a
-    // stable, profile-specific identity.
-    real = path.resolve(dir);
-  }
-  // Windows paths are case-insensitive; normalize so the same directory
-  // always hashes to the same key regardless of case.
-  return process.platform === "win32" ? real.toLowerCase() : real;
-}
-
-function configDirStateKey(): string {
-  return crypto
-    .createHash("sha256")
-    .update(configDirIdentity())
-    .digest("hex")
-    .slice(0, 16);
-}
-
-/**
  * Per-config-directory WebUI state file for disabled-agent bookkeeping.
  *
  * Deliberately not the old flat `dataDir()/agent-state.json`: that single
  * file was shared across every OpenCode config profile, so switching
  * profiles could resurrect another profile's disabled-agent entries as
  * ghost rows (agents that don't exist in the now-active profile at all).
- * No migration from the old path is performed — starting empty for a
- * profile that has never been seen is the safe default; the config file's
- * own `agent.<name>.disable` flags and definition files remain the source
- * of truth for anything that matters functionally.
+ * `configDirStateKey()` (see `./paths`) keys the file per resolved config
+ * directory instead. No migration from the old path is performed —
+ * starting empty for a profile that has never been seen is the safe
+ * default; the config file's own `agent.<name>.disable` flags and
+ * definition files remain the source of truth for anything that matters
+ * functionally.
  */
 export function agentStatePath(): string {
   return path.join(dataDir(), "agent-state", `${configDirStateKey()}.json`);
