@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import fsp, { statfs } from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import {
   computeDirSizeBytes,
   copyTree,
@@ -378,10 +379,13 @@ export function renameProfile(
 }
 
 /**
- * Delete a profile: remove its directory from disk, then drop it from the registry.
+ * Move a profile directory to the OS trash / Recycle Bin, then drop it from the registry.
  *
- * The active profile is refused. `external` profiles (outside `dataDir()/profiles`)
- * are also deleted — the UI confirmation makes that explicit.
+ * On Windows, uses `Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory`
+ * with `SendToRecycleBin` via PowerShell — the same Win32 `SHFileOperation`
+ * the shell uses, so the directory appears in Recycle Bin and is restorable.
+ * On other platforms (or if the PowerShell call fails), falls back to
+ * `fs.rm` recursive delete. The active profile is always refused.
  */
 export async function deleteProfile(
   id: string,
@@ -397,15 +401,51 @@ export async function deleteProfile(
   }
   const [profile] = state.profiles.splice(index, 1);
   writeState(state);
-  try {
-    await fsp.rm(profile.path, { recursive: true, force: true });
-  } catch (err) {
+  const moveErr = moveToTrash(profile.path);
+  if (moveErr) {
     // Registry entry already removed; surface the filesystem failure so the
     // user knows the directory may still be on disk.
     return {
       status: 500,
-      error: `一覧からは削除しましたがディレクトリの削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      error: `一覧からは削除しましたがディレクトリをごみ箱へ移動できませんでした: ${moveErr}`,
     };
   }
   return { ok: true };
+}
+
+/**
+ * Move a path to the OS trash. Returns an error string on failure, or null on
+ * success. On Windows, uses the Recycle Bin via PowerShell; elsewhere, or if
+ * the PowerShell call is unavailable, falls back to a permanent `fs.rm`.
+ */
+function moveToTrash(target: string): string | null {
+  if (process.platform === "win32") {
+    // Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory with
+    // SendToRecycleBin is the managed wrapper over SHFileOperation and
+    // sends the directory to the Recycle Bin (restorable, not permanent).
+    const escaped = target.replace(/'/g, "''");
+    const script = `Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('${escaped}','OnlyErrorDialogs','SendToRecycleBin')`;
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      windowsHide: true,
+      encoding: "utf8",
+    });
+    if (result.status === 0) return null;
+    // Fall back to permanent delete if recycle is unavailable (e.g. path on
+    // a network drive without a recycle bin). Better than leaving it on disk
+    // after the registry entry is already gone.
+    const permErr = permanentDelete(target);
+    if (permErr === null) return null;
+    const msg = (result.stderr || result.stdout || "").toString().trim();
+    return permErr ?? (msg || "ごみ箱への移動に失敗しました");
+  }
+  return permanentDelete(target);
+}
+
+function permanentDelete(target: string): string | null {
+  try {
+    fs.rmSync(target, { recursive: true, force: true });
+    return null;
+  } catch (err) {
+    return `ディレクトリの削除に失敗しました: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }

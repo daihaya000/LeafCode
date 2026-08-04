@@ -4,6 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getJob, resetJobs } from "./jobs";
 import { ensureRegistry } from "./registry";
+
+// `spawnSync` is used to invoke PowerShell for Recycle Bin on Windows. Mock
+// it so the tests don't actually touch the real Recycle Bin.
+const spawnSyncMock = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", () => ({ spawnSync: spawnSyncMock }));
+
 import {
   activate,
   createProfile,
@@ -443,26 +449,63 @@ describe("renameProfile", () => {
 });
 
 describe("deleteProfile", () => {
-  it("removes the directory and the registry entry", async () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+  });
+
+  it("moves the directory to Recycle Bin and drops the registry entry (win32)", async () => {
+    // On Windows, spawnSync (PowerShell) is mocked; pretend the recycle succeeded.
+    spawnSyncMock.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+
     const a = makeConfigDir(path.join(sandbox, "A"), "A");
     const b = makeConfigDir(path.join(sandbox, "B"), "B");
     setupLink(a);
     seedRegistry();
 
     const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
-    const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
     state.profiles.push({ id: "b-id", name: "B", path: b });
     fs.writeFileSync(statePath, JSON.stringify(state));
 
     const result = await deleteProfile("b-id");
     expect(result).toEqual({ ok: true });
 
-    // Directory deleted
+    // PowerShell recycle call invoked exactly once for the directory
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    const [cmd, args] = spawnSyncMock.mock.calls[0];
+    expect(cmd).toBe("powershell.exe");
+    expect(args.join(" ")).toContain("SendToRecycleBin");
+
+    // Registry entry removed
+    state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    expect(state.profiles).toHaveLength(1);
+  });
+
+  it("permanently deletes when Recycle Bin is unavailable (fallback)", async () => {
+    // On Windows, if the PowerShell recycle call fails, deleteProfile falls
+    // back to a permanent fs.rmSync. Simulate that by having spawnSync report
+    // a non-zero exit; the real fs.rmSync then removes the directory.
+    spawnSyncMock.mockReturnValue({ status: 1, stdout: "", stderr: "boom" });
+
+    const a = makeConfigDir(path.join(sandbox, "A"), "A");
+    const b = makeConfigDir(path.join(sandbox, "B"), "B");
+    setupLink(a);
+    seedRegistry();
+
+    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    state.profiles.push({ id: "b-id", name: "B", path: b });
+    fs.writeFileSync(statePath, JSON.stringify(state));
+
+    const result = await deleteProfile("b-id");
+    expect(result).toEqual({ ok: true });
+
+    // PowerShell recycle was attempted, then fell back to permanent delete
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
     expect(fs.existsSync(path.join(b, "opencode.jsonc"))).toBe(false);
 
-    // And removed from registry
-    const updated = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    expect(updated.profiles).toHaveLength(1);
+    state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    expect(state.profiles).toHaveLength(1);
   });
 
   it("refuses to delete the active profile", async () => {

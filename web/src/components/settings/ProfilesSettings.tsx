@@ -378,7 +378,7 @@ export function ProfilesSettings() {
         await load();
       } catch (err) {
         if (!mountedRef.current) return;
-        setActionError(err instanceof Error ? err.message : "削除に失敗しました");
+        setActionError(err instanceof Error ? err.message : "ゴミ箱への移動に失敗しました");
       } finally {
         if (actionBusyRef.current === operation) {
           actionBusyRef.current = null;
@@ -704,11 +704,11 @@ export function ProfilesSettings() {
                           variant="ghost"
                           size="sm"
                           className="justify-center"
-                          aria-label={`${p.name}を削除`}
+                          aria-label={`${p.name}をゴミ箱へ移動`}
                           disabled={jobRunning || actionBusy !== null || busyId !== null}
                           onClick={() => setUnregisterConfirm(p)}
                         >
-                          削除
+                          ゴミ箱へ移動
                         </Button>
                       )}
                     </div>
@@ -777,11 +777,11 @@ export function ProfilesSettings() {
                     variant="ghost"
                     size="sm"
                     className="justify-center"
-                    aria-label={`${p.name}を削除`}
+                    aria-label={`${p.name}をゴミ箱へ移動`}
                     disabled={jobRunning || actionBusy !== null || busyId !== null}
                     onClick={() => setUnregisterConfirm(p)}
                   >
-                    削除
+                    ゴミ箱へ移動
                   </Button>
                 )}
               </div>
@@ -890,15 +890,15 @@ export function ProfilesSettings() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="プロファイル削除の確認"
+          aria-label="プロファイル削除（ゴミ箱へ移動）の確認"
         >
           <div ref={dialogRef} className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-xl">
             <h3 className="text-base font-semibold text-text">
-              「{unregisterConfirm.name}」を削除しますか？
+              「{unregisterConfirm.name}」をゴミ箱へ移動しますか？
             </h3>
             <p className="mt-2 text-sm text-muted">
-              実体ディレクトリ（<code className="font-mono text-xs">{unregisterConfirm.path}</code>）も
-              <strong className="text-text">完全に削除</strong>されます。この操作は取り消せません。
+              実体ディレクトリ（<code className="font-mono text-xs">{unregisterConfirm.path}</code>）を
+              <strong className="text-text">ゴミ箱へ移動</strong>します。ゴミ箱から復元できる場合があります。
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" disabled={actionBusy !== null} onClick={() => setUnregisterConfirm(null)}>キャンセル</Button>
@@ -908,7 +908,7 @@ export function ProfilesSettings() {
                 disabled={busyId !== null}
                 onClick={() => void doDelete(unregisterConfirm)}
               >
-                削除する
+                ゴミ箱へ移動
               </Button>
             </div>
           </div>
