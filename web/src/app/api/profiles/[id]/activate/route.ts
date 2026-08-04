@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { rejectUnlessLocal } from "@/lib/local-request";
 import { activate } from "@/lib/profiles/service";
+import { applySync } from "@/lib/profiles/sync-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,5 +20,13 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true });
+  let syncResult: ReturnType<typeof applySync> | undefined;
+  let syncError: string | undefined;
+  try {
+    syncResult = applySync();
+  } catch (err) {
+    syncError = err instanceof Error ? err.message : String(err);
+  }
+
+  return NextResponse.json({ ok: true, sync: syncResult, syncError });
 }

@@ -226,6 +226,7 @@ export function ProfilesSettings() {
       try {
         await sendJson("POST", `/api/profiles/${profile.id}/activate`, {});
         if (!mountedRef.current) return;
+        window.dispatchEvent(new CustomEvent("profile-activated"));
         // Unknown host status should not silently skip the required restart;
         // only a confirmed unavailable host falls back to manual restart.
         if (hostOk !== false) {

@@ -7,7 +7,9 @@
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
+import { readLinkState } from "./link";
+import { globalConfigLinkPath } from "./paths";
 
 const HOME = homedir();
 
@@ -67,10 +69,25 @@ export type SyncApplyResult = {
 
 export function profilePaths() {
   return {
-    opencode: join(HOME, ".config", "opencode", "opencode.jsonc"),
-    codex: join(HOME, ".codex", "config.toml"),
-    claude: join(HOME, ".claude", "settings.json"),
+    opencode: resolveActiveProfileConfigPath(),
+    codex: path.join(HOME, ".codex", "config.toml"),
+    claude: path.join(HOME, ".claude", "settings.json"),
   };
+}
+
+/**
+ * Determine the active opencode config directory by following the global
+ * config link (`~/.config/opencode`). If it is a link/junction, the link
+ * target is the active profile directory; otherwise the global directory
+ * itself is used. This lets sync follow WebUI profile switching.
+ */
+function resolveActiveProfileConfigPath(): string {
+  const link = readLinkState(globalConfigLinkPath());
+  const targetDir =
+    link.state === "link" && link.target
+      ? link.target
+      : globalConfigLinkPath();
+  return path.join(targetDir, "opencode.jsonc");
 }
 
 function stripJsonc(text: string): string {

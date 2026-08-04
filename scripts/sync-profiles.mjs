@@ -18,16 +18,39 @@
  * the same logic via web/src/lib/profiles/sync-engine.ts. Keep both in sync
  * when changing behavior.
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, lstatSync, readlinkSync, rmdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 
 const HOME = homedir();
-const OPENCODE_CONFIG = join(HOME, ".config", "opencode", "opencode.jsonc");
-const CODEX_CONFIG = join(HOME, ".codex", "config.toml");
-const CLAUDE_SETTINGS = join(HOME, ".claude", "settings.json");
+const OPENCODE_CONFIG_LINK = path.join(HOME, ".config", "opencode");
+const OPENCODE_CONFIG_DEFAULT = path.join(OPENCODE_CONFIG_LINK, "opencode.jsonc");
+const CODEX_CONFIG = path.join(HOME, ".codex", "config.toml");
+const CLAUDE_SETTINGS = path.join(HOME, ".claude", "settings.json");
 
 const dryRun = process.argv.includes("--check");
+
+/**
+ * Determine the active opencode config file by following the global config link
+ * (`~/.config/opencode`). Mirrors web/src/lib/profiles/sync-engine.ts.
+ */
+function resolveActiveOpencodeConfigPath() {
+  try {
+    const stat = lstatSync(OPENCODE_CONFIG_LINK);
+    if (stat.isSymbolicLink()) {
+      const raw = readlinkSync(OPENCODE_CONFIG_LINK);
+      const target = path.isAbsolute(raw)
+        ? path.resolve(raw)
+        : path.resolve(path.dirname(OPENCODE_CONFIG_LINK), raw);
+      return path.join(target, "opencode.jsonc");
+    }
+  } catch {
+    /* fall back to default */
+  }
+  return OPENCODE_CONFIG_DEFAULT;
+}
+
+const OPENCODE_CONFIG = resolveActiveOpencodeConfigPath();
 
 function stripJsonc(text) {
   let out = "";
@@ -370,6 +393,7 @@ if (!result.ok) {
   console.error(`[sync-profiles] ${result.error}`);
   process.exit(2);
 }
+console.log(`[sync-profiles] master: ${OPENCODE_CONFIG}`);
 for (const [name, t] of Object.entries(result.targets)) {
   console.log(`[${name}] ${t.message}`);
 }

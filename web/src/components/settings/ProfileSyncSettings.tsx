@@ -68,8 +68,11 @@ export function ProfileSyncSettings() {
   useEffect(() => {
     mountedRef.current = true;
     void refresh();
+    const onActivated = () => void refresh();
+    window.addEventListener("profile-activated", onActivated);
     return () => {
       mountedRef.current = false;
+      window.removeEventListener("profile-activated", onActivated);
     };
   }, [refresh]);
 
