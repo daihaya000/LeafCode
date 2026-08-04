@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listAgents, setAgentEnabled, setProviderEnabled } from "./agents";
+import {
+  agentStatePath,
+  listAgents,
+  setAgentEnabled,
+  setProviderEnabled,
+} from "./agents";
 
 const mockOcServer = vi.fn();
 vi.mock("@/lib/oc-server", () => ({
@@ -21,7 +26,6 @@ describe("agents extension", () => {
   beforeEach(() => {
     base = fs.mkdtempSync(path.join(os.tmpdir(), "agents-ext-"));
     configPath = path.join(base, "opencode.jsonc");
-    statePath = path.join(base, "opencode-webui", "agent-state.json");
     projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agents-ext-project-"));
     origAppData = process.env.APPDATA;
     origConfigDir = process.env.OPENCODE_CONFIG_DIR;
@@ -29,6 +33,10 @@ describe("agents extension", () => {
     process.env.APPDATA = base;
     process.env.OPENCODE_CONFIG_DIR = base;
     process.env.OPENCODE_WEBUI_PROJECT_ROOT = projectRoot;
+    // Computed after the env vars above are set: the state path is keyed on
+    // the (resolved) config directory, so it must be derived per-test rather
+    // than hardcoded.
+    statePath = agentStatePath();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("{}", { status: 200 })),
@@ -66,6 +74,46 @@ describe("agents extension", () => {
       ["build", true],
       ["explore", false],
     ]);
+  });
+
+  it("keys local state per config directory so switching profiles doesn't leak ghost agents", async () => {
+    // Regression: the profiles feature (docs/specs/opencode-config-profiles.md)
+    // repoints ~/.config/opencode between entirely different directories. The
+    // disabled-agent bookkeeping must not be a single shared file, or an
+    // agent disabled while one profile was active reappears as a "disabled"
+    // ghost row after switching to an unrelated profile that never had it.
+    const live = {
+      name: "b-critical-architect-opencode-go-glm-5-2",
+      mode: "subagent" as const,
+      model: { providerID: "opencode-go", modelID: "glm-5.2" },
+    };
+    mockOcServer.mockResolvedValueOnce([live]);
+    fs.writeFileSync(configPath, "{}");
+    await setAgentEnabled(live.name, false);
+    const firstStatePath = agentStatePath();
+    expect(fs.existsSync(firstStatePath)).toBe(true);
+
+    // Switch to a different config directory (a different profile).
+    const otherBase = fs.mkdtempSync(
+      path.join(os.tmpdir(), "agents-ext-other-"),
+    );
+    process.env.OPENCODE_CONFIG_DIR = otherBase;
+    fs.writeFileSync(path.join(otherBase, "opencode.jsonc"), "{}");
+    try {
+      const secondStatePath = agentStatePath();
+      expect(secondStatePath).not.toBe(firstStatePath);
+      expect(fs.existsSync(secondStatePath)).toBe(false);
+
+      mockOcServer.mockResolvedValueOnce([{ name: "build", mode: "primary" }]);
+      const agents = await listAgents();
+      expect(
+        agents.find(
+          (a) => a.name === "b-critical-architect-opencode-go-glm-5-2",
+        ),
+      ).toBeUndefined();
+    } finally {
+      fs.rmSync(otherBase, { recursive: true, force: true });
+    }
   });
 
   it("merges disabled agents from local state", async () => {
