@@ -237,11 +237,17 @@ function mergeConfiguredProviders(
   return missing.length === 0 ? merged : [...merged, ...missing];
 }
 
-function validateIdentifier(value: string, label: string): string {
+function validateIdentifier(
+  value: string,
+  label: string,
+  extraChars = "",
+): string {
   const trimmed = value.trim();
   if (!trimmed) throw new ExtensionsError("invalid-name", `${label}を入力してください`);
-  if (!/^[A-Za-z0-9._-]+$/.test(trimmed)) {
-    throw new ExtensionsError("invalid-name", `${label}は英数字、._- のみ使用できます`);
+  const pattern = new RegExp(`^[A-Za-z0-9.${extraChars}_-]+$`);
+  if (!pattern.test(trimmed)) {
+    const allowed = extraChars ? `._-${extraChars}` : "._-";
+    throw new ExtensionsError("invalid-name", `${label}は英数字、${allowed} のみ使用できます`);
   }
   return trimmed;
 }
@@ -274,7 +280,7 @@ function providerConfigFromInput(input: CustomProviderInput): {
     throw new ExtensionsError("invalid-name", "Base URL は http:// または https:// で入力してください");
   }
   const models = input.models.map((model) => {
-    const modelID = validateIdentifier(model.id, "モデルID");
+    const modelID = validateIdentifier(model.id, "モデルID", "/");
     return [modelID, { name: model.name?.trim() || modelID }];
   });
   if (models.length === 0) {
