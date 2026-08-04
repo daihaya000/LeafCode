@@ -1,9 +1,9 @@
 import { Badge } from "@/components/ui";
 
-export function CursorAcpAuth() {
+export function CursorAcpAuth({ showHeading = true }: { showHeading?: boolean }) {
   return (
-    <section aria-labelledby="cursor-acp-auth-heading">
-      <h2 id="cursor-acp-auth-heading" className="mb-3 text-sm font-semibold text-muted">Cursor CLI Proxy</h2>
+    <section aria-label={showHeading ? undefined : "Cursor CLI Proxy"} aria-labelledby={showHeading ? "cursor-acp-auth-heading" : undefined}>
+      {showHeading && <h2 id="cursor-acp-auth-heading" className="mb-3 text-sm font-semibold text-muted">Cursor CLI Proxy</h2>}
       <div className="rounded-xl border border-border bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">

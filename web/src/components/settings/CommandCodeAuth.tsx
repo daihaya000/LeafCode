@@ -4,7 +4,7 @@ import { getJson, sendJson } from "@/lib/client";
 
 type AuthResponse = { connected?: boolean };
 
-export function CommandCodeAuth() {
+export function CommandCodeAuth({ showHeading = true }: { showHeading?: boolean }) {
   const [connected, setConnected] = useState(false);
   const [key, setKey] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "saving" | "saved" | "error">("loading");
@@ -44,13 +44,13 @@ export function CommandCodeAuth() {
   };
 
   return (
-    <section aria-labelledby="commandcode-auth-heading">
-      <h2 id="commandcode-auth-heading" className="mb-3 text-sm font-semibold text-muted">CommandCode</h2>
+    <section aria-label={showHeading ? undefined : "CommandCode CLI Proxy"} aria-labelledby={showHeading ? "commandcode-auth-heading" : undefined}>
+      {showHeading && <h2 id="commandcode-auth-heading" className="mb-3 text-sm font-semibold text-muted">CommandCode CLI Proxy</h2>}
       <div className="rounded-xl border border-border bg-surface px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-text">CommandCode CLI認証</h3>
+              <h3 className="text-sm font-semibold text-text">CommandCode CLI Proxy</h3>
               {state !== "loading" && state !== "error" && <Badge tone={connected ? "success" : "neutral"}>{connected ? "接続済み" : "未接続"}</Badge>}
             </div>
             <p className="mt-1 text-xs text-faint">CommandCode CLIの認証キーをCLI互換の認証ストアへ保存します。APIへ直接接続せず、CLI経由のローカルプロキシを使用します。</p>
