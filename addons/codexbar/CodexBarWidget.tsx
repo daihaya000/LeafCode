@@ -7,6 +7,8 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  LayoutGrid,
+  LayoutList,
   RefreshCw,
   SlidersHorizontal,
   X,
@@ -42,6 +44,7 @@ const COLLAPSED_KEY = "webui:addon:codexbar:collapsed";
 const LEGACY_COLLAPSED_KEY = "webui:plugin:codexbar:collapsed";
 const PROVIDERS_KEY = "webui:addon:codexbar:providers";
 const LEGACY_PROVIDERS_KEY = "webui:plugin:codexbar:providers";
+const LAYOUT_KEY = "webui:addon:codexbar:layout";
 
 type ConfigProvider = {
   id: string;
@@ -91,6 +94,22 @@ function saveCollapsed(v: boolean) {
   try {
     localStorage.setItem(COLLAPSED_KEY, v ? "1" : "0");
     localStorage.removeItem(LEGACY_COLLAPSED_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Provider list layout: two-column keeps the sidebar widget shorter. */
+function loadTwoColumn(): boolean {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === "2";
+  } catch {
+    return false;
+  }
+}
+function saveTwoColumn(v: boolean) {
+  try {
+    localStorage.setItem(LAYOUT_KEY, v ? "2" : "1");
   } catch {
     /* ignore */
   }
@@ -266,11 +285,14 @@ function ProviderRow({
   now,
   collapsed,
   onToggle,
+  compact,
 }: {
   p: CodexBarProvider;
   now: number;
   collapsed: boolean;
   onToggle: () => void;
+  /** Two-column mode: hide the plan badge so the name/percent stay readable. */
+  compact?: boolean;
 }) {
   const tone = usageTone(p);
   const resets = formatResetsIn(p.resetsAt, now);
@@ -285,7 +307,7 @@ function ProviderRow({
   const planBadge = formatPlanBadge(p.plan, p.planMonthlyUsd);
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2/40 p-2">
+    <li className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-surface-2/40 p-2">
       <button
         type="button"
         onClick={canExpand ? onToggle : undefined}
@@ -300,7 +322,7 @@ function ProviderRow({
       >
         <ProviderIcon id={p.id} tone={showErrorOnly ? "danger" : tone} />
         <span className="min-w-0 flex-1 truncate font-semibold text-text">{label}</span>
-        {planBadge && (
+        {!compact && planBadge && (
           <span
             className="max-w-28 shrink truncate rounded border border-border bg-surface-3 px-1 text-[10px] font-medium text-muted"
             title={`プラン: ${planBadge}`}
@@ -413,6 +435,7 @@ export function CodexBarWidget() {
   const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(true);
+  const [twoColumn, setTwoColumn] = useState(false);
   const [providerCollapsed, setProviderCollapsed] = useState<Record<string, boolean>>(
     {},
   );
@@ -469,6 +492,7 @@ export function CodexBarWidget() {
   useEffect(() => {
     mounted.current = true;
     setCollapsed(loadCollapsed());
+    setTwoColumn(loadTwoColumn());
     setProviderCollapsed(loadProviderCollapsed());
     void refresh();
     const poll = setInterval(() => {
@@ -492,6 +516,14 @@ export function CodexBarWidget() {
     setCollapsed((c) => {
       const next = !c;
       saveCollapsed(next);
+      return next;
+    });
+  };
+
+  const toggleTwoColumn = () => {
+    setTwoColumn((v) => {
+      const next = !v;
+      saveTwoColumn(next);
       return next;
     });
   };
@@ -624,6 +656,23 @@ export function CodexBarWidget() {
         </button>
         <button
           type="button"
+          onClick={toggleTwoColumn}
+          aria-pressed={twoColumn}
+          aria-label={twoColumn ? "1列表示にする" : "2列表示にする"}
+          title={twoColumn ? "1列表示にする" : "2列表示にする（高さを抑える）"}
+          className={cx(
+            "h-6 w-6 rounded-md p-1 hover:bg-surface-2 hover:text-text",
+            twoColumn ? "bg-surface-2 text-text" : "text-faint",
+          )}
+        >
+          {twoColumn ? (
+            <LayoutList className="h-3.5 w-3.5" />
+          ) : (
+            <LayoutGrid className="h-3.5 w-3.5" />
+          )}
+        </button>
+        <button
+          type="button"
           onClick={toggleCollapsed}
           title={collapsed ? "開く" : "折りたたむ"}
           aria-label={collapsed ? "開く" : "折りたたむ"}
@@ -727,7 +776,13 @@ export function CodexBarWidget() {
           <p className="text-[11px] text-faint">プロバイダー情報がありません</p>
         )}
         {!loadError && usage && usage.available && usage.providers.length > 0 && (
-          <ul className="space-y-2.5">
+          <ul
+            className={cx(
+              twoColumn
+                ? "grid grid-cols-2 items-start gap-2"
+                : "space-y-2.5",
+            )}
+          >
             {usage.providers.map((p) => (
               <ProviderRow
                 key={p.id}
@@ -735,6 +790,7 @@ export function CodexBarWidget() {
                 now={now}
                 collapsed={!!providerCollapsed[p.id]}
                 onToggle={() => toggleProvider(p.id)}
+                compact={twoColumn}
               />
             ))}
           </ul>

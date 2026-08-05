@@ -206,3 +206,81 @@ describe("CodexBarWidget error collapse", () => {
     expect(container.textContent).not.toContain("workspace ID が不明です");
   });
 });
+
+describe("CodexBarWidget two-column layout", () => {
+  beforeEach(() => {
+    localStorage.setItem("webui:addon:codexbar:collapsed", "0");
+    localStorage.removeItem("webui:addon:codexbar:layout");
+    localStorage.removeItem("webui:addon:codexbar:providers");
+    getJson.mockReset();
+    getJson.mockImplementation((url: string) => {
+      if (url.endsWith("/tokens")) {
+        return Promise.resolve({ available: false });
+      }
+      return Promise.resolve({
+        available: true,
+        reason: null,
+        schema: "codexbar.usage-snapshot/v1",
+        generatedAt: null,
+        subscriptionTotalMonthlyUsd: null,
+        providers: [
+          {
+            id: "codex",
+            opencodeId: "openai",
+            plan: "Team",
+            planMonthlyUsd: 25,
+            usedPercent: 100,
+            limited: true,
+            maxed: true,
+            resetsAt: null,
+            updatedAt: null,
+            error: null,
+            windows: [],
+            credits: null,
+          },
+          {
+            id: "claude",
+            opencodeId: "anthropic",
+            plan: "Team",
+            planMonthlyUsd: 25,
+            usedPercent: 41,
+            limited: false,
+            maxed: false,
+            resetsAt: null,
+            updatedAt: null,
+            error: null,
+            windows: [],
+            credits: null,
+          },
+        ],
+      });
+    });
+  });
+
+  it("defaults to a single column and toggles into a two-column grid", async () => {
+    const { container } = render(<CodexBarWidget />);
+    await screen.findByText("Codex");
+
+    const list = container.querySelector("ul");
+    expect(list).not.toBeNull();
+    expect(list!.className).not.toContain("grid-cols-2");
+
+    const toggle = screen.getByRole("button", { name: "2列表示にする" });
+    fireEvent.click(toggle);
+
+    expect(container.querySelector("ul")!.className).toContain("grid-cols-2");
+    expect(screen.getByRole("button", { name: "1列表示にする" })).not.toBeNull();
+  });
+
+  it("persists the two-column preference across remounts", async () => {
+    const { container, unmount } = render(<CodexBarWidget />);
+    await screen.findByText("Codex");
+    fireEvent.click(screen.getByRole("button", { name: "2列表示にする" }));
+    expect(container.querySelector("ul")!.className).toContain("grid-cols-2");
+    unmount();
+
+    const second = render(<CodexBarWidget />);
+    await second.findByText("Codex");
+    expect(second.container.querySelector("ul")!.className).toContain("grid-cols-2");
+  });
+});
