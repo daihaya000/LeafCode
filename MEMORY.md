@@ -1,5 +1,41 @@
 # MEMORY
 
+## 新規作成時の Claude CLI Proxy セットアップで provider.anthropic 定義が欠落していた (2026-08-05)
+
+### 症状
+- 新規プロファイル作成時に「Claude CLI Proxy」チェックは入っていたが、作成後の `opencode.jsonc` に `provider.anthropic` 定義が含まれていなかった
+- そのため OpenCode のモデル一覧に Claude モデルが表示されず、「Claude との接続がうまくいかない」状態になっていた
+- `test` プロファイル（`default` からの複製）にも `provider.anthropic` が欠落していた
+
+### 根本原因
+- `web/src/lib/profiles/webui-dependencies.ts` の `installWebUiDependencies()` は、Cursor については active profile / vendor bundle から `provider.cursor` 定義をコピーする仕組みがあった
+- しかし Claude CLI Proxy については **plugin ファイル (`plugin/claude-cli-proxy.js` + `packages/claude-cli-proxy`) のコピーだけ**行い、`provider.anthropic` 定義の追加を行っていなかった
+- Claude CLI Proxy プラグインは `auth.loader` で既存の anthropic プロバイダーの認証を乗っ取るだけで、provider 定義自体を作らないため、新規作成時に provider.anthropic が無いと OpenCode は Claude モデルを認識しない
+
+### 修正
+1. **`vendor/claude-cli-proxy/opencode.jsonc` を新規作成**
+   - 標準的な `provider.anthropic` 定義を含める（`name`, `npm`, `whitelist`, `models`）
+   - モデルは claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5 の 3 種を定義（cost は不要：Claude CLI Proxy の auth loader が `cost: {input:0, output:0, cache:{read:0, write:0}}` で上書きする）
+2. **`web/src/lib/profiles/webui-dependencies.ts` を修正**
+   - `bundledClaudeAuth` ディレクトリから `provider.anthropic` 定義を読み込む
+   - `options.claudeAuth !== false` かつ anthropic 定義が存在し、かつターゲットに `provider.anthropic` が未定義の場合、`provider.anthropic` を追加
+   - 既存の Cursor コピー処理と対称的な実装にした
+3. **`web/src/lib/profiles/webui-dependencies.test.ts` に回帰テストを 2 件追加**
+   - 「Claude CLI Proxy 有効時に bundled Anthropic provider 定義が追加されること」
+   - 「既存の `provider.anthropic` がある場合は上書きしないこと」
+
+### 検証
+- `npx tsc --noEmit` 合格
+- `npx eslint`（該当ファイル）合格
+- `npx vitest run src/lib/profiles/webui-dependencies.test.ts src/components/settings/ProfilesSettings.test.tsx src/app/api/profiles/settings/route.test.ts` 31件全合格
+- 全 `vitest run` は時間がかかるため対象ファイルに絞って検証
+
+### 教訓
+- CLI Proxy プラグインをコピーするだけでは不十分。OpenCode がモデルを認識するには `provider.*` 定義が必要であり、新規作成時に自動追加する必要がある
+- 同様に CommandCode CLI Proxy についても、commandcode provider 定義が bundle に含まれているか確認すべき。今回は `default` プロファイルに commandcode 定義が存在したため影響を受けにくいが、新規 empty 作成時に同様の漏れがないか別途確認が必要
+
+## 設定画面「接続」タブ: Wi-Fiリンク非表示化 + ファイアウォールポート許可ボタン (2026-08-05)
+
 ## スマホ ERR_CONNECTION_FAILED = CaddyfileのIPハードコード × NIC二重接続 (2026-08-05)
 
 ### 症状

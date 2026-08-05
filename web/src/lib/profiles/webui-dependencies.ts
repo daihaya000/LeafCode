@@ -225,6 +225,22 @@ export function installWebUiDependencies(
     }
   }
 
+  let anthropicProvider: Record<string, unknown> | undefined;
+  if (options.claudeAuth !== false && bundledClaudeAuth) {
+    const sourceConfigPath = configPath(bundledClaudeAuth);
+    if (fs.existsSync(sourceConfigPath) && path.resolve(sourceConfigPath) !== path.resolve(targetConfigPath)) {
+      const sourceRoot = parse(fs.readFileSync(sourceConfigPath, "utf8")) as Record<string, unknown>;
+      const provider = sourceRoot.provider;
+      const providerMap = provider && typeof provider === "object" && !Array.isArray(provider)
+        ? (provider as Record<string, unknown>)
+        : undefined;
+      const value = providerMap?.["anthropic"];
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        anthropicProvider = value as Record<string, unknown>;
+      }
+    }
+  }
+
   const installed: string[] = [];
   // Replace old-named vendor files before copying new ones
   installed.push(...replaceOldVendorFiles(profileDir));
@@ -250,6 +266,7 @@ export function installWebUiDependencies(
     entries.push(["mcp", "browser-bridge", webUiMcpEntry()]);
   }
   if (options.cursorAcp !== false && cursorProvider) entries.push(["provider", "cursor", cursorProvider]);
+  if (options.claudeAuth !== false && anthropicProvider) entries.push(["provider", "anthropic", anthropicProvider]);
   for (const [parent, name, value] of entries) {
     const root = parse(content) as Record<string, unknown>;
     const current = root[parent];

@@ -142,6 +142,74 @@ describe("installWebUiDependencies", () => {
     expect(fs.existsSync(path.join(target, "packages", "claude-cli-proxy", "index.js"))).toBe(true);
   });
 
+  it("adds the bundled Anthropic provider definition when Claude CLI Proxy is enabled", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR!;
+    fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "packages", "claude-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "claude-cli-proxy.js"), "export default {};");
+    fs.writeFileSync(path.join(bundle, "packages", "claude-cli-proxy", "index.js"), "export default {};");
+    fs.writeFileSync(
+      path.join(bundle, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          anthropic: {
+            name: "Bundled Anthropic",
+            npm: "@ai-sdk/anthropic",
+            whitelist: ["claude-sonnet-5"],
+            models: { "claude-sonnet-5": { limit: { context: 200000 } } },
+          },
+        },
+      }),
+    );
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
+      "plugin/claude-cli-proxy.js",
+      "packages/claude-cli-proxy",
+      "provider.anthropic",
+    ]);
+    const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
+    expect(config.provider.anthropic.name).toBe("Bundled Anthropic");
+    expect(config.provider.anthropic.whitelist).toEqual(["claude-sonnet-5"]);
+  });
+
+  it("does not overwrite an existing Anthropic provider configuration", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CLAUDE_CLI_PROXY_DIR!;
+    fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "packages", "claude-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "claude-cli-proxy.js"), "export default {};");
+    fs.writeFileSync(path.join(bundle, "packages", "claude-cli-proxy", "index.js"), "export default {};");
+    fs.writeFileSync(
+      path.join(bundle, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          anthropic: {
+            name: "Bundled Anthropic",
+            npm: "@ai-sdk/anthropic",
+            whitelist: ["claude-sonnet-5"],
+            models: { "claude-sonnet-5": { limit: { context: 200000 } } },
+          },
+        },
+      }),
+    );
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+    const configPath = path.join(target, "opencode.jsonc");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ provider: { anthropic: { name: "Existing Anthropic", whitelist: ["claude-opus-5"] } } }),
+    );
+
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
+      "plugin/claude-cli-proxy.js",
+      "packages/claude-cli-proxy",
+    ]);
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(config.provider.anthropic.name).toBe("Existing Anthropic");
+    expect(config.provider.anthropic.whitelist).toEqual(["claude-opus-5"]);
+  });
+
   it("adds the CommandCode auth plugin to a new profile", () => {
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
