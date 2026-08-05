@@ -34,5 +34,15 @@ test("shouldCacheResponse returns false when ok is undefined", () => {
 });
 
 test("service worker uses a new cache version to discard legacy caches", () => {
-  assert.match(serviceWorker, /const CACHE = "opencode-webui-v4";/);
+  assert.match(serviceWorker, /const CACHE = "opencode-webui-v5";/);
+});
+
+test("service worker listens for BUILD_ID messages to wipe stale caches", () => {
+  assert.match(serviceWorker, /addEventListener\("message"/);
+  assert.match(serviceWorker, /type === "BUILD_ID"/);
+  assert.match(serviceWorker, /wipeBuildCache/);
+});
+
+test("service worker keeps /_next/ bypass so chunks are never cached", () => {
+  assert.match(serviceWorker, /url\.pathname\.startsWith\("\/_next\/"\)/);
 });
