@@ -97,9 +97,12 @@ export async function POST(
 
 function openPath(target: string): string | null {
   if (process.platform === "win32") {
-    // explorer /select, when given a directory, selects it in the parent; using
-    // just the directory path opens it. /root gives the intended behaviour.
-    const result = spawnSync("explorer.exe", [target], {
+    // explorer.exe launched directly from a service/desktop-orphaned process
+    // returns 1 and does nothing. Going through powershell.exe with a quoted
+    // path works reliably.
+    const escaped = target.replace(/'/g, "''");
+    const script = `explorer '${escaped}'`;
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
       windowsHide: true,
       encoding: "utf8",
     });
@@ -118,8 +121,10 @@ function openPath(target: string): string | null {
 
 function openFile(target: string): string | null {
   if (process.platform === "win32") {
-    // /select opens the parent folder with the file highlighted.
-    const result = spawnSync("explorer.exe", ["/select,", target], {
+    // Use powershell.exe as the launcher so explorer gets a real shell context.
+    const escaped = target.replace(/'/g, "''");
+    const script = `explorer /select,'${escaped}'`;
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
       windowsHide: true,
       encoding: "utf8",
     });

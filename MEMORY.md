@@ -274,16 +274,22 @@
    - `rejectUnlessLocal` でローカルホストのみ許可
    - アクティブなプロファイルのみ開ける（レジストリ `activeId` と一致するか検証）
    - `open-file` 時は設定ファイル候補を順に探し、見つからなければフォルダを開く
-   - Windows: `explorer.exe`（`/select,` やフォルダパス）、macOS: `open` / `open -R`、Linux: `xdg-open`
 2. **UI 追加**: `web/src/components/settings/ProfilesSettings.tsx`
    - アクティブなプロファイル行に「ファイルを開く」「フォルダを開く」ボタンを追加（desktop table / mobile cards 両方）
    - 既存の `actionBusy` 機構を流用して連打防止
+
+### 修正履歴
+- **初回実装**: `explorer.exe` を `spawnSync` で直接起動 → Windows ではプロセスが即座に `exit 1` になり、Explorer が開かない
+- **修正**: PowerShell (`powershell.exe -NoProfile -Command explorer ...`) を介して起動するように変更
+  - なぜ直接 `explorer.exe` ではダメなのかは未完全解明だが、Next.js の Server Action / Route Handler から呼ばれる子プロセスがデスクトップセッションやシェルコンテキストを持たないため、`explorer.exe` が GUI を起動できないと推測
+  - `cmd.exe /c start "" <path>` は動作したが、設定ファイルを「親フォルダで選択」して開く `/select,` 構文が扱いにくいため PowerShell 経由を採用
 
 ### 検証
 - `npm --prefix web run typecheck` 合格
 - `npm --prefix web run lint` 合格
 - `npm --prefix web run test` 合格（219 test files / 2669 tests passed）
+- Windows 上で Node からの直接 `spawnSync('explorer.exe', ...)` は `status: 1` だが、`spawnSync('powershell.exe', ['-NoProfile','-Command',`explorer ...`])` は `status: 0` かつ実際に Explorer が開くことを手動確認
 
 ### 備考
 - セキュリティ: 開くパスはレジストリに登録されたプロファイルの `path` のみ。クライアントからの任意パスは受け付けない
-- プラットフォーム: win32 / darwin / linux 以外の場合は `xdg-open` 経由フォールバック
+- プラットフォーム: Windows では PowerShell 経由の `explorer`、macOS では `open`、Linux では `xdg-open`
