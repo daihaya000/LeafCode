@@ -402,9 +402,28 @@ export function ProfilesSettings() {
       if (result.installed.length > 0) {
         setActionError(profile.active ? "WebUI依存を追加しました。OpenCode hostを再起動してください。" : "WebUI依存を追加しました。");
       }
-      } catch (err) {
-        if (!mountedRef.current) return;
-        setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setActionError(err instanceof Error ? err.message : "WebUI依存の適用に失敗しました");
+    } finally {
+      if (actionBusyRef.current === operation) {
+        actionBusyRef.current = null;
+        if (mountedRef.current) setActionBusy(null);
+      }
+    }
+  }, []);
+
+  const doOpen = useCallback(async (profile: ProfileDto, action: "open-file" | "open-folder") => {
+    if (actionBusyRef.current !== null || busyIdRef.current !== null) return;
+    const operation = `${action}:${profile.id}`;
+    actionBusyRef.current = operation;
+    setActionBusy(operation);
+    setActionError(null);
+    try {
+      await sendJson("POST", `/api/profiles/${profile.id}/open`, { action });
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setActionError(err instanceof Error ? err.message : "開くことができませんでした");
     } finally {
       if (actionBusyRef.current === operation) {
         actionBusyRef.current = null;
@@ -650,6 +669,32 @@ export function ProfilesSettings() {
                           連携を適用
                         </Button>
                       )}
+                      {p.active && p.exists && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="justify-center"
+                          aria-label={`${p.name}の設定ファイルを開く`}
+                          busy={actionBusy === `open-file:${p.id}`}
+                          disabled={jobRunning || actionBusy !== null || busyId !== null}
+                          onClick={() => void doOpen(p, "open-file")}
+                        >
+                          ファイルを開く
+                        </Button>
+                      )}
+                      {p.active && p.exists && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="justify-center"
+                          aria-label={`${p.name}のフォルダを開く`}
+                          busy={actionBusy === `open-folder:${p.id}`}
+                          disabled={jobRunning || actionBusy !== null || busyId !== null}
+                          onClick={() => void doOpen(p, "open-folder")}
+                        >
+                          フォルダを開く
+                        </Button>
+                      )}
                       {renameId === p.id ? (
                         <Button
                           size="sm"
@@ -734,6 +779,32 @@ export function ProfilesSettings() {
                     onClick={() => void applyDependencies(p)}
                   >
                     連携を適用
+                  </Button>
+                )}
+                {p.active && p.exists && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-center"
+                    aria-label={`${p.name}の設定ファイルを開く`}
+                    busy={actionBusy === `open-file:${p.id}`}
+                    disabled={jobRunning || actionBusy !== null || busyId !== null}
+                    onClick={() => void doOpen(p, "open-file")}
+                  >
+                    ファイルを開く
+                  </Button>
+                )}
+                {p.active && p.exists && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-center"
+                    aria-label={`${p.name}のフォルダを開く`}
+                    busy={actionBusy === `open-folder:${p.id}`}
+                    disabled={jobRunning || actionBusy !== null || busyId !== null}
+                    onClick={() => void doOpen(p, "open-folder")}
+                  >
+                    フォルダを開く
                   </Button>
                 )}
                 <Button

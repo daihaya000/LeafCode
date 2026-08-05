@@ -56,73 +56,6 @@
 - `curl https://192.168.0.193:8443/` は **exit 35 (SSL connect error)** — Caddyfileに `.193` が未登録
 
 ### 根本原因
-`tls internal` は**サイトブロックに列挙された名前にしか証明書を発行しない**。さらに、どのサイトブロックにもマッチしないHostは**TLS完了前に接続を拒否**される。
-Caddyfileは `https://192.168.0.102:8443` をハードコードしていたため、応答経路がWi-Fi(.193)側に寄る構成になった時点で、スマホから到達可能なアドレスでCaddyが応答できず `ERR_CONNECTION_FAILED` になった。
-ホストPCはloopback(`localhost`/`127.0.0.1`)が列挙済みなので動き続ける → **切り分けが極めて困難**。
-
-### 修正
-1. 即時対応: `deploy/Caddyfile` のサイトブロックに `https://192.168.0.193:8443` を追加し `caddy reload`。両IPで200を確認
-2. 恒久対応: **`host/src/caddy-sites.js` を新規作成**し、ホスト起動時にCaddyfileのIPv4エントリを現在のNICアドレスへ自動追従
-   - `syncCaddySiteAddresses(text, addresses)` は純粋関数。`ensureCaddyfile()` から呼ぶ
-   - **loopback は常に保持**（ホストPCのブラウザを壊さない）
-   - **ユーザーが手書きしたホスト名/ドメインは保持**。IPv4リテラルのみ入れ替える
-   - **検出0件なら書き換えない**（NIC取得失敗でリストを空にして全断させない）
-   - 既存のカスタムポートを踏襲。httpsサイトブロックが無いCaddyfileは無変更。失敗しても起動をブロックしない
-3. `deploy/Caddyfile.example` のコメント更新（未登録の名前は「証明書が無い」ではなく「接続自体が拒否される」と明記）
-4. `host/src/caddy-sites.test.js` に10件のテスト追加
-
-### 判断理由
-- DHCP再割当・Wi-Fi/有線切替・NIC追加は日常的に起きる。そのたびに手でCaddyfileを編集させる設計は破綻している
-- Caddyfileはユーザーが編集する前提のファイル(gitignored)なので、**全体を再生成せずIPv4トークンだけを最小限書き換える**方針にした
-
-### 教訓
-- **`tls internal` + 明示的サイトアドレス構成では、未登録のHostは「証明書エラー」ではなく「接続失敗」になる。** 証明書の問題だと思って調査すると迷子になる
-- **「ホストからcurlは通るがスマホから繋がらない」時は、ホストPCの*全*IPv4を列挙してそれぞれcurlする。** loopbackと.102だけ見ていると、実際にスマホが到達している.193が死んでいることに気付けない
-- 同一サブネットへのdual-homed接続（有線+Wi-Fi同時）は応答経路が非対称になりやすくinbound接続を壊す典型構成。`Get-NetRoute`のmetricで優先NICを確認する
-- `Get-NetConnectionProfile`が「識別中...」/Publicを示すNICは、リンクがUpでも正常にLAN参加できていない可能性がある
-
-## 設定画面「接続」タブ: Wi-Fiリンク非表示化 + ファイアウォールポート許可ボタン (2026-08-05)
-
-### 背景
-- LAN(`http://192.168.0.102:3000/`)からアクセスできないという報告を受け、まず`netstat`で調査。WebUIが`127.0.0.1:3000`(ループバックのみ)でLISTENしていたのが原因（`OPENCODE_WEBUI_HOST`未設定時のデフォルト、`host/src/index.js:120`）。ユーザー許可を得て`setx OPENCODE_WEBUI_HOST 0.0.0.0`を設定（トレイ再起動が必要、ユーザー側で実施）。Firewallルール(`OpenCode WebUI`, TCP 3000, 全プロファイル許可)は既に存在していたため変更不要だった。
-- 続けてユーザーから「設定 > 接続タブのWi-Fiリンクを削除してlocalhostリンクを追加」「ポート許可をUIボタンから実行できるようにしてほしい」という2つの要望。
-
-### やったこと
-1. **Wi-Fiリンク非表示 + localhostリンク追加**（`SettingsView.tsx`）
-   - `access.addresses`をそのまま表示するのではなく、`displayAddresses`という導出配列を追加: `kind !== "lan"`でフィルタ（Wi-Fi/Ethernet等の直接IPリンクを除外）、先頭に`access.localUrl`(`http://127.0.0.1:PORT`)のエントリー(`kind: "local"`)を常時追加。
-   - `AccessInfo`型の`addresses[].kind`に`"local"`を追加、`kindLabel()`に`"Local"`ラベルを追加。
-   - `/api/access/route.ts`自体（NIC列挙ロジック）は変更していない。既存の`route.test.ts`がWi-Fi/Tailscale両方が`addresses`に含まれることを検証しているため、API側で除外するとテストと矛盾する。UI表示側だけのフィルタなので、CaddyやVPN等の他用途には影響しない。
-
-2. **ファイアウォールポート許可ボタン**（`host` + `web` 両方）
-   - `host/src/control-server.js`: `matchControlRoute`に`POST /allow-firewall`を追加。`onAllowFirewall`ハンドラ呼び出し、成功時`{ok:true, target:'allow-firewall', ...result}`、未サポート時501、失敗時500(UACキャンセル等)。
-   - `host/src/index.js`: `firewallRuleExists()`(読み取り専用、`netsh advfirewall firewall show rule name=...`、昇格不要)で既存確認→ルールが無ければ`allowFirewallPort()`がPowerShellの`Start-Process -Verb RunAs -Wait -PassThru`でUAC昇格した`netsh add rule`を実行し、ExitCodeで成否判定。ルール名`"OpenCode WebUI"`は`scripts/allow-firewall-3000.bat`と共通。`startControlServer()`で`onAllowFirewall: () => allowFirewallPort()`を登録。
-   - `web/src/lib/host-control.ts`: `hostAllowFirewallPath() => "/allow-firewall"`を追加(`hostVoiceInputPath`と同型パターン)。
-   - `web/src/app/api/host/allow-firewall/route.ts`(新規): `voice-input/route.ts`と同じ構造。`rejectUnlessLocal`でホストPC自身からのアクセスのみ許可（LAN上の第三者がUACダイアログをスパムできないようにするため、`restart`系で使う`rejectUnlessLocalOrPrivateNetwork`より厳しい制限を採用）。UAC応答待ちを考慮し`AbortSignal.timeout(65000)`。
-   - `SettingsView.tsx`: 「ポートを許可」ボタンを接続タブのファイアウォール案内テキストの直前に配置。`sendJson(..., { timeoutMs: 70_000 })`でUAC待ちに対応。busy/success(`既に許可済み`/`許可しました`)/error(元のエラーメッセージそのまま表示、例: UACキャンセル)の3状態を管理。
-
-### 設計判断
-- ファイアウォール変更は管理者権限が必要な破壊力のある操作なので、`voice-input`と同じ「ホストPC自身からのみ」の制限（`rejectUnlessLocal`）を使い、LAN経由のリクエストは拒否。LAN上の誰かがボタンを押せてしまうと、ホストPCの前にいる人に不意打ちでUACダイアログを見せる社会工学的なリスクがあるため。
-- `firewallRuleExists()`による事前チェックで、既に許可済みなら毎回UACダイアログを出さずに即座に成功を返す（べき等性）。
-- Wi-Fi非表示は`route.ts`ではなく`SettingsView.tsx`側のみで実施し、既存の`route.test.ts`（Wi-Fi/Tailscaleが両方addressesに含まれることを検証）を変更せずに済ませた。UIの表示ポリシーとAPIの汎用データ収集を分離する方が影響範囲を狭められる。
-
-### 検証
-- `host`: `node --test src/*.test.js` 全204件pass（control-server.test.jsに/allow-firewallの3ケース追加）
-- `web`: `tsc --noEmit`・`eslint`(該当ファイル)・`vitest run` 全2667件pass（SettingsView.test.tsxに4件、host-control.test.tsに1件、allow-firewall/route.test.tsを新規4件追加）
-
-## 【真の原因】スマホ白画面 = Caddy HTTP/3 (QUIC) とファイアウォールTCP専用の不整合 (2026-08-05)
-
-### 症状
-- スマホ（VPN経由）から `https://192.168.0.102:8443` が白画面 / タイムアウト。1〜2日前までは動いていた
-- ホストPCからは `curl -k` で200、全 `_next/static/chunks/*` も200。WebUI/OpenCode/Caddy すべて健全
-- ホスト再起動しても、OpenCodeが本来のポート(4096)に戻っても症状変わらず
-
-### 切り分け手順（重要）
-- Playwright chromium をiPhone UA + モバイルviewportで LAN HTTPS URL に接続 → **正常にレンダリング**（pageerror/consoleError/失敗リクエスト すべてゼロ）。これでアプリ・JS・チャンク配信の問題を除外できた
-  - 注: `waitUntil:"networkidle"` はSSEが張られ続けるため必ずタイムアウトする。これはエラーではない
-- 除外できた後にプロトコル層を確認 → `curl -k -s -D -` のレスポンスヘッダに `Alt-Svc: h3=":8443"; ma=2592000` を発見。`netstat` に **UDP 0.0.0.0:8443** の listener があった
-- ファイアウォールを確認 → `OpenCode WebUI Caddy HTTPS` は **Protocol TCP / LocalPort 8443 のみ**。UDP 8443 は未開放
-
-### 根本原因
 1. Caddy は既定で HTTP/3 を有効化し、TCP応答に `Alt-Svc: h3=":8443"; ma=2592000` を付ける
 2. ブラウザはこれを **30日間キャッシュ**し、次回以降 QUIC (UDP 8443) で接続しようとする
 3. Windowsファイアウォールは TCP 8443 しか開けていない。さらにVPN経由ではUDPが落ちる/MTU断片化しやすい
@@ -327,3 +260,30 @@ Caddyfileは `https://192.168.0.102:8443` をハードコードしていたた�
 - UTF-8 BOM 付きファイルを `readFileSync(path, "utf8")` で読むと BOM(`\uFEFF`)が先頭に残る。esbuild 入力に渡す前に `src.charCodeAt(0) === 0xFEFF` で strip する。
 - mojibake で `]`(0x5D) が消えるケースがある。元の `E2 80 99 5D`(`']`) が `E7 AA B6 E5 85 A2` に化けた際、`]` が巻き込まれて消失。修復時は文脈（正規表現の文字クラス）から `]` を補完する必要がある。
 - OpenCode のプラグインローダーは `plugin/*.js` を自動スキャンしてロードする。`opencode.jsonc` の `plugin` 配列に裸名を書くと npm registry に解決されるため、ローカルプラグインは `plugin/*.js` 経由か `./packages/*` ディレクトリ指定でのみ配置する。
+
+## プロファイル設定画面に「ファイルを開く」「フォルダを開く」を追加 (2026-08-06)
+
+### 対応内容
+- 設定画面の「プロファイル」タブ（`ProfilesSettings`）で、アクティブなプロファイルに対して
+  - **ファイルを開く**: 設定ファイル（`opencode.jsonc` / `opencode.json` / `config.json` / `config.jsonc`）を OS のデフォルトアプリで開く / 親フォルダで選択表示
+  - **フォルダを開く**: プロファイルディレクトリをエクスプローラー / Finder / ファイルマネージャーで開く
+
+### 実装
+1. **新規 API エンドポイント**: `web/src/app/api/profiles/[id]/open/route.ts`
+   - `POST /api/profiles/{id}/open`、ボディ `{ action: "open-file" | "open-folder" }`
+   - `rejectUnlessLocal` でローカルホストのみ許可
+   - アクティブなプロファイルのみ開ける（レジストリ `activeId` と一致するか検証）
+   - `open-file` 時は設定ファイル候補を順に探し、見つからなければフォルダを開く
+   - Windows: `explorer.exe`（`/select,` やフォルダパス）、macOS: `open` / `open -R`、Linux: `xdg-open`
+2. **UI 追加**: `web/src/components/settings/ProfilesSettings.tsx`
+   - アクティブなプロファイル行に「ファイルを開く」「フォルダを開く」ボタンを追加（desktop table / mobile cards 両方）
+   - 既存の `actionBusy` 機構を流用して連打防止
+
+### 検証
+- `npm --prefix web run typecheck` 合格
+- `npm --prefix web run lint` 合格
+- `npm --prefix web run test` 合格（219 test files / 2669 tests passed）
+
+### 備考
+- セキュリティ: 開くパスはレジストリに登録されたプロファイルの `path` のみ。クライアントからの任意パスは受け付けない
+- プラットフォーム: win32 / darwin / linux 以外の場合は `xdg-open` 経由フォールバック
