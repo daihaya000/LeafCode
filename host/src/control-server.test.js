@@ -51,6 +51,12 @@ test('matchControlRoute maps the voice input endpoint', () => {
   assert.equal(matchControlRoute('GET', '/voice-input'), null);
 });
 
+test('matchControlRoute maps the allow-firewall endpoint', () => {
+  assert.equal(matchControlRoute('POST', '/allow-firewall'), 'allow-firewall');
+  assert.equal(matchControlRoute('post', '/allow-firewall/'), 'allow-firewall');
+  assert.equal(matchControlRoute('GET', '/allow-firewall'), null);
+});
+
 test('matchControlRoute maps the logs endpoint (GET only)', () => {
   assert.equal(matchControlRoute('GET', '/logs'), 'logs');
   assert.equal(matchControlRoute('get', '/logs/'), 'logs');
@@ -124,6 +130,43 @@ test('POST /voice-input reports 501 when unsupported by host', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
   await handle({ method: 'POST', url: '/voice-input' }, res);
+  assert.equal(res.statusCode, 501);
+  assert.equal(res.body.ok, false);
+});
+
+test('POST /allow-firewall reports success with the handler result', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    onAllowFirewall: async () => ({ alreadyExists: false, port: 3000 }),
+  });
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/allow-firewall' }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, {
+    ok: true,
+    target: 'allow-firewall',
+    alreadyExists: false,
+    port: 3000,
+  });
+});
+
+test('POST /allow-firewall reports a failure (e.g. UAC cancelled) with 500', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    onAllowFirewall: async () => {
+      throw new Error('UAC cancelled');
+    },
+  });
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/allow-firewall' }, res);
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(res.body, { ok: false, error: 'UAC cancelled' });
+});
+
+test('POST /allow-firewall reports 501 when unsupported by host', async () => {
+  const handle = createControlRequestHandler(noopHandlers);
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/allow-firewall' }, res);
   assert.equal(res.statusCode, 501);
   assert.equal(res.body.ok, false);
 });

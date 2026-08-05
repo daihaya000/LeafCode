@@ -80,7 +80,7 @@ type AccessInfo = {
     name: string;
     address: string;
     url: string;
-    kind: "caddy" | "vpn" | "lan" | "other";
+    kind: "caddy" | "vpn" | "lan" | "other" | "local";
   }[];
   certificateUrls?: {
     name: string;
@@ -243,6 +243,12 @@ export function SettingsView() {
     useState<ProjectDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [allowFirewallState, setAllowFirewallState] = useState<
+    | { kind: "idle" }
+    | { kind: "busy" }
+    | { kind: "success"; message: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
   const [costPrefs, setCostPrefs] = useState<CostDisplayPrefs>(() =>
     readCostDisplayPrefs(),
   );
@@ -726,6 +732,36 @@ export function SettingsView() {
     }, 1500);
   };
 
+  // Elevated (UAC) netsh call waits on the user's confirmation dialog, so the
+  // timeout must be generous — much longer than the other host-control calls.
+  const doAllowFirewall = async () => {
+    setAllowFirewallState({ kind: "busy" });
+    try {
+      const data = await sendJson<{ alreadyExists?: boolean; port?: number }>(
+        "POST",
+        "/api/host/allow-firewall",
+        {},
+        undefined,
+        { timeoutMs: 70_000 },
+      );
+      if (!mountedRef.current) return;
+      const port = data.port ?? access?.port ?? 3000;
+      setAllowFirewallState({
+        kind: "success",
+        message: data.alreadyExists
+          ? `既に許可済みです（TCP ${port} 番）`
+          : `ファイアウォールでポート ${port} 番を許可しました`,
+      });
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setAllowFirewallState({
+        kind: "error",
+        message:
+          err instanceof Error ? err.message : "ポート許可に失敗しました",
+      });
+    }
+  };
+
   const kindLabel = (kind: string) =>
     kind === "caddy"
       ? "Caddy"
@@ -733,7 +769,24 @@ export function SettingsView() {
         ? "VPN"
         : kind === "lan"
           ? "LAN"
-          : "その他";
+          : kind === "local"
+            ? "Local"
+            : "その他";
+
+  // Wi-Fi / Ethernet(LAN) の直接 IP リンクは表示せず、代わりに 127.0.0.1
+  // (このPC自身からの動作確認用) を先頭に出す。VPN / Caddy はそのまま表示。
+  const displayAddresses = (() => {
+    const filtered = (access?.addresses ?? []).filter((a) => a.kind !== "lan");
+    if (access?.localUrl) {
+      filtered.unshift({
+        name: "Localhost",
+        address: "127.0.0.1",
+        url: access.localUrl,
+        kind: "local",
+      });
+    }
+    return filtered;
+  })();
 
   const requiresAttention = orphans.length + stray.length;
   const setScrollTarget = useMobileScrollTarget();
@@ -1472,7 +1525,7 @@ export function SettingsView() {
                   "VPN 接続後、PC の VPN アドレス:3000 をスマホブラウザで開きます。"}
               </p>
               <ul className="space-y-2">
-                {(access?.addresses ?? []).map((a) => (
+                {displayAddresses.map((a) => (
                   <li
                     key={`${a.name}-${a.address}`}
                     className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-nowrap"
@@ -1514,7 +1567,7 @@ export function SettingsView() {
                     </Button>
                   </li>
                 ))}
-                {access && access.addresses.length === 0 && (
+                {access && displayAddresses.length === 0 && (
                   <li className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-faint">
                     利用可能なネットワークアドレスがありません
                   </li>
@@ -1548,9 +1601,30 @@ export function SettingsView() {
                   </div>
                 </div>
               )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  busy={allowFirewallState.kind === "busy"}
+                  disabled={allowFirewallState.kind === "busy"}
+                  onClick={() => void doAllowFirewall()}
+                >
+                  ポートを許可
+                </Button>
+                {allowFirewallState.kind === "success" && (
+                  <span className="text-xs text-success">
+                    {allowFirewallState.message}
+                  </span>
+                )}
+                {allowFirewallState.kind === "error" && (
+                  <span role="alert" className="text-xs text-danger">
+                    {allowFirewallState.message}
+                  </span>
+                )}
+              </div>
               <p className="mt-2 text-[11px] text-faint">
-                同一ネットワークでも開けない場合は Windows ファイアウォールが原因です。
-                管理者で{" "}
+                同一ネットワークでも開けない場合は Windows ファイアウォールが原因です。上のボタンでポートを許可できます（管理者権限の確認ダイアログが表示されます）。
+                手動で行う場合は管理者で{" "}
                 <code className="rounded bg-surface-2 px-1">
                   scripts\allow-firewall-3000.bat
                 </code>{" "}

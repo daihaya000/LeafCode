@@ -755,18 +755,18 @@ describe("SettingsView", () => {
             kind: "caddy",
           },
           {
-            name: "Wi-Fi",
-            address: "192.168.1.100",
-            url: "http://192.168.1.100:3000",
-            kind: "lan",
+            name: "Tailscale",
+            address: "100.64.0.10",
+            url: "http://100.64.0.10:3000",
+            kind: "vpn",
           },
         ],
         certificateUrls: [
           {
-            name: "Wi-Fi",
-            address: "192.168.1.100",
-            url: "http://192.168.1.100:8080/caddy-root.crt",
-            kind: "lan",
+            name: "Tailscale",
+            address: "100.64.0.10",
+            url: "http://100.64.0.10:8080/caddy-root.crt",
+            kind: "vpn",
           },
         ],
       },
@@ -777,14 +777,104 @@ describe("SettingsView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "接続" }));
 
     expect(await screen.findByText("https://webui.example.com")).toBeTruthy();
-    expect(screen.getByText("http://192.168.1.100:3000")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "URLをコピー" })).toHaveLength(2);
+    expect(screen.getByText("http://100.64.0.10:3000")).toBeTruthy();
+    // Caddy + Tailscale(VPN) + Localhost(常時追加)
+    expect(screen.getAllByRole("button", { name: "URLをコピー" })).toHaveLength(3);
     expect(screen.getByRole("link", { name: "https://webui.example.com" }).getAttribute("target")).toBe("_blank");
-    const dl = screen.getByRole("link", { name: "LAN 証明書DL" });
+    const dl = screen.getByRole("link", { name: "VPN 証明書DL" });
     expect(dl.getAttribute("href")).toBe(
-      "http://192.168.1.100:8080/caddy-root.crt",
+      "http://100.64.0.10:8080/caddy-root.crt",
     );
     expect(dl.getAttribute("download")).toBe("caddy-root.crt");
+  });
+
+  it("hides Wi-Fi/LAN direct links and always shows the localhost link", async () => {
+    mockGetJson({
+      access: {
+        bind: "0.0.0.0",
+        port: 3000,
+        localUrl: "http://127.0.0.1:3000",
+        hint: "",
+        addresses: [
+          {
+            name: "Wi-Fi",
+            address: "192.168.1.100",
+            url: "http://192.168.1.100:3000",
+            kind: "lan",
+          },
+        ],
+      },
+    });
+
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+    fireEvent.click(screen.getByRole("tab", { name: "接続" }));
+
+    expect(await screen.findByText("http://127.0.0.1:3000")).toBeTruthy();
+    expect(screen.queryByText("http://192.168.1.100:3000")).toBeNull();
+  });
+
+  it("allows firewall port access from the connectivity tab", async () => {
+    mockGetJson({
+      access: {
+        bind: "0.0.0.0",
+        port: 3000,
+        localUrl: "http://127.0.0.1:3000",
+        hint: "",
+        addresses: [],
+      },
+    });
+    sendJson.mockImplementation((_method: string, path: string) => {
+      if (path === "/api/host/allow-firewall") {
+        return Promise.resolve({ alreadyExists: false, port: 3000 });
+      }
+      return Promise.reject(new Error(`Unexpected sendJson: ${path}`));
+    });
+
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+    fireEvent.click(screen.getByRole("tab", { name: "接続" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "ポートを許可" }));
+
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/host/allow-firewall",
+        {},
+        undefined,
+        { timeoutMs: 70_000 },
+      );
+    });
+    expect(
+      await screen.findByText("ファイアウォールでポート 3000 番を許可しました"),
+    ).toBeTruthy();
+  });
+
+  it("shows an error message when allowing the firewall port fails", async () => {
+    mockGetJson({
+      access: {
+        bind: "0.0.0.0",
+        port: 3000,
+        localUrl: "http://127.0.0.1:3000",
+        hint: "",
+        addresses: [],
+      },
+    });
+    sendJson.mockImplementation((_method: string, path: string) => {
+      if (path === "/api/host/allow-firewall") {
+        return Promise.reject(new Error("UAC がキャンセルされました"));
+      }
+      return Promise.reject(new Error(`Unexpected sendJson: ${path}`));
+    });
+
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+    fireEvent.click(screen.getByRole("tab", { name: "接続" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "ポートを許可" }));
+
+    expect(await screen.findByText("UAC がキャンセルされました")).toBeTruthy();
   });
 
   it("loads default model settings only in the プロバイダー/モデル tab", async () => {

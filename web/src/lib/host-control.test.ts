@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  hostAllowFirewallPath,
   hostLogsPath,
   hostRestartPath,
   hostVoiceInputPath,
@@ -17,6 +18,12 @@ describe("hostRestartPath", () => {
 describe("hostVoiceInputPath", () => {
   it("maps to the host voice-input control path", () => {
     expect(hostVoiceInputPath()).toBe("/voice-input");
+  });
+});
+
+describe("hostAllowFirewallPath", () => {
+  it("maps to the host allow-firewall control path", () => {
+    expect(hostAllowFirewallPath()).toBe("/allow-firewall");
   });
 });
 

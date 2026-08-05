@@ -70,6 +70,10 @@ export function hostVoiceInputPath(): string {
   return "/voice-input";
 }
 
+export function hostAllowFirewallPath(): string {
+  return "/allow-firewall";
+}
+
 /** GET path for the host log tail. `since` is the last-seen entry's `seq`. */
 export function hostLogsPath(since: number | null): string {
   return since !== null && Number.isFinite(since)

@@ -1,5 +1,33 @@
 # MEMORY
 
+## 設定画面「接続」タブ: Wi-Fiリンク非表示化 + ファイアウォールポート許可ボタン (2026-08-05)
+
+### 背景
+- LAN(`http://192.168.0.102:3000/`)からアクセスできないという報告を受け、まず`netstat`で調査。WebUIが`127.0.0.1:3000`(ループバックのみ)でLISTENしていたのが原因（`OPENCODE_WEBUI_HOST`未設定時のデフォルト、`host/src/index.js:120`）。ユーザー許可を得て`setx OPENCODE_WEBUI_HOST 0.0.0.0`を設定（トレイ再起動が必要、ユーザー側で実施）。Firewallルール(`OpenCode WebUI`, TCP 3000, 全プロファイル許可)は既に存在していたため変更不要だった。
+- 続けてユーザーから「設定 > 接続タブのWi-Fiリンクを削除してlocalhostリンクを追加」「ポート許可をUIボタンから実行できるようにしてほしい」という2つの要望。
+
+### やったこと
+1. **Wi-Fiリンク非表示 + localhostリンク追加**（`SettingsView.tsx`）
+   - `access.addresses`をそのまま表示するのではなく、`displayAddresses`という導出配列を追加: `kind !== "lan"`でフィルタ（Wi-Fi/Ethernet等の直接IPリンクを除外）、先頭に`access.localUrl`(`http://127.0.0.1:PORT`)のエントリー(`kind: "local"`)を常時追加。
+   - `AccessInfo`型の`addresses[].kind`に`"local"`を追加、`kindLabel()`に`"Local"`ラベルを追加。
+   - `/api/access/route.ts`自体（NIC列挙ロジック）は変更していない。既存の`route.test.ts`がWi-Fi/Tailscale両方が`addresses`に含まれることを検証しているため、API側で除外するとテストと矛盾する。UI表示側だけのフィルタなので、CaddyやVPN等の他用途には影響しない。
+
+2. **ファイアウォールポート許可ボタン**（`host` + `web` 両方）
+   - `host/src/control-server.js`: `matchControlRoute`に`POST /allow-firewall`を追加。`onAllowFirewall`ハンドラ呼び出し、成功時`{ok:true, target:'allow-firewall', ...result}`、未サポート時501、失敗時500(UACキャンセル等)。
+   - `host/src/index.js`: `firewallRuleExists()`(読み取り専用、`netsh advfirewall firewall show rule name=...`、昇格不要)で既存確認→ルールが無ければ`allowFirewallPort()`がPowerShellの`Start-Process -Verb RunAs -Wait -PassThru`でUAC昇格した`netsh add rule`を実行し、ExitCodeで成否判定。ルール名`"OpenCode WebUI"`は`scripts/allow-firewall-3000.bat`と共通。`startControlServer()`で`onAllowFirewall: () => allowFirewallPort()`を登録。
+   - `web/src/lib/host-control.ts`: `hostAllowFirewallPath() => "/allow-firewall"`を追加(`hostVoiceInputPath`と同型パターン)。
+   - `web/src/app/api/host/allow-firewall/route.ts`(新規): `voice-input/route.ts`と同じ構造。`rejectUnlessLocal`でホストPC自身からのアクセスのみ許可（LAN上の第三者がUACダイアログをスパムできないようにするため、`restart`系で使う`rejectUnlessLocalOrPrivateNetwork`より厳しい制限を採用）。UAC応答待ちを考慮し`AbortSignal.timeout(65000)`。
+   - `SettingsView.tsx`: 「ポートを許可」ボタンを接続タブのファイアウォール案内テキストの直前に配置。`sendJson(..., { timeoutMs: 70_000 })`でUAC待ちに対応。busy/success(`既に許可済み`/`許可しました`)/error(元のエラーメッセージそのまま表示、例: UACキャンセル)の3状態を管理。
+
+### 設計判断
+- ファイアウォール変更は管理者権限が必要な破壊力のある操作なので、`voice-input`と同じ「ホストPC自身からのみ」の制限（`rejectUnlessLocal`）を使い、LAN経由のリクエストは拒否。LAN上の誰かがボタンを押せてしまうと、ホストPCの前にいる人に不意打ちでUACダイアログを見せる社会工学的なリスクがあるため。
+- `firewallRuleExists()`による事前チェックで、既に許可済みなら毎回UACダイアログを出さずに即座に成功を返す（べき等性）。
+- Wi-Fi非表示は`route.ts`ではなく`SettingsView.tsx`側のみで実施し、既存の`route.test.ts`（Wi-Fi/Tailscaleが両方addressesに含まれることを検証）を変更せずに済ませた。UIの表示ポリシーとAPIの汎用データ収集を分離する方が影響範囲を狭められる。
+
+### 検証
+- `host`: `node --test src/*.test.js` 全204件pass（control-server.test.jsに/allow-firewallの3ケース追加）
+- `web`: `tsc --noEmit`・`eslint`(該当ファイル)・`vitest run` 全2667件pass（SettingsView.test.tsxに4件、host-control.test.tsに1件、allow-firewall/route.test.tsを新規4件追加）
+
 ## 【真の原因】スマホ白画面 = Caddy HTTP/3 (QUIC) とファイアウォールTCP専用の不整合 (2026-08-05)
 
 ### 症状

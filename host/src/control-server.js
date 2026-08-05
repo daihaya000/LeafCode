@@ -4,7 +4,7 @@ import http from 'http';
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | null}
  */
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -17,6 +17,7 @@ export function matchControlRoute(method, pathname) {
   if (path === '/restart/all') return 'all';
   if (path === '/stop/webui') return 'stop-webui';
   if (path === '/voice-input') return 'voice-input';
+  if (path === '/allow-firewall') return 'allow-firewall';
   return null;
 }
 
@@ -32,6 +33,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  *   onStopWebui?: () => Promise<void> | void,
  *   onVoiceInput?: () => Promise<void> | void,
  *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
+ *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
@@ -82,6 +84,30 @@ export function createControlRequestHandler(handlers) {
       }
       res.writeHead(200, JSON_HEADERS);
       res.end(JSON.stringify({ ok: true, target: 'webui', stopped: true }));
+      return;
+    }
+
+    if (route === 'allow-firewall') {
+      if (typeof handlers.onAllowFirewall !== 'function') {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(
+          JSON.stringify({ ok: false, error: 'firewall allow is not supported by this host' }),
+        );
+        return;
+      }
+      try {
+        const result = await handlers.onAllowFirewall();
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: true, target: 'allow-firewall', ...(result ?? {}) }));
+      } catch (err) {
+        res.writeHead(500, JSON_HEADERS);
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
       return;
     }
 
@@ -158,6 +184,7 @@ export function createControlRequestHandler(handlers) {
  *   onStopWebui?: () => Promise<void> | void,
  *   onVoiceInput?: () => Promise<void> | void,
  *   onGetLogs?: (since: number | null) => { entries: unknown[], nextSeq: number },
+ *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
  * }} handlers
  */
 export function createControlServer(handlers) {
