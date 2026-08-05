@@ -31,6 +31,21 @@ test('Caddyfile example rewrites Host for host-only API routes', () => {
   }
 });
 
+test('Caddyfile example disables HTTP/3 so phones are not sent to blocked UDP', () => {
+  const caddyfile = readFileSync(caddyfilePath, 'utf8');
+  const protocols = caddyfile
+    .split(/\r?\n/)
+    .find((line) => line.trim().startsWith('protocols '));
+
+  // h3 makes Caddy advertise `Alt-Svc: h3=":8443"; ma=2592000`. Browsers cache
+  // that for 30 days and move to QUIC on UDP 8443, which the firewall helper
+  // never opens (TCP only) and VPNs frequently drop -- phones then blackhole
+  // with a blank page while the host PC still works over TCP.
+  assert.ok(protocols, 'global `servers { protocols ... }` is missing');
+  assert.equal(protocols.trim(), 'protocols h1 h2');
+  assert.doesNotMatch(protocols, /\bh3\b/, 'HTTP/3 must stay disabled');
+});
+
 test('Caddyfile example is valid when caddy is installed', { skip: !hasCaddy() }, () => {
   const result = spawnSync(
     'caddy',

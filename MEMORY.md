@@ -1,6 +1,47 @@
 # MEMORY
 
-## スマホからCaddy HTTPSアクセス時の白画面バグ修正 (2026-08-05)
+## 【真の原因】スマホ白画面 = Caddy HTTP/3 (QUIC) とファイアウォールTCP専用の不整合 (2026-08-05)
+
+### 症状
+- スマホ（VPN経由）から `https://192.168.0.102:8443` が白画面 / タイムアウト。1〜2日前までは動いていた
+- ホストPCからは `curl -k` で200、全 `_next/static/chunks/*` も200。WebUI/OpenCode/Caddy すべて健全
+- ホスト再起動しても、OpenCodeが本来のポート(4096)に戻っても症状変わらず
+
+### 切り分け手順（重要）
+- Playwright chromium をiPhone UA + モバイルviewportで LAN HTTPS URL に接続 → **正常にレンダリング**（pageerror/consoleError/失敗リクエスト すべてゼロ）。これでアプリ・JS・チャンク配信の問題を除外できた
+  - 注: `waitUntil:"networkidle"` はSSEが張られ続けるため必ずタイムアウトする。これはエラーではない
+- 除外できた後にプロトコル層を確認 → `curl -k -s -D -` のレスポンスヘッダに `Alt-Svc: h3=":8443"; ma=2592000` を発見。`netstat` に **UDP 0.0.0.0:8443** の listener があった
+- ファイアウォールを確認 → `OpenCode WebUI Caddy HTTPS` は **Protocol TCP / LocalPort 8443 のみ**。UDP 8443 は未開放
+
+### 根本原因
+1. Caddy は既定で HTTP/3 を有効化し、TCP応答に `Alt-Svc: h3=":8443"; ma=2592000` を付ける
+2. ブラウザはこれを **30日間キャッシュ**し、次回以降 QUIC (UDP 8443) で接続しようとする
+3. Windowsファイアウォールは TCP 8443 しか開けていない。さらにVPN経由ではUDPが落ちる/MTU断片化しやすい
+4. → QUICブラックホール。スマホは白画面/タイムアウト。一方 curl や loopback のデスクトップブラウザは h3 に切り替わらないので**ホスト側では絶対に再現しない**
+5. 「1〜2日前から急に」なったのは、Alt-Svc がキャッシュされた時点以降ずっとQUICを試すようになるため（ma=30日）
+
+### 修正
+- `deploy/Caddyfile` および `deploy/Caddyfile.example` のグローバルブロックに `servers { protocols h1 h2 }` を追加 → h3を無効化。UDPリスナが消え、Alt-Svc広告も止まる
+- 同ファイルの `header` ブロックに **`Alt-Svc clear`** を追加 → h3を止めるだけでは**スマホが既に保存した30日分のエントリは消えない**ため、RFC 7838 §3.1 の `clear` で能動的に破棄させる。これが無いと期限切れまで直らない
+- `scripts/allow-firewall-8443.bat` に「TCPのみで正しい」理由をコメント（UDPを開ける方向の"修正"を将来やらせないため）
+- `host/src/caddyfile.test.js` に回帰テスト追加（`protocols h1 h2` であること / `h3` を含まないこと）
+- 稼働中Caddyへは `caddy reload --config deploy/Caddyfile` で適用（admin API 経由。WebUI/OpenCodeは再起動不要）
+- 適用後の確認: `netstat` から UDP 8443 が消滅、レスポンスヘッダが `Alt-Svc: clear` に変化
+
+### 判断理由
+- UDP 8443 を開ける選択肢もあるが、VPN越しのQUICは環境依存で不安定（UDPフィルタ・MTU）。**到達可能な経路をファイアウォールが開けている物と完全に一致させる**方が決定論的で保守しやすい
+- LAN/VPN内のローカルツールにh3の性能利点はほぼ無く、失敗モードのコストの方が大きい
+
+### 教訓
+- **「ホストからは動くがスマホからは動かない」場合、アプリ層を疑う前にプロトコル層（Alt-Svc / HTTP/3 / UDP）とファイアウォールのプロトコル種別を確認する。** curl と loopback ブラウザは h3 にアップグレードしないため、この種のバグはホスト側で原理的に再現しない
+- ファイアウォールで「ポート8443を許可済み」でも、**TCPとUDPは別**。QUICを使うサーバでTCPだけ開けると、初回は成功し2回目以降だけ壊れるという再現性の低い症状になる
+- `Alt-Svc` は広告を止めるだけでは不十分。クライアントのキャッシュを消すには明示的に `Alt-Svc: clear` を返す必要がある
+- ブラウザ再現調査では Playwright のモバイルUA + `ignoreHTTPSErrors` が有効。ただし chromium は h3 のフォールバックが早いため、QUIC起因の問題は**再現しない**（＝再現しないこと自体が切り分けの情報になる）
+
+## スマホからCaddy HTTPSアクセス時の白画面バグ修正: Service Workerの古いHTMLキャッシュ (2026-08-05)
+
+> 注: これは上記の真因とは別の**潜在バグ**の修正。今回の症状の原因ではなかったが、
+> デプロイ後に古い `/` キャッシュが死んだチャンクを参照して白画面になる経路は実在するため残置。
 
 ### 症状と原因
 - スマホから `https://192.168.0.102:8443` にアクセスすると白画面になる（接続タイムアウトではなく、HTMLは200で返る）
@@ -31,11 +72,13 @@
 
 ### やったこと
 - `ProfilesSettings.tsx` のヘッダーから「登録数」「現在の環境」の2枚の数値カード（グリッド部分）を削除。ユーザーが画像で「邪魔」と指摘した部分。未使用になった `activeProfile` 変数も削除。
+- 続けてユーザーから「WORKSPACE IDENTITY / プロファイル / 説明文」の`<header>`カード自体も不要と指摘があり、`<header>...</header>` ブロックを丸ごと削除（`<section aria-label="プロファイル">`は維持）。
 - `SettingsView.tsx` の `activeTab === "profiles"` 分岐で、`ProfileSyncSettings` と `ProfilesSettings` の描画順を入れ替え、プロファイル同期セクションをプロファイル一覧より下（最下段）に移動。
 - `tsc --noEmit`・`eslint`（該当2ファイル）・`vitest`（`ProfilesSettings.test.tsx` + `SettingsView.test.tsx` 計36件）で回帰なしを確認。
 
 ### 判断理由
 - 数値カードはヘッダーの説明文と情報が重複気味（プロファイル数・アクティブ名は下の一覧テーブルでも視認可能）で、ユーザー指摘通り視覚的ノイズだった。テストに依存箇所がなかったため単純削除で対応。
+- ヘッダーカード自体もテスト側で参照されておらず（`ProfilesSettings.test.tsx`は「Workspace identity」等の文言に依存していない）、削除しても回帰なし。下の「登録済みプロファイル」見出し（`<h3>`）が実質的なセクションタイトルとして機能するため情報欠落なし。
 - 表示順の入れ替えのみでコンポーネント自体の実装（`ProfileSyncSettings.tsx`）には手を加えていない。
 
 ## CodexBarアドオン: プロバイダー一覧の2列表示モード追加 (2026-08-05)
