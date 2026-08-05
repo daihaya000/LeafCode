@@ -11,6 +11,8 @@
     "install:browser-bridge-mcp": "node browser-bridge/scripts/install-mcp.mjs",
     "test:encoding": "npm --prefix host run test:encoding",
     "sync:profiles": "node scripts/sync-profiles.mjs",
-    "sync:profiles:check": "node scripts/sync-profiles.mjs --check"
+    "sync:profiles:check": "node scripts/sync-profiles.mjs --check",
+    "sync:agents": "node scripts/agents-sync.mjs",
+    "sync:agents:check": "node scripts/agents-sync.mjs --check"
   }
 }

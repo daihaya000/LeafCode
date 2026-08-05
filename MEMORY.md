@@ -264,6 +264,37 @@ Caddyfileは `https://192.168.0.102:8443` をハードコードしていたた�
 - 全テスト実行時に1件 flaky timeout（TaskView desktop notifications、今回の変更無関係）
 - CLI `--check` / 本実行 確認済み
 
+## AGENTS.md / Skills グローバル同期 (2026-08-05)
+
+### 背景
+- `https://github.com/DevsProtein/agents-sync` を参考に、Claude/Codex/OpenCode/agents のグローバル設定を一元管理する同期を追加
+- マスター: `~/.claude/CLAUDE.md` と `~/.claude/skills/<name>/`
+- Codex: `~/.codex/AGENTS.md` へ内容コピー、`~/.codex/skills/<name>/` へ symlink
+- OpenCode: `~/.config/opencode/opencode.jsonc` の `instructions` に `~/.claude/CLAUDE.md` を追加、`~/.config/opencode/skills/<name>/` へ symlink
+- agents: `~/.agents/skills/<name>/` へ symlink
+
+### 追加ファイル
+- `web/src/lib/profiles/agents-sync-engine.ts` — エンジン本体
+- `web/src/lib/profiles/jsonc.ts` — JSONC 読み書きユーティリティ
+- `web/src/app/api/profiles/agents-sync/route.ts` — GET/POST API
+- `web/src/components/settings/ProfileAgentsSyncSettings.tsx` — UI
+- `scripts/agents-sync.mjs` — CLI エントリポイント
+
+### npm scripts
+- `npm run sync:agents` — 実行
+- `npm run sync:agents:check` — ドライラン
+
+### 動作確認
+- `npm run sync:agents:check` → 2件変更あり
+- `npm run sync:agents` → `~/.codex/AGENTS.md` へコピー、`~/.config/opencode/opencode.jsonc` の `instructions` へ追加
+- 2回目 `npm run sync:agents:check` → 0件変更（冪等）
+- `tsc --noEmit` / `eslint` 合格
+
+### 注意
+- Windows では skills の symlink 作成に開発者モードまたは昇格が必要。junction を fallback として使用
+- instructions は symlink ではなく内容コピー（`.codex/AGENTS.md` は Codex が symlink を解釈しない可能性があるため）
+- 現状 `~/.claude/skills/` は空なので、skills 同期は変更なし
+
 ## 新規プロファイル作成時のプラグイン npm依存完全脱却 (2026-08-04)
 
 ### やったこと（vendor バンドル化）

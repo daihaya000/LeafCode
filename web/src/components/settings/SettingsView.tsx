@@ -24,6 +24,7 @@ import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ExtensionsSettings } from "@/components/settings/ExtensionsSettings";
 import { ProfilesSettings } from "@/components/settings/ProfilesSettings";
 import { ProfileSyncSettings } from "@/components/settings/ProfileSyncSettings";
+import { ProfileAgentsSyncSettings } from "@/components/settings/ProfileAgentsSyncSettings";
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { ModelRankingSettings } from "@/components/settings/ModelRankingSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
@@ -1668,6 +1669,7 @@ export function SettingsView() {
           <>
             <ProfilesSettings />
             <ProfileSyncSettings />
+            <ProfileAgentsSyncSettings />
           </>
         )}
 
