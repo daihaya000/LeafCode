@@ -1,5 +1,50 @@
 # MEMORY
 
+## スマホ ERR_CONNECTION_FAILED = CaddyfileのIPハードコード × NIC二重接続 (2026-08-05)
+
+### 症状
+- h3無効化(前項)の後、スマホから `https://192.168.0.102:8443` が `ERR_CONNECTION_FAILED`
+- ホストPCからは `curl -k https://192.168.0.102:8443/` が200を返す（＝サーバは生きている）
+
+### 判明したネットワーク変化
+`ipconfig` / `Get-NetConnectionProfile` / `Get-NetRoute` を比較して発覚:
+
+| | 以前 | 現在 |
+|---|---|---|
+| IPv4 | `192.168.0.102` のみ | `192.168.0.102`(有線) と `192.168.0.193`(Wi-Fi 2) の**2つ** |
+| イーサネット2 | `TP-Link_C622` / Private | **「識別中...」/ Public** |
+| Wi-Fi 2 | — | `TP-Link_C622` / Private |
+| 既定ルートmetric | — | Wi-Fi=**0**(優先) / 有線=256 |
+
+- 同一サブネット `192.168.0.0/24` に有線とWi-Fiで**二重接続(dual-homed)**していた
+- `curl https://192.168.0.193:8443/` は **exit 35 (SSL connect error)** — Caddyfileに `.193` が未登録
+
+### 根本原因
+`tls internal` は**サイトブロックに列挙された名前にしか証明書を発行しない**。さらに、どのサイトブロックにもマッチしないHostは**TLS完了前に接続を拒否**される。
+Caddyfileは `https://192.168.0.102:8443` をハードコードしていたため、応答経路がWi-Fi(.193)側に寄る構成になった時点で、スマホから到達可能なアドレスでCaddyが応答できず `ERR_CONNECTION_FAILED` になった。
+ホストPCはloopback(`localhost`/`127.0.0.1`)が列挙済みなので動き続ける → **切り分けが極めて困難**。
+
+### 修正
+1. 即時対応: `deploy/Caddyfile` のサイトブロックに `https://192.168.0.193:8443` を追加し `caddy reload`。両IPで200を確認
+2. 恒久対応: **`host/src/caddy-sites.js` を新規作成**し、ホスト起動時にCaddyfileのIPv4エントリを現在のNICアドレスへ自動追従
+   - `syncCaddySiteAddresses(text, addresses)` は純粋関数。`ensureCaddyfile()` から呼ぶ
+   - **loopback は常に保持**（ホストPCのブラウザを壊さない）
+   - **ユーザーが手書きしたホスト名/ドメインは保持**。IPv4リテラルのみ入れ替える
+   - **検出0件なら書き換えない**（NIC取得失敗でリストを空にして全断させない）
+   - 既存のカスタムポートを踏襲。httpsサイトブロックが無いCaddyfileは無変更。失敗しても起動をブロックしない
+3. `deploy/Caddyfile.example` のコメント更新（未登録の名前は「証明書が無い」ではなく「接続自体が拒否される」と明記）
+4. `host/src/caddy-sites.test.js` に10件のテスト追加
+
+### 判断理由
+- DHCP再割当・Wi-Fi/有線切替・NIC追加は日常的に起きる。そのたびに手でCaddyfileを編集させる設計は破綻している
+- Caddyfileはユーザーが編集する前提のファイル(gitignored)なので、**全体を再生成せずIPv4トークンだけを最小限書き換える**方針にした
+
+### 教訓
+- **`tls internal` + 明示的サイトアドレス構成では、未登録のHostは「証明書エラー」ではなく「接続失敗」になる。** 証明書の問題だと思って調査すると迷子になる
+- **「ホストからcurlは通るがスマホから繋がらない」時は、ホストPCの*全*IPv4を列挙してそれぞれcurlする。** loopbackと.102だけ見ていると、実際にスマホが到達している.193が死んでいることに気付けない
+- 同一サブネットへのdual-homed接続（有線+Wi-Fi同時）は応答経路が非対称になりやすくinbound接続を壊す典型構成。`Get-NetRoute`のmetricで優先NICを確認する
+- `Get-NetConnectionProfile`が「識別中...」/Publicを示すNICは、リンクがUpでも正常にLAN参加できていない可能性がある
+
 ## 設定画面「接続」タブ: Wi-Fiリンク非表示化 + ファイアウォールポート許可ボタン (2026-08-05)
 
 ### 背景

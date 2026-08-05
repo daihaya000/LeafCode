@@ -45,8 +45,15 @@
 }
 
 # List every name/IP you will reach this by, so `tls internal` can pre-issue a
-# cert for them. Add your LAN IP (DHCP reservation recommended), VPN IP or
-# hostname here -- a name that is not listed gets no certificate.
+# cert for them. A name that is not listed gets no certificate AND no site
+# block, so the connection is refused before TLS finishes (the phone shows
+# ERR_CONNECTION_FAILED while this PC still works over loopback).
+#
+# The tray host rewrites the IPv4 entries on this line at startup to match the
+# machine's current addresses (host/src/caddy-sites.js), so DHCP changes and a
+# Wi-Fi adapter joining alongside Ethernet are handled automatically. Loopback
+# entries and any hostname you add by hand are preserved -- add a VPN hostname
+# or public domain here and it will survive the sync.
 # Host-only APIs (folder picker, voice input, restart) work through this proxy
 # only when the browser is on the same PC and reaches Caddy via a loopback
 # hostname (localhost / 127.0.0.1). The BFF rejects spoofable private

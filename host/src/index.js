@@ -11,6 +11,7 @@ import {
   unlinkSync,
 } from 'fs';
 import { randomBytes } from 'crypto';
+import { networkInterfaces } from 'os';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import SysTrayImport from 'systray2';
@@ -29,6 +30,7 @@ import {
 } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
 import { readPort } from './port-config.js';
+import { syncCaddySiteAddresses } from './caddy-sites.js';
 import {
   closeControlServer,
   createControlServer,
@@ -1042,13 +1044,59 @@ function findCaddy() {
   }
 }
 
+/** Current non-internal IPv4 addresses of this machine. */
+function localIpv4Addresses() {
+  const found = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const info of list ?? []) {
+      if (info.internal) continue;
+      const family = String(info.family);
+      if (family !== 'IPv4' && family !== '4') continue;
+      found.push(info.address);
+    }
+  }
+  return found;
+}
+
+/**
+ * Point the Caddyfile's HTTPS site block at the machine's current LAN IPs.
+ *
+ * `tls internal` only issues certificates for names listed in the site block,
+ * and a Host that matches no block is rejected before TLS finishes. A
+ * hardcoded IP therefore breaks phone access the moment DHCP reassigns the
+ * address or a second NIC (Wi-Fi alongside Ethernet) joins the same subnet:
+ * the phone gets ERR_CONNECTION_FAILED while the host PC still works over
+ * loopback, which makes the failure very hard to attribute.
+ */
+function syncCaddyfileAddresses() {
+  try {
+    const current = readFileSync(CADDYFILE, 'utf8');
+    const { text, changed, addresses } = syncCaddySiteAddresses(
+      current,
+      localIpv4Addresses(),
+    );
+    if (!changed) return;
+    writeFileSync(CADDYFILE, text, 'utf8');
+    log(`Caddyfile site addresses synced to local IPs: ${addresses.join(', ')}`);
+  } catch (err) {
+    // Never block startup on this: Caddy still runs with the existing file.
+    error(
+      `Failed to sync Caddyfile addresses: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+}
+
 /** Ensure a Caddyfile exists, seeding from the bundled example on first run. */
 function ensureCaddyfile() {
-  if (existsSync(CADDYFILE)) return true;
+  if (existsSync(CADDYFILE)) {
+    syncCaddyfileAddresses();
+    return true;
+  }
   try {
     if (existsSync(CADDYFILE_EXAMPLE)) {
       writeFileSync(CADDYFILE, readFileSync(CADDYFILE_EXAMPLE, 'utf8'), 'utf8');
       log(`Created ${CADDYFILE} from example — edit domain/auth before remote use`);
+      syncCaddyfileAddresses();
       return true;
     }
   } catch (err) {
