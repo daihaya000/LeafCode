@@ -441,14 +441,6 @@ export function ProfilesSettings() {
 
   return (
     <section aria-label="プロファイル" className="space-y-4 pb-6">
-      <header className="rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Workspace identity</p>
-        <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">プロファイル</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-          作業環境を分けて、設定・認証・連携を安全に切り替えます。アクティブな環境はすべての新しいセッションに適用されます。
-        </p>
-      </header>
-
       {/* Cannot-switch banner */}
       {reason && (
         <div role="alert" className="mb-4 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-warning">
