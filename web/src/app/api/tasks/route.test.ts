@@ -1409,7 +1409,7 @@ describe("POST /api/tasks auto model selection", () => {
     expect(provisionWorkspace).not.toHaveBeenCalled();
   });
 
-  it("returns 400 without provisioning when /provider is unavailable", async () => {
+  it("returns 502 without provisioning when /provider is unavailable", async () => {
     const { ocServer } = await import("@/lib/oc-server");
     (ocServer as ReturnType<typeof vi.fn>).mockImplementation(
       async (_dir: string | null, path: string) => {
@@ -1427,7 +1427,38 @@ describe("POST /api/tasks auto model selection", () => {
       auto: true,
     });
 
-    expect(res.status).toBe(400);
+    // Distinct from the "no candidate after filtering" 400 case just above:
+    // the provider list itself could not be fetched, so the message points
+    // at retrying rather than at provider/model settings.
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(
+      /プロバイダ情報を取得できませんでした/,
+    );
+    expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 without provisioning when /provider times out", async () => {
+    const { ocServer } = await import("@/lib/oc-server");
+    const { OcError } = await import("@/lib/oc-server");
+    (ocServer as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_dir: string | null, path: string) => {
+        if (path === "/provider") {
+          throw new OcError("OpenCode engine が10秒でタイムアウトしました", 503);
+        }
+        if (path === "/session") return { id: "session-1" };
+        return {};
+      },
+    );
+    const { provisionWorkspace } = await import("@/lib/workspace-service");
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+    });
+
+    expect(res.status).toBe(503);
     expect(provisionWorkspace).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,40 @@
 # MEMORY
 
+## Auto モードの「選択可能なモデルがありません」エラーの原因切り分け改善 (2026-08-06)
+
+### 経緯
+- ユーザーから「Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。」が出るスクリーンショット付きで「Autoモードは有効化されているプロバイダ/モデルのみから選定するように」との指示を受けた
+- 調査の結果、`chooseAutoModel`（`web/src/lib/auto-model.ts`）は**既に** `/provider` の `connected` フィルタと `provider-model-state.json` の `disabled` フィルタを適用しており、設計上「有効化されているプロバイダ/モデルのみから選定する」ようになっていた
+- 稼働中ホストの実データ（`/api/opencode/provider` + `provider-model-state.json`）で候補数を検算したところ20件あり、現状は再現しない。ユーザーへ確認したところ「別環境のユーザーの報告で、いつ起きたか不明」「エラーメッセージ/原因の切り分けを改善してほしい」との回答
+- コードを読むと、`resolveAutoModel`（`web/src/app/api/tasks/route.ts`）が **`/provider` fetch 失敗**（OpenCode 未接続・タイムアウト等）と **fetch成功後に候補ゼロ**（実際の設定不備）を両方 `null` に潰して同じ 400 メッセージ「プロバイダ接続とモデル有効化を確認してください」を返していた。これは fetch 失敗時には的外れな指示（本当は再試行すべきところを設定変更を促してしまう）になっていた
+- TaskView.tsx（follow-up のクライアント側解決）も同様に、`autoInputs`（mount 時の `/provider` snapshot）が null（fetch未完了/失敗）の場合と、`chooseAutoModel` が候補ゼロで null を返す場合を区別せず同じ `AUTO_NO_CANDIDATE_ERROR` を表示していた
+
+### 修正
+1. **`web/src/app/api/tasks/route.ts`**
+   - `resolveAutoModel` 内の `/provider` fetch の try/catch を削除し、失敗（`OcError` 等）をそのまま呼び出し元へ伝播させるように変更（`null` は「fetch成功だが候補ゼロ」専用に）
+   - 呼び出し元で `resolveAutoModel` を try/catch し、fetch失敗時は 502（`OcError.status===503` なら503）で「OpenCode のプロバイダ情報を取得できませんでした。しばらくしてから再試行してください。」を返す。`decision === null`（候補ゼロ）の場合のみ既存の400「Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。」を返す
+2. **`web/src/components/task/TaskView.tsx`**
+   - 新定数 `AUTO_INPUTS_UNAVAILABLE_ERROR`（「Auto の候補情報を取得できていません。ページを再読み込みしてから再試行してください。」）を追加
+   - follow-up 送信（`sendPrompt`/`sendCommand` 共通処理）と `startGoalLoop` の両方で、Auto解決前に `!autoInputs`（mount時のprovider fetchが未完了/失敗）を先にチェックし、その場合は新メッセージを表示。`autoInputs` はあるが `resolveAutoSelection` が null を返す場合（候補ゼロ）のみ既存の `AUTO_NO_CANDIDATE_ERROR` を表示
+   - `autoInputs` を直接読むようになった2つの `useCallback` の依存配列に `autoInputs` を追加
+3. **`web/src/app/api/tasks/route.test.ts`**
+   - 既存テスト「returns 400 without provisioning when /provider is unavailable」を「returns 502 ...」に変更（generic Error → 502、メッセージが「プロバイダ情報を取得できませんでした」であることを検証）
+   - 新規テスト「returns 503 without provisioning when /provider times out」を追加（`OcError(msg, 503)` → 503 になることを検証）
+
+### 判断理由
+- 「候補ゼロ」と「provider取得失敗」を同じエラーへ潰すのは、ユーザーに誤った対処（設定を弄る）を促す点でUXバグ。実際に発生したかは再現できなかったが、切り分けを改善すること自体はどちらの原因であっても有用で、次回同じ報告が来た際にエラーメッセージから原因を即座に判別できるようになる
+- サーバー側は `OcError`（`ocServer` が投げる、timeout=503/その他=502相当）をそのまま使い、新しいエラークラスは増やさなかった。既存の `next-action/route.ts` 等でも同じ `err instanceof OcError` パターンを使っており一貫性がある
+- クライアント側は `resolveAutoSelection` の戻り値の型を変えず（`AutoDecision | null` のまま）、呼び出し側で `autoInputs` の有無を先に見るだけの最小差分にした。関数のシグネチャ変更は2箇所の呼び出し元とテストへの影響が大きくなるため避けた
+
+### 検証
+- `npx tsc --noEmit` 合格
+- `npx eslint .`（web全体）合格
+- `npx vitest run`（全219ファイル/2670テスト）全合格
+
+### 教訓
+- 「エラーが再現しない」場合でも、コードのエラー分岐が2つの異なる原因（一時的な接続障害 vs 恒久的な設定不備）を同一メッセージに潰していないかを確認する価値がある。再現できなくても、原因の切り分け自体を改善しておけば次回の診断が速くなる
+- Auto モデル選定は「BFF（`route.ts`）」と「クライアント（`TaskView.tsx`）」で解決ロジック（`chooseAutoModel`）は共有しているが、provider snapshot の取得元・タイミングが異なるため、エラー処理も両方に同じ設計判断（fetch失敗 vs 候補ゼロの区別）を個別に適用する必要がある
+
 ## 新規作成時の Claude CLI Proxy セットアップで provider.anthropic 定義が欠落していた (2026-08-05)
 
 ### 症状

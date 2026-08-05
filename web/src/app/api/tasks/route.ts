@@ -192,18 +192,18 @@ async function resolveAutoModel(
   overrides?: RouteOverrides,
 ): Promise<AutoDecision | null> {
   const hasImages = files.length > 0;
-  let providers: AutoCandidateProvider[] = [];
-  let connected: string[] | undefined;
-  try {
-    const data = await ocServer<AutoProviderResponse>(null, "/provider");
-    providers = (data.all ?? []).flatMap((provider) =>
+  // `/provider` fetch failures propagate to the caller (as `OcError` or a
+  // generic `Error`) instead of collapsing into a `null` return here. `null`
+  // is reserved for "the fetch succeeded but no candidate survived
+  // filtering" — the caller answers each case with a different message, and
+  // conflating them previously told users to check provider/model settings
+  // even when the real problem was OpenCode being unreachable.
+  const data = await ocServer<AutoProviderResponse>(null, "/provider");
+  const providers: AutoCandidateProvider[] = (data.all ?? []).flatMap(
+    (provider) =>
       provider.id ? [{ id: provider.id, models: provider.models ?? {} }] : [],
-    );
-    connected = data.connected;
-  } catch {
-    // Provider list unavailable: no candidate can be verified.
-    return null;
-  }
+  );
+  const connected = data.connected;
   return chooseAutoModel({
     providers,
     connected,
@@ -397,13 +397,28 @@ export async function POST(req: NextRequest) {
       ? await agentHasFixedModel(agentName)
       : false;
     if (!agentPinsModel) {
-      const decision = await resolveAutoModel(
-        prompt,
-        files,
-        autoOptimize,
-        codexBarUsage,
-        autoRouteOverrides,
-      );
+      let decision: AutoDecision | null;
+      try {
+        decision = await resolveAutoModel(
+          prompt,
+          files,
+          autoOptimize,
+          codexBarUsage,
+          autoRouteOverrides,
+        );
+      } catch (err) {
+        // The provider list itself could not be fetched (OpenCode
+        // unreachable/timed out/errored) — distinct from "fetched fine but
+        // no candidate survived filtering" below. Retrying later is the
+        // right fix here, not touching provider/model settings.
+        return NextResponse.json(
+          {
+            error:
+              "OpenCode のプロバイダ情報を取得できませんでした。しばらくしてから再試行してください。",
+          },
+          { status: err instanceof OcError && err.status === 503 ? 503 : 502 },
+        );
+      }
       if (!decision) {
         return NextResponse.json(
           {

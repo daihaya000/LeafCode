@@ -253,6 +253,18 @@ const COMPOSER_DRAFT_CACHE_MAX = 48;
 const AUTO_NO_CANDIDATE_ERROR =
   "Auto で選択可能なモデルがありません。プロバイダ接続とモデル有効化を確認してください。";
 
+/**
+ * Shown when the provider/model snapshot Auto resolves against was never
+ * fetched successfully (mount-time `/provider` or `/api/extensions/
+ * provider-models` failure). Kept distinct from {@link AUTO_NO_CANDIDATE_ERROR}:
+ * that message tells the user to check provider connection/model enablement,
+ * which is the wrong fix when the real problem is "this page never loaded
+ * the snapshot" — reloading, not touching provider settings, is what helps
+ * here.
+ */
+const AUTO_INPUTS_UNAVAILABLE_ERROR =
+  "Auto の候補情報を取得できていません。ページを再読み込みしてから再試行してください。";
+
 /** Banner text for a resolved Auto selection (initial chip and follow-up). */
 function formatAutoDecisionNotice(decision: AutoDecision): string {
   return `Auto: ${decision.providerID}/${decision.modelID}${
@@ -1591,6 +1603,10 @@ export function TaskView({ taskId }: { taskId: string }) {
         const agentPinnedModel = agent ? agentModels[agent] : undefined;
         let decision: AutoDecision | undefined;
         if (isAuto && !agentPinnedModel) {
+          if (!autoInputs) {
+            setGoalLoopError(AUTO_INPUTS_UNAVAILABLE_ERROR);
+            return false;
+          }
           const resolved = resolveAutoSelection(goal, false);
           if (!resolved) {
             setGoalLoopError(AUTO_NO_CANDIDATE_ERROR);
@@ -1643,6 +1659,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     [
       agent,
       agentModels,
+      autoInputs,
       goalLoopAcceptance,
       goalLoopMaxTurns,
       intelligence,
@@ -2134,6 +2151,13 @@ export function TaskView({ taskId }: { taskId: string }) {
     const autoAgentPinnedModel = agent ? agentModels[agent] : undefined;
     let autoDecision: AutoDecision | undefined;
     if (isAuto && !autoAgentPinnedModel) {
+      // Distinguish "the provider snapshot never loaded" from "it loaded but
+      // no candidate survived filtering" — the fix (reload vs. check
+      // provider/model settings) differs between the two.
+      if (!autoInputs) {
+        setSendError(AUTO_INPUTS_UNAVAILABLE_ERROR);
+        return;
+      }
       const resolved = resolveAutoSelection(
         text,
         hasImage,
@@ -2251,6 +2275,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [
     input,
     attachments,
+    autoInputs,
     composerLocked,
     stream,
     model,
