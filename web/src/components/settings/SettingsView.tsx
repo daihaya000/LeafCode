@@ -1592,8 +1592,8 @@ export function SettingsView() {
 
         {activeTab === "profiles" && (
           <>
-            <ProfileSyncSettings />
             <ProfilesSettings />
+            <ProfileSyncSettings />
           </>
         )}
 

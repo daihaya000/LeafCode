@@ -439,30 +439,14 @@ export function ProfilesSettings() {
   const { profiles, canSwitch, reason, migration } = data;
   const jobRunning = job?.state === "running";
 
-  const activeProfile = profiles.find((profile) => profile.active);
-
   return (
     <section aria-label="プロファイル" className="space-y-4 pb-6">
       <header className="rounded-2xl border border-border bg-surface px-5 py-5 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Workspace identity</p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">プロファイル</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-              作業環境を分けて、設定・認証・連携を安全に切り替えます。アクティブな環境はすべての新しいセッションに適用されます。
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-56">
-            <div className="rounded-xl border border-border bg-bg px-3 py-2.5">
-              <span className="block text-muted">登録数</span>
-              <strong className="mt-0.5 block text-base text-text">{profiles.length}</strong>
-            </div>
-            <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-              <span className="block text-muted">現在の環境</span>
-              <strong className="mt-0.5 block truncate text-base text-text">{activeProfile?.name ?? "未設定"}</strong>
-            </div>
-          </div>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Workspace identity</p>
+        <h2 className="mt-1 text-xl font-semibold tracking-tight text-text">プロファイル</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+          作業環境を分けて、設定・認証・連携を安全に切り替えます。アクティブな環境はすべての新しいセッションに適用されます。
+        </p>
       </header>
 
       {/* Cannot-switch banner */}
