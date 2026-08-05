@@ -10,11 +10,11 @@ type ItemStatus = { kind: string; message: string };
 type AgentsSyncStatus = {
   instructions: {
     master: { path: string; exists: boolean };
+    claude: { path: string; status: ItemStatus };
     codex: { path: string; status: ItemStatus };
-    opencode: { path: string; status: ItemStatus };
   };
   skills: {
-    claudeRoot: { path: string; exists: boolean; count: number };
+    opencodeRoot: { path: string; exists: boolean; count: number };
     mirrors: Record<string, { path: string; status: ItemStatus }>;
   };
 };
@@ -98,8 +98,8 @@ export function ProfileAgentsSyncSettings() {
   const masterOk = status?.instructions.master.exists ?? false;
   const instructionItems = status?.instructions
     ? [
+        { key: "claude", label: "Claude", item: status.instructions.claude },
         { key: "codex", label: "Codex", item: status.instructions.codex },
-        { key: "opencode", label: "OpenCode", item: status.instructions.opencode },
       ]
     : [];
   const allInSync =
@@ -115,8 +115,8 @@ export function ProfileAgentsSyncSettings() {
       </h2>
       <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <p className="text-xs text-faint">
-          グローバル設定を一元管理します。マスターは <code className="font-mono">~/.claude/CLAUDE.md</code>
-          と <code className="font-mono">~/.claude/skills/</code> で、Codex / OpenCode / agents
+          グローバル設定を一元管理します。マスターは <code className="font-mono">~/.config/opencode/AGENTS.md</code>
+          と <code className="font-mono">~/.config/opencode/skills/</code> で、Claude / Codex / agents
           側へミラーします。instructions は内容コピー、skills は symlink で統合します。
         </p>
 
@@ -147,7 +147,7 @@ export function ProfileAgentsSyncSettings() {
             <div className="rounded-lg border border-border bg-bg/40 px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-text">マスター (Claude)</p>
+                  <p className="text-sm font-medium text-text">マスター (OpenCode)</p>
                   <p className="truncate text-[11px] text-faint">{status.instructions.master.path}</p>
                 </div>
                 <Badge tone={masterOk ? "success" : "danger"}>
@@ -163,12 +163,12 @@ export function ProfileAgentsSyncSettings() {
             <div className="rounded-lg border border-border bg-bg/40 px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-text">Skills マスター (Claude)</p>
-                  <p className="truncate text-[11px] text-faint">{status.skills.claudeRoot.path}</p>
+                  <p className="text-sm font-medium text-text">Skills マスター (OpenCode)</p>
+                  <p className="truncate text-[11px] text-faint">{status.skills.opencodeRoot.path}</p>
                 </div>
-                <Badge tone={status.skills.claudeRoot.exists ? "success" : "neutral"}>
-                  {status.skills.claudeRoot.exists
-                    ? `${status.skills.claudeRoot.count} skills`
+                <Badge tone={status.skills.opencodeRoot.exists ? "success" : "neutral"}>
+                  {status.skills.opencodeRoot.exists
+                    ? `${status.skills.opencodeRoot.count} skills`
                     : "なし"}
                 </Badge>
               </div>

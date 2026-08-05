@@ -267,15 +267,16 @@ Caddyfileは `https://192.168.0.102:8443` をハードコードしていたた�
 ## AGENTS.md / Skills グローバル同期 (2026-08-05)
 
 ### 背景
-- `https://github.com/DevsProtein/agents-sync` を参考に、Claude/Codex/OpenCode/agents のグローバル設定を一元管理する同期を追加
-- マスター: `~/.claude/CLAUDE.md` と `~/.claude/skills/<name>/`
+- `https://github.com/DevsProtein/agents-sync` を参考に、OpenCode/Claude/Codex/agents のグローバル設定を一元管理する同期を追加
+- マスター: `~/.config/opencode/AGENTS.md` と `~/.config/opencode/skills/<name>/`
+- Claude: `~/.claude/CLAUDE.md` へ内容コピー、`~/.claude/skills/<name>/` へ symlink
 - Codex: `~/.codex/AGENTS.md` へ内容コピー、`~/.codex/skills/<name>/` へ symlink
-- OpenCode: `~/.config/opencode/opencode.jsonc` の `instructions` に `~/.claude/CLAUDE.md` を追加、`~/.config/opencode/skills/<name>/` へ symlink
 - agents: `~/.agents/skills/<name>/` へ symlink
+- OpenCode 本体は `~/.config/opencode/opencode.jsonc` の `instructions` に `~/.config/opencode/AGENTS.md` を参照
 
 ### 追加ファイル
 - `web/src/lib/profiles/agents-sync-engine.ts` — エンジン本体
-- `web/src/lib/profiles/jsonc.ts` — JSONC 読み書きユーティリティ
+- `web/src/lib/profiles/jsonc.ts` — JSONC 読み書きユーティリティ（MCP 同期と共有）
 - `web/src/app/api/profiles/agents-sync/route.ts` — GET/POST API
 - `web/src/components/settings/ProfileAgentsSyncSettings.tsx` — UI
 - `scripts/agents-sync.mjs` — CLI エントリポイント
@@ -284,16 +285,21 @@ Caddyfileは `https://192.168.0.102:8443` をハードコードしていたた�
 - `npm run sync:agents` — 実行
 - `npm run sync:agents:check` — ドライラン
 
+### マイグレーション
+- 既存の `~/.claude/CLAUDE.md` を `~/.config/opencode/AGENTS.md` へコピーし、opencode の `instructions` を `~/.config/opencode/AGENTS.md` を指すように変更
+- `~/.codex/AGENTS.md` は `~/.config/opencode/AGENTS.md` へ上書きコピー
+
 ### 動作確認
 - `npm run sync:agents:check` → 2件変更あり
-- `npm run sync:agents` → `~/.codex/AGENTS.md` へコピー、`~/.config/opencode/opencode.jsonc` の `instructions` へ追加
+- `npm run sync:agents` → `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` へコピー
 - 2回目 `npm run sync:agents:check` → 0件変更（冪等）
 - `tsc --noEmit` / `eslint` 合格
 
 ### 注意
 - Windows では skills の symlink 作成に開発者モードまたは昇格が必要。junction を fallback として使用
-- instructions は symlink ではなく内容コピー（`.codex/AGENTS.md` は Codex が symlink を解釈しない可能性があるため）
-- 現状 `~/.claude/skills/` は空なので、skills 同期は変更なし
+- instructions は symlink ではなく内容コピー
+- 現状 `~/.config/opencode/skills/` は空なので、skills 同期は変更なし
+- `~/.claude/CLAUDE.md` は今後ミラー先となる。直接編集しても次回同期で上書きされるため注意
 
 ## 新規プロファイル作成時のプラグイン npm依存完全脱却 (2026-08-04)
 

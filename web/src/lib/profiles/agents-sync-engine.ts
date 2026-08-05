@@ -2,24 +2,23 @@
  * agents-sync engine — global AGENTS.md/skills -> claude/codex/opencode.
  *
  * Inspired by https://github.com/DevsProtein/agents-sync
- * Keeps one canonical copy in the global claude config dir and mirrors it
+ * Keeps one canonical copy in the global opencode config dir and mirrors it
  * to the other tools' global config dirs.
  *
  * Master (canonical, global):
- *   - ~/.claude/CLAUDE.md
- *   - ~/.claude/skills/<name>/
+ *   - ~/.config/opencode/AGENTS.md
+ *   - ~/.config/opencode/skills/<name>/
  *
  * Mirrors:
- *   - ~/.codex/AGENTS.md              (copied from CLAUDE.md)
- *   - ~/.config/opencode/opencode.jsonc instructions (adds CLAUDE.md)
- *   - ~/.codex/skills/<name>/        -> symlink to ~/.claude/skills/<name>
- *   - ~/.config/opencode/skills/<name>/ -> symlink to ~/.claude/skills/<name>
- *   - ~/.agents/skills/<name>/       -> symlink to ~/.claude/skills/<name>
+ *   - ~/.claude/CLAUDE.md              (copied from AGENTS.md)
+ *   - ~/.codex/AGENTS.md              (copied from AGENTS.md)
+ *   - ~/.claude/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
+ *   - ~/.codex/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
+ *   - ~/.agents/skills/<name>/       -> symlink to ~/.config/opencode/skills/<name>
  */
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { readJsonc, writeJsonc } from "./jsonc";
 
 const HOME = os.homedir();
 
@@ -32,11 +31,11 @@ export type AgentsSyncItemStatus =
 export type AgentsSyncStatus = {
   instructions: {
     master: { path: string; exists: boolean };
+    claude: { path: string; status: AgentsSyncItemStatus };
     codex: { path: string; status: AgentsSyncItemStatus };
-    opencode: { path: string; status: AgentsSyncItemStatus };
   };
   skills: {
-    claudeRoot: { path: string; exists: boolean; count: number };
+    opencodeRoot: { path: string; exists: boolean; count: number };
     mirrors: Record<string, { path: string; status: AgentsSyncItemStatus }>;
   };
 };
@@ -50,12 +49,12 @@ export type AgentsSyncResult = {
 
 function paths() {
   return {
-    masterMd: path.join(HOME, ".claude", "CLAUDE.md"),
+    masterMd: path.join(HOME, ".config", "opencode", "AGENTS.md"),
+    claudeMd: path.join(HOME, ".claude", "CLAUDE.md"),
     codexMd: path.join(HOME, ".codex", "AGENTS.md"),
-    opencodeConfig: path.join(HOME, ".config", "opencode", "opencode.jsonc"),
+    opencodeSkills: path.join(HOME, ".config", "opencode", "skills"),
     claudeSkills: path.join(HOME, ".claude", "skills"),
     codexSkills: path.join(HOME, ".codex", "skills"),
-    opencodeSkills: path.join(HOME, ".config", "opencode", "skills"),
     agentsSkills: path.join(HOME, ".agents", "skills"),
   };
 }
@@ -127,50 +126,30 @@ function compareStatus(masterPath: string, mirrorPath: string): AgentsSyncItemSt
   return { kind: "wouldChange", message: "contents differ; will overwrite from master" };
 }
 
-function opencodeInstructionsStatus(configPath: string, masterPath: string): AgentsSyncItemStatus {
-  if (!fs.existsSync(configPath)) {
-    return { kind: "missing", message: "opencode config not found" };
-  }
-  try {
-    const cfg = readJsonc(configPath);
-    const instructions: string[] = Array.isArray(cfg.instructions) ? cfg.instructions : [];
-    const resolved = instructions.map((i) => path.resolve(path.dirname(configPath), i));
-    if (resolved.includes(path.resolve(masterPath))) {
-      return { kind: "ok", message: "CLAUDE.md already in instructions" };
-    }
-    return { kind: "wouldChange", message: "will add CLAUDE.md to instructions" };
-  } catch (err) {
-    return { kind: "blocked", message: err instanceof Error ? err.message : String(err) };
-  }
-}
-
 function instructionsStatus(): AgentsSyncStatus["instructions"] {
   const p = paths();
   const masterExists = fs.existsSync(p.masterMd);
   return {
     master: { path: p.masterMd, exists: masterExists },
+    claude: { path: p.claudeMd, status: compareStatus(p.masterMd, p.claudeMd) },
     codex: { path: p.codexMd, status: compareStatus(p.masterMd, p.codexMd) },
-    opencode: {
-      path: p.opencodeConfig,
-      status: opencodeInstructionsStatus(p.opencodeConfig, p.masterMd),
-    },
   };
 }
 
 function skillsStatus(): AgentsSyncStatus["skills"] {
   const p = paths();
-  const names = readDirNames(p.claudeSkills);
+  const names = readDirNames(p.opencodeSkills);
   const mirrors: Record<string, { path: string; status: AgentsSyncItemStatus }> = {};
   for (const name of names) {
-    const claudePath = path.join(p.claudeSkills, name);
+    const masterPath = path.join(p.opencodeSkills, name);
     const targets: Record<string, string> = {
+      claude: path.join(p.claudeSkills, name),
       codex: path.join(p.codexSkills, name),
-      opencode: path.join(p.opencodeSkills, name),
       agents: path.join(p.agentsSkills, name),
     };
     for (const [side, linkPath] of Object.entries(targets)) {
       const key = `${side}:${name}`;
-      if (isSymlinkTo(linkPath, claudePath)) {
+      if (isSymlinkTo(linkPath, masterPath)) {
         mirrors[key] = { path: linkPath, status: { kind: "ok", message: "symlink correct" } };
       } else if (fs.existsSync(linkPath)) {
         mirrors[key] = {
@@ -183,7 +162,7 @@ function skillsStatus(): AgentsSyncStatus["skills"] {
     }
   }
   return {
-    claudeRoot: { path: p.claudeSkills, exists: fs.existsSync(p.claudeSkills), count: names.length },
+    opencodeRoot: { path: p.opencodeSkills, exists: fs.existsSync(p.opencodeSkills), count: names.length },
     mirrors,
   };
 }
@@ -210,55 +189,40 @@ export function applyAgentsSync(): AgentsSyncResult {
   }
 
   // --- instructions ---------------------------------------------------------
-  try {
-    mkdirp(path.dirname(p.codexMd));
-    const current = readIfExists(p.codexMd);
-    const master = fs.readFileSync(p.masterMd, "utf8");
-    if (current === master) {
-      result.instructions.skipped++;
-    } else {
-      fs.writeFileSync(p.codexMd, master, "utf8");
-      result.instructions.copied++;
-    }
-  } catch (err) {
-    result.instructions.errors.push(
-      `codex: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  if (fs.existsSync(p.opencodeConfig)) {
+  const masterText = fs.readFileSync(p.masterMd, "utf8");
+  for (const [side, targetPath] of Object.entries({
+    claude: p.claudeMd,
+    codex: p.codexMd,
+  })) {
     try {
-      const cfg = readJsonc(p.opencodeConfig);
-      const instructions: string[] = Array.isArray(cfg.instructions) ? cfg.instructions : [];
-      const resolved = instructions.map((i) => path.resolve(path.dirname(p.opencodeConfig), i));
-      if (!resolved.includes(path.resolve(p.masterMd))) {
-        instructions.push(p.masterMd);
-        cfg.instructions = instructions;
-        writeJsonc(p.opencodeConfig, cfg);
-        result.instructions.copied++;
-      } else {
+      mkdirp(path.dirname(targetPath));
+      const current = readIfExists(targetPath);
+      if (current === masterText) {
         result.instructions.skipped++;
+      } else {
+        fs.writeFileSync(targetPath, masterText, "utf8");
+        result.instructions.copied++;
       }
     } catch (err) {
       result.instructions.errors.push(
-        `opencode: ${err instanceof Error ? err.message : String(err)}`,
+        `${side}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
 
   // --- skills ---------------------------------------------------------------
-  if (fs.existsSync(p.claudeSkills)) {
-    const names = readDirNames(p.claudeSkills);
+  if (fs.existsSync(p.opencodeSkills)) {
+    const names = readDirNames(p.opencodeSkills);
     for (const name of names) {
-      const claudePath = path.join(p.claudeSkills, name);
-      const linkPaths = [p.codexSkills, p.opencodeSkills, p.agentsSkills];
+      const masterSkillPath = path.join(p.opencodeSkills, name);
+      const linkPaths = [p.claudeSkills, p.codexSkills, p.agentsSkills];
       for (const root of linkPaths) {
         const linkPath = path.join(root, name);
         try {
-          if (isSymlinkTo(linkPath, claudePath)) {
+          if (isSymlinkTo(linkPath, masterSkillPath)) {
             result.skills.skipped++;
           } else {
-            symlinkDir(claudePath, linkPath);
+            symlinkDir(masterSkillPath, linkPath);
             result.skills.created++;
           }
         } catch (err) {

@@ -2,8 +2,19 @@
 /**
  * agents-sync.mjs (CLI entry point)
  *
- * Global CLAUDE.md/skills -> codex/opencode/agents mirrors.
+ * Global AGENTS.md/skills -> claude/codex/agents mirrors.
  * Mirrors web/src/lib/profiles/agents-sync-engine.ts behavior.
+ *
+ * Master (canonical, global):
+ *   - ~/.config/opencode/AGENTS.md
+ *   - ~/.config/opencode/skills/<name>/
+ *
+ * Mirrors:
+ *   - ~/.claude/CLAUDE.md              (copied from AGENTS.md)
+ *   - ~/.codex/AGENTS.md              (copied from AGENTS.md)
+ *   - ~/.claude/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
+ *   - ~/.codex/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
+ *   - ~/.agents/skills/<name>/       -> symlink to ~/.config/opencode/skills/<name>
  *
  * Usage: node scripts/agents-sync.mjs [--check]
  *   --check  dry-run; print status and exit non-zero if changes would be made
@@ -16,12 +27,12 @@ const HOME = os.homedir();
 const dryRun = process.argv.includes("--check");
 
 const PATHS = {
-  masterMd: path.join(HOME, ".claude", "CLAUDE.md"),
+  masterMd: path.join(HOME, ".config", "opencode", "AGENTS.md"),
+  claudeMd: path.join(HOME, ".claude", "CLAUDE.md"),
   codexMd: path.join(HOME, ".codex", "AGENTS.md"),
-  opencodeConfig: path.join(HOME, ".config", "opencode", "opencode.jsonc"),
+  opencodeSkills: path.join(HOME, ".config", "opencode", "skills"),
   claudeSkills: path.join(HOME, ".claude", "skills"),
   codexSkills: path.join(HOME, ".codex", "skills"),
-  opencodeSkills: path.join(HOME, ".config", "opencode", "skills"),
   agentsSkills: path.join(HOME, ".agents", "skills"),
 };
 
@@ -82,10 +93,6 @@ function readJsonc(p) {
   return JSON.parse(stripJsonc(readIfExists(p) ?? "{}"));
 }
 
-function writeJsonc(p, value) {
-  fs.writeFileSync(p, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
-
 function readDirNames(p) {
   try {
     return fs
@@ -134,56 +141,32 @@ function plan() {
   if (!masterExists) {
     status.instructions.push({ target: "master", message: "missing", wouldChange: true });
   } else {
-    const current = readIfExists(PATHS.codexMd);
-    const master = readIfExists(PATHS.masterMd);
-    status.instructions.push({
-      target: "codex",
-      path: PATHS.codexMd,
-      wouldChange: current !== master,
-      message: current === master ? "contents match" : "will copy from master",
-    });
-
-    if (!fs.existsSync(PATHS.opencodeConfig)) {
+    for (const [side, mirrorPath] of Object.entries({
+      claude: PATHS.claudeMd,
+      codex: PATHS.codexMd,
+    })) {
+      const current = readIfExists(mirrorPath);
+      const master = readIfExists(PATHS.masterMd);
       status.instructions.push({
-        target: "opencode",
-        path: PATHS.opencodeConfig,
-        wouldChange: false,
-        message: "config not found",
+        target: side,
+        path: mirrorPath,
+        wouldChange: current !== master,
+        message: current === master ? "contents match" : "will copy from master",
       });
-    } else {
-      try {
-        const cfg = readJsonc(PATHS.opencodeConfig);
-        const instructions = Array.isArray(cfg.instructions) ? cfg.instructions : [];
-        const resolved = instructions.map((i) => path.resolve(path.dirname(PATHS.opencodeConfig), i));
-        const hasIt = resolved.includes(path.resolve(PATHS.masterMd));
-        status.instructions.push({
-          target: "opencode",
-          path: PATHS.opencodeConfig,
-          wouldChange: !hasIt,
-          message: hasIt ? "CLAUDE.md already in instructions" : "will add CLAUDE.md to instructions",
-        });
-      } catch (err) {
-        status.instructions.push({
-          target: "opencode",
-          path: PATHS.opencodeConfig,
-          wouldChange: false,
-          message: `error reading config: ${err instanceof Error ? err.message : String(err)}`,
-        });
-      }
     }
   }
 
-  if (fs.existsSync(PATHS.claudeSkills)) {
-    const names = readDirNames(PATHS.claudeSkills);
+  if (fs.existsSync(PATHS.opencodeSkills)) {
+    const names = readDirNames(PATHS.opencodeSkills);
     for (const name of names) {
-      const claudePath = path.join(PATHS.claudeSkills, name);
+      const masterPath = path.join(PATHS.opencodeSkills, name);
       const mirrors = [
+        ["claude", path.join(PATHS.claudeSkills, name)],
         ["codex", path.join(PATHS.codexSkills, name)],
-        ["opencode", path.join(PATHS.opencodeSkills, name)],
         ["agents", path.join(PATHS.agentsSkills, name)],
       ];
       for (const [side, linkPath] of mirrors) {
-        if (isSymlinkTo(linkPath, claudePath)) {
+        if (isSymlinkTo(linkPath, masterPath)) {
           status.skills.push({ name, side, path: linkPath, wouldChange: false, message: "symlink correct" });
         } else if (fs.existsSync(linkPath)) {
           status.skills.push({
@@ -217,62 +200,45 @@ function apply() {
     process.exit(2);
   }
 
-  try {
-    mkdirp(path.dirname(PATHS.codexMd));
-    const current = readIfExists(PATHS.codexMd);
-    const master = fs.readFileSync(PATHS.masterMd, "utf8");
-    if (current === master) {
-      result.instructions.skipped++;
-      console.log("[codex] already in sync");
-    } else {
-      fs.writeFileSync(PATHS.codexMd, master, "utf8");
-      result.instructions.copied++;
-      console.log("[codex] copied CLAUDE.md");
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    result.instructions.errors.push(`codex: ${msg}`);
-    console.error(`[codex] error: ${msg}`);
-  }
-
-  if (fs.existsSync(PATHS.opencodeConfig)) {
+  const masterText = fs.readFileSync(PATHS.masterMd, "utf8");
+  for (const [side, targetPath] of Object.entries({
+    claude: PATHS.claudeMd,
+    codex: PATHS.codexMd,
+  })) {
     try {
-      const cfg = readJsonc(PATHS.opencodeConfig);
-      const instructions = Array.isArray(cfg.instructions) ? cfg.instructions : [];
-      const resolved = instructions.map((i) => path.resolve(path.dirname(PATHS.opencodeConfig), i));
-      if (!resolved.includes(path.resolve(PATHS.masterMd))) {
-        instructions.push(PATHS.masterMd);
-        cfg.instructions = instructions;
-        writeJsonc(PATHS.opencodeConfig, cfg);
-        result.instructions.copied++;
-        console.log("[opencode] added CLAUDE.md to instructions");
-      } else {
+      mkdirp(path.dirname(targetPath));
+      const current = readIfExists(targetPath);
+      if (current === masterText) {
         result.instructions.skipped++;
-        console.log("[opencode] CLAUDE.md already in instructions");
+        console.log(`[${side}] already in sync`);
+      } else {
+        fs.writeFileSync(targetPath, masterText, "utf8");
+        result.instructions.copied++;
+        console.log(`[${side}] copied AGENTS.md`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      result.instructions.errors.push(`opencode: ${msg}`);
-      console.error(`[opencode] error: ${msg}`);
+      result.instructions.errors.push(`${side}: ${msg}`);
+      console.error(`[${side}] error: ${msg}`);
     }
   }
 
-  if (fs.existsSync(PATHS.claudeSkills)) {
-    const names = readDirNames(PATHS.claudeSkills);
+  if (fs.existsSync(PATHS.opencodeSkills)) {
+    const names = readDirNames(PATHS.opencodeSkills);
     for (const name of names) {
-      const claudePath = path.join(PATHS.claudeSkills, name);
+      const masterPath = path.join(PATHS.opencodeSkills, name);
       const mirrors = [
+        ["claude", PATHS.claudeSkills],
         ["codex", PATHS.codexSkills],
-        ["opencode", PATHS.opencodeSkills],
         ["agents", PATHS.agentsSkills],
       ];
       for (const [side, root] of mirrors) {
         const linkPath = path.join(root, name);
         try {
-          if (isSymlinkTo(linkPath, claudePath)) {
+          if (isSymlinkTo(linkPath, masterPath)) {
             result.skills.skipped++;
           } else {
-            symlinkDir(claudePath, linkPath);
+            symlinkDir(masterPath, linkPath);
             result.skills.created++;
             console.log(`[skills] ${side}/${name} -> symlink created`);
           }
