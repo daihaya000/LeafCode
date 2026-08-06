@@ -41,20 +41,49 @@ OpenCodeWebUI にユーザーログイン機能を追加し、設定画面から
   - ユーザー追加・変更・削除 UI
   - ユーザー未作成時の初期ユーザー作成 UI
 
+## ログイン要求の判定ルール（127.0.0.1 は不要）
+
+`GET /api/auth/session` がサーバ側で判定して `{ local, hasUsers, loginRequired }` を返す。
+`loginRequired = !local && hasUsers`。
+
+| アクセス元 | ユーザー未登録 | ユーザー登録済み |
+| --- | --- | --- |
+| 127.0.0.1 / localhost / ::1 | 不要 | **不要** |
+| LAN / リモート | 不要 | 必要 |
+
+- `local` の判定は既存の `web/src/lib/local-request.ts:isLocalHostRequest` を再利用。
+  Host ヘッダがループバックかつ、X-Forwarded-For が無いか直近ホップもループバックの場合のみ true。
+  Caddy が Host をループバックに書き換えても、XFF が LAN アドレスなら false（ヘッダ偽装対策）。
+- ホストに繋がらない場合は fail-closed（`hasUsers = true` 扱い）。ただし `local` なら通す。
+- ユーザー未登録時にゲートを出さないのは、ユーザー管理自体がホスト限定のため、
+  出すと初回起動で誰も突破できずロックアウトするから。
+- `/api/auth/users` は `rejectUnlessLocal` でホスト限定。
+  これが無いと LAN クライアントが無認証で自分のアカウントを作成でき、ゲートが無意味になる。
+
 ## 検証結果
 
 - `npm run --prefix web typecheck` ... 成功
 - `npm run --prefix web lint` ... 成功
-- `npm run --prefix web test` ... 220 test files, 2676 tests 成功
+- `npm run --prefix web test` ... 222 test files, 2695 tests 成功
 - `npm run --prefix host test` ... 230 tests 成功
 
-## 未コミットファイル
+## コミット
 
-- 変更: `host/src/control-server.js`, `host/src/control-server.test.js`, `host/src/index.js`, `web/src/app/(app)/layout.tsx`, `web/src/components/settings/SettingsView.tsx`
-- 新規: `host/src/auth-store.js`, `host/src/auth-store.test.js`, `web/src/lib/auth.ts`, `web/src/app/api/auth/login/route.ts`, `web/src/app/api/auth/logout/route.ts`, `web/src/app/api/auth/users/route.ts`, `web/src/components/auth/LoginGate.tsx`, `web/src/components/auth/LoginGate.test.tsx`
-- 一時ファイル: `tmp-user.json`（テストで生成された可能性あり）
+- `8005654` feat(auth): WebUIにユーザーログインとユーザー管理を追加
+- `a218884` feat(auth): 127.0.0.1 からのアクセス時はログインを不要にする
 
 ## 次のステップ
 
 - 起動中の WebUI とトレイホストを再起動し、新しい認証エンドポイントが有効になることを確認する。
+  再起動しないと `/api/auth/*` は 404 のままになる。
 - 本番ビルドは `AGENTS.md` の禁止事項によりエージェント側では行わない。ユーザーが明示的に実行する。
+- 実機確認の観点:
+  1. `http://127.0.0.1:3000` … ログイン画面が出ずそのまま使える
+  2. 設定 → ユーザー でユーザーを作成
+  3. LAN URL（`http://192.168.x.x:3000`）… ログイン画面が出る
+  4. LAN から設定 → ユーザー … 403 になる（ホスト限定のため意図通り）
+
+## 既知の未対応
+
+- LAN から設定の「ユーザー」タブを開くと 403 で一覧が空になる。
+  機能的には正しいが「ホストPCで操作してください」等の案内は未実装。
