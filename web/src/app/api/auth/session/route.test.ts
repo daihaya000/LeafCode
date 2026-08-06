@@ -12,19 +12,28 @@ vi.mock("@/lib/host-control", async (importOriginal) => {
 
 import { GET } from "./route";
 
-type Body = { local: boolean; hasUsers: boolean; loginRequired: boolean };
+type Body = {
+  local: boolean;
+  hasUsers: boolean;
+  windowsAuth: boolean;
+  canAuthenticate: boolean;
+  loginRequired: boolean;
+};
 
 function request(headers: Record<string, string>) {
   return new NextRequest("http://127.0.0.1:3000/api/auth/session", { headers });
 }
 
-function usersResponse(usernames: string[]) {
+function configResponse({ hasUsers = false, windowsAuth = false } = {}) {
   return new Response(
-    JSON.stringify({
-      users: usernames.map((username) => ({ username, updatedAt: "now" })),
-    }),
+    JSON.stringify({ hasUsers, windowsAuth, windowsAuthSupported: true }),
     { status: 200 },
   );
+}
+
+/** Shorthand for the common "one local user exists" host state. */
+function usersResponse(usernames: string[]) {
+  return configResponse({ hasUsers: usernames.length > 0 });
 }
 
 describe("GET /api/auth/session", () => {
@@ -140,5 +149,56 @@ describe("GET /api/auth/session", () => {
     const res = await GET(request({ host: "192.168.1.50:3000" }));
     const body = (await res.json()) as Body;
     expect(body.loginRequired).toBe(true);
+  });
+
+  it("reads /auth/config, not the username list", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(configResponse({ hasUsers: true }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await GET(request({ host: "127.0.0.1:3000" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:18765/auth/config",
+      expect.anything(),
+    );
+  });
+
+  it("requires login for a LAN caller when only Windows auth is enabled", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        configResponse({ hasUsers: false, windowsAuth: true }),
+      ) as unknown as typeof fetch;
+
+    const res = await GET(request({ host: "192.168.1.50:3000" }));
+    const body = (await res.json()) as Body;
+    expect(body.hasUsers).toBe(false);
+    expect(body.windowsAuth).toBe(true);
+    expect(body.canAuthenticate).toBe(true);
+    expect(body.loginRequired).toBe(true);
+  });
+
+  it("still skips the gate on the host machine when Windows auth is enabled", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        configResponse({ hasUsers: true, windowsAuth: true }),
+      ) as unknown as typeof fetch;
+
+    const res = await GET(request({ host: "127.0.0.1:3000" }));
+    const body = (await res.json()) as Body;
+    expect(body.loginRequired).toBe(false);
+  });
+
+  it("reports canAuthenticate false when nothing can authenticate", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        configResponse({ hasUsers: false, windowsAuth: false }),
+      ) as unknown as typeof fetch;
+
+    const res = await GET(request({ host: "192.168.1.50:3000" }));
+    const body = (await res.json()) as Body;
+    expect(body.canAuthenticate).toBe(false);
+    expect(body.loginRequired).toBe(false);
   });
 });

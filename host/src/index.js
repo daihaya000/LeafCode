@@ -61,6 +61,8 @@ import {
   upsertUser,
   verifyUser,
 } from './auth-store.js';
+import { readAuthConfig, writeAuthConfig } from './auth-config.js';
+import { verifyWindowsCredentials } from './windows-auth.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -2314,6 +2316,13 @@ async function startControlServer() {
       upsertUser,
       deleteUser,
       hasUsers,
+      readConfig: readAuthConfig,
+      writeConfig: writeAuthConfig,
+      windowsAuthSupported: process.platform === 'win32',
+      verifyWindowsUser: (username, password) =>
+        verifyWindowsCredentials(username, password, {
+          onError: (message) => error(`[auth] ${message}`),
+        }),
     },
     sessionSecret: CONTROL_SECRET,
   });

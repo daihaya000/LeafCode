@@ -1,11 +1,12 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import http from 'http';
+import { createLoginThrottle } from './windows-auth.js';
 
 /**
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | null}
  */
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -15,6 +16,8 @@ export function matchControlRoute(method, pathname) {
   if (m === 'GET' && path === '/users') return 'users';
   if (m === 'POST' && path === '/users') return 'users';
   if (m === 'DELETE' && path === '/users') return 'users';
+  if (m === 'GET' && path === '/auth/config') return 'auth-config';
+  if (m === 'POST' && path === '/auth/config') return 'auth-config';
   if (m === 'POST' && path === '/auth/login') return 'auth';
   if (m === 'POST' && path === '/auth/logout') return 'auth';
   if (m !== 'POST') return null;
@@ -140,6 +143,10 @@ function getSessionCookie(header) {
  * @property {(username: string, password: string) => { ok: boolean, error?: string }} upsertUser
  * @property {(username: string) => { ok: boolean, error?: string }} deleteUser
  * @property {() => boolean} hasUsers
+ * @property {((username: string, password: string) => Promise<boolean>)} [verifyWindowsUser]
+ * @property {(() => { windowsAuth: boolean })} [readConfig]
+ * @property {((patch: { windowsAuth?: boolean }) => { windowsAuth: boolean })} [writeConfig]
+ * @property {boolean} [windowsAuthSupported]
  */
 
 /**
@@ -155,10 +162,14 @@ function getSessionCookie(header) {
  *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
+ *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
 export function createControlRequestHandler(handlers) {
+  // Shared across requests so a brute-force attempt cannot reset its own count.
+  const throttle = handlers.loginThrottle ?? createLoginThrottle();
+
   return async (req, res) => {
     const method = req.method ?? 'GET';
     let pathname = '/';
@@ -316,6 +327,65 @@ export function createControlRequestHandler(handlers) {
       return;
     }
 
+    if (route === 'auth-config') {
+      const authStore = handlers.authStore;
+      if (!authStore?.readConfig) {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(
+          JSON.stringify({ ok: false, error: 'auth config is not supported by this host' }),
+        );
+        return;
+      }
+      const supported = authStore.windowsAuthSupported === true;
+      if ((req.method?.toUpperCase() ?? 'GET') === 'GET') {
+        const config = authStore.readConfig();
+        res.writeHead(200, JSON_HEADERS);
+        res.end(
+          JSON.stringify({
+            windowsAuth: config.windowsAuth === true,
+            windowsAuthSupported: supported,
+            hasUsers: authStore.hasUsers(),
+          }),
+        );
+        return;
+      }
+      // POST
+      if (!authStore.writeConfig) {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(
+          JSON.stringify({ ok: false, error: 'auth config is read-only on this host' }),
+        );
+        return;
+      }
+      const body = await readJsonBody(req);
+      if (!isPlainObject(body) || typeof body.windowsAuth !== 'boolean') {
+        res.writeHead(400, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'windowsAuth must be a boolean' }));
+        return;
+      }
+      if (body.windowsAuth && !supported) {
+        res.writeHead(400, JSON_HEADERS);
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: 'Windows 認証はこの OS では利用できません',
+          }),
+        );
+        return;
+      }
+      const saved = authStore.writeConfig({ windowsAuth: body.windowsAuth });
+      res.writeHead(200, JSON_HEADERS);
+      res.end(
+        JSON.stringify({
+          ok: true,
+          windowsAuth: saved.windowsAuth === true,
+          windowsAuthSupported: supported,
+          hasUsers: authStore.hasUsers(),
+        }),
+      );
+      return;
+    }
+
     if (route === 'auth') {
       const authStore = handlers.authStore;
       if (!authStore) {
@@ -343,18 +413,56 @@ export function createControlRequestHandler(handlers) {
         res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
         return;
       }
-      if (!authStore.verifyUser(username, password)) {
+      // Throttle before touching Windows: every failed ValidateCredentials call
+      // counts toward the OS account lockout policy, so an unlimited endpoint
+      // would let a LAN client lock the operator out of their own machine.
+      const retryAfterMs = throttle.retryAfterMs(username);
+      if (retryAfterMs > 0) {
+        const retryAfterSec = Math.ceil(retryAfterMs / 1000);
+        res.writeHead(429, { ...JSON_HEADERS, 'Retry-After': String(retryAfterSec) });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: `試行回数が多すぎます。${retryAfterSec} 秒後に再試行してください`,
+            retryAfterSeconds: retryAfterSec,
+          }),
+        );
+        return;
+      }
+
+      // Local users.json first: it is cheap and carries no lockout risk.
+      let source = null;
+      if (authStore.verifyUser(username, password)) {
+        source = 'local';
+      } else if (
+        authStore.readConfig?.().windowsAuth === true &&
+        authStore.verifyWindowsUser
+      ) {
+        try {
+          if (await authStore.verifyWindowsUser(username, password)) {
+            source = 'windows';
+          }
+        } catch {
+          // Treat a validator crash as a failed login, never as a pass.
+          source = null;
+        }
+      }
+
+      if (!source) {
+        throttle.recordFailure(username);
         res.writeHead(401, JSON_HEADERS);
         res.end(JSON.stringify({ ok: false, error: 'invalid credentials' }));
         return;
       }
+
+      throttle.reset(username);
       const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
       const token = signSessionToken(secret, username);
       res.writeHead(200, {
         ...JSON_HEADERS,
         'Set-Cookie': `webui_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`,
       });
-      res.end(JSON.stringify({ ok: true, username }));
+      res.end(JSON.stringify({ ok: true, username, source }));
       return;
     }
 
@@ -391,6 +499,7 @@ export function createControlRequestHandler(handlers) {
  *   onAllowFirewall?: () => Promise<Record<string, unknown> | void> | Record<string, unknown> | void,
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
+ *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
  * }} handlers
  */
 export function createControlServer(handlers) {

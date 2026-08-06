@@ -12,37 +12,43 @@ export const dynamic = "force-dynamic";
  * remote clients). Someone already sitting at the host machine has full OS
  * access anyway, so a password would add friction without adding security.
  *
- * When no users are registered the feature is off everywhere: otherwise a
- * fresh install would show a login form that nobody can get past, since user
- * management itself is host-only.
+ * The gate also needs something to authenticate against — either a registered
+ * users.json entry or Windows-account login. With neither, a fresh install
+ * would show a login form that nobody can get past, since both user management
+ * and the Windows-auth toggle are host-only.
+ *
+ * Reads /auth/config rather than /users so the username list never has to be
+ * fetched just to answer "is a login needed?".
  *
  * Fail-closed: if the host control plane cannot be reached we cannot tell
- * whether users exist, so remote callers are asked to log in.
+ * whether credentials exist, so remote callers are asked to log in.
  */
 export async function GET(req: Request) {
   const local = isLocalHostRequest(req);
 
-  let hasUsers: boolean;
+  let hasUsers = true;
+  let windowsAuth = false;
   try {
-    const res = await fetch(`${resolveHostControlUrl()}/users`, {
+    const res = await fetch(`${resolveHostControlUrl()}/auth/config`, {
       cache: "no-store",
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) {
-      hasUsers = true;
-    } else {
-      const data = (await res.json().catch(() => ({}))) as {
-        users?: unknown;
-      };
-      hasUsers = Array.isArray(data.users) && data.users.length > 0;
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      hasUsers = data.hasUsers === true;
+      windowsAuth = data.windowsAuth === true;
     }
   } catch {
-    hasUsers = true;
+    // keep the fail-closed defaults
   }
+
+  const canAuthenticate = hasUsers || windowsAuth;
 
   return NextResponse.json({
     local,
     hasUsers,
-    loginRequired: !local && hasUsers,
+    windowsAuth,
+    canAuthenticate,
+    loginRequired: !local && canAuthenticate,
   });
 }

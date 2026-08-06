@@ -46,9 +46,12 @@ import {
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import {
+  type AuthConfig,
   deleteAuthUser,
+  fetchAuthConfig,
   listAuthUsers,
   type AuthUser,
+  setWindowsAuthEnabled,
   upsertAuthUser,
 } from "@/lib/auth";
 import type { HealthDto, ProjectDto } from "@/lib/types";
@@ -271,6 +274,7 @@ export function SettingsView() {
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitIdentityError, setCommitIdentityError] = useState<string | null>(null);
   const [authUsers, setAuthUsers] = useState<AuthUser[]>([]);
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -447,14 +451,33 @@ export function SettingsView() {
     setAuthBusy(true);
     setAuthError(null);
     try {
-      const users = await listAuthUsers();
+      const [users, config] = await Promise.all([listAuthUsers(), fetchAuthConfig()]);
       setAuthUsers(users);
+      setAuthConfig(config);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "ユーザー一覧の取得に失敗しました");
     } finally {
       setAuthBusy(false);
     }
   }, []);
+
+  const toggleWindowsAuth = async (enabled: boolean) => {
+    setAuthBusy(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    const result = await setWindowsAuthEnabled(enabled);
+    setAuthBusy(false);
+    if (!result.ok) {
+      setAuthError(result.error);
+      return;
+    }
+    setAuthConfig(result.config);
+    setAuthSuccess(
+      enabled
+        ? "Windows アカウントでのログインを有効にしました"
+        : "Windows アカウントでのログインを無効にしました",
+    );
+  };
 
   useEffect(() => {
     if (activeTab === "users") {
@@ -1755,7 +1778,40 @@ export function SettingsView() {
           <section>
             <h2 className="mb-3 text-sm font-semibold text-muted">ユーザー管理</h2>
             <p className="mb-3 text-xs text-faint">
-              WebUI ログインで使うユーザーを追加・変更・削除します。パスワードは 4 文字以上です。
+              ログインが必要なのは LAN / リモートからのアクセスだけです。127.0.0.1 （このPC）
+              からはログインなしで利用できます。
+            </p>
+
+            <div className="mb-4 rounded-xl border border-border bg-surface p-4">
+              <h3 className="mb-1 text-sm font-semibold text-text">Windows アカウントでログイン</h3>
+              <p className="mb-3 text-xs text-faint">
+                このPCの Windows ユーザー名とパスワードでログインできるようにします。
+                {authConfig?.windowsAuthSupported === false &&
+                  " このホストは Windows ではないため利用できません。"}
+              </p>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="Windows アカウントでのログインを許可"
+                  checked={authConfig?.windowsAuth === true}
+                  disabled={authBusy || authConfig === null || !authConfig.windowsAuthSupported}
+                  onChange={(e) => void toggleWindowsAuth(e.target.checked)}
+                  className="mt-0.5 h-4 w-4"
+                />
+                <span className="text-xs text-muted">
+                  許可する
+                  <span className="mt-1 block text-faint">
+                    有効にすると、LAN の端末から Windows のパスワードがこのPCへ送信されます。
+                    また、ログイン失敗は Windows のアカウントロックアウトにも数えられます
+                    （5 回失敗すると 5 分間ロックして保護します）。
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <p className="mb-3 text-xs text-faint">
+              WebUI 専用のユーザーを追加・変更・削除します。パスワードは 4 文字以上です。
             </p>
 
             <div className="mb-4 rounded-xl border border-border bg-surface p-4">

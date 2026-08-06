@@ -18,8 +18,20 @@ export type AuthRequirement = {
   local: boolean;
   /** True when at least one user is registered on the host. */
   hasUsers: boolean;
-  /** True only for remote callers once a user exists. */
+  /** True when Windows-account login is enabled on the host. */
+  windowsAuth: boolean;
+  /** True when the host has some credential to check against. */
+  canAuthenticate: boolean;
+  /** True only for remote callers once a credential source exists. */
   loginRequired: boolean;
+};
+
+/** Host-only authentication options. */
+export type AuthConfig = {
+  windowsAuth: boolean;
+  /** False on non-Windows hosts, where the toggle cannot be enabled. */
+  windowsAuthSupported: boolean;
+  hasUsers: boolean;
 };
 
 /**
@@ -35,10 +47,60 @@ export async function fetchAuthRequirement(): Promise<AuthRequirement> {
     return {
       local: data.local === true,
       hasUsers: data.hasUsers === true,
+      windowsAuth: data.windowsAuth === true,
+      canAuthenticate: data.canAuthenticate === true,
       loginRequired: data.loginRequired !== false,
     };
   } catch {
-    return { local: false, hasUsers: true, loginRequired: true };
+    return {
+      local: false,
+      hasUsers: true,
+      windowsAuth: false,
+      canAuthenticate: true,
+      loginRequired: true,
+    };
+  }
+}
+
+/** Read the host-only auth options. Returns null when unavailable (e.g. LAN). */
+export async function fetchAuthConfig(): Promise<AuthConfig | null> {
+  try {
+    const data = await getJson<Partial<AuthConfig>>("/api/auth/config");
+    return {
+      windowsAuth: data.windowsAuth === true,
+      windowsAuthSupported: data.windowsAuthSupported === true,
+      hasUsers: data.hasUsers === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function setWindowsAuthEnabled(
+  enabled: boolean,
+): Promise<{ ok: true; config: AuthConfig } | { ok: false; error: string }> {
+  try {
+    const result = await sendJson<{ ok?: boolean; error?: string } & Partial<AuthConfig>>(
+      "POST",
+      "/api/auth/config",
+      { windowsAuth: enabled },
+    );
+    if (!result.ok) {
+      return { ok: false, error: result.error || "保存に失敗しました" };
+    }
+    return {
+      ok: true,
+      config: {
+        windowsAuth: result.windowsAuth === true,
+        windowsAuthSupported: result.windowsAuthSupported === true,
+        hasUsers: result.hasUsers === true,
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: (err instanceof Error ? err.message : null) || "通信エラーが発生しました",
+    };
   }
 }
 

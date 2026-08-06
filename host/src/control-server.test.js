@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'events';
 import { createControlRequestHandler, matchControlRoute } from './control-server.js';
+import { createLoginThrottle } from './windows-auth.js';
 
 /**
  * Minimal IncomingMessage-like readable for tests. The control server reads
@@ -265,6 +266,9 @@ test('matchControlRoute maps user management and auth endpoints', () => {
   assert.equal(matchControlRoute('POST', '/auth/login'), 'auth');
   assert.equal(matchControlRoute('POST', '/auth/logout'), 'auth');
   assert.equal(matchControlRoute('GET', '/auth/login'), null);
+  assert.equal(matchControlRoute('GET', '/auth/config'), 'auth-config');
+  assert.equal(matchControlRoute('POST', '/auth/config'), 'auth-config');
+  assert.equal(matchControlRoute('DELETE', '/auth/config'), null);
 });
 
 test('GET /users returns users from the auth store', async () => {
@@ -373,6 +377,285 @@ test('POST /auth/login rejects bad credentials', async () => {
   await handle(req, res);
   assert.equal(res.statusCode, 401);
   assert.equal(res.body.ok, false);
+});
+
+/** Auth store stub with everything disabled unless overridden. */
+function authStoreStub(overrides = {}) {
+  return {
+    listUsers: () => [],
+    verifyUser: () => false,
+    upsertUser: () => ({ ok: false, error: 'unsupported' }),
+    deleteUser: () => ({ ok: false, error: 'unsupported' }),
+    hasUsers: () => true,
+    readConfig: () => ({ windowsAuth: false }),
+    writeConfig: (patch) => ({ windowsAuth: patch.windowsAuth === true }),
+    windowsAuthSupported: true,
+    ...overrides,
+  };
+}
+
+async function postJson(handle, url, body) {
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify(body));
+  req.method = 'POST';
+  req.url = url;
+  await handle(req, res);
+  return res;
+}
+
+test('POST /auth/login falls back to Windows when the local store misses', async () => {
+  const seen = [];
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      readConfig: () => ({ windowsAuth: true }),
+      verifyWindowsUser: async (username, password) => {
+        seen.push({ username, password });
+        return username === 'Daichi' && password === 'winpass';
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+
+  const res = await postJson(handle, '/auth/login', {
+    username: 'Daichi',
+    password: 'winpass',
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.source, 'windows');
+  assert.deepEqual(seen, [{ username: 'Daichi', password: 'winpass' }]);
+});
+
+test('POST /auth/login reports the local store as the source and skips Windows', async () => {
+  let windowsCalled = false;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      verifyUser: (u, p) => u === 'alice' && p === 'secret',
+      readConfig: () => ({ windowsAuth: true }),
+      verifyWindowsUser: async () => {
+        windowsCalled = true;
+        return true;
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+
+  const res = await postJson(handle, '/auth/login', {
+    username: 'alice',
+    password: 'secret',
+  });
+  assert.equal(res.body.source, 'local');
+  assert.equal(windowsCalled, false, 'local success must not trigger a Windows logon attempt');
+});
+
+test('POST /auth/login never tries Windows while the flag is off', async () => {
+  let windowsCalled = false;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      readConfig: () => ({ windowsAuth: false }),
+      verifyWindowsUser: async () => {
+        windowsCalled = true;
+        return true;
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+
+  const res = await postJson(handle, '/auth/login', {
+    username: 'Daichi',
+    password: 'winpass',
+  });
+  assert.equal(res.statusCode, 401);
+  assert.equal(windowsCalled, false);
+});
+
+test('POST /auth/login treats a Windows validator crash as a failed login', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      readConfig: () => ({ windowsAuth: true }),
+      verifyWindowsUser: async () => {
+        throw new Error('powershell exploded');
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+
+  const res = await postJson(handle, '/auth/login', {
+    username: 'Daichi',
+    password: 'winpass',
+  });
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.ok, false);
+});
+
+test('POST /auth/login throttles repeated failures with 429 and Retry-After', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 3, windowMs: 60_000 }),
+  });
+
+  for (let i = 0; i < 3; i += 1) {
+    const res = await postJson(handle, '/auth/login', { username: 'alice', password: 'no' });
+    assert.equal(res.statusCode, 401, `attempt ${i + 1} should still be evaluated`);
+  }
+
+  const blocked = await postJson(handle, '/auth/login', { username: 'alice', password: 'no' });
+  assert.equal(blocked.statusCode, 429);
+  assert.ok(Number(blocked.headers?.['Retry-After']) > 0);
+  assert.ok(blocked.body.retryAfterSeconds > 0);
+});
+
+test('POST /auth/login throttling stops Windows logons, protecting the OS lockout counter', async () => {
+  let windowsAttempts = 0;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      readConfig: () => ({ windowsAuth: true }),
+      verifyWindowsUser: async () => {
+        windowsAttempts += 1;
+        return false;
+      },
+    }),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 2, windowMs: 60_000 }),
+  });
+
+  for (let i = 0; i < 6; i += 1) {
+    await postJson(handle, '/auth/login', { username: 'Daichi', password: 'guess' });
+  }
+  assert.equal(windowsAttempts, 2, 'Windows must not see more attempts than the throttle allows');
+});
+
+test('POST /auth/login throttles per username', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 1, windowMs: 60_000 }),
+  });
+
+  await postJson(handle, '/auth/login', { username: 'alice', password: 'no' });
+  const aliceBlocked = await postJson(handle, '/auth/login', { username: 'alice', password: 'no' });
+  assert.equal(aliceBlocked.statusCode, 429);
+
+  const bob = await postJson(handle, '/auth/login', { username: 'bob', password: 'no' });
+  assert.equal(bob.statusCode, 401, 'a different user must not inherit the block');
+});
+
+test('POST /auth/login clears the throttle after a success', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      verifyUser: (u, p) => p === 'right',
+    }),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 2, windowMs: 60_000 }),
+  });
+
+  await postJson(handle, '/auth/login', { username: 'alice', password: 'no' });
+  const ok = await postJson(handle, '/auth/login', { username: 'alice', password: 'right' });
+  assert.equal(ok.statusCode, 200);
+
+  // The earlier failure must not count toward a later block.
+  await postJson(handle, '/auth/login', { username: 'alice', password: 'no' });
+  const stillEvaluated = await postJson(handle, '/auth/login', {
+    username: 'alice',
+    password: 'no',
+  });
+  assert.equal(stillEvaluated.statusCode, 401);
+});
+
+test('GET /auth/config reports the flag, support and whether users exist', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      readConfig: () => ({ windowsAuth: true }),
+      hasUsers: () => false,
+    }),
+  });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/auth/config' }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, {
+    windowsAuth: true,
+    windowsAuthSupported: true,
+    hasUsers: false,
+  });
+});
+
+test('GET /auth/config does not leak usernames', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      listUsers: () => [{ username: 'alice', updatedAt: 'x' }],
+      hasUsers: () => true,
+    }),
+  });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/auth/config' }, res);
+  assert.equal(JSON.stringify(res.body).includes('alice'), false);
+});
+
+test('POST /auth/config persists the flag', async () => {
+  let saved = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      writeConfig: (patch) => {
+        saved = patch;
+        return { windowsAuth: patch.windowsAuth === true };
+      },
+    }),
+  });
+  const res = await postJson(handle, '/auth/config', { windowsAuth: true });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(saved, { windowsAuth: true });
+  assert.equal(res.body.windowsAuth, true);
+});
+
+test('POST /auth/config rejects a non-boolean flag', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+  });
+  for (const body of [{ windowsAuth: 'yes' }, { windowsAuth: 1 }, {}]) {
+    const res = await postJson(handle, '/auth/config', body);
+    assert.equal(res.statusCode, 400, JSON.stringify(body));
+  }
+});
+
+test('POST /auth/config refuses to enable Windows auth on an unsupported OS', async () => {
+  let saved = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      windowsAuthSupported: false,
+      writeConfig: (patch) => {
+        saved = patch;
+        return { windowsAuth: patch.windowsAuth === true };
+      },
+    }),
+  });
+  const res = await postJson(handle, '/auth/config', { windowsAuth: true });
+  assert.equal(res.statusCode, 400);
+  assert.equal(saved, null);
+
+  // Turning it off must still work, so a config copied from Windows can be cleared.
+  const off = await postJson(handle, '/auth/config', { windowsAuth: false });
+  assert.equal(off.statusCode, 200);
+});
+
+test('/auth/config reports 501 when the host has no auth store', async () => {
+  const handle = createControlRequestHandler(noopHandlers);
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/auth/config' }, res);
+  assert.equal(res.statusCode, 501);
 });
 
 test('health and unknown routes are unchanged', async () => {
