@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ function errorResponse(error: string, status: number): NextResponse {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await requireAuthorized(request);
+  if (denied) return denied;
+
   const directory = request.nextUrl.searchParams.get("directory");
   const requested = request.nextUrl.searchParams.get("path");
 

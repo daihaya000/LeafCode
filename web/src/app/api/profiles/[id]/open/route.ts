@@ -2,17 +2,15 @@ import { NextResponse } from "next/server";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { ensureRegistry, resolveActiveId } from "@/lib/profiles/registry";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+export async function POST(req: Request,
+  { params }: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const { id } = await params;

@@ -3,6 +3,7 @@ import { getWorkspace, latestBindings, listSessionBindings } from "@/lib/db";
 import { OcError } from "@/lib/oc-server";
 import { setSessionEditPermission } from "@/lib/opencode-access-mode";
 import type { AccessMode } from "@/lib/access-mode";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,9 @@ function failure(err: unknown) {
  * accepts an arbitrary directory, agent, or config payload.
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as RequestBody | null;
   if (!body || typeof body !== "object" || !isAccessMode(body.mode)) {
     return NextResponse.json({ error: "invalid access mode" }, { status: 400 });

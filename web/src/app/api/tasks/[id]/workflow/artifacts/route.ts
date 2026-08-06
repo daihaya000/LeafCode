@@ -1,12 +1,16 @@
 import { getWorkflow } from "@/lib/workflow-service";
 import { BrowserBridgeArtifactError, saveWorkflowArtifact, validateWorkflowArtifact, verifyBrowserBridgeScreenshot, type WorkflowArtifactOrigin } from "@/lib/workflow-artifacts";
 import { getDb } from "@/lib/db";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, context: Ctx): Promise<Response> {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const workflow = getWorkflow(id);

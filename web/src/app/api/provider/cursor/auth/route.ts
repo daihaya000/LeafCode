@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,9 @@ function isCursorAuthenticated(): boolean {
   });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   return NextResponse.json({ connected: isCursorAuthenticated() });
 }

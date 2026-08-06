@@ -27,7 +27,7 @@ import { POST } from "./route";
 function req(body: unknown): Request {
   return new Request("http://localhost/api/projects", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { assertSafeBranchName, runGit } from "@/lib/git";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +55,9 @@ function runGh(
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const directory = req.nextUrl.searchParams.get("directory") ?? process.cwd();
   const check = assertAllowedDirectory(directory);
   // availability check may use any allowed root; if none, still probe gh
@@ -73,6 +77,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     directory?: string;
     title?: string;

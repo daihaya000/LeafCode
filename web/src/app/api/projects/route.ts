@@ -4,11 +4,15 @@ import { listProjects, upsertProject } from "@/lib/db";
 import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
 import { restoreProjectFromManifest } from "@/lib/project-session-sync";
 import { destroyProject, ServiceError } from "@/lib/workspace-service";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const projects = listProjects().map((p) => ({
     id: p.id,
     name: p.name,
@@ -21,6 +25,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     name?: string;
     rootPath?: string;
@@ -67,6 +74,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     id?: string;
     favorite?: boolean;
@@ -116,6 +126,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const id =
     req.nextUrl.searchParams.get("id") ||
     ((await req.json().catch(() => null)) as { id?: string } | null)?.id;

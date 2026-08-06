@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { bindSession, getDb, getWorkspace, setSessionFavorite } from "@/lib/db";
 import { assertSafeOpenCodeSessionId } from "@/lib/opencode-id";
 import { persistProjectSessions } from "@/lib/project-session-sync";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, context: Ctx) {
+export async function GET(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const ws = getWorkspace(id);
   if (!ws) {
@@ -40,6 +44,9 @@ export async function GET(_req: NextRequest, context: Ctx) {
 }
 
 export async function POST(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const ws = getWorkspace(id);
   if (!ws) {

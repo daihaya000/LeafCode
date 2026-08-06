@@ -1,9 +1,13 @@
 import { pauseWorkflowForManualInput, WorkflowServiceError } from "@/lib/workflow-service";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 type Ctx = { params: Promise<{ id: string; attemptId: string }> };
 
 export async function POST(req: Request, context: Ctx): Promise<Response> {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id, attemptId } = await context.params;
   const body = (await req.json().catch(() => null)) as { prompt?: unknown; command?: unknown; workflowRevision?: unknown } | null;
   const hasInput = (typeof body?.prompt === "string" && body.prompt.trim().length > 0) || (typeof body?.command === "string" && body.command.trim().length > 0);

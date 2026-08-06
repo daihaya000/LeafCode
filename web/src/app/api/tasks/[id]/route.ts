@@ -3,14 +3,16 @@ import { getGoalLoop } from "@/lib/goal-loop";
 import { getTask } from "@/lib/task-service";
 import { ServiceError, destroyWorkspace } from "@/lib/workspace-service";
 import { WorkflowServiceError, assertNoActiveWorkflow } from "@/lib/workflow-service";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest,
+  context: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const task = await getTask(id);
   if (!task) {
@@ -20,10 +22,11 @@ export async function GET(
 }
 
 /** Cleanup: remove worktree/copy + metadata (Codex's archive equivalent). */
-export async function DELETE(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(req: NextRequest,
+  context: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   try {
     assertNoActiveWorkflow(id);

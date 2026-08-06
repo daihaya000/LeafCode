@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ocServer, OcError } from "@/lib/oc-server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,9 @@ function isBrowserOAuth(method: ProviderAuthMethod | undefined): boolean {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => undefined)) as
     | { method?: unknown }
     | undefined;

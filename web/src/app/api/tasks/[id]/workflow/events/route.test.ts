@@ -31,7 +31,7 @@ describe("GET /api/tasks/[id]/workflow/events", () => {
     // last-event-id header the same as `Number(header ?? "")` made revision 0
     // look already-seen and the first event was silently dropped.
     getWorkflowMock.mockReturnValue(workflowAt(0));
-    const req = new Request("http://localhost/api/tasks/t1/workflow/events");
+    const req = new Request("http://localhost/api/tasks/t1/workflow/events", { headers: { host: "127.0.0.1:3000" } });
     const res = await GET(req, { params: Promise.resolve({ id: "t1" }) });
 
     const chunk = await readFirstChunk(res);
@@ -42,7 +42,7 @@ describe("GET /api/tasks/[id]/workflow/events", () => {
   it("still suppresses a duplicate publish when last-event-id matches the current revision", async () => {
     getWorkflowMock.mockReturnValue(workflowAt(3));
     const req = new Request("http://localhost/api/tasks/t1/workflow/events", {
-      headers: { "last-event-id": "3" },
+      headers: { host: "127.0.0.1:3000", "last-event-id": "3" },
     });
     const res = await GET(req, { params: Promise.resolve({ id: "t1" }) });
 

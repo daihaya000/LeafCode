@@ -11,6 +11,7 @@ import {
 import { listGitWorktrees, removeWorktree, runGit, gitWorktreeAdminDir } from "@/lib/git";
 import { dataDir } from "@/lib/paths";
 import { persistProjectSessions } from "@/lib/project-session-sync";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -221,6 +222,9 @@ async function cleanupStrayWorktrees(): Promise<{
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const doScan = req.nextUrl.searchParams.get("scan") === "1";
   let marked = 0;
   let purged = 0;
@@ -236,6 +240,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => ({}))) as {
     action?: "cleanup" | "scan";
     ids?: string[];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isWorkflowModeEnabled } from "@/lib/workflow-feature";
 import { runWorkflowSchedulerTick } from "@/lib/workflow-scheduler";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   createWorkflow,
   getWorkflow,
@@ -22,7 +23,10 @@ function errorResponse(error: unknown): NextResponse {
   throw error;
 }
 
-export async function GET(_req: NextRequest, context: Ctx) {
+export async function GET(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const workflow = getWorkflow(id);
   if (!workflow) return NextResponse.json({ error: "task not found" }, { status: 404 });
@@ -30,6 +34,9 @@ export async function GET(_req: NextRequest, context: Ctx) {
 }
 
 export async function POST(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   if (!isWorkflowModeEnabled()) {
     return NextResponse.json({ error: "Workflow mode is disabled" }, { status: 409 });
@@ -63,6 +70,9 @@ export async function POST(req: NextRequest, context: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const body = (await req.json().catch(() => null)) as {
     action?: unknown;

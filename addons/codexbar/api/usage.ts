@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { emptyUsage, parseCodexBarSnapshot } from "../lib/codexbar";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,10 @@ function snapshotPath(): string {
   return path.join(appData, "CodexBar", "usage-snapshot.json");
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const file = snapshotPath();
 
   let text: string;

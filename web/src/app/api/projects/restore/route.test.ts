@@ -22,7 +22,7 @@ function post(body: unknown) {
   return POST(
     new NextRequest("http://localhost/api/projects/restore", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
       body: JSON.stringify(body),
     }),
   );

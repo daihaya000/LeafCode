@@ -41,7 +41,7 @@ function ctx() {
   return { params: Promise.resolve({ id: "ws1", sessionId: "sess1" }) };
 }
 function req() {
-  return new Request("http://x", { method: "POST" }) as never;
+  return new Request("http://x", { headers: { host: "127.0.0.1:3000" }, method: "POST" }) as never;
 }
 
 beforeEach(() => {

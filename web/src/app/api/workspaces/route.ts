@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listWorkspaces } from "@/lib/db";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   ServiceError,
   destroyWorkspace,
@@ -11,6 +12,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const projectId = req.nextUrl.searchParams.get("projectId") ?? undefined;
   const rows = listWorkspaces(projectId).map((w) => ({
     id: w.id,
@@ -27,6 +31,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     projectId?: string;
     displayName?: string;
@@ -74,6 +81,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
@@ -96,6 +106,9 @@ export async function DELETE(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     id?: string;
     status?: "active" | "merging" | "archived";

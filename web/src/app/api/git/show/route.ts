@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { gitCommitFileDiff, gitCommitFiles } from "@/lib/git";
 import type { GraphShowPayload } from "@/lib/types";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const directory = req.nextUrl.searchParams.get("directory");
   const commit = req.nextUrl.searchParams.get("commit");
   const file = req.nextUrl.searchParams.get("file");

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ async function forwardToHost(method: string, body?: unknown) {
 }
 
 export async function GET(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   try {
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const body = (await req.json().catch(() => null)) as {
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const body = (await req.json().catch(() => null)) as { username?: string } | null;

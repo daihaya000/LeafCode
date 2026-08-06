@@ -8,6 +8,7 @@ import { setProviderModelEnabled } from "@/lib/opencode-extensions/provider-mode
 import { updateCustomProvider } from "@/lib/opencode-extensions/provider-models";
 import { setProviderIconOverride } from "@/lib/opencode-extensions/provider-models";
 import { deleteCustomProvider } from "@/lib/opencode-extensions/provider-models";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,10 +24,11 @@ function isIconBody(body: unknown): boolean {
  * custom), without touching `opencode.jsonc`. `{ enabled }` keeps the
  * existing enable/disable toggle behavior.
  */
-export async function PATCH(
-  req: NextRequest,
-  context: { params: Promise<{ key: string }> },
-) {
+export async function PATCH(req: NextRequest,
+  context: { params: Promise<{ key: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { key } = await context.params;
   const body = await req.json().catch(() => undefined);
 
@@ -86,10 +88,11 @@ function parseCustomProviderBody(body: CustomProviderBody) {
   };
 }
 
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ key: string }> },
-) {
+export async function PUT(req: NextRequest,
+  context: { params: Promise<{ key: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { key } = await context.params;
   const body = (await req.json().catch(() => undefined)) as
     | CustomProviderBody
@@ -110,10 +113,11 @@ export async function PUT(
  * `opencode.jsonc` and its WebUI-local state. Only providers that exist in
  * the config can be deleted; built-in providers return `not-found`.
  */
-export async function DELETE(
-  _req: NextRequest,
-  context: { params: Promise<{ key: string }> },
-) {
+export async function DELETE(req: NextRequest,
+  context: { params: Promise<{ key: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { key } = await context.params;
   try {
     await deleteCustomProvider(decodeURIComponent(key));

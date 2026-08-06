@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   try {

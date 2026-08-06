@@ -4,14 +4,16 @@ import {
   parseEnabledBody,
 } from "@/lib/opencode-extensions/http";
 import { setSkillEnabled } from "@/lib/opencode-extensions/skills";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function PATCH(
-  req: NextRequest,
-  context: { params: Promise<{ name: string }> },
-) {
+export async function PATCH(req: NextRequest,
+  context: { params: Promise<{ name: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { name } = await context.params;
   const body = await req.json().catch(() => undefined);
   const parsed = parseEnabledBody(body);

@@ -99,7 +99,7 @@ import { POST } from "./route";
 
 function post(body: Record<string, unknown>) {
   return POST(
-    new NextRequest("http://localhost/api/tasks", {
+    new NextRequest("http://localhost/api/tasks", { headers: { host: "127.0.0.1:3000" },
       method: "POST",
       body: JSON.stringify(body),
     }),

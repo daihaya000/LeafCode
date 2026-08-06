@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { renameProfile, deleteProfile } from "@/lib/profiles/service";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+export async function PATCH(req: Request,
+  { params }: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const { id } = await params;
@@ -31,11 +29,9 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+export async function DELETE(req: Request,
+  { params }: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const { id } = await params;

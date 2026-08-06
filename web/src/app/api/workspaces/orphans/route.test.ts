@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -62,14 +63,18 @@ vi.mock("@/lib/copy", () => ({
 import { GET, POST } from "./route";
 
 function req(body?: unknown) {
-  return new Request("http://x/api/workspaces/orphans", {
+  return new Request("http://x/api/workspaces/orphans", { headers: { host: "127.0.0.1:3000" },
     method: "POST",
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }) as never;
 }
 
 function getReq(url = "http://x/api/workspaces/orphans") {
-  return { nextUrl: new URL(url) } as never;
+  // A real request, not a `{ nextUrl }` stand-in: the shared API guard reads
+  // headers before the handler touches nextUrl.
+  return new NextRequest(url, {
+    headers: { host: "127.0.0.1:3000" },
+  }) as never;
 }
 
 const STRAY_PATH = "C:\\data\\worktrees\\proj1\\webui__main__task-abc";

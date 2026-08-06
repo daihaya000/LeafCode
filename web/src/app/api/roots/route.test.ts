@@ -20,7 +20,7 @@ import { DELETE, POST } from "./route";
 function req(body: unknown): Request {
   return new Request("http://localhost/api/roots", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }
@@ -138,7 +138,7 @@ describe("DELETE /api/roots", () => {
   it("removes an existing root with case-insensitive matching", async () => {
     vi.mocked(listAllowedRoots).mockReturnValue(["C:\\repo"]);
     const res = await DELETE(
-      new Request("http://localhost/api/roots?path=c%3A%5Crepo", { method: "DELETE" }) as never,
+      new Request("http://localhost/api/roots?path=c%3A%5Crepo", { headers: { host: "127.0.0.1:3000" }, method: "DELETE" }) as never,
     );
     expect(res.status).toBe(200);
     expect(removeAllowedRoot).toHaveBeenCalledWith("C:\\repo");
@@ -146,7 +146,7 @@ describe("DELETE /api/roots", () => {
 
   it("returns 400 when path is not specified", async () => {
     const res = await DELETE(
-      new Request("http://localhost/api/roots", { method: "DELETE" }) as never,
+      new Request("http://localhost/api/roots", { headers: { host: "127.0.0.1:3000" }, method: "DELETE" }) as never,
     );
     expect(res.status).toBe(400);
     expect(removeAllowedRoot).not.toHaveBeenCalled();
@@ -155,7 +155,7 @@ describe("DELETE /api/roots", () => {
   it("returns 404 for a non-existent root", async () => {
     vi.mocked(listAllowedRoots).mockReturnValue(["C:\\other"]);
     const res = await DELETE(
-      new Request("http://localhost/api/roots?path=C%3A%5Cmissing", { method: "DELETE" }) as never,
+      new Request("http://localhost/api/roots?path=C%3A%5Cmissing", { headers: { host: "127.0.0.1:3000" }, method: "DELETE" }) as never,
     );
     expect(res.status).toBe(404);
     expect(removeAllowedRoot).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe("DELETE /api/roots", () => {
     });
 
     const res = await DELETE(
-      new Request("http://localhost/api/roots?path=c%3A%5Crepo", { method: "DELETE" }) as never,
+      new Request("http://localhost/api/roots?path=c%3A%5Crepo", { headers: { host: "127.0.0.1:3000" }, method: "DELETE" }) as never,
     );
 
     expect(res.status).toBe(200);

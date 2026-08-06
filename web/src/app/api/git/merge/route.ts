@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { invalidateDirStat } from "@/lib/dirstat";
 import { assertSafeBranchName, runGit } from "@/lib/git";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   assertNoActiveWorkflowForDirectory,
   WorkflowServiceError,
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic";
  * into=branch: checkout target, merge current tip, then optionally return
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     directory?: string;
     branch?: string;

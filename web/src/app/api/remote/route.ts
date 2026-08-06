@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,7 +8,10 @@ export const dynamic = "force-dynamic";
  * Phase 3 placeholder: Remote Workspace attach is not implemented.
  * Contract reserved for future SSH / tunnel directory mounts.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   return NextResponse.json({
     supported: false,
     modes: ["ssh", "tunnel"],
@@ -17,6 +21,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = await req.json().catch(() => ({}));
   return NextResponse.json(
     {

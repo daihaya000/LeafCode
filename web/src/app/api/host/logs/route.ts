@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hostLogsPath, resolveHostControlUrl } from "@/lib/host-control";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +14,11 @@ type LogEntry = {
 };
 
 export async function GET(req: Request) {
-  // Log lines can include directory paths and other host-machine details, so
-  // this is guarded the same as /restart rather than left open like /health.
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
+  // Log lines can include directory paths and other host-machine details, so
+  // this is guarded the same as /restart rather than left open like /health.
   const url = new URL(req.url);
   const rawSince = url.searchParams.get("since");
   const since =

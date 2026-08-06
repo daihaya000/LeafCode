@@ -23,7 +23,7 @@ let base: string;
 
 function request(name: string, body: unknown): Promise<Response> {
   return PATCH(
-    new NextRequest(`http://localhost/api/extensions/skills/${encodeURIComponent(name)}`, {
+    new NextRequest(`http://localhost/api/extensions/skills/${encodeURIComponent(name)}`, { headers: { host: "127.0.0.1:3000" },
       method: "PATCH",
       body: JSON.stringify(body),
     }),

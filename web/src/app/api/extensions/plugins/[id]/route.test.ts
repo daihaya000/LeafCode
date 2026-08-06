@@ -15,14 +15,21 @@ vi.mock("@/lib/paths", () => ({
 import { DELETE, PATCH, PUT } from "./route";
 import { GET } from "../route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 let base: string;
 let data: string;
 
 function patch(id: string, body: unknown): Promise<Response> {
   return PATCH(
     new NextRequest(
-      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
-      { method: "PATCH", body: JSON.stringify(body) },
+      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`, { headers: { host: "127.0.0.1:3000" }, method: "PATCH", body: JSON.stringify(body) },
     ),
     { params: Promise.resolve({ id }) },
   );
@@ -31,8 +38,7 @@ function patch(id: string, body: unknown): Promise<Response> {
 function put(id: string, body: unknown): Promise<Response> {
   return PUT(
     new NextRequest(
-      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
-      { method: "PUT", body: JSON.stringify(body) },
+      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`, { headers: { host: "127.0.0.1:3000" }, method: "PUT", body: JSON.stringify(body) },
     ),
     { params: Promise.resolve({ id }) },
   );
@@ -41,15 +47,14 @@ function put(id: string, body: unknown): Promise<Response> {
 function remove(id: string): Promise<Response> {
   return DELETE(
     new NextRequest(
-      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`,
-      { method: "DELETE" },
+      `http://localhost/api/extensions/plugins/${encodeURIComponent(id)}`, { headers: { host: "127.0.0.1:3000" }, method: "DELETE" },
     ),
     { params: Promise.resolve({ id }) },
   );
 }
 
 async function listPluginIds(): Promise<{ id: string; name: string; enabled: boolean }[]> {
-  const res = await GET();
+  const res = await GET(localReq());
   const body = (await res.json()) as {
     plugins: { id: string; name: string; enabled: boolean }[];
   };

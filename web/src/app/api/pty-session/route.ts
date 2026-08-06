@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { createPtyWithShellCheck, listPtys, removePty, resolveScopedCwd, PtyError } from "@/lib/pty-session";
 import { logPtyEvent } from "@/lib/pty-audit";
 import { clearCursor } from "@/lib/pty-relay";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
  * arbitrary executable. The Engine uses its default shell.
  */
 export async function POST(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const body = (await req.json().catch(() => null)) as
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
  * GET /api/pty-session?directory= — list PTY sessions (host-only).
  */
 export async function GET(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const directory = req.nextUrl.searchParams.get("directory")?.trim() ?? "";
@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
  * DELETE /api/pty-session?id=&directory= — terminate a PTY (host-only).
  */
 export async function DELETE(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const ptyId = req.nextUrl.searchParams.get("id")?.trim() ?? "";

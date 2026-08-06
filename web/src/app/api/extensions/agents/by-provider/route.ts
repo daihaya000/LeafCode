@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setProviderEnabled } from "@/lib/opencode-extensions/agents";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   extensionsErrorResponse,
   parseProviderEnabledBody,
@@ -10,6 +11,9 @@ export const dynamic = "force-dynamic";
 
 /** Bulk enable/disable every toggleable agent of a provider. */
 export async function PATCH(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = await req.json().catch(() => undefined);
   const parsed = parseProviderEnabledBody(body);
   if ("error" in parsed) return parsed.error;

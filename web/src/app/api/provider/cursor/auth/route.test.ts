@@ -4,6 +4,14 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 const ORIGINAL_ENV = { ...process.env };
 
 let tempHome: string;
@@ -23,13 +31,13 @@ afterEach(() => {
 
 describe("GET /api/provider/cursor/auth", () => {
   it("reports disconnected when no CURSOR_API_KEY and no auth file exist", async () => {
-    const response = await GET();
+    const response = await GET(localReq());
     expect(await response.json()).toEqual({ connected: false });
   });
 
   it("reports connected when CURSOR_API_KEY is set", async () => {
     process.env.CURSOR_API_KEY = "sk-test";
-    const response = await GET();
+    const response = await GET(localReq());
     expect(await response.json()).toEqual({ connected: true });
   });
 
@@ -38,7 +46,7 @@ describe("GET /api/provider/cursor/auth", () => {
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(path.join(configDir, "cli-config.json"), "{}");
 
-    const response = await GET();
+    const response = await GET(localReq());
     expect(await response.json()).toEqual({ connected: true });
   });
 });

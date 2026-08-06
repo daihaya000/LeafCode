@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { extensionsErrorResponse } from "@/lib/opencode-extensions/http";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   addCustomProvider,
   listProviderModels,
@@ -8,7 +9,10 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   try {
     return NextResponse.json({
       providers: await listProviderModels(),
@@ -55,6 +59,9 @@ function parseCustomProviderBody(body: CustomProviderBody) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => undefined)) as
     | CustomProviderBody
     | undefined;

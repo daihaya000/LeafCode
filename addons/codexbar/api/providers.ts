@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -166,7 +167,10 @@ async function writeConfig(config: ConfigFile): Promise<void> {
 }
 
 /** Safe catalog only: no credentials or other config values leave this process. */
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   try {
     const current = await readConfig();
     return json({
@@ -183,6 +187,9 @@ export async function GET() {
  * immediately before an atomic replacement, preserving every other setting.
  */
 export async function PUT(request: Request) {
+  const denied = await requireAuthorized(request);
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();

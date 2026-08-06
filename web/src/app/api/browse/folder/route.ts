@@ -4,10 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
-import {
-  isLocalHostRequest,
-  rejectUnlessLocalOrAuthenticated,
-} from "@/lib/local-request";
+import { requireAuthorized } from "@/lib/api-guard";
+import { isLocalHostRequest } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +31,7 @@ const PARAMS_ENV = "WEBUI_FOLDER_PICKER_PARAMS";
  * by PowerShell via env — never interpolated into the script source (RCE).
  */
 export async function POST(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const fromHostLoopback = isLocalHostRequest(req);

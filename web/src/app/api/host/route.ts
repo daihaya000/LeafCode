@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const base = resolveHostControlUrl();
   try {
     const res = await fetch(`${base}/health`, {

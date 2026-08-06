@@ -61,7 +61,7 @@ function post(body: string, contentType = "application/json") {
       "http://localhost/api/opencode/session/session-1/prompt_async?directory=C%3A%5C%5Crepo",
       {
         method: "POST",
-        headers: { "content-type": contentType },
+        headers: { host: "127.0.0.1:3000", "content-type": contentType },
         body,
       },
     ),
@@ -83,7 +83,7 @@ function sessionPost(
       `http://localhost/api/opencode/session/session-1/${operation}?directory=${encodeURIComponent(directory)}`,
       {
         method: "POST",
-        headers,
+        headers: { host: "127.0.0.1:3000", ...headers },
         body: JSON.stringify(body),
       },
     ),
@@ -101,7 +101,7 @@ function sessionWritePost(
       `http://localhost/api/opencode/${pathSegments.join("/")}?directory=${encodeURIComponent(directory)}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
         body: JSON.stringify(body),
       },
     ),
@@ -370,7 +370,7 @@ describe("POST session image capability validation", () => {
       )
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     // Cache is now per-directory, so include directory in the GET request
-    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
     fetchMock.mockClear();
@@ -412,10 +412,10 @@ describe("POST session image capability validation", () => {
       );
     });
     // Cache is now per-directory, so include directory in the GET requests
-    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
-    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["agent"] }),
     });
     fetchMock.mockClear();
@@ -457,10 +457,10 @@ describe("POST session image capability validation", () => {
       }
       return Promise.resolve(jsonResponse({ ok: true }));
     });
-    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
-    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["agent"] }),
     });
     fetchMock.mockClear();
@@ -501,10 +501,10 @@ describe("POST session image capability validation", () => {
       }
       return Promise.resolve(jsonResponse({ ok: true }));
     });
-    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/provider?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
-    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo") as never, {
+    await GET(new Request("http://localhost/api/opencode/agent?directory=C%3A%5C%5Crepo", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["agent"] }),
     });
     fetchMock.mockClear();
@@ -549,7 +549,7 @@ describe("POST session image capability validation", () => {
     // Step 1: directory-less provider fetch (as the composer performs on
     // load before any project directory is known). This must not seed the
     // per-directory cache for `directory` below.
-    await GET(new Request("http://localhost/api/opencode/provider") as never, {
+    await GET(new Request("http://localhost/api/opencode/provider", { headers: { host: "127.0.0.1:3000" } }) as never, {
       params: Promise.resolve({ path: ["provider"] }),
     });
     fetchMock.mockClear();
@@ -560,7 +560,7 @@ describe("POST session image capability validation", () => {
         `http://localhost/api/opencode/session/session-1/prompt_async?directory=${encodeURIComponent(directory)}`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
           body: JSON.stringify({
             model: { providerID: "fresh-provider", modelID: "vision" },
             parts: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AA==" }],
@@ -633,7 +633,7 @@ describe("GET provider/config responses", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse(responseBody));
     const response = await GET(
-      new Request(`http://localhost/api/opencode${_pathname}`) as never,
+      new Request(`http://localhost/api/opencode${_pathname}`, { headers: { host: "127.0.0.1:3000" } }) as never,
       { params: Promise.resolve({ path }) },
     );
 
@@ -713,7 +713,7 @@ describe("directory requirement for /event", () => {
   it("rejects GET /event without directory", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     const response = await GET(
-      new NextRequest("http://localhost/api/opencode/event") as never,
+      new NextRequest("http://localhost/api/opencode/event", { headers: { host: "127.0.0.1:3000" } }) as never,
       { params: Promise.resolve({ path: ["event"] }) },
     );
     expect(response.status).toBe(400);
@@ -735,6 +735,7 @@ describe("directory requirement for /event", () => {
     const response = await GET(
       new NextRequest(
         "http://localhost/api/opencode/event?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
       ) as never,
       { params: Promise.resolve({ path: ["event"] }) },
     );
@@ -765,6 +766,7 @@ describe("directory requirement for /event", () => {
       const pending = GET(
         new NextRequest(
           "http://localhost/api/opencode/event?directory=C%3A%5C%5Crepo",
+        { headers: { host: "127.0.0.1:3000" } },
         ) as never,
         { params: Promise.resolve({ path: ["event"] }) },
       );
@@ -791,6 +793,7 @@ describe("directory requirement for /event", () => {
       const response = await GET(
         new NextRequest(
           "http://localhost/api/opencode/event?directory=C%3A%5C%5Crepo",
+        { headers: { host: "127.0.0.1:3000" } },
         ) as never,
         { params: Promise.resolve({ path: ["event"] }) },
       );
@@ -816,7 +819,7 @@ describe("session permission writes", () => {
         "http://localhost/api/opencode/session?directory=C%3A%5C%5Crepo",
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
           body: JSON.stringify({
             title: "x",
             permission: [{ permission: "bash", pattern: "*", action: "allow" }],
@@ -841,7 +844,7 @@ describe("session permission writes", () => {
         "http://localhost/api/opencode/session/session-1?directory=C%3A%5C%5Crepo",
         {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
+          headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
           body: JSON.stringify({
             permission: [{ permission: "edit", pattern: "*", action: "allow" }],
           }),
@@ -868,6 +871,7 @@ describe("non-Latin-1 directory handling", () => {
     const response = await GET(
       new NextRequest(
         "http://localhost/api/opencode/session?directory=.",
+      { headers: { host: "127.0.0.1:3000" } },
       ) as never,
       { params: Promise.resolve({ path: ["session"] }) },
     );
@@ -898,6 +902,7 @@ describe("non-Latin-1 directory handling", () => {
     const response = await GET(
       new NextRequest(
         `http://localhost/api/opencode/session?directory=${encodeURIComponent(directory)}`,
+      { headers: { host: "127.0.0.1:3000" } },
       ) as never,
       { params: Promise.resolve({ path: ["session"] }) },
     );
@@ -932,6 +937,7 @@ describe("non-Latin-1 directory handling", () => {
     const response = await GET(
       new NextRequest(
         `http://localhost/api/opencode/session?directory=${encodeURIComponent(directory)}`,
+      { headers: { host: "127.0.0.1:3000" } },
       ) as never,
       { params: Promise.resolve({ path: ["session"] }) },
     );
@@ -1009,6 +1015,7 @@ describe("manual send pauses a live goal loop (docs/specs/goal-loop.md 是正 D)
     const response = await GET(
       new NextRequest(
         "http://localhost/api/opencode/session/session-1/message?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
       ) as never,
       { params: Promise.resolve({ path: ["session", "session-1", "message"] }) },
     );
@@ -1092,6 +1099,7 @@ describe("arms the server-side hang watchdog (docs/specs/hang-watchdog-server-si
     await GET(
       new NextRequest(
         "http://localhost/api/opencode/session/session-1/message?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
       ) as never,
       { params: Promise.resolve({ path: ["session", "session-1", "message"] }) },
     );

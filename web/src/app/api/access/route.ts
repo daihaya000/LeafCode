@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import os from "node:os";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,7 +105,10 @@ function certificateUrls(addresses: NetAddr[]): CertificateAddr[] {
 }
 
 /** Addresses the phone can use (VPN / LAN). OpenCode stays on localhost. */
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const host =
     process.env.OPENCODE_WEBUI_HOST ||
     process.env.HOSTNAME_BIND ||

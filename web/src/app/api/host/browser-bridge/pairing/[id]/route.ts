@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { browserBrokerFetch } from "@/lib/browser-bridge";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+export async function POST(req: Request,
+  context: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
+
   const { id } = await context.params;
   if (!/^pairing_request_[A-Za-z0-9_-]{20,}$/.test(id)) {
     return NextResponse.json({ error: "invalid pairing request id" }, { status: 400 });

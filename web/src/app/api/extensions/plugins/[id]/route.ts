@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   extensionsErrorResponse,
   parseEnabledBody,
@@ -13,10 +14,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function PATCH(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(req: NextRequest,
+  context: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const body = await req.json().catch(() => undefined);
   const parsed = parseEnabledBody(body);
@@ -29,10 +31,11 @@ export async function PATCH(
   }
 }
 
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function PUT(req: NextRequest,
+  context: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const body = await req.json().catch(() => undefined);
   const parsed = parsePluginBody(body);
@@ -46,10 +49,11 @@ export async function PUT(
 }
 
 /** Permanently remove a disabled plugin's WebUI-local restore record. */
-export async function DELETE(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(req: NextRequest,
+  context: { params: Promise<{ id: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   try {
     await deleteDisabledConfiguredPlugin(id);

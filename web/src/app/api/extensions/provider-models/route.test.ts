@@ -26,6 +26,14 @@ vi.mock("@/lib/paths", () => ({
 
 import { GET, POST } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 let data: string;
 
 const MOCK_PROVIDER_RESPONSE = {
@@ -65,7 +73,7 @@ afterEach(() => {
 
 describe("GET /api/extensions/provider-models", () => {
   it("returns providers with models", async () => {
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       providers: { id: string; name: string; enabled: boolean; models: { id: string; name: string; enabled: boolean }[] }[];
@@ -81,7 +89,7 @@ describe("GET /api/extensions/provider-models", () => {
 
   it("returns 500 with safe message when engine is unavailable", async () => {
     h.ocServer.mockRejectedValue(new Error("engine down"));
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("プロバイダー一覧を取得できません");
@@ -94,7 +102,7 @@ describe("POST /api/extensions/provider-models", () => {
     fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
 
     const res = await POST(
-      new Request("http://localhost/api/extensions/provider-models", {
+      new Request("http://localhost/api/extensions/provider-models", { headers: { host: "127.0.0.1:3000" },
         method: "POST",
         body: JSON.stringify({
           id: "custom",

@@ -9,6 +9,14 @@ vi.mock("@/lib/task-service", () => ({
 
 import { GET } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -35,7 +43,7 @@ describe("GET /api/tasks/archived", () => {
     ];
     listArchivedTasksMock.mockResolvedValue(fakeTasks);
 
-    const response = await GET();
+    const response = await GET(localReq());
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -45,7 +53,7 @@ describe("GET /api/tasks/archived", () => {
   it("returns empty array when no archived tasks exist", async () => {
     listArchivedTasksMock.mockResolvedValue([]);
 
-    const response = await GET();
+    const response = await GET(localReq());
 
     expect(response.status).toBe(200);
     const body = await response.json();

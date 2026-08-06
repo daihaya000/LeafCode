@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   extensionsErrorResponse,
   parsePluginBody,
@@ -11,7 +12,10 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   try {
     return NextResponse.json({ plugins: await listPlugins() });
   } catch (err) {
@@ -20,6 +24,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = await req.json().catch(() => undefined);
   const parsed = parsePluginBody(body);
   if ("error" in parsed) return parsed.error;

@@ -30,7 +30,7 @@ function post(body: Record<string, unknown>) {
   return POST(
     new NextRequest("http://localhost/api/git/commit", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
       body: JSON.stringify(body),
     }),
   );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace, latestBindings, listSessionBindings } from "@/lib/db";
 import { OcError } from "@/lib/oc-server";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   setSessionTaskPermission,
   type TaskPermission,
@@ -36,6 +37,9 @@ function failure(err: unknown) {
  * It never accepts an arbitrary directory, agent, or config payload.
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as RequestBody | null;
   if (!body || typeof body !== "object" || !isTaskPermission(body.permission)) {
     return NextResponse.json({ error: "invalid task permission" }, { status: 400 });

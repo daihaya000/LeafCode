@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { extensionsErrorResponse } from "@/lib/opencode-extensions/http";
 import { saveProviderModelOrder } from "@/lib/opencode-extensions/provider-models";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,9 @@ function parseOrderBody(body: OrderBody) {
 }
 
 export async function PATCH(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => undefined)) as OrderBody | undefined;
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });

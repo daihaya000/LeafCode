@@ -40,7 +40,7 @@ describe("PATCH /api/workspaces status", () => {
     const res = await PATCH(
       new NextRequest("http://localhost/api/workspaces", {
         method: "PATCH",
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
         body: JSON.stringify({ id: "ws1", status: "orphaned" }),
       }),
     );
@@ -53,7 +53,7 @@ describe("PATCH /api/workspaces status", () => {
     const res = await PATCH(
       new NextRequest("http://localhost/api/workspaces", {
         method: "PATCH",
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
         body: JSON.stringify({ id: "ws1", status: "archived" }),
       }),
     );

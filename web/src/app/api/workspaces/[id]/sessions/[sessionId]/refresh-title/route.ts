@@ -8,6 +8,7 @@ import {
   sanitizeTitle,
 } from "@/lib/session-title";
 import type { MessageWithParts } from "@/lib/types";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,10 @@ const TITLE_INSTRUCTION =
   "以下の会話を要約する、簡潔で人間が読みやすい日本語タイトルを生成してください。" +
   "最大20文字程度。タイトルのみを返し、引用符や説明は不要です。";
 
-export async function POST(_req: NextRequest, context: Ctx) {
+export async function POST(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id, sessionId } = await context.params;
   const ws = getWorkspace(id);
   if (!ws) {

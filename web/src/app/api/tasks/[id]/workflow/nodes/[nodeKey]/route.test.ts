@@ -42,7 +42,7 @@ test("PATCH updates a known node with both workflow and node revisions", async (
         nodeRevision: 1,
         config: { agentName: "build" },
       }),
-      headers: { "content-type": "application/json" },
+      headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
     }),
     contextFor("ws1", "implement_ui"),
   );
@@ -58,7 +58,7 @@ test("PATCH updates a known node with both workflow and node revisions", async (
 
 test("PATCH rejects unknown nodes before touching the service", async () => {
   const response = await PATCH(
-    new NextRequest("http://localhost/api/tasks/ws1/workflow/nodes/unknown", {
+    new NextRequest("http://localhost/api/tasks/ws1/workflow/nodes/unknown", { headers: { host: "127.0.0.1:3000" },
       method: "PATCH",
       body: "{}",
     }),
@@ -70,7 +70,7 @@ test("PATCH rejects unknown nodes before touching the service", async () => {
 
 test("PATCH rejects Control Nodes so their audit records remain server-managed", async () => {
   const response = await PATCH(
-    new NextRequest("http://localhost/api/tasks/ws1/workflow/nodes/review_gate", {
+    new NextRequest("http://localhost/api/tasks/ws1/workflow/nodes/review_gate", { headers: { host: "127.0.0.1:3000" },
       method: "PATCH",
       body: JSON.stringify({ workflowRevision: 1, nodeRevision: 1, config: {} }),
     }),

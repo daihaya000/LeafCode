@@ -34,7 +34,7 @@ function contextFor(id: string) {
 }
 
 function requestWithBody(body: unknown) {
-  return new NextRequest("http://localhost/api/tasks/task-1/next-action", {
+  return new NextRequest("http://localhost/api/tasks/task-1/next-action", { headers: { host: "127.0.0.1:3000" },
     method: "POST",
     body: JSON.stringify(body),
   });

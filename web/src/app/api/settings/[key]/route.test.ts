@@ -12,7 +12,7 @@ import { GET, PUT } from "./route";
 function putReq(body: unknown, key = "default-model"): Request {
   return new Request(`http://localhost/api/settings/${key}`, {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }
@@ -34,21 +34,21 @@ describe("/api/settings/[key]", () => {
   describe("GET", () => {
     it("returns null when nothing is stored", async () => {
       getSetting.mockReturnValue(null);
-      const res = await GET(new Request("http://localhost/api/settings/default-model") as never, ctx("default-model"));
+      const res = await GET(new Request("http://localhost/api/settings/default-model", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("default-model"));
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ value: null });
     });
 
     it("returns null when an empty string is stored", async () => {
       getSetting.mockReturnValue("");
-      const res = await GET(new Request("http://localhost/api/settings/default-model") as never, ctx("default-model"));
+      const res = await GET(new Request("http://localhost/api/settings/default-model", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("default-model"));
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ value: null });
     });
 
     it("returns the stored value for default-model", async () => {
       getSetting.mockReturnValue("openai::gpt-5");
-      const res = await GET(new Request("http://localhost/api/settings/default-model") as never, ctx("default-model"));
+      const res = await GET(new Request("http://localhost/api/settings/default-model", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("default-model"));
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ value: "openai::gpt-5" });
     });
@@ -60,20 +60,20 @@ describe("/api/settings/[key]", () => {
         archivedExpanded: true,
       });
       getSetting.mockReturnValue(json);
-      const res = await GET(new Request("http://localhost/api/settings/sidebar") as never, ctx("sidebar"));
+      const res = await GET(new Request("http://localhost/api/settings/sidebar", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("sidebar"));
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ value: json });
     });
 
     it("returns the stored sidepanel-width", async () => {
       getSetting.mockReturnValue("520");
-      const res = await GET(new Request("http://localhost/api/settings/sidepanel-width") as never, ctx("sidepanel-width"));
+      const res = await GET(new Request("http://localhost/api/settings/sidepanel-width", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("sidepanel-width"));
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ value: "520" });
     });
 
     it("rejects an unknown key with 400", async () => {
-      const res = await GET(new Request("http://localhost/api/settings/evil") as never, ctx("evil"));
+      const res = await GET(new Request("http://localhost/api/settings/evil", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("evil"));
       expect(res.status).toBe(400);
       expect(getSetting).not.toHaveBeenCalled();
     });
@@ -204,7 +204,7 @@ describe("/api/settings/[key]", () => {
       const res = await PUT(
         new Request("http://localhost/api/settings/default-model", {
           method: "PUT",
-          headers: { "content-type": "application/json" },
+          headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
           body: "not-json",
         }) as never,
         ctx("default-model"),
@@ -223,7 +223,7 @@ describe("/api/settings/[key]", () => {
       getSetting.mockReturnValue("anthropic::claude-sonnet-5");
       const putRes = await PUT(putReq({ value: "anthropic::claude-sonnet-5" }) as never, ctx("default-model"));
       expect(putRes.status).toBe(200);
-      const getRes = await GET(new Request("http://localhost/api/settings/default-model") as never, ctx("default-model"));
+      const getRes = await GET(new Request("http://localhost/api/settings/default-model", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("default-model"));
       expect(await getRes.json()).toEqual({ value: "anthropic::claude-sonnet-5" });
     });
   });
@@ -241,7 +241,7 @@ describe("/api/settings/[key] auto mode settings", () => {
 
   function getReq(key: string) {
     return GET(
-      new Request(`http://localhost/api/settings/${key}`) as never,
+      new Request(`http://localhost/api/settings/${key}`, { headers: { host: "127.0.0.1:3000" } }) as never,
       ctx(key),
     );
   }

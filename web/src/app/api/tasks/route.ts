@@ -30,6 +30,7 @@ import {
   parseCommandSubmit,
 } from "@/lib/slash-command";
 import { listTasks } from "@/lib/task-service";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   ServiceError,
   destroyWorkspace,
@@ -241,13 +242,19 @@ function parseCodexBarUsage(value: unknown): AutoProviderUsage | undefined {
   return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const result = await listTasks();
   return NextResponse.json(result);
 }
 
 /** Create workspace + session + fire the first prompt, in one action. */
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     projectId?: string;
     prompt?: string;

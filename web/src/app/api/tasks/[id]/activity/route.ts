@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getWorkspace, touchSessionActivity } from "@/lib/db";
 import { assertSafeOpenCodeSessionId } from "@/lib/opencode-id";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,9 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   if (!getWorkspace(id)) {
     return NextResponse.json({ error: "task not found" }, { status: 404 });

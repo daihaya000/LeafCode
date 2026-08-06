@@ -7,6 +7,7 @@ import {
   isValidCommitAuthorName,
 } from "@/lib/commit-identity-keys";
 import { getSetting, setSetting } from "@/lib/db";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -170,10 +171,11 @@ function normalizeSettingValue(
   return { ok: true, value };
 }
 
-export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ key: string }> },
-) {
+export async function GET(req: NextRequest,
+  context: { params: Promise<{ key: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { key } = await context.params;
   if (!isAllowedKey(key)) {
     return NextResponse.json({ error: "unknown setting key" }, { status: 400 });
@@ -184,10 +186,11 @@ export async function GET(
   });
 }
 
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ key: string }> },
-) {
+export async function PUT(req: NextRequest,
+  context: { params: Promise<{ key: string }> },) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { key } = await context.params;
   if (!isAllowedKey(key)) {
     return NextResponse.json({ error: "unknown setting key" }, { status: 400 });

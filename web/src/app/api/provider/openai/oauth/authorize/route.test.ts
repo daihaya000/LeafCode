@@ -24,7 +24,7 @@ import { POST } from "./route";
 function request(body: unknown) {
   return new Request("http://localhost/api/provider/openai/oauth/authorize", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 }

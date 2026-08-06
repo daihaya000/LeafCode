@@ -28,6 +28,14 @@ vi.mock("@/lib/paths", () => ({
 import { DELETE, PATCH, PUT } from "./route";
 import { GET } from "../route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 let data: string;
 
 function statePath(): string {
@@ -45,8 +53,7 @@ function readState(): { disabled: Record<string, true> } {
 function patch(key: string, body: unknown): Promise<Response> {
   return PATCH(
     new NextRequest(
-      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
-      { method: "PATCH", body: JSON.stringify(body) },
+      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`, { headers: { host: "127.0.0.1:3000" }, method: "PATCH", body: JSON.stringify(body) },
     ),
     { params: Promise.resolve({ key }) },
   );
@@ -55,8 +62,7 @@ function patch(key: string, body: unknown): Promise<Response> {
 function put(key: string, body: unknown): Promise<Response> {
   return PUT(
     new NextRequest(
-      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
-      { method: "PUT", body: JSON.stringify(body) },
+      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`, { headers: { host: "127.0.0.1:3000" }, method: "PUT", body: JSON.stringify(body) },
     ),
     { params: Promise.resolve({ key }) },
   );
@@ -65,8 +71,7 @@ function put(key: string, body: unknown): Promise<Response> {
 function del(key: string): Promise<Response> {
   return DELETE(
     new NextRequest(
-      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`,
-      { method: "DELETE" },
+      `http://localhost/api/extensions/provider-models/${encodeURIComponent(key)}`, { headers: { host: "127.0.0.1:3000" }, method: "DELETE" },
     ),
     { params: Promise.resolve({ key }) },
   );
@@ -166,7 +171,7 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
     // Disable a model.
     await patch("openai::gpt-5-mini", { enabled: false });
 
-    const res = await GET();
+    const res = await GET(localReq());
     const body = (await res.json()) as {
       providers: { id: string; models: { id: string; enabled: boolean }[] }[];
     };

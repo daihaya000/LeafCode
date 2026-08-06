@@ -2,6 +2,14 @@ import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 const ENV_KEY = "OPENCODE_WEBUI_PUBLIC_URL";
 const CADDY_LOCAL_ENV_KEY = "OPENCODE_WEBUI_CADDY_LOCAL_URL";
 let saved: string | undefined;
@@ -47,7 +55,7 @@ afterEach(() => {
 describe("GET /api/access", () => {
   it("advertises the Caddy public origin and direct URLs when set", async () => {
     process.env[ENV_KEY] = "https://webui.example.com/";
-    const res = await GET();
+    const res = await GET(localReq());
     const body = (await res.json()) as {
       publicUrl?: string;
       addresses: { url: string; kind: string }[];
@@ -70,7 +78,7 @@ describe("GET /api/access", () => {
 
   it("derives the loopback Caddy URL from the public HTTPS port", async () => {
     process.env[ENV_KEY] = "https://192.168.0.102:8443";
-    const res = await GET();
+    const res = await GET(localReq());
     const body = (await res.json()) as { addresses: { url: string }[] };
     expect(body.addresses.map((address) => address.url)).toContain(
       "https://127.0.0.1:8443",
@@ -79,13 +87,13 @@ describe("GET /api/access", () => {
 
   it("ignores an invalid public URL and falls back to NIC addresses", async () => {
     process.env[ENV_KEY] = "not a url";
-    const res = await GET();
+    const res = await GET(localReq());
     const body = (await res.json()) as { publicUrl?: string };
     expect(body.publicUrl).toBeUndefined();
   });
 
   it("returns http NIC URLs when no public URL is set", async () => {
-    const res = await GET();
+    const res = await GET(localReq());
     const body = (await res.json()) as {
       publicUrl?: string;
       addresses: { url: string }[];

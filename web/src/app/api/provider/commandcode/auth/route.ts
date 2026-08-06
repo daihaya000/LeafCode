@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,12 +29,18 @@ function writeSecrets(secrets: Record<string, unknown>): void {
   fs.chmodSync(file, 0o600);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const token = readSecrets().apiKey;
   return NextResponse.json({ connected: typeof token === "string" && token.length > 0 });
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => undefined)) as { key?: unknown } | undefined;
   if (typeof body?.key !== "string" || body.key.trim().length === 0 || body.key.length > 4096) {
     return NextResponse.json({ error: "CommandCode CLI Proxy認証キーを入力してください" }, { status: 400 });
@@ -46,7 +53,10 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   try {
     const secrets = readSecrets();
     for (const key of ["apiKey", "userId", "userName", "keyName", "authenticatedAt"]) delete secrets[key];

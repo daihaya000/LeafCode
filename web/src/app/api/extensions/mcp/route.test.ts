@@ -18,6 +18,14 @@ vi.mock("@/lib/oc-server", () => ({
 
 import { GET } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 let base: string;
 
 beforeEach(() => {
@@ -49,7 +57,7 @@ describe("GET /api/extensions/mcp", () => {
     );
     h.ocServer.mockResolvedValueOnce({ blender: { status: "connected" } });
 
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       servers: { name: string; runtime?: string; meta?: string }[];
@@ -64,7 +72,7 @@ describe("GET /api/extensions/mcp", () => {
   });
 
   it("returns 500 with a safe message when the config file is missing", async () => {
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBeTruthy();

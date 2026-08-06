@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { getRelay } from "@/lib/pty-relay";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ const MAX_INPUT_BYTES = 64 * 1024;
  * Engine connection on its own.
  */
 export async function POST(req: NextRequest) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const ptyId = req.nextUrl.searchParams.get("id")?.trim() ?? "";

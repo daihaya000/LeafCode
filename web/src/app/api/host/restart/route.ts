@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import { requireAuthorized } from "@/lib/api-guard";
 import {
   hostRestartPath,
   resolveHostControlUrl,
   type HostRestartTarget,
 } from "@/lib/host-control";
-import { rejectUnlessLocalOrPrivateNetwork } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const TARGETS = new Set<HostRestartTarget>(["webui", "opencode", "all"]);
 
 export async function POST(req: Request) {
-  const denied = await rejectUnlessLocalOrPrivateNetwork(req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   let target: HostRestartTarget | null = null;

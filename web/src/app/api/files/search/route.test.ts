@@ -40,7 +40,7 @@ afterAll(() => {
 function call(params: Record<string, string>): NextRequest {
   const url = new URL("http://localhost/api/files/search");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  return new NextRequest(url);
+  return new NextRequest(url, { headers: { host: "127.0.0.1:3000" } });
 }
 
 describe("GET /api/files/search", () => {

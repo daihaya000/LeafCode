@@ -5,6 +5,7 @@ import {
   WorkflowServiceError,
 } from "@/lib/workflow-service";
 import { isWorkflowNodeKey } from "@/lib/workflow-types";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ function errorResponse(error: unknown): NextResponse {
 }
 
 export async function PATCH(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id, nodeKey: rawNodeKey } = await context.params;
   if (!isWorkflowModeEnabled()) {
     return NextResponse.json({ error: "Workflow mode is disabled" }, { status: 409 });

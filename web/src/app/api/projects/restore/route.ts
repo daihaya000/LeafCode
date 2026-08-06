@@ -4,6 +4,7 @@ import {
   restoreAllKnownProjects,
 } from "@/lib/project-session-sync";
 import { resolveValidatedAllowlistPath } from "@/lib/path-validation";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ export const dynamic = "force-dynamic";
  *   validation as POST /api/projects (protected paths, UNC, drive roots).
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     rootPath?: string;
   } | null;

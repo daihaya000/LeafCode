@@ -54,6 +54,7 @@ describe("GET /api/diff/files untracked safety", () => {
     const res = await GET(
       new NextRequest(
         `http://localhost/api/diff/files?directory=${encodeURIComponent(workspace)}`,
+        { headers: { host: "127.0.0.1:3000" } },
       ),
     );
     expect(res.status).toBe(200);
@@ -80,6 +81,7 @@ describe("GET /api/diff/files untracked safety", () => {
     const res = await GET(
       new NextRequest(
         `http://localhost/api/diff/files?directory=${encodeURIComponent(workspace)}`,
+        { headers: { host: "127.0.0.1:3000" } },
       ),
     );
     expect(res.status).toBe(200);

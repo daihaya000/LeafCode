@@ -12,6 +12,14 @@ vi.mock("@/lib/paths", () => ({
 
 import { GET, POST } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 let base: string;
 let data: string;
 
@@ -37,7 +45,7 @@ describe("GET /api/extensions/plugins", () => {
     fs.mkdirSync(path.join(base, "plugin"));
     fs.writeFileSync(path.join(base, "plugin", "cursor-acp.js"), "x");
 
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       plugins: { id: string; name: string; kind: string; enabled: boolean }[];
@@ -54,7 +62,7 @@ describe("GET /api/extensions/plugins", () => {
   });
 
   it("returns 500 with a safe message when the config file is missing", async () => {
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).not.toContain(base);
@@ -66,7 +74,7 @@ describe("POST /api/extensions/plugins", () => {
     fs.writeFileSync(path.join(base, "opencode.jsonc"), "{}\n");
 
     const res = await POST(
-      new Request("http://localhost/api/extensions/plugins", {
+      new Request("http://localhost/api/extensions/plugins", { headers: { host: "127.0.0.1:3000" },
         method: "POST",
         body: JSON.stringify({
           name: "opencode-new-plugin",
@@ -87,7 +95,7 @@ describe("POST /api/extensions/plugins", () => {
     fs.writeFileSync(path.join(base, "opencode.jsonc"), "{}\n");
 
     const res = await POST(
-      new Request("http://localhost/api/extensions/plugins", {
+      new Request("http://localhost/api/extensions/plugins", { headers: { host: "127.0.0.1:3000" },
         method: "POST",
         body: JSON.stringify({ name: 123 }),
       }),
@@ -100,7 +108,7 @@ describe("POST /api/extensions/plugins", () => {
     fs.writeFileSync(path.join(base, "opencode.jsonc"), "{}\n");
 
     const res = await POST(
-      new Request("http://localhost/api/extensions/plugins", {
+      new Request("http://localhost/api/extensions/plugins", { headers: { host: "127.0.0.1:3000" },
         method: "POST",
         body: JSON.stringify({ name: "   " }),
       }),

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { listQuickAccess } from "@/lib/quickaccess";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,12 +78,12 @@ function samePath(a: string, b: string): boolean {
  * Default (no path): user home folder + Quick Access shortcuts.
  */
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   // Directory enumeration is host-only: even the project picker (files=0)
   // exposes the host's filesystem layout, so require a loopback caller.
   // The in-task FileTree (files=1) additionally enforces the allowlist below.
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
-  if (denied) return denied;
-
   const raw = req.nextUrl.searchParams.get("path");
   const home = os.homedir();
   // Opt-in: the in-task file tree needs files too; the project picker omits

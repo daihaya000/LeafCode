@@ -39,7 +39,7 @@ beforeEach(() => {
 describe("/api/tasks/[id]/workflow/graph", () => {
   it("returns a lazily materialized graph draft", async () => {
     const response = await GET(
-      new NextRequest("http://localhost/api/tasks/ws1/workflow/graph"),
+      new NextRequest("http://localhost/api/tasks/ws1/workflow/graph", { headers: { host: "127.0.0.1:3000" } }),
       contextFor("ws1"),
     );
     expect(response.status).toBe(200);
@@ -52,7 +52,7 @@ describe("/api/tasks/[id]/workflow/graph", () => {
       new NextRequest("http://localhost/api/tasks/ws1/workflow/graph", {
         method: "PATCH",
         body: JSON.stringify({ expectedGraphRevision: 2, operations: [{ op: "move_node" }] }),
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
       }),
       contextFor("ws1"),
     );
@@ -65,7 +65,7 @@ describe("/api/tasks/[id]/workflow/graph", () => {
 
     mocks.editEnabled = false;
     const disabled = await PATCH(
-      new Request("http://localhost/api/tasks/ws1/workflow/graph", { method: "PATCH" }),
+      new Request("http://localhost/api/tasks/ws1/workflow/graph", { headers: { host: "127.0.0.1:3000" }, method: "PATCH" }),
       contextFor("ws1"),
     );
     expect(disabled.status).toBe(409);
@@ -77,7 +77,7 @@ describe("/api/tasks/[id]/workflow/graph", () => {
       throw Object.assign(new Error("conflict"), { code: "revision_conflict", latestGraph: mocks.graph });
     });
     const response = await PATCH(
-      new Request("http://localhost/api/tasks/ws1/workflow/graph", {
+      new Request("http://localhost/api/tasks/ws1/workflow/graph", { headers: { host: "127.0.0.1:3000" },
         method: "PATCH",
         body: JSON.stringify({ expectedGraphRevision: 1, operations: [{ op: "update_node_config", nodeId: "implement_ui", config: {} }] }),
       }),
@@ -92,7 +92,7 @@ describe("/api/tasks/[id]/workflow/graph", () => {
       throw Object.assign(new Error("conflict"), { code: "revision_conflict", latestGraph: mocks.graph });
     });
     const response = await PATCH(
-      new Request("http://localhost/api/tasks/ws1/workflow/graph", {
+      new Request("http://localhost/api/tasks/ws1/workflow/graph", { headers: { host: "127.0.0.1:3000" },
         method: "PATCH",
         body: JSON.stringify({ expectedGraphRevision: 1, operations: [{ op: "move_node", nodeId: "implement_ui", position: { x: 1, y: 2 } }] }),
       }),
@@ -104,7 +104,7 @@ describe("/api/tasks/[id]/workflow/graph", () => {
 
   it("forwards viewport persistence through the Graph API", async () => {
     const response = await PATCH(
-      new Request("http://localhost/api/tasks/ws1/workflow/graph", {
+      new Request("http://localhost/api/tasks/ws1/workflow/graph", { headers: { host: "127.0.0.1:3000" },
         method: "PATCH",
         body: JSON.stringify({ expectedGraphRevision: 2, operations: [{ op: "set_viewport", viewport: { x: 12, y: 8, zoom: 1.1 } }] }),
       }),

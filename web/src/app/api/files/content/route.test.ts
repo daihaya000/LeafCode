@@ -15,7 +15,7 @@ import { GET } from "./route";
 function request(directory: string, filePath?: string): NextRequest {
   const params = new URLSearchParams({ directory });
   if (filePath !== undefined) params.set("path", filePath);
-  return new NextRequest(`http://localhost/api/files/content?${params}`);
+  return new NextRequest(`http://localhost/api/files/content?${params}`, { headers: { host: "127.0.0.1:3000" } });
 }
 
 describe("GET /api/files/content", () => {

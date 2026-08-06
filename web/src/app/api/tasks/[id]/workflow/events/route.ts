@@ -1,5 +1,6 @@
 import { createWorkflowSseEvent, encodeWorkflowHeartbeat, encodeWorkflowSseEvent } from "@/lib/workflow-events";
 import { getWorkflow } from "@/lib/workflow-service";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,6 +8,9 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, context: Ctx): Promise<Response> {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const initial = getWorkflow(id);
   if (!initial) return Response.json({ error: "task not found" }, { status: 404 });

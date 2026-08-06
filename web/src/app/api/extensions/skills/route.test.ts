@@ -18,6 +18,14 @@ vi.mock("@/lib/oc-server", () => ({
 
 import { GET } from "./route";
 
+/** Loopback request so the shared API guard authorizes these handler calls. */
+function localReq() {
+  return new Request("http://127.0.0.1:3000/api", {
+    headers: { host: "127.0.0.1:3000" },
+  });
+}
+
+
 let base: string;
 
 beforeEach(() => {
@@ -45,7 +53,7 @@ describe("GET /api/extensions/skills", () => {
       "---\ndescription: B\n---\n",
     );
 
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       skills: { id: string; name: string; description?: string; enabled: boolean; toggleable: boolean }[];
@@ -62,7 +70,7 @@ describe("GET /api/extensions/skills", () => {
   });
 
   it("returns an empty list when no skill directories exist", async () => {
-    const res = await GET();
+    const res = await GET(localReq());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ skills: [], truncated: false });
   });

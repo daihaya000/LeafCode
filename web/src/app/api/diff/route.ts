@@ -3,11 +3,15 @@ import { assertAllowedDirectory } from "@/lib/allowlist";
 import { directoryHeaders } from "@/lib/directory-header";
 import { gitDiff, gitStatus } from "@/lib/git";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const directory = req.nextUrl.searchParams.get("directory");
   const sessionId = req.nextUrl.searchParams.get("sessionId");
 

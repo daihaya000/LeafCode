@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { getJob } from "@/lib/profiles/jobs";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ jobId: string }> },
-) {
-  const denied = await rejectUnlessLocalOrAuthenticated(req);
+export async function GET(req: Request,
+  { params }: { params: Promise<{ jobId: string }> },) {
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const { jobId } = await params;

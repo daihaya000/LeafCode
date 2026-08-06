@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,9 @@ function walk(
 
 /** Phase 1 simple Ctrl+P: on-demand directory scan (D3: 都度走査). */
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const directory = req.nextUrl.searchParams.get("directory");
   const q = (req.nextUrl.searchParams.get("q") ?? "").toLowerCase().trim();
   const limit = Math.min(

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { runGit } from "@/lib/git";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const directory = req.nextUrl.searchParams.get("directory");
   if (!directory) {
     return NextResponse.json({ error: "directory is required" }, { status: 400 });

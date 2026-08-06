@@ -7,18 +7,25 @@ import {
 } from "@/lib/goal-loop";
 import { OcError } from "@/lib/oc-server";
 import { workspaceHasActiveWorkflow } from "@/lib/workflow-service";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, context: Ctx) {
+export async function GET(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   return NextResponse.json({ loop: getGoalLoop(id) });
 }
 
 export async function POST(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   if (workspaceHasActiveWorkflow(id)) {
     return NextResponse.json(
@@ -58,6 +65,9 @@ export async function POST(req: NextRequest, context: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const body = (await req.json().catch(() => null)) as
     | { action?: unknown; maxTurns?: unknown }

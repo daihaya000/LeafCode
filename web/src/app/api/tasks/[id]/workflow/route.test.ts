@@ -42,7 +42,7 @@ describe("/api/tasks/[id]/workflow", () => {
   it("returns the current workflow DTO", async () => {
     mocks.getWorkflow.mockReturnValue({ workspaceId: "ws1", run: null, nodes: [] });
     const response = await GET(
-      new NextRequest("http://localhost/api/tasks/ws1/workflow"),
+      new NextRequest("http://localhost/api/tasks/ws1/workflow", { headers: { host: "127.0.0.1:3000" } }),
       contextFor("ws1"),
     );
     expect(response.status).toBe(200);
@@ -62,7 +62,7 @@ describe("/api/tasks/[id]/workflow", () => {
           acceptance: ["renders"],
           constraints: [],
         }),
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
       }),
       contextFor("ws1"),
     );
@@ -75,7 +75,7 @@ describe("/api/tasks/[id]/workflow", () => {
 
     mocks.enabled = false;
     const disabled = await POST(
-      new NextRequest("http://localhost/api/tasks/ws1/workflow", { method: "POST" }),
+      new NextRequest("http://localhost/api/tasks/ws1/workflow", { headers: { host: "127.0.0.1:3000" }, method: "POST" }),
       contextFor("ws1"),
     );
     expect(disabled.status).toBe(409);
@@ -89,7 +89,7 @@ describe("/api/tasks/[id]/workflow", () => {
       new NextRequest("http://localhost/api/tasks/ws1/workflow", {
         method: "PATCH",
         body: JSON.stringify({ action: "stop", workflowRevision: 2 }),
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
       }),
       contextFor("ws1"),
     );
@@ -98,7 +98,7 @@ describe("/api/tasks/[id]/workflow", () => {
       new NextRequest("http://localhost/api/tasks/ws1/workflow", {
         method: "PATCH",
         body: JSON.stringify({ action: "start", workflowRevision: 2 }),
-        headers: { "content-type": "application/json" },
+        headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
       }),
       contextFor("ws1"),
     );

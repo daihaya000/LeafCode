@@ -4,6 +4,7 @@ import { resolveCommitIdentity } from "@/lib/commit-identity";
 import { invalidateDirStat } from "@/lib/dirstat";
 import { runGit } from "@/lib/git";
 import { commitPathError } from "./path-guard";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,9 @@ const SAFE_MSG = /^[\s\S]{1,2000}$/;
 const SAFE_AGENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const body = (await req.json().catch(() => null)) as {
     directory?: string;
     message?: string;

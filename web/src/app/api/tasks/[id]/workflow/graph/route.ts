@@ -4,6 +4,7 @@ import {
   updateWorkflowGraph,
 } from "@/lib/workflow-graph-mutations";
 import { getOrMaterializeWorkflowGraph } from "@/lib/workflow-graph-repository";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,10 @@ function graphConflictKind(operations: unknown): "semantic" | "layout" {
   ) ? "layout" : "semantic";
 }
 
-export async function GET(_req: Request, context: Ctx) {
+export async function GET(req: Request, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const graph = getOrMaterializeWorkflowGraph(id);
   if (!graph) return Response.json({ error: "workflow graph not found" }, { status: 404 });
@@ -26,6 +30,9 @@ export async function GET(_req: Request, context: Ctx) {
 }
 
 export async function PATCH(req: Request, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   if (!isWorkflowGraphEditEnabled()) {
     return Response.json({ error: "Workflow Graph editing is disabled" }, { status: 409 });

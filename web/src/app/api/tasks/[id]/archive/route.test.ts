@@ -54,7 +54,7 @@ describe("PATCH /api/tasks/[id]/archive", () => {
     archiveWorkspaceMock.mockResolvedValue(undefined);
 
     const response = await PATCH(
-      new NextRequest("http://localhost/api/tasks/ws1/archive", {
+      new NextRequest("http://localhost/api/tasks/ws1/archive", { headers: { host: "127.0.0.1:3000" },
         method: "PATCH",
       }),
       contextFor("ws1"),
@@ -69,7 +69,7 @@ describe("PATCH /api/tasks/[id]/archive", () => {
     getWorkspaceMock.mockReturnValue(undefined);
 
     const response = await PATCH(
-      new NextRequest("http://localhost/api/tasks/missing/archive", {
+      new NextRequest("http://localhost/api/tasks/missing/archive", { headers: { host: "127.0.0.1:3000" },
         method: "PATCH",
       }),
       contextFor("missing"),
@@ -87,7 +87,7 @@ describe("PATCH /api/tasks/[id]/archive", () => {
     });
 
     const response = await PATCH(
-      new NextRequest("http://localhost/api/tasks/ws1/archive", {
+      new NextRequest("http://localhost/api/tasks/ws1/archive", { headers: { host: "127.0.0.1:3000" },
         method: "PATCH",
       }),
       contextFor("ws1"),

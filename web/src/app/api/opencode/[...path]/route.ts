@@ -102,6 +102,8 @@ function isImageGuardedWrite(pathname: string): boolean {
   );
 }
 
+import { requireAuthorized } from "@/lib/api-guard";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -337,6 +339,12 @@ async function proxy(
   req: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
+  // This is a catch-all proxy to the OpenCode server, so an unguarded call lets
+  // anyone create a session and run agent commands on the host. Guard first,
+  // before any request parsing.
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { path: segments } = await context.params;
   const pathname = "/" + (segments?.join("/") ?? "");
 

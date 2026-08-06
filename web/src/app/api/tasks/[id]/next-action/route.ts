@@ -11,6 +11,7 @@ import {
   sanitizeSuggestionCount,
 } from "@/lib/next-action-text";
 import type { MessageWithParts } from "@/lib/types";
+import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,9 @@ type RequestBody = {
  * Conversation text and secrets are never written to logs or error responses.
  */
 export async function POST(req: NextRequest, context: Ctx) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
   const { id } = await context.params;
   const ws = getWorkspace(id);
   if (!ws) {
