@@ -96,12 +96,56 @@ OpenCodeWebUI にユーザーログイン機能を追加し、設定画面から
 無制限だと LAN の端末から管理者を自分のPCから締め出せてしまう。
 制限超過は `429` + `Retry-After` を返し、Windows へは問い合わせない。
 
+## host-only API のリモート開放（ログイン済みなら変更可能に）
+
+### 発覚した問題: ログインゲートが飾りだった
+
+`verifySessionToken` / `getSessionCookie` / `setAuthCookie` は**定義のみでどこからも呼ばれておらず**、
+`LoginGate` が localStorage を見て UI を隠すだけだった。API は一切保護されておらず、
+LAN から `curl` で素通りできた。この状態で host-only ガードを「ログイン済みなら通す」にすると
+検証されない Cookie を根拠にすることになり、逆に穴を開けることになる。
+そのため先にセッション検証を実装した。
+
+### 仕組み
+
+1. host に `POST /auth/verify` を追設。BFF は `webui_session` cookie の token を
+   転送し、host が HMAC 署名を検証して `{ ok, username }` を返す。
+   署名 secret（`CONTROL_SECRET`）は host プロセスだけが持つため BFF 単独では検証できない。
+2. `web/src/lib/session.ts` の `verifySession(req)` がこれを呼ぶ。
+   cookie 無し・署名不正・期限切れ・host 到達不可はすべて null（fail closed）。
+3. `rejectUnlessLocalOrAuthenticated`（loopback **または**検証済みセッション）を
+   host-only ルート 29 ファイルに適用。
+
+検証済みセッションは loopback 判定より**強い**根拠である。
+`Host` / `X-Forwarded-For` は LAN の第三者が偽装できるが、token は HMAC 署名されている。
+
+### 例外: `/api/browse/folder` は loopback 限定のまま
+
+権限ではなく**原理的にリモートで動かない**ため。ネイティブダイアログは
+ホストPCのデスクトップに表示され、人間のクリックを最大 290 秒待つ
+（`web/src/app/api/browse/folder/route.ts:18` のコメント参照）。
+リモートは `/api/browse/dirs` によるブラウザ内一覧＋手入力を使う（403 時に自動フォールバック）。
+
+### LoginGate をサーバー権威に変更
+
+`/api/auth/session` が `authenticated` / `username` を返すようにし、
+LoginGate は localStorage ではなくこれを見る。
+`CONTROL_SECRET` は**host 起動ごとに再生成**されるため、host 再起動後は
+cookie が無効になる。localStorage を信じていると「画面は出るが全 API が 403」に
+なるので、サーバー判定に統一した。
+
+### 併せて修正したトークンのバグ
+
+- `payload.indexOf(':')` → `lastIndexOf(':')`。
+  ユーザー名にコロンが含まれると ts のパースが壊れていた（fail closed なので無害だが不正確）。
+- 未来日時のトークンを拒否（60 秒の skew 許容）。偽造 ts でセッション期限を伸ばせないようにする。
+
 ## 検証結果
 
 - `npm run --prefix web typecheck` ... 成功
 - `npm run --prefix web lint` ... 成功
-- `npm run --prefix web test` ... 223 test files, 2707 tests 成功
-- `npm run --prefix host test` ... 277 tests 成功
+- `npm run --prefix web test` ... 224 test files, 2730 tests 成功
+- `npm run --prefix host test` ... 286 tests 成功
 
 実機確認済み（`scripts/validate-windows-credentials.ps1`）:
 
@@ -114,6 +158,7 @@ OpenCodeWebUI にユーザーログイン機能を追加し、設定画面から
 - `8005654` feat(auth): WebUIにユーザーログインとユーザー管理を追加
 - `a218884` feat(auth): 127.0.0.1 からのアクセス時はログインを不要にする
 - `4d9b8af` feat(auth): Windows アカウントのユーザー名/パスワードでログインできるようにする
+- `b7825ab` feat(auth): ログイン済みならリモートからも host-only 設定を変更できるようにする
 
 ## 次のステップ
 
@@ -128,8 +173,17 @@ OpenCodeWebUI にユーザーログイン機能を追加し、設定画面から
 
 ## 既知の未対応・制約
 
-- LAN から設定の「ユーザー」タブを開くと 403 で一覧が空になる。
-  機能的には正しいが「ホストPCで操作してください」等の案内は未実装。
+- ログアウトはサーバー側でトークンを失効させない（ステートレス HMAC）。
+  cookie を消すだけなので、token を抜き取られていれば 7 日間有効。
+  実質的な失効手段は host 再起動（`CONTROL_SECRET` 再生成）のみ。
+- ログイン済みリモート主体は `/api/auth/users` と `/api/auth/config` も操作できる。
+  つまり WebUI ユーザーが Windows 認証を有効化したり他ユーザーを削除できる。
+  権限モデル（`remote-authz.md` の `project:read` 等）は未実装で、認可は
+  「loopback または検証済みセッション」の 2 値のみ。
+- CSRF 対策は未実装。`remote-authz.md` が要求する token 二重送信・Origin 検証は入っていない。
+  session cookie は `SameSite=Strict` なので基本的なクロスサイト送信は防げるが、
+  仕様が求める水準には達していない。
+- 監査ログ未実装。
 - `users.json` / `auth-config.json` は `mode: 0o600` で書いているが、
   **Windows では POSIX パーミッションは効かない**（Node は 0666 を報告する）。
   同一PCの別ユーザーからパスワードハッシュを読める。ACL 設定は未実装。
