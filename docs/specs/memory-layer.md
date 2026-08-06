@@ -38,7 +38,7 @@ CREATE TABLE memories (
   kind TEXT NOT NULL,                     -- 'fact' | 'preference' | 'lesson' | 'reference'
   content TEXT NOT NULL,
   source_session_id TEXT,                 -- 抽出元セッション(自動抽出のみ)
-  provenance TEXT NOT NULL,               -- 'agent' | 'auto-extract' | 'manual'
+  provenance TEXT NOT NULL,           -- 'agent' | 'auto-extract' | 'auto-extract-retrospective' | 'manual'
   approved INTEGER NOT NULL DEFAULT 0,    -- 0=候補 1=承認済み
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -102,10 +102,12 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
   `busy_timeout`(5000ms)と `journal_mode = WAL` を必ず設定する(web側 `db.ts:116` はWAL済み)。
   書込は memories 系テーブルのみに限定し、他テーブルには触れない。
 - ワークスペース解決は起動時引数の `--workspace` で固定する(セッションごとに1プロセス)。
-  **未検証**: OpenCode の MCP 設定が起動コマンドへの変数展開(ワークスペースパス等)を
-  サポートするかは `docs/opencode/` に記述がなく確認できていない。サポートされない場合は、
-  `opencode.json` を配置する側(プロファイル同期の仕組み、`sync-engine.ts` 系)で
-  ワークスペースごとに固定引数を書き込む wrapper 方式にする。実装着手時に要確認。
+  **env 変数展開(`{env:VAR}`)は `browser-bridge/scripts/install-mcp.mjs` が
+  `{env:OPENCODE_WEBUI_BROWSER_BROKER}` 等で既に使っており、MCP 設定の `environment` 値では
+  実績がある**。未検証なのは**コマンド引数への変数展開**のみ(`docs/opencode/` に記述なし)。
+  サポートされない場合は、`opencode.json` を配置する側(プロファイル同期の仕組み、
+  `sync-engine.ts` 系)でワークスペースごとに固定引数を書き込む wrapper 方式にする。
+  実装着手時に要確認。
 
 ### プロンプト汚染対策
 
@@ -155,7 +157,9 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 - **このプレフィックスは OpenCode が受信したメッセージとしてトランスクリプトに永続化される**
   (受信メッセージは保存されるため)。「履歴に残らない」という設計は成立しない。
   そのため UI 側はメッセージ表示時に `<workspace-memory>` ブロックを除外して描画する
-  (表示前変換: `web/src/lib/message-parts.ts` 相当)。除外漏れ防止の単体テストを必須とする。
+  (表示前変換。既存の PartView 描画経路に新規フックとして追加する。
+  `web/src/lib/message-parts.ts` は画像パーツ専用のため再利用しない)。
+  除外漏れ防止の単体テストを必須とする。
 
 ## API(Web側)
 

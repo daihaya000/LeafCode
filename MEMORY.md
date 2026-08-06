@@ -230,6 +230,50 @@ try/catch なしで await していた。
 
 ---
 
+# 作業ログ: Hermes Agent 的機能の仕様書 3本目の追加レビュー(実コード突合)
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+前2回の修正は仕様書間の整合に焦点を当てた。今回はさらに一歩進め、
+**仕様書が参照する実コード・既存specへ突合して**、参照の誤り・古さを検出する。
+
+## 検出した問題(実コードとの不整合)
+
+- **R11(高)** self-improvement-loop.md: 「`auto-model.ts` のルーティングに `retrospective`
+  タスク種別を追加」はコードと不整合。`auto-model.ts` にタスク種別ルーティングは無く、
+  `classifyPrompt` → ティア(light/standard/heavy)+ `chooseAutoModel`(コスト帯)で選ぶ。
+  →「`standard` ティアを固定指定」へ修正。memory-layer 側は `light` ティア・最安帯。
+- **R12(高)** agent-monitor.md: goal-loop の pause_reason 写像表が不完全。実在する
+  `user` / `manual_send` / `unreadable_result` / `turn_timeout` / `unknown_delivery` /
+  `boundary_lost` が表外だった(コードの `GOAL_LOOP_PAUSE_REASONS` と goal-loop.md 遷移表より)。
+  →「上記以外の paused は needs-review に既定」の行を追加。
+- **R17(高)** agent-monitor.md: 「`Retry`: needs-review/blocked の再開」が goal-loop では成立しない
+  (`blocked` は終端、resume は `paused` のみ、goal-loop.md 遷移表#8/#10)。→ kind 別の再開可否を明記。
+- **R13** agent-monitor.md: subagent検知の表現。`opencode-schema.d.ts` ではサブエージェントは
+  `SubtaskPart`(`type:"subtask"`)で、`task` ツールは権限/イベント側。→「tool part」の断言を修正。
+- **R14** memory-layer.md: MCP env 変数展開の「未検証」を上方修正。`install-mcp.mjs` が
+  `{env:OPENCODE_WEBUI_BROWSER_BROKER}` を使い env 展開は**実績あり**。未検証はコマンド引数展開のみ。
+- **R15** memory-layer.md: `provenance` enum に self-improvement が使う
+  `auto-extract-retrospective` を追加(enum 不整合)。
+- **R16** self-improvement-loop.md: goal-completed で memory-layer の自動抽出(approved=0)と
+  retro(approved=1)が両方 memories に書く重複を明記し、完全一致 dedup で吸収する方針を追記。
+- **R18** memory-layer.md: 表示前変換の参照が「`message-parts.ts` 相当」とあったが、同ファイルは
+  画像パーツの描画グルーピング専用。→ PartView 描画経路に新規フックとして追加する旨に修正。
+
+## 教訓
+
+仕様書レビューは「コードへ照会」を加えることで質が上がる。特に
+「既存モジュールを再利用」と書いた部分は、実際の API/型/enum を読んで
+存在・呼び出し方を確認しないと、存在しない機能を前提にすることが多い。
+今回検出はすべて実ファイル(goal-loop.ts・auto-model.ts・install-mcp.mjs・
+opencode-schema.d.ts・goal-loop.md)を読んで確定した。
+
+---
+
 # 作業ログ: Hermes Agent 的機能の仕様書レビューと修正
 
 ## 日付

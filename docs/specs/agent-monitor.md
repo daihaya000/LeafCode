@@ -82,6 +82,7 @@ CREATE INDEX idx_agent_runs_ws ON agent_runs(workspace_id, status);
 | `paused` | `turn_limit` | `needs-review`(再開可能) |
 | `paused` | `scheduler_error` | `needs-review`(再開可能) |
 | `paused` | `verification_rejected` | `needs-review`(再開可能) |
+| `paused` | 上記以外(`user` / `manual_send` / `unreadable_result` / `turn_timeout` / `unknown_delivery` / `boundary_lost` 等) | `needs-review`(再開可能) |
 | `paused` | `transcript_unreadable` | `blocked`(自動再開不可) |
 | `blocked` | – | `blocked` |
 | `completed` | – | `done` |
@@ -89,11 +90,12 @@ CREATE INDEX idx_agent_runs_ws ON agent_runs(workspace_id, status);
 
 #### subagent の検知
 
-セッションイベント(`message.updated`)に含まれる tool part から `task`(サブエージェント)
-ツールの呼び出しを検知する。開始(=running)と完了(=done)の遷移は tool part の状態
-(`state`)で判定し、厳密な part 型は実装時に `opencode-schema.d.ts` で確認する。
-検知時に**呼び出し元セッションid**を `parent_ref_id` に記録する(Escalateの宛先として使う)。
-検知関数には単体テストを付ける。
+セッションイベント(`message.updated`)に含まれる part からサブエージェント呼び出しを検知する。
+`opencode-schema.d.ts` ではメッセージ内の表現は `SubtaskPart`(`type: "subtask"`)が本体で、
+`task` ツールは権限(`opencode-task-permission.ts`)とイベント(`session.next.tool.*`)側に現れる。
+検知は `SubtaskPart` の登場を主とし、開始(=running)と完了(=done)の判定は厳密な part 型・状態を
+実装時に `opencode-schema.d.ts` で確定する。検知時に**呼び出し元セッションid**を
+`parent_ref_id` に記録する(Escalateの宛先として使う)。検知関数には単体テストを付ける。
 
 ## 集約ドライバー
 
@@ -144,7 +146,9 @@ kanban UIは初回にREST一覧取得、以降はイベント差分のみで描�
     (`improvements` テーブル)へ要約を落として人間に委ねる。
     `goal-loop` / `workflow-node` のカードには表示しない(それぞれ Stop / Retry / 既存の
     attention 導線で扱う)。
-  - `Retry`: needs-review/blocked の再開(既存 resume API)。
+  - `Retry`: needs-review の再開(既存 resume API)。ただし再開可否は**委譲先の kind に従う** —
+    goal-loop は `paused` のみ resume 対象で、`blocked` は終端(resume不可、goal-loop.md 遷移表#8/#10)。
+    workflow-node の retry は既存ノード再試行に委譲。
 - ヘッダー: 「新規サブエージェント」ボタン → コンポーザの既存エージェント選択で
   `subagent` 定義を起動(新規 `.opencode/agents/subagent.md` を用意)。
 

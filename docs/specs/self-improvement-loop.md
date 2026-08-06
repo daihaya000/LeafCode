@@ -40,8 +40,10 @@
 `.opencode/agents/retrospective.md`(既存agent定義と同形式)を新設する。
 
 - mode: 読み取り専用相当。`edit`/`write`/`bash` の書き込み系は権限で無効化。
-- モデル: `auto-model.ts` のルーティングに `retrospective` タスク種別を追加し、
-  中規模クラスを選定(抽出は軽量モデル、振り返りは中規模)。
+- モデル: `auto-model.ts` はタスク種別ではなく prompt 分類でティア(`light` / `standard` /
+  `heavy`)を決めるため、`retrospective` 用に新たなタスク種別を**追加しない**。
+  `standard` ティア(中規模)を固定して `chooseAutoModel` で解決する。
+  (自動抽出側 memory-layer.md は `light` ティア・最安コスト帯を使う)
 - 出力契約: 最終メッセージは以下のJSONのみ。JSON以外はパース失敗として再実行1回まで。
 
 ```json
@@ -82,6 +84,11 @@ Web側 `lib/self-improvement.ts`(新規)に `runRetrospective(trigger, sessionId
      `status='applied'` で1行残す(Inboxでの表示・却下操作の対象にするため)。
    - `agents_md` / `skill`: `improvements` テーブルに `status='pending'` で挿入。
 4. SSEイベント `improvement.created`(pending分)または `improvement.applied`(memory分)を配信する。
+
+> **memory-layer.md の自動抽出との関係**: 自動抽出も同じ `goal-completed` 遷移で発火し、
+> `memories` に `approved=0` 候補を書く。retrospective の `memory` 反映は `approved=1` で確定度が高く、
+> 同一内容は既存の完全一致重複判定で吸収される。実装時は「自動抽出候補と retro applied 行の両立・
+> 重複排除」をテストで固定する。
 
 ## データモデル
 
