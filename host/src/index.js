@@ -63,7 +63,11 @@ import {
   verifyUser,
 } from './auth-store.js';
 import { readAuthConfig, writeAuthConfig } from './auth-config.js';
-import { verifyWindowsCredentials } from './windows-auth.js';
+import {
+  createLoginThrottle,
+  createThrottleStore,
+  verifyWindowsCredentials,
+} from './windows-auth.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -2328,6 +2332,16 @@ async function startControlServer() {
     },
     sessionSecret: CONTROL_SECRET,
     controlPort: CONTROL_PORT,
+    // Persisted so a host restart does not hand a brute-force attempt a fresh
+    // budget. Two separate windows: per-account (protects the Windows lockout
+    // counter) and per-source-address (stops walking the account list).
+    loginThrottle: createLoginThrottle({
+      store: createThrottleStore({ file: join(DATA_DIR, 'login-throttle.json') }),
+    }),
+    ipThrottle: createLoginThrottle({
+      maxAttempts: 20,
+      store: createThrottleStore({ file: join(DATA_DIR, 'login-throttle-ip.json') }),
+    }),
   });
   try {
     await listenControlServer(server, CONTROL_PORT);

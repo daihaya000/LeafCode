@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import {
   createLoginThrottle,
+  createThrottleStore,
   parseWindowsUsername,
   verifyWindowsCredentials,
 } from './windows-auth.js';
@@ -236,4 +237,153 @@ test('createLoginThrottle reset clears a blocked username', () => {
   assert.equal(throttle.isBlocked('alice'), true);
   throttle.reset('alice');
   assert.equal(throttle.isBlocked('alice'), false);
+});
+
+/** In-memory stand-in for the on-disk throttle store. */
+function memoryStore(initial = []) {
+  let saved = initial;
+  return {
+    load: () => saved,
+    save: (entries) => {
+      saved = entries.map(([k, v]) => [k, { ...v }]);
+    },
+    peek: () => saved,
+  };
+}
+
+test('createLoginThrottle restores counters from its store', () => {
+  const now = 1000;
+  const store = memoryStore([['alice', { count: 3, first: now }]]);
+  const throttle = createLoginThrottle({
+    maxAttempts: 3,
+    windowMs: 60_000,
+    now: () => now,
+    store,
+  });
+  // A host restart must not hand an attacker a fresh budget.
+  assert.equal(throttle.isBlocked('alice'), true);
+});
+
+test('createLoginThrottle writes through to its store on failure and reset', () => {
+  const store = memoryStore();
+  const throttle = createLoginThrottle({ maxAttempts: 5, windowMs: 60_000, store });
+
+  throttle.recordFailure('alice');
+  assert.equal(store.peek().length, 1);
+  assert.equal(store.peek()[0][0], 'alice');
+
+  throttle.reset('alice');
+  assert.equal(store.peek().length, 0);
+});
+
+test('createLoginThrottle survives a store that throws on save', () => {
+  const throttle = createLoginThrottle({
+    store: {
+      load: () => [],
+      save: () => {
+        throw new Error('disk full');
+      },
+    },
+  });
+  // Persistence is best-effort; it must never break the login path.
+  assert.doesNotThrow(() => throttle.recordFailure('alice'));
+  assert.equal(throttle.isBlocked('alice'), false);
+});
+
+test('createThrottleStore round-trips entries', () => {
+  let written = null;
+  const store = createThrottleStore({
+    file: 'C:\\fake\\throttle.json',
+    windowMs: 60_000,
+    now: () => 1000,
+    fs: {
+      existsSync: () => written !== null,
+      readFileSync: () => written,
+      writeFileSync: (_f, data) => {
+        written = data;
+      },
+      mkdirSync: () => {},
+    },
+  });
+
+  store.save([['alice', { count: 2, first: 1000 }]]);
+  assert.deepEqual(store.load(), [['alice', { count: 2, first: 1000 }]]);
+});
+
+test('createThrottleStore drops entries older than the window on load', () => {
+  const stale = JSON.stringify([
+    { key: 'old', count: 9, first: 0 },
+    { key: 'fresh', count: 1, first: 90_000 },
+  ]);
+  const store = createThrottleStore({
+    file: 'C:\\fake\\throttle.json',
+    windowMs: 60_000,
+    now: () => 100_000,
+    fs: {
+      existsSync: () => true,
+      readFileSync: () => stale,
+      writeFileSync: () => {},
+      mkdirSync: () => {},
+    },
+  });
+  // Otherwise the file would grow forever and a stale counter could keep
+  // blocking a legitimate login.
+  assert.deepEqual(store.load(), [['fresh', { count: 1, first: 90_000 }]]);
+});
+
+test('createThrottleStore prunes expired entries when saving', () => {
+  let written = null;
+  const store = createThrottleStore({
+    file: 'C:\\fake\\throttle.json',
+    windowMs: 60_000,
+    now: () => 100_000,
+    fs: {
+      existsSync: () => false,
+      readFileSync: () => '',
+      writeFileSync: (_f, data) => {
+        written = data;
+      },
+      mkdirSync: () => {},
+    },
+  });
+  store.save([
+    ['old', { count: 9, first: 0 }],
+    ['fresh', { count: 1, first: 90_000 }],
+  ]);
+  assert.deepEqual(JSON.parse(written), [{ key: 'fresh', count: 1, first: 90_000 }]);
+});
+
+test('createThrottleStore returns an empty list for a missing or corrupt file', () => {
+  const make = (contents, exists = true) =>
+    createThrottleStore({
+      file: 'C:\\fake\\throttle.json',
+      fs: {
+        existsSync: () => exists,
+        readFileSync: () => contents,
+        writeFileSync: () => {},
+        mkdirSync: () => {},
+      },
+    });
+
+  assert.deepEqual(make('', false).load(), []);
+  assert.deepEqual(make('not json').load(), []);
+  assert.deepEqual(make('{"not":"an array"}').load(), []);
+});
+
+test('createThrottleStore never throws when the disk fails', () => {
+  const store = createThrottleStore({
+    file: 'C:\\fake\\throttle.json',
+    fs: {
+      existsSync: () => {
+        throw new Error('EACCES');
+      },
+      readFileSync: () => '',
+      writeFileSync: () => {
+        throw new Error('EACCES');
+      },
+      mkdirSync: () => {},
+    },
+  });
+  assert.deepEqual(store.load(), []);
+  assert.doesNotThrow(() => store.save([['a', { count: 1, first: 0 }]]));
 });

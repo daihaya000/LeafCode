@@ -1,5 +1,11 @@
 import { spawn as nodeSpawn } from 'child_process';
-import { dirname, join } from 'path';
+import {
+  existsSync as nodeExistsSync,
+  mkdirSync as nodeMkdirSync,
+  readFileSync as nodeReadFileSync,
+  writeFileSync as nodeWriteFileSync,
+} from 'fs';
+import { dirname, dirname as nodeDirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 /**
@@ -181,23 +187,42 @@ export function verifyWindowsCredentials(username, password, deps = {}) {
 }
 
 /**
- * Per-username attempt limiter.
+ * Attempt limiter keyed by an arbitrary string (a username, or a source IP).
  *
  * Windows counts every ValidateCredentials failure toward its account lockout
  * policy, so an unthrottled login endpoint would let anyone on the LAN lock the
  * operator out of their own PC. Throttling here keeps a brute-force attempt from
  * reaching Windows in the first place.
  *
- * @param {{ maxAttempts?: number, windowMs?: number, now?: () => number }} [options]
+ * `store` optionally persists the counters. Without it the limiter resets on
+ * every host restart, so an attacker who can trigger (or simply wait for) a
+ * restart gets a fresh budget.
+ *
+ * @param {{
+ *   maxAttempts?: number,
+ *   windowMs?: number,
+ *   now?: () => number,
+ *   store?: { load: () => [string, { count: number, first: number }][], save: (entries: [string, { count: number, first: number }][]) => void },
+ * }} [options]
  */
 export function createLoginThrottle(options = {}) {
   const {
     maxAttempts = 5,
     windowMs = 5 * 60_000,
     now = () => Date.now(),
+    store = null,
   } = options;
   /** @type {Map<string, { count: number, first: number }>} */
-  const attempts = new Map();
+  const attempts = new Map(store ? store.load() : []);
+
+  function persist() {
+    if (!store) return;
+    try {
+      store.save([...attempts]);
+    } catch {
+      // A failed write must never block a login response.
+    }
+  }
 
   function key(username) {
     return String(username ?? '').trim().toLowerCase();
@@ -229,15 +254,72 @@ export function createLoginThrottle(options = {}) {
       const entry = prune(k);
       if (!entry) {
         attempts.set(k, { count: 1, first: now() });
-        return;
+      } else {
+        entry.count += 1;
       }
-      entry.count += 1;
+      persist();
     },
     reset(username) {
-      attempts.delete(key(username));
+      if (attempts.delete(key(username))) persist();
     },
     clear() {
       attempts.clear();
+      persist();
+    },
+  };
+}
+
+/**
+ * Disk backing for {@link createLoginThrottle}.
+ *
+ * Entries older than `windowMs` are dropped on load, so the file cannot grow
+ * without bound and a stale counter never blocks a legitimate login.
+ *
+ * @param {{ file: string, windowMs?: number, now?: () => number, fs?: object }} options
+ */
+export function createThrottleStore({
+  file,
+  windowMs = 5 * 60_000,
+  now = () => Date.now(),
+  fs: fsApi = {},
+}) {
+  const read = fsApi.readFileSync ?? nodeReadFileSync;
+  const write = fsApi.writeFileSync ?? nodeWriteFileSync;
+  const exists = fsApi.existsSync ?? nodeExistsSync;
+  const mkdir = fsApi.mkdirSync ?? nodeMkdirSync;
+
+  return {
+    load() {
+      try {
+        if (!exists(file)) return [];
+        const parsed = JSON.parse(read(file, 'utf8'));
+        if (!Array.isArray(parsed)) return [];
+        const cutoff = now() - windowMs;
+        return parsed
+          .filter(
+            (e) =>
+              e &&
+              typeof e.key === 'string' &&
+              typeof e.count === 'number' &&
+              typeof e.first === 'number' &&
+              e.first > cutoff,
+          )
+          .map((e) => [e.key, { count: e.count, first: e.first }]);
+      } catch {
+        return [];
+      }
+    },
+    save(entries) {
+      try {
+        mkdir(nodeDirname(file), { recursive: true });
+        const cutoff = now() - windowMs;
+        const live = entries
+          .filter(([, v]) => v.first > cutoff)
+          .map(([key, v]) => ({ key, count: v.count, first: v.first }));
+        write(file, JSON.stringify(live), 'utf8');
+      } catch {
+        // Best effort — losing persistence only costs restart resistance.
+      }
     },
   };
 }

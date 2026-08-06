@@ -56,10 +56,23 @@ function fakeResponse() {
   };
 }
 
+/** Collects audit events in memory so tests never touch the real audit.log. */
+function fakeAuditLog() {
+  const events = [];
+  return {
+    events,
+    record: (e) => events.push(e),
+    find: (action) => events.filter((e) => e.action === action),
+  };
+}
+
 const noopHandlers = {
   onRestartWebui: () => {},
   onRestartOpencode: () => {},
   onRestartAll: () => {},
+  // Without this every test that logs in would append to
+  // %APPDATA%\opencode-webui\audit.log on the developer's machine.
+  auditLog: fakeAuditLog(),
 };
 
 test('matchControlRoute maps restart endpoints', () => {
@@ -948,6 +961,225 @@ test('isLoopbackHostHeader rejects an empty or malformed header', () => {
 
 test('isLoopbackHostHeader rejects a header given as a list whose first element is not loopback', () => {
   assert.equal(isLoopbackHostHeader(['evil.test:18765'], 18765), false);
+});
+
+test('POST /auth/login audits a success with the source address, never the password', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+  });
+
+  await postJson(
+    handle,
+    '/auth/login',
+    { username: 'alice', password: 'secret' },
+    { 'x-ocw-client-ip': '192.168.0.5' },
+  );
+
+  const [event] = audit.find('login.success');
+  assert.equal(event.actor, 'alice');
+  assert.equal(event.ip, '192.168.0.5');
+  assert.equal(event.result, 'allow');
+  assert.equal(JSON.stringify(audit.events).includes('secret'), false);
+});
+
+test('POST /auth/login audits a failure as deny', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub({ verifyUser: () => false }),
+    sessionSecret: 'test-secret',
+  });
+
+  await postJson(handle, '/auth/login', { username: 'alice', password: 'wrong' });
+
+  const [event] = audit.find('login.failure');
+  assert.equal(event.result, 'deny');
+  assert.equal(event.reason, 'invalid_credentials');
+});
+
+test('POST /auth/login throttles by source address across different usernames', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub({ verifyUser: () => false }),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 100, windowMs: 60_000 }),
+    ipThrottle: createLoginThrottle({ maxAttempts: 3, windowMs: 60_000 }),
+  });
+
+  const ip = { 'x-ocw-client-ip': '192.168.0.5' };
+  // Per-username limits alone would let an attacker walk the account list.
+  for (let i = 0; i < 3; i += 1) {
+    const res = await postJson(handle, '/auth/login', { username: `user-${i}`, password: 'x' }, ip);
+    assert.equal(res.statusCode, 401, `attempt ${i + 1}`);
+  }
+
+  const blocked = await postJson(handle, '/auth/login', { username: 'user-9', password: 'x' }, ip);
+  assert.equal(blocked.statusCode, 429);
+  assert.equal(audit.find('login.throttled')[0].reason, 'ip_rate_limit');
+});
+
+test('POST /auth/login throttles a different address independently', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: fakeAuditLog(),
+    authStore: authStoreStub({ verifyUser: () => false }),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 100, windowMs: 60_000 }),
+    ipThrottle: createLoginThrottle({ maxAttempts: 1, windowMs: 60_000 }),
+  });
+
+  await postJson(handle, '/auth/login', { username: 'a', password: 'x' }, { 'x-ocw-client-ip': '10.0.0.1' });
+  const blocked = await postJson(handle, '/auth/login', { username: 'a', password: 'x' }, { 'x-ocw-client-ip': '10.0.0.1' });
+  assert.equal(blocked.statusCode, 429);
+
+  const other = await postJson(handle, '/auth/login', { username: 'a', password: 'x' }, { 'x-ocw-client-ip': '10.0.0.2' });
+  assert.equal(other.statusCode, 401, 'a different address must have its own budget');
+});
+
+test('POST /auth/login does not share one IP bucket among callers with no address', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: fakeAuditLog(),
+    authStore: authStoreStub({ verifyUser: () => false }),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 100, windowMs: 60_000 }),
+    ipThrottle: createLoginThrottle({ maxAttempts: 1, windowMs: 60_000 }),
+  });
+
+  // Unproxied callers have no known address; lumping them together would let
+  // one of them lock out everyone else.
+  for (let i = 0; i < 5; i += 1) {
+    const res = await postJson(handle, '/auth/login', { username: `u${i}`, password: 'x' });
+    assert.equal(res.statusCode, 401, `attempt ${i + 1}`);
+  }
+});
+
+test('a successful login does not clear the per-IP failure counter', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: fakeAuditLog(),
+    authStore: authStoreStub({ verifyUser: (u, p) => p === 'secret' }),
+    sessionSecret: 'test-secret',
+    loginThrottle: createLoginThrottle({ maxAttempts: 100, windowMs: 60_000 }),
+    ipThrottle: createLoginThrottle({ maxAttempts: 3, windowMs: 60_000 }),
+  });
+  const ip = { 'x-ocw-client-ip': '192.168.0.5' };
+
+  await postJson(handle, '/auth/login', { username: 'a', password: 'x' }, ip);
+  await postJson(handle, '/auth/login', { username: 'b', password: 'x' }, ip);
+  // One valid credential in the middle must not wipe the evidence, otherwise
+  // an attacker with any single working account bypasses the per-IP limit.
+  const ok = await postJson(handle, '/auth/login', { username: 'alice', password: 'secret' }, ip);
+  assert.equal(ok.statusCode, 200);
+  await postJson(handle, '/auth/login', { username: 'c', password: 'x' }, ip);
+
+  const blocked = await postJson(handle, '/auth/login', { username: 'd', password: 'x' }, ip);
+  assert.equal(blocked.statusCode, 429);
+});
+
+test('POST /auth/logout audits the session it revoked', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+    revocationStore: createRevocationStore({ persist: false }),
+  });
+  const token = await loginForToken(handle);
+
+  const res = fakeResponse();
+  const req = new MockReadable('{}', { cookie: `webui_session=${encodeURIComponent(token)}` });
+  req.method = 'POST';
+  req.url = '/auth/logout';
+  await handle(req, res);
+
+  assert.equal(audit.find('logout')[0].actor, 'alice');
+  assert.equal(JSON.stringify(audit.events).includes(token), false);
+});
+
+test('user management operations are audited with actor and target', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub({ upsertUser: () => ({ ok: true }), deleteUser: () => ({ ok: true }) }),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+
+  await postJson(handle, '/users', { username: 'bob', password: 'pw1234' }, cookie);
+  const created = audit.find('user.create')[0];
+  assert.equal(created.actor, 'alice');
+  assert.equal(created.target, 'bob');
+  // The new password must never reach the audit trail.
+  assert.equal(JSON.stringify(audit.events).includes('pw1234'), false);
+
+  const res = fakeResponse();
+  const del = new MockReadable(JSON.stringify({ username: 'bob' }), cookie);
+  del.method = 'DELETE';
+  del.url = '/users';
+  await handle(del, res);
+  assert.equal(audit.find('user.delete')[0].target, 'bob');
+});
+
+test('an existing user being updated is audited as user.update, not user.create', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub({
+      listUsers: () => [{ username: 'Bob', role: 'user', updatedAt: 'x' }],
+      upsertUser: () => ({ ok: true }),
+    }),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+
+  // Case-insensitive match, mirroring the store's own normalisation.
+  await postJson(handle, '/users', { username: 'bob', password: 'pw1234' }, cookie);
+  assert.equal(audit.find('user.update').length, 1);
+  assert.equal(audit.find('user.create').length, 0);
+});
+
+test('a rejected admin operation is audited as authz.denied', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub({ isAdmin: () => false }),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+
+  await postJson(handle, '/users', { username: 'mallory', password: 'pw1234' }, cookie);
+  const denied = audit.find('authz.denied')[0];
+  assert.equal(denied.result, 'deny');
+  assert.equal(denied.reason, 'not_admin');
+  assert.equal(denied.target, '/users');
+});
+
+test('toggling Windows auth is audited with the resulting state', async () => {
+  const audit = fakeAuditLog();
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    auditLog: audit,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+
+  await postJson(handle, '/auth/config', { windowsAuth: true }, cookie);
+  const event = audit.find('authconfig.update')[0];
+  assert.equal(event.actor, 'alice');
+  assert.equal(event.reason, 'enabled');
 });
 
 test('createRevocationStore (in-memory) starts with nothing revoked', () => {

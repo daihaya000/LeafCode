@@ -1,8 +1,27 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import http from 'http';
+import { createAuditLog } from './audit-log.js';
+import { writeSecretFile } from './secure-file.js';
 import { createLoginThrottle } from './windows-auth.js';
+
+/**
+ * Address of the original caller, forwarded by the BFF.
+ *
+ * The control plane only ever sees a loopback connection, so it cannot derive
+ * this itself. Used for the audit log and the per-IP login limit only — never
+ * for an authorization decision, since any local process could forge it.
+ */
+const CLIENT_IP_HEADER = 'x-ocw-client-ip';
+
+/** @param {import('http').IncomingMessage} req */
+function clientIpOf(req) {
+  const raw = req.headers?.[CLIENT_IP_HEADER];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed || null;
+}
 
 /**
  * Match a host-control HTTP route.
@@ -201,9 +220,8 @@ function readRevokedJtis() {
 /** @param {Map<string, number>} map */
 function writeRevokedJtis(map) {
   try {
-    mkdirSync(dirname(revokeFilePath()), { recursive: true });
     const arr = [...map].map(([jti, ts]) => ({ jti, ts }));
-    writeFileSync(revokeFilePath(), JSON.stringify(arr, null, 2), { encoding: 'utf8', mode: 0o600 });
+    writeSecretFile(revokeFilePath(), JSON.stringify(arr, null, 2));
   } catch {
     // best effort — an unwritable file just means revocation is per-process only
   }
@@ -299,16 +317,24 @@ function getSessionCookie(header) {
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
+ *   ipThrottle?: ReturnType<typeof createLoginThrottle>,
  *   controlPort?: number,
  *   revocationStore?: ReturnType<typeof createRevocationStore>,
+ *   auditLog?: { record: (event: object) => void },
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
 export function createControlRequestHandler(handlers) {
   // Shared across requests so a brute-force attempt cannot reset its own count.
   const throttle = handlers.loginThrottle ?? createLoginThrottle();
+  // Second limiter keyed by source address. Per-username alone lets an attacker
+  // spend a full budget on every account in turn; per-IP caps the total spend
+  // from one origin. Its budget is higher because one address can legitimately
+  // host several users (a shared PC, or everyone behind one NAT).
+  const ipThrottle = handlers.ipThrottle ?? createLoginThrottle({ maxAttempts: 20 });
   const controlPort = typeof handlers.controlPort === 'number' ? handlers.controlPort : undefined;
   const revocationStore = handlers.revocationStore ?? createRevocationStore();
+  const auditLog = handlers.auditLog ?? createAuditLog();
 
   /**
    * Resolve the verified session from a request's cookie or a forwarded
@@ -466,7 +492,16 @@ export function createControlRequestHandler(handlers) {
 
       // Mutating operations (POST/DELETE) require an admin session.
       const session = await resolveSession(req);
+      const ip = clientIpOf(req) ?? undefined;
       if (!session || authStore.isAdmin?.(session.username) !== true) {
+        auditLog.record({
+          action: 'authz.denied',
+          actor: session?.username,
+          target: '/users',
+          ip,
+          result: 'deny',
+          reason: session ? 'not_admin' : 'no_session',
+        });
         res.writeHead(403, JSON_HEADERS);
         res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
         return;
@@ -481,6 +516,14 @@ export function createControlRequestHandler(handlers) {
           return;
         }
         const result = authStore.deleteUser(username);
+        auditLog.record({
+          action: 'user.delete',
+          actor: session.username,
+          target: username,
+          ip,
+          result: result.ok ? 'allow' : 'deny',
+          reason: result.ok ? undefined : result.error,
+        });
         res.writeHead(result.ok ? 200 : 404, JSON_HEADERS);
         res.end(JSON.stringify(result));
         return;
@@ -494,7 +537,19 @@ export function createControlRequestHandler(handlers) {
         res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
         return;
       }
+      const existed = authStore.listUsers().some(
+        (u) => u.username.trim().toLowerCase() === username.trim().toLowerCase(),
+      );
       const result = authStore.upsertUser(username, password);
+      auditLog.record({
+        // The password itself is never recorded, only that it was set.
+        action: existed ? 'user.update' : 'user.create',
+        actor: session.username,
+        target: username,
+        ip,
+        result: result.ok ? 'allow' : 'deny',
+        reason: result.ok ? undefined : result.error,
+      });
       res.writeHead(result.ok ? 200 : 400, JSON_HEADERS);
       res.end(JSON.stringify(result));
       return;
@@ -531,7 +586,16 @@ export function createControlRequestHandler(handlers) {
         return;
       }
       const session = await resolveSession(req);
+      const configIp = clientIpOf(req) ?? undefined;
       if (!session || authStore.isAdmin?.(session.username) !== true) {
+        auditLog.record({
+          action: 'authz.denied',
+          actor: session?.username,
+          target: '/auth/config',
+          ip: configIp,
+          result: 'deny',
+          reason: session ? 'not_admin' : 'no_session',
+        });
         res.writeHead(403, JSON_HEADERS);
         res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
         return;
@@ -553,6 +617,14 @@ export function createControlRequestHandler(handlers) {
         return;
       }
       const saved = authStore.writeConfig({ windowsAuth: body.windowsAuth });
+      auditLog.record({
+        action: 'authconfig.update',
+        actor: session.username,
+        target: 'windowsAuth',
+        ip: configIp,
+        result: 'allow',
+        reason: saved.windowsAuth === true ? 'enabled' : 'disabled',
+      });
       res.writeHead(200, JSON_HEADERS);
       res.end(
         JSON.stringify({
@@ -580,7 +652,15 @@ export function createControlRequestHandler(handlers) {
         const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
         const token = getSessionCookie(req.headers?.cookie);
         const session = token ? verifySessionToken(secret, token) : null;
-        if (session) revocationStore.revoke(session.jti);
+        if (session) {
+          revocationStore.revoke(session.jti);
+          auditLog.record({
+            action: 'logout',
+            actor: session.username,
+            ip: clientIpOf(req) ?? undefined,
+            result: 'allow',
+          });
+        }
         clearAuthCookie(res);
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({ ok: true }));
@@ -615,6 +695,7 @@ export function createControlRequestHandler(handlers) {
       const body = await readJsonBody(req);
       const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
       const password = isPlainObject(body) && typeof body.password === 'string' ? body.password : '';
+      const clientIp = clientIpOf(req);
       if (!username || !password) {
         res.writeHead(400, JSON_HEADERS);
         res.end(JSON.stringify({ ok: false, error: 'username and password are required' }));
@@ -623,9 +704,19 @@ export function createControlRequestHandler(handlers) {
       // Throttle before touching Windows: every failed ValidateCredentials call
       // counts toward the OS account lockout policy, so an unlimited endpoint
       // would let a LAN client lock the operator out of their own machine.
-      const retryAfterMs = throttle.retryAfterMs(username);
+      // A null IP means "unknown" (no proxy in front), so it is not throttled —
+      // otherwise every unproxied client would share a single counter.
+      const ipRetryMs = clientIp ? ipThrottle.retryAfterMs(clientIp) : 0;
+      const retryAfterMs = Math.max(throttle.retryAfterMs(username), ipRetryMs);
       if (retryAfterMs > 0) {
         const retryAfterSec = Math.ceil(retryAfterMs / 1000);
+        auditLog.record({
+          action: 'login.throttled',
+          actor: username,
+          ip: clientIp ?? undefined,
+          result: 'deny',
+          reason: ipRetryMs > 0 ? 'ip_rate_limit' : 'user_rate_limit',
+        });
         res.writeHead(429, { ...JSON_HEADERS, 'Retry-After': String(retryAfterSec) });
         res.end(
           JSON.stringify({
@@ -657,12 +748,30 @@ export function createControlRequestHandler(handlers) {
 
       if (!source) {
         throttle.recordFailure(username);
+        if (clientIp) ipThrottle.recordFailure(clientIp);
+        auditLog.record({
+          action: 'login.failure',
+          actor: username,
+          ip: clientIp ?? undefined,
+          result: 'deny',
+          reason: 'invalid_credentials',
+        });
         res.writeHead(401, JSON_HEADERS);
         res.end(JSON.stringify({ ok: false, error: 'invalid credentials' }));
         return;
       }
 
       throttle.reset(username);
+      // The IP counter is deliberately NOT reset: one successful login must not
+      // wipe the evidence of failed attempts against other accounts from the
+      // same address, which would make the per-IP limit trivial to bypass.
+      auditLog.record({
+        action: 'login.success',
+        actor: username,
+        ip: clientIp ?? undefined,
+        result: 'allow',
+        reason: source,
+      });
       const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
       const token = signSessionToken(secret, username);
       res.writeHead(200, { ...JSON_HEADERS, 'Set-Cookie': authCookieHeader(token) });
@@ -704,8 +813,10 @@ export function createControlRequestHandler(handlers) {
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
+ *   ipThrottle?: ReturnType<typeof createLoginThrottle>,
  *   controlPort?: number,
  *   revocationStore?: ReturnType<typeof createRevocationStore>,
+ *   auditLog?: { record: (event: object) => void },
  * }} handlers
  */
 export function createControlServer(handlers) {

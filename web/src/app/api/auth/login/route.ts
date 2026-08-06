@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clientIpFromRequest } from "@/lib/client-ip";
 import { resolveHostControlUrl } from "@/lib/host-control";
+
+/**
+ * Header carrying the caller's address to the host control plane.
+ *
+ * The control plane only ever sees a loopback connection from this BFF, so it
+ * cannot work the address out itself. It is used for the audit log and the
+ * per-IP login rate limit, never for authorization.
+ */
+const CLIENT_IP_HEADER = "x-ocw-client-ip";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,10 +28,14 @@ export async function POST(req: NextRequest) {
   }
 
   const base = resolveHostControlUrl();
+  const clientIp = clientIpFromRequest(req);
   try {
     const res = await fetch(`${base}/auth/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(clientIp ? { [CLIENT_IP_HEADER]: clientIp } : {}),
+      },
       body: JSON.stringify({
         username: body.username,
         password: body.password,

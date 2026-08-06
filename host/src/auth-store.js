@@ -1,11 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { writeSecretFile } from './secure-file.js';
 
 /**
  * Disk-backed user authentication store for the WebUI login feature.
@@ -27,10 +23,6 @@ function dataDir() {
 
 function usersFile() {
   return join(dataDir(), 'users.json');
-}
-
-function ensureDir() {
-  mkdirSync(dataDir(), { recursive: true });
 }
 
 function hashPassword(password, salt) {
@@ -89,8 +81,8 @@ function readUsers() {
 }
 
 function writeUsers(users) {
-  ensureDir();
-  writeFileSync(usersFile(), JSON.stringify(users, null, 2), { encoding: 'utf8', mode: 0o600 });
+  // Password hashes: the ACL matters more than the POSIX mode on Windows.
+  writeSecretFile(usersFile(), JSON.stringify(users, null, 2));
 }
 
 function normalizeUsername(username) {

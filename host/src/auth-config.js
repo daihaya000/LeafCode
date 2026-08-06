@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { writeSecretFile } from './secure-file.js';
 
 /**
  * Persisted authentication options, stored next to users.json in
@@ -50,11 +51,7 @@ export function writeAuthConfig(patch) {
     windowsAuth:
       typeof patch?.windowsAuth === 'boolean' ? patch.windowsAuth : current.windowsAuth,
   };
-  mkdirSync(dataDir(), { recursive: true });
-  writeFileSync(configFile(), JSON.stringify(next, null, 2), {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
+  writeSecretFile(configFile(), JSON.stringify(next, null, 2));
   return next;
 }
 
