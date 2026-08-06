@@ -71,6 +71,12 @@ function apiErrorMessage(
     if (status === 404) return "フォルダが見つかりません";
     if (status === 400) return "このフォルダは追加できません（許可されていません）";
     if (status === 408) return "通信がタイムアウトしました";
+    // 409 (another dialog already open) and 504 (nobody attended the dialog on
+    // the host desktop) both carry a specific Japanese message from the server.
+    if (status === 409 || status === 504) {
+      if (err instanceof Error && err.message) return err.message;
+      return "ホストPCの画面のダイアログを確認してください";
+    }
   }
   if (err instanceof Error && err.message) return err.message;
   return fallback;
@@ -291,9 +297,14 @@ export function AddProjectButton({
         "フォルダ選択に失敗しました",
         NATIVE_PICKER_FORBIDDEN,
       );
-      // 403 is an authorization problem (not this folder), so show it as a
-      // persistent banner that survives navigation inside the in-app picker.
-      if (err instanceof Error && "status" in err && err.status === 403) {
+      // These are "the native dialog is not usable from here" conditions rather
+      // than a problem with a folder, so show them as a persistent banner that
+      // survives navigation inside the in-app picker.
+      const status =
+        err && typeof err === "object" && "status" in err
+          ? (err as { status?: number }).status
+          : undefined;
+      if (status === 403 || status === 409 || status === 504) {
         setNotice(message);
       } else {
         setError(message);

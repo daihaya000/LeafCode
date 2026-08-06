@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import {
+  isLocalHostRequest,
+  rejectUnlessLocalOrAuthenticated,
+} from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,14 +18,39 @@ const PARAMS_ENV = "WEBUI_FOLDER_PICKER_PARAMS";
 
 /**
  * Open a native folder picker on the host machine (Windows).
- * Intended for localhost use — the dialog appears on the server desktop.
+ *
+ * The dialog always appears on the *host* desktop, so this only makes sense
+ * when the browser runs on the host PC. That includes reaching the WebUI
+ * through the host's own LAN address (e.g. http://192.168.0.102:3000), which
+ * looks non-local to `isLocalHostRequest` even though the browser is right
+ * here — hence the authenticated guard rather than a loopback-only one.
+ *
+ * A genuinely remote client (phone, another PC) cannot see the dialog, so
+ * non-loopback callers get a much shorter wait and a distinct timeout reason so
+ * the UI can fall back to in-browser browsing instead of hanging.
  *
  * User-controlled title/initialPath are written to a temp JSON file and read
  * by PowerShell via env — never interpolated into the script source (RCE).
  */
 export async function POST(req: NextRequest) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
+
+  const fromHostLoopback = isLocalHostRequest(req);
+
+  // One dialog at a time. Without this, repeated clicks (or a remote client
+  // retrying) would stack modal dialogs on the host desktop and pin a worker
+  // each. Best effort: it only covers this process.
+  if (pickerInFlight) {
+    return NextResponse.json(
+      {
+        error:
+          "フォルダ選択ダイアログがすでにホストPCの画面で開いています。そちらで操作してください",
+        reason: "picker_busy",
+      },
+      { status: 409 },
+    );
+  }
 
   if (process.platform !== "win32") {
     return NextResponse.json(
@@ -235,10 +263,13 @@ $selected = [ExplorerFolderPicker]::Pick($title, $initial)
 if ($selected) { Write-Output $selected }
 `;
 
+  pickerInFlight = true;
   try {
-    const selected = await runPowerShellSta(script, {
-      [PARAMS_ENV]: paramsPath,
-    });
+    const selected = await runPowerShellSta(
+      script,
+      { [PARAMS_ENV]: paramsPath },
+      fromHostLoopback ? PICKER_TIMEOUT_MS : REMOTE_PICKER_TIMEOUT_MS,
+    );
     if (!selected) {
       return NextResponse.json({ cancelled: true });
     }
@@ -250,14 +281,28 @@ if ($selected) { Write-Output $selected }
     }
     return NextResponse.json({ path: selected, cancelled: false });
   } catch (err) {
+    const timedOut = err instanceof PickerTimeoutError;
+    if (timedOut && !fromHostLoopback) {
+      // Most likely a genuinely remote client: the dialog opened on the host
+      // desktop where nobody is sitting. Say so instead of a generic failure.
+      return NextResponse.json(
+        {
+          error:
+            "ホストPCの画面にダイアログが表示されましたが操作されませんでした。ホストPC上のブラウザでない場合は下の一覧から選択してください",
+          reason: "dialog_unattended",
+        },
+        { status: 504 },
+      );
+    }
     return NextResponse.json(
       {
-        error:
-          err instanceof Error ? err.message : "folder picker failed",
+        error: err instanceof Error ? err.message : "folder picker failed",
+        ...(timedOut ? { reason: "dialog_timeout" } : {}),
       },
-      { status: 500 },
+      { status: timedOut ? 504 : 500 },
     );
   } finally {
+    pickerInFlight = false;
     try {
       fs.unlinkSync(paramsPath);
     } catch {
@@ -271,9 +316,28 @@ if ($selected) { Write-Output $selected }
 // route's maxDuration so we return a clean error before the platform kills us.
 const PICKER_TIMEOUT_MS = 290_000;
 
+/**
+ * Shorter budget for non-loopback callers. Someone at the host PC using its LAN
+ * address sees the dialog immediately; a genuinely remote client never will, so
+ * a long wait would only pin a worker and delay the fallback.
+ */
+const REMOTE_PICKER_TIMEOUT_MS = 60_000;
+
+/** Serialises dialogs within this process — see the POST handler. */
+let pickerInFlight = false;
+
+/** Distinguishes "nobody clicked" from a real launch failure. */
+class PickerTimeoutError extends Error {
+  constructor() {
+    super("folder picker timed out");
+    this.name = "PickerTimeoutError";
+  }
+}
+
 function runPowerShellSta(
   script: string,
   extraEnv: Record<string, string>,
+  timeoutMs: number,
 ): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -296,8 +360,8 @@ function runPowerShellSta(
       } catch {
         /* already gone */
       }
-      reject(new Error("folder picker timed out"));
-    }, PICKER_TIMEOUT_MS);
+      reject(new PickerTimeoutError());
+    }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
     child.stdout.on("data", (c) => {
       stdout += String(c);
