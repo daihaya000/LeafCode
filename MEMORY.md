@@ -416,8 +416,106 @@ TaskView の右サイドパネルに「Markdown ビューワー」を追加し�
 
 ## 次のステップ
 
-- **Phase 5（未着手）**: `icacls` による `users.json` / `auth-config.json` の
-  ファイル権限、監査ログ、ログイン試行スロットリングの送信元 IP 集計と永続化。
+- **Phase 5**: 完了（下記）。
 - ログアウトの失効は jti 単位。同一ユーザーの他デバイスのセッションは
   ログアウトしても失効しない仕様（意図的、他デバイスの誤爆防止）。
   全デバイス強制ログアウトが必要になった場合は別途 API を追加する。
+
+---
+
+# 作業ログ: 脆弱性修正 Phase 5（ファイル権限・監査ログ・IP スロットリング）
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+`docs/specs/security-remediation-plan.md` の Phase 5（P2-2 ファイル権限 /
+P2-3 監査ログ / P2-4 IP スロットリング）を実施し、修正計画を完了させる。
+
+## 実装内容
+
+### P2-2 ファイル権限（`host/src/secure-file.js` 新規）
+
+`fs.writeFileSync(..., { mode: 0o600 })` は Windows では**無効**。NTFS に POSIX
+モードビットが無く、Node は 0666 を返し、実際の権限は親ディレクトリからの継承で決まる。
+
+**実測して分かったこと**: このマシンの `%APPDATA%` は `CodexSandboxUsers` を含む
+複数グループに継承で `(M)` を与えていた。最初 `icacls /remove:g` で広いグループだけを
+削除する実装にしたが、**`/remove` は継承 ACE を削除できない**。その結果、
+保護したはずのファイルと未保護のファイルの ACL が完全に一致した（＝無意味だった）。
+検証スクリプトで両者を比較して初めて気づいた。
+
+そのため `/inheritance:r` で継承を切り、以下を明示付与する方式に変更した。
+
+- 所有者 `(R,W,D)` — **`D` が必須**。付けないと親ディレクトリ削除が EPERM になり、
+  テストのクリーンアップもアンインストールも壊れる（実際に踏んだ）
+- `SYSTEM` `(F)` / `BUILTIN\Administrators` `(F)` — 継承を切ると消えるので再付与。
+  well-known SID（`*S-1-5-18` / `*S-1-5-32-544`）を使い OS の表示言語に依存させない
+
+適用: `users.json` / `auth-config.json` / `revoked-sessions.json` / `audit.log`。
+実機で ACL が 3 エントリのみになり、ディレクトリ削除も成功することを確認済み。
+
+### P2-3 監査ログ（`host/src/audit-log.js` 新規）
+
+`%APPDATA%\opencode-webui\audit.log` に JSON Lines で追記。
+
+- **`log-buffer.js` は使わなかった**。あれは負荷時に古い行を追い出すリングバッファで、
+  「誰がログインしたか」の記録には不適切（Caddy のエラー洪水で消える）
+- 記録: `login.success` / `login.failure` / `login.throttled` / `logout` /
+  `user.create` / `user.update` / `user.delete` / `authconfig.update` / `authz.denied`
+- **既知フィールドのみ直列化**するので、呼び出し側が誤って password や token を
+  渡しても記録されない（テストで担保）
+- ユーザー名は攻撃者が制御できるため改行・タブを潰し、1 イベント 1 行を保証
+  （偽の監査行を注入させない）
+- 2MB × 5 世代でローテーション
+
+### P2-4 IP スロットリング
+
+- `createLoginThrottle` に永続ストア（`createThrottleStore`）を追加。
+  ホスト再起動でカウンタが消えると、再起動を待つだけで budget がリセットされる
+- 送信元 IP 用の第2リミッタ（20 回 / 5 分）。ユーザー名ごとの制限だけでは
+  アカウントを順に試して回避できる。IP の budget を大きめにしたのは
+  1 アドレスに複数の正規ユーザーがいる構成（共用 PC、NAT）があるため
+- IP は BFF が `x-ocw-client-ip` で転送（control plane は loopback しか見えない）。
+  **認可には使わない** — ローカルプロセスが詐称できるため
+- `X-Forwarded-For` は**最右**（自前 Caddy が付与した値）を採用。
+  最左はクライアントが詐称でき、毎回別 IP を名乗れば制限を素通りできる
+- ログイン成功時に IP カウンタは**リセットしない**。1 つでも有効な資格情報を持つ
+  攻撃者が制限を回避できてしまうため
+
+### テストの副作用を修正
+
+`control-server.test.js` が `auditLog` を渡していなかったため、テスト実行のたびに
+開発機の実 `audit.log` に 49 行書き込まれていた。`noopHandlers` に
+インメモリの監査ログを追加して封じた（汚染されたファイルは削除済み）。
+
+### テストで見つけたバグ
+
+`clientIpFromRequest` の IPv6 パースで、ポート除去の判定条件が誤っており
+`2001:db8::1` が `2001:db8:` に切り詰められていた。コロン数で判定する方式に修正。
+
+## 検証結果
+
+- `npm run --prefix host test` ... 361 tests 成功（+42）
+- `npm run --prefix web typecheck` / `lint` ... エラーなし
+- `npm run --prefix web test` ... 230 test files, 2800 tests 成功
+- 実機確認: `users.json` / `audit.log` の ACL が
+  `BUILTIN\Administrators:(F)` / `NT AUTHORITY\SYSTEM:(F)` / `X870\Daichi:(R,W,D)`
+  の 3 エントリのみ、監査行の内容も正しく、ディレクトリ削除も成功
+
+## コミット
+
+- `f55c0d6` fix(security): ファイル権限・監査ログ・IP スロットリングを追加（Phase 5）
+
+## 未対応の制約
+
+- **IP を判定できない構成がある**: `OPENCODE_WEBUI_HOST=0.0.0.0` で Caddy を挟まず
+  直接 LAN に bind すると `X-Forwarded-For` が無く、Next.js は socket peer を
+  公開しないため IP は `null`。この場合 per-IP 制限は効かない（per-username は効く）。
+  `null` を1バケットに束ねると未プロキシのクライアント全員が相互にロックし合うため、
+  意図的に除外している。
+- 監査ログの閲覧 UI は無い（ファイルを直接読む）。
+- `remote-authz.md` の JWT / 権限モデル（`project:read` 等）は未実装。
+  現行の認可は「loopback または検証済みセッション」＋「admin か否か」の 2 段階のみ。

@@ -10,7 +10,10 @@
 | 2 CSRF 対策 | **完了** | `ad953f8` |
 | 3 control server の Host 検証 | **完了** | `3aa757f` |
 | 4 セッション失効・権限 | **完了** | `f85bac3` |
-| 5 ファイル権限・監査・スロットリング | 未着手 | — |
+| 5 ファイル権限・監査・スロットリング | **完了** | `f55c0d6` |
+
+Phase 1〜5 完了。当初洗い出した P0-1 / P0-2 / P1-1 / P1-2 / P2-1 / P2-2 / P2-3 / P2-4 は
+すべて対応済み。残る既知の制約は本文末尾の「未対応の制約」を参照。
 
 Phase 1/2 完了後の実測: ガードなしのルートは **0**（公開 allowlist 4 本を除く）。
 `web/src/lib/api-guard-coverage.test.ts` が漏れを検出するため、
@@ -207,12 +210,67 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
   `forwardToHost` に `req` を渡し `Cookie` ヘッダを転送するよう修正した。
 - 設定画面のユーザー一覧に「管理者」「一般」バッジを追加。
 
-### Phase 5（P2-2〜P2-4）残課題
+### Phase 5（P2-2〜P2-4）残課題 — 完了
 
-1. `icacls` で `users.json` / `auth-config.json` を現在のユーザーのみに制限する。
-2. 監査ログ: 既存の `host/src/log-buffer.js` / `log-file.js` を再利用し、
-   認証成功・失敗・ユーザー管理操作を記録する（token とパスワードは記録しない）。
-3. スロットリングを送信元 IP でも集計し、`%APPDATA%` に永続化する。
+#### P2-2 ファイル権限（`host/src/secure-file.js`）
+
+`fs.writeFileSync(..., { mode: 0o600 })` は Windows では無効。NTFS に POSIX
+モードビットが無く、Node は 0666 を返し、ファイルは親ディレクトリの ACL を継承する。
+
+**実測**: このマシンの `%APPDATA%` は `CodexSandboxUsers` を含む複数グループに
+継承で `(M)` を与えていた。当初 `icacls /remove:g` で広いグループだけ削除する実装に
+したが、**`/remove` は継承 ACE を削除できない**ため、保護後のファイルと未保護の
+ファイルの ACL がバイト単位で一致した（＝完全に無意味だった）。
+
+そのため `/inheritance:r` で継承を切り、以下を明示付与する方式に変更した。
+
+- 所有者 `(R,W,D)` — `D` が無いと親ディレクトリ削除が EPERM になり、
+  アンインストールとクリーンアップが壊れる（実測で確認）
+- `SYSTEM` `(F)` / `BUILTIN\Administrators` `(F)` — 継承を切ると消えるため再付与。
+  well-known SID を使うので OS の表示言語に依存しない
+
+適用対象: `users.json` / `auth-config.json` / `revoked-sessions.json` / `audit.log`。
+
+#### P2-3 監査ログ（`host/src/audit-log.js`）
+
+`%APPDATA%\opencode-webui\audit.log` に JSON Lines で追記する。
+
+- 既存の `log-buffer.js` は**使わない**。あれは負荷時に古い行を追い出す
+  リングバッファで、「誰がログインしたか」の記録には不適切
+- 記録対象: `login.success` / `login.failure` / `login.throttled` / `logout` /
+  `user.create` / `user.update` / `user.delete` / `authconfig.update` / `authz.denied`
+- **既知フィールドのみ直列化する**ので、呼び出し側が誤ってパスワードや token を
+  渡しても記録されない（テストで担保）
+- ユーザー名は攻撃者が制御できるため、改行・タブを潰して 1 イベント 1 行を保証する
+  （偽の監査行を注入させない）
+- ローテーション 2MB × 5 世代。作成時に上記 ACL を適用
+
+#### P2-4 IP スロットリング
+
+- `createLoginThrottle` に永続ストアを追加。ホスト再起動でカウンタが消えると、
+  再起動を待つ／誘発するだけで budget がリセットされてしまうため
+- 送信元 IP 用の第2リミッタ（既定 20 回 / 5 分）を追加。ユーザー名ごとの制限だけでは
+  アカウントを順に試して回避できる。IP の budget を大きめにしたのは、
+  1 アドレスに複数の正規ユーザーがいる構成（共用 PC、NAT 配下）があるため
+- IP は BFF が `x-ocw-client-ip` ヘッダで転送する。control plane は loopback 接続しか
+  見えないため自力では判定できない。**認可には使わない**（ローカルプロセスが詐称可能）
+- `X-Forwarded-For` は**最右**（自前の Caddy が付与した値）を採用する。
+  最左はクライアントが自由に詐称でき、リクエストごとに別 IP を名乗れば
+  per-IP 制限を素通りできる
+- ログイン成功時に IP カウンタは**リセットしない**。1 つでも有効な資格情報を
+  持つ攻撃者が制限を回避できてしまうため
+
+## 未対応の制約
+
+- **IP が判定できない構成がある**: `OPENCODE_WEBUI_HOST=0.0.0.0` で Caddy を挟まず
+  直接 LAN に bind した場合、`X-Forwarded-For` が無く Next.js は socket peer を
+  公開しないため IP は `null` になる。この場合 per-IP 制限は効かない
+  （per-username 制限は効く）。`null` を1つのバケットに束ねると
+  未プロキシのクライアント全員が相互にロックし合うため、意図的に除外している。
+- ログアウトの失効は jti 単位。同一ユーザーの他デバイスのセッションは失効しない。
+- 監査ログの閲覧 UI は無い（ファイルを直接読む）。
+- `remote-authz.md` が定義する JWT / 権限モデル（`project:read` 等）は未実装。
+  現行の認可は「loopback または検証済みセッション」＋「admin か否か」の2段階のみ。
 
 ## 暫定緩和
 
