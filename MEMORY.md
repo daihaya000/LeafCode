@@ -378,16 +378,21 @@ TaskView の右サイドパネルに「Markdown ビューワー」を追加し�
 - `SidePanelKind` に `"markdown"` を追加
 - `readSidePanel()` の復元対象に `markdown` を追加
 
-### `web/src/components/task/MarkdownViewerPanel.tsx`（新規）
+### `web/src/components/task/MarkdownViewerPanel.tsx`
 
-- セッションメッセージから assistant 発の `.md` ファイルパスを抽出する
-  `collectMarkdownFiles()` をエクスポート
+- セッションメッセージから assistant 発の `.md` ファイルパスと inline Markdown text part を抽出する
+  `collectMarkdownEntries()` をエクスポート
   - `part.type === "file"` の `filename` と `part.type === "text"` の本文が
-    絶対パス形式の `.md` なら候補とする（`extractPlanMarkdownPath` の緩和版）
+    絶対パス形式の `.md` ならファイル候補とする（`extractPlanMarkdownPath` の緩和版）
   - 画像添付（`isImageFilePart`）は除外
   - 重複パスは初出順で 1 件だけ表示
-- 選択中のファイル内容は既存の `/api/files/content` で取得し、`Markdown` コンポーネントで描画
+  - 単なる `.md` パスではなく、見出し・リスト・強調・リンク・コードなど Markdown 構文を含む
+    assistant text part を「メッセージ Markdown」として一覧追加
+- entry の `kind` を `"file" | "text"` に分離
+  - file: 既存の `/api/files/content` で取得し、`Markdown` コンポーネントで描画
+  - text: API 呼び出しなしで直接 `Markdown` コンポーネントに本文を渡す
 - 左リスト＋右本文の 2 ペイン構成（md 未満では縦積み）
+- ファイルとテキストでアイコンを分けて表示（`FileText` / `MessageSquare`）
 - 読み込み中 / エラー / 再試行 UI を備える
 - 空状態メッセージ: 「エージェントが提出した Markdown ファイルはありません」
 
@@ -399,11 +404,13 @@ TaskView の右サイドパネルに「Markdown ビューワー」を追加し�
 - `sidePanel === "markdown"` のとき `MarkdownViewerPanel` をレンダリング
   - `directory={task.directory}` / `messages={stream.visibleMessages}` を渡す
 
-### `web/src/components/task/MarkdownViewerPanel.test.tsx`（新規）
+### `web/src/components/task/MarkdownViewerPanel.test.tsx`
 
-- `collectMarkdownFiles` の抽出・重複排除・画像除外
+- `collectMarkdownEntries` の抽出・重複排除・画像除外
+- ファイルエントリ・メッセージ Markdown エントリの両方をカバー
 - パネルの空状態・自動選択・内容描画・切替・エラー時再試行
-- 計 7 テスト
+- inline text part は `/api/files/content` を呼ばないことを検証
+- 計 12 テスト
 
 ## 設計上のメモ
 
@@ -412,13 +419,14 @@ TaskView の右サイドパネルに「Markdown ビューワー」を追加し�
 - plan エージェント以外の提出も拾うため `extractPlanMarkdownPath` ではなく
   専用の `partMarkdownPath` を定義（`agent="plan"` / `completed` ゲートなし）。
 - 画像添付ファイルはインラインプレビューが別途あるため除外。
+- テキストエントリは Markdown 構文を含むもののみ対象。プレーンな短文は一覧に出さない。
 
 ## 検証結果
 
 - `npx tsc --noEmit` ... 変更ファイルにエラーなし
   （無関係な既存テストファイルの構文エラーのみ存在）
 - `npx eslint` ... 成功
-- `npx vitest run src/components/task/MarkdownViewerPanel.test.tsx` ... 7 passed
+- `npx vitest run src/components/task/MarkdownViewerPanel.test.tsx` ... 12 passed
 - `npx vitest run src/components/task/TaskView.test.tsx` ... 113 passed
 - `npx vitest run src/components/task/PlanDocumentCard.test.tsx` ... 3 passed
 

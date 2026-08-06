@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, FileText, RefreshCw } from "lucide-react";
+import { ChevronRight, FileText, MessageSquare, RefreshCw } from "lucide-react";
 import { Button, Spinner, cx } from "@/components/ui";
 import { getJson } from "@/lib/client";
 import { isImageFilePart } from "@/lib/message-parts";
@@ -11,6 +11,7 @@ import { Markdown } from "./Markdown";
 type Document = { name: string; content: string };
 
 type LoadState =
+  | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; document: Document }
   | { status: "error" };
@@ -23,6 +24,11 @@ function basename(path: string) {
 
 function isAbsoluteFilePath(value: string): boolean {
   return /^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(value);
+}
+
+function snippet(text: string, max = 24): string {
+  const t = text.trim().replace(/\s+/g, " ");
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 /** Extract a Markdown file path from a part's text or filename, mirroring
@@ -49,41 +55,82 @@ function partMarkdownPath(text?: string, filename?: string): string | null {
   return null;
 }
 
-export interface MarkdownViewerEntry {
-  id: string;
-  path: string;
-  /** Stable relative label for display (basename). */
-  name: string;
-  /** Originating assistant message id (for stable ordering / dedupe). */
-  messageId: string;
-}
+export type MarkdownViewerEntry =
+  | {
+      kind: "file";
+      id: string;
+      /** Absolute path used as the selection key and to fetch content. */
+      path: string;
+      /** Stable relative label for display (basename). */
+      name: string;
+      /** Originating assistant message id. */
+      messageId: string;
+    }
+  | {
+      kind: "text";
+      id: string;
+      /** Synthetic key used as the selection key. */
+      path: string;
+      /** Short preview used as the list label. */
+      name: string;
+      /** Full Markdown text to render. */
+      text: string;
+      /** Originating assistant message id. */
+      messageId: string;
+    };
 
-/** Collect assistant-submitted Markdown file paths from the session timeline.
- *  Image attachments are skipped (rendered inline elsewhere). The latest
- *  occurrence of each path wins, preserving the order of first appearance. */
-export function collectMarkdownFiles(
+/** Collect assistant-submitted Markdown file paths and inline Markdown text
+ *  parts from the session timeline. Image attachments are skipped. */
+export function collectMarkdownEntries(
   messages: MessageWithParts[],
 ): MarkdownViewerEntry[] {
-  const seen = new Set<string>();
-  const entries: MarkdownViewerEntry[] = [];
+  const seenPaths = new Set<string>();
+  const fileEntries: MarkdownViewerEntry[] = [];
+  const textEntries: MarkdownViewerEntry[] = [];
+  let textIndex = 0;
   for (const message of messages) {
     if (message.info.role !== "assistant") continue;
     for (const part of message.parts) {
-      if (part.type !== "file" && part.type !== "text") continue;
       if (part.type === "file" && isImageFilePart(part)) continue;
-      const path = partMarkdownPath(part.text, part.filename);
-      if (!path) continue;
-      if (seen.has(path)) continue;
-      seen.add(path);
-      entries.push({
-        id: `${message.info.id}:${part.id}`,
-        path,
-        name: basename(path),
-        messageId: message.info.id,
-      });
+      const filePath = partMarkdownPath(part.text, part.filename);
+      if (filePath) {
+        if (seenPaths.has(filePath)) continue;
+        seenPaths.add(filePath);
+        fileEntries.push({
+          kind: "file",
+          id: `${message.info.id}:${part.id}`,
+          path: filePath,
+          name: basename(filePath),
+          messageId: message.info.id,
+        });
+        continue;
+      }
+      if (part.type === "text") {
+        const text = part.text?.trim() ?? "";
+        // Only treat this text part as a standalone Markdown viewer entry if
+        // it is a meaningful Markdown body (multi-line or has Markdown syntax).
+        // Single-line bare paths that are not absolute .md files are ignored
+        // because they are usually just inline references.
+        if (!text) continue;
+        if (partMarkdownPath(text)) continue; // handled as a file entry above
+        const isMarkdownLike =
+          text.includes("\n") ||
+          /^\s*#{1,6}\s+/.test(text) ||
+          /\*\*|__|`{1,3}|\[.*?\]\(.*?\)|^\s*[-*+]\s+/m.test(text);
+        if (!isMarkdownLike) continue;
+        textIndex += 1;
+        textEntries.push({
+          kind: "text",
+          id: `${message.info.id}:${part.id}`,
+          path: `__text__:${message.info.id}:${part.id}`,
+          name: `メッセージ #${textIndex} — ${snippet(text)}`,
+          text,
+          messageId: message.info.id,
+        });
+      }
     }
   }
-  return entries;
+  return [...fileEntries, ...textEntries];
 }
 
 export function MarkdownViewerPanel({
@@ -93,9 +140,12 @@ export function MarkdownViewerPanel({
   directory: string;
   messages: MessageWithParts[];
 }) {
-  const entries = useMemo(() => collectMarkdownFiles(messages), [messages]);
+  const entries = useMemo(
+    () => collectMarkdownEntries(messages),
+    [messages],
+  );
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+  const [loadState, setLoadState] = useState<LoadState>({ status: "idle" });
   const [reload, setReload] = useState(0);
   const reqIdRef = useRef(0);
   const mountedRef = useRef(false);
@@ -119,7 +169,12 @@ export function MarkdownViewerPanel({
     setSelectedPath(entries[0]!.path);
   }, [entries, selectedPath]);
 
-  const load = useCallback(
+  const selectedEntry = useMemo(
+    () => entries.find((e) => e.path === selectedPath) ?? null,
+    [entries, selectedPath],
+  );
+
+  const loadFile = useCallback(
     async (path: string) => {
       const id = ++reqIdRef.current;
       setLoadState({ status: "loading" });
@@ -139,12 +194,16 @@ export function MarkdownViewerPanel({
   );
 
   useEffect(() => {
-    if (!selectedPath) {
-      setLoadState({ status: "loading" });
+    if (!selectedEntry) {
+      setLoadState({ status: "idle" });
       return;
     }
-    void load(selectedPath);
-  }, [selectedPath, load, reload]);
+    if (selectedEntry.kind === "text") {
+      setLoadState({ status: "ready", document: { name: "", content: selectedEntry.text } });
+      return;
+    }
+    void loadFile(selectedEntry.path);
+  }, [selectedEntry, loadFile, reload]);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col border-border bg-surface lg:border-l">
@@ -157,7 +216,7 @@ export function MarkdownViewerPanel({
           size="icon"
           title="再読み込み"
           aria-label="Markdown を再読み込み"
-          disabled={!selectedPath}
+          disabled={!selectedPath || selectedEntry?.kind === "text"}
           className="h-9 w-9"
           onClick={() => setReload((v) => v + 1)}
         >
@@ -171,15 +230,16 @@ export function MarkdownViewerPanel({
         </div>
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-          <ul className="shrink-0 overflow-y-auto border-b border-border bg-surface-2/40 md:w-48 md:border-b-0 md:border-r">
+          <ul className="shrink-0 overflow-y-auto border-b border-border bg-surface-2/40 md:w-52 md:border-b-0 md:border-r">
             {entries.map((entry) => {
               const active = entry.path === selectedPath;
+              const Icon = entry.kind === "text" ? MessageSquare : FileText;
               return (
                 <li key={entry.id}>
                   <button
                     type="button"
                     onClick={() => setSelectedPath(entry.path)}
-                    title={entry.path}
+                    title={entry.name}
                     className={cx(
                       "flex w-full min-w-0 items-center gap-1.5 px-2 py-1.5 text-left text-xs",
                       active
@@ -194,6 +254,13 @@ export function MarkdownViewerPanel({
                       )}
                       aria-hidden="true"
                     />
+                    <Icon
+                      className={cx(
+                        "h-3.5 w-3.5 shrink-0",
+                        active ? "text-text" : "text-faint",
+                      )}
+                      aria-hidden="true"
+                    />
                     <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                   </button>
                 </li>
@@ -202,7 +269,7 @@ export function MarkdownViewerPanel({
           </ul>
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {selectedPath && (
+            {selectedEntry?.kind === "file" && selectedPath && (
               <div className="shrink-0 border-b border-border px-3 py-1 font-mono text-[10px] text-faint">
                 {selectedPath}
               </div>
