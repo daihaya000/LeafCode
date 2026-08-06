@@ -1,3 +1,49 @@
+# 作業ログ: バグハント第6ラウンド（workflow schedulerの例外スタック修正）
+
+## 日付
+
+2026-08-06
+
+## 発見したバグ
+
+`workflow-scheduler.ts` の `runWorkflowSchedulerTick` が各 attempt 処理を
+try/catch なしで await していた。
+
+- `processRunningAttempt` → `activateReviewers`（reviewer用セッション作成の
+  `POST /session`）や `advanceReviewGate`（`JSON.parse(row.config)` 等）が
+  例外を投げると tick 全体が中断し、**他の全ワークフローの処理も止まる**。
+- 最も深刻な経路: Implement が `succeeded` 確定済み → `activateReviewers` が
+  一時エラー（engine 再起動等）で失敗 → reviewer attempt が未作成のまま
+  run は `running` で残留。**再トリガー経路が無く永久スタック**する。
+
+## 修正内容
+
+- `workflow-scheduler.ts`
+  - `pauseAttemptBestEffort(attemptId, error)` を追加。
+    `pauseWorkflowForAttempt` を投げない形で呼ぶ（pause 失敗でも tick を止めない）。
+  - `runningAttempts()` ループと `dispatchAttempt` 呼び出しを try/catch で包み、
+    想定外例外はその run を `scheduler_error` で pause するだけの影響に限定。
+    （`pauseWorkflowForAttempt` は attempt が `dispatching` 以外なら run の
+    pause のみ行うため、succeeded 済み attempt の状態は壊さない。）
+- `workflow-scheduler.test.ts`
+  - 回帰テスト追加: Implement 完了 → reviewer セッション作成が例外を投げる
+    ケースで、attempt は succeeded のまま run が `scheduler_error` で
+    pause されることを検証。fix を外すとテストが落ちることを確認済み。
+
+## 合わせて精査し問題なしを確認（このラウンド）
+
+- `workflow-control.ts` / `workflow-control-executor.ts`（トランザクションCAS、
+  監査ハッシュ）
+- `useSessionStream.ts` 全文（第5ラウンド: 新規バグなし）
+- `db.ts` / `git.ts` / diff系（第3・4ラウンド: 新規バグなし）
+
+## 検証結果
+
+- `npx tsc --noEmit` / `npm run lint` ... 成功
+- `npm run --prefix web test` ... 234 files / 2828 tests 成功（+1）
+
+---
+
 # 作業ログ: バグハント（設定画面・アップデート・ログインの3件修正）
 
 ## 日付

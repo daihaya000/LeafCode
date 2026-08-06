@@ -186,6 +186,38 @@ describe("workflow scheduler", () => {
     expect(updated.run?.status).toBe("completed");
   });
 
+  test("pauses the run when result processing throws instead of aborting the tick", async () => {
+    const revision = setup("scheduler-throw");
+    createWorkflow({
+      workspaceId: "scheduler-throw",
+      workspaceRevision: revision,
+      taskContext: { goal: "Build UI", acceptance: [], constraints: [] },
+    });
+    updateWorkflow({ workspaceId: "scheduler-throw", action: "start", workflowRevision: 0 });
+    await runWorkflowSchedulerTick();
+    const attempt = getWorkflow("scheduler-throw")!.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    expect(attempt.status).toBe("running");
+
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (typeof requestPath === "string" && requestPath.endsWith("/message")) {
+        return [
+          {
+            info: { id: "result-1", role: "assistant", time: { created: 10, completed: 30 } },
+            parts: [{ type: "text", text: `<!-- webui-workflow-result:${attempt.promptMarker} -->\n\`\`\`json\n{"status":"completed","summary":"done","evidence":[]}\n\`\`\`` }],
+          },
+        ];
+      }
+      throw new Error("engine unavailable");
+    });
+    await runWorkflowSchedulerTick();
+
+    const workflow = getWorkflow("scheduler-throw")!;
+    const updated = workflow.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    expect(updated.status).toBe("succeeded");
+    expect(workflow.run?.status).toBe("paused");
+    expect(workflow.run?.pauseReason).toBe("scheduler_error");
+  });
+
   test("dispatches a v2 Run through the snapshot Executor Registry", async () => {
     const revision = setup("scheduler-v2-executor");
     const created = createWorkflow({

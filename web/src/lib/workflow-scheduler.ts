@@ -414,6 +414,18 @@ function pauseWorkflowForAttempt(
   })();
 }
 
+function pauseAttemptBestEffort(attemptId: string, error: unknown): void {
+  try {
+    pauseWorkflowForAttempt(
+      attemptId,
+      "scheduler_error",
+      error instanceof Error ? error.message : String(error),
+    );
+  } catch {
+    /* a failed pause must not abort the tick and starve other runs */
+  }
+}
+
 function modelBody(config: WorkflowNodeConfig): Record<string, unknown> {
   const body: Record<string, unknown> = {
     agent: config.agentName,
@@ -576,7 +588,13 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
     // by a completed Implement must wait for the next tick so Visual Judge
     // artifacts can be registered before dispatch.
     const ready = readyAttempts();
-    for (const attempt of runningAttempts()) await processRunningAttempt(attempt);
+    for (const attempt of runningAttempts()) {
+      try {
+        await processRunningAttempt(attempt);
+      } catch (error) {
+        pauseAttemptBestEffort(attempt.id, error);
+      }
+    }
     for (const attempt of ready) {
       const node = getDb().prepare("SELECT n.node_key, n.workflow_run_id FROM workflow_node_runs n WHERE n.id = ?").get(attempt.node_run_id) as { node_key: string; workflow_run_id: string } | undefined;
       if (!node) continue;
@@ -602,7 +620,13 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
         if (claimAttempt(attempt)) pauseWorkflowForAttempt(attempt.id, "max_attempts", `Implement Attempt limit (${IMPLEMENT_ATTEMPT_LIMIT}) exceeded.`);
         continue;
       }
-      if (claimAttempt(attempt)) await dispatchAttempt({ ...attempt, status: "dispatching" });
+      if (claimAttempt(attempt)) {
+        try {
+          await dispatchAttempt({ ...attempt, status: "dispatching" });
+        } catch (error) {
+          pauseAttemptBestEffort(attempt.id, error);
+        }
+      }
     }
   } finally {
     schedulerTicking = false;
