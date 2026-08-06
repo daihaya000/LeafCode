@@ -11,12 +11,17 @@
 >   検証済みセッションは loopback ヒューリスティクスより強い根拠である。
 >   `Host` / `X-Forwarded-For` は LAN の第三者が偽装できるが、
 >   セッション token はホストプロセスだけが持つ secret で HMAC 署名されている。
-> - **例外: `/api/browse/folder`（ネイティブフォルダ選択）は loopback 限定を維持する。**
->   これは権限の問題ではなく、ダイアログがホストPCのデスクトップに表示され、
->   最大 290 秒間クリックを待つため、リモートからは原理的に利用できないからである。
->   リモートのフォルダ選択は `/api/browse/dirs` によるブラウザ内一覧を使う。
+> - `/api/browse/folder`（ネイティブフォルダ選択）も認証済み主体に開放した。
+>   ホストPC上のブラウザがホスト自身の LAN アドレス（例 `http://192.168.0.102:3000`）で
+>   開いた場合、`Host` は loopback ではないがダイアログは実際に見えるため。
+>   ただし非 loopback 呼び出しは待ち時間を 60 秒に短縮し、同時起動を 1 個に制限する。
+>   本当に遠隔のクライアントは `/api/browse/dirs` によるブラウザ内一覧へフォールバックする。
 > - 本文中の「host-only API は認証済みリモート主体でも通さない」という記述、および
->   受入基準 11 は、上記例外を除き無効。`/api/browse/dirs` は認証済み主体に開放済み。
+>   受入基準 11 は無効。
+>
+> **未修理の既知脆弱性**: control server（`127.0.0.1:18765`）は `Host` / `Origin` を
+> 検証しないため、DNS リバインディングにより任意サイトから `/users` 等を操作できる。
+> `Host` allowlist 検証で塞ぐ必要がある。
 >
 > 未実装のまま残る事項: JWT assertion / 認証プロキシ連携、`project:read` 等の
 > 権限モデル、`/api/remote-projects/**`、CSRF token 発行、監査ログ。
@@ -181,8 +186,9 @@ BFF はリモート API ごとに JWT assertion を検証し、失敗時は fail
 ## ローカル互換
 
 - loopback で開いた既存 UI は、従来どおりネイティブフォルダ選択と host-only API を使える。
-- `/api/browse/folder` は loopback 限定を維持する（ダイアログがホストの画面に出るため）。
-  `/api/browse/dirs` は検証済みセッションを持つ主体に開放する（冒頭の改訂を参照）。
+- `/api/browse/dirs` と `/api/browse/folder` は検証済みセッションを持つ主体に開放する
+  （冒頭の改訂を参照）。ネイティブダイアログはホストの画面に出るため、
+  非 loopback 呼び出しには短い待ち時間と同時起動制限を課す。
 - リモートプロジェクト選択は新設のリモート専用 API だけを使う。
 - リモート認証が未設定、設定不正、または起動検証に失敗した場合、リモート専用 API は無効化する。
   loopback の既存機能は可能な限り維持するが、BFF を外部 bind して代替しない。
@@ -300,8 +306,7 @@ BFF はリモート API ごとに JWT assertion を検証し、失敗時は fail
   - 入力 schema
 - 宣言のない API、未知の proxy path、OpenCode への任意パス中継は `403` または `404` で拒否する。
 - host-only API は `rejectUnlessLocalOrAuthenticated` により、loopback または検証済み
-  セッションを要求する。ホストの画面を操作する API（`/api/browse/folder`）だけは
-  `rejectUnlessLocal` で loopback 限定を維持する（冒頭の改訂を参照）。
+  セッションを要求する（冒頭の改訂を参照）。
 - リモートプロジェクト API は `remote-project-picker.md` の制約を再実行する。
   列挙済みであること、UI から来たこと、`Host` や `X-Forwarded-For` は認可根拠にしない。
 
@@ -372,8 +377,9 @@ BFF はリモート API ごとに JWT assertion を検証し、失敗時は fail
 9. `project:add` を持つ主体でも、割り当て済み remote roots 外、明示 deny、UNC、ドライブルート、システム領域、
    シンボリックリンク逸脱先は列挙・追加できない。
 10. `/api/remote-projects/**` は root 相対の論理パスだけを受け取り、レスポンスとエラーに絶対パスを含めない。
-11. `/api/browse/folder` は認証済みリモート主体からも loopback 限定で拒否される。
-    `/api/browse/dirs` は検証済みセッションを持つ主体には許可される（冒頭の改訂で変更）。
+11. `/api/browse/dirs` と `/api/browse/folder` は検証済みセッションを持つ主体には許可される
+    （冒頭の改訂で変更）。`/api/browse/folder` の非 loopback 呼び出しは 60 秒で
+    `504 dialog_unattended` を返し、同時起動は `409 picker_busy` で拒否される。
 12. 状態変更 API は Origin と CSRF token が不正な場合に `403` になり、監査ログへ `csrf_failed` が残る。
 13. CSRF token は `GET /api/remote-auth/csrf` で発行され、期限切れ、rotation 後、失効後は使えない。
 14. レート制限超過時は `429` になり、以後の許可判定やファイル列挙を実行しない。

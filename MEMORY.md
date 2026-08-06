@@ -119,12 +119,29 @@ LAN から `curl` で素通りできた。この状態で host-only ガードを
 検証済みセッションは loopback 判定より**強い**根拠である。
 `Host` / `X-Forwarded-For` は LAN の第三者が偽装できるが、token は HMAC 署名されている。
 
-### 例外: `/api/browse/folder` は loopback 限定のまま
+### 追記: `/api/browse/folder` も認証済みに開放（LAN IP 経由のホストPC対応）
 
-権限ではなく**原理的にリモートで動かない**ため。ネイティブダイアログは
-ホストPCのデスクトップに表示され、人間のクリックを最大 290 秒待つ
-（`web/src/app/api/browse/folder/route.ts:18` のコメント参照）。
-リモートは `/api/browse/dirs` によるブラウザ内一覧＋手入力を使う（403 時に自動フォールバック）。
+ホストPC上のブラウザで `http://192.168.0.102:3000` を開くと `Host` が loopback で
+ないため 403 になっていたが、ダイアログはホストの画面に出るので実際には使える。
+`rejectUnlessLocalOrAuthenticated` に変更した。
+
+判定について: `Host` ヘッダではスマホとホストPCを区別できない。堅牢な方法は
+「ブラウザが `127.0.0.1:18765` に到達できるか」を検証すること（到達性の証明）だが、
+control server への CORS 追加が必要で、その前提として後述の DNS リバインディング
+対策が必要になる。**ユーザー判断により簡易版（クライアント検証なし）を採用**した。
+
+そのため「ログイン済みなら誰でもホストPCの画面にダイアログを開ける」。緩和策:
+
+- 非 loopback 呼び出しは待ち時間を 290 秒 → **60 秒**に短縮し、
+  `504` + `reason=dialog_unattended` を返す（遠隔クライアントが worker を長時間占有しない）
+- ダイアログの同時起動を防ぐ in-flight ロック。2 個目は `409` + `reason=picker_busy`
+- クライアントは 409/504 を一覧フォールバック付きの通知として表示する
+
+### 旧方針（参考）: `/api/browse/folder` を loopback 限定にしていた理由
+
+ネイティブダイアログはホストPCのデスクトップに表示され、人間のクリックを待つ。
+本当に遠隔のクライアント（スマホ等）からは見えないため、
+`/api/browse/dirs` によるブラウザ内一覧＋手入力にフォールバックする。
 
 ### LoginGate をサーバー権威に変更
 
@@ -144,7 +161,7 @@ cookie が無効になる。localStorage を信じていると「画面は出る
 
 - `npm run --prefix web typecheck` ... 成功
 - `npm run --prefix web lint` ... 成功
-- `npm run --prefix web test` ... 224 test files, 2730 tests 成功
+- `npm run --prefix web test` ... 225 test files, 2738 tests 成功
 - `npm run --prefix host test` ... 286 tests 成功
 
 実機確認済み（`scripts/validate-windows-credentials.ps1`）:
@@ -159,6 +176,7 @@ cookie が無効になる。localStorage を信じていると「画面は出る
 - `a218884` feat(auth): 127.0.0.1 からのアクセス時はログインを不要にする
 - `4d9b8af` feat(auth): Windows アカウントのユーザー名/パスワードでログインできるようにする
 - `b7825ab` feat(auth): ログイン済みならリモートからも host-only 設定を変更できるようにする
+- `34d1874` feat(browse): LAN IP 経由でもネイティブフォルダ選択を使えるようにする
 
 ## 次のステップ
 
@@ -170,6 +188,23 @@ cookie が無効になる。localStorage を信じていると「画面は出る
   2. 設定 → ユーザー でユーザーを作成
   3. LAN URL（`http://192.168.x.x:3000`）… ログイン画面が出る
   4. LAN から設定 → ユーザー … 403 になる（ホスト限定のため意図通り）
+
+## 未修理の脆弱性: host control server の DNS リバインディング
+
+**未対応。ユーザー判断により今回は修正を見送った。**
+
+`host/src/control-server.js` は `Host` / `Origin` を一切検証していない
+（`req.headers` の参照は cookie のみ）。`127.0.0.1:18765` で待ち受けているため、
+攻撃者が自ドメインを `127.0.0.1` に DNS リバインドすると、ブラウザから見て
+**same-origin** になり CORS では防げない。ユーザーが悪意あるページを開いている間に:
+
+- `POST /users` で任意アカウント作成 → WebUI に外部からログイン可能（完全侵害）
+- `GET /users` でユーザー名列挙、`POST /auth/config` で Windows 認証を有効化
+- `POST /restart/all` でホスト妨害
+
+修正方法: control server で `Host` ヘッダを allowlist 検証する
+（`127.0.0.1:<port>` / `localhost:<port>` のみ許可）。数行で塞げる。
+ローカル証明（到達性検証）を実装する場合はこの修正が前提になる。
 
 ## 既知の未対応・制約
 
