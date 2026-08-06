@@ -8,7 +8,7 @@
 |-------|------|----------|
 | 1 default-deny 化 | **完了** | `ad953f8` |
 | 2 CSRF 対策 | **完了** | `ad953f8` |
-| 3 control server の Host 検証 | 未着手 | — |
+| 3 control server の Host 検証 | **完了** | `3aa757f` |
 | 4 セッション失効・権限 | 未着手 | — |
 | 5 ファイル権限・監査・スロットリング | 未着手 | — |
 
@@ -162,7 +162,20 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
 これで「loopback なら無条件許可」の穴が閉じる。
 `SameSite=Strict` cookie と併せて二重防御になる。
 
-### Phase 3（P1-1）control server の Host 検証
+### Phase 3（P1-1）control server の Host 検証 — 完了
+
+実施内容:
+
+- `isLoopbackHostHeader(hostHeader, expectedPort)` を `control-server.js` に追加。
+  `127.0.0.1` / `localhost` / `::1`（ブラケット含む）と、待受ポートの一致を検証する。
+- `createControlRequestHandler` の冒頭でルート照合より先に弾く。
+  これにより `POST /users` 等のエンドポイント存在が漏れない。
+- `index.js` から `controlPort: CONTROL_PORT` を渡す。
+- テスト 13 件追加（loopback 受理 / リバインディング拒否 / ポート不一致 / Host 欠落 /
+  `/users` が通らないこと 等）。
+
+以下は当初計画（記録として残す）。
+
 
 `createControlRequestHandler` の先頭で `Host` を検証し、
 `127.0.0.1:<port>` / `localhost:<port>` / `[::1]:<port>` 以外を 403 にする。

@@ -162,7 +162,7 @@ cookie が無効になる。localStorage を信じていると「画面は出る
 - `npm run --prefix web typecheck` ... 成功
 - `npm run --prefix web lint` ... 成功
 - `npm run --prefix web test` ... 228 test files, 2774 tests 成功
-- `npm run --prefix host test` ... 286 tests 成功
+- `npm run --prefix host test` ... 299 tests 成功
 
 実機確認済み（`scripts/validate-windows-credentials.ps1`）:
 
@@ -179,6 +179,7 @@ cookie が無効になる。localStorage を信じていると「画面は出る
 - `34d1874` feat(browse): LAN IP 経由でもネイティブフォルダ選択を使えるようにする
 - `1559245` docs: セキュリティ棚卸しと修正計画を追加
 - `ad953f8` fix(security): API を default-deny 化し CSRF 対策を追加（Phase 1/2）
+- `3aa757f` fix(security): control server に Host ヘッダ検証を追加（Phase 3）
 
 ## 次のステップ
 
@@ -236,7 +237,11 @@ LAN 上の任意端末が認証なしにエージェントを起動でき、**�
   `0.0.0.0` バインド時、Host を省いた生の HTTP リクエストで Next が `localhost` を
   補完し loopback 扱いになる回避経路が生まれるため。
 
-## 未修理の脆弱性: host control server の DNS リバインディング（P1-1）
+## 未修理の脆弱性: host control server の DNS リバインディング（P1-1）— 修正済み（`3aa757f`）
+
+`isLoopbackHostHeader(host, port)` で `Host` が loopback かつ待受ポートと一致するかを
+ルート照合より先に検証する。`evil.test` が `127.0.0.1` に解決されても
+`Host: evil.test:18765` になるため 403 で弾かれる。
 
 **未対応。ユーザー判断により今回は修正を見送った。**
 
