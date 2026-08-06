@@ -47,7 +47,26 @@ export function ProfileSyncSettings() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const [openBusy, setOpenBusy] = useState<string | null>(null);
   const mountedRef = useRef(false);
+
+  const openTarget = useCallback(async (target: string) => {
+    if (openBusy !== null) return;
+    setOpenBusy(target);
+    setError(null);
+    try {
+      await sendJson("POST", "/api/profiles/open-target", {
+        target,
+        action: "open-file",
+      });
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "開くことができませんでした");
+      }
+    } finally {
+      if (mountedRef.current) setOpenBusy(null);
+    }
+  }, [openBusy]);
 
   const refresh = useCallback(async () => {
     try {
@@ -159,16 +178,22 @@ export function ProfileSyncSettings() {
               exists={status.master.exists}
               error={status.master.error}
               servers={masterServers}
+              onOpen={status.master.exists ? () => void openTarget("sync-master") : undefined}
+              opening={openBusy === "sync-master"}
             />
             <TargetRow
               label="Codex"
               path={status.codex.path}
               target={plan?.targets?.codex}
+              onOpen={status.codex.exists ? () => void openTarget("sync-codex") : undefined}
+              opening={openBusy === "sync-codex"}
             />
             <TargetRow
               label="Claude"
               path={status.claude.path}
               target={plan?.targets?.claude}
+              onOpen={status.claude.exists ? () => void openTarget("sync-claude") : undefined}
+              opening={openBusy === "sync-claude"}
             />
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -209,18 +234,43 @@ export function ProfileSyncSettings() {
   );
 }
 
+function OpenFileButton({
+  onOpen,
+  opening,
+}: {
+  onOpen?: () => void;
+  opening?: boolean;
+}) {
+  if (!onOpen) return null;
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      busy={opening}
+      onClick={onOpen}
+    >
+      ファイルを開く
+    </Button>
+  );
+}
+
 function MasterStatusRow({
   label,
   path,
   exists,
   error,
   servers,
+  onOpen,
+  opening,
 }: {
   label: string;
   path: string;
   exists: boolean;
   error: string | null;
   servers: string[];
+  onOpen?: () => void;
+  opening?: boolean;
 }) {
   return (
     <div
@@ -236,9 +286,12 @@ function MasterStatusRow({
           <p className="text-sm font-medium text-text">{label}</p>
           <p className="truncate text-[11px] text-faint">{path}</p>
         </div>
-        <Badge tone={exists && !error ? "success" : "danger"}>
-          {exists && !error ? `${servers.length} サーバー` : "未検出"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <OpenFileButton onOpen={onOpen} opening={opening} />
+          <Badge tone={exists && !error ? "success" : "danger"}>
+            {exists && !error ? `${servers.length} サーバー` : "未検出"}
+          </Badge>
+        </div>
       </div>
       {error && (
         <p className="mt-1 text-[11px] text-danger" role="alert">
@@ -258,10 +311,14 @@ function TargetRow({
   label,
   path,
   target,
+  onOpen,
+  opening,
 }: {
   label: string;
   path: string;
   target?: SyncTargetStatus;
+  onOpen?: () => void;
+  opening?: boolean;
 }) {
   const exists = target?.exists ?? false;
   const inSync = target?.inSync ?? false;
@@ -279,7 +336,10 @@ function TargetRow({
           <p className="text-sm font-medium text-text">{label}</p>
           <p className="truncate text-[11px] text-faint">{path}</p>
         </div>
-        <Badge tone={tone}>{statusText}</Badge>
+        <div className="flex items-center gap-2">
+          <OpenFileButton onOpen={onOpen} opening={opening} />
+          <Badge tone={tone}>{statusText}</Badge>
+        </div>
       </div>
       {target?.message && (
         <p className="mt-1 text-[11px] text-faint">{target.message}</p>

@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ensureRegistry, resolveActiveId } from "@/lib/profiles/registry";
 import { requireAuthorized } from "@/lib/api-guard";
+import { openFileReveal, openFolder } from "@/lib/profiles/open";
+import { ensureRegistry, resolveActiveId } from "@/lib/profiles/registry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request,
-  { params }: { params: Promise<{ id: string }> },) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
 
@@ -54,7 +56,7 @@ export async function POST(req: Request,
   }
 
   if (action === "open-folder") {
-    const err = openPath(profile.path);
+    const err = openFolder(profile.path);
     if (err) {
       return NextResponse.json({ error: err }, { status: 500 });
     }
@@ -79,63 +81,16 @@ export async function POST(req: Request,
 
   if (!target) {
     // Fallback: reveal the folder itself.
-    const err = openPath(profile.path);
+    const err = openFolder(profile.path);
     if (err) {
       return NextResponse.json({ error: err }, { status: 500 });
     }
     return NextResponse.json({ ok: true, note: "設定ファイルが見つからないためフォルダを開きました。" });
   }
 
-  const err = openFile(target);
+  const err = openFileReveal(target);
   if (err) {
     return NextResponse.json({ error: err }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
-}
-
-function openPath(target: string): string | null {
-  if (process.platform === "win32") {
-    // explorer.exe launched directly from a service/desktop-orphaned process
-    // returns 1 and does nothing. Going through powershell.exe with a quoted
-    // path works reliably.
-    const escaped = target.replace(/'/g, "''");
-    const script = `explorer '${escaped}'`;
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
-      windowsHide: true,
-      encoding: "utf8",
-    });
-    if (result.error) return result.error.message;
-    return null;
-  }
-  if (process.platform === "darwin") {
-    const result = spawnSync("open", [target], { encoding: "utf8" });
-    if (result.error) return result.error.message;
-    return null;
-  }
-  const result = spawnSync("xdg-open", [target], { encoding: "utf8" });
-  if (result.error) return result.error.message;
-  return null;
-}
-
-function openFile(target: string): string | null {
-  if (process.platform === "win32") {
-    // Use powershell.exe as the launcher so explorer gets a real shell context.
-    const escaped = target.replace(/'/g, "''");
-    const script = `explorer /select,'${escaped}'`;
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
-      windowsHide: true,
-      encoding: "utf8",
-    });
-    if (result.error) return result.error.message;
-    return null;
-  }
-  if (process.platform === "darwin") {
-    const result = spawnSync("open", ["-R", target], { encoding: "utf8" });
-    if (result.error) return result.error.message;
-    return null;
-  }
-  // Linux: xdg-open generally opens the default editor for files.
-  const result = spawnSync("xdg-open", [target], { encoding: "utf8" });
-  if (result.error) return result.error.message;
-  return null;
 }

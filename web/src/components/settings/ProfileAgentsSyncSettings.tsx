@@ -34,7 +34,26 @@ export function ProfileAgentsSyncSettings() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const [openBusy, setOpenBusy] = useState<string | null>(null);
   const mountedRef = useRef(false);
+
+  const openTarget = useCallback(
+    async (target: string, action: "open-file" | "open-folder") => {
+      if (openBusy !== null) return;
+      setOpenBusy(target);
+      setError(null);
+      try {
+        await sendJson("POST", "/api/profiles/open-target", { target, action });
+      } catch (err) {
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err.message : "開くことができませんでした");
+        }
+      } finally {
+        if (mountedRef.current) setOpenBusy(null);
+      }
+    },
+    [openBusy],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -108,6 +127,21 @@ export function ProfileAgentsSyncSettings() {
     instructionItems.every((i) => i.item.status.kind === "ok") &&
     Object.values(status.skills.mirrors).every((m) => m.status.kind === "ok");
 
+  const SIDE_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", agents: "agents" };
+  const SIDE_TARGET_KEYS: Record<string, string> = {
+    claude: "skills-claude",
+    codex: "skills-codex",
+    agents: "skills-agents",
+  };
+  const mirrorsBySide: Record<string, Array<{ name: string; path: string; status: ItemStatus }>> = {};
+  if (status) {
+    for (const [key, m] of Object.entries(status.skills.mirrors)) {
+      const [side, name] = key.split(":");
+      const sideKey = side ?? key;
+      (mirrorsBySide[sideKey] ??= []).push({ name: name ?? "", path: m.path, status: m.status });
+    }
+  }
+
   return (
     <section className="mt-8">
       <h2 className="mb-3 text-sm font-semibold text-muted">
@@ -150,14 +184,38 @@ export function ProfileAgentsSyncSettings() {
                   <p className="text-sm font-medium text-text">マスター (OpenCode)</p>
                   <p className="truncate text-[11px] text-faint">{status.instructions.master.path}</p>
                 </div>
-                <Badge tone={masterOk ? "success" : "danger"}>
-                  {masterOk ? "存在" : "未検出"}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {masterOk && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      busy={openBusy === "agents-master"}
+                      onClick={() => void openTarget("agents-master", "open-file")}
+                    >
+                      ファイルを開く
+                    </Button>
+                  )}
+                  <Badge tone={masterOk ? "success" : "danger"}>
+                    {masterOk ? "存在" : "未検出"}
+                  </Badge>
+                </div>
               </div>
             </div>
 
             {instructionItems.map(({ key, label, item }) => (
-              <InstructionRow key={key} label={label} path={item.path} status={item.status} />
+              <InstructionRow
+                key={key}
+                label={label}
+                path={item.path}
+                status={item.status}
+                onOpen={
+                  item.status.kind !== "missing"
+                    ? () => void openTarget(`agents-${key}`, "open-file")
+                    : undefined
+                }
+                opening={openBusy === `agents-${key}`}
+              />
             ))}
 
             <div className="rounded-lg border border-border bg-bg/40 px-3 py-2">
@@ -166,24 +224,51 @@ export function ProfileAgentsSyncSettings() {
                   <p className="text-sm font-medium text-text">Skills マスター (OpenCode)</p>
                   <p className="truncate text-[11px] text-faint">{status.skills.opencodeRoot.path}</p>
                 </div>
-                <Badge tone={status.skills.opencodeRoot.exists ? "success" : "neutral"}>
-                  {status.skills.opencodeRoot.exists
-                    ? `${status.skills.opencodeRoot.count} skills`
-                    : "なし"}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {status.skills.opencodeRoot.exists && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      busy={openBusy === "skills-opencode"}
+                      onClick={() => void openTarget("skills-opencode", "open-folder")}
+                    >
+                      フォルダを開く
+                    </Button>
+                  )}
+                  <Badge tone={status.skills.opencodeRoot.exists ? "success" : "neutral"}>
+                    {status.skills.opencodeRoot.exists
+                      ? `${status.skills.opencodeRoot.count} skills`
+                      : "なし"}
+                  </Badge>
+                </div>
               </div>
             </div>
 
-            {Object.entries(status.skills.mirrors).map(([key, m]) => {
-              const [side, name] = key.split(":");
+            {Object.entries(mirrorsBySide).map(([side, items]) => {
+              const targetKey = SIDE_TARGET_KEYS[side];
               return (
-                <SkillRow
-                  key={key}
-                  side={side ?? key}
-                  name={name ?? ""}
-                  path={m.path}
-                  status={m.status}
-                />
+                <div key={side} className="rounded-lg border border-border bg-bg/40 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-text">{SIDE_LABELS[side] ?? side}</p>
+                    {targetKey && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        busy={openBusy === targetKey}
+                        onClick={() => void openTarget(targetKey, "open-folder")}
+                      >
+                        フォルダを開く
+                      </Button>
+                    )}
+                  </div>
+                  <ul className="mt-2 space-y-1">
+                    {items.map((item) => (
+                      <SkillItemRow key={item.name} name={item.name} path={item.path} status={item.status} />
+                    ))}
+                  </ul>
+                </div>
               );
             })}
 
@@ -227,10 +312,14 @@ function InstructionRow({
   label,
   path,
   status,
+  onOpen,
+  opening,
 }: {
   label: string;
   path: string;
   status: ItemStatus;
+  onOpen?: () => void;
+  opening?: boolean;
 }) {
   const tone =
     status.kind === "ok"
@@ -256,20 +345,25 @@ function InstructionRow({
           <p className="text-sm font-medium text-text">{label}</p>
           <p className="truncate text-[11px] text-faint">{path}</p>
         </div>
-        <Badge tone={tone}>{statusText}</Badge>
+        <div className="flex items-center gap-2">
+          {onOpen && (
+            <Button type="button" size="sm" variant="ghost" busy={opening} onClick={onOpen}>
+              ファイルを開く
+            </Button>
+          )}
+          <Badge tone={tone}>{statusText}</Badge>
+        </div>
       </div>
       <p className="mt-1 text-[11px] text-faint">{status.message}</p>
     </div>
   );
 }
 
-function SkillRow({
-  side,
+function SkillItemRow({
   name,
   path,
   status,
 }: {
-  side: string;
   name: string;
   path: string;
   status: ItemStatus;
@@ -292,17 +386,12 @@ function SkillRow({
           : "未検出";
 
   return (
-    <div className="rounded-lg border border-border bg-bg/40 px-3 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-text">
-            {side} / {name}
-          </p>
-          <p className="truncate text-[11px] text-faint">{path}</p>
-        </div>
-        <Badge tone={tone}>{statusText}</Badge>
+    <li className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 bg-surface px-2 py-1">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-text">{name}</p>
+        <p className="truncate text-[10px] text-faint">{path}</p>
       </div>
-      <p className="mt-1 text-[11px] text-faint">{status.message}</p>
-    </div>
+      <Badge tone={tone}>{statusText}</Badge>
+    </li>
   );
 }

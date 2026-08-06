@@ -1,3 +1,86 @@
+# 作業ログ: プロファイル/同期系設定に「ファイルを開く」「フォルダを開く」を追加
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+設定画面の複数セクションから、対応する設定ファイル/フォルダを直接エクスプローラーで
+開けるようにする。ユーザー指定の対応表:
+
+- 登録済プロファイル（`ProfilesSettings`） → フォルダを開く（既存機能）
+- プロファイル同期（`ProfileSyncSettings`） → ファイルを開く（マスター/Codex/Claude）
+- AGENTS.md同期（`ProfileAgentsSyncSettings` instructions） → ファイルを開く
+- Skills 同期（`ProfileAgentsSyncSettings` skills） → フォルダを開く
+
+## 実装内容
+
+### 共通ヘルパー
+
+- `web/src/lib/profiles/open.ts`（新規）
+  - `openFolder(target)` / `openFileReveal(target)` を集約。
+  - 既存の `[id]/open/route.ts` にインラインだったロジックをここへ移動し、
+    `open-target/route.ts` と共有。
+
+### API
+
+- `web/src/app/api/profiles/[id]/open/route.ts`（既存、内部実装のみ変更）
+  - `openFolder`/`openFileReveal` を `lib/profiles/open` からインポートするだけに簡略化。
+- `web/src/app/api/profiles/open-target/route.ts`（新規）
+  - `POST /api/profiles/open-target`、ボディ `{ target, action }`。
+  - `target` は allowlist（`sync-master`/`sync-codex`/`sync-claude`/
+    `agents-master`/`agents-claude`/`agents-codex`/`skills-opencode`/
+    `skills-claude`/`skills-codex`/`skills-agents`）のキーのみ許可。
+    クライアントは生パスを一切送れない — サーバー側で `profilePaths()`
+    （`sync-engine.ts`）と `agentsSyncPaths()`（`agents-sync-engine.ts`）から
+    解決する。
+  - `agents-sync-engine.ts` のプライベート `paths()` を `agentsSyncPaths()` として export。
+
+### UI
+
+- `web/src/components/settings/ProfileSyncSettings.tsx`
+  - マスター(opencode.jsonc)/Codex(config.toml)/Claude(settings.json) の各行に
+    「ファイルを開く」ボタンを追加（`target` が存在する場合のみ表示）。
+- `web/src/components/settings/ProfileAgentsSyncSettings.tsx`
+  - マスター(AGENTS.md)/Claude(CLAUDE.md)/Codex(AGENTS.md) 行に「ファイルを開く」。
+  - Skills マスター(opencode/skills)行と、mirrorsを side（claude/codex/agents）
+    別にグループ化した見出し行に「フォルダを開く」を追加。
+  - `mirrors` はこれまで `{side}:{name}` キーのフラットリストを1件ずつ表示していたが、
+    フォルダを開くボタンを side 単位に置くため side でグループ化するレンダリングに変更
+    （`SkillRow` → `SkillItemRow` に改名し、side の見出し表示は分離）。
+
+### テスト
+
+- `web/src/app/api/profiles/open-target/route.test.ts`（新規、7件）
+  - 非ローカル拒否、不正な target/action 拒否、パス不存在時 409、
+    ファイル/フォルダそれぞれの正常系、内部エラー時 500。
+
+## 重大な手戻り: CSRF ガード漏れ
+
+- 実装直後の `npm run test` で `api-guard-coverage.test.ts` が失敗した。
+  このプロジェクトには「`/api/**` は `requireAuthorized`/`requireHostMachine`
+  を呼ばない限りデフォルト拒否」という coverage テストがあり、
+  過去に別作業で `rejectUnlessLocal`（CSRF 未対策の旧ヘルパー）から
+  `requireAuthorized`（`api-guard.ts`、CSRF→認可の順で保護）への全面移行が
+  行われていた。
+- しかし本セッションの前半で作成した `[id]/open/route.ts`（前回コミット時点）と
+  今回追加した `open-target/route.ts` は、移行前のパターンを見て `rejectUnlessLocal`
+  を使ってしまっていた。両方を `requireAuthorized(req)` に修正。
+- **教訓**: 新しい `/api/**` route を追加・変更する際は、既存の同ディレクトリの
+  “隣”のファイルではなく `src/lib/api-guard.ts` と
+  `src/lib/api-guard-coverage.test.ts` を必ず確認する。似た機能の既存ファイルが
+  古いパターンを使ったまま残っている可能性があり、コピー元として信用できない。
+  実装後は必ず `npm run test`（全体）を通し、coverage テストで検出させる。
+
+## 検証
+
+- `npm --prefix web run typecheck` 合格
+- `npm --prefix web run lint` 合格
+- `npm --prefix web run test` 合格（233 files / 2823 tests）
+- `api-guard-coverage.test.ts` の3件の失敗（`/api/profiles/[id]/open` の
+  guard漏れ検出）を修正後に再確認し、全合格。
+
 # 作業ログ: Next.js 手動アップデート機能
 
 ## 日付

@@ -47,7 +47,7 @@ export type AgentsSyncResult = {
   error?: string;
 };
 
-function paths() {
+export function agentsSyncPaths() {
   return {
     masterMd: path.join(HOME, ".config", "opencode", "AGENTS.md"),
     claudeMd: path.join(HOME, ".claude", "CLAUDE.md"),
@@ -58,6 +58,9 @@ function paths() {
     agentsSkills: path.join(HOME, ".agents", "skills"),
   };
 }
+
+// Local alias so the rest of this file reads the same as before the export.
+const paths = agentsSyncPaths;
 
 function readIfExists(p: string): string | null {
   try {
