@@ -598,3 +598,50 @@ P2-3 監査ログ / P2-4 IP スロットリング）を実施し、修正計画�
 - 監査ログの閲覧 UI は無い（ファイルを直接読む）。
 - `remote-authz.md` の JWT / 権限モデル（`project:read` 等）は未実装。
   現行の認可は「loopback または検証済みセッション」＋「admin か否か」の 2 段階のみ。
+
+---
+
+# 作業ログ: モデルドロップダウンに Qwen Cloud が表示されない問題の調査と修正
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+WebUI のモデルドロップダウンに Qwen Cloud（qwen-cloud プロバイダ）が表示されない原因を特定し修正する。
+
+## 調査結果
+
+- ドロップダウンのデータソースは `/api/opencode/provider` の `all` + `connected` と
+  `/api/extensions/provider-models`（HomeView.tsx）。
+- アクティブだった `test` プロファイルの `opencode.jsonc` には qwen-cloud
+  （npm: `@ai-sdk/openai-compatible`）が定義済みなのに、OpenCode ランタイムの
+  `/config` はプロバイダ `[cursor, commandcode]` のみ返却。qwen-cloud は
+  サイレントにドロップされていた（エラーログなし）。
+- `default` プロファイル（node_modules なし）では qwen-cloud が正常ロードされていた。
+
+## 根本原因
+
+`test` プロファイル（`%APPDATA%\opencode-webui\profiles\test`）の node_modules に
+`@ai-sdk/openai-compatible` が無かった（`@ai-sdk/provider` のみ存在）。
+ローカル node_modules が存在すると OpenCode がそちらで SDK を解決しようとし、
+パッケージ欠落のためプロバイダ定義ごと除外していた。node_modules が無い
+`default` プロファイルでは OpenCode 同梱 SDK に解決がフォールバックするため動いていた。
+
+## 対応
+
+- test プロファイルで `npm install @ai-sdk/openai-compatible@3.0.0` を実行
+  （OpenCode グローバル install に同梱される 3.0.0 と一致）。
+- `@ai-sdk/provider` は 4.0.0 に hoist され、`@opencode-ai/plugin` は nested に
+  provider@3.0.8 を保持（バージョン競合なし）。
+- OpenCode を再起動（`POST /api/host/restart?target=opencode`）。
+
+## 検証結果
+
+- `/api/opencode/provider` ... qwen-cloud が `all` と `connected` に存在
+- `/api/opencode/config` ... プロバイダキー `[cursor, qwen-cloud, commandcode]`
+- `/api/extensions/provider-models` ... qwen-cloud enabled。
+  qwen3.8-max-preview / qwen3.7-plus / qwen3.6-flash が on
+  （glm-5.2 / deepseek-v4-pro はユーザー設定で off のまま）
+- リポジトリのコード変更なし（git status clean）
