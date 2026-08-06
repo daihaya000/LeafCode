@@ -1,3 +1,44 @@
+# 作業ログ: バグハント第8ラウンド（PTY input の上限チェック単位修正）
+
+## 日付
+
+2026-08-06
+
+## 発見したバグ
+
+`web/src/app/api/pty-session/input/route.ts` が送信ペイロード上限
+（`MAX_INPUT_BYTES = 64KB`）を **文字数**（`body.data.length`）で比較していた。
+
+- 多バイト文字（CJK 3 byte / emoji 4 byte）の場合、文字数が上限以下でも
+  UTF-8 エンコード後は最大約 4 倍（〜256KB）になり得る。
+- 定数名・エラーメッセージは bytes を謳っており実装と不一致。
+
+## 修正内容
+
+- `web/src/app/api/pty-session/input/route.ts`
+  - `Buffer.byteLength(body.data, "utf8")` で比較するよう修正。
+- `web/src/app/api/pty-session/input/route.test.ts`（新規5件）
+  - host-only ガード / 非文字 data / relay 未接続 409 /
+    文字数＜上限だがバイト数＞上限の 413 回帰（fix 除去で失敗確認済み）/
+    正常系（relay.ws.send への転送）。
+  - 従来このルートにはテストが無かったため、ガード系も合わせて補完。
+
+## 精査して問題なしを確認（このラウンド）
+
+- `pty-relay.ts`（relay 重複接続防止・cursor replay・refcount/清掃・
+  realm-safe なバイナリ判定・UTF-8 ストリーミングデコード）
+- `pty-session.ts`（cwd の realpath スコープ検証・command/args/env 不転送・
+  シェル許容性チェック・v1 API 統一・WS チケット）
+- `pty-session/{stream,input,resize}/route.ts`（4404 と一時切断の区別、
+  ハートビート/abort 清掃、次元クランプ）
+
+## 検証結果
+
+- `npx tsc --noEmit` / `npm run lint` ... 成功
+- `npm run --prefix web test` ... 235 files / 2833 tests 成功（+5）
+
+---
+
 # 作業ログ: バグハント第7ラウンド（browser-bridge brokerの誤りエラーコード修正）
 
 ## 日付
