@@ -57,6 +57,7 @@ import { resolveProductionDistDir } from '../../scripts/web-dist-dir.mjs';
 import {
   deleteUser,
   hasUsers,
+  isAdmin,
   listUsers,
   upsertUser,
   verifyUser,
@@ -2316,6 +2317,7 @@ async function startControlServer() {
       upsertUser,
       deleteUser,
       hasUsers,
+      isAdmin,
       readConfig: readAuthConfig,
       writeConfig: writeAuthConfig,
       windowsAuthSupported: process.platform === 'win32',

@@ -1,4 +1,6 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import http from 'http';
 import { createLoginThrottle } from './windows-auth.js';
 
@@ -115,21 +117,26 @@ function isPlainObject(value) {
 
 /**
  * Sign a simple session token with HMAC.
+ *
+ * The payload is `username:jti:ts`, so the timestamp split (lastIndexOf) is
+ * unaffected by a username or jti that happens to contain a colon. The jti
+ * lets us revoke a specific session without invalidating every other one.
  * @param {string} secret
  * @param {string} username
  * @returns {string}
  */
 function signSessionToken(secret, username) {
-  const payload = `${username}:${Date.now()}`;
+  const jti = randomBytes(8).toString('base64url');
+  const payload = `${username}:${jti}:${Date.now()}`;
   const sig = createHmac('sha256', secret).update(payload).digest('base64url');
   return `${Buffer.from(payload).toString('base64url')}.${sig}`;
 }
 
 /**
- * Verify a session token and return the username if valid.
+ * Verify a session token and return the username and jti if valid.
  * @param {string} secret
  * @param {string} token
- * @returns {string | null}
+ * @returns {{ username: string, jti: string } | null}
  */
 function verifySessionToken(secret, token) {
   const dot = token.lastIndexOf('.');
@@ -143,19 +150,93 @@ function verifySessionToken(secret, token) {
     return null;
   }
   const payload = Buffer.from(payloadB64, 'base64url').toString('utf8');
-  // The timestamp is appended after the username, so split on the LAST colon:
-  // indexOf would truncate any username that itself contains one.
-  const colon = payload.lastIndexOf(':');
-  if (colon === -1) return null;
-  const ts = Number(payload.slice(colon + 1));
+  // The timestamp is appended last, so split on the LAST colon: indexOf would
+  // truncate any username or jti that itself contains one.
+  const tsColon = payload.lastIndexOf(':');
+  if (tsColon === -1) return null;
+  const ts = Number(payload.slice(tsColon + 1));
   if (!Number.isFinite(ts)) return null;
   // Reject tokens dated in the future beyond a little clock skew, so a forged
   // timestamp cannot extend a session indefinitely.
   if (ts - Date.now() > 60_000) return null;
   // 7-day session
   if (Date.now() - ts > 7 * 24 * 60 * 60 * 1000) return null;
-  const username = payload.slice(0, colon);
-  return username || null;
+  const rest = payload.slice(0, tsColon);
+  // The jti is the segment between the last two colons.
+  const jtiColon = rest.lastIndexOf(':');
+  if (jtiColon === -1) return null;
+  const username = rest.slice(0, jtiColon);
+  const jti = rest.slice(jtiColon + 1);
+  if (!username || !jti) return null;
+  return { username, jti };
+}
+
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const REVOKE_FILE = 'revoked-sessions.json';
+
+function revokeFilePath() {
+  const base = process.env.APPDATA || join(process.env.USERPROFILE || process.env.HOME || '.', 'AppData', 'Roaming');
+  return join(base, 'opencode-webui', REVOKE_FILE);
+}
+
+/**
+ * @returns {Map<string, number>} jti -> the time it was revoked, epoch ms
+ */
+function readRevokedJtis() {
+  try {
+    const file = revokeFilePath();
+    if (!existsSync(file)) return new Map();
+    const parsed = JSON.parse(readFileSync(file, 'utf8'));
+    if (!Array.isArray(parsed)) return new Map();
+    const now = Date.now();
+    const entries = parsed
+      .filter((e) => e && typeof e.jti === 'string' && typeof e.ts === 'number' && now - e.ts < SESSION_TTL_MS)
+      .map((e) => [e.jti, e.ts]);
+    return new Map(entries);
+  } catch {
+    return new Map();
+  }
+}
+
+/** @param {Map<string, number>} map */
+function writeRevokedJtis(map) {
+  try {
+    mkdirSync(dirname(revokeFilePath()), { recursive: true });
+    const arr = [...map].map(([jti, ts]) => ({ jti, ts }));
+    writeFileSync(revokeFilePath(), JSON.stringify(arr, null, 2), { encoding: 'utf8', mode: 0o600 });
+  } catch {
+    // best effort — an unwritable file just means revocation is per-process only
+  }
+}
+
+/**
+ * Track revoked session jtis for the lifetime of this process + on disk so a
+ * restart does not silently revalidate a logged-out token.
+ *
+ * Each jti keeps its own revocation timestamp (a Map, not a Set) so that
+ * revoking a new session never resets an older entry's age — otherwise every
+ * write would refresh every existing entry's timestamp to "now" and the file
+ * would grow without bound, never pruning old entries.
+ *
+ * `persist: false` keeps everything in memory only — used by tests so they do
+ * not read or write the real %APPDATA%\opencode-webui\revoked-sessions.json.
+ * @param {{ persist?: boolean }} [options]
+ */
+export function createRevocationStore({ persist = true } = {}) {
+  let revoked = persist ? readRevokedJtis() : new Map();
+  return {
+    isRevoked(jti) {
+      return revoked.has(jti);
+    },
+    revoke(jti) {
+      if (!jti || revoked.has(jti)) return;
+      revoked.set(jti, Date.now());
+      if (persist) writeRevokedJtis(revoked);
+    },
+    clear() {
+      revoked = persist ? readRevokedJtis() : new Map();
+    },
+  };
 }
 
 /** Single source of truth for the session cookie the BFF forwards to the browser. */
@@ -201,6 +282,7 @@ function getSessionCookie(header) {
  * @property {(() => { windowsAuth: boolean })} [readConfig]
  * @property {((patch: { windowsAuth?: boolean }) => { windowsAuth: boolean })} [writeConfig]
  * @property {boolean} [windowsAuthSupported]
+ * @property {((username: string) => boolean)} [isAdmin]
  */
 
 /**
@@ -218,6 +300,7 @@ function getSessionCookie(header) {
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
  *   controlPort?: number,
+ *   revocationStore?: ReturnType<typeof createRevocationStore>,
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
@@ -225,6 +308,20 @@ export function createControlRequestHandler(handlers) {
   // Shared across requests so a brute-force attempt cannot reset its own count.
   const throttle = handlers.loginThrottle ?? createLoginThrottle();
   const controlPort = typeof handlers.controlPort === 'number' ? handlers.controlPort : undefined;
+  const revocationStore = handlers.revocationStore ?? createRevocationStore();
+
+  /**
+   * Resolve the verified session from a request's cookie or a forwarded
+   * token body. Returns null for any failure.
+   * @returns {{ username: string, jti: string } | null}
+   */
+  async function resolveSession(req) {
+    const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
+    const token = getSessionCookie(req.headers?.cookie);
+    const session = token ? verifySessionToken(secret, token) : null;
+    if (!session || revocationStore.isRevoked(session.jti)) return null;
+    return session;
+  }
 
   return async (req, res) => {
     // DNS rebinding guard: a browser can reach 127.0.0.1:18765 via an attacker
@@ -366,6 +463,15 @@ export function createControlRequestHandler(handlers) {
         res.end(JSON.stringify({ users: authStore.listUsers() }));
         return;
       }
+
+      // Mutating operations (POST/DELETE) require an admin session.
+      const session = await resolveSession(req);
+      if (!session || authStore.isAdmin?.(session.username) !== true) {
+        res.writeHead(403, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
+        return;
+      }
+
       if (method === 'DELETE') {
         const body = await readJsonBody(req);
         const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
@@ -416,12 +522,18 @@ export function createControlRequestHandler(handlers) {
         );
         return;
       }
-      // POST
+      // POST — admin only, like /users mutations.
       if (!authStore.writeConfig) {
         res.writeHead(501, JSON_HEADERS);
         res.end(
           JSON.stringify({ ok: false, error: 'auth config is read-only on this host' }),
         );
+        return;
+      }
+      const session = await resolveSession(req);
+      if (!session || authStore.isAdmin?.(session.username) !== true) {
+        res.writeHead(403, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
         return;
       }
       const body = await readJsonBody(req);
@@ -462,6 +574,13 @@ export function createControlRequestHandler(handlers) {
       }
       const subRoute = pathname.replace(/^\/auth\//, '').replace(/\/+$/, '') || '';
       if (subRoute === 'logout') {
+        // Revoke the specific session token, not just clear the cookie. Without
+        // this a stolen token stays valid for 7 days because the signature is
+        // stateless.
+        const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
+        const token = getSessionCookie(req.headers?.cookie);
+        const session = token ? verifySessionToken(secret, token) : null;
+        if (session) revocationStore.revoke(session.jti);
         clearAuthCookie(res);
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({ ok: true }));
@@ -478,14 +597,14 @@ export function createControlRequestHandler(handlers) {
           isPlainObject(body) && typeof body.token === 'string'
             ? body.token
             : getSessionCookie(req.headers?.cookie);
-        const username = token ? verifySessionToken(secret, token) : null;
-        if (!username) {
+        const session = token ? verifySessionToken(secret, token) : null;
+        if (!session || revocationStore.isRevoked(session.jti)) {
           res.writeHead(401, JSON_HEADERS);
           res.end(JSON.stringify({ ok: false, error: 'invalid session' }));
           return;
         }
         res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: true, username }));
+        res.end(JSON.stringify({ ok: true, username: session.username, jti: session.jti, isAdmin: authStore.isAdmin?.(session.username) === true }));
         return;
       }
       if (subRoute !== 'login') {
@@ -586,6 +705,7 @@ export function createControlRequestHandler(handlers) {
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
  *   controlPort?: number,
+ *   revocationStore?: ReturnType<typeof createRevocationStore>,
  * }} handlers
  */
 export function createControlServer(handlers) {

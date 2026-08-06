@@ -9,16 +9,22 @@ export const dynamic = "force-dynamic";
 // whether LAN clients may send the operator's real Windows password here, so it
 // must not be flippable from the LAN itself.
 
-async function forwardToHost(method: string, body?: unknown) {
+async function forwardToHost(method: string, req: NextRequest, body?: unknown) {
   const init: RequestInit = {
     method,
     cache: "no-store",
     signal: AbortSignal.timeout(5000),
   };
+  // Forwarding the browser's session cookie lets the host verify who is
+  // asking. Without it, POST here always 403s from the host now that
+  // toggling Windows-account login requires an admin session.
+  const cookie = req.headers.get("cookie");
+  const headers: Record<string, string> = cookie ? { cookie } : {};
   if (body !== undefined) {
-    init.headers = { "content-type": "application/json" };
+    headers["content-type"] = "application/json";
     init.body = JSON.stringify(body);
   }
+  init.headers = headers;
   return fetch(`${resolveHostControlUrl()}/auth/config`, init);
 }
 
@@ -39,7 +45,7 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
-    const res = await forwardToHost("GET");
+    const res = await forwardToHost("GET", req);
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       return NextResponse.json(
@@ -70,7 +76,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const res = await forwardToHost("POST", { windowsAuth: body.windowsAuth });
+    const res = await forwardToHost("POST", req, { windowsAuth: body.windowsAuth });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       return NextResponse.json(

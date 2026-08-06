@@ -58,8 +58,15 @@ function safeEqual(a, b) {
 }
 
 /**
- * @typedef {{ username: string, passwordHash: string, salt: string, updatedAt: string }} UserRecord
+ * @typedef {{ username: string, passwordHash: string, salt: string, role: 'admin' | 'user', updatedAt: string }} UserRecord
  */
+
+const VALID_ROLES = new Set(['admin', 'user']);
+
+/** Coerce a stored role to a known value, defaulting existing users to admin. */
+function normalizeRole(role) {
+  return VALID_ROLES.has(role) ? role : 'admin';
+}
 
 function readUsers() {
   const file = usersFile();
@@ -75,7 +82,7 @@ function readUsers() {
         typeof u.passwordHash === 'string' &&
         typeof u.salt === 'string' &&
         typeof u.updatedAt === 'string',
-    );
+    ).map((u) => ({ ...u, role: normalizeRole(u.role) }));
   } catch {
     return [];
   }
@@ -103,10 +110,22 @@ function isValidPassword(password) {
 
 /**
  * List stored users (without password hashes).
- * @returns {{ username: string, updatedAt: string }[]}
+ * @returns {{ username: string, role: 'admin' | 'user', updatedAt: string }[]}
  */
 export function listUsers() {
-  return readUsers().map(({ username, updatedAt }) => ({ username, updatedAt }));
+  return readUsers().map(({ username, role, updatedAt }) => ({ username, role, updatedAt }));
+}
+
+/**
+ * Check whether a user has the admin role.
+ * @param {string} username
+ * @returns {boolean}
+ */
+export function isAdmin(username) {
+  if (!isValidUsername(username)) return false;
+  const normalized = normalizeUsername(username);
+  const user = readUsers().find((u) => normalizeUsername(u.username) === normalized);
+  return user ? normalizeRole(user.role) === 'admin' : false;
 }
 
 /**
@@ -143,10 +162,14 @@ export function upsertUser(username, password) {
   const existingIndex = users.findIndex((u) => normalizeUsername(u.username) === normalized);
 
   const salt = randomBytes(SALT_BYTES).toString('base64');
+  // Preserve the existing role on password updates; new users are always admin
+  // until a role model that assigns non-admin on creation is added.
+  const role = existingIndex >= 0 ? normalizeRole(users[existingIndex].role) : 'admin';
   const record = {
     username,
     passwordHash: hashPasswordBase64(password, salt),
     salt,
+    role,
     updatedAt: new Date().toISOString(),
   };
 

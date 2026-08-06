@@ -2,7 +2,7 @@
 
 import { sendJson, getJson } from "./client";
 
-export type AuthUser = { username: string; updatedAt: string };
+export type AuthUser = { username: string; role: "admin" | "user"; updatedAt: string };
 
 const SESSION_KEY = "webui_auth_session";
 const USERS_CACHE_KEY = "webui_auth_users";

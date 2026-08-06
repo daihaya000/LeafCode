@@ -2,7 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'crypto';
 import { EventEmitter } from 'events';
-import { createControlRequestHandler, isLoopbackHostHeader, matchControlRoute } from './control-server.js';
+import { readFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import {
+  createControlRequestHandler,
+  createRevocationStore,
+  isLoopbackHostHeader,
+  matchControlRoute,
+} from './control-server.js';
 import { createLoginThrottle } from './windows-auth.js';
 
 /**
@@ -296,22 +303,16 @@ test('POST /users upserts a user', async () => {
   let upserted = null;
   const handle = createControlRequestHandler({
     ...noopHandlers,
-    authStore: {
-      listUsers: () => [],
-      verifyUser: () => false,
+    authStore: authStoreStub({
       upsertUser: (username, password) => {
         upserted = { username, password };
         return { ok: true };
       },
-      deleteUser: () => ({ ok: false, error: 'unsupported' }),
-      hasUsers: () => true,
-    },
+    }),
+    sessionSecret: 'test-secret',
   });
-  const res = fakeResponse();
-  const req = new MockReadable(JSON.stringify({ username: 'alice', password: 'secret' }));
-  req.method = 'POST';
-  req.url = '/users';
-  await handle(req, res);
+  const cookie = await adminCookie(handle);
+  const res = await postJson(handle, '/users', { username: 'alice', password: 'secret' }, cookie);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(upserted, { username: 'alice', password: 'secret' });
 });
@@ -320,24 +321,70 @@ test('DELETE /users removes a user', async () => {
   let deleted = null;
   const handle = createControlRequestHandler({
     ...noopHandlers,
-    authStore: {
-      listUsers: () => [],
-      verifyUser: () => false,
-      upsertUser: () => ({ ok: false, error: 'unsupported' }),
+    authStore: authStoreStub({
       deleteUser: (username) => {
         deleted = username;
         return { ok: true };
       },
       hasUsers: () => false,
-    },
+    }),
+    sessionSecret: 'test-secret',
   });
+  const cookie = await adminCookie(handle);
   const res = fakeResponse();
-  const req = new MockReadable(JSON.stringify({ username: 'alice' }));
+  const req = new MockReadable(JSON.stringify({ username: 'alice' }), cookie);
   req.method = 'DELETE';
   req.url = '/users';
   await handle(req, res);
   assert.equal(res.statusCode, 200);
   assert.equal(deleted, 'alice');
+});
+
+test('POST /users rejects a request with no session at all', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(handle, '/users', { username: 'mallory', password: 'pw' });
+  assert.equal(res.statusCode, 403);
+});
+
+test('POST /users rejects a non-admin session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ isAdmin: () => false }),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+  const res = await postJson(handle, '/users', { username: 'mallory', password: 'pw' }, cookie);
+  assert.equal(res.statusCode, 403);
+});
+
+test('DELETE /users rejects a non-admin session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ isAdmin: () => false }),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'alice' }), cookie);
+  req.method = 'DELETE';
+  req.url = '/users';
+  await handle(req, res);
+  assert.equal(res.statusCode, 403);
+});
+
+test('GET /users remains available without a session (unchanged read-only listing)', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ listUsers: () => [{ username: 'alice', role: 'admin', updatedAt: 'x' }] }),
+    sessionSecret: 'test-secret',
+  });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/users', headers: { host: '127.0.0.1:18765' } }, res);
+  assert.equal(res.statusCode, 200);
 });
 
 test('POST /auth/login sets a session cookie on success', async () => {
@@ -387,10 +434,13 @@ test('POST /auth/login rejects bad credentials', async () => {
 function authStoreStub(overrides = {}) {
   return {
     listUsers: () => [],
-    verifyUser: () => false,
+    // Matches the password used by loginForToken's default args, so tests that
+    // need an admin session can call adminCookie(handle) without overriding this.
+    verifyUser: (username, password) => password === 'secret',
     upsertUser: () => ({ ok: false, error: 'unsupported' }),
     deleteUser: () => ({ ok: false, error: 'unsupported' }),
     hasUsers: () => true,
+    isAdmin: () => true,
     readConfig: () => ({ windowsAuth: false }),
     writeConfig: (patch) => ({ windowsAuth: patch.windowsAuth === true }),
     windowsAuthSupported: true,
@@ -398,13 +448,19 @@ function authStoreStub(overrides = {}) {
   };
 }
 
-async function postJson(handle, url, body) {
+async function postJson(handle, url, body, headers = {}) {
   const res = fakeResponse();
-  const req = new MockReadable(JSON.stringify(body));
+  const req = new MockReadable(JSON.stringify(body), headers);
   req.method = 'POST';
   req.url = url;
   await handle(req, res);
   return res;
+}
+
+/** Cookie header for a logged-in admin session. */
+async function adminCookie(handle) {
+  const token = await loginForToken(handle);
+  return { cookie: `webui_session=${encodeURIComponent(token)}` };
 }
 
 test('POST /auth/login falls back to Windows when the local store misses', async () => {
@@ -585,11 +641,13 @@ async function loginForToken(handle, username = 'alice', password = 'secret') {
   return decodeURIComponent(match[1]);
 }
 
-function verifyHandler(secret = 'test-secret', overrides = {}) {
+function verifyHandler(secret = 'test-secret', overrides = {}, revocationStore) {
   return createControlRequestHandler({
     ...noopHandlers,
     authStore: authStoreStub({ verifyUser: (u, p) => p === 'secret', ...overrides }),
     sessionSecret: secret,
+    // In-memory only, so tests never touch the real %APPDATA% revocation file.
+    revocationStore: revocationStore ?? createRevocationStore({ persist: false }),
   });
 }
 
@@ -599,7 +657,10 @@ test('POST /auth/verify accepts a token this host issued', async () => {
 
   const res = await postJson(handle, '/auth/verify', { token });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { ok: true, username: 'alice' });
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.username, 'alice');
+  assert.ok(typeof res.body.jti === 'string' && res.body.jti.length > 0);
+  assert.equal(res.body.isAdmin, true);
 });
 
 test('POST /auth/verify reads the token from a Cookie header too', async () => {
@@ -614,6 +675,50 @@ test('POST /auth/verify reads the token from a Cookie header too', async () => {
   await handle(req, res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.username, 'alice');
+});
+
+test('POST /auth/logout revokes the session so the token cannot be verified again', async () => {
+  const handle = verifyHandler();
+  const token = await loginForToken(handle);
+  assert.equal((await postJson(handle, '/auth/verify', { token })).statusCode, 200);
+
+  const res = fakeResponse();
+  const req = new MockReadable('{}', { cookie: `webui_session=${encodeURIComponent(token)}` });
+  req.method = 'POST';
+  req.url = '/auth/logout';
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+
+  // The stateless HMAC signature is still valid, but the jti is revoked — this
+  // is the whole point: a stolen token stays valid for 7 days without this check.
+  const stillValid = await postJson(handle, '/auth/verify', { token });
+  assert.equal(stillValid.statusCode, 401);
+});
+
+test('POST /auth/logout without a session cookie still clears the cookie and succeeds', async () => {
+  const handle = verifyHandler();
+  const res = fakeResponse();
+  const req = new MockReadable('{}');
+  req.method = 'POST';
+  req.url = '/auth/logout';
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+});
+
+test('revoking one session does not invalidate a second session for the same user', async () => {
+  const store = createRevocationStore({ persist: false });
+  const handle = verifyHandler('test-secret', {}, store);
+  const tokenA = await loginForToken(handle);
+  const tokenB = await loginForToken(handle);
+
+  const logoutRes = fakeResponse();
+  const logoutReq = new MockReadable('{}', { cookie: `webui_session=${encodeURIComponent(tokenA)}` });
+  logoutReq.method = 'POST';
+  logoutReq.url = '/auth/logout';
+  await handle(logoutReq, logoutRes);
+
+  assert.equal((await postJson(handle, '/auth/verify', { token: tokenA })).statusCode, 401);
+  assert.equal((await postJson(handle, '/auth/verify', { token: tokenB })).statusCode, 200);
 });
 
 test('POST /auth/verify rejects a token signed with a different secret', async () => {
@@ -646,7 +751,7 @@ test('POST /auth/verify rejects an expired token', async () => {
   const handle = verifyHandler();
   const secret = 'test-secret';
   const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
-  const payload = `alice:${eightDaysAgo}`;
+  const payload = `alice:abcd1234:${eightDaysAgo}`;
   const sig = createHmac('sha256', secret).update(payload).digest('base64url');
   const stale = `${Buffer.from(payload).toString('base64url')}.${sig}`;
 
@@ -658,7 +763,7 @@ test('POST /auth/verify rejects a token dated far in the future', async () => {
   const handle = verifyHandler();
   const secret = 'test-secret';
   // A forged future timestamp must not extend the session window.
-  const payload = `alice:${Date.now() + 60 * 60 * 1000}`;
+  const payload = `alice:abcd1234:${Date.now() + 60 * 60 * 1000}`;
   const sig = createHmac('sha256', secret).update(payload).digest('base64url');
   const token = `${Buffer.from(payload).toString('base64url')}.${sig}`;
 
@@ -667,9 +772,9 @@ test('POST /auth/verify rejects a token dated far in the future', async () => {
 });
 
 test('POST /auth/verify preserves a username containing a colon', async () => {
-  // The timestamp is split off the LAST colon, so odd usernames survive.
+  // The jti/timestamp are split off the last two colons, so odd usernames survive.
   const secret = 'test-secret';
-  const payload = `corp:alice:${Date.now()}`;
+  const payload = `corp:alice:abcd1234:${Date.now()}`;
   const sig = createHmac('sha256', secret).update(payload).digest('base64url');
   const token = `${Buffer.from(payload).toString('base64url')}.${sig}`;
 
@@ -725,20 +830,45 @@ test('POST /auth/config persists the flag', async () => {
         return { windowsAuth: patch.windowsAuth === true };
       },
     }),
+    sessionSecret: 'test-secret',
   });
-  const res = await postJson(handle, '/auth/config', { windowsAuth: true });
+  const cookie = await adminCookie(handle);
+  const res = await postJson(handle, '/auth/config', { windowsAuth: true }, cookie);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(saved, { windowsAuth: true });
   assert.equal(res.body.windowsAuth, true);
+});
+
+test('POST /auth/config rejects a request with no admin session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(handle, '/auth/config', { windowsAuth: true });
+  assert.equal(res.statusCode, 403);
+});
+
+test('POST /auth/config rejects a non-admin session', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ isAdmin: () => false }),
+    sessionSecret: 'test-secret',
+  });
+  const cookie = await adminCookie(handle);
+  const res = await postJson(handle, '/auth/config', { windowsAuth: true }, cookie);
+  assert.equal(res.statusCode, 403);
 });
 
 test('POST /auth/config rejects a non-boolean flag', async () => {
   const handle = createControlRequestHandler({
     ...noopHandlers,
     authStore: authStoreStub(),
+    sessionSecret: 'test-secret',
   });
+  const cookie = await adminCookie(handle);
   for (const body of [{ windowsAuth: 'yes' }, { windowsAuth: 1 }, {}]) {
-    const res = await postJson(handle, '/auth/config', body);
+    const res = await postJson(handle, '/auth/config', body, cookie);
     assert.equal(res.statusCode, 400, JSON.stringify(body));
   }
 });
@@ -754,13 +884,15 @@ test('POST /auth/config refuses to enable Windows auth on an unsupported OS', as
         return { windowsAuth: patch.windowsAuth === true };
       },
     }),
+    sessionSecret: 'test-secret',
   });
-  const res = await postJson(handle, '/auth/config', { windowsAuth: true });
+  const cookie = await adminCookie(handle);
+  const res = await postJson(handle, '/auth/config', { windowsAuth: true }, cookie);
   assert.equal(res.statusCode, 400);
   assert.equal(saved, null);
 
   // Turning it off must still work, so a config copied from Windows can be cleared.
-  const off = await postJson(handle, '/auth/config', { windowsAuth: false });
+  const off = await postJson(handle, '/auth/config', { windowsAuth: false }, cookie);
   assert.equal(off.statusCode, 200);
 });
 
@@ -816,6 +948,77 @@ test('isLoopbackHostHeader rejects an empty or malformed header', () => {
 
 test('isLoopbackHostHeader rejects a header given as a list whose first element is not loopback', () => {
   assert.equal(isLoopbackHostHeader(['evil.test:18765'], 18765), false);
+});
+
+test('createRevocationStore (in-memory) starts with nothing revoked', () => {
+  const store = createRevocationStore({ persist: false });
+  assert.equal(store.isRevoked('anything'), false);
+});
+
+test('createRevocationStore (in-memory) tracks a revoked jti', () => {
+  const store = createRevocationStore({ persist: false });
+  store.revoke('jti-1');
+  assert.equal(store.isRevoked('jti-1'), true);
+  assert.equal(store.isRevoked('jti-2'), false);
+});
+
+test('createRevocationStore (in-memory) ignores a falsy jti', () => {
+  const store = createRevocationStore({ persist: false });
+  store.revoke('');
+  store.revoke(undefined);
+  assert.equal(store.isRevoked(''), false);
+  assert.equal(store.isRevoked(undefined), false);
+});
+
+test('createRevocationStore (in-memory) does not persist across instances', () => {
+  const a = createRevocationStore({ persist: false });
+  a.revoke('jti-1');
+  const b = createRevocationStore({ persist: false });
+  assert.equal(b.isRevoked('jti-1'), false);
+});
+
+test('createRevocationStore (persisted) survives a fresh instance, e.g. a host restart', () => {
+  const testDir = 'C:\\tmp-revocation-test-' + Date.now();
+  const original = process.env.APPDATA;
+  process.env.APPDATA = testDir;
+  try {
+    const a = createRevocationStore();
+    a.revoke('jti-1');
+    const b = createRevocationStore();
+    assert.equal(b.isRevoked('jti-1'), true);
+  } finally {
+    process.env.APPDATA = original;
+    rmSync(testDir, { recursive: true, force: true });
+  }
+});
+
+test('createRevocationStore (persisted) does not reset an older jti timestamp when a newer one is revoked', () => {
+  const testDir = 'C:\\tmp-revocation-test-' + Date.now();
+  const original = process.env.APPDATA;
+  process.env.APPDATA = testDir;
+  try {
+    const a = createRevocationStore();
+    a.revoke('old-jti');
+    const fileBefore = readFileSync(
+      join(testDir, 'opencode-webui', 'revoked-sessions.json'),
+      'utf8',
+    );
+    const tsBefore = JSON.parse(fileBefore).find((e) => e.jti === 'old-jti').ts;
+
+    // A later revocation must not rewrite the earlier entry's timestamp: doing
+    // so would make every entry look freshly revoked forever, so the file
+    // would never prune old entries.
+    a.revoke('new-jti');
+    const fileAfter = readFileSync(
+      join(testDir, 'opencode-webui', 'revoked-sessions.json'),
+      'utf8',
+    );
+    const tsAfter = JSON.parse(fileAfter).find((e) => e.jti === 'old-jti').ts;
+    assert.equal(tsAfter, tsBefore);
+  } finally {
+    process.env.APPDATA = original;
+    rmSync(testDir, { recursive: true, force: true });
+  }
 });
 
 test('control server rejects a DNS-rebinding Host before any route is matched', async () => {

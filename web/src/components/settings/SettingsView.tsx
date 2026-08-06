@@ -1871,6 +1871,15 @@ export function SettingsView() {
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted" />
                         <span className="text-sm font-medium">{u.username}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            u.role === "admin"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-surface text-faint"
+                          }`}
+                        >
+                          {u.role === "admin" ? "管理者" : "一般"}
+                        </span>
                       </div>
                       <Button
                         variant="danger"

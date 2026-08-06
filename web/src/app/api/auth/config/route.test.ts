@@ -15,10 +15,10 @@ import { GET, POST } from "./route";
 const LOCAL = "127.0.0.1:3000";
 const REMOTE = "192.168.1.50:3000";
 
-function req(host: string, body?: unknown) {
+function req(host: string, body?: unknown, extraHeaders: Record<string, string> = {}) {
   return new NextRequest("http://127.0.0.1:3000/api/auth/config", {
     method: body === undefined ? "GET" : "POST",
-    headers: { host, "content-type": "application/json" },
+    headers: { host, "content-type": "application/json", ...extraHeaders },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
@@ -124,5 +124,25 @@ describe("/api/auth/config", () => {
     const res = await GET(req(LOCAL));
     expect(res.status).toBe(502);
     expect((await res.json()).error).toContain("ホストに接続できません");
+  });
+
+  it("forwards the browser's session cookie to the host on POST", async () => {
+    // The host now requires an admin session to toggle Windows-account login;
+    // without forwarding the cookie, POST would always 403 from the host.
+    const fetchMock = vi.fn().mockResolvedValue(hostConfig({ windowsAuth: true }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await POST(req(LOCAL, { windowsAuth: true }, { cookie: "webui_session=tok" }));
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).cookie).toBe("webui_session=tok");
+  });
+
+  it("omits the cookie header entirely when the browser sent none", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(hostConfig());
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await POST(req(LOCAL, { windowsAuth: true }));
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).cookie).toBeUndefined();
   });
 });

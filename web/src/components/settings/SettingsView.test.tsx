@@ -137,6 +137,21 @@ function mockGetJson(
     if (path === "/api/settings/default-model") {
       return Promise.resolve({ value: null });
     }
+    if (path === "/api/auth/users") {
+      return Promise.resolve({
+        users: [
+          { username: "admin", role: "admin", updatedAt: "2026-01-01T00:00:00.000Z" },
+          { username: "guest", role: "user", updatedAt: "2026-01-02T00:00:00.000Z" },
+        ],
+      });
+    }
+    if (path === "/api/auth/config") {
+      return Promise.resolve({
+        windowsAuth: false,
+        windowsAuthSupported: true,
+        hasUsers: true,
+      });
+    }
     return Promise.reject(new Error(`Unexpected getJson: ${path}`));
   });
 }
@@ -288,6 +303,18 @@ describe("SettingsView", () => {
 
     expect(await screen.findByTestId("addon-settings")).toBeTruthy();
     expect(screen.queryByText("接続状態")).toBeNull();
+  });
+
+  it("shows the admin/user role badge for each registered account", async () => {
+    render(<SettingsView />);
+    await screen.findByText("エンジン");
+
+    fireEvent.click(screen.getByRole("tab", { name: "ユーザー" }));
+
+    await screen.findByText("admin");
+    expect(screen.getByText("guest")).toBeTruthy();
+    expect(screen.getByText("管理者")).toBeTruthy();
+    expect(screen.getByText("一般")).toBeTruthy();
   });
 
   it("shows theme switching inside the 全般 tab", async () => {

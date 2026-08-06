@@ -15,10 +15,10 @@ import { DELETE, GET, POST } from "./route";
 const LOCAL = "127.0.0.1:3000";
 const REMOTE = "192.168.1.50:3000";
 
-function req(host: string, body?: unknown) {
+function req(host: string, body?: unknown, extraHeaders: Record<string, string> = {}) {
   return new NextRequest("http://127.0.0.1:3000/api/auth/users", {
     method: body === undefined ? "GET" : "POST",
-    headers: { host, "content-type": "application/json" },
+    headers: { host, "content-type": "application/json", ...extraHeaders },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
@@ -84,5 +84,37 @@ describe("/api/auth/users host-only guard", () => {
     const res = await POST(req(LOCAL, { username: "alice" }));
     expect(res.status).toBe(400);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("forwards the browser's session cookie to the host on POST", async () => {
+    // The host now requires an admin session to create a user; without
+    // forwarding the cookie, every POST would 403 from the host regardless of
+    // who is asking.
+    await POST(
+      req(LOCAL, { username: "alice", password: "secret" }, { cookie: "webui_session=tok" }),
+    );
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect((init.headers as Record<string, string>).cookie).toBe("webui_session=tok");
+  });
+
+  it("forwards the browser's session cookie to the host on DELETE", async () => {
+    await DELETE(req(LOCAL, { username: "alice" }, { cookie: "webui_session=tok" }));
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect((init.headers as Record<string, string>).cookie).toBe("webui_session=tok");
+  });
+
+  it("omits the cookie header entirely when the browser sent none", async () => {
+    await POST(req(LOCAL, { username: "alice", password: "secret" }));
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect((init.headers as Record<string, string>).cookie).toBeUndefined();
   });
 });
