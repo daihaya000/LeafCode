@@ -1,3 +1,95 @@
+# 作業ログ: CommandCode CLI Proxy の接続不安定バグ調査と修正
+
+## 日付
+
+2026-08-06
+
+## 依頼
+
+「CommandCodeの接続が安定しない」というユーザー報告の調査。「CommandCode」は
+`vendor/commandcode-cli-proxy`（OpenCode プラグイン。`command-code` CLI を
+loopback の OpenAI 互換プロキシとして公開し、Provider API を直接叩かずに
+Go-plan アカウントの CLI 経由アクセスを維持する）を指すと判明（質問で確認済み）。
+
+## 発見した問題（`packages/commandcode-cli-proxy/index.mjs`）
+
+- **タイムアウトが皆無**: `runCliOnce` は `child.on("close")` を待つだけで、
+  `command-code` CLI が権限確認待ち・ネットワーク不通などでハングすると
+  リクエストが**永久に pending** になっていた。ユーザーからは「応答が返らない」
+  「接続が切れたように見える」という不安定さとして観測される。
+- **stream レスポンスの `finish_reason` が常に `null`**: `[DONE]` の前に
+  `finish_reason: "stop"` を持つ終端チャンクを送っていなかった。OpenAI 互換の
+  クライアントが turn の完了を検出できないケースがある。
+- **クライアント切断の検知先が誤り**: 直していないが気付いた点として、当初の
+  実装にはクライアント切断検知が無く、後から `req` の `"close"` を使う実装を
+  試したところ、**通常のリクエストでもボディ読了時に発火する**ため、正常な
+  リクエストを誤って abort してしまうバグを自分で作り込んだ → `res` の
+  `"close"`（+ `writableEnded` ガード）に直して解決。
+- Windows で `spawn(..., { shell: true })` の場合、`child.kill()` は cmd.exe
+  だけを終了し実体の `command-code` プロセスは残る。`taskkill /pid <pid> /t /f`
+  でプロセスツリーごと終了するよう修正。
+- リトライの正規表現に `timeout` を含めていたため、タイムアウトで殺した直後の
+  エラーメッセージ自体がリトライ対象になり、ハング時に待ち時間が2倍になる
+  バグがあった → `isRetryableError()` に切り出し、タイムアウト/abort は
+  リトライ対象外に。
+
+## 修正内容
+
+- `computeTimeoutMs(env)` を追加。既定 120s、`COMMANDCODE_CLI_TIMEOUT_MS` で
+  上書き可。タイムアウト/クライアント切断時は `killTree()`（win32 は
+  `taskkill /t /f`、他は `child.kill()`）でプロセスを確実に終了。
+- `chatCompletionChunks(id, text)` を追加し、streaming の最終チャンクに
+  `finish_reason: "stop"` を含める。
+- `isRetryableError(message)` を追加（`API server encountered` / `try again` /
+  `network` のみ対象、`timeout`/`aborted` は対象外）。
+- ハンドラは `res` の `"close"`（`writableEnded` ガード付き）で
+  `AbortController` を発火し、実行中の CLI プロセスを止める。
+
+## テスト
+
+- `vendor/commandcode-cli-proxy/packages/commandcode-cli-proxy/index.test.mjs`
+  （新規）: `computeTimeoutMs` / `isRetryableError` / `chatCompletionChunks`
+  の純粋関数ユニットテスト6件。
+- `vendor/commandcode-cli-proxy/packages/commandcode-cli-proxy/server.integration.test.mjs`
+  （新規）: `COMMANDCODE_CLI` を PATH 上の一時 `.cmd`（内部で fake CLI の
+  Node スクリプトを実行）に差し替え、実際に HTTP サーバーを立てて
+  非stream/stream/`/v1/models`/ハング/CLI失敗の5パターンを検証。
+  - Windows で `process.execPath`（`C:\Program Files\nodejs\node.exe` 等）を
+    そのまま `COMMANDCODE_CLI` に入れるとスペースを含むパスの shell 引数解釈が
+    破綻するため、PATH 解決可能な短い `.cmd` 名を使う方式にした。
+  - モジュールキャッシュ対策でクエリ文字列付き `import()` を使い毎テストで
+    新規サーバーを起動。**`server.close()` を呼ばないと listening HTTP server
+    が event loop を掴んだままになり `node --test` が終了しない**ことに注意
+    （`start()` を export してテストから `server.close()` できるようにした）。
+- `node --test`（`vendor/commandcode-cli-proxy/packages/commandcode-cli-proxy`
+  ディレクトリ内）... 11 tests 成功。
+- `npx tsc --noEmit` / `npm run lint` / `npm run --prefix web test`
+  （238 files / 2847 tests）... 成功（web 側は無変更のため既存回帰確認のみ）。
+
+## 精査して問題なしを確認
+
+- `web/src/components/settings/CommandCodeCliProxyAuth.tsx` /
+  `web/src/app/api/provider/commandcode/auth/route.ts`（認証キー保存側、
+  今回のバグと無関係）。
+- `web/src/lib/profiles/webui-dependencies.ts` のプラグイン配布ロジック
+  （vendor からプロファイルへのファイルコピーのみで、今回の修正対象コードには
+  影響しない）。
+- `spawn(executable(), args, { shell: true })` に Node 22 系で
+  `DEP0190`（shell:true 時の args 未エスケープ）警告が出る。既存コードから
+  存在した設計で、`--model` は設定由来の固定値、prompt は stdin 経由のため
+  injection リスクは低いと判断し、今回はスコープ外として着手していない。
+
+## 未コミット状態との遭遇（並行プロセス注意）
+
+- 作業完了直前に `git status` が clean になっており、確認すると別プロセスが
+  ほぼ同時に `feat(web): add memory REST API routes and auto-extraction driver`
+  というコミットを作成し、**このラウンドの commandcode 修正も一緒に**
+  巻き込んでいた（stage していたファイルが先にコミットされた）。このリポジトリは
+  複数エージェントが並行して動作する環境であることが判明。以後の git 操作は
+  `git status` を都度確認しながら慎重に行うこと。
+
+---
+
 # 作業ログ: メモリ層 REST API ルート + 自動抽出ドライバ
 
 ## 日付
