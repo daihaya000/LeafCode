@@ -1273,3 +1273,28 @@ WebUI のモデルドロップダウンに Qwen Cloud（qwen-cloud プロバイ�
   qwen3.8-max-preview / qwen3.7-plus / qwen3.6-flash が on
   （glm-5.2 / deepseek-v4-pro はユーザー設定で off のまま）
 - リポジトリのコード変更なし（git status clean）
+
+
+---
+
+# 実装ログ: メモリ層 MCP フェーズ（memory-mcp）
+
+## 日付
+2026-08-07
+
+## 概要
+memory-layer 実装のフェーズ3（MCP サーバー）を完了。メモリ FTS 検索系を opencode のエージェントに stdio MCP 経由で公開する。
+
+## 実装内容
+- `browser-bridge/shared/memory-schema.mjs`: kinds/provenances/max chars + `toFtsPhrase` + `memoryValidate`（search/add/update/delete。未知KEY拒否、INVALID_REQUEST code）
+- `browser-bridge/mcp/memory-server.mjs`: `createMemoryMcpServer({dbPath,workspaceId})`。better-sqlite3、busy_timeout=5000、WAL、fileMustExist。4ツール登録: `memory_search`（FTS5 + approved のみ + last_used_at/use_top バンプ）/ `memory_add`（agent, approved=1）/ `memory_update`（存在しない→NOT_FOUND）/ `memory_delete`
+  - `resolveWorkspace`（--workspace=<id> / --workspace <id>、env OPENCODE_WEBUI_MEMORY_WORKSPACE フォールバック）、`resolveDataDir`（OPENCODE_WEBUI_DATA_DIR で上書き、既定は OS 別データディレクトリ）
+- `browser-bridge/scripts/install-memory-mcp.mjs`: インストーラ。--workspace 必須（--uninstall は不要）。buildDesiredEntry（局部 server / 絶対 server path + --workspace + env OPENCODE_WEBUI_MEMORY_WORKSPACE）、atomicWrite（temp+rename）。exit 0/1/2
+- テスト: `browser-bridge/test/memory-mcp-stdio.test.mjs`（3件）、`install-memory-mcp.test.mjs`（7件）
+
+## 検証結果
+- browser-bridge `node --test` 全体 87 tests／87 pass
+- web の tsc --noEmit エラーなし（web 側コード変更なし）
+
+## 備考
+- FTS5 はハイフンでトークン分割されるため multi-stage はヒットしない。テストでは Dockerfile 等の clean word を使用
