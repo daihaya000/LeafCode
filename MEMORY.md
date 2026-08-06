@@ -161,7 +161,7 @@ cookie が無効になる。localStorage を信じていると「画面は出る
 
 - `npm run --prefix web typecheck` ... 成功
 - `npm run --prefix web lint` ... 成功
-- `npm run --prefix web test` ... 225 test files, 2738 tests 成功
+- `npm run --prefix web test` ... 228 test files, 2774 tests 成功
 - `npm run --prefix host test` ... 286 tests 成功
 
 実機確認済み（`scripts/validate-windows-credentials.ps1`）:
@@ -177,6 +177,8 @@ cookie が無効になる。localStorage を信じていると「画面は出る
 - `4d9b8af` feat(auth): Windows アカウントのユーザー名/パスワードでログインできるようにする
 - `b7825ab` feat(auth): ログイン済みならリモートからも host-only 設定を変更できるようにする
 - `34d1874` feat(browse): LAN IP 経由でもネイティブフォルダ選択を使えるようにする
+- `1559245` docs: セキュリティ棚卸しと修正計画を追加
+- `ad953f8` fix(security): API を default-deny 化し CSRF 対策を追加（Phase 1/2）
 
 ## 次のステップ
 
@@ -189,22 +191,50 @@ cookie が無効になる。localStorage を信じていると「画面は出る
   3. LAN URL（`http://192.168.x.x:3000`）… ログイン画面が出る
   4. LAN から設定 → ユーザー … 403 になる（ホスト限定のため意図通り）
 
-## 脆弱性修正計画
+## 脆弱性修正: Phase 1/2 完了（`ad953f8`）
 
-`docs/specs/security-remediation-plan.md` に棚卸しと修正計画をまとめた。
+計画と進捗は `docs/specs/security-remediation-plan.md`。
 
-**最重要（P0-1）**: API ルート 97 本のうち **66 本が無認証**。
+### 修正前に判明していた状態
+
+**P0-1**: API ルート 97 本のうち **66 本が無認証**。
 `/api/opencode/[...path]`（全メソッド）と `/api/tasks` を含むため、
 LAN 上の任意端末が認証なしにエージェントを起動でき、**実質的に無認証 RCE**。
-`deploy/Caddyfile` の Basic Auth はコメントアウトされており外側ゲートも無い。
-ログイン UI は LAN でログインを要求するので保護されていると誤認しやすいが、
-ゲートは UI のみで API は保護していない。
+`deploy/Caddyfile` の Basic Auth もコメントアウトで外側ゲート無し。
+ログイン UI は LAN でログインを要求するため保護されていると誤認しやすかったが、
+ゲートは UI のみで API は保護していなかった。
 
-**P0-2**: `Origin` を検証するルートが 0 件で、`isLocalHostRequest` は資格情報を
-要求しない。ホストPCで悪意あるページを開くと `http://127.0.0.1:3000/api/...` へ
-`text/plain` で POST でき（preflight 回避）、全状態変更 API を叩ける。
+**P0-2**: `Origin` を検証するルートが 0 件。`isLocalHostRequest` は資格情報を
+要求しないため、ホストPCで悪意あるページを開くと `http://127.0.0.1:3000/api/...` へ
+`text/plain` で POST でき（preflight 回避）、全状態変更 API を叩けた。
 
-暫定緩和: `deploy/Caddyfile` の `basicauth` を有効化するか LAN 公開を止める。
+### 修正内容
+
+`web/src/lib/api-guard.ts` の `requireAuthorized` が **CSRF → 認可** の順に判定する。
+
+1. `rejectCrossSite`: 状態変更メソッドで `Origin` の allowlist 一致を要求。
+   `Sec-Fetch-Site: cross-site` も拒否。同一ホストの別ポートは許可（Caddy 経由）。
+   `Origin` 欠落は非ブラウザ client とみなし通す（ブラウザは必ず付けるため）。
+   `Origin: null` は拒否。**loopback でも必ずこの判定を通す**のが要点。
+2. 認可: loopback または host が検証したセッション。
+
+公開は `PUBLIC_API_ROUTES` の 4 本のみ（`/api/health`、`/api/auth/{session,login,logout}`）。
+`/api/health` を公開に残したのは、トレイホストの supervisor と Caddy が
+死活監視に使うため。
+
+`web/src/lib/api-guard-coverage.test.ts` が全ルートを走査し、
+ガードの無いルート・旧 `rejectUnlessLocal*` の残存・opencode プロキシの
+ガード位置（`context.params` より前）を検証する。**再発するとテストが落ちる。**
+
+### 実装上の注意点
+
+- `req` 引数を持たないハンドラが 19 個あり、引数を追加した。
+- `/api/addons/codexbar/*` は `@addons/codexbar/api/*` の**再エクスポート**で、
+  実装は `web/src` 外にある。走査テストは再エクスポート先も読む。
+- テスト側は `Host` ヘッダを付けないと 403 になる（33 ファイルが該当した）。
+  **本番の fail-closed を維持するため、Host 欠落時に URL へフォールバックしない。**
+  `0.0.0.0` バインド時、Host を省いた生の HTTP リクエストで Next が `localhost` を
+  補完し loopback 扱いになる回避経路が生まれるため。
 
 ## 未修理の脆弱性: host control server の DNS リバインディング（P1-1）
 

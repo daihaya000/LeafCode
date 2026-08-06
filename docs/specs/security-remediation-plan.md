@@ -1,6 +1,20 @@
 # セキュリティ修正計画
 
-作成: 2026-08-06 / 対象コミット: `2b3dad5`
+作成: 2026-08-06 / 調査時コミット: `2b3dad5`
+
+## 進捗
+
+| Phase | 状態 | コミット |
+|-------|------|----------|
+| 1 default-deny 化 | **完了** | `ad953f8` |
+| 2 CSRF 対策 | **完了** | `ad953f8` |
+| 3 control server の Host 検証 | 未着手 | — |
+| 4 セッション失効・権限 | 未着手 | — |
+| 5 ファイル権限・監査・スロットリング | 未着手 | — |
+
+Phase 1/2 完了後の実測: ガードなしのルートは **0**（公開 allowlist 4 本を除く）。
+`web/src/lib/api-guard-coverage.test.ts` が漏れを検出するため、
+新規ルートをガードなしで追加するとテストが失敗する。
 
 ## 現在の公開構成（実測）
 
@@ -80,7 +94,26 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
 
 ## 修正フェーズ
 
-### Phase 1（P0-1）default-deny 化
+### Phase 1（P0-1）default-deny 化 — 完了
+
+実施内容:
+
+- `web/src/lib/api-guard.ts` に `requireAuthorized` / `requireHostMachine` を新設。
+- 公開 allowlist は `PUBLIC_API_ROUTES`（`/api/health`、`/api/auth/session`、
+  `/api/auth/login`、`/api/auth/logout`）の 4 本のみ。
+- 残る全ルートにガードを適用。`req` 引数を持たなかった 19 ハンドラには引数を追加した。
+- `/api/opencode/[...path]` は `export const GET = proxy` 形式のため `proxy` 内に 1 箇所追加し、
+  `context.params` を読む前に判定させた。
+- `/api/addons/codexbar/*` は `@addons/codexbar/api/*` の再エクスポートだったため、
+  実装側（`addons/codexbar/api/{providers,tokens,usage}.ts`）にガードを追加した。
+  走査テストは再エクスポート先も読むようにした。
+- 旧 `rejectUnlessLocal*` の直接使用は route から排除した（CSRF 判定を通さないため）。
+  `/api/browse/folder` のみ `isLocalHostRequest` を残しているが、これは認可ではなく
+  ダイアログ待ち時間の切り替えに使っている。
+
+以下は当初計画（記録として残す）。
+
+
 
 1. `web/src/lib/api-guard.ts` を新設し `requireAuthorized(req)` を用意する。
    認可は既存の `rejectUnlessLocalOrAuthenticated` と同じ判定。
@@ -100,7 +133,24 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
   Edge runtime では動かず、Node runtime middleware（Next 15 で experimental）が必要。
   単一チョークポイントは魅力的だが、実験的機能への依存が増える。
 
-### Phase 2（P0-2）CSRF 対策
+### Phase 2（P0-2）CSRF 対策 — 完了
+
+実施内容（`rejectCrossSite`）:
+
+- `POST` / `PUT` / `PATCH` / `DELETE` で `Origin` を検証する。
+  許可元は request の `Host` から導出（`http://` と `https://` の両方）＋
+  `OPENCODE_WEBUI_ALLOWED_ORIGINS` による明示指定。
+- `Sec-Fetch-Site: cross-site` は `Origin` に関係なく拒否する。
+- 同一ホストで**ポートが異なる** origin は許可する（Caddy `:8443` → Next `:3000`）。
+- `Origin` 欠落は許可する。ブラウザは状態変更リクエストに必ず付けるため、
+  欠落は非ブラウザ client（curl、smoke script）を意味し、認可判定は別途通る。
+  `Origin: null`（opaque origin）は拒否する。
+- **loopback であっても CSRF 判定を先に通す。** これが本質で、
+  `isLocalHostRequest` が資格情報なしで許可することの穴を閉じている。
+
+以下は当初計画（記録として残す）。
+
+
 
 1. `assertSameOrigin(req)` を追加し、`GET` / `HEAD` 以外で
    `Origin` が許可リスト（自身の origin 群）と一致することを要求する。
@@ -133,14 +183,11 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
    認証成功・失敗・ユーザー管理操作を記録する（token とパスワードは記録しない）。
 3. スロットリングを送信元 IP でも集計し、`%APPDATA%` に永続化する。
 
-## 暫定緩和（コード変更なしで即実施可能）
+## 暫定緩和
 
-Phase 1 を適用するまでの間、次のいずれかを推奨する。
+Phase 1/2 が完了したため不要。ユーザー判断により実施しなかった。
 
-1. **Caddy の Basic Auth を有効化する。** `deploy/Caddyfile` の `basicauth`
-   ブロックのコメントを外し、`caddy hash-password` のハッシュを設定する。
-   外側ゲートが復活し、P0-1 / P0-2 の LAN 経路を塞げる。
-2. LAN 公開を止める（Caddy を停止、`OPENCODE_WEBUI_CADDY=0`）。
+なお `deploy/Caddyfile` の `basicauth` を有効化すれば多層防御になる（任意）。
 
 ## 検証
 
