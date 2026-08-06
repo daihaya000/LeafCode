@@ -8,7 +8,7 @@ const SIDE_PANEL_KEY = "webui:side-panel";
 const SHOW_DIFF_KEY = "webui:side-show";
 const TAB_KEY = "webui:side-tab";
 
-export type SidePanelKind = "diff" | "files" | "pty" | "graph";
+export type SidePanelKind = "diff" | "files" | "pty" | "graph" | "markdown";
 export type ChatTab = "chat" | "diff";
 
 export function readSidePanel(): SidePanelKind {
@@ -19,7 +19,8 @@ export function readSidePanel(): SidePanelKind {
       raw === "diff" ||
       raw === "files" ||
       raw === "pty" ||
-      raw === "graph"
+      raw === "graph" ||
+      raw === "markdown"
     ) {
       return raw;
     }

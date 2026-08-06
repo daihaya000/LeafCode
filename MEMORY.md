@@ -243,3 +243,67 @@ LAN 上の任意端末が認証なしにエージェントを起動でき、**�
 - `LogonUser` を1回呼ぶたびに Windows の失敗カウンタが進む。
   WebUI 側は 5 回で止めるが、OS 側のロックアウト閾値が 5 未満だと
   WebUI のスロットリングより先に OS がロックする。
+
+---
+
+# 作業ログ: 右メニューに Markdown ビューワーを追加
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+TaskView の右サイドパネルに「Markdown ビューワー」を追加し、エージェントが提出した
+`.md` ファイル（計画書やレポート）を一覧から選んで閲覧できるようにする。
+
+## 実装内容
+
+### `web/src/lib/side-panel-state.ts`
+
+- `SidePanelKind` に `"markdown"` を追加
+- `readSidePanel()` の復元対象に `markdown` を追加
+
+### `web/src/components/task/MarkdownViewerPanel.tsx`（新規）
+
+- セッションメッセージから assistant 発の `.md` ファイルパスを抽出する
+  `collectMarkdownFiles()` をエクスポート
+  - `part.type === "file"` の `filename` と `part.type === "text"` の本文が
+    絶対パス形式の `.md` なら候補とする（`extractPlanMarkdownPath` の緩和版）
+  - 画像添付（`isImageFilePart`）は除外
+  - 重複パスは初出順で 1 件だけ表示
+- 選択中のファイル内容は既存の `/api/files/content` で取得し、`Markdown` コンポーネントで描画
+- 左リスト＋右本文の 2 ペイン構成（md 未満では縦積み）
+- 読み込み中 / エラー / 再試行 UI を備える
+- 空状態メッセージ: 「エージェントが提出した Markdown ファイルはありません」
+
+### `web/src/components/task/TaskView.tsx`
+
+- `FileText` アイコンと `MarkdownViewerPanel` をインポート
+- ヘッダーツールバーに Markdown ビューワーボタンを追加（`isLg` のみ表示）
+- ヘッダーのケバブメニュー「パネル切替」に `panel-markdown` を追加
+- `sidePanel === "markdown"` のとき `MarkdownViewerPanel` をレンダリング
+  - `directory={task.directory}` / `messages={stream.visibleMessages}` を渡す
+
+### `web/src/components/task/MarkdownViewerPanel.test.tsx`（新規）
+
+- `collectMarkdownFiles` の抽出・重複排除・画像除外
+- パネルの空状態・自動選択・内容描画・切替・エラー時再試行
+- 計 7 テスト
+
+## 設計上のメモ
+
+- `/api/files/content` はプロジェクトディレクトリ配下の `.md` のみ許可する
+  （`assertAllowedDirectory` + 拡張子チェック済み）。プロジェクト外パスは 403。
+- plan エージェント以外の提出も拾うため `extractPlanMarkdownPath` ではなく
+  専用の `partMarkdownPath` を定義（`agent="plan"` / `completed` ゲートなし）。
+- 画像添付ファイルはインラインプレビューが別途あるため除外。
+
+## 検証結果
+
+- `npx tsc --noEmit` ... 変更ファイルにエラーなし
+  （無関係な既存テストファイルの構文エラーのみ存在）
+- `npx eslint` ... 成功
+- `npx vitest run src/components/task/MarkdownViewerPanel.test.tsx` ... 7 passed
+- `npx vitest run src/components/task/TaskView.test.tsx` ... 113 passed
+- `npx vitest run src/components/task/PlanDocumentCard.test.tsx` ... 3 passed

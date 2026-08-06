@@ -34,6 +34,7 @@ import {
   X,
   ListPlus,
   Zap,
+  FileText,
 } from "lucide-react";
 
 import { AccessModeSelect } from "@/components/AccessModeSelect";
@@ -180,6 +181,7 @@ import { MessageMetaHeader } from "./MessageMetaHeader";
 import { PartView } from "./PartView";
 import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
+import { MarkdownViewerPanel } from "./MarkdownViewerPanel";
 import { PtyPanel } from "./PtyPanel";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { QuestionCard } from "./QuestionCard";
@@ -3077,6 +3079,13 @@ export function TaskView({ taskId }: { taskId: string }) {
         active: showDiff && sidePanel === "pty",
         onSelect: () => toggleSidePanel("pty"),
       },
+      {
+        id: "panel-markdown",
+        label: "Markdown",
+        icon: <FileText className="h-4 w-4" />,
+        active: showDiff && sidePanel === "markdown",
+        onSelect: () => toggleSidePanel("markdown"),
+      },
     ];
 
     const groups: KebabGroup[] = [];
@@ -3512,6 +3521,21 @@ export function TaskView({ taskId }: { taskId: string }) {
               onClick={() => toggleSidePanel("diff")}
             >
               <PanelRight className="h-4 w-4" />
+            </Button>
+          )}
+          {isLg && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Markdown ビューワー"
+              aria-label="Markdown ビューワー"
+              className={cx(
+                "h-11 w-11 md:h-9 md:w-9",
+                showDiff && sidePanel === "markdown" && "bg-surface-2 text-text",
+              )}
+              onClick={() => toggleSidePanel("markdown")}
+            >
+              <FileText className="h-4 w-4" />
             </Button>
           )}
           </div>
@@ -4506,6 +4530,14 @@ export function TaskView({ taskId }: { taskId: string }) {
           {sidePanel === "pty" && (
             <div className="flex min-h-0 w-full flex-1">
               <PtyPanel directory={task.directory} />
+            </div>
+          )}
+          {sidePanel === "markdown" && (
+            <div className="flex min-h-0 w-full flex-1">
+              <MarkdownViewerPanel
+                directory={task.directory}
+                messages={stream.visibleMessages}
+              />
             </div>
           )}
         </div>
