@@ -17,6 +17,7 @@ import {
   Star,
   Sun,
   Trash2,
+  User,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { AddProjectButton } from "@/components/AddProjectButton";
@@ -29,7 +30,7 @@ import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSett
 import { ModelRankingSettings } from "@/components/settings/ModelRankingSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
-import { Badge, Button, cx, timeAgo } from "@/components/ui";
+import { Badge, Button, cx, Spinner, timeAgo } from "@/components/ui";
 import { notifyTasksChanged } from "@/lib/events";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
 import { copyText } from "@/lib/clipboard";
@@ -44,6 +45,12 @@ import {
 } from "@/lib/currency";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
+import {
+  deleteAuthUser,
+  listAuthUsers,
+  type AuthUser,
+  upsertAuthUser,
+} from "@/lib/auth";
 import type { HealthDto, ProjectDto } from "@/lib/types";
 import {
   clampHangTimeoutMs,
@@ -104,7 +111,8 @@ type SettingsTab =
   | "agents"
   | "providers"
   | "ranking"
-  | "profiles";
+  | "profiles"
+  | "users";
 
 type UpdateTarget = "webui" | "opencode";
 
@@ -262,6 +270,12 @@ export function SettingsView() {
   const [commitAuthorName, setCommitAuthorName] = useState("");
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitIdentityError, setCommitIdentityError] = useState<string | null>(null);
+  const [authUsers, setAuthUsers] = useState<AuthUser[]>([]);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
   const [fxStatus, setFxStatus] = useState<
     | { kind: "idle" }
     | { kind: "loading" }
@@ -428,6 +442,65 @@ export function SettingsView() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const refreshAuthUsers = useCallback(async () => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const users = await listAuthUsers();
+      setAuthUsers(users);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "ユーザー一覧の取得に失敗しました");
+    } finally {
+      setAuthBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "users") {
+      void refreshAuthUsers();
+    }
+  }, [activeTab, refreshAuthUsers]);
+
+  const addUser = async () => {
+    const username = newUsername.trim();
+    const password = newPassword;
+    if (!username || !password) {
+      setAuthError("ユーザー名とパスワードを入力してください");
+      return;
+    }
+    if (password.length < 4) {
+      setAuthError("パスワードは 4 文字以上にしてください");
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    const result = await upsertAuthUser(username, password);
+    setAuthBusy(false);
+    if (!result.ok) {
+      setAuthError(result.error);
+      return;
+    }
+    setAuthSuccess(`ユーザー「${username}」を保存しました`);
+    setNewUsername("");
+    setNewPassword("");
+    await refreshAuthUsers();
+  };
+
+  const removeUser = async (username: string) => {
+    setAuthBusy(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    const result = await deleteAuthUser(username);
+    setAuthBusy(false);
+    if (!result.ok) {
+      setAuthError(result.error);
+      return;
+    }
+    setAuthSuccess(`ユーザー「${username}」を削除しました`);
+    await refreshAuthUsers();
+  };
 
   const requestRestart = (target: "webui" | "opencode" | "all") => {
     setError(null);
@@ -810,6 +883,7 @@ export function SettingsView() {
     { key: "mcp", label: "MCP" },
     { key: "plugins", label: "プラグイン" },
     { key: "addons", label: "アドオン" },
+    { key: "users", label: "ユーザー" },
   ];
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement>>>({});
   const moveTab = (index: number) => {
@@ -1676,6 +1750,93 @@ export function SettingsView() {
         {activeTab === "providers" && <ProviderModelsSettings />}
 
         {activeTab === "ranking" && <ModelRankingSettings />}
+
+        {activeTab === "users" && (
+          <section>
+            <h2 className="mb-3 text-sm font-semibold text-muted">ユーザー管理</h2>
+            <p className="mb-3 text-xs text-faint">
+              WebUI ログインで使うユーザーを追加・変更・削除します。パスワードは 4 文字以上です。
+            </p>
+
+            <div className="mb-4 rounded-xl border border-border bg-surface p-4">
+              <h3 className="mb-3 text-sm font-semibold text-text">ユーザーを追加 / パスワード変更</h3>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  placeholder="ユーザー名"
+                  aria-label="新規ユーザー名"
+                  autoComplete="username"
+                  className="h-10 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="パスワード（4 文字以上）"
+                  aria-label="新規パスワード"
+                  autoComplete="new-password"
+                  className="h-10 flex-1 rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
+                />
+                <Button
+                  busy={authBusy}
+                  disabled={authBusy || !newUsername.trim() || newPassword.length < 4}
+                  onClick={() => void addUser()}
+                >
+                  保存
+                </Button>
+              </div>
+              {authError && (
+                <p className="mt-2 text-xs text-danger" role="alert">
+                  {authError}
+                </p>
+              )}
+              {authSuccess && (
+                <p className="mt-2 text-xs text-success" role="status">
+                  {authSuccess}
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <h3 className="mb-3 text-sm font-semibold text-text">登録済みユーザー</h3>
+              {authBusy && authUsers.length === 0 ? (
+                <div className="flex justify-center py-6">
+                  <Spinner />
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {authUsers.map((u) => (
+                    <li
+                      key={u.username}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted" />
+                        <span className="text-sm font-medium">{u.username}</span>
+                      </div>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        busy={authBusy}
+                        disabled={authBusy}
+                        onClick={() => void removeUser(u.username)}
+                      >
+                        削除
+                      </Button>
+                    </li>
+                  ))}
+                  {authUsers.length === 0 && (
+                    <li className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-faint">
+                      ユーザーが登録されていません
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
       </main>
       </div>
     </div>

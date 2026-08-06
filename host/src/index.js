@@ -54,6 +54,13 @@ import {
 // runs main() when executed directly.
 import { isThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
 import { resolveProductionDistDir } from '../../scripts/web-dist-dir.mjs';
+import {
+  deleteUser,
+  hasUsers,
+  listUsers,
+  upsertUser,
+  verifyUser,
+} from './auth-store.js';
 
 // systray2 CJS interop: default.default is the constructor under Node ESM
 const SysTray =
@@ -102,6 +109,8 @@ let WEBUI_PORT = readPort(process.env.OPENCODE_WEBUI_PORT, 3000);
 /** Localhost control plane for WebUI / tray restart actions. */
 const CONTROL_PORT = readPort(process.env.OPENCODE_WEBUI_HOST_CONTROL_PORT, 18765);
 let CONTROL_URL = `http://127.0.0.1:${CONTROL_PORT}`;
+/** Secret for signing host-issued WebUI session cookies. Generated once per host run. */
+const CONTROL_SECRET = randomBytes(32).toString('base64url');
 /** Local-only Browser Bridge Broker. This port is never exposed through Caddy. */
 const BROWSER_BRIDGE_PORT = readPort(process.env.OPENCODE_WEBUI_BROWSER_BROKER_PORT, 18766);
 
@@ -2299,6 +2308,14 @@ async function startControlServer() {
     onVoiceInput: () => launchWindowsVoiceInput(),
     onGetLogs: (since) => getLogEntries(since),
     onAllowFirewall: () => allowFirewallPort(),
+    authStore: {
+      listUsers,
+      verifyUser,
+      upsertUser,
+      deleteUser,
+      hasUsers,
+    },
+    sessionSecret: CONTROL_SECRET,
   });
   try {
     await listenControlServer(server, CONTROL_PORT);

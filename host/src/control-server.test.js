@@ -1,6 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'events';
 import { createControlRequestHandler, matchControlRoute } from './control-server.js';
+
+/**
+ * Minimal IncomingMessage-like readable for tests. The control server reads
+ * JSON bodies by attaching data/end listeners, so an EventEmitter that emits
+ * the body buffer and then 'end' is sufficient.
+ */
+class MockReadable extends EventEmitter {
+  constructor(body = '') {
+    super();
+    this.body = Buffer.from(body);
+  }
+
+  on(event, listener) {
+    super.on(event, listener);
+    if (event === 'data') {
+      // Emit asynchronously so listeners are attached before data arrives.
+      setImmediate(() => listener(this.body));
+    }
+    if (event === 'end') {
+      setImmediate(() => listener());
+    }
+    return this;
+  }
+}
 
 function fakeResponse() {
   return {
@@ -9,7 +34,11 @@ function fakeResponse() {
     body: null,
     writeHead(status, headers) {
       this.statusCode = status;
-      this.headers = headers;
+      this.headers = headers || {};
+    },
+    setHeader(name, value) {
+      if (!this.headers) this.headers = {};
+      this.headers[name] = value;
     },
     end(body) {
       this.body = body ? JSON.parse(body) : null;
@@ -226,6 +255,123 @@ test('GET /logs reports 501 when unsupported by host', async () => {
   const res = fakeResponse();
   await handle({ method: 'GET', url: '/logs' }, res);
   assert.equal(res.statusCode, 501);
+  assert.equal(res.body.ok, false);
+});
+
+test('matchControlRoute maps user management and auth endpoints', () => {
+  assert.equal(matchControlRoute('GET', '/users'), 'users');
+  assert.equal(matchControlRoute('POST', '/users'), 'users');
+  assert.equal(matchControlRoute('DELETE', '/users'), 'users');
+  assert.equal(matchControlRoute('POST', '/auth/login'), 'auth');
+  assert.equal(matchControlRoute('POST', '/auth/logout'), 'auth');
+  assert.equal(matchControlRoute('GET', '/auth/login'), null);
+});
+
+test('GET /users returns users from the auth store', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: {
+      listUsers: () => [{ username: 'alice', updatedAt: '2026-01-01' }],
+      verifyUser: () => false,
+      upsertUser: () => ({ ok: false, error: 'unsupported' }),
+      deleteUser: () => ({ ok: false, error: 'unsupported' }),
+      hasUsers: () => true,
+    },
+  });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/users' }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { users: [{ username: 'alice', updatedAt: '2026-01-01' }] });
+});
+
+test('POST /users upserts a user', async () => {
+  let upserted = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: {
+      listUsers: () => [],
+      verifyUser: () => false,
+      upsertUser: (username, password) => {
+        upserted = { username, password };
+        return { ok: true };
+      },
+      deleteUser: () => ({ ok: false, error: 'unsupported' }),
+      hasUsers: () => true,
+    },
+  });
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'alice', password: 'secret' }));
+  req.method = 'POST';
+  req.url = '/users';
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(upserted, { username: 'alice', password: 'secret' });
+});
+
+test('DELETE /users removes a user', async () => {
+  let deleted = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: {
+      listUsers: () => [],
+      verifyUser: () => false,
+      upsertUser: () => ({ ok: false, error: 'unsupported' }),
+      deleteUser: (username) => {
+        deleted = username;
+        return { ok: true };
+      },
+      hasUsers: () => false,
+    },
+  });
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'alice' }));
+  req.method = 'DELETE';
+  req.url = '/users';
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(deleted, 'alice');
+});
+
+test('POST /auth/login sets a session cookie on success', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: {
+      listUsers: () => [],
+      verifyUser: (username, password) => username === 'alice' && password === 'secret',
+      upsertUser: () => ({ ok: false, error: 'unsupported' }),
+      deleteUser: () => ({ ok: false, error: 'unsupported' }),
+      hasUsers: () => true,
+    },
+    sessionSecret: 'test-secret',
+  });
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'alice', password: 'secret' }));
+  req.method = 'POST';
+  req.url = '/auth/login';
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.ok(res.headers?.['Set-Cookie']?.includes('webui_session='));
+});
+
+test('POST /auth/login rejects bad credentials', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: {
+      listUsers: () => [],
+      verifyUser: () => false,
+      upsertUser: () => ({ ok: false, error: 'unsupported' }),
+      deleteUser: () => ({ ok: false, error: 'unsupported' }),
+      hasUsers: () => true,
+    },
+    sessionSecret: 'test-secret',
+  });
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'alice', password: 'wrong' }));
+  req.method = 'POST';
+  req.url = '/auth/login';
+  await handle(req, res);
+  assert.equal(res.statusCode, 401);
   assert.equal(res.body.ok, false);
 });
 
