@@ -3,6 +3,7 @@ import { isIntelligenceVariant, type IntelligenceVariant } from "./model-variant
 import { OcError, ocServer } from "./oc-server";
 import { assertSafeOpenCodeSessionId } from "./opencode-id";
 import type { MessageWithParts, SessionStatus } from "./types";
+import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
 
 export type GoalLoopStatus =
   | "queued"
@@ -1060,6 +1061,12 @@ function applyAssistantResult(
   // A pause/stop/manual send invalidates the revision while the transcript was
   // being read. In that case the old assistant result must be discarded.
   if (applied.changes === 0) return;
+
+  // The loop is genuinely `completed` now. Trigger background memory
+  // extraction (fire-and-forget) so durable facts are captured for reuse.
+  if (nextStatus === "completed") {
+    scheduleAutoExtractAfterGoalCompleted(loop);
+  }
 }
 
 /**

@@ -90,6 +90,43 @@ Go-plan アカウントの CLI 経由アクセスを維持する）を指すと�
 
 ---
 
+# 作業ログ: 自動抽出フック(goal-completed)
+
+## 日付
+
+2026-08-07(前回に続き)
+
+## 実装内容
+
+`docs/specs/memory-layer.md` の「自動抽出トリガー」のうち goal-completed 分。
+
+### 新規ファイル
+
+- `web/src/lib/goal-memory-hook.ts` — 抽出フック
+  - `AUTO_EXTRACT_SETTING_KEY = "memory.auto_extract"`(settings テーブル, デフォルト有効)
+  - `isAutoExtractEnabled()`(settings 未取得/例外時は有効扱い — goal-loop 統合テストが
+    `./db` を getSetting 無しでモックするため防衛的にデフォルト true)
+  - `scheduleAutoExtractAfterGoalCompleted(loop)` — fire-and-forget で
+    `runMemoryExtraction({workspaceId, sessionId})` を起動。失敗は無視(ループを妨げない)。session 未束縛はスキップ
+- `web/src/lib/goal-memory-hook.test.ts` — 5件(デフォルト有効 / 無効設定 / 実行 / 無効時のスキップ / 未束縛スキップ)
+
+### goal-loop.ts 変更
+
+- `applyAssistantResult`(goal-loop.md 遷移#9)で、UPDATE が成功し `nextStatus === "completed"`
+  (`applied.changes !== 0`)になった直後に `scheduleAutoExtractAfterGoalCompleted(loop)` を呼ぶ。
+  `loop.workspaceId` / `loop.sessionId`(= opencode_session_id) をそのまま抽出に使う。
+
+### 設計ポイント
+
+- 抽出はネットワーク/モデルを伴うため、goal loop の状態遷移から完全に切り離して fire-and-forget。
+- `runMemoryExtraction` は `workspaceId` + `sessionId` を引数に取り、未承認候補(approved=0)だけを蓄積。
+
+### 補足(前フェーズからの差分なし)
+
+- goal-loop 全体 31+34テスト(前から)、hook 5件が全て成功。tsc / eslint clean。
+
+---
+
 # 作業ログ: メモリ層 REST API ルート + 自動抽出ドライバ
 
 ## 日付
