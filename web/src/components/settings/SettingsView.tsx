@@ -667,9 +667,11 @@ export function SettingsView() {
     setUpdateState({ target, kind: "running" });
     setError(null);
     try {
+      const timeoutMs =
+        target === "nextjs" ? 200_000 : target === "webui" ? 400_000 : 130_000;
       const res = await timedFetch(`/api/updates/${target}`, {
         method: "POST",
-        timeoutMs: 130_000,
+        timeoutMs,
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;

@@ -169,6 +169,9 @@ export async function login(username: string, password: string): Promise<{ ok: t
     if (status === 401) {
       return { ok: false, error: "ユーザー名またはパスワードが違います" };
     }
+    if (status === 429 && err instanceof Error && err.message) {
+      return { ok: false, error: err.message };
+    }
     return { ok: false, error: "通信エラーが発生しました" };
   }
 }

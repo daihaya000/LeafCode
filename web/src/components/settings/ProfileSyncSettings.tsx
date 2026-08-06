@@ -77,6 +77,7 @@ export function ProfileSyncSettings() {
       setStatus(data.status);
       setPlan(data.plan);
       setLoadState("ready");
+      setError(null);
     } catch (err) {
       if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "同期状況の取得に失敗しました");
