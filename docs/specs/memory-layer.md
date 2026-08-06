@@ -25,11 +25,15 @@ OpenCode CLI 自体には長期メモリがない。セッションをまたぐ�
 
 ## データモデル
 
-既存 `db.ts` のマイグレーション機構(`db.goal-loop-migration.test.ts` と同型)に追加する。
+`db.ts` はバージョン管理ランナーを持たず、`CREATE TABLE IF NOT EXISTS` と
+guard付き `ALTER TABLE`(例: `db.ts:344`)の組み合わせで初期化する。本テーブルは新規のため
+`CREATE TABLE IF NOT EXISTS` で追加し、FTS同期トリガは `DROP TRIGGER IF EXISTS` →
+`CREATE TRIGGER` で冪等に作成する。テストは `db.goal-loop-migration.test.ts` と同型で行う。
 
 ```sql
 CREATE TABLE memories (
-  id TEXT PRIMARY KEY,                    -- opencode-id準拠
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  public_id TEXT NOT NULL UNIQUE,         -- opencode-id準拠(API・MCPの参照キー)
   workspace_id TEXT NOT NULL,
   kind TEXT NOT NULL,                     -- 'fact' | 'preference' | 'lesson' | 'reference'
   content TEXT NOT NULL,
@@ -42,7 +46,23 @@ CREATE TABLE memories (
   use_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
-CREATE VIRTUAL TABLE memories_fts USING fts5(content, content='memories', content_rowid='rowid');
+CREATE VIRTUAL TABLE memories_fts USING fts5(content);   -- 独立FTS表
+```
+
+FTSは**外部コンテンツ表(`content='memories'`)にしない**。`id TEXT PRIMARY KEY` は
+rowid と分離するため `content_rowid='rowid'` と噛み合わず壊れやすい。独立FTS表を
+`memories.id`(INTEGER PK=rowid)と同期する:
+
+```sql
+CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
+  INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+END;
+CREATE TRIGGER memories_fts_update AFTER UPDATE ON memories BEGIN
+  UPDATE memories_fts SET content = new.content WHERE rowid = new.id;
+END;
+CREATE TRIGGER memories_fts_delete AFTER DELETE ON memories BEGIN
+  DELETE FROM memories_fts WHERE rowid = old.id;
+END;
 ```
 
 不変条件:
@@ -62,19 +82,37 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 | ツール | 入力 | 意味 |
 | --- | --- | --- |
 | `memory_search` | `query`, `kind?`, `limit?`(既定5) | FTS5検索 + `last_used_at` 更新。承認済み限定 |
-| `memory_add` | `kind`, `content` | `provenance='agent'` で直接 `approved=1` 追加 |
-| `memory_update` | `id`, `content?`, `kind?` | 上書き。存在しないidはエラー |
-| `memory_delete` | `id` | 削除。FTS同期削除 |
+| `memory_add` | `kind`, `content` | `provenance='agent'` で追加(詳細は汚染対策参照) |
+| `memory_update` | `public_id`, `content?`, `kind?` | 上書き。存在しないidはエラー |
+| `memory_delete` | `public_id` | 削除。FTS同期削除 |
 
-サーバーはホストのDBを直接開く(`better-sqlite3`、読み書き)。
-ワークスペース解決は起動時引数の `--workspace` で固定する(セッションごとに1プロセス、
-`opencode.json` の `${OPENCODE_WORKSPACE}` 相当の変数で渡す。変数が使えない場合は
-wrapperスクリプトが解決する)。
+サーバーはホストのDBを直接開く(`better-sqlite3`)。
+
+- DBパス: `web/src/lib/paths.ts` の `dbPath()` と同一。MCP起動時に env
+  `OPENCODE_WEBUI_DATA_DIR` で絶対パスを渡す(エージェントの作業ディレクトリから相対解決しない)。
+- 同時アクセス: WebサーバーとMCPが別プロセスで同じSQLiteを開く。接続時に
+  `busy_timeout`(5000ms)と `journal_mode = WAL` を必ず設定する(web側 `db.ts:116` はWAL済み)。
+  書込は memories 系テーブルのみに限定し、他テーブルには触れない。
+- ワークスペース解決は起動時引数の `--workspace` で固定する(セッションごとに1プロセス、
+  `opencode.json` の `${OPENCODE_WORKSPACE}` 相当の変数で渡す。変数が使えない場合は
+  wrapperスクリプトが解決する)。
+
+### プロンプト汚染対策
+
+`memory_add` で追加した行は `approved=1` になり、将来の注入文脈に任意の文を混入できる経路に
+なる(プロンプトインジェクションで記憶を汚染される可能性)。
+
+- `provenance='agent'` の全行は管理UIに常時一覧表示し、ワンクリックで削除・承認取消できる。
+- 注入時は各行に出所(`provenance` と抽出元)を添える。
+- `memory_add`/`memory_delete` はすべて監査ログに記録する。
 
 ## 自動抽出
 
 トリガー: goal loop の `completed` 遷移(`goal-loop.md` 遷移表#9)および
-ワークスペースのセッションが60分間idleになったことの検出(既存SSEの最終イベント時刻を流用)。
+ワークスペースのセッションが60分間idleになったことの検出。idle検出は既存に無いため
+**新規実装**とする: agent-monitor.md が新設するサーバー内イベントエミッターから
+セッション最終アクティビティ時刻を保持し、サーバー内タイマーで60分超過を判定する
+(ブラウザ向けSSEの時刻流用やポーリングはしない)。
 
 手順:
 
@@ -91,9 +129,9 @@ wrapperスクリプトが解決する)。
 
 ## 注入
 
-BFF の `POST /api/session/.../message` に相当する送信経路で、ユーザーメッセージ送信前に
-以下のプレフィックスを付与する(OpenCodeの`message` APIがシステム文脈の上書きを許さないため、
-先頭ユーザーメッセージへの注入とする):
+OpenCode の `message` API はシステム文脈の上書きを許さないため、先頭ユーザーメッセージに
+プレフィックスを付与して注入する。送信は goal-loop が使用するものと同一のメッセージ送信経路
+から行う。
 
 ```
 <workspace-memory>
@@ -101,19 +139,24 @@ BFF の `POST /api/session/.../message` に相当する送信経路で、ユー�
 </workspace-memory>
 ```
 
-注入された行の `use_count` を+1する。プレフィックスはUIの履歴には表示しない
-(送信直前にサーバー側で組み立てるため、表示トランスクリプトには残らない)。
+- 注入された行の `use_count` を+1する。
+- **このプレフィックスは OpenCode が受信したメッセージとしてトランスクリプトに永続化される**
+  (受信メッセージは保存されるため)。「履歴に残らない」という設計は成立しない。
+  そのため UI 側はメッセージ表示時に `<workspace-memory>` ブロックを除外して描画する
+  (表示前変換: `web/src/lib/message-parts.ts` 相当)。除外漏れ防止の単体テストを必須とする。
 
 ## API(Web側)
 
 すべて `api-guard.ts` の `requireAuthorized` + CSRF防御(既存パターン)を通す。
+新規 route は `api-guard-coverage.test.ts` の走査対象に入るため、実装後に `npm run test`
+全体を実行してガード漏れを検出する。
 
 | メソッド / パス | 意味 |
 | --- | --- |
 | `GET /api/memory?workspace_id=&approved=&kind=` | 一覧 |
-| `POST /api/memory/:id/approve` | 承認(`approved=1`) |
-| `PATCH /api/memory/:id` | 内容・種別編集 |
-| `DELETE /api/memory/:id` | 削除 |
+| `POST /api/memory/:public_id/approve` | 承認(`approved=1`) |
+| `PATCH /api/memory/:public_id` | 内容・種別編集 |
+| `DELETE /api/memory/:public_id` | 削除 |
 | `POST /api/memory/extract` | 手動抽出(対象セッションid指定) |
 
 承認・削除・抽出は `audit-log.js` 相当のWeb側監査(既存pattern)に記録する。
@@ -132,7 +175,8 @@ BFF の `POST /api/session/.../message` に相当する送信経路で、ユー�
 - `memory-layer.test.ts`(vitest): マイグレーション、CRUD、FTS同期、
   「未承認は検索に出ない」不変条件、重複スキップ。
 - MCPサーバーは `browser-bridge/test/mcp-stdio.test.mjs` と同型のstdio統合テスト。
-- 注入は送信経路の単体テスト(プレフィックスが付く/履歴には出ない/件数上限)。
+- 注入は送信経路の単体テスト(プレフィックスが付く / トランスクリプトに永続化される /
+  UI描画でブロックが除外される / 件数上限)。
 
 ## 実装順序
 

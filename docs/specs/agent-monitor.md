@@ -65,25 +65,61 @@ CREATE INDEX idx_agent_runs_ws ON agent_runs(workspace_id, status);
 
 | 集約種別 | 状態元 | 写像 |
 | --- | --- | --- |
-| goal-loop | `goal_loops.status` | queued→queued, running/verifying_completed→running, paused→`needs-review`(再開可能) or blocked, completed→done, stopped→stopped |
+| goal-loop | `goal_loops.status` + `pause_reason` | 下記の詳細表 |
 | workflow-node | ノード実行状態 | 実行中→running, attention要求→needs-review, 失敗→failed |
-| subagent | 親セッションツール呼び出し | tool call 中→running, 完了→done |
+| subagent | 親セッションツール呼び出し | `opencode-schema.d.ts` の tool系 part で `task` ツールの開始/完了を検知 → running / done |
+
+#### goal-loop の詳しい写像(`paused` は `pause_reason` で確定させる)
+
+| `goal_loops.status` | `pause_reason` | `agent_runs.status` |
+| --- | --- | --- |
+| `queued` | – | `queued` |
+| `running` / `verifying_completed` | – | `running` |
+| `paused` | `turn_limit` | `needs-review`(再開可能) |
+| `paused` | `scheduler_error` | `needs-review`(再開可能) |
+| `paused` | `verification_rejected` | `needs-review`(再開可能) |
+| `paused` | `transcript_unreadable` | `blocked`(自動再開不可) |
+| `blocked` | – | `blocked` |
+| `completed` | – | `done` |
+| `stopped` | – | `stopped` |
+
+#### subagent の検知
+
+セッションイベント(`message.updated`)に含まれる tool part から `task`(サブエージェント)
+ツールの呼び出しを検知する。開始(=running)と完了(=done)の遷移は tool part の状態
+(`state`)で判定し、厳密な part 型は実装時に `opencode-schema.d.ts` で確認する。
+検知関数には単体テストを付ける。
 
 ## 集約ドライバー
 
-`web/src/lib/agent-monitor.ts`(新規)。SSE/DBイベントを購読して写像し、
-`agent_runs` を更新する。ポーリングは禁止(goal-loopの教訓: 状態はイベントで駆動)。
+`web/src/lib/agent-monitor.ts`(新規)。**サーバー側イベントエミッター**を新設して駆動する。
 
-供給源:
+現状の前提を正す:
 
-- goal loop 状態変更(既存SSEイベント)
-- workflow ノード状態変更(`workflow-events.ts`)
+- `web/src/lib/events.ts` は**ブラウザ専用**(`window.dispatchEvent`)で、サーバー内バスではない。
+- 既存の workflow SSE(`api/tasks/[id]/workflow/events/route.ts`)はイベントバスではなく
+  **1秒ポーリング + revision差分**で実装されている(goal-loopの「状態はイベントで駆動」方針とは逆)。
+
+そのため本仕様は、DB書込後に同期emitする**サーバー内イベントエミッター**
+(例: `web/src/lib/agent-events.ts` の `EventEmitter` 互換)を新設し、集約はそれを購読する。
+goal-loop や workflow の状態を書き換える関数群が、書き込み完了後にこのエミッターへ
+`agent-relevant-change` を emit する。ポーリングは新規コードに持ち込まない。
+
+供給源(すべてエミッター上のイベント):
+
+- goal loop 状態変更(DB書込関数の呼び出し元で emit)
+- workflow ノード状態変更(`workflow-events.ts` の更新箇所で emit)
 - セッションイベント(`message.updated` 等)→ `current_tool` とハートビート更新
 - `hang-watchdog.ts` のタイムアウト通報 → `stall_reason` 設定 + `needs-review`/`blocked` 化
 
+集約ドライバーはエミッター購読時に `agent_runs` 行を upsert し、終端状態へ遷移した行は
+`finished_at` を書き、`/agents` 向けSSEへ再配信する。
+
 ## SSE拡張
 
-既存イベントストリームに `agent-run.updated`(ペイロード: `agent_runs` 行)を追加。
+新規 `/api/agent-runs/events`(SSE)を設ける。配信は上記エミッター購読ベースで行い、
+**1秒ポーリング(revision差分)方式は採用しない**(既存 workflow events の方式とは意図的に変える)。
+`agent-run.updated`(ペイロード: `agent_runs` 行)を配信する。
 kanban UIは初回にREST一覧取得、以降はイベント差分のみで描画する。
 
 ## UI(/agents)
@@ -94,15 +130,18 @@ kanban UIは初回にREST一覧取得、以降はイベント差分のみで描�
 - カードクリック → 対応する既存画面(goal loop パネル / TaskView / workflow ノード)へ遷移。
 - カードメニュー(委譲のみ、新ロジックなし):
   - `Stop`: goal loopは`stopped`、workflowノードはノード停止、セッションはabort相当。
-  - `Escalate`: サブエージェント/ノードの要約を親goal loopセッションへメッセージ送信
+  - `Escalate`: サブエージェント/ノードの要約を親セッションへメッセージ送信
     (`subagent-stall-recovery.md` の escalate 書式をそのまま使用)。
+    宛先は `(kind, ref_id)` が結びつくセッション。ワークスペースに goal loop が無い場合は
+    親セッション直送、それも無ければ改善Inbox(`improvements` テーブル)へ落とす。
   - `Retry`: needs-review/blocked の再開(既存 resume API)。
 - ヘッダー: 「新規サブエージェント」ボタン → コンポーザの既存エージェント選択で
   `subagent` 定義を起動(新規 `.opencode/agents/subagent.md` を用意)。
 
 ## セキュリティ
 
-- `/api/agent-runs` 系は `requireAuthorized` + CSRF。
+- `/api/agent-runs` 系は `requireAuthorized` + CSRF。新規 route は
+  `api-guard-coverage.test.ts` の走査対象に入るため、実装後に `npm run test` 全体を通す。
 - Stop/Escalate/Retry は既存操作APIの委譲であり、認可は委譲先で判定される。
   集約API自体は新しい権限を設けない。
 

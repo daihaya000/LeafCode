@@ -55,6 +55,60 @@
 
 ---
 
+# 作業ログ: Hermes Agent 的機能の仕様書レビューと修正
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+仕様書3本(`memory-layer.md` / `self-improvement-loop.md` / `agent-monitor.md`)を
+既存コードと突き合わせてレビューし、指摘を仕様へ反映する。
+
+## レビューで確定した事実(コード確認済み)
+
+- `web/src/lib/db.ts` はバージョン管理ランナーを持たず、`CREATE TABLE IF NOT EXISTS` +
+  guard付き `ALTER TABLE` で初期化する。FTS同期トリガは `DROP TRIGGER IF EXISTS` → `CREATE TRIGGER` で冪等化。
+- `journal_mode = WAL` は既に設定済み(`db.ts:116`)だが `busy_timeout` は未設定。
+- `web/src/lib/events.ts` は**ブラウザ専用**(`window.dispatchEvent`)。サーバー内イベントバスではない。
+- 既存の workflow SSE(`api/tasks/[id]/workflow/events/route.ts`)は**1秒ポーリング + revision差分**。
+  イベント駆動ではない。
+- 本リポジトリに `.opencode/` ディレクトリは現存しない(グローバル設定が実体)。
+
+## 修正内容
+
+### memory-layer.md
+
+- M1 注入がトランスクリプトに永続化される事実を明記し、UIは表示前変換で `<workspace-memory>` を除外する方式に変更。
+- M2 MCPは `busy_timeout` + WAL を接続時に設定。DBパスは env `OPENCODE_WEBUI_DATA_DIR` で絶対指定。
+- M3 FTS外部コンテンツ表(`content_rowid`)を廃止し、独立FTS5表+トリガ同期に変更。`id INTEGER PRIMARY KEY` + `public_id`。
+- M4 `memory_add` のプロンプト汚染対策(監査・UI常時表示・出所表示)を追記。
+- M5 「既存のマイグレーション機構」の誤記を実態(`CREATE TABLE IF NOT EXISTS` + guard付き ALTER)に修正。
+- M6 60分idle検出は新規実装であることを明記(agent-monitor のエミッターを参照)。
+
+### self-improvement-loop.md
+
+- S1 適用ポリシーを確定: `memories` テーブルへの機械生成のみ自動反映(1日10件上限)、
+  AGENTS.md / skills は必ず人間承認。
+- S2 `MEMORY.md` は本機構から書き込まない(人間管理のまま)。機械生成の真実は `memories` テーブル。
+- S3 実行は goal-loop の「メッセージ送信 + 構造化結果パース」を流用(独自状態機械を作らない)。
+- S4 skill 配置は対象リポジトリの `.opencode/skills/`(無ければ新設)。グローバルには書かない。
+
+### agent-monitor.md
+
+- A1 goal-loop の `paused` を `pause_reason` ごとの写像表に確定(`transcript_unreadable` のみ blocked)。
+- A2 SSE購読の記述を撤廃し、サーバー内イベントエミッター(`agent-events.ts` 新設)による駆動に変更。
+  既存 workflow SSE がポーリング方式である事実を明記。
+- A3 subagent 検知は tool part の `task` ツール開始/完了で判定(`opencode-schema.d.ts` 確認前提)。
+- A4 Escalate 宛先フォールバック: 親セッション直送 → 改善Inbox。
+
+## コミット
+
+- `docs(specs): review 指摘を仕様書に反映(Hermes 的機能3本)`
+
+---
+
 # 作業ログ: Hermes Agent 的機能の仕様策定(メモリ層・自己改善ループ・エージェント監視)
 
 ## 日付
