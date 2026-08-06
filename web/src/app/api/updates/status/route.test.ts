@@ -5,6 +5,9 @@ import { NextRequest } from "next/server";
 const execFileMock = vi.hoisted(() => vi.fn());
 vi.mock("node:child_process", () => ({ execFile: execFileMock }));
 
+const readFileSyncMock = vi.hoisted(() => vi.fn());
+vi.mock("node:fs", () => ({ readFileSync: readFileSyncMock }));
+
 const isGitInstallMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/install-root", () => ({
   GITHUB_REPO: "daihaya000/OpenCodeWebUI",
@@ -37,12 +40,18 @@ function localRequest(): NextRequest {
   return new NextRequest("http://localhost/api/updates/status", { headers: { host: "localhost:3000" } });
 }
 
-type StatusBody = { webui: { available: boolean; current?: string; latest?: string; error?: string } };
+type StatusBody = {
+  webui: { available: boolean; current?: string; latest?: string; error?: string };
+  nextjs: { available: boolean; current?: string; latest?: string; error?: string };
+};
 
 describe("GET /api/updates/status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn().mockResolvedValue({ json: async () => ({}) }) as unknown as typeof fetch;
+    readFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
   });
 
   it("rejects non-loopback callers (local-only guard)", async () => {
@@ -121,5 +130,78 @@ describe("GET /api/updates/status", () => {
     expect(body.webui.available).toBe(false);
     expect(body.webui.error).toContain("バージョン情報");
     expect(resolveRemoteHeadMock).not.toHaveBeenCalled();
+  });
+
+  describe("nextjs field", () => {
+    beforeEach(() => {
+      isGitInstallMock.mockReturnValue(false);
+      readUpdateRecordMock.mockReturnValue(null);
+    });
+
+    function mockRegistryLatest(version: string) {
+      global.fetch = vi.fn(async (url: string | URL) => {
+        if (String(url).includes("registry.npmjs.org/next")) {
+          return { json: async () => ({ version }) } as Response;
+        }
+        return { json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch;
+    }
+
+    it("reports available when the installed next version is older than the registry latest", async () => {
+      readFileSyncMock.mockImplementation((path: string) => {
+        if (String(path).includes("node_modules")) return JSON.stringify({ version: "15.5.20" });
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+      mockRegistryLatest("15.6.0");
+
+      const res = await GET(localRequest());
+      const body = (await res.json()) as StatusBody;
+      expect(body.nextjs.available).toBe(true);
+      expect(body.nextjs.current).toBe("15.5.20");
+      expect(body.nextjs.latest).toBe("15.6.0");
+    });
+
+    it("falls back to the declared package.json range when node_modules is unreadable", async () => {
+      readFileSyncMock.mockImplementation((path: string) => {
+        if (String(path).includes("node_modules")) {
+          throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        }
+        return JSON.stringify({ dependencies: { next: "15.5.20" } });
+      });
+      mockRegistryLatest("15.5.20");
+
+      const res = await GET(localRequest());
+      const body = (await res.json()) as StatusBody;
+      expect(body.nextjs.current).toBe("15.5.20");
+      expect(body.nextjs.available).toBe(false);
+    });
+
+    it("reports unavailable with an explanatory error when the version cannot be determined at all", async () => {
+      readFileSyncMock.mockImplementation(() => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+
+      const res = await GET(localRequest());
+      const body = (await res.json()) as StatusBody;
+      expect(body.nextjs.available).toBe(false);
+      expect(body.nextjs.error).toContain("Next.js");
+    });
+
+    it("reports unavailable when the registry lookup fails", async () => {
+      readFileSyncMock.mockImplementation((path: string) => {
+        if (String(path).includes("node_modules")) return JSON.stringify({ version: "15.5.20" });
+        throw new Error("ENOENT");
+      });
+      global.fetch = vi.fn(async (url: string | URL) => {
+        if (String(url).includes("registry.npmjs.org/next")) throw new Error("network down");
+        return { json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch;
+
+      const res = await GET(localRequest());
+      const body = (await res.json()) as StatusBody;
+      expect(body.nextjs.available).toBe(false);
+      expect(body.nextjs.current).toBe("15.5.20");
+      expect(body.nextjs.error).toBeTruthy();
+    });
   });
 });

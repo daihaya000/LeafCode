@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
@@ -10,6 +12,7 @@ import { requireAuthorized } from "@/lib/api-guard";
 const execFileAsync = promisify(execFile);
 const WEBUI_REPO = GITHUB_REPO;
 const OPENCODE_PACKAGE = "opencode-ai";
+const NEXTJS_PACKAGE = "next";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -158,10 +161,59 @@ async function checkOpenCode(): Promise<UpdateStatus> {
   }
 }
 
+/** Installed `next` version off disk (`web/node_modules/next/package.json`),
+ *  falling back to the declared range in `web/package.json` when
+ *  `node_modules` is missing/unreadable. */
+function currentNextVersion(cwd: string): string | undefined {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(cwd, "web", "node_modules", NEXTJS_PACKAGE, "package.json"), "utf8"),
+    ) as { version?: unknown };
+    if (typeof pkg.version === "string") return pkg.version;
+  } catch {
+    // node_modules missing/unreadable: fall through to the declared range.
+  }
+  try {
+    const webPkg = JSON.parse(readFileSync(join(cwd, "web", "package.json"), "utf8")) as {
+      dependencies?: Record<string, unknown>;
+    };
+    const declared = webPkg.dependencies?.[NEXTJS_PACKAGE];
+    return typeof declared === "string" ? declared.replace(/^[^\d]*/, "") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function checkNextJs(): Promise<UpdateStatus> {
+  const current = currentNextVersion(installationRoot());
+  if (!current) return { available: false, error: "Next.jsのバージョンを取得できませんでした" };
+  try {
+    const response = await fetch(`https://registry.npmjs.org/${NEXTJS_PACKAGE}/latest`, {
+      headers: { Accept: "application/json", "User-Agent": "OpenCodeWebUI" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    const data = (await response.json().catch(() => ({}))) as { version?: unknown };
+    const latest = typeof data.version === "string" ? data.version : undefined;
+    if (!latest) return { available: false, current, error: "Next.jsの最新バージョンを取得できませんでした" };
+    return { available: compareVersions(current, latest) < 0, current, latest };
+  } catch (err) {
+    return {
+      available: false,
+      current,
+      error: err instanceof Error ? err.message : "Next.jsの更新確認に失敗しました",
+    };
+  }
+}
+
 export async function GET(req: Request) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
 
-  const [webui, opencode] = await Promise.all([checkWebUi(), checkOpenCode()]);
-  return NextResponse.json({ webui, opencode, repository: WEBUI_REPO });
+  const [webui, opencode, nextjs] = await Promise.all([
+    checkWebUi(),
+    checkOpenCode(),
+    checkNextJs(),
+  ]);
+  return NextResponse.json({ webui, opencode, nextjs, repository: WEBUI_REPO });
 }

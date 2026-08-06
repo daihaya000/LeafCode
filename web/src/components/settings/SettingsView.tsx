@@ -117,7 +117,7 @@ type SettingsTab =
   | "profiles"
   | "users";
 
-type UpdateTarget = "webui" | "opencode";
+type UpdateTarget = "webui" | "opencode" | "nextjs";
 
 type UpdateState =
   | { target: UpdateTarget; kind: "running"; detail?: string }
@@ -238,6 +238,7 @@ export function SettingsView() {
   const [updateAvailability, setUpdateAvailability] = useState<{
     webui: UpdateAvailability;
     opencode: UpdateAvailability;
+    nextjs: UpdateAvailability;
   } | null>(null);
   const [pendingRestart, setPendingRestart] = useState<"webui" | "opencode" | "all" | null>(
     null,
@@ -427,6 +428,7 @@ export function SettingsView() {
       getJson<{
         webui: UpdateAvailability;
         opencode: UpdateAvailability;
+        nextjs: UpdateAvailability;
       }>("/api/updates/status"),
     ]);
     if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
@@ -676,23 +678,22 @@ export function SettingsView() {
         stdout?: string;
         stderr?: string;
         result?: { version?: unknown };
+        version?: unknown;
       };
       if (!res.ok || data.ok === false) {
         throw new Error(data.error || "アップデートに失敗しました");
       }
       const detail = [data.stdout, data.stderr].filter(Boolean).join("\n").trim();
       if (!mountedRef.current) return;
-      setUpdateState({
-        target,
-        kind: "success",
-        message:
-          target === "webui"
-            ? data.mode === "release"
-              ? "WebUI の最新版リリースを取得しました。必要に応じてビルド/再起動してください。"
-              : "WebUI のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
-          : `OpenCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には OpenCode の再起動が必要です。`,
-        detail: detail || undefined,
-      });
+      const message =
+        target === "webui"
+          ? data.mode === "release"
+            ? "WebUI の最新版リリースを取得しました。必要に応じてビルド/再起動してください。"
+            : "WebUI のリモート更新を取得しました。必要に応じてビルド/再起動してください。"
+          : target === "opencode"
+            ? `OpenCode CLI を更新しました${typeof data.result?.version === "string" ? `（${data.result.version}）` : ""}。反映には OpenCode の再起動が必要です。`
+            : `Next.js を更新しました${typeof data.version === "string" ? `（${data.version}）` : ""}。反映には WebUI の再起動が必要です。`;
+      setUpdateState({ target, kind: "success", message, detail: detail || undefined });
       await refresh();
     } catch (err) {
       if (mountedRef.current) setUpdateState({
@@ -1110,11 +1111,14 @@ export function SettingsView() {
                     <div>
                       <h3 className="text-xs font-semibold text-muted">アップデート</h3>
                       <p className="mt-1 text-xs text-faint">
-                        WebUI は <code>git pull --ff-only</code>、OpenCode CLI は upgrade API を実行します。
+                        WebUI は <code>git pull --ff-only</code>、OpenCode CLI は upgrade API、Next.js は{" "}
+                        <code>npm install next@latest</code> を実行します（いずれも手動操作。起動時には自動実行されません）。
                       </p>
                     </div>
                     {updateAvailability &&
-                      (updateAvailability.webui.available || updateAvailability.opencode.available) && (
+                      (updateAvailability.webui.available ||
+                        updateAvailability.opencode.available ||
+                        updateAvailability.nextjs.available) && (
                       <div
                         className="rounded-md border border-warning/30 bg-warning-bg px-2 py-1.5 text-[11px] leading-snug text-warning"
                         role="status"
@@ -1130,6 +1134,11 @@ export function SettingsView() {
                           {updateAvailability.opencode.available && (
                             <li>
                               OpenCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"} → {updateAvailability.opencode.latest ?? "不明"}
+                            </li>
+                          )}
+                          {updateAvailability.nextjs.available && (
+                            <li>
+                              Next.js: バージョン {updateAvailability.nextjs.current ?? "不明"} → {updateAvailability.nextjs.latest ?? "不明"}
                             </li>
                           )}
                         </ul>
@@ -1156,6 +1165,16 @@ export function SettingsView() {
                       >
                         OpenCode CLI を更新
                       </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        busy={updating === "nextjs"}
+                        disabled={updating !== null || restarting !== null}
+                        onClick={() => void updateService("nextjs")}
+                      >
+                        Next.js を更新
+                      </Button>
                     </div>
                     {updateState && (
                       <div
@@ -1172,7 +1191,13 @@ export function SettingsView() {
                       >
                         <p className="font-medium">
                           {updateState.kind === "running"
-                            ? `${updateState.target === "webui" ? "WebUI" : "OpenCode CLI"} をアップデートしています…`
+                            ? `${
+                                updateState.target === "webui"
+                                  ? "WebUI"
+                                  : updateState.target === "opencode"
+                                    ? "OpenCode CLI"
+                                    : "Next.js"
+                              } をアップデートしています…`
                             : updateState.message}
                         </p>
                         {updateState.detail && (

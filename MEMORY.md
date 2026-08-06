@@ -1,3 +1,82 @@
+# 作業ログ: Next.js 手動アップデート機能
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+設定画面から Next.js の最新版を手動でアップデートできるようにする。
+起動時には自動実行せず、ユーザーの明示的な操作でのみ `npm install next@latest` を実行する。
+
+## 実装内容
+
+### API
+
+- `web/src/lib/npm-cli.ts`（新規）
+  - npm の JS CLI エントリポイント `npm-cli.js` を解決する。
+  - まず `npm_execpath`（Next.js サーバーを起動したのと同じ npm）を使用し、
+    存在しなければ `where.exe npm.cmd` から候補を探す。
+  - `node <npm-cli.js> ...` として npm を呼び出すことで、`npm.cmd` シムの
+    shell quoting 問題を避ける。`host/src/index.js` の `spawnNpm` と同一方式。
+- `web/src/app/api/updates/nextjs/route.ts`（新規）
+  - `POST /api/updates/nextjs` で `node <npm-cli.js> install next@latest` を
+    `web/` ディレクトリで実行する。
+  - 常に `next@latest` を取得する（メジャーバージョン含む破壊的変更の可能性を
+    受け入れる）。
+  - 成功時は `web/node_modules/next/package.json` からインストールされた
+    バージョンを返す。
+  - `requireAuthorized(req)` で CSRF → 認可の順に保護する（既存 API ガード）。
+- `web/src/app/api/updates/status/route.ts`
+  - レスポンスに `nextjs` フィールドを追加。
+  - `checkNextJs()` は `web/node_modules/next/package.json` の `version` を
+    取得し、npm レジストリ `next@latest` と比較する。
+  - `node_modules` が読めない場合は `web/package.json` の `dependencies.next` の
+    宣言値をフォールバックとして current とする。
+
+### UI
+
+- `web/src/components/settings/SettingsView.tsx`
+  - `UpdateTarget` に `"nextjs"` を追加。
+  - `updateAvailability` の型に `nextjs` を追加。
+  - `/api/updates/status` から取得した `nextjs.available` をアップデート通知に表示。
+  - 「Next.js を更新」ボタンを追加（WebUI 更新ボタンの隣）。
+  - 更新中/成功/失敗のメッセージ対応に `nextjs` を追加。
+
+### テスト
+
+- `web/src/lib/npm-cli.test.ts`（新規）
+  - `npm_execpath` 優先 / `where.exe` フォールバック / 見つからない場合のエラー。
+- `web/src/app/api/updates/nextjs/route.test.ts`（新規）
+  - 正常系、npm install 失敗、npm-cli.js 解決失敗、非 loopback からの 403。
+- `web/src/app/api/updates/status/route.test.ts`
+  - Next.js 更新ありのケース。
+  - `node_modules` 不可読時の `package.json` フォールバック。
+  - バージョン決定不能時のエラー。
+  - レジストリ取得失敗時のエラー。
+- `web/src/lib/api-guard-coverage.test.ts` は自動的に新規 `/api/updates/nextjs` を
+  カバレッジチェックする（`requireAuthorized` 呼び出しあり）。
+
+## 注意点・設計判断
+
+- **自動更新ではない**: 起動時の `pullLatestWebSource()`（git pull）には
+  `npm install` を追加していない。Next.js の更新は設定画面からの手動操作のみ。
+- **メジャーバージョンも対象**: `next@latest` をそのまま取得する。
+  破壊的変更のリスクはユーザーが更新ボタンを押すことで受け入れたものとする。
+- **反映には WebUI 再起動が必要**: `next install` 後も既に実行中の Next.js
+  プロセスは旧バージョンのまま。更新成功メッセージに「WebUI の再起動が必要」と
+  明記し、既存の WebUI 再起動ボタンを併用する。
+- **ホスト側変更なし**: npm レジストリ経由の独立した更新なので、
+  `host/src/index.js` や `scripts/start-webui.bat` の git/npm フローには影響しない。
+
+## 検証結果
+
+- `npm run --prefix web typecheck` ... 成功
+- `npm run --prefix web lint` ... 成功
+- `npm run --prefix web test` ... 232 test files, 2811 tests 成功
+
+---
+
 # 作業ログ: WebUI ユーザーログイン機能
 
 ## 日付
