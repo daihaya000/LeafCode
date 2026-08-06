@@ -1,3 +1,50 @@
+# 作業ログ: バグハント第7ラウンド（browser-bridge brokerの誤りエラーコード修正）
+
+## 日付
+
+2026-08-06
+
+## 発見したバグ
+
+`browser-bridge/broker/server.mjs` の `/internal/tools/:tool` ハンドラの最終フォールバックが、
+**拡張が接続済みでも** `503 EXTENSION_DISCONNECTED` を返していた。
+
+- このフォールバックに到達するのは `validateToolInput` が受理する未実装ツール
+  （現状 `browser_wait` のみ。未知ツール名は検証段階で INVALID_REQUEST）。
+- `!extensionSocket` ガードはそれより前に 503 を返すため、最終行到達時は必ず
+  拡張接続済み → 「拡張未接続」は事実と異なるエラーになる。
+- 仕様（docs/specs/browser-bridge-mcp.md）のエラー契約でも
+  `EXTENSION_DISCONNECTED` は「拡張が未接続」に限定されており、
+  未実装ツールは INVALID_REQUEST が整合的。
+
+## 修正内容
+
+- `browser-bridge/broker/server.mjs`
+  - 最終フォールバックを `400 INVALID_REQUEST` に変更
+    （正当な `!extensionSocket` ガードの 503 は維持）。
+- `browser-bridge/test/broker-server.test.mjs`
+  - 回帰テスト追加: ペアリング+認証済み（拡張接続あり）の状態で
+    `browser_wait` を呼ぶと 400 INVALID_REQUEST が返り、
+    `/internal/status` は引き続き `connected: true` を示すことを検証。
+    fix を外すと失敗することを確認済み。
+
+## 調査して問題なし/未実装と確認した箇所
+
+- broker のペアリング（人間承認・TTL失効・切断時破棄・再接続時の鍵再利用）、
+  認証、承認フロー、スナップショット dedupe、result の世代検証、revoke、close 清掃
+- `policy.mjs` / `audit.mjs` / `state.mjs` / MCP クライアント・サーバー
+- 既知の未実装（バグではない）: MCP に `browser_click` / `browser_wait` が未登録、
+  承認は単発のみで MCP 呼び出し元へ結果を返す経路がない（screenshot の
+  キャッシュ経由のみ）。これは計画 Task 7/9 の範囲で意図的な部分実装。
+- 未使用の `rejectUnlessLocalOrPrivateNetwork`（web側、第1ラウンド記録済み）と同様、
+  将来 `browser_wait` を実装する際は同期応答経路を設計すること。
+
+## 検証結果
+
+- `npm --prefix browser-bridge test` ... 77 tests 成功（+1）
+
+---
+
 # 作業ログ: バグハント第6ラウンド（workflow schedulerの例外スタック修正）
 
 ## 日付

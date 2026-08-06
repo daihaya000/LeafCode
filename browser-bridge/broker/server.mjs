@@ -318,7 +318,11 @@ export function createBrowserBridgeBroker({
         json(res, 428, { error: { code: BrowserBridgeErrorCode.APPROVAL_REQUIRED, approvalId } });
         return;
       }
-      json(res, 503, { error: { code: BrowserBridgeErrorCode.EXTENSION_DISCONNECTED } });
+      // A recognized tool the broker does not dispatch (currently browser_wait).
+      // The extension is connected here — the !extensionSocket guard above
+      // already returned 503 — so EXTENSION_DISCONNECTED would lie about the
+      // failure; report the request itself as unsupported instead.
+      json(res, 400, { error: { code: BrowserBridgeErrorCode.INVALID_REQUEST } });
       return;
     }
     json(res, 404, { error: 'not_found' });

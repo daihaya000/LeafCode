@@ -50,6 +50,27 @@ test('internal endpoints are loopback-only and require the generated bearer toke
   });
 });
 
+test('reports a connected-but-unsupported tool as an invalid request, not a disconnect', async (t) => {
+  const broker = await startBroker();
+  t.after(() => broker.close());
+  const headers = { Authorization: `Bearer ${broker.internalToken}`, 'Content-Type': 'application/json' };
+
+  const paired = await pairOnly(broker, 'chrome-extension://abcdefghijklmno');
+  const socket = await authenticateSocket(broker.wsUrl, 'chrome-extension://abcdefghijklmno', paired.deviceKey);
+  t.after(() => socket.close());
+
+  const response = await fetch(`${broker.url}/internal/tools/browser_wait`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ tabId: 'tab_opaque', timeoutMs: 1000 }),
+  });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: { code: 'INVALID_REQUEST' } });
+
+  const status = await fetch(`${broker.url}/internal/status`, { headers }).then((res) => res.json());
+  assert.equal(status.extension.connected, true);
+});
+
 test('rejects oversized internal tool payloads before parsing them', async (t) => {
   const broker = await startBroker();
   t.after(() => broker.close());
