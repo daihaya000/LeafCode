@@ -9,7 +9,7 @@
 | 1 default-deny 化 | **完了** | `ad953f8` |
 | 2 CSRF 対策 | **完了** | `ad953f8` |
 | 3 control server の Host 検証 | **完了** | `3aa757f` |
-| 4 セッション失効・権限 | 未着手 | — |
+| 4 セッション失効・権限 | **完了** | `f85bac3` |
 | 5 ファイル権限・監査・スロットリング | 未着手 | — |
 
 Phase 1/2 完了後の実測: ガードなしのルートは **0**（公開 allowlist 4 本を除く）。
@@ -181,13 +181,31 @@ host 再起動でリセットされ、送信元 IP による制限が無い。
 `127.0.0.1:<port>` / `localhost:<port>` / `[::1]:<port>` 以外を 403 にする。
 数行で塞げる。ローカル証明（到達性検証）を将来実装する場合の前提でもある。
 
-### Phase 4（P1-2, P2-1）セッション失効と権限
+### Phase 4（P1-2, P2-1）セッション失効と権限 — 完了
 
-1. token に `jti` を持たせ、host 側に失効リスト（メモリ + `%APPDATA%` 永続化）を持つ。
-   `POST /auth/logout` で当該 `jti` を失効させる。
-2. `users.json` に `role`（`admin` / `user`）を追加する。
-   `/api/auth/users` と `/api/auth/config` は `admin` のみ許可する。
-   既存ユーザーは移行時に `admin` とみなす。
+実施内容:
+
+- session token のペイロードを `username:jti:ts` に変更（`signSessionToken` /
+  `verifySessionToken`）。username・jti にコロンが含まれても `lastIndexOf` の
+  二段分割で正しく復元できる。
+- `createRevocationStore()` を追加。`jti -> revokedAt` の `Map` をメモリに保持し、
+  `%APPDATA%\opencode-webui\revoked-sessions.json` に永続化する。
+  `Set` ではなく `Map` にしたのは、新しい失効を書き込むたびに全エントリの
+  タイムスタンプが書き込み時刻で上書きされ、古いエントリが二度と
+  prune されなくなるバグを避けるため。
+- `POST /auth/logout` が当該 `jti` を失効させる。`POST /auth/verify` は
+  失効済み `jti` を拒否する。7 日間の有効期限が過ぎたエントリは読み込み時に
+  自動で除外される。
+- `host/src/auth-store.js` の `UserRecord` に `role: 'admin' | 'user'` を追加。
+  既存ユーザー・`role` 欠落・不明な値はすべて `admin` にフォールバックする
+  （さもないと移行直後に誰も管理操作できなくなる）。`isAdmin(username)` を追加。
+- `/users` の `POST`/`DELETE`（ユーザー作成・削除）と `/auth/config` の `POST`
+  （Windows 認証の有効化）を admin セッション限定にした。`GET` は変更なし。
+- **副作用として見つけた不整合**: web 側の `/api/auth/users`・`/api/auth/config`
+  は host へブラウザの session cookie を転送していなかった。admin チェック追加後は
+  この2ルートの POST/DELETE が常に 403 になる状態だったため、
+  `forwardToHost` に `req` を渡し `Cookie` ヘッダを転送するよう修正した。
+- 設定画面のユーザー一覧に「管理者」「一般」バッジを追加。
 
 ### Phase 5（P2-2〜P2-4）残課題
 

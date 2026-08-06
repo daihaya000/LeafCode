@@ -342,3 +342,82 @@ TaskView の右サイドパネルに「Markdown ビューワー」を追加し�
 - `npx vitest run src/components/task/MarkdownViewerPanel.test.tsx` ... 7 passed
 - `npx vitest run src/components/task/TaskView.test.tsx` ... 113 passed
 - `npx vitest run src/components/task/PlanDocumentCard.test.tsx` ... 3 passed
+
+---
+
+# 作業ログ: 脆弱性修正 Phase 4（セッション失効・role による権限分離）
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+`docs/specs/security-remediation-plan.md` の Phase 4（P1-2 セッション失効 / P2-1 権限モデル）を実施する。
+
+## 背景
+
+- **P1-2**: session token は 7 日間有効なステートレス HMAC。ログアウトは cookie を
+  消すだけで、token 自体は取得済みの攻撃者にとって期限まで有効なままだった。
+- **P2-1**: 認証済みなら誰でも `/users` の作成・削除、`/auth/config`
+  （Windows 認証の有効化）を操作できた。権限の区別が無かった。
+
+## 実装内容
+
+### host 側
+
+- `host/src/control-server.js`
+  - `signSessionToken` / `verifySessionToken` のペイロードを
+    `username:jti:ts` に変更。jti にランダム 8byte を使い、
+    username・jti にコロンを含んでいても `lastIndexOf` の二段分割で正しく復元する。
+  - `createRevocationStore({ persist })` を新設・export。
+    `jti -> revokedAt` の `Map` をメモリに保持し、
+    `%APPDATA%\opencode-webui\revoked-sessions.json` に永続化する。
+    **`Set` ではなく `Map` にした理由**: 新しい失効を書き込むたびに
+    全エントリのタイムスタンプが書き込み時刻で上書きされると、
+    古いエントリが二度と期限切れにならず prune されないバグになるため、
+    エントリごとに個別のタイムスタンプを保持する。
+  - `POST /auth/logout` が cookie の token から jti を復元し失効させる。
+  - `POST /auth/verify` は失効済み jti を 401 で拒否し、
+    `{ ok, username, jti, isAdmin }` を返す。
+  - `Host` ヘッダ検証の直後に走る認可チェックとして、
+    `resolveSession(req)` ヘルパーを追加。`/users`（POST/DELETE）と
+    `/auth/config`（POST）は `authStore.isAdmin(username) === true` を要求し、
+    満たさない場合は 403。`GET` は変更なし（引き続き無認証で一覧取得可）。
+- `host/src/auth-store.js`
+  - `UserRecord` に `role: 'admin' | 'user'` を追加。
+  - 既存ユーザー・`role` 欠落・未知の値はすべて `admin` にフォールバック
+    （さもないと移行直後に誰も管理操作できなくなる）。
+  - `isAdmin(username)` を追加。`upsertUser` はパスワード変更時に既存の
+    `role` を保持し、新規作成時は `admin` にする。
+- `host/src/index.js`: `authStore.isAdmin` を接続。
+
+### web 側
+
+- **見つけた不整合**: `web/src/app/api/auth/users/route.ts` と
+  `web/src/app/api/auth/config/route.ts` の `forwardToHost` は
+  host へブラウザの `Cookie` ヘッダを転送していなかった。
+  admin チェック追加後は、この2ルートの POST/DELETE が
+  常に 403 になる状態だったため、`forwardToHost` に `req` を渡し
+  `Cookie` ヘッダを転送するよう修正した。
+- `web/src/lib/auth.ts`: `AuthUser` 型に `role` を追加。
+- `web/src/components/settings/SettingsView.tsx`: ユーザー一覧に
+  「管理者」「一般」バッジを追加。
+
+## 検証結果
+
+- `npm run --prefix host test` ... 319 tests 成功（+21）
+- `npm run --prefix web typecheck` / `lint` ... エラーなし
+- `npm run --prefix web test` ... 228 test files, 2780 tests 成功
+
+## コミット
+
+- `f85bac3` fix(security): セッション失効と role による権限分離を追加（Phase 4）
+
+## 次のステップ
+
+- **Phase 5（未着手）**: `icacls` による `users.json` / `auth-config.json` の
+  ファイル権限、監査ログ、ログイン試行スロットリングの送信元 IP 集計と永続化。
+- ログアウトの失効は jti 単位。同一ユーザーの他デバイスのセッションは
+  ログアウトしても失効しない仕様（意図的、他デバイスの誤爆防止）。
+  全デバイス強制ログアウトが必要になった場合は別途 API を追加する。
