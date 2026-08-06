@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'crypto';
 import { EventEmitter } from 'events';
-import { createControlRequestHandler, matchControlRoute } from './control-server.js';
+import { createControlRequestHandler, isLoopbackHostHeader, matchControlRoute } from './control-server.js';
 import { createLoginThrottle } from './windows-auth.js';
 
 /**
@@ -11,9 +11,10 @@ import { createLoginThrottle } from './windows-auth.js';
  * the body buffer and then 'end' is sufficient.
  */
 class MockReadable extends EventEmitter {
-  constructor(body = '') {
+  constructor(body = '', headers = {}) {
     super();
     this.body = Buffer.from(body);
+    this.headers = { host: '127.0.0.1:18765', ...headers };
   }
 
   on(event, listener) {
@@ -110,7 +111,7 @@ test('POST /stop/webui answers only after the stop finished', async () => {
   });
 
   const res = fakeResponse();
-  const pending = handle({ method: 'POST', url: '/stop/webui' }, res);
+  const pending = handle({ method: 'POST', url: '/stop/webui', headers: { host: '127.0.0.1:18765' } }, res);
   await Promise.resolve();
   assert.equal(res.statusCode, null, 'must not respond before the stop completes');
   release();
@@ -129,7 +130,7 @@ test('POST /stop/webui reports a failed stop with 500', async () => {
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/stop/webui' }, res);
+  await handle({ method: 'POST', url: '/stop/webui', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 500);
   assert.deepEqual(res.body, { ok: false, error: 'port still busy' });
 });
@@ -137,7 +138,7 @@ test('POST /stop/webui reports a failed stop with 500', async () => {
 test('POST /stop/webui reports 501 when the host cannot stop the WebUI', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/stop/webui' }, res);
+  await handle({ method: 'POST', url: '/stop/webui', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 501);
   assert.equal(res.body.ok, false);
 });
@@ -151,7 +152,7 @@ test('POST /voice-input launches Windows voice input', async () => {
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/voice-input' }, res);
+  await handle({ method: 'POST', url: '/voice-input', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(launched, true);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { ok: true, target: 'voice-input', launched: true });
@@ -160,7 +161,7 @@ test('POST /voice-input launches Windows voice input', async () => {
 test('POST /voice-input reports 501 when unsupported by host', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/voice-input' }, res);
+  await handle({ method: 'POST', url: '/voice-input', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 501);
   assert.equal(res.body.ok, false);
 });
@@ -171,7 +172,7 @@ test('POST /allow-firewall reports success with the handler result', async () =>
     onAllowFirewall: async () => ({ alreadyExists: false, port: 3000 }),
   });
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/allow-firewall' }, res);
+  await handle({ method: 'POST', url: '/allow-firewall', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
     ok: true,
@@ -189,7 +190,7 @@ test('POST /allow-firewall reports a failure (e.g. UAC cancelled) with 500', asy
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/allow-firewall' }, res);
+  await handle({ method: 'POST', url: '/allow-firewall', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 500);
   assert.deepEqual(res.body, { ok: false, error: 'UAC cancelled' });
 });
@@ -197,7 +198,7 @@ test('POST /allow-firewall reports a failure (e.g. UAC cancelled) with 500', asy
 test('POST /allow-firewall reports 501 when unsupported by host', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/allow-firewall' }, res);
+  await handle({ method: 'POST', url: '/allow-firewall', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 501);
   assert.equal(res.body.ok, false);
 });
@@ -211,7 +212,7 @@ test('restart routes keep answering 202 before the work runs', async () => {
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'POST', url: '/restart/webui' }, res);
+  await handle({ method: 'POST', url: '/restart/webui', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 202);
   assert.deepEqual(res.body, { ok: true, target: 'webui', accepted: true });
   assert.equal(restarted, false, 'restart is scheduled after the response');
@@ -229,7 +230,7 @@ test('GET /logs returns entries and nextSeq from the handler', async () => {
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/logs?since=5' }, res);
+  await handle({ method: 'GET', url: '/logs?since=5', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(receivedSince, 5);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
@@ -248,14 +249,14 @@ test('GET /logs with no since query passes null to the handler', async () => {
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/logs' }, res);
+  await handle({ method: 'GET', url: '/logs', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(receivedSince, null);
 });
 
 test('GET /logs reports 501 when unsupported by host', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/logs' }, res);
+  await handle({ method: 'GET', url: '/logs', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 501);
   assert.equal(res.body.ok, false);
 });
@@ -286,7 +287,7 @@ test('GET /users returns users from the auth store', async () => {
     },
   });
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/users' }, res);
+  await handle({ method: 'GET', url: '/users', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { users: [{ username: 'alice', updatedAt: '2026-01-01' }] });
 });
@@ -609,7 +610,7 @@ test('POST /auth/verify reads the token from a Cookie header too', async () => {
   const req = new MockReadable('{}');
   req.method = 'POST';
   req.url = '/auth/verify';
-  req.headers = { cookie: `theme=dark; webui_session=${encodeURIComponent(token)}` };
+  req.headers = { host: '127.0.0.1:18765', cookie: `theme=dark; webui_session=${encodeURIComponent(token)}` };
   await handle(req, res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.username, 'alice');
@@ -692,7 +693,7 @@ test('GET /auth/config reports the flag, support and whether users exist', async
     }),
   });
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/auth/config' }, res);
+  await handle({ method: 'GET', url: '/auth/config', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
     windowsAuth: true,
@@ -710,7 +711,7 @@ test('GET /auth/config does not leak usernames', async () => {
     }),
   });
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/auth/config' }, res);
+  await handle({ method: 'GET', url: '/auth/config', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(JSON.stringify(res.body).includes('alice'), false);
 });
 
@@ -766,18 +767,105 @@ test('POST /auth/config refuses to enable Windows auth on an unsupported OS', as
 test('/auth/config reports 501 when the host has no auth store', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const res = fakeResponse();
-  await handle({ method: 'GET', url: '/auth/config' }, res);
+  await handle({ method: 'GET', url: '/auth/config', headers: { host: '127.0.0.1:18765' } }, res);
   assert.equal(res.statusCode, 501);
 });
 
 test('health and unknown routes are unchanged', async () => {
   const handle = createControlRequestHandler(noopHandlers);
   const health = fakeResponse();
-  await handle({ method: 'GET', url: '/health' }, health);
+  await handle({ method: 'GET', url: '/health', headers: { host: '127.0.0.1:18765' } }, health);
   assert.equal(health.statusCode, 200);
   assert.deepEqual(health.body, { ok: true, service: 'opencode-webui-host' });
 
   const missing = fakeResponse();
-  await handle({ method: 'POST', url: '/nope' }, missing);
+  await handle({ method: 'POST', url: '/nope', headers: { host: '127.0.0.1:18765' } }, missing);
   assert.equal(missing.statusCode, 404);
+});
+
+test('isLoopbackHostHeader accepts the loopback hostnames with the expected port', () => {
+  for (const host of ['127.0.0.1:18765', 'localhost:18765', '[::1]:18765']) {
+    assert.equal(isLoopbackHostHeader(host, 18765), true, host);
+  }
+});
+
+test('isLoopbackHostHeader accepts a host without a port when no expected port is given', () => {
+  assert.equal(isLoopbackHostHeader('127.0.0.1'), true);
+  assert.equal(isLoopbackHostHeader('localhost'), true);
+});
+
+test('isLoopbackHostHeader accepts the host when the port is absent but the hostname is loopback', () => {
+  assert.equal(isLoopbackHostHeader('127.0.0.1', 18765), true);
+});
+
+test('isLoopbackHostHeader rejects the right hostname on the wrong port', () => {
+  assert.equal(isLoopbackHostHeader('127.0.0.1:9999', 18765), false);
+});
+
+test('isLoopbackHostHeader rejects a non-loopback hostname (DNS rebinding)', () => {
+  for (const host of ['evil.test:18765', '192.168.0.102:18765', 'opencode.local:18765']) {
+    assert.equal(isLoopbackHostHeader(host, 18765), false, host);
+  }
+});
+
+test('isLoopbackHostHeader rejects an empty or malformed header', () => {
+  assert.equal(isLoopbackHostHeader(undefined), false);
+  assert.equal(isLoopbackHostHeader(''), false);
+  assert.equal(isLoopbackHostHeader('[::1'), false);
+});
+
+test('isLoopbackHostHeader rejects a header given as a list whose first element is not loopback', () => {
+  assert.equal(isLoopbackHostHeader(['evil.test:18765'], 18765), false);
+});
+
+test('control server rejects a DNS-rebinding Host before any route is matched', async () => {
+  const handle = createControlRequestHandler({ ...noopHandlers, controlPort: 18765 });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/health', headers: { host: 'evil.test:18765' } }, res);
+  assert.equal(res.statusCode, 403);
+  assert.match(res.body.error, /loopback/);
+});
+
+test('control server rejects a missing Host header', async () => {
+  const handle = createControlRequestHandler({ ...noopHandlers, controlPort: 18765 });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/health' }, res);
+  assert.equal(res.statusCode, 403);
+});
+
+test('control server accepts the correct port on a loopback host', async () => {
+  const handle = createControlRequestHandler({ ...noopHandlers, controlPort: 18765 });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/health', headers: { host: '127.0.0.1:18765' } }, res);
+  assert.equal(res.statusCode, 200);
+});
+
+test('control server rejects a loopback host on the wrong port', async () => {
+  const handle = createControlRequestHandler({ ...noopHandlers, controlPort: 18765 });
+  const res = fakeResponse();
+  await handle({ method: 'GET', url: '/health', headers: { host: '127.0.0.1:9999' } }, res);
+  assert.equal(res.statusCode, 403);
+});
+
+test('control server does not leak route existence for an unknown path on a rebinding host', async () => {
+  const handle = createControlRequestHandler({ ...noopHandlers, controlPort: 18765 });
+  const res = fakeResponse();
+  await handle({ method: 'POST', url: '/nope', headers: { host: 'evil.test:18765' } }, res);
+  assert.equal(res.statusCode, 403);
+});
+
+test('control server does not let POST /users through from a rebinding host', async () => {
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    controlPort: 18765,
+    authStore: authStoreStub(),
+  });
+  const res = fakeResponse();
+  const req = new MockReadable(JSON.stringify({ username: 'mallory', password: 'pw' }), {
+    host: 'evil.test:18765',
+  });
+  req.method = 'POST';
+  req.url = '/users';
+  await handle(req, res);
+  assert.equal(res.statusCode, 403);
 });

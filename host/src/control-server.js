@@ -33,6 +33,52 @@ export function matchControlRoute(method, pathname) {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:1']);
+
+/**
+ * Reject a Host header that does not name the loopback interface this server
+ * listens on.
+ *
+ * The control plane only binds `127.0.0.1`, but that does not stop a browser
+ * from reaching it: an attacker can register a domain that resolves to
+ * `127.0.0.1` (DNS rebinding), at which point the browser treats the request as
+ * same-origin and CORS cannot help. Only accepting the loopback hostnames the
+ * server itself uses closes the hole. The caller may pass the port it listens
+ * on so a host without a port still matches, and vice versa.
+ *
+ * @param {string | string[] | undefined} hostHeader
+ * @param {number} [expectedPort]
+ * @returns {boolean}
+ */
+export function isLoopbackHostHeader(hostHeader, expectedPort) {
+  const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  if (!raw) return false;
+  const value = raw.trim().toLowerCase();
+  if (!value) return false;
+
+  // Strip an IPv6 bracket: `[::1]:18765` -> `::1`.
+  let host = value;
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    if (end === -1) return false;
+    host = host.slice(1, end);
+  } else {
+    // IPv4 or hostname — drop a trailing :port (only when not an IPv6 address).
+    const colon = host.lastIndexOf(':');
+    if (colon !== -1 && !host.includes(':', colon + 1)) {
+      host = host.slice(0, colon);
+    }
+  }
+
+  if (!LOOPBACK_HOSTS.has(host)) return false;
+  if (expectedPort === undefined) return true;
+
+  // Verify the port too, when one was supplied.
+  const portMatch = /:(\d+)$/.exec(value.endsWith(']') ? value : value.replace(/^\[.*?\]/, ''));
+  if (!portMatch) return true; // no port given — trust the hostname match
+  return Number(portMatch[1]) === expectedPort;
+}
+
 /**
  * Parse a JSON body up to a safe size.
  * @param {import('http').IncomingMessage} req
@@ -171,14 +217,27 @@ function getSessionCookie(header) {
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
+ *   controlPort?: number,
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
  */
 export function createControlRequestHandler(handlers) {
   // Shared across requests so a brute-force attempt cannot reset its own count.
   const throttle = handlers.loginThrottle ?? createLoginThrottle();
+  const controlPort = typeof handlers.controlPort === 'number' ? handlers.controlPort : undefined;
 
   return async (req, res) => {
+    // DNS rebinding guard: a browser can reach 127.0.0.1:18765 via an attacker
+    // domain that resolves to 127.0.0.1, making the request same-origin and
+    // bypassing CORS. Only accept a Host header that names the loopback interface
+    // (and, when known, this server's port). This runs before route matching so
+    // nothing else leaks through a typo in the allowlist.
+    if (!isLoopbackHostHeader(req.headers?.host, controlPort)) {
+      res.writeHead(403, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: false, error: 'host header is not loopback' }));
+      return;
+    }
+
     const method = req.method ?? 'GET';
     let pathname = '/';
     try {
@@ -526,6 +585,7 @@ export function createControlRequestHandler(handlers) {
  *   authStore?: AuthStore,
  *   sessionSecret?: string,
  *   loginThrottle?: ReturnType<typeof createLoginThrottle>,
+ *   controlPort?: number,
  * }} handlers
  */
 export function createControlServer(handlers) {

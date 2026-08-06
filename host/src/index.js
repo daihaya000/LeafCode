@@ -2325,6 +2325,7 @@ async function startControlServer() {
         }),
     },
     sessionSecret: CONTROL_SECRET,
+    controlPort: CONTROL_PORT,
   });
   try {
     await listenControlServer(server, CONTROL_PORT);
