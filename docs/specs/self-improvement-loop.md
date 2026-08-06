@@ -46,12 +46,15 @@
 
 ```json
 {
-  "memory":   [ { "op": "append", "content": "..." } ],
+  "memory":   [ { "kind": "fact | preference | lesson | reference", "content": "..." } ],
   "agents_md": [ { "op": "add-rule", "section": "検証", "text": "..." } ],
   "skill":    { "name": "...", "description": "...", "draft": "..." } ,
   "rationale": "提案の根拠(引用はトランスクリプト行番号のみ)"
 }
 ```
+
+`memory` の各要素は `memory-layer.md` の `memories` テーブルスキーマ(`kind` 必須)に
+そのまま対応させる。`op` は持たない(常に新規追加のみ)。
 
 ## 実行ドライバー
 
@@ -73,8 +76,12 @@ Web側 `lib/self-improvement.ts`(新規)に `runRetrospective(trigger, sessionId
    の仕組みで実行する(独自の状態機械を作らない)。`goal-loop.ts` のプロンプト送信と
    構造化JSON解析のパターンを流用し、`retrospective` 専用のプロンプトとJSONスキーマを
    定義する。
-3. JSONをパースし、提案行を `improvements` テーブルに `pending` で挿入。
-4. SSEイベント `improvement.created` を配信する。
+3. JSONをパースし、`target` ごとに分岐する:
+   - `memory`: `memories` テーブルへ `provenance='auto-extract-retrospective'`,
+     `approved=1` で**直接挿入**(1日上限チェックは反映節参照)。合わせて `improvements` にも
+     `status='applied'` で1行残す(Inboxでの表示・却下操作の対象にするため)。
+   - `agents_md` / `skill`: `improvements` テーブルに `status='pending'` で挿入。
+4. SSEイベント `improvement.created`(pending分)または `improvement.applied`(memory分)を配信する。
 
 ## データモデル
 
@@ -85,7 +92,7 @@ CREATE TABLE improvements (
   trigger TEXT NOT NULL,              -- goal-completed | idle | manual
   session_id TEXT,
   target TEXT NOT NULL,               -- memory | agents_md | skill
-  op TEXT NOT NULL,                   -- append | add-rule | create-skill
+  op TEXT NOT NULL,                   -- insert(memory) | add-rule(agents_md) | create-skill(skill)
   payload TEXT NOT NULL,              -- 提案内容JSON
   status TEXT NOT NULL DEFAULT 'pending',  -- pending | applied | rejected | dismissed
   rejection_reason TEXT,
@@ -127,9 +134,17 @@ CREATE INDEX idx_improvements_ws ON improvements(workspace_id, status);
 
 - カード一覧(種別アイコン・提案文・根拠リンク・作成日時)。
 - カード展開で対象ファイルの diff プレビュー(既存diffコンポーネント再使用)。
-- 操作: `承認して反映` / `却下`(理由入力) / `破棄`(理由不要)。
-- `memory` 系は自動反映されるため、Inboxには「自動反映済み」バッジで表示し、
-  「確認して却下(削除)」できる。`MEMORY.md` への書込は行わない旨も表示する。
+- 操作は target で分岐する:
+  - `agents_md` / `skill`(`status='pending'`): `承認して反映` / `却下`(理由入力) / `破棄`(理由不要)。
+  - `memory`(`status='applied'`、既に反映済み): 「自動反映済み」バッジを表示し、
+    操作は `取消(削除)`(理由入力、却下と同じ扱い)のみ。`MEMORY.md` への書込は
+    行わない旨も表示する。
+
+## フィードバックの適用範囲
+
+`memory` の `取消(削除)` も「フィードバック(却下理由の蓄積)」の却下として扱う
+(理由付きで保存し、直近20件の否定例プロンプトに含める)。自動反映は承認を経ないため、
+誤った記憶が紛れ込んだ場合の主な訂正手段はこの取消操作になる。
 
 ## セキュリティ
 
@@ -142,6 +157,16 @@ CREATE INDEX idx_improvements_ws ON improvements(workspace_id, status);
 ## テスト
 
 - JSONパース・リトライ・不適合出力の処理(vitest)。
-- 各targetの反映(ファイル追記の冪等性・行上限)。
-- 却下注入がプロンプトに載ること。
+- `memory` の自動反映(`memories` 挿入+`improvements`に`applied`行+1日上限+上限超過時の持ち越し)。
+- `agents_md` / `skill` の反映(ファイル追記の冪等性・承認フロー)。
+- 却下・取消の注入がプロンプトに載ること(`memory` の取消も含む)。
 - 権限: 書き込み系ツールを持たないagent定義であることの静的検証。
+
+## 実装順序
+
+1. `improvements` テーブル+`retrospective` エージェント定義+JSONパース(テスト含む)
+2. `goal-completed` トリガーのドライバー(`memory` 自動反映 / `agents_md`・`skill` の`pending`挿入)
+3. 改善Inbox UI(承認・却下・取消)
+4. 却下フィードバック注入
+5. `idle` トリガー — memory-layer.md と同様、agent-monitor.md のサーバー内イベントエミッター
+   に依存するため、それまでは `goal-completed` / `manual` のみで運用する。

@@ -101,6 +101,47 @@ try/catch なしで await していた。
 
 ---
 
+# 作業ログ: Hermes Agent 的機能の仕様書 再レビューと追加修正
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+前回の修正(M1〜M6, S1〜S4, A1〜A4)自体が新たな不整合を生んでいないか再レビューする。
+
+## 検出した問題(前回修正の副作用・見落とし)
+
+- **R1** memory-layer.md: 前回のFTS対策(`INTEGER PK`+`public_id`)は過剰。他テーブル全て
+  `id TEXT PRIMARY KEY` なので、それを保ったまま FTS5 の `id UNINDEXED` 列で解決するよう簡素化。
+- **R2/R3** memory-layer.md: 「`embedding`列を確保」(実在しない)、「FTS類似度0.9以上」
+  (FTS5のbm25は正規化0-1類似度ではない)という不正確な記述を削除・訂正。
+- **R4** memory-layer.md: `${OPENCODE_WORKSPACE}` 変数展開は根拠不明のため「未検証」と明記。
+- **R5(高)** self-improvement-loop.md: 実行ドライバー手順が反映表(S1で確定した「memoryは自動反映」)
+  を反映しておらず、全target `pending` 挿入のままだった。target別分岐に修正。
+- **R6** self-improvement-loop.md: 出力契約JSONの `memory` フィールドが memory-layer.md の
+  `memories` スキーマ(`kind`必須)と不整合だった。
+- **R7(高)** agent-monitor.md: Escalateの宛先が「`(kind,ref_id)`が結びつくセッション」だと
+  `kind=subagent` 行が自分自身に送ることになり無意味。`parent_ref_id` 列を追加し、
+  Escalateは `kind=subagent` カード限定に修正。
+- **R8** agent-monitor.md: `kind=adhoc` が状態写像に存在せず未定義だった。v1は手動作成限定と明記。
+- **R9** agent-monitor.md: 新設SSEにハートビート言及が無かった。既存 `sse-health.ts` の
+  `SSE_HEARTBEAT_MS`/`SSE_SILENCE_MS` を再利用するよう追記。
+- **R10** 全体: idle系トリガーがagent-monitorのイベントエミッターに依存する旨を
+  memory-layer/self-improvement 双方の「実装順序」に明記(循環しないよう
+  「エミッター未実装の間は goal-completed のみで運用」と明示)。
+
+## 教訓
+
+一度のレビュー修正で終わらせず、**修正自体を再レビューする**ことで、
+「存在しないコード機構(サーバー内イベントバス)を前提に別の修正をしてしまう」
+ような二次的な誤りを検出できた(A2の修正が `events.ts` の実態を誤認していた点など)。
+仕様書間の相互参照(idle検出の共有)が生む実装順序の暗黙の依存関係も、
+明示しないと循環に見えるため、各仕様書の「実装順序」に依存を書き込む運用とする。
+
+---
+
 # 作業ログ: Hermes Agent 的機能の仕様書レビューと修正
 
 ## 日付

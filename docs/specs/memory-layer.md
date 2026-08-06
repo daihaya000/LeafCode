@@ -19,7 +19,8 @@ OpenCode CLI 自体には長期メモリがない。セッションをまたぐ�
 
 - 対象: DBスキーマ(`memories` テーブル)、MCPサーバー(`memory-mcp`)、
   自動抽出フック、注入フック、管理UI(`/settings/memory`)。
-- 非対象: 埋め込みベクトル検索(v1はFTS5のみ。`embedding` 列は将来用に確保)。
+- 非対象: 埋め込みベクトル検索(v1はFTS5のみ。`embedding` 列はv1のスキーマに含めず、
+  必要になった時点で `ALTER TABLE` で追加する)。
 - 非対象: ワークスペース横断のグローバルメモリ(v2候補)。
 - 非対象: OpenCode本体のフォーク。すべて外部から付加する。
 
@@ -32,8 +33,7 @@ guard付き `ALTER TABLE`(例: `db.ts:344`)の組み合わせで初期化する�
 
 ```sql
 CREATE TABLE memories (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  public_id TEXT NOT NULL UNIQUE,         -- opencode-id準拠(API・MCPの参照キー)
+  id TEXT PRIMARY KEY,                    -- opencode-id準拠(他テーブルと同じ規約)
   workspace_id TEXT NOT NULL,
   kind TEXT NOT NULL,                     -- 'fact' | 'preference' | 'lesson' | 'reference'
   content TEXT NOT NULL,
@@ -46,24 +46,32 @@ CREATE TABLE memories (
   use_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
-CREATE VIRTUAL TABLE memories_fts USING fts5(content);   -- 独立FTS表
+CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
 ```
 
-FTSは**外部コンテンツ表(`content='memories'`)にしない**。`id TEXT PRIMARY KEY` は
-rowid と分離するため `content_rowid='rowid'` と噛み合わず壊れやすい。独立FTS表を
-`memories.id`(INTEGER PK=rowid)と同期する:
+`id TEXT PRIMARY KEY` を他テーブル(`goal_loops` 等)と揃えたまま FTS5 を使うため、
+**外部コンテンツ表(`content_rowid`)は使わない**(TEXT PKはSQLiteのrowidと別物になり
+噛み合わせが壊れやすい)。代わりに `id` を FTS5 の `UNINDEXED` 列として持たせ、
+rowid には依存しないトリガ同期にする:
 
 ```sql
 CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
-  INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+  INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);
 END;
 CREATE TRIGGER memories_fts_update AFTER UPDATE ON memories BEGIN
-  UPDATE memories_fts SET content = new.content WHERE rowid = new.id;
+  UPDATE memories_fts SET content = new.content WHERE id = new.id;
 END;
 CREATE TRIGGER memories_fts_delete AFTER DELETE ON memories BEGIN
-  DELETE FROM memories_fts WHERE rowid = old.id;
+  DELETE FROM memories_fts WHERE id = old.id;
 END;
 ```
+
+検索は `SELECT id FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank` で候補idを取り、
+`memories` を `id IN (...)` で引く(join不要)。
+
+将来のベクトル検索(v2)は `memories` に `embedding` 列を追記する形で対応する
+(v1のCREATE文には含めない。追加時は `db.ts` の既存パターンである guard付き `ALTER TABLE`
+で追加する)。
 
 不変条件:
 
@@ -83,8 +91,8 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 | --- | --- | --- |
 | `memory_search` | `query`, `kind?`, `limit?`(既定5) | FTS5検索 + `last_used_at` 更新。承認済み限定 |
 | `memory_add` | `kind`, `content` | `provenance='agent'` で追加(詳細は汚染対策参照) |
-| `memory_update` | `public_id`, `content?`, `kind?` | 上書き。存在しないidはエラー |
-| `memory_delete` | `public_id` | 削除。FTS同期削除 |
+| `memory_update` | `id`, `content?`, `kind?` | 上書き。存在しないidはエラー |
+| `memory_delete` | `id` | 削除。FTS同期削除 |
 
 サーバーはホストのDBを直接開く(`better-sqlite3`)。
 
@@ -93,9 +101,11 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 - 同時アクセス: WebサーバーとMCPが別プロセスで同じSQLiteを開く。接続時に
   `busy_timeout`(5000ms)と `journal_mode = WAL` を必ず設定する(web側 `db.ts:116` はWAL済み)。
   書込は memories 系テーブルのみに限定し、他テーブルには触れない。
-- ワークスペース解決は起動時引数の `--workspace` で固定する(セッションごとに1プロセス、
-  `opencode.json` の `${OPENCODE_WORKSPACE}` 相当の変数で渡す。変数が使えない場合は
-  wrapperスクリプトが解決する)。
+- ワークスペース解決は起動時引数の `--workspace` で固定する(セッションごとに1プロセス)。
+  **未検証**: OpenCode の MCP 設定が起動コマンドへの変数展開(ワークスペースパス等)を
+  サポートするかは `docs/opencode/` に記述がなく確認できていない。サポートされない場合は、
+  `opencode.json` を配置する側(プロファイル同期の仕組み、`sync-engine.ts` 系)で
+  ワークスペースごとに固定引数を書き込む wrapper 方式にする。実装着手時に要確認。
 
 ### プロンプト汚染対策
 
@@ -122,7 +132,9 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
    ```json
    { "memories": [ { "kind": "...", "content": "..." } ] }
    ```
-3. 各行を `provenance='auto-extract'`, `approved=0` で挿入。同一contentの既存行は重複スキップ(完全一致+FTS類似度0.9以上)。
+3. 各行を `provenance='auto-extract'`, `approved=0` で挿入。重複判定はv1では**完全一致のみ**
+   (FTS5のbm25スコアは正規化された0-1類似度ではないため、「類似度0.9以上」のような閾値は
+   定義できない)。近似重複の排除は埋め込み導入後のv2に持ち越す。
 4. WebUIに通知バッジを出す(`/settings/memory` へのリンク)。
 
 抽出プロンプトには「コードやファイル内容の引用禁止。将来も有効な命題のみ」という制約を入れる。
@@ -154,9 +166,9 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 | メソッド / パス | 意味 |
 | --- | --- |
 | `GET /api/memory?workspace_id=&approved=&kind=` | 一覧 |
-| `POST /api/memory/:public_id/approve` | 承認(`approved=1`) |
-| `PATCH /api/memory/:public_id` | 内容・種別編集 |
-| `DELETE /api/memory/:public_id` | 削除 |
+| `POST /api/memory/:id/approve` | 承認(`approved=1`) |
+| `PATCH /api/memory/:id` | 内容・種別編集 |
+| `DELETE /api/memory/:id` | 削除 |
 | `POST /api/memory/extract` | 手動抽出(対象セッションid指定) |
 
 承認・削除・抽出は `audit-log.js` 相当のWeb側監査(既存pattern)に記録する。
@@ -183,5 +195,7 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 1. DBテーブル+FTS+テスト
 2. API+監査
 3. MCPサーバー+インストールスクリプト
-4. 自動抽出+注入
+4. 自動抽出(`goal-completed` トリガーのみ)+注入
 5. UI
+6. `idle` トリガー — **agent-monitor.md のサーバー内イベントエミッター(同spec実装順序#2)に
+   依存**。エミッター未実装の間は `goal-completed` のみで運用し、`idle` は後追いで有効化する。

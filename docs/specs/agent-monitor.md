@@ -31,6 +31,9 @@ goal loop と workflow は別々のUIで、サブエージェントは親セッ�
 - 非対象: エージェント同士の直接メッセージ交換(オーケストレーション本体は
   workflow scheduler の範囲)。
 - 非対象: 新規ストール検知アルゴリズム。既存の閾値定義を再利用する。
+- 非対象: `kind=adhoc` の自動検知。v1では「新規サブエージェント」ボタン等からの
+  **手動作成のみ**(バスイベントからの自動生成はしない)。将来、分類先が無い
+  実行を拾うための予約枠。
 
 ## データモデル
 
@@ -40,7 +43,8 @@ CREATE TABLE agent_runs (
   workspace_id TEXT NOT NULL,
   kind TEXT NOT NULL,                 -- goal-loop | workflow-node | subagent | adhoc
   ref_id TEXT NOT NULL,               -- goal_loops.id / ノード実行id / セッションid
-  session_id TEXT,                    -- OpenCodeセッションが対応すれば格納
+  session_id TEXT,                    -- OpenCodeセッションが対応すれば格納(kind=subagentは子セッションid)
+  parent_ref_id TEXT,                 -- kind=subagentのみ: 呼び出し元(親)セッションid。Escalate宛先
   title TEXT NOT NULL,
   status TEXT NOT NULL,               -- queued | running | needs-review | blocked | done | failed | stopped
   current_tool TEXT,                  -- 直近ツール名(なければNULL)
@@ -88,6 +92,7 @@ CREATE INDEX idx_agent_runs_ws ON agent_runs(workspace_id, status);
 セッションイベント(`message.updated`)に含まれる tool part から `task`(サブエージェント)
 ツールの呼び出しを検知する。開始(=running)と完了(=done)の遷移は tool part の状態
 (`state`)で判定し、厳密な part 型は実装時に `opencode-schema.d.ts` で確認する。
+検知時に**呼び出し元セッションid**を `parent_ref_id` に記録する(Escalateの宛先として使う)。
 検知関数には単体テストを付ける。
 
 ## 集約ドライバー
@@ -120,6 +125,8 @@ goal-loop や workflow の状態を書き換える関数群が、書き込み完
 新規 `/api/agent-runs/events`(SSE)を設ける。配信は上記エミッター購読ベースで行い、
 **1秒ポーリング(revision差分)方式は採用しない**(既存 workflow events の方式とは意図的に変える)。
 `agent-run.updated`(ペイロード: `agent_runs` 行)を配信する。
+ハートビートは既存 `web/src/lib/sse-health.ts` の `SSE_HEARTBEAT_MS`(15秒)を再利用し、
+無通信時間の定義も `SSE_SILENCE_MS` に揃える(独自の値を新設しない)。
 kanban UIは初回にREST一覧取得、以降はイベント差分のみで描画する。
 
 ## UI(/agents)
@@ -130,10 +137,13 @@ kanban UIは初回にREST一覧取得、以降はイベント差分のみで描�
 - カードクリック → 対応する既存画面(goal loop パネル / TaskView / workflow ノード)へ遷移。
 - カードメニュー(委譲のみ、新ロジックなし):
   - `Stop`: goal loopは`stopped`、workflowノードはノード停止、セッションはabort相当。
-  - `Escalate`: サブエージェント/ノードの要約を親セッションへメッセージ送信
+  - `Escalate`: **`kind=subagent` のカードにのみ表示する**(親を持つのはsubagentだけ)。
+    要約を `parent_ref_id` のセッションへメッセージ送信する
     (`subagent-stall-recovery.md` の escalate 書式をそのまま使用)。
-    宛先は `(kind, ref_id)` が結びつくセッション。ワークスペースに goal loop が無い場合は
-    親セッション直送、それも無ければ改善Inbox(`improvements` テーブル)へ落とす。
+    `parent_ref_id` が無い(検知漏れ等の異常系)場合は送信せず、改善Inbox
+    (`improvements` テーブル)へ要約を落として人間に委ねる。
+    `goal-loop` / `workflow-node` のカードには表示しない(それぞれ Stop / Retry / 既存の
+    attention 導線で扱う)。
   - `Retry`: needs-review/blocked の再開(既存 resume API)。
 - ヘッダー: 「新規サブエージェント」ボタン → コンポーザの既存エージェント選択で
   `subagent` 定義を起動(新規 `.opencode/agents/subagent.md` を用意)。
@@ -150,6 +160,8 @@ kanban UIは初回にREST一覧取得、以降はイベント差分のみで描�
 - 状態写像表の全セル(vitest、テーブル駆動)。
 - 不変条件: `(kind, ref_id)` 非終端1件のみ。
 - ハートビート更新 → ストール判定 → SSE配信の一連(既存SSEテストパターン)。
+- Escalate: `parent_ref_id` あり→送信、無し→改善Inboxへ落ちる、`kind`が subagent 以外では
+  操作自体が出ないこと。
 - kanbanは `@testing-library/react` で列ごとのレンダリング。
 - e2e: シナリオ1本(smoke相当でkanban表示のみ)。
 
