@@ -1,3 +1,101 @@
+# 作業ログ: バグハント（設定画面・アップデート・ログインの3件修正）
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+静的チェック（typecheck/lint/全テスト）が全緑の状態から、コードレビューで潜在バグを
+探し出して修正する。
+
+## 見つけて修正したバグ
+
+1. **`ProfileSyncSettings` のエラーバナーが成功後も残る**
+   - `refresh()` の成功パスが `setError(null)` を呼んでいなかった。姉妹コンポーネント
+     `ProfileAgentsSyncSettings.refresh()` は呼んでおり不整合だった。
+   - 「ファイルを開く」失敗等のエラーが、その後の「状況を更新」成功後も消えずに残る。
+   - 修正: `web/src/components/settings/ProfileSyncSettings.tsx` の refresh 成功時に
+     `setError(null)` を追加。
+
+2. **アップデートAPIのクライアント側タイムアウトがサーバー側より短い**
+   - `SettingsView.updateService()` は全ターゲット一律 130 秒で `timedFetch` していたが、
+     サーバー側の最長処理時間は webui release 更新が最大 360 秒超
+     （release取得/ZIP取得/展開 各120秒）、nextjs が 180 秒。
+   - クライアントが先に abort して「タイムアウト」エラーになる一方、サーバー側では
+     更新処理が継続・適用される（誤った失敗表示）。
+   - 修正: ターゲット別にタイムアウトを設定（nextjs 200 秒 / webui 400 秒 /
+     それ以外 130 秒）。
+
+3. **ログインが試行回数制限(429)で拒否されたときの表示が「通信エラー」になる**
+   - host は 429 で「試行回数が多すぎます。X 秒後に再試行してください」を返すが、
+     `web/src/lib/auth.ts` の `login()` は 401 以外の例外を全て
+     「通信エラーが発生しました」に潰していた。
+   - 修正: 429 はサーバーのメッセージをそのまま表示する分岐を追加。
+   - テスト: `web/src/lib/auth.test.ts`（新規4件: 成功 / 401 / 429 / その他）。
+
+## 調査して問題なしと確認した箇所（抜粋）
+
+- `host/src/control-server.js`（DNSリバインディングガード、HMACセッション、
+  revocation store、スロットリング）
+- `host/src/windows-auth.js` / `auth-store.js` / `audit-log.js` / `secure-file.js`
+- `web/src/lib/api-guard.ts` / `local-request.ts` / `session.ts` / `client-ip.ts`
+- `web/src/lib/hang-watchdog.ts` / `oc-server.ts` / `useSessionStream.ts` の SSE 再接続
+- `web/src/app/api/opencode/[...path]/route.ts` の SSE ハートビート/クリーンアップ
+- `rejectUnlessLocalOrPrivateNetwork` は XFF のプライベート値を信頼するため
+  公開環境ではバイパス可能だが、**現在はどのルートからも未使用**（死代码）。
+  将来再利用する際は左端 XFF を信頼しない設計に見直すこと。
+
+## 検証結果
+
+- `npm run --prefix web typecheck` ... 成功
+- `npm run --prefix web lint` ... 成功
+- `npm run --prefix web test` ... 234 files / 2827 tests 成功（+4）
+- `npm run --prefix host test` ... 361 tests 成功
+
+---
+
+# 作業ログ: Hermes Agent 的機能の仕様策定(メモリ層・自己改善ループ・エージェント監視)
+
+## 日付
+
+2026-08-06
+
+## 目的
+
+「このツールに Hermes Agent 的な機能を追加するなら」という依頼に対し、
+候補5案(永続メモリ / 自己改善ループ / cron / メッセンジャーGW / マルチエージェント監視)から
+1(メモリ層)・2(自己改善)・5(監視UI)を具体化し、仕様書として確定する。
+実装は行わず設計のみ。
+
+## 作成した仕様書
+
+- `docs/specs/memory-layer.md` ... ワークスペース単位の永続記憶。
+  SQLite `memories` + FTS5、MCPツール(memory_search 等)で公開、
+  セッション完了時の自動抽出は承認制、承認済み記憶を冒頭メッセージに注入。
+- `docs/specs/self-improvement-loop.md` ... `retrospective` エージェントが
+  構造化JSON提案のみ作成。改善Inboxで人間承認。MEMORY.md追記のみ自動可、
+  AGENTS.md/skills は必ず承認。却下理由を次回プロンプトに否定例注入。
+- `docs/specs/agent-monitor.md` ... goal loop / workflowノード / サブエージェントを
+  `agent_runs` テーブルに集約し、kanban UI(`/agents`)で監視。
+  ストール判定は既存 hang-watchdog を再利用、操作は既存APIへの委譲のみ。
+
+## 設計上の原則(他2案にも適用する方針)
+
+- 新機能は host 側のNodeロジックとMCPプラグインに寄せ、OpenCode本体はフォークしない。
+- 状態は自然言語パースで推論せず、DBの明示列で表現する(goal-loop.md 方針の踏襲)。
+- 自動化は抽出まで。ファイル/設定への変更は人間承認を必須とする。
+- すべての新規 `/api/**` は `api-guard.ts` の `requireAuthorized` を通す(coverageテスト対象)。
+
+## 次のステップ(実装時)
+
+1. メモリ層を先に実装(他2案の保存基盤になる)。
+2. 実装順序は各仕様書の「実装順序」セクションに従う。
+3. 着手前に隣接ファイルではなく `api-guard.ts` と coverage テストを確認する
+   (CSRF ガード漏れの手戻り教訓を繰り返さない)。
+
+---
+
 # 作業ログ: プロファイル/同期系設定に「ファイルを開く」「フォルダを開く」を追加
 
 ## 日付
