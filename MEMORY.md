@@ -189,7 +189,24 @@ cookie が無効になる。localStorage を信じていると「画面は出る
   3. LAN URL（`http://192.168.x.x:3000`）… ログイン画面が出る
   4. LAN から設定 → ユーザー … 403 になる（ホスト限定のため意図通り）
 
-## 未修理の脆弱性: host control server の DNS リバインディング
+## 脆弱性修正計画
+
+`docs/specs/security-remediation-plan.md` に棚卸しと修正計画をまとめた。
+
+**最重要（P0-1）**: API ルート 97 本のうち **66 本が無認証**。
+`/api/opencode/[...path]`（全メソッド）と `/api/tasks` を含むため、
+LAN 上の任意端末が認証なしにエージェントを起動でき、**実質的に無認証 RCE**。
+`deploy/Caddyfile` の Basic Auth はコメントアウトされており外側ゲートも無い。
+ログイン UI は LAN でログインを要求するので保護されていると誤認しやすいが、
+ゲートは UI のみで API は保護していない。
+
+**P0-2**: `Origin` を検証するルートが 0 件で、`isLocalHostRequest` は資格情報を
+要求しない。ホストPCで悪意あるページを開くと `http://127.0.0.1:3000/api/...` へ
+`text/plain` で POST でき（preflight 回避）、全状態変更 API を叩ける。
+
+暫定緩和: `deploy/Caddyfile` の `basicauth` を有効化するか LAN 公開を止める。
+
+## 未修理の脆弱性: host control server の DNS リバインディング（P1-1）
 
 **未対応。ユーザー判断により今回は修正を見送った。**
 
