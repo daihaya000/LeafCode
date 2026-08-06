@@ -12,6 +12,36 @@ export type AuthSession = {
   expiresAt: number;
 };
 
+/** Server-side verdict on whether this client has to log in. */
+export type AuthRequirement = {
+  /** True when the browser reached the BFF over loopback (same machine). */
+  local: boolean;
+  /** True when at least one user is registered on the host. */
+  hasUsers: boolean;
+  /** True only for remote callers once a user exists. */
+  loginRequired: boolean;
+};
+
+/**
+ * Ask the server whether login is required. Only the server can decide this:
+ * the loopback check depends on the request's Host/X-Forwarded-For headers.
+ *
+ * On failure we fail closed (require login) so a flaky fetch cannot be used to
+ * skip the gate.
+ */
+export async function fetchAuthRequirement(): Promise<AuthRequirement> {
+  try {
+    const data = await getJson<Partial<AuthRequirement>>("/api/auth/session");
+    return {
+      local: data.local === true,
+      hasUsers: data.hasUsers === true,
+      loginRequired: data.loginRequired !== false,
+    };
+  } catch {
+    return { local: false, hasUsers: true, loginRequired: true };
+  }
+}
+
 function isBrowser() {
   return typeof window !== "undefined";
 }

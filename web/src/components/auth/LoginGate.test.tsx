@@ -2,14 +2,16 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LoginGate, LoginForm } from "./LoginGate";
 
-const { login, logout } = vi.hoisted(() => ({
+const { login, logout, fetchAuthRequirement } = vi.hoisted(() => ({
   login: vi.fn(),
   logout: vi.fn(),
+  fetchAuthRequirement: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
   currentUser: vi.fn(),
   isLoggedIn: vi.fn(),
+  fetchAuthRequirement,
   login,
   logout,
   listAuthUsers: vi.fn(),
@@ -23,6 +25,13 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   login.mockReset();
   logout.mockReset();
+  fetchAuthRequirement.mockReset();
+  // Default: remote caller with users registered, so the gate applies.
+  fetchAuthRequirement.mockResolvedValue({
+    local: false,
+    hasUsers: true,
+    loginRequired: true,
+  });
   (auth.currentUser as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
   (auth.isLoggedIn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
 });
@@ -95,10 +104,58 @@ describe("LoginGate", () => {
       </LoginGate>,
     );
 
+    // The gate resolves loginRequired asynchronously, so wait for the form.
+    await waitFor(() => expect(screen.getByLabelText("ユーザー名")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("ユーザー名"), { target: { value: "alice" } });
     fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "secret" } });
     fireEvent.click(screen.getByRole("button", { name: "ログイン" }));
 
     await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
+  });
+
+  it("skips the gate entirely for loopback callers", async () => {
+    fetchAuthRequirement.mockResolvedValue({
+      local: true,
+      hasUsers: true,
+      loginRequired: false,
+    });
+    render(
+      <LoginGate>
+        <div>protected content</div>
+      </LoginGate>,
+    );
+
+    await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+    // No session to end, so the logout affordance stays hidden.
+    expect(screen.queryByRole("button", { name: "ログアウト" })).toBeNull();
+  });
+
+  it("skips the gate for remote callers while no users are registered", async () => {
+    fetchAuthRequirement.mockResolvedValue({
+      local: false,
+      hasUsers: false,
+      loginRequired: false,
+    });
+    render(
+      <LoginGate>
+        <div>protected content</div>
+      </LoginGate>,
+    );
+
+    await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+  });
+
+  it("shows the logout affordance only once a gated session exists", async () => {
+    (auth.currentUser as unknown as ReturnType<typeof vi.fn>).mockReturnValue("alice");
+    render(
+      <LoginGate>
+        <div>protected content</div>
+      </LoginGate>,
+    );
+
+    await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "ログアウト" })).toBeTruthy();
   });
 });

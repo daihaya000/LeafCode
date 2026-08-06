@@ -2,15 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, Spinner } from "@/components/ui";
-import { currentUser, login, logout } from "@/lib/auth";
+import { currentUser, fetchAuthRequirement, login, logout } from "@/lib/auth";
 
 export function useLoginGate() {
   const [user, setUser] = useState<string | null>(() => currentUser());
   const [checked, setChecked] = useState(false);
+  const [loginRequired, setLoginRequired] = useState(true);
 
   useEffect(() => {
-    setUser(currentUser());
-    setChecked(true);
+    let cancelled = false;
+    void (async () => {
+      const requirement = await fetchAuthRequirement();
+      if (cancelled) return;
+      setLoginRequired(requirement.loginRequired);
+      setUser(currentUser());
+      setChecked(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const doLogin = useCallback(async (username: string, password: string) => {
@@ -26,7 +36,14 @@ export function useLoginGate() {
     setUser(null);
   }, []);
 
-  return { user, checked, isLoggedIn: Boolean(user), login: doLogin, logout: doLogout };
+  return {
+    user,
+    checked,
+    loginRequired,
+    isLoggedIn: Boolean(user),
+    login: doLogin,
+    logout: doLogout,
+  };
 }
 
 type LoginFormProps = {
@@ -108,13 +125,13 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 }
 
 export function LoginGate({ children }: { children: React.ReactNode }) {
-  const { user, checked, isLoggedIn, logout: doLogout } = useLoginGate();
+  const { user, checked, loginRequired, isLoggedIn, logout: doLogout } = useLoginGate();
   const [showGate, setShowGate] = useState(true);
 
   useEffect(() => {
     if (!checked) return;
-    setShowGate(!isLoggedIn);
-  }, [checked, isLoggedIn]);
+    setShowGate(loginRequired && !isLoggedIn);
+  }, [checked, loginRequired, isLoggedIn]);
 
   const onLogin = useCallback(() => {
     setShowGate(false);
@@ -132,18 +149,23 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
     return <LoginForm onLogin={onLogin} />;
   }
 
+  // Nothing to log out of when the gate never applied (loopback access).
+  const showLogout = loginRequired && Boolean(user);
+
   return (
     <>
-      <div className="fixed top-0 right-0 z-50 hidden items-center gap-2 p-2 md:flex">
-        <span className="text-[11px] text-muted">{user}</span>
-        <button
-          type="button"
-          onClick={() => void doLogout()}
-          className="text-[11px] text-muted underline hover:text-text"
-        >
-          ログアウト
-        </button>
-      </div>
+      {showLogout && (
+        <div className="fixed top-0 right-0 z-50 hidden items-center gap-2 p-2 md:flex">
+          <span className="text-[11px] text-muted">{user}</span>
+          <button
+            type="button"
+            onClick={() => void doLogout()}
+            className="text-[11px] text-muted underline hover:text-text"
+          >
+            ログアウト
+          </button>
+        </div>
+      )}
       {children}
     </>
   );
