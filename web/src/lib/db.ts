@@ -317,6 +317,38 @@ export function getDb(): Database.Database {
       state TEXT NOT NULL DEFAULT 'armed' CHECK (state IN ('armed', 'resolving')),
       updated_at INTEGER NOT NULL
     );
+    -- Session-crossing persistent memory. See docs/specs/memory-layer.md.
+    -- created_at / updated_at are epoch milliseconds (INTEGER) so the search
+    -- bump and ordering play well with the FTS layer.
+    CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      kind TEXT NOT NULL,              -- 'fact' | 'preference' | 'lesson' | 'reference'
+      content TEXT NOT NULL,
+      source_session_id TEXT,
+      provenance TEXT NOT NULL,        -- 'agent' | 'auto-extract' | 'auto-extract-retrospective' | 'manual'
+      approved INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_used_at INTEGER,
+      use_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_memories_ws ON memories(workspace_id, approved);
+    -- FTS5 access path. id is carried as an UNINDEXED column (TEXT PK does not
+    -- align with SQLite rowid), so the sync never relies on rowid.
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
+    DROP TRIGGER IF EXISTS memories_fts_insert;
+    CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
+      INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);
+    END;
+    DROP TRIGGER IF EXISTS memories_fts_update;
+    CREATE TRIGGER memories_fts_update AFTER UPDATE ON memories BEGIN
+      UPDATE memories_fts SET content = new.content WHERE id = new.id;
+    END;
+    DROP TRIGGER IF EXISTS memories_fts_delete;
+    CREATE TRIGGER memories_fts_delete AFTER DELETE ON memories BEGIN
+      DELETE FROM memories_fts WHERE id = old.id;
+    END;
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);

@@ -1,3 +1,40 @@
+# 作業ログ: メモリ層 REST API ルート + 自動抽出ドライバ
+
+## 日付
+
+2026-08-06
+
+## 実装内容
+
+`docs/specs/memory-layer.md` の「API」と「自動抽出」フェーズ。
+
+### 新規ファイル
+
+- `web/src/lib/memory-extract.ts` — 自動抽出ドライバ（純粋関数 + ocServer 薄ラッパー）
+  - `messageText` / `extractTranscriptTail`(末尾16KB) / `lastJsonBlock` / `parseExtractionJson` / `buildExtractionPrompt`
+  - `resolveLightweightModel`（`chooseAutoModel` を tier:"light"/mode:"cost" で呼ぶ）
+  - `runMemoryExtraction`（スローアウェイ session を作り prompt_async → ポーリング → フェンス JSON を parse → `insertExtractedMemories`。approved=0 で挿入）
+  - 定数: `MEMORY_EXTRACT_TRANSCRIPT_MAX_CHARS=16000` / `RESULT_TIMEOUT_MS=120000` / `POLL_MS=2000`
+- `web/src/lib/memory-extract.test.ts` — 純粋関数8件（parse/block/tail/text/prompt）
+- `web/src/app/api/memory/route.ts` — GET 一覧(workspace_id/approved/kind) + POST /extract
+- `web/src/app/api/memory/[id]/route.ts` — PATCH(内容/種別) + DELETE
+- `web/src/app/api/memory/[id]/approve/route.ts` — POST 承認
+- `web/src/app/api/memory/route.test.ts` — ルート5件（workspace 行は upsertProject+createWorkspace で実物を作る）
+
+### 設計ポイント
+
+- 全ルート `requireAuthorized` ガード + `runtime="nodejs"` / `dynamic="force-dynamic"`。
+- `runMemoryExtraction` は失敗時 `{created,skipped,errors,error}` を返し、API は 502 で返す。
+- 抽出セッションは `title:"memory-extract"`、モデル未解決なら engine デフォルトにフォールバック。
+- ポーリング終了判定は「assistant で `time.completed` が付いた最後のメッセージ」のフェンス JSON を parse できた時点。
+
+### 検証
+
+- `tsc --noEmit` / `eslint`（対象ファイル）/ `vitest run`（全体 239 files / 2855 tests 成功）
+- `api-guard-coverage.test.ts` は新ルート検出後も7件パス（全ルートで requireAuthorized 済み確認）
+
+---
+
 # 作業ログ: バグハント第8ラウンド（PTY input の上限チェック単位修正）
 
 ## 日付
