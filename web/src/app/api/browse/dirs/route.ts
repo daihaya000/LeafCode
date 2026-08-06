@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { listQuickAccess } from "@/lib/quickaccess";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
   // Directory enumeration is host-only: even the project picker (files=0)
   // exposes the host's filesystem layout, so require a loopback caller.
   // The in-task FileTree (files=1) additionally enforces the allowlist below.
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const raw = req.nextUrl.searchParams.get("path");

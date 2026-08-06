@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifySession } from "@/lib/session";
 
 const LOOPBACK_HOSTS = new Set([
   "127.0.0.1",
@@ -116,10 +117,39 @@ export function rejectUnlessLocal(req: Request): NextResponse | null {
   );
 }
 
-export function rejectUnlessLocalOrPrivateNetwork(
+/**
+ * Allow the host machine, or any caller holding a session verified by the host.
+ *
+ * This is the default guard for host-facing APIs. A verified session is a
+ * strictly stronger authorization signal than the loopback heuristic: the token
+ * is HMAC-signed by the tray host, whereas `Host` / `X-Forwarded-For` can be
+ * spoofed by anyone on the LAN.
+ *
+ * Use `rejectUnlessLocal` instead for the few operations that are meaningless
+ * remotely because they drive the host's own desktop — see
+ * `/api/browse/folder`, which opens a dialog on the host screen.
+ */
+export async function rejectUnlessLocalOrAuthenticated(
   req: Request,
-): NextResponse | null {
+): Promise<NextResponse | null> {
+  if (isLocalHostRequest(req)) return null;
+  if (await verifySession(req)) return null;
+  return NextResponse.json(
+    {
+      error:
+        "this endpoint requires the host machine or a signed-in session",
+    },
+    { status: 403 },
+  );
+}
+
+export async function rejectUnlessLocalOrPrivateNetwork(
+  req: Request,
+): Promise<NextResponse | null> {
   if (isLocalOrPrivateNetworkRequest(req)) return null;
+  // A signed-in caller is allowed even from outside the private network, e.g. a
+  // phone reaching the WebUI through a reverse proxy on a public hostname.
+  if (await verifySession(req)) return null;
   return NextResponse.json(
     { error: "this endpoint is only available from the host machine or private network" },
     { status: 403 },

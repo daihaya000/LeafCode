@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { migrateDefault } from "@/lib/profiles/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const result = migrateDefault();

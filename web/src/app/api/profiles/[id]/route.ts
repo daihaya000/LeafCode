@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { renameProfile, deleteProfile } from "@/lib/profiles/service";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const { id } = await params;
@@ -35,7 +35,7 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const { id } = await params;

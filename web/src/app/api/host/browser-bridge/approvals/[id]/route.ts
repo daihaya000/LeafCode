@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { browserBrokerFetch } from "@/lib/browser-bridge";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
   const { id } = await context.params;
   if (!/^approval_[A-Za-z0-9_-]{20,}$/.test(id)) {

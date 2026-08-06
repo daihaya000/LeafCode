@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { getRelay } from "@/lib/pty-relay";
 
@@ -20,7 +20,7 @@ const MAX_INPUT_BYTES = 64 * 1024;
  * Engine connection on its own.
  */
 export async function POST(req: NextRequest) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const ptyId = req.nextUrl.searchParams.get("id")?.trim() ?? "";

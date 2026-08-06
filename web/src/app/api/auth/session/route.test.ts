@@ -189,6 +189,55 @@ describe("GET /api/auth/session", () => {
     expect(body.loginRequired).toBe(false);
   });
 
+  it("reports authenticated=false and no username without a cookie", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(configResponse({ hasUsers: true })) as unknown as typeof fetch;
+
+    const body = (await (
+      await GET(request({ host: "192.168.1.50:3000" }))
+    ).json()) as Body & { authenticated: boolean; username: string | null };
+    expect(body.authenticated).toBe(false);
+    expect(body.username).toBeNull();
+  });
+
+  it("reports the verified username when the cookie checks out", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith("/auth/verify")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true, username: "alice" }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(configResponse({ hasUsers: true }));
+    }) as unknown as typeof fetch;
+
+    const body = (await (
+      await GET(
+        request({ host: "192.168.1.50:3000", cookie: "webui_session=tok" }),
+      )
+    ).json()) as Body & { authenticated: boolean; username: string | null };
+    expect(body.authenticated).toBe(true);
+    expect(body.username).toBe("alice");
+    // The gate still applies in principle; the client uses `authenticated` to pass.
+    expect(body.loginRequired).toBe(true);
+  });
+
+  it("reports authenticated=false when the host rejects the cookie", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith("/auth/verify")) {
+        return Promise.resolve(new Response("{}", { status: 401 }));
+      }
+      return Promise.resolve(configResponse({ hasUsers: true }));
+    }) as unknown as typeof fetch;
+
+    const body = (await (
+      await GET(
+        request({ host: "192.168.1.50:3000", cookie: "webui_session=stale" }),
+      )
+    ).json()) as Body & { authenticated: boolean };
+    expect(body.authenticated).toBe(false);
+  });
+
   it("reports canAuthenticate false when nothing can authenticate", async () => {
     global.fetch = vi
       .fn()

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { installDependencies } from "@/lib/profiles/service";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
   const { id } = await params;
   const result = installDependencies(id);

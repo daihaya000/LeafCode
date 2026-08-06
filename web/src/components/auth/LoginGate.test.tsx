@@ -26,11 +26,15 @@ beforeEach(() => {
   login.mockReset();
   logout.mockReset();
   fetchAuthRequirement.mockReset();
-  // Default: remote caller with users registered, so the gate applies.
+  // Default: remote caller with users registered and no valid cookie, so the
+  // gate applies. `authenticated` comes from the server-verified cookie — the
+  // client cannot decide this from localStorage.
   fetchAuthRequirement.mockResolvedValue({
     local: false,
     hasUsers: true,
     loginRequired: true,
+    authenticated: false,
+    username: null,
   });
   (auth.currentUser as unknown as ReturnType<typeof vi.fn>).mockReturnValue(null);
   (auth.isLoggedIn as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
@@ -76,14 +80,33 @@ describe("LoginForm", () => {
 });
 
 describe("LoginGate", () => {
-  it("renders children when already logged in", async () => {
-    (auth.currentUser as unknown as ReturnType<typeof vi.fn>).mockReturnValue("alice");
+  it("renders children when the server confirms the session cookie", async () => {
+    fetchAuthRequirement.mockResolvedValue({
+      local: false,
+      hasUsers: true,
+      loginRequired: true,
+      authenticated: true,
+      username: "alice",
+    });
     render(
       <LoginGate>
         <div>protected content</div>
       </LoginGate>,
     );
     await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
+  });
+
+  it("shows the gate when localStorage claims a session the server rejects", async () => {
+    // A host restart regenerates the signing secret, invalidating the cookie
+    // while localStorage still holds a session. The server must win.
+    (auth.currentUser as unknown as ReturnType<typeof vi.fn>).mockReturnValue("alice");
+    render(
+      <LoginGate>
+        <div>protected content</div>
+      </LoginGate>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "ログイン" })).toBeTruthy());
+    expect(screen.queryByText("protected content")).toBeNull();
   });
 
   it("shows the login form when not logged in", async () => {
@@ -147,8 +170,14 @@ describe("LoginGate", () => {
     expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
   });
 
-  it("shows the logout affordance only once a gated session exists", async () => {
-    (auth.currentUser as unknown as ReturnType<typeof vi.fn>).mockReturnValue("alice");
+  it("shows the logout affordance and username from the verified session", async () => {
+    fetchAuthRequirement.mockResolvedValue({
+      local: false,
+      hasUsers: true,
+      loginRequired: true,
+      authenticated: true,
+      username: "alice",
+    });
     render(
       <LoginGate>
         <div>protected content</div>
@@ -157,5 +186,6 @@ describe("LoginGate", () => {
 
     await waitFor(() => expect(screen.getByText("protected content")).toBeTruthy());
     expect(screen.getByRole("button", { name: "ログアウト" })).toBeTruthy();
+    expect(screen.getByText("alice")).toBeTruthy();
   });
 });

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { connectPty, PtyError } from "@/lib/pty-session";
 import { logPtyEvent } from "@/lib/pty-audit";
@@ -35,7 +35,7 @@ const PTY_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
  * ReadableStream but cannot accept HTTP Upgrade.
  */
 export async function GET(req: NextRequest) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const ptyId = req.nextUrl.searchParams.get("id")?.trim() ?? "";

@@ -24,6 +24,10 @@ export type AuthRequirement = {
   canAuthenticate: boolean;
   /** True only for remote callers once a credential source exists. */
   loginRequired: boolean;
+  /** True when the request's session cookie was verified by the host. */
+  authenticated: boolean;
+  /** Username behind the verified session, if any. */
+  username: string | null;
 };
 
 /** Host-only authentication options. */
@@ -50,6 +54,8 @@ export async function fetchAuthRequirement(): Promise<AuthRequirement> {
       windowsAuth: data.windowsAuth === true,
       canAuthenticate: data.canAuthenticate === true,
       loginRequired: data.loginRequired !== false,
+      authenticated: data.authenticated === true,
+      username: typeof data.username === "string" ? data.username : null,
     };
   } catch {
     return {
@@ -58,6 +64,8 @@ export async function fetchAuthRequirement(): Promise<AuthRequirement> {
       windowsAuth: false,
       canAuthenticate: true,
       loginRequired: true,
+      authenticated: false,
+      username: null,
     };
   }
 }

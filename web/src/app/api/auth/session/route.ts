@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveHostControlUrl } from "@/lib/host-control";
 import { isLocalHostRequest } from "@/lib/local-request";
+import { verifySession } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,11 +45,18 @@ export async function GET(req: Request) {
 
   const canAuthenticate = hasUsers || windowsAuth;
 
+  // Report the cookie's real state so the client gate does not rely on
+  // localStorage. The host regenerates its signing secret on every restart, so a
+  // stale localStorage entry would otherwise show the app while every API 403s.
+  const session = await verifySession(req);
+
   return NextResponse.json({
     local,
     hasUsers,
     windowsAuth,
     canAuthenticate,
     loginRequired: !local && canAuthenticate,
+    authenticated: session !== null,
+    username: session?.username ?? null,
   });
 }

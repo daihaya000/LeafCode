@@ -20,6 +20,7 @@ export function matchControlRoute(method, pathname) {
   if (m === 'POST' && path === '/auth/config') return 'auth-config';
   if (m === 'POST' && path === '/auth/login') return 'auth';
   if (m === 'POST' && path === '/auth/logout') return 'auth';
+  if (m === 'POST' && path === '/auth/verify') return 'auth';
   if (m !== 'POST') return null;
   if (path === '/restart/webui') return 'webui';
   if (path === '/restart/opencode') return 'opencode';
@@ -96,17 +97,24 @@ function verifySessionToken(secret, token) {
     return null;
   }
   const payload = Buffer.from(payloadB64, 'base64url').toString('utf8');
-  const colon = payload.indexOf(':');
+  // The timestamp is appended after the username, so split on the LAST colon:
+  // indexOf would truncate any username that itself contains one.
+  const colon = payload.lastIndexOf(':');
   if (colon === -1) return null;
   const ts = Number(payload.slice(colon + 1));
   if (!Number.isFinite(ts)) return null;
+  // Reject tokens dated in the future beyond a little clock skew, so a forged
+  // timestamp cannot extend a session indefinitely.
+  if (ts - Date.now() > 60_000) return null;
   // 7-day session
   if (Date.now() - ts > 7 * 24 * 60 * 60 * 1000) return null;
-  return payload.slice(0, colon);
+  const username = payload.slice(0, colon);
+  return username || null;
 }
 
-function setAuthCookie(res, token) {
-  res.setHeader('Set-Cookie', `webui_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`);
+/** Single source of truth for the session cookie the BFF forwards to the browser. */
+function authCookieHeader(token) {
+  return `webui_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`;
 }
 
 function clearAuthCookie(res) {
@@ -393,11 +401,32 @@ export function createControlRequestHandler(handlers) {
         res.end(JSON.stringify({ ok: false, error: 'authentication is not supported by this host' }));
         return;
       }
-      const subRoute = pathname.replace(/^\/auth\//, '') || '';
+      const subRoute = pathname.replace(/^\/auth\//, '').replace(/\/+$/, '') || '';
       if (subRoute === 'logout') {
         clearAuthCookie(res);
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (subRoute === 'verify') {
+        // The BFF cannot check the signature itself (the secret lives only in
+        // this process), so it forwards the browser's session token here. This
+        // is what turns the login gate from a cosmetic UI check into a real
+        // authorization decision.
+        const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
+        const body = await readJsonBody(req);
+        const token =
+          isPlainObject(body) && typeof body.token === 'string'
+            ? body.token
+            : getSessionCookie(req.headers?.cookie);
+        const username = token ? verifySessionToken(secret, token) : null;
+        if (!username) {
+          res.writeHead(401, JSON_HEADERS);
+          res.end(JSON.stringify({ ok: false, error: 'invalid session' }));
+          return;
+        }
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: true, username }));
         return;
       }
       if (subRoute !== 'login') {
@@ -458,10 +487,7 @@ export function createControlRequestHandler(handlers) {
       throttle.reset(username);
       const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
       const token = signSessionToken(secret, username);
-      res.writeHead(200, {
-        ...JSON_HEADERS,
-        'Set-Cookie': `webui_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`,
-      });
+      res.writeHead(200, { ...JSON_HEADERS, 'Set-Cookie': authCookieHeader(token) });
       res.end(JSON.stringify({ ok: true, username, source }));
       return;
     }

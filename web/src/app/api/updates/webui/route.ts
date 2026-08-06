@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { GITHUB_REPO, GITHUB_REPO_URL, installationRoot, isGitInstall } from "@/lib/install-root";
 import { resolveRemoteHead } from "@/lib/github-remote";
 import { isGitRestoreInFlight } from "@/lib/git-restore";
@@ -91,7 +91,7 @@ function trimOutput(value: string): string {
 }
 
 export async function POST(req: Request) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   if (isGitRestoreInFlight()) {

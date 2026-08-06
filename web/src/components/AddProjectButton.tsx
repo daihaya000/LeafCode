@@ -45,12 +45,29 @@ function isValidPathShape(p: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(trimmed) || /^\//.test(trimmed);
 }
 
-/** Translate an API error into a Japanese message based on HTTP status. */
-function apiErrorMessage(err: unknown, fallback: string): string {
+/** Shown when the native dialog is refused; it can only appear on the host screen. */
+const NATIVE_PICKER_FORBIDDEN =
+  "ネイティブフォルダ選択はホストPC（127.0.0.1/localhost）でのみ使えます。下の一覧から選択してください";
+
+/** Shown when server-side browsing is refused, i.e. the session is not signed in. */
+const BROWSE_FORBIDDEN =
+  "フォルダ一覧の取得にはログインが必要です。ログインし直してください";
+
+/**
+ * Translate an API error into a Japanese message based on HTTP status.
+ *
+ * `forbiddenMessage` differs per call site: a 403 from the native dialog means
+ * "not on the host machine", while a 403 from directory browsing means "not
+ * signed in". Reusing one message for both misreports the cause.
+ */
+function apiErrorMessage(
+  err: unknown,
+  fallback: string,
+  forbiddenMessage: string = BROWSE_FORBIDDEN,
+): string {
   if (err && typeof err === "object" && "status" in err) {
     const status = (err as { status?: number }).status;
-    if (status === 403)
-      return "ネイティブフォルダ選択は 127.0.0.1/localhost で開いたときのみ使えます";
+    if (status === 403) return forbiddenMessage;
     if (status === 404) return "フォルダが見つかりません";
     if (status === 400) return "このフォルダは追加できません（許可されていません）";
     if (status === 408) return "通信がタイムアウトしました";
@@ -269,7 +286,11 @@ export function AddProjectButton({
       if (!mountedRef.current) return;
       // If the host cannot show the native dialog, keep the project add flow
       // usable by falling back to the cross-platform in-app picker.
-      const message = apiErrorMessage(err, "フォルダ選択に失敗しました");
+      const message = apiErrorMessage(
+        err,
+        "フォルダ選択に失敗しました",
+        NATIVE_PICKER_FORBIDDEN,
+      );
       // 403 is an authorization problem (not this folder), so show it as a
       // persistent banner that survives navigation inside the in-app picker.
       if (err instanceof Error && "status" in err && err.status === 403) {

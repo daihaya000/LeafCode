@@ -170,10 +170,34 @@ describe("AddProjectButton path sync (row click opens + syncs field)", () => {
     expect(
       screen.getByText((content) =>
         content.includes(
-          "ネイティブフォルダ選択は 127.0.0.1/localhost で開いたときのみ使えます",
+          "ネイティブフォルダ選択はホストPC（127.0.0.1/localhost）でのみ使えます",
         ),
       ),
     ).toBeTruthy();
+  });
+
+  it("reports a denied directory listing as a sign-in problem, not a picker one", async () => {
+    mockClientPlatform("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/browse/dirs") {
+        return Promise.reject(
+          new ApiError(
+            "this endpoint requires the host machine or a signed-in session",
+            403,
+          ),
+        );
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    render(<AddProjectButton />);
+    openDialog();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText((content) => content.includes("ログインが必要です")),
+      ).toBeTruthy(),
+    );
   });
 
   it("uses the native Windows folder picker from the icon button", async () => {

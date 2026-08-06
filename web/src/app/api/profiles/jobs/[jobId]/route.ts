@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { getJob } from "@/lib/profiles/jobs";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
 
   const { jobId } = await params;

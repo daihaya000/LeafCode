@@ -1,4 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { verifySession } = vi.hoisted(() => ({ verifySession: vi.fn() }));
+
+vi.mock("@/lib/session", () => ({
+  verifySession,
+  SESSION_COOKIE: "webui_session",
+  sessionTokenFromCookieHeader: vi.fn(),
+}));
+
 import {
   hostHeaderName,
   isLocalOrPrivateNetworkRequest,
@@ -6,8 +15,14 @@ import {
   isLoopbackAddress,
   isPrivateAddress,
   rejectUnlessLocal,
+  rejectUnlessLocalOrAuthenticated,
   rejectUnlessLocalOrPrivateNetwork,
 } from "./local-request";
+
+beforeEach(() => {
+  verifySession.mockReset();
+  verifySession.mockResolvedValue(null);
+});
 
 describe("isLoopbackAddress", () => {
   it("accepts common loopback forms", () => {
@@ -225,13 +240,82 @@ describe("rejectUnlessLocal", () => {
 });
 
 describe("rejectUnlessLocalOrPrivateNetwork", () => {
-  it("returns null for LAN callers", () => {
-    expect(
+  it("returns null for LAN callers", async () => {
+    await expect(
       rejectUnlessLocalOrPrivateNetwork(
         new Request("http://192.168.0.102:3000/x", {
           headers: { host: "192.168.0.102:3000" },
         }),
       ),
-    ).toBeNull();
+    ).resolves.toBeNull();
+  });
+
+  it("returns null for a public host once the session verifies", async () => {
+    verifySession.mockResolvedValue({ username: "alice" });
+    await expect(
+      rejectUnlessLocalOrPrivateNetwork(
+        new Request("https://webui.example.com/x", {
+          headers: { host: "webui.example.com", cookie: "webui_session=tok" },
+        }),
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("returns 403 for a public host with no session", async () => {
+    verifySession.mockResolvedValue(null);
+    const res = await rejectUnlessLocalOrPrivateNetwork(
+      new Request("https://webui.example.com/x", {
+        headers: { host: "webui.example.com" },
+      }),
+    );
+    expect(res?.status).toBe(403);
+  });
+});
+
+describe("rejectUnlessLocalOrAuthenticated", () => {
+  it("returns null for a loopback caller without consulting the session", async () => {
+    await expect(
+      rejectUnlessLocalOrAuthenticated(
+        new Request("http://127.0.0.1:3000/x", {
+          headers: { host: "127.0.0.1:3000" },
+        }),
+      ),
+    ).resolves.toBeNull();
+    expect(verifySession).not.toHaveBeenCalled();
+  });
+
+  it("returns null for a LAN caller holding a verified session", async () => {
+    verifySession.mockResolvedValue({ username: "alice" });
+    await expect(
+      rejectUnlessLocalOrAuthenticated(
+        new Request("http://192.168.0.102:3000/x", {
+          headers: { host: "192.168.0.102:3000", cookie: "webui_session=tok" },
+        }),
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("returns 403 for a LAN caller with no session", async () => {
+    verifySession.mockResolvedValue(null);
+    const res = await rejectUnlessLocalOrAuthenticated(
+      new Request("http://192.168.0.102:3000/x", {
+        headers: { host: "192.168.0.102:3000" },
+      }),
+    );
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(403);
+    await expect(res!.json()).resolves.toMatchObject({
+      error: expect.stringContaining("signed-in session"),
+    });
+  });
+
+  it("returns 403 when a spoofed loopback Host carries a LAN X-Forwarded-For and no session", async () => {
+    verifySession.mockResolvedValue(null);
+    const res = await rejectUnlessLocalOrAuthenticated(
+      new Request("http://127.0.0.1:3000/x", {
+        headers: { host: "127.0.0.1:3000", "x-forwarded-for": "192.168.0.9" },
+      }),
+    );
+    expect(res?.status).toBe(403);
   });
 });

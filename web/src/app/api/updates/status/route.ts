@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 import { GITHUB_REPO, GITHUB_REPO_URL, installationRoot, isGitInstall } from "@/lib/install-root";
 import { resolveRemoteHead } from "@/lib/github-remote";
 import { readUpdateRecord } from "@/lib/install-state";
@@ -159,7 +159,7 @@ async function checkOpenCode(): Promise<UpdateStatus> {
 }
 
 export async function GET(req: Request) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
   const [webui, opencode] = await Promise.all([checkWebUi(), checkOpenCode()]);
   return NextResponse.json({ webui, opencode, repository: WEBUI_REPO });

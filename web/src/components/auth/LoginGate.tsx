@@ -8,6 +8,7 @@ export function useLoginGate() {
   const [user, setUser] = useState<string | null>(() => currentUser());
   const [checked, setChecked] = useState(false);
   const [loginRequired, setLoginRequired] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -15,7 +16,10 @@ export function useLoginGate() {
       const requirement = await fetchAuthRequirement();
       if (cancelled) return;
       setLoginRequired(requirement.loginRequired);
-      setUser(currentUser());
+      // The verified cookie is the authority. localStorage is only a fallback
+      // for the display name when the gate does not apply at all (loopback).
+      setUser(requirement.authenticated ? requirement.username : null);
+      setAuthenticated(requirement.authenticated);
       setChecked(true);
     })();
     return () => {
@@ -27,6 +31,7 @@ export function useLoginGate() {
     const result = await login(username, password);
     if (result.ok) {
       setUser(currentUser());
+      setAuthenticated(true);
     }
     return result;
   }, []);
@@ -34,13 +39,14 @@ export function useLoginGate() {
   const doLogout = useCallback(async () => {
     await logout();
     setUser(null);
+    setAuthenticated(false);
   }, []);
 
   return {
     user,
     checked,
     loginRequired,
-    isLoggedIn: Boolean(user),
+    isLoggedIn: authenticated,
     login: doLogin,
     logout: doLogout,
   };

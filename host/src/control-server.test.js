@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'crypto';
 import { EventEmitter } from 'events';
 import { createControlRequestHandler, matchControlRoute } from './control-server.js';
 import { createLoginThrottle } from './windows-auth.js';
@@ -266,6 +267,8 @@ test('matchControlRoute maps user management and auth endpoints', () => {
   assert.equal(matchControlRoute('POST', '/auth/login'), 'auth');
   assert.equal(matchControlRoute('POST', '/auth/logout'), 'auth');
   assert.equal(matchControlRoute('GET', '/auth/login'), null);
+  assert.equal(matchControlRoute('POST', '/auth/verify'), 'auth');
+  assert.equal(matchControlRoute('GET', '/auth/verify'), null);
   assert.equal(matchControlRoute('GET', '/auth/config'), 'auth-config');
   assert.equal(matchControlRoute('POST', '/auth/config'), 'auth-config');
   assert.equal(matchControlRoute('DELETE', '/auth/config'), null);
@@ -569,6 +572,115 @@ test('POST /auth/login clears the throttle after a success', async () => {
     password: 'no',
   });
   assert.equal(stillEvaluated.statusCode, 401);
+});
+
+/** Log in and return the session token the host issued via Set-Cookie. */
+async function loginForToken(handle, username = 'alice', password = 'secret') {
+  const res = await postJson(handle, '/auth/login', { username, password });
+  assert.equal(res.statusCode, 200, 'login must succeed to yield a token');
+  const cookie = res.headers?.['Set-Cookie'] ?? '';
+  const match = /webui_session=([^;]+)/.exec(cookie);
+  assert.ok(match, `no session cookie in ${cookie}`);
+  return decodeURIComponent(match[1]);
+}
+
+function verifyHandler(secret = 'test-secret', overrides = {}) {
+  return createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({ verifyUser: (u, p) => p === 'secret', ...overrides }),
+    sessionSecret: secret,
+  });
+}
+
+test('POST /auth/verify accepts a token this host issued', async () => {
+  const handle = verifyHandler();
+  const token = await loginForToken(handle);
+
+  const res = await postJson(handle, '/auth/verify', { token });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true, username: 'alice' });
+});
+
+test('POST /auth/verify reads the token from a Cookie header too', async () => {
+  const handle = verifyHandler();
+  const token = await loginForToken(handle);
+
+  const res = fakeResponse();
+  const req = new MockReadable('{}');
+  req.method = 'POST';
+  req.url = '/auth/verify';
+  req.headers = { cookie: `theme=dark; webui_session=${encodeURIComponent(token)}` };
+  await handle(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.username, 'alice');
+});
+
+test('POST /auth/verify rejects a token signed with a different secret', async () => {
+  const token = await loginForToken(verifyHandler('secret-a'));
+  // A host restart regenerates the secret, which must invalidate old sessions.
+  const res = await postJson(verifyHandler('secret-b'), '/auth/verify', { token });
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.ok, false);
+});
+
+test('POST /auth/verify rejects a tampered payload', async () => {
+  const handle = verifyHandler();
+  const token = await loginForToken(handle);
+  const [, sig] = token.split('.');
+  const forged = `${Buffer.from('admin:' + Date.now()).toString('base64url')}.${sig}`;
+
+  const res = await postJson(handle, '/auth/verify', { token: forged });
+  assert.equal(res.statusCode, 401);
+});
+
+test('POST /auth/verify rejects missing, empty and malformed tokens', async () => {
+  const handle = verifyHandler();
+  for (const token of [undefined, '', 'no-dot', 'a.b', '...']) {
+    const res = await postJson(handle, '/auth/verify', { token });
+    assert.equal(res.statusCode, 401, JSON.stringify(token));
+  }
+});
+
+test('POST /auth/verify rejects an expired token', async () => {
+  const handle = verifyHandler();
+  const secret = 'test-secret';
+  const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+  const payload = `alice:${eightDaysAgo}`;
+  const sig = createHmac('sha256', secret).update(payload).digest('base64url');
+  const stale = `${Buffer.from(payload).toString('base64url')}.${sig}`;
+
+  const res = await postJson(handle, '/auth/verify', { token: stale });
+  assert.equal(res.statusCode, 401);
+});
+
+test('POST /auth/verify rejects a token dated far in the future', async () => {
+  const handle = verifyHandler();
+  const secret = 'test-secret';
+  // A forged future timestamp must not extend the session window.
+  const payload = `alice:${Date.now() + 60 * 60 * 1000}`;
+  const sig = createHmac('sha256', secret).update(payload).digest('base64url');
+  const token = `${Buffer.from(payload).toString('base64url')}.${sig}`;
+
+  const res = await postJson(handle, '/auth/verify', { token });
+  assert.equal(res.statusCode, 401);
+});
+
+test('POST /auth/verify preserves a username containing a colon', async () => {
+  // The timestamp is split off the LAST colon, so odd usernames survive.
+  const secret = 'test-secret';
+  const payload = `corp:alice:${Date.now()}`;
+  const sig = createHmac('sha256', secret).update(payload).digest('base64url');
+  const token = `${Buffer.from(payload).toString('base64url')}.${sig}`;
+
+  const res = await postJson(verifyHandler(secret), '/auth/verify', { token });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.username, 'corp:alice');
+});
+
+test('POST /auth/verify reports 501 when the host has no auth store', async () => {
+  const handle = createControlRequestHandler(noopHandlers);
+  const res = await postJson(handle, '/auth/verify', { token: 'x' });
+  assert.equal(res.statusCode, 501);
 });
 
 test('GET /auth/config reports the flag, support and whether users exist', async () => {

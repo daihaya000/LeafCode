@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { browserBrokerFetch } from "@/lib/browser-bridge";
-import { rejectUnlessLocal } from "@/lib/local-request";
+import { rejectUnlessLocalOrAuthenticated } from "@/lib/local-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const denied = rejectUnlessLocal(req);
+  const denied = await rejectUnlessLocalOrAuthenticated(req);
   if (denied) return denied;
   try {
     const res = await browserBrokerFetch("/internal/approvals");

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const TARGETS = new Set<HostRestartTarget>(["webui", "opencode", "all"]);
 
 export async function POST(req: Request) {
-  const denied = rejectUnlessLocalOrPrivateNetwork(req);
+  const denied = await rejectUnlessLocalOrPrivateNetwork(req);
   if (denied) return denied;
 
   let target: HostRestartTarget | null = null;
