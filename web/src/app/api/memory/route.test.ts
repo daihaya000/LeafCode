@@ -19,7 +19,8 @@ vi.mock("@/lib/api-guard", () => ({
   requireAuthorized: vi.fn(async () => null),
 }));
 
-const { GET, POST } = await import("./route");
+const { GET } = await import("./route");
+const { POST } = await import("./extract/route");
 const { PATCH, DELETE } = await import("./[id]/route");
 const { POST: approvePOST } = await import("./[id]/approve/route");
 

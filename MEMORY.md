@@ -2031,3 +2031,27 @@ distDirRoot should not navigate out of the projectPath.`
 
 ## 備考
 - Next 16 への移行は「外部 distDir をやめる/別方式にする」設計判断とセットで別途計画が必要。
+---
+
+# 実装ログ: メモリ API 405 バグ修正(extract ルート欠落)
+
+## 日付
+2026-08-07
+
+## バグ
+`POST /api/memory/extract` が 405(Method Not Allowed)を返す。UI(MemorySettings.tsx)は
+`/api/memory/extract` へ POST するが、実装は `/api/memory/route.ts` の POST として
+`/api/memory` に生えていた。`/api/memory/extract` は動的ルート `[id]` にマッチし、
+PATCH/DELETE しか無いため 405 になった。
+
+## 修正
+- `web/src/app/api/memory/extract/route.ts` を新設し POST を移設(静的セグメントは
+  Next.js で動的 `[id]` より優先される)
+- `route.ts` から POST と不要 import を削除(GET のみに)
+- `route.test.ts` の import を `./extract/route` から POST を取得する形に更新
+- api-guard-coverage は extract route が requireAuthorized を通すためそのまま合格
+
+## 検証結果
+- web vitest 全体 246 files / 2908 tests 全パス
+- tsc / eslint clean
+- UI が呼ぶ全メモリ関連エンドポイントの実在とメソッドを照合確認
