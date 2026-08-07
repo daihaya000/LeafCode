@@ -1,3 +1,53 @@
+# 作業ログ: バックエンド OpenCode CLI の V2(Beta)API との互換性調査
+
+## 日付
+
+2026-08-07
+
+## 依頼
+
+「バックエンド OpenCode CLI の V2(現在Beta)との互換性は」という質問。実装変更は行わず、
+コード調査のみで現状を確定する。
+
+## 調査して確定した事実
+
+- 実際の機能コード(`goal-loop.ts` / `task-service.ts` / `hang-watchdog.ts` /
+  `workflow-scheduler.ts` / `memory-extract.ts` / `useSessionStream.ts` 等)は
+  すべて **V1 REST**(`/session`, `/session/{id}/prompt_async`, `/session/status`,
+  `/session/{id}/permissions/{id}` 等)のみを呼び出している
+  (`web/src/lib/opencode-schema.d.ts:1341` 以降の `session.*` operationId 群)。
+- コード中に頻出する `permission.v2.asked` / `question.v2.asked` の「v2」は、
+  **V1 API 内でセッションスコープ化されたパーミッション/質問イベント**を指す別概念
+  (`attention.ts:72-91`, `useSessionStream.ts:913-1007` で v1/v2 両対応済み)。
+  OpenCode CLI 自体の新 API 世代とは無関係で紛らわしいだけ。
+- `opencode-schema.d.ts`(OpenAPI 自動生成)には、OpenCode CLI の新「V2」API と
+  見られる別系統のパス(`/api/health`, `/api/session`, `/api/agent`, `/api/pty`,
+  `/api/integration/*`, `/api/credential/*`)と operationId(`v2.session.prompt`
+  `v2.session.wait` 等)、SSE の `SessionNext*` 系イベント(`ToolProgress` /
+  `TextDelta` 等の細粒度ストリーミング)の**型定義のみ**存在する
+  (`opencode-schema.d.ts:2228〜3189`)。WebUI のアプリケーションコードは
+  これらのエンドポイントを一切呼び出していない(未使用の生成型)。
+- プロキシの安全ガード層(`web/src/lib/opencode.ts` の `isBlockedOpencodeWrite`)
+  のみ V2 パス形状(`/api/session/.../shell`, `/api/pty`,
+  `/api/integration/.../connect/*`, `/api/credential/*` 等)の危険な書き込みを
+  遮断できるよう先回りで拡張済み(コメント: 「v2 API proxied through
+  `/api/opencode/[...path]`」)。機能実装ではなく素通り時の予防策のみ。
+- `package.json` / `host/package.json` に OpenCode CLI のバージョンピンは無く、
+  winget 等で都度最新を導入する運用(V1/V2 のどちらを使うかはコード側の実装で決まる)。
+
+## 結論
+
+現状は **非互換(未実装)**。V1 で安定運用されており、V2(Beta)のエンドポイント/
+イベントへ切り替える追加実装(`useSessionStream.ts` の SSE ハンドリングと
+`goal-loop.ts` 等の REST 呼び出し先の差し替え)は行われていない。ガード層のみ
+V2 パスを認識して安全側に倒す準備がある。
+
+## 変更ファイル
+
+なし(調査のみ)。
+
+---
+
 # 作業ログ: 新環境セットアップの再検証(静的整合性 + フルフロー統合テスト)
 
 ## 日付
