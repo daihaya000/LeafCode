@@ -1,3 +1,63 @@
+# 作業ログ: 既存プロファイルへの vendor CLI プロキシ自動更新機構
+
+## 日付
+
+2026-08-07
+
+## 依頼と背景
+
+前ラウンドで CommandCode CLI Proxy の接続不安定バグ(index.mjs)を修正したが、
+`installWebUiDependencies` の `copyVendorFiles` は `if (fs.existsSync(target)) continue;`
+で**既存ファイルを決して上書きしない**ため、当時の修正は既に導入済みのプロファイルには
+一切反映されない問題があった。ユーザー指摘「既存のプロファイルに導入済みの古いバージョン
+は差し替えた?」→ No。よって「vendor の上書き更新の仕組み」を追加した。
+
+## 設計: ハッシュ比較 + マーカーファイル
+
+- 導入済みプロファイル直下に **`.webui-vendor-versions.json`** を置き、
+  「vendor 相対パス → コンテンツハッシュ(sha256)」を記録する。
+- `installWebUiDependencies` 実行時、バンドル(ソース)側のハッシュとマーカーを比較:
+  - **一致** → スキップ(従来の idempotent を維持)。
+  - **不一致 or マーカー無し** → `copyEntry` で上書きし、マーカーを更新。
+- `hashEntry(source)`: ファイル/ディレクトリの安定ハッシュ。ツリーを辿って
+  各ファイル sha256 を連結して sha256(シンボリックリンクは無視)。ディレクトリ内
+  に新規ファイルが増えた場合も含めて伝播する。
+- `copyEntry` は既に各ファイルを上書き、ディレクトリは再帰コピーするため、
+  配下の新ファイルも同期される(既存実装を再利用)。
+
+## 変更ファイル
+
+- `web/src/lib/profiles/webui-dependencies.ts`
+  - import に `crypto`、定数 `VENDOR_VERSIONS_FILE = ".webui-vendor-versions.json"` を追加。
+  - `copyVendorFiles` を「存在すればスキップ」→「ハッシュ差分があれば上書き」に変更。
+  - ヘルパ: `readVendorVersions` / `writeVendorVersions`(atomic temp+rename) /
+    `readVendorVersion` / `writeVendorVersion` / `hashEntry` を追加。
+- `web/src/lib/profiles/webui-dependencies.test.ts`
+  - 「updates an already-installed CommandCode CLI Proxy when the bundle hash changes」
+    同一バンドル再実行で idempotent / バンドル内容変更で既存プロファイルが更新される。
+  - 「records and reuses the installed CommandCode version marker」
+    マーカー JSON に `plugin/...` と `packages/...` の両キーが記録され、マーカーを削除
+    したレガシー経路でも再コピーされる。
+
+Cursor / Claude CLI Proxy にも同ロジックが適用される(`copyVendorFiles` 共通関数)。
+
+## 検証
+
+- `npx vitest run src/lib/profiles/` → 7 files / 92 tests 全PASS。
+- `npx tsc --noEmit` → 成功。
+- git コミット `ec9ee2a`。
+
+## 並行プロセス注意(再発)
+
+作業中、**別エージェントが未コミットの変更を巻き戻した**。私の import 編集・コピー更新ロジック・
+テスト追加の全てが一度消え、git ワーキングツリーがクリーンに戻った。`copyVendorFiles` の
+再適用とテストの作り直しを余儀なくされた。proof:
+- 19 tests PASS(単体)→ 直後 17 tests(2件消失)→ git status clean。
+並行エージェントが同じファイル群(copy vendor 更新)を扱う環境では、編集→検証→コミットを
+素早く行い、都度 `git status` を確認する。MEMORY.md 更新と本修正のコミットを各独立に行う。
+
+---
+
 # 作業ログ: ハングウォッチドッグが未回答の質問/パーミッションをハングと誤判定するバグ修正
 
 ## 日付
