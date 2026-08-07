@@ -10,13 +10,21 @@ describe("resolveNextDistDir", () => {
     expect(resolveNextDistDir({ NEXT_DIST_DIR: "   " }, appDir)).toBe(".next");
   });
 
-  it("converts an absolute same-drive directory to a relative distDir", () => {
-    const abs = join("C:", "Users", "u", "AppData", "Roaming", "opencode-webui", "web-build");
+  it("accepts an absolute path inside the app directory and returns it relative", () => {
+    const abs = join(appDir, ".next-e2e");
     const rel = resolveNextDistDir({ NEXT_DIST_DIR: abs }, appDir);
-    // The relative path must resolve back to the original absolute directory
-    // once Next.js joins it with the app directory.
+    expect(rel).toBe(".next-e2e");
     expect(resolve(appDir, rel)).toBe(abs);
-    expect(rel).toContain("..");
+  });
+
+  it("rejects a directory outside the app: Turbopack refuses to build there", () => {
+    const outside = join("C:", "Users", "u", "AppData", "Roaming", "opencode-webui", "web-build");
+    expect(() => resolveNextDistDir({ NEXT_DIST_DIR: outside }, appDir)).toThrow(
+      /must be inside the web app/,
+    );
+    expect(() => resolveNextDistDir({ NEXT_DIST_DIR: ".." }, appDir)).toThrow(
+      /must be inside the web app/,
+    );
   });
 
   it("keeps relative inputs relative (e2e / dev behavior)", () => {
@@ -33,7 +41,7 @@ describe("resolveNextDistDir", () => {
     { skip: process.platform !== "win32" },
     () => {
       expect(() => resolveNextDistDir({ NEXT_DIST_DIR: "D:\\elsewhere\\build" }, appDir)).toThrow(
-        /same drive/,
+        /must be inside the web app/,
       );
     },
   );

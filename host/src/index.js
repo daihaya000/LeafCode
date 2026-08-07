@@ -53,7 +53,7 @@ import {
 // unrelated app that happens to occupy the port). Import-safe: the guard only
 // runs main() when executed directly.
 import { isThisWebUiNextStart } from '../../scripts/production-webui-build-guard.mjs';
-import { resolveProductionDistDir } from '../../scripts/web-dist-dir.mjs';
+import { mirrorDistDir, mirrorWebDir, resolveMirrorRoot } from '../../scripts/web-build-mirror.mjs';
 import {
   deleteUser,
   hasUsers,
@@ -85,19 +85,15 @@ const HOST_DIR = join(__dirname, '..');
 const REPO_ROOT = join(HOST_DIR, '..');
 const WEB_DIR = join(REPO_ROOT, 'web');
 const DATA_DIR = join(process.env.APPDATA, 'opencode-webui');
-const WEB_DIST_DIR = resolveProductionDistDir(process.env, WEB_DIR);
 /**
- * Server files emitted under the external distDir require bare modules
- * (`next`, `react`, `better-sqlite3`, …). Node resolves them by walking up
- * from the requiring file, which never reaches web/node_modules when the
- * build output lives under %APPDATA% — so expose it via NODE_PATH (a
- * fallback search path, appended to any existing value). Needed for both
- * `next build` (page-data collection) and `next start` (request handling).
+ * Production builds and `next start` both run in the hard-link mirror outside
+ * the OneDrive-synced tree (scripts/web-build-mirror.mjs), so the served files
+ * are never touched by the sync client and Turbopack gets a distDir inside its
+ * own project. Everything below points at the mirror, not at WEB_DIR.
  */
-const WEB_NODE_MODULES = join(WEB_DIR, 'node_modules');
-function withWebNodeModulesPath(baseNodePath = process.env.NODE_PATH) {
-  return baseNodePath ? `${baseNodePath};${WEB_NODE_MODULES}` : WEB_NODE_MODULES;
-}
+const WEB_MIRROR_ROOT = resolveMirrorRoot(process.env, REPO_ROOT);
+const WEB_MIRROR_DIR = mirrorWebDir(WEB_MIRROR_ROOT);
+const WEB_DIST_DIR = mirrorDistDir(WEB_MIRROR_ROOT);
 /** Host package version, read from host/package.json for the log header. */
 const HOST_VERSION = (() => {
   try {
@@ -1321,15 +1317,12 @@ function buildWebProductionInternal(reason = 'missing') {
         : 'Production WebUI build is missing; rebuilding before start…';
     log(reasonText);
     mkdirSync(WEB_DIST_DIR, { recursive: true });
-    const child = spawnNpm(['run', 'build'], {
-      cwd: WEB_DIR,
+    // Syncs the hard-link mirror and builds there; see scripts/build-web.mjs.
+    const child = spawn(process.execPath, [join(REPO_ROOT, 'scripts', 'build-web.mjs')], {
+      cwd: REPO_ROOT,
       stdio: 'pipe',
       windowsHide: true,
-      env: {
-        ...process.env,
-        NEXT_DIST_DIR: WEB_DIST_DIR,
-        NODE_PATH: withWebNodeModulesPath(),
-      },
+      env: { ...process.env },
     });
     webBuildProc = child;
     void refreshStatusMenu();
@@ -1398,19 +1391,29 @@ async function spawnWeb() {
   if (plan.needsBuild) throw new Error('WebUI production build is unavailable');
   const useProd = plan.useProd;
 
-  const npmArgs = useProd
-    ? ['run', 'start', '--', '--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)]
-    : ['run', 'dev', '--', '--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)];
+  // Production serves the mirrored project, so `next start` is invoked
+  // directly there instead of through npm in the installation.
+  const serveDir = useProd ? WEB_MIRROR_DIR : WEB_DIR;
+  const serverArgs = ['--hostname', WEBUI_HOST, '--port', String(WEBUI_PORT)];
 
-  log(
-    `Starting WebUI (${useProd ? 'production' : 'dev'}) on ${WEBUI_HOST}:${WEBUI_PORT} in ${WEB_DIR}`,
-  );
-  const child = spawnNpm(npmArgs, {
-    cwd: WEB_DIR,
+  log(`Starting WebUI (${useProd ? 'production' : 'dev'}) on ${WEBUI_HOST}:${WEBUI_PORT} in ${serveDir}`);
+  const spawnServer = (options) =>
+    useProd
+      ? spawn(
+          process.execPath,
+          [join(WEB_MIRROR_DIR, 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', ...serverArgs],
+          options,
+        )
+      : spawnNpm(['run', 'dev', '--', ...serverArgs], options);
+  const child = spawnServer({
+    cwd: serveDir,
     stdio: 'pipe',
     windowsHide: true,
     env: {
       ...process.env,
+      // The mirror is a copy: git-backed features must still act on the
+      // installation (web/src/lib/install-root.ts).
+      OPENCODE_WEBUI_INSTALL_ROOT: REPO_ROOT,
       OPENCODE_BASE_URL: OPENCODE_URL,
       OPENCODE_PORT: String(OPENCODE_PORT),
       OPENCODE_WEBUI_HOST: WEBUI_HOST,
@@ -1430,12 +1433,10 @@ async function spawnWeb() {
         process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? 'false',
       ...browserBridgeEnvironment(),
       PORT: String(WEBUI_PORT),
-      // `next start` must serve the same distDir that was built. Do NOT set it
-      // for dev mode: web/scripts/dev.mjs defaults NEXT_DIST_DIR to .next-dev
-      // and passing the prod dir would break dev.
-      ...(useProd ? { NEXT_DIST_DIR: WEB_DIST_DIR } : {}),
-      // Bare-module resolution from the external distDir (see WEB_NODE_MODULES).
-      ...(useProd ? { NODE_PATH: withWebNodeModulesPath() } : {}),
+      // Production serves the mirror's own `.next`, which is the default, so
+      // any inherited NEXT_DIST_DIR must be cleared. Dev keeps its own value:
+      // web/scripts/dev.mjs defaults it to .next-dev.
+      ...(useProd ? { NEXT_DIST_DIR: '' } : {}),
       // When Caddy fronts the WebUI with HTTPS, advertise its public origin so
       // /api/access shows the reachable URL instead of http://IP:3000.
       ...(detectCaddyPublicUrl()
@@ -1583,14 +1584,18 @@ function ensureDataDir() {
  * cause the very ChunkLoadError the build guard exists to prevent.
  */
 function removeLegacyInRepoBuild() {
-  const legacy = join(WEB_DIR, '.next');
-  try {
-    if (resolve(WEB_DIST_DIR) === resolve(legacy)) return;
-    if (!existsSync(legacy)) return;
-    rmSync(legacy, { recursive: true, force: true });
-    log(`Production build output moved to ${WEB_DIST_DIR}; removed legacy web/.next`);
-  } catch {
-    // Swallow: best-effort cleanup of the old in-repo .next directory.
+  // web/.next (before the output moved out of the repo) and the external
+  // %APPDATA% distDir (before the whole project moved into the build mirror).
+  const legacyDirs = [join(WEB_DIR, '.next'), join(DATA_DIR, 'web-build')];
+  for (const legacy of legacyDirs) {
+    try {
+      if (resolve(WEB_DIST_DIR) === resolve(legacy)) continue;
+      if (!existsSync(legacy)) continue;
+      rmSync(legacy, { recursive: true, force: true });
+      log(`Production build output moved to ${WEB_DIST_DIR}; removed legacy ${legacy}`);
+    } catch {
+      // Swallow: best-effort cleanup of superseded build output.
+    }
   }
 }
 

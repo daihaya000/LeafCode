@@ -63,7 +63,7 @@ goto :start_host
 rem npm (via its internal progress/gauge display while running `npm ci`,
 rem `npm ls`, or `npm run build` above) can overwrite this console's title
 rem with its own transient status text (e.g. "npm ls") and never restore it,
-rem so the window is left showing that stale text through verify-tsconfig
+rem so the window is left showing that stale text through the build
 rem and the host's own "Starting..."/"Production" log lines. Reassert the
 rem app title here, right before the host tail, regardless of which path
 rem (fresh install vs. OPENCODE_WEBUI_SETUP_COMPLETE fast path) got here.
@@ -235,13 +235,12 @@ call node scripts\production-webui-build-guard.mjs
 if errorlevel 1 goto :web_build_skipped
 
 :web_build_guard_passed
+rem scripts\build-web.mjs syncs the hard-link mirror and builds there; the
+rem guard above already ran, so it is not repeated.
 echo [OpenCode WebUI] Building web ^(first run^)...
-pushd web
-if errorlevel 1 goto :web_build_failed_without_pushd
-call npm run build
+call node scripts\build-web.mjs --skip-guard
 if errorlevel 1 goto :web_build_failed
 if not exist "%NEXT_DIST_DIR%\BUILD_ID" goto :web_build_id_missing
-popd
 exit /b 0
 
 :web_build_skipped
@@ -258,17 +257,13 @@ popd
 call :fail 5 "web dependencies could not be installed." error-5
 exit /b 5
 
-:web_build_failed_without_pushd
-call :fail 6 "the web build failed." error-6
-exit /b 6
-
+rem The build runs through scripts\build-web.mjs from the repo root, so these
+rem paths must not popd: nothing was pushed.
 :web_build_failed
-popd
 call :fail 6 "the web build failed." error-6
 exit /b 6
 
 :web_build_id_missing
-popd
 call :fail 7 "BUILD_ID is missing after the build." error-7
 exit /b 7
 
@@ -321,19 +316,11 @@ call :fail 9 "Browser Bridge dependencies could not be installed." error-9
 exit /b 9
 
 :resolve_dist_dir
-rem Production build output directory (default: under AppData roaming;
-rem override OPENCODE_WEBUI_DIST_DIR). See scripts\web-dist-dir.mjs.
+rem Production builds run in the hard-link mirror outside the synced tree
+rem (override OPENCODE_WEBUI_BUILD_DIR). See scripts\web-build-mirror.mjs.
 set "NEXT_DIST_DIR="
-for /f "usebackq delims=" %%D in (`node scripts\web-dist-dir.mjs`) do set "NEXT_DIST_DIR=%%D"
+for /f "usebackq delims=" %%D in (`node scripts\web-build-mirror.mjs --dist-dir`) do set "NEXT_DIST_DIR=%%D"
 if not defined NEXT_DIST_DIR goto :resolve_dist_dir_failed
-rem Server files emitted under the external distDir require bare modules
-rem (next, react, ...); Node's upward search never reaches web\node_modules
-rem from AppData, so expose it as a NODE_PATH fallback search path.
-if defined NODE_PATH (
-  set "NODE_PATH=%NODE_PATH%;%CD%\web\node_modules"
-) else (
-  set "NODE_PATH=%CD%\web\node_modules"
-)
 exit /b 0
 
 :resolve_dist_dir_failed

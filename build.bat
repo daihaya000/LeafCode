@@ -18,27 +18,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem The production build output lives outside the (OneDrive-synced) repo:
-rem by default the "opencode-webui\web-build" directory under AppData roaming.
-rem Override with OPENCODE_WEBUI_DIST_DIR. scripts\web-dist-dir.mjs is the
-rem single source of truth, shared with host\src\index.js.
-for /f "usebackq delims=" %%D in (`node scripts\web-dist-dir.mjs`) do set "NEXT_DIST_DIR=%%D"
+rem The production build runs in a hard-link mirror of this installation,
+rem outside the (OneDrive-synced) repo: the sync client must never touch a
+rem build that is being written or served, and Turbopack refuses a distDir
+rem that leaves the project. Override the location with
+rem OPENCODE_WEBUI_BUILD_DIR. scripts\web-build-mirror.mjs is the single
+rem source of truth, shared with host\src\index.js.
+for /f "usebackq delims=" %%D in (`node scripts\web-build-mirror.mjs --dist-dir`) do set "NEXT_DIST_DIR=%%D"
 if not defined NEXT_DIST_DIR (
   echo [OpenCode WebUI] Could not resolve the build output directory.
   pause
   exit /b 1
 )
 echo [OpenCode WebUI] Build output: %NEXT_DIST_DIR%
-
-rem Server files emitted under the external distDir require bare modules
-rem (next, react, better-sqlite3, ...). Node finds them by walking up from
-rem the requiring file, which never reaches web\node_modules when the output
-rem lives under AppData, so expose it as a NODE_PATH fallback search path.
-if defined NODE_PATH (
-  set "NODE_PATH=%NODE_PATH%;%CD%\web\node_modules"
-) else (
-  set "NODE_PATH=%CD%\web\node_modules"
-)
 
 if not exist "web\node_modules\" (
   echo [OpenCode WebUI] Installing web dependencies...
@@ -66,16 +58,15 @@ if not exist "host\node_modules\" (
   popd
 )
 
+rem Syncs the hard-link mirror outside the synced tree and builds there.
+rem The guard already ran above, so it is not repeated.
 echo [OpenCode WebUI] Running next build...
-pushd web
-call npm run build
+call node scripts\build-web.mjs --skip-guard
 if errorlevel 1 (
   echo [OpenCode WebUI] web build failed
-  popd
   pause
   exit /b 1
 )
-popd
 
 if not exist "%NEXT_DIST_DIR%\BUILD_ID" (
   echo [OpenCode WebUI] Build finished but BUILD_ID is missing

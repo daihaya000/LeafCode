@@ -247,16 +247,20 @@ cd web && npm install && npm run dev
 スモーク: WebUI 起動後に `node scripts/smoke-api.mjs`。Browser Bridge はトレイ host が起動済みの環境で `npm run smoke:browser-bridge` を実行します（このコマンドは host / Broker を起動しません）。
 
 <details>
-<summary><b>production build のガード</b></summary>
+<summary><b>production build のミラーとガード</b></summary>
 
-稼働中に production build の出力ディレクトリ（`%APPDATA%\opencode-webui\web-build`、`OPENCODE_WEBUI_DIST_DIR` で上書き可能）を上書きすると、配信中の HTML とチャンクの世代が混在して `ChunkLoadError` になります。これを防ぐため:
+production build は**リポジトリ内では実行されません**。`scripts/web-build-mirror.mjs` がインストール全体をハードリンクでミラーし（既定 `%LOCALAPPDATA%\opencode-webui\build\<インストール名>-<ハッシュ>`、`OPENCODE_WEBUI_BUILD_DIR` で上書き可能）、`next build` と `next start` はそのミラー内で動きます。
+
+理由は2つあります。OneDrive 同期がビルド中・配信中の出力に触れると HTML とチャンクの世代が混在して `ChunkLoadError` になること、そして Next 16 の Turbopack が「プロジェクト外を指す distDir」を拒否するため、出力だけでなくプロジェクトごと同期対象の外に置く必要があることです。
+
+ハードリンクなので追加ディスクはほぼゼロで、同期は差分のみです。ジャンクションやシンボリックリンクは使えません（バンドラがリンクを実パスへ正規化し、モジュール解決が同期ツリーへ戻ってしまいます）。ミラーはインストールパスのハッシュで分離されるため、複数のチェックアウトが同じミラーを奪い合うことはありません。別ボリュームなどハードリンクを作れない環境では自動的にバイトコピーへ退避します。
+
+ミラーはコピーなので、サーバーは `OPENCODE_WEBUI_INSTALL_ROOT` で実インストール先を受け取ります（自己更新や git-restore は実リポジトリに対して動作します）。手動でビルドする場合はリポジトリ直下で `node scripts/build-web.mjs`（= `npm --prefix web run build`）を実行してください。
+
+配信中の出力を壊さないためのガードも従来どおりです:
 
 - `build.bat` は、本番 WebUI（`next start`）が同じポートで稼働中（またはリスナーの正体が不明）なら **ビルドを中止** します。トレイまたは `OpenCodeWebUI.exe` から WebUI を停止してから再実行してください
-- ランチャー内部の `scripts/start-webui.bat` は、稼働中の WebUI があれば **初回ビルドをスキップして host 本体へ進みます**。トレイ host が健全な WebUI をそのまま再利用するか、古くなった自前の `next start` を引き継いでから `%APPDATA%\opencode-webui\web-build` へリビルドします（孤立した不明プロセスは決して終了させません）
-
-出力ディレクトリ配下のサーバーファイルは `next` 等のモジュールを `NODE_PATH`（`web\node_modules`）経由で解決します（host/bat が自動設定）。手動で `npm run build` / `npm run start` する場合は `NEXT_DIST_DIR`（絶対パス）と `NODE_PATH=<リポジトリ>\web\node_modules` の両方を指定してください。
-
-`npm run build`（`web/` で直接実行）のガードはチェックのみで、稼働中なら従来どおり中止します。
+- ランチャー内部の `scripts/start-webui.bat` は、稼働中の WebUI があれば **初回ビルドをスキップして host 本体へ進みます**。トレイ host が健全な WebUI をそのまま再利用するか、古くなった自前の `next start` を引き継いでからミラーへリビルドします（孤立した不明プロセスは決して終了させません）
 
 </details>
 

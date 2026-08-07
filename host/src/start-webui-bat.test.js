@@ -107,10 +107,18 @@ function createSandbox(options = {}) {
   if (options.withNode !== false) {
     const nodeScript = [
       'if "%~1"=="scripts\\production-webui-build-guard.mjs" exit /b %SETUP_TEST_GUARD_EXIT%',
-      'if "%~1"=="scripts\\web-dist-dir.mjs" echo %SETUP_TEST_WEB_DIST_DIR%',
-      'if "%~1"=="scripts\\web-dist-dir.mjs" exit /b 0',
+      'if "%~1"=="scripts\\web-build-mirror.mjs" echo %SETUP_TEST_WEB_DIST_DIR%',
+      'if "%~1"=="scripts\\web-build-mirror.mjs" exit /b 0',
+      'if "%~1"=="scripts\\build-web.mjs" goto :build_web',
       'if "%~1"=="-p" goto :version_query',
       'if "%~1"=="src\\index.js" goto :host_tail',
+      "exit /b 0",
+      ":build_web",
+      'echo build-web %CD% %*>>"%SETUP_TEST_LOG%"',
+      'if not "%SETUP_TEST_NPM_WEB_BUILD_EXIT%"=="0" exit /b %SETUP_TEST_NPM_WEB_BUILD_EXIT%',
+      'if "%SETUP_TEST_CREATE_BUILD_ID%"=="0" exit /b 0',
+      'mkdir "%SETUP_TEST_WEB_DIST_DIR%" 2>nul',
+      '> "%SETUP_TEST_WEB_DIST_DIR%\\BUILD_ID" echo setup-test-build',
       "exit /b 0",
       ":version_query",
       'if exist "%SETUP_TEST_ROOT%\\node-installed" echo %SETUP_TEST_NODE_MAJOR_AFTER_INSTALL%',
@@ -397,7 +405,7 @@ test("start-webui.bat skips npm ci / build / guard entirely when already install
     assert.match(result.stdout, /Existing build found; host will rebuild if sources are newer/);
     const log = existsSync(sandbox.log) ? readFileSync(sandbox.log, "utf8") : "";
     assert.doesNotMatch(log, /\bci\b/, "npm ci must not run when node_modules already exists");
-    assert.doesNotMatch(log, /run build/, "npm run build must not run when BUILD_ID already exists");
+    assert.doesNotMatch(log, /build-web/, "the build must not run when BUILD_ID already exists");
   } finally { sandbox.cleanup(); }
 });
 
@@ -509,8 +517,11 @@ test("start-webui.bat runs the production WebUI guard without --stop and skips t
   // the host tail's reuse/takeover logic instead of aborting the launch.
   assert.doesNotMatch(source, /production-webui-build-guard\.mjs\s+--stop/);
   assert.match(source, /if errorlevel 1 goto :web_build_skipped/);
-  // Bare-module resolution from the external distDir needs NODE_PATH.
-  assert.match(source, /set "NODE_PATH=%CD%\\web\\node_modules"/);
+  // The mirror ships its own node_modules, so the old NODE_PATH fallback for
+  // an external distDir is gone.
+  assert.doesNotMatch(source, /set "NODE_PATH=/);
+  // The guard already ran here; build-web.mjs must not repeat it.
+  assert.match(source, /call node scripts\\build-web\.mjs --skip-guard/);
 });
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {

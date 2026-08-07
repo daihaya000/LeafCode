@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mirrorWebDir, resolveMirrorRoot } from "./web-build-mirror.mjs";
 
 const defaultWebDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "web");
 const DEFAULT_CONTROL_URL = "http://127.0.0.1:18765";
@@ -26,11 +27,24 @@ export function parseListeningPids(output, port) {
   return [...pids];
 }
 
+/**
+ * Recognises this installation's production server. Since the build moved to
+ * the hard-link mirror (scripts/web-build-mirror.mjs), `next start` runs from
+ * the mirrored `web/` rather than the installation's, so both locations count
+ * as ours — otherwise the guard would read our own server as an unidentified
+ * listener and refuse every build.
+ */
 export function isThisWebUiNextStart(commandLine, webDir) {
   const command = String(commandLine).replaceAll("/", "\\").toLowerCase();
-  const expectedWebDir = resolve(webDir).replaceAll("/", "\\").toLowerCase();
   const isNextStart = /(?:^|[\\\s"])(?:next|next\.js)["\s]+start(?:\s|$)/i.test(command);
-  return command.includes(expectedWebDir) && isNextStart;
+  if (!isNextStart) return false;
+  const candidates = [resolve(webDir)];
+  try {
+    candidates.push(mirrorWebDir(resolveMirrorRoot(process.env, resolve(webDir, ".."))));
+  } catch {
+    // No mirror resolvable (e.g. no env at all): the install path alone decides.
+  }
+  return candidates.some((dir) => command.includes(dir.replaceAll("/", "\\").toLowerCase()));
 }
 
 export function inspectProductionWebUi({

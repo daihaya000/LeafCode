@@ -8,14 +8,16 @@ const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const source = readFileSync(join(repoRoot, "build.bat"), "utf8");
 const webPackage = JSON.parse(readFileSync(join(repoRoot, "web", "package.json"), "utf8"));
 
-test("build.bat runs the production WebUI guard before npm can modify web/.next", () => {
+test("build.bat runs the production WebUI guard before anything can replace the served build", () => {
   const guard = source.indexOf("node scripts\\production-webui-build-guard.mjs");
   const npmInstall = source.indexOf("call npm install");
-  const nextBuild = source.indexOf("call npm run build");
+  const build = source.indexOf("call node scripts\\build-web.mjs");
 
   assert.ok(guard >= 0, "build.bat must run the guard to detect a running WebUI");
   assert.ok(guard < npmInstall, "guard must run before dependency installation");
-  assert.ok(guard < nextBuild, "guard must run before next build");
+  assert.ok(guard < build, "guard must run before the build");
+  // build-web.mjs would otherwise run the guard a second time.
+  assert.match(source, /build-web\.mjs --skip-guard/);
 });
 
 test("build.bat does not stop or restart the WebUI automatically", () => {
@@ -58,15 +60,16 @@ test("build.bat tells the user to start the WebUI after a successful build", () 
   );
 });
 
-test("direct npm builds run the same production WebUI guard", () => {
-  assert.match(webPackage.scripts.prebuild, /production-webui-build-guard\.mjs/);
+test("direct npm builds go through the mirror entry point", () => {
+  assert.match(webPackage.scripts.build, /build-web\.mjs/);
 });
 
-test("build.bat resolves NEXT_DIST_DIR via web-dist-dir.mjs before next build and checks %NEXT_DIST_DIR%\\BUILD_ID", () => {
-  const distDirResolve = source.indexOf("node scripts\\web-dist-dir.mjs");
-  const nextBuild = source.indexOf("call npm run build");
-  assert.ok(distDirResolve >= 0, "build.bat must resolve the dist dir via web-dist-dir.mjs");
-  assert.ok(distDirResolve < nextBuild, "dist dir resolution must run before next build");
+test("build.bat resolves NEXT_DIST_DIR via web-build-mirror.mjs before the build and checks %NEXT_DIST_DIR%\\BUILD_ID", () => {
+  const distDirResolve = source.indexOf("node scripts\\web-build-mirror.mjs --dist-dir");
+  const build = source.indexOf("call node scripts\\build-web.mjs");
+  assert.ok(distDirResolve >= 0, "build.bat must resolve the dist dir via web-build-mirror.mjs");
+  assert.ok(build >= 0, "build.bat must build through scripts\\build-web.mjs");
+  assert.ok(distDirResolve < build, "dist dir resolution must run before the build");
   assert.ok(
     source.includes('if not exist "%NEXT_DIST_DIR%\\BUILD_ID"'),
     "final BUILD_ID check must use %NEXT_DIST_DIR%\\BUILD_ID",
@@ -75,12 +78,10 @@ test("build.bat resolves NEXT_DIST_DIR via web-dist-dir.mjs before next build an
     !source.includes('if not exist "web\\.next\\BUILD_ID"'),
     "build.bat must not check web\\.next\\BUILD_ID for the production output",
   );
-  // Emitted server files under the external distDir resolve bare modules via
-  // NODE_PATH (web\node_modules is not an ancestor of %APPDATA%).
+  // The mirror carries its own node_modules, so the old NODE_PATH fallback
+  // for an external distDir must be gone.
   assert.ok(
-    source.includes('set "NODE_PATH=%CD%\\web\\node_modules"'),
-    "build.bat must expose web\\node_modules via NODE_PATH",
+    !source.includes('set "NODE_PATH='),
+    "build.bat must not set NODE_PATH any more",
   );
-  const nodePathSet = source.indexOf('set "NODE_PATH=');
-  assert.ok(nodePathSet >= 0 && nodePathSet < nextBuild, "NODE_PATH must be set before next build");
 });

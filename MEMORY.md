@@ -2055,3 +2055,61 @@ PATCH/DELETE しか無いため 405 になった。
 - web vitest 全体 246 files / 2908 tests 全パス
 - tsc / eslint clean
 - UI が呼ぶ全メモリ関連エンドポイントの実在とメソッドを照合確認
+---
+
+# Next 16 移行: ハードリンクミラーで production build をリポジトリ外へ (2026-08-07)
+
+## 背景
+Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁止する(`Invalid distDirRoot`)。
+本プロジェクトは OneDrive 同期回避のため `%APPDATA%\opencode-webui\web-build` へ出力していたため全面非互換だった。
+「出力だけ外に出す」ことが不可能になったので、**プロジェクトごと同期ツリーの外で動かす**方式に変更。
+
+## 検証して却下した案
+- `next build --webpack`: Next 17 で削除予定。加えて別要因(node: import)でも失敗
+- **ジャンクション/シンボリックリンク**: バンドラが reparse point を実パスへ正規化するため、
+  モジュールが `../../../OneDrive/...` として解決され破綻(実測で確認)
+- `output: 'standalone'` + コピー: host の起動経路変更・static/public 手動コピー・native module 検証が必要
+- リポジトリ丸ごとバイトコピー: 530MB / 36k ファイルの複製が毎回必要
+
+## 採用: ハードリンクミラー
+- `scripts/web-build-mirror.mjs`(新規)
+  - ミラー先 `%LOCALAPPDATA%\opencode-webui\build\<basename>-<sha1(8)>`(`OPENCODE_WEBUI_BUILD_DIR` で上書き)
+    → インストールパスでハッシュ分離。複数チェックアウトが同じミラーを奪い合わない
+  - ハードリンクは reparse point ではないので正規化されず、バンドラから通常ファイルに見える。追加ディスクほぼゼロ
+  - 差分同期(size + mtime 比較)＋ソースから消えたファイルの prune。`.next` は SKIP_DIRS で保護
+  - **書き込み対象はコピー**: `web/tsconfig.json` / `web/next-env.d.ts` / `web/public/**`
+    (ハードリンク経由の in-place 書き込みはリポジトリ側の実体を書き換えてしまうため)
+  - EXDEV/EPERM(別ボリューム等)はバイトコピーへ自動退避
+- `scripts/build-web.mjs`(新規): ガード → sync:addons(リポジトリ側) → ミラー同期 → ミラー内で `next build`
+  → BUILD_ID 検証。bat / host 双方の単一入口。`--skip-guard` は呼び出し側が既にガード済みの場合用
+- `installationRoot()` に `OPENCODE_WEBUI_INSTALL_ROOT` を追加。ミラーから `next start` しても
+  自己更新・git-restore・OpenCode 設定パスは実リポジトリを見る
+- `production-webui-build-guard.mjs`: `next start` の識別にミラーの web ディレクトリも許容
+  (でないと自分のサーバーを「正体不明のリスナー」と誤認して全ビルドを拒否する)
+- next.config: `turbopack.resolveAlias` で react/react-dom/react/jsx-runtime を実体パッケージへ。
+  tsconfig の `paths`(addons/ から web/node_modules を解決するために必要)を Turbopack が実行時解決にも
+  適用し、型定義パッケージを読もうとして失敗するため。tsconfig 側は tsc 用にそのまま維持
+  ※ Turbopack は非ワイルドカードの `paths` に複数候補を与えるとエラーにするので配列併記は不可
+- next.config の git 呼び出しは `OPENCODE_WEBUI_INSTALL_ROOT` を cwd に(ミラーに .git はない)
+
+## 撤去したもの
+- `scripts/web-dist-dir.mjs` と そのテスト
+- `web/scripts/verify-tsconfig.mjs` と そのテスト、`postbuild` フック
+  (distDir がプロジェクト内に戻ったので絶対パス汚染自体が起きない)
+- host / build.bat / start-webui.bat の `NODE_PATH` 注入
+- `dist-dir.ts` の絶対→相対変換。プロジェクト外の値は例外にする方針へ変更
+- host の `removeLegacyInRepoBuild` は旧 `%APPDATA%\opencode-webui\web-build` も掃除対象に追加
+
+## 検証結果
+- 本番ビルド(ミラー経由・Next 16.3.0): 初回 同期30.7s + ビルド、差分 同期7.9s + ビルド2.3s、いずれも EXIT=0
+- ミラーから `next start`(127.0.0.1:3311): Ready、`/api/access` 200、
+  `/api/updates/status` が git 由来の commit を返す = INSTALL_ROOT オーバーライドが機能
+- web vitest 246 files / 2911 tests 全パス、`tsc --noEmit` clean
+- host 単体テスト(mirror/web-runtime/build-bat) 45件パス
+- host の `start-webui.bat` サンドボックステストはこの実行環境では変更前から39件失敗しており、
+  変更後も同数。bat の動作確認は静的アサーションと `build-web.mjs` の実行確認で代替した
+
+## 備考
+- `sed -i` は .bat の CRLF を壊す(実際に一度壊して復元した)。バッチファイルは Edit で編集すること
+- 稼働中の WebUI(旧 %APPDATA% ビルドを配信中)は停止していない。次回 host 起動時に
+  ミラーへ切り替わり、旧ディレクトリは自動削除される

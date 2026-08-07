@@ -3,12 +3,16 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { resolveNextDistDir } from "./src/lib/dist-dir";
 
+// Production builds and `next start` run from the build mirror, which has no
+// .git; the installation it was mirrored from does (see install-root.ts).
+const gitCwd = process.env.OPENCODE_WEBUI_INSTALL_ROOT?.trim() || undefined;
+
 function resolveBuildCommit(): string {
   const fromEnv = process.env.GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA;
   if (fromEnv) return fromEnv;
 
   try {
-    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd: gitCwd }).trim();
   } catch {
     return "";
   }
@@ -40,13 +44,23 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT: process.env.OPENCODE_WEBUI_WORKFLOW_GRAPH_EDIT ?? "false",
   },
   serverExternalPackages: ["better-sqlite3"],
-  // Production output lives outside the (OneDrive-synced) repo by default
-  // (scripts/web-dist-dir.mjs → %APPDATA%\opencode-webui\web-build). Callers
-  // pass an absolute NEXT_DIST_DIR; resolveNextDistDir converts it to a path
-  // relative to this app directory because Next.js joins distDir with the app
-  // dir and chokes on absolute Windows paths ("web\C:\…" → ENOENT). Also
-  // keeps `next dev` (.next-dev) from clobbering the production build.
+  // Always inside this project: Turbopack rejects a distDir that navigates out
+  // of it. Production builds get their isolation from running in the hard-link
+  // mirror instead (scripts/web-build-mirror.mjs). NEXT_DIST_DIR only separates
+  // the in-project variants — `.next-dev`, `.next-e2e` — from `.next`.
   distDir: resolveNextDistDir(process.env, __dirname),
+  turbopack: {
+    // tsconfig `paths` maps bare packages to web/node_modules so repo-root
+    // `addons/` can resolve them (see tsconfig.json). Turbopack applies those
+    // mappings to runtime resolution too, which sends `react` to the
+    // types-only @types package and fails the build. tsc still needs the
+    // @types mapping, so the runtime target is corrected here instead.
+    resolveAlias: {
+      react: "./node_modules/react",
+      "react-dom": "./node_modules/react-dom",
+      "react/jsx-runtime": "./node_modules/react/jsx-runtime",
+    },
+  },
   // Pin the file-tracing root to the repo root (one level up: addons/ lives
   // there and is imported via `@addons/*`, see externalDir below). Without
   // this, Next.js's own heuristic walks up from this directory looking for
