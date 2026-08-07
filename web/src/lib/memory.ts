@@ -296,6 +296,24 @@ export function buildMemoryInjectionBlock(
   return `<workspace-memory>\n${lines.join("\n")}\n</workspace-memory>`;
 }
 
+/**
+ * Strips a leading `<workspace-memory>…</workspace-memory>` block from user
+ * text at render time. The block is internal context injected into the first
+ * goal-loop message and must not be shown to the user. Returns "" when the
+ * whole text was just the block.
+ */
+export function stripMemoryInjectionBlock(text: string): string {
+  const match = text.match(/^\s*<workspace-memory>[\s\S]*?<\/workspace-memory>/);
+  if (!match) return text;
+  return text.slice(match[0].length).replace(/^\s*\n/, "");
+}
+
+/**
+ * Returns the best-8 injection block for a workspace and bumps each injected
+ * row's `use_count` (the spec's "injected lines +1"); a purely advisory lookup
+ * should use {@link buildMemoryInjectionBlock} directly. Returns "" when there
+ * is nothing to inject.
+ */
 export function memoryInjectionFor(workspaceId: string): string {
   const rows = getDb()
     .prepare(
@@ -305,6 +323,16 @@ export function memoryInjectionFor(workspaceId: string): string {
        LIMIT ?`,
     )
     .all(workspaceId, MEMORY_INJECTION_MAX_ITEMS) as MemoryRow[];
+  if (rows.length > 0) {
+    const now = Date.now();
+    const bump = getDb().prepare(
+      "UPDATE memories SET last_used_at = ?, use_count = use_count + 1 WHERE id = ?",
+    );
+    const tx = getDb().transaction(() => {
+      for (const row of rows) bump.run(now, row.id);
+    });
+    tx();
+  }
   return buildMemoryInjectionBlock(rows);
 }
 

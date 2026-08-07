@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { goalLoopTestSeams } from "./goal-loop";
 import type { MessageWithParts } from "./types";
+
+vi.mock("./memory", async () => ({
+  memoryInjectionFor: vi.fn().mockReturnValue("<workspace-memory>\n- [fact] mock\n</workspace-memory>\n"),
+}));
 
 function msg(
   id: string,
@@ -241,6 +245,22 @@ describe("goalLoopTestSeams", () => {
       expect(prompt).toContain("2 loop turn(s) completed before this one");
       expect(prompt).toContain("One turn = one iteration");
       expect(prompt).toContain("Never simulate");
+    });
+
+    it("injects the memory block only on the first turn and bumps use_count", () => {
+      const loop = {
+        workspaceId: "goal-mem-ws",
+        goal: "ship it",
+        acceptance: [],
+        progress: [],
+      } as never;
+      const first = goalLoopTestSeams.buildGoalPromptWithMemory(loop, 1, 10);
+      expect(first).toContain("<workspace-memory>");
+      expect(first).toContain("<!-- webui-goal-loop-prompt -->");
+
+      const second = goalLoopTestSeams.buildGoalPromptWithMemory(loop, 2, 10);
+      expect(second).toContain("<!-- webui-goal-loop-prompt -->");
+      expect(second).not.toContain("<workspace-memory>");
     });
   });
 

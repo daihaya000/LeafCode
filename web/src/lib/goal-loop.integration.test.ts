@@ -147,6 +147,29 @@ function makeDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
+    CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source_session_id TEXT,
+      provenance TEXT NOT NULL,
+      approved INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_used_at INTEGER,
+      use_count INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
+    CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
+      INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);
+    END;
+    CREATE TRIGGER memories_fts_update AFTER UPDATE ON memories BEGIN
+      UPDATE memories_fts SET content = new.content WHERE id = new.id;
+    END;
+    CREATE TRIGGER memories_fts_delete AFTER DELETE ON memories BEGIN
+      DELETE FROM memories_fts WHERE id = old.id;
+    END;
   `);
   return db;
 }

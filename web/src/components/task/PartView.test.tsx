@@ -196,6 +196,44 @@ describe("PartView cancelled tool display", () => {
   });
 });
 
+describe("PartView memory injection hiding", () => {
+  it("strips the leading workspace-memory block from a user message", () => {
+    const part: Part = {
+      id: "p-mem",
+      messageID: "m-mem",
+      type: "text",
+      text: "<workspace-memory>\n- [fact] secret context\n</workspace-memory>\nWhat is step one?",
+    };
+    render(<PartView part={part} role="user" />);
+    expect(screen.queryByText(/workspace-memory/)).toBeNull();
+    expect(screen.queryByText(/secret context/)).toBeNull();
+    expect(screen.getByText("What is step one?")).toBeTruthy();
+  });
+
+  it("returns nothing when the user text is only the memory block", () => {
+    const part: Part = {
+      id: "p-mem2",
+      messageID: "m-mem2",
+      type: "text",
+      text: "<workspace-memory>\n- [fact] only context\n</workspace-memory>",
+    };
+    render(<PartView part={part} role="user" />);
+    expect(screen.queryByText(/workspace-memory/)).toBeNull();
+    expect(screen.queryByText(/only context/)).toBeNull();
+  });
+
+  it("keeps a user message with no memory block unchanged", () => {
+    const part: Part = {
+      id: "p-mem3",
+      messageID: "m-mem3",
+      type: "text",
+      text: "plain user question",
+    };
+    render(<PartView part={part} role="user" />);
+    expect(screen.getByText("plain user question")).toBeTruthy();
+  });
+});
+
 describe("PartView long-running tool display", () => {
   it("warns when a shell tool has run for the configured five-minute threshold", () => {
     vi.useFakeTimers();

@@ -4,6 +4,7 @@ import { OcError, ocServer } from "./oc-server";
 import { assertSafeOpenCodeSessionId } from "./opencode-id";
 import type { MessageWithParts, SessionStatus } from "./types";
 import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
+import { memoryInjectionFor } from "./memory";
 
 export type GoalLoopStatus =
   | "queued"
@@ -726,6 +727,22 @@ export async function pauseGoalLoopForManualSend(
 }
 
 /**
+ * Prefixes the goal prompt with the approved-memory block on the very first
+ * turn. `isFirstTurn` true only for turn 1; later turns reuse the same prompt
+ * shape unmodified. Returns the untruncated prompt text.
+ */
+function buildGoalPromptWithMemory(
+  loop: GoalLoopDto,
+  turnNumber: number,
+  maxTurns: number,
+): string {
+  const prompt = buildGoalPrompt(loop, turnNumber, maxTurns);
+  if (turnNumber !== 1) return prompt;
+  const memory = memoryInjectionFor(loop.workspaceId);
+  return memory ? `${memory}\n${prompt}` : prompt;
+}
+
+/**
  * One prompt = one loop turn. The agent cannot see the loop counter from
  * inside the session, so without it being stated explicitly agents compress
  * every remaining step into a single turn (and even narrate turns that never
@@ -1366,8 +1383,9 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // bricks the transcript. The prompt asks for a fenced JSON block instead.
   // `loop` is the pre-increment snapshot; the UPDATE above claimed turn
   // `turnCount + 1`, which is the turn this prompt actually runs.
+  const promptText = buildGoalPromptWithMemory(loop, turnCount + 1, maxTurns);
   const body: Record<string, unknown> = {
-    parts: [{ type: "text", text: buildGoalPrompt(loop, turnCount + 1, maxTurns) }],
+    parts: [{ type: "text", text: promptText }],
   };
   if (loop.agent) body.agent = loop.agent;
   if (loop.providerID && loop.modelID) {
@@ -1458,6 +1476,7 @@ export function stopGoalLoopSchedulerForTest(): void {
 
 export const goalLoopTestSeams = {
   buildGoalPrompt,
+  buildGoalPromptWithMemory,
   buildVerificationPrompt,
   normalizeAcceptance,
   normalizeStructured,

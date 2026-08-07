@@ -20,6 +20,7 @@ const {
   memoryContentError,
   memoryInjectionFor,
   searchMemories,
+  stripMemoryInjectionBlock,
   toFtsPhrase,
   updateMemory,
 } = await import("./memory");
@@ -138,5 +139,29 @@ describe("memory CRUD + injection", () => {
   it("escapes quotes into a safe FTS phrase", () => {
     expect(toFtsPhrase(`say "hi"`)).toBe(`"say ""hi"""`);
     expect(toFtsPhrase("")).toBe('""');
+  });
+
+  it("memoryInjectionFor bumps use_count on the injected rows", () => {
+    const a = createMemory({ workspaceId: "ws-3", kind: "fact", content: "alpha", provenance: "manual", approved: true });
+    const b = createMemory({ workspaceId: "ws-3", kind: "lesson", content: "beta", provenance: "manual", approved: true });
+    const block = memoryInjectionFor("ws-3");
+    expect(block).toContain("alpha");
+    expect(block).toContain("beta");
+    const reloaded = listMemories({ workspaceId: "ws-3" });
+    expect(reloaded.find((m) => m.id === a.id)?.useCount).toBe(1);
+    expect(reloaded.find((m) => m.id === b.id)?.useCount).toBe(1);
+
+    createMemory({ workspaceId: "ws-4", kind: "fact", content: "other ws", provenance: "manual", approved: true });
+    expect(memoryInjectionFor("ws-4")).toContain("other ws");
+    // Empty workspace yields "".
+    expect(memoryInjectionFor("ws-empty")).toBe("");
+  });
+
+  it("strips only the leading workspace-memory block at render time", () => {
+    const block = buildMemoryInjectionBlock([{ kind: "fact", content: "secret" }]);
+    expect(stripMemoryInjectionBlock(`${block}\nUser question`)).toBe("User question");
+    expect(stripMemoryInjectionBlock(`prefix\n${block}\nrest`)).toBe(`prefix\n${block}\nrest`);
+    expect(stripMemoryInjectionBlock(block)).toBe("");
+    expect(stripMemoryInjectionBlock("plain text")).toBe("plain text");
   });
 });

@@ -1298,3 +1298,32 @@ memory-layer 実装のフェーズ3（MCP サーバー）を完了。メモリ F
 
 ## 備考
 - FTS5 はハイフンでトークン分割されるため multi-stage はヒットしない。テストでは Dockerfile 等の clean word を使用
+
+
+---
+
+# 実装ログ: メモリ層 注入フェーズ
+
+## 日付
+2026-08-07
+
+## 概要
+memory-layer のフェーズ4（自動抽出の goal-completed トリガーは既完了）のうち、「注入」を実装。最初の goal ターンに承認済みメモリの <workspace-memory> ブロックを先頭に付与し、UI 描画でそのブロックを除外する。
+
+## 実装内容
+- \`web/src/lib/memory.ts\`:
+  - \`memoryInjectionFor\` を、injected 各行の use_count を+1（last_used_at 更新）する挙動に変更（仕様「注入された行の use_count を+1」）
+  - \`stripMemoryInjectionBlock(text)\`: 先頭の \`<workspace-memory>…</workspace-memory>\` ブロックを描画時除去
+- \`web/src/lib/goal-loop.ts\`:
+  - \`buildGoalPromptWithMemory(loop,turnNumber,maxTurns)\`: turnNumber===1（最初のターン）のみ \`memoryInjectionFor\` を prefix、それ以外は素のプロンプト
+  - processLoop の goal プロンプト送信でこれを使用。seams に \`buildGoalPromptWithMemory\` を追加
+- \`web/src/components/task/PartView.tsx\`: user ロールの text part 描画時に \`stripMemoryInjectionBlock\` を適用（内部コンテキストを表示しない）
+
+## 検証結果
+- \`web\` vitest 全体 240 files / 2866 tests 全パス
+- \`tsc --noEmit\` / eslint clean
+- goal-loop.integration.test.ts の in-memory fixture に memories テーブル/FTS/トリガを追加（注入が読むため）
+
+## 備考
+- 注入は scheduling/prompt の過程で実行されるため、goal-loop.integration の fake DB に memories テーブルが必要になった
+- UI 除外分の単体テスト: PartView.test.tsx に「ユーザーメッセージの先頭ブロックが消える / メモリのみの場合空 / ブロックなしは維持」を追加

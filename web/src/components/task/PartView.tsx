@@ -24,6 +24,7 @@ import { cx } from "@/components/ui";
 import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
 import { isImageFilePart } from "@/lib/message-parts";
+import { stripMemoryInjectionBlock } from "@/lib/memory";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { formatElapsed, stripGoalLoopJsonBlock } from "@/lib/useSessionStream";
@@ -567,11 +568,14 @@ export const PartView = memo(function PartView({
       // it is internal bookkeeping, not chat content. Only strips a trailing
       // block whose parsed object looks like a goal result.
       const text = role === "assistant" ? stripGoalLoopJsonBlock(raw) : raw;
-      if (!text.trim()) return null;
+      // The first goal-loop user message carries a `<workspace-memory>` prefix
+      // block that is internal context, not chat content. Hide it at render.
+      const shown = role === "user" ? stripMemoryInjectionBlock(text) : text;
+      if (!shown.trim()) return null;
       if (role === "user") {
         return (
           <div className="ml-auto min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-2.5">
-            <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">{text}</div>
+            <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">{shown}</div>
           </div>
         );
       }
