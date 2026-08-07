@@ -1581,4 +1581,40 @@ memory-layer のフェーズ5(UI 管理画面)を実装。設定ビューに「�
 
 ## 備考
 - 既定で最初のワークスペースを自動選択し、そのセッション列をロード
-- 抽出は選択セッションを指定。テストは waitFor でボタン活性化を確認してから click する
+- 抽出は選択セッションを指定。テストは waitFor でボタン活性化を確認してから click する---
+
+# 実装ログ: メモリ層 idle トリガー(フェーズ6)
+
+## 日付
+2026-08-07
+
+## 概要
+memory-layer のフェーズ6(idle トリガー)を実装。goal-loop `completed` に加えて、セッションが60分間 idle になったことを検出して自動抽出する。
+
+## 実装方針(ユーザー確認済み)
+- 仕様は「agent-monitor のイベントエミッター依存」と記載されていたが、それは未実装。
+  → 既存シグナル(session_bindings.updated_at)で判定する方式に変更(ユーザー承認)。
+- 重複防止は「同一(ワークスペース, セッション)は1回/生存期間」のレジャー方式(ユーザー承認)。
+
+## 実装内容
+- `web/src/lib/db.ts`:
+  - `memory_idle_extracts` テーブル追加(workspace_id, session_id, extracted_at / PK 2列 / FK CASCADE)
+  - `markIdleExtracted` / `isIdleExtracted` / `listIdleExtracts` ヘルパー追加
+- `web/src/lib/memory-idle.ts`(新規):
+  - `IDLE_THRESHOLD_MS` = 60分
+  - `idleSessionsSince(nowMs, thresholdMs)`: session_bindings.updated_at が閾値より古い行を列挙
+  - `sweepIdleExtractions()`: 閾値超過かつ未レジャーのセッションに `runMemoryExtraction` を発火
+  - 自動抽出設定(memory.auto_extract)と連動、失敗は fire-and-forget
+- `web/src/lib/goal-loop.ts`: `runGoalLoopSchedulerTick()` 冒頭で `sweepIdleExtractions()` を呼ぶ
+  (既存スケジューラーtickに相乗り。独立タイマーは追加しない)
+- テスト `memory-idle.test.ts`(7件): 閾値判定・境界・レジャーによる重複防止・
+  ワークスペース消失耐性・設定無効時スキップ・updatedAt取得・再起動後も再抽出しない
+
+## 検証結果
+- web vitest 全体 242 files / 2881 tests 全パス(前回 2869 → +12)
+- tsc --noEmit / eslint clean
+
+## 備考
+- スイープは goal-loop スケジューラーの既存 tick 内で実行(追加の setInterval なし)
+- レジャー記録を抽出発火前に先行書き込みするため、抽出途中でクラッシュしても二重実行されない
+- host/src/index.js の未コミット変更(CADDYFILE の export 等)は別件のため手を付けず残置

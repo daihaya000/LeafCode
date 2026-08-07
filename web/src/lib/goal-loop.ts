@@ -1,4 +1,5 @@
 import { getDb, getWorkspace, listSessionBindings, touchSessionActivity } from "./db";
+import { sweepIdleExtractions } from "./memory-idle";
 import { isIntelligenceVariant, type IntelligenceVariant } from "./model-variants";
 import { OcError, ocServer } from "./oc-server";
 import { assertSafeOpenCodeSessionId } from "./opencode-id";
@@ -1426,6 +1427,8 @@ export async function runGoalLoopSchedulerTick(): Promise<void> {
   if (schedulerTicking) return;
   schedulerTicking = true;
   try {
+    // Background memory extraction for sessions that went idle (fire-and-forget).
+    sweepIdleExtractions();
     const loops = listRunnableGoalLoops();
     for (const loop of loops) {
       try {

@@ -349,6 +349,16 @@ export function getDb(): Database.Database {
     CREATE TRIGGER memories_fts_delete AFTER DELETE ON memories BEGIN
       DELETE FROM memories_fts WHERE id = old.id;
     END;
+    -- Idle-extraction ledger: which (workspace, session) pairs have already been
+    -- extracted by the idle sweep (docs/specs/memory-layer.md 「自動抽出」).
+    -- Deliberately NOT keyed to source content so a session is extracted at most
+    -- once for its lifetime, preventing duplicate background work.
+    CREATE TABLE IF NOT EXISTS memory_idle_extracts (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      extracted_at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, session_id)
+    );
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
@@ -642,6 +652,53 @@ export function touchSessionActivity(
     )
     .run(updatedAt, workspaceId, opencodeSessionId);
   return info.changes > 0;
+}
+
+export type MemoryIdleExtractRow = {
+  workspaceId: string;
+  sessionId: string;
+  extractedAt: number;
+};
+
+/** Record that (workspace, session) has already been idle-extracted. */
+export function markIdleExtracted(
+  workspaceId: string,
+  sessionId: string,
+  extractedAt = Date.now(),
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO memory_idle_extracts (workspace_id, session_id, extracted_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(workspace_id, session_id) DO UPDATE SET extracted_at = excluded.extracted_at`,
+    )
+    .run(workspaceId, sessionId, extractedAt);
+}
+
+/** True when (workspace, session) has already been idle-extracted. */
+export function isIdleExtracted(workspaceId: string, sessionId: string): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 FROM memory_idle_extracts
+       WHERE workspace_id = ? AND session_id = ?`,
+    )
+    .get(workspaceId, sessionId);
+  return row !== undefined;
+}
+
+/** Every idle-extracted (workspace, session) pair, oldest first. */
+export function listIdleExtracts(): MemoryIdleExtractRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT workspace_id, session_id, extracted_at FROM memory_idle_extracts
+       ORDER BY extracted_at ASC`,
+    )
+    .all() as { workspace_id: string; session_id: string; extracted_at: number }[];
+  return rows.map((r) => ({
+    workspaceId: r.workspace_id,
+    sessionId: r.session_id,
+    extractedAt: r.extracted_at,
+  }));
 }
 
 /** All session bindings for a workspace (newest first). */
