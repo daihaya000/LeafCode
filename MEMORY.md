@@ -1,3 +1,85 @@
+# 作業ログ: Caddy をセットアップ時に自動インストールするように変更
+
+## 日付
+
+2026-08-07
+
+## 依頼
+
+前回の調査(下の「新規環境での初回セットアップ検証」)で「Caddy 自体は自動
+インストールされない(README にも導入手順が無い)」ことを報告したところ、
+「必要なコンポーネントはすべて自動インストールするように」という指示。
+
+## 変更内容(`scripts/start-webui.bat`)
+
+- `:check_node` / `:check_opencode` と同じ位置(依存関係インストールの前)に
+  `:check_caddy` を追加。winget の package ID は `CaddyServer.Caddy`
+  (`winget search caddy` で確認済み)。
+- 判定順序:
+  1. `OPENCODE_WEBUI_CADDY=0` が明示されていれば何もせず終了(既存のランタイム
+     opt-out と同じ変数で、インストール自体もスキップできるようにした)。
+  2. `caddy version` が通ればスキップ(導入済み)。
+  3. `%LOCALAPPDATA%\Microsoft\WinGet\Links\caddy.exe` が存在すればスキップ。
+     winget は Caddy を LOCALAPPDATA 配下の Links シムとして入れることが多く、
+     今のコンソールの PATH にまだ反映されていなくても
+     `host/src/index.js` の `findCaddy()` が同じパスを直接見て検出できるため、
+     ここで PATH を無理に更新する必要は無いと判断(既存の `findCaddy()` の
+     設計とここを一致させた)。
+  4. winget が無ければ「スキップした」旨をログしてそのまま続行。
+  5. `winget install --id CaddyServer.Caddy ...` を実行。失敗しても
+     **エラーコードを返さず**、警告ログを出して続行。
+- Node.js/OpenCode とは異なり `:check_caddy` は**常に exit code 0**を返す
+  設計にした。理由: Caddy は既にランタイム側(`host/src/index.js`
+  `spawnCaddy()`)で「無ければ黙ってスキップ」というフェイルセーフを持つ
+  opt-in 機能であり、ここを Node.js/OpenCode 同様の必須扱い(失敗で
+  WebUI 全体を止める)にすると、オフライン環境や社内プロキシで Caddy の
+  winget ソースだけ届かないケースで WebUI 本体まで起動できなくなる
+  リグレッションになるため。「自動インストールを試みるが、失敗しても
+  本体の起動は妨げない」という設計にした。
+
+## テスト(`host/src/start-webui-bat.test.js`)
+
+- winget モックに `CaddyServer.Caddy` 分岐を追加(成功時に
+  `caddy-winget-installed` マーカーを作成)。
+- サンドボックスの `LOCALAPPDATA` を隔離用の一時ディレクトリに固定
+  (これが無いと、開発機に実際に Caddy が winget 導入済みのため
+  `:check_caddy` が実 shim を検出して常にスキップしてしまい、
+  「新規機」を再現できていなかった → 修正)。
+- 新規テスト6件:
+  - 新規機で winget 経由に自動導入されること。
+  - `caddy` が既に PATH にある場合は再インストールしないこと。
+  - WinGet Links シムが既にある場合は再インストールしないこと。
+  - winget install 失敗時もホストは起動すること(exit 0 のまま)。
+  - `OPENCODE_WEBUI_CADDY=0` でインストール自体もスキップされること。
+  - winget が無くてもクラッシュせずスキップして起動すること。
+- `cd host && npm test`(372 tests、`start-webui-bat.test.js` 20 tests /
+  `bat-encoding.test.js` 7 tests 含む)... 全件成功。ASCII-only/CRLF 制約
+  (AGENTS.md)も維持されていることを確認。
+
+## README 更新
+
+- クイックスタートの自動導入リストに Caddy(任意)を追記。
+- 「スマホ・別 PC からアクセスする」節に、Caddy は winget で自動導入される
+  こと、失敗時は WebUI 本体は影響を受けないこと、手動導入コマンド
+  (`winget install --id CaddyServer.Caddy`)、`OPENCODE_WEBUI_CADDY=0` で
+  インストール自体もスキップできることを追記。
+
+## 検証結果
+
+- `cd host && npm test`... 372/372 成功。
+- AGENTS.md の方針により `next dev`/`next build`/exe の実起動は行わず、
+  コード変更 + サンドボックス化した `.bat` 単体テストのみで検証
+  (稼働中の WebUI・実機の Caddy 環境には触れていない)。
+
+## 変更ファイル
+
+- `scripts/start-webui.bat`: `:check_caddy` を追加。
+- `host/src/start-webui-bat.test.js`: winget モックへの caddy 分岐 +
+  `LOCALAPPDATA` 隔離 + 新規テスト6件。
+- `README.md`: 自動導入の説明を更新。
+
+---
+
 # 作業ログ: 新規環境での初回セットアップ検証(Caddy 連携を重点確認)
 
 ## 日付

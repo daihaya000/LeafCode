@@ -65,7 +65,7 @@ cd OpenCodeWebUI
 
 ### 2. `OpenCodeWebUI.exe` をダブルクリック
 
-初回起動時に **winget → Node.js 20+ → OpenCode CLI → 依存関係 → production build** を自動で確認・導入します（**インターネット接続が必要**）。2 回目以降は導入済みのステップをスキップしてすぐ起動します。
+初回起動時に **winget → Node.js 20+ → OpenCode CLI → Caddy（リモートアクセス用、任意）→ 依存関係 → production build** を自動で確認・導入します（**インターネット接続が必要**）。2 回目以降は導入済みのステップをスキップしてすぐ起動します。
 
 > [!IMPORTANT]
 > `OpenCodeWebUI.exe` は、同じフォルダの `scripts\start-webui.bat` を実行するだけの薄いランチャーです。
@@ -141,9 +141,11 @@ set OPENCODE_WEBUI_CADDYFILE=C:\path\to\Caddyfile
 OpenCodeWebUI.exe
 ```
 
+- Caddy 本体は `OpenCodeWebUI.exe` の初回起動時に winget（`CaddyServer.Caddy`）で自動導入されます。手動インストールは不要です
 - 初回起動時に [`deploy/Caddyfile.example`](./deploy/Caddyfile.example) から `deploy/Caddyfile` を生成します（ドメイン / Basic 認証を編集してください）
 - ホストが Caddy の起動 / 停止 / 再起動を OpenCode・WebUI と連動管理し、トレイの「Status」に `Caddy: running` を表示します
-- Caddy が PATH に無い / 無効の場合はスキップします
+- winget が無い / オフライン等で Caddy の自動導入に失敗した場合でも WebUI 本体は `http://127.0.0.1:3000` で通常どおり起動します（Caddy 連携だけがスキップされます）。手動で導入する場合は `winget install --id CaddyServer.Caddy` を実行し、再起動してください
+- `OPENCODE_WEBUI_CADDY=0` を明示的に設定すると、Caddy の自動導入自体もスキップされます
 
 ### HTTPS（既定: `:8443` ローカル TLS）
 

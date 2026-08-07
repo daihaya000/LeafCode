@@ -78,6 +78,7 @@ function createSandbox(options = {}) {
       'if not "%~2"=="--id" exit /b 87',
       'if "%~3"=="OpenJS.NodeJS.LTS" goto :node',
       'if "%~3"=="SST.opencode" goto :opencode',
+      'if "%~3"=="CaddyServer.Caddy" goto :caddy',
       "exit /b 87",
       ":node",
       'if not "%SETUP_TEST_WINGET_NODE_EXIT%"=="0" exit /b %SETUP_TEST_WINGET_NODE_EXIT%',
@@ -87,7 +88,20 @@ function createSandbox(options = {}) {
       'if not "%SETUP_TEST_WINGET_OPENCODE_EXIT%"=="0" exit /b %SETUP_TEST_WINGET_OPENCODE_EXIT%',
       'if "%SETUP_TEST_OPENCODE_WINGET_MARKER%"=="1" type nul > "%SETUP_TEST_ROOT%\\opencode-winget-installed"',
       "exit /b 0",
+      ":caddy",
+      'if not "%SETUP_TEST_WINGET_CADDY_EXIT%"=="0" exit /b %SETUP_TEST_WINGET_CADDY_EXIT%',
+      'type nul > "%SETUP_TEST_ROOT%\\caddy-winget-installed"',
+      "exit /b 0",
     ].join("\n"));
+  }
+
+  if (options.caddyAlreadyInstalled) {
+    writeBat(join(bin, "caddy.cmd"), "exit /b 0");
+  }
+  if (options.caddyWingetLinksShim) {
+    const linksDir = join(root, "appdata-local", "Microsoft", "WinGet", "Links");
+    mkdirSync(linksDir, { recursive: true });
+    writeFileSync(join(linksDir, "caddy.exe"), "", "ascii");
   }
 
   if (options.withNode !== false) {
@@ -154,6 +168,11 @@ function createSandbox(options = {}) {
     PATHEXT: options.standardNodePath ? ".CMD;.EXE;.BAT;.COM" : ".COM;.EXE;.BAT;.CMD",
     OPENCODE_WEBUI_NONINTERACTIVE: "1",
     APPDATA: join(root, "appdata"),
+    // Isolates the WinGet Links shim check in :check_caddy from whatever
+    // Caddy install this dev/CI machine may actually have.
+    LOCALAPPDATA: join(root, "appdata-local"),
+    OPENCODE_WEBUI_CADDY: options.caddyDisabled ? "0" : "",
+    SETUP_TEST_WINGET_CADDY_EXIT: String(options.wingetCaddyExit ?? 0),
     SETUP_TEST_WEB_DIST_DIR: join(root, "appdata", "opencode-webui", "web-build"),
     SETUP_TEST_ROOT: root,
     SETUP_TEST_LOG: log,
@@ -279,6 +298,75 @@ test("start-webui.bat falls back to npm only after the OpenCode winget install f
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), false);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), true);
     assert.match(readFileSync(sandbox.log, "utf8"), /npm .* install -g opencode-ai/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat installs Caddy via winget on a fresh machine", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({});
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "fresh machine (Caddy)");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(existsSync(join(sandbox.root, "caddy-winget-installed")), true);
+    assert.match(
+      readFileSync(sandbox.log, "utf8"),
+      /install --id CaddyServer\.Caddy --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/,
+    );
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat does not reinstall Caddy when it is already on PATH", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ caddyAlreadyInstalled: true });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "Caddy already on PATH");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.doesNotMatch(readFileSync(sandbox.log, "utf8"), /CaddyServer\.Caddy/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat does not reinstall Caddy when the WinGet Links shim already exists", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ caddyWingetLinksShim: true });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "Caddy WinGet Links shim present");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.doesNotMatch(readFileSync(sandbox.log, "utf8"), /CaddyServer\.Caddy/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat still starts the host when the Caddy install fails (optional component)", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ wingetCaddyExit: 1 });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "Caddy install failure is non-fatal");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.equal(existsSync(join(sandbox.root, "caddy-winget-installed")), false);
+    assert.match(result.stdout, /Caddy installation failed; continuing without the optional reverse proxy/);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run despite the Caddy failure");
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat skips the Caddy install entirely when OPENCODE_WEBUI_CADDY=0", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ caddyDisabled: true });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "Caddy install opted out");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.doesNotMatch(readFileSync(sandbox.log, "utf8"), /CaddyServer\.Caddy/);
+    assert.doesNotMatch(result.stdout, /Installing Caddy/);
+  } finally { sandbox.cleanup(); }
+});
+
+test("start-webui.bat does not require winget for Caddy either (skips cleanly without it)", { skip: !isWindows }, () => {
+  const sandbox = createSandbox({ withWinget: false });
+  try {
+    const result = sandbox.run();
+    assertCompleted(result, "no winget (Caddy)");
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /winget not found; skipping automatic Caddy install/);
+    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
   } finally { sandbox.cleanup(); }
 });
 

@@ -49,6 +49,7 @@ call :check_node
 if errorlevel 1 goto :failure
 call :check_opencode
 if errorlevel 1 goto :failure
+call :check_caddy
 call :install_web
 if errorlevel 1 goto :failure
 call :install_host
@@ -168,6 +169,36 @@ exit /b 4
 :opencode_install_failed
 call :fail 4 "OpenCode could not be installed." error-4-install
 exit /b 4
+
+rem Caddy (reverse proxy / local HTTPS) is optional: the tray host manages it
+rem only when OPENCODE_WEBUI_CADDY is enabled (default "1", see :start_host
+rem below) and simply skips it at runtime when the binary is missing
+rem (host/src/index.js findCaddy()/spawnCaddy()), so a failure here never
+rem blocks WebUI startup on 127.0.0.1. Unlike Node.js/OpenCode this step
+rem therefore never returns a non-zero exit code.
+:check_caddy
+if "%OPENCODE_WEBUI_CADDY%"=="0" exit /b 0
+call caddy version >nul 2>&1
+if not errorlevel 1 exit /b 0
+rem WinGet often installs Caddy as a Links shim under LOCALAPPDATA that this
+rem console's inherited PATH does not see yet; host/src/index.js's findCaddy()
+rem already checks this path directly, so treat it as installed without
+rem needing to refresh PATH here.
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\caddy.exe" exit /b 0
+call where winget >nul 2>&1
+if errorlevel 1 goto :caddy_skip_no_winget
+echo [OpenCode WebUI] Installing Caddy ^(optional reverse proxy / HTTPS^)...
+call winget install --id CaddyServer.Caddy --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+if errorlevel 1 goto :caddy_install_failed
+exit /b 0
+
+:caddy_skip_no_winget
+echo [OpenCode WebUI] winget not found; skipping automatic Caddy install ^(optional reverse proxy^). See README for manual setup.
+exit /b 0
+
+:caddy_install_failed
+echo [OpenCode WebUI] Caddy installation failed; continuing without the optional reverse proxy. See README for manual setup.
+exit /b 0
 
 :install_web
 if not exist "web\node_modules\" goto :install_web_run
