@@ -6,6 +6,7 @@ import {
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
+import { SESSION_LIST_PATH, SESSION_STATUS_PATH } from "./opencode-paths";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
 import type { SessionStatus, TaskSummary } from "./types";
@@ -52,7 +53,7 @@ async function sessionStatusFor(dirs: string[]): Promise<{
   let engineOk = false;
   const results = await Promise.allSettled(
     dirs.map(async (dir) => {
-      const map = await ocServer<StatusMap>(dir, "/session/status", {
+      const map = await ocServer<StatusMap>(dir, SESSION_STATUS_PATH, {
         timeoutMs: 1500,
       });
       engineOk = true;
@@ -91,7 +92,7 @@ async function sessionMetaFor(dirs: string[]): Promise<MetaMap> {
           agent?: string;
           model?: { id?: string; providerID?: string; variant?: string };
         }[]
-      >(dir, "/session", { timeoutMs: 1500 });
+      >(dir, SESSION_LIST_PATH, { timeoutMs: 1500 });
       for (const s of sessions) {
         const meta: SessionMeta = {};
         if (typeof s.cost === "number") meta.cost = s.cost;

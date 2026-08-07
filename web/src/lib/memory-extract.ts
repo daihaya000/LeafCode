@@ -12,6 +12,11 @@ import { getWorkspace, type WorkspaceRow } from "./db";
 import { insertExtractedMemories, logMemoryAudit, type MemoryDto } from "./memory";
 import { chooseAutoModel, type AutoDecision } from "./auto-model";
 import { OcError, ocServer } from "./oc-server";
+import {
+  SESSION_LIST_PATH,
+  sessionMessagePath,
+  sessionPromptAsyncPath,
+} from "./opencode-paths";
 import type { MessageWithParts } from "./types";
 
 export const MEMORY_EXTRACT_TRANSCRIPT_MAX_CHARS = 16_000;
@@ -163,7 +168,7 @@ export async function runMemoryExtraction(input: {
   try {
     messages = await ocServer<MessageWithParts[]>(
       directory,
-      `/session/${input.sessionId}/message`,
+      sessionMessagePath(input.sessionId),
       { timeoutMs: 10_000 },
     );
   } catch {
@@ -183,7 +188,7 @@ export async function runMemoryExtraction(input: {
 
   let sessionID: string | null = null;
   try {
-    const created = await ocServer<{ id: string }>(directory, "/session", {
+    const created = await ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
       method: "POST",
       body: model
         ? { title: "memory-extract", model: { providerID: model.providerID, modelID: model.modelID, variant: model.variant || undefined } }
@@ -202,7 +207,7 @@ export async function runMemoryExtraction(input: {
   }
 
   try {
-    await ocServer(directory, `/session/${sessionID}/prompt_async`, {
+    await ocServer(directory, sessionPromptAsyncPath(sessionID), {
       method: "POST",
       body: { parts: [{ type: "text", text: buildExtractionPrompt(transcript) }] },
       timeoutMs: 10_000,
@@ -224,7 +229,7 @@ export async function runMemoryExtraction(input: {
     try {
       polled = await ocServer<MessageWithParts[]>(
         directory,
-        `/session/${sessionID}/message`,
+        sessionMessagePath(sessionID),
         { timeoutMs: 10_000 },
       );
     } catch {

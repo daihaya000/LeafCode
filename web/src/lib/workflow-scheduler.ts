@@ -1,5 +1,10 @@
 import { bindSession, getDb, getWorkspace, type WorkflowNodeAttemptRow } from "./db";
 import { ocServer } from "./oc-server";
+import {
+  SESSION_LIST_PATH,
+  sessionMessagePath,
+  sessionPromptAsyncPath,
+} from "./opencode-paths";
 import { applyWorkflowSessionPermissions } from "./opencode-task-permission";
 import { buildWorkflowPrompt } from "./workflow-prompt";
 import { parseImplementResult, parseReviewResult } from "./workflow";
@@ -202,7 +207,7 @@ async function activateReviewers(
   await Promise.all(
     reviewerNodes.map(async (node) => {
       const marker = `workflow-session-${crypto.randomUUID()}`;
-      const session = await ocServer<{ id: string }>(workspace.absolute_path, "/session", {
+      const session = await ocServer<{ id: string }>(workspace.absolute_path, SESSION_LIST_PATH, {
         method: "POST",
         body: { title: `${node.node_key} ${marker}` },
       });
@@ -325,7 +330,7 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
   try {
     messages = await ocServer<MessageWithParts[]>(
       workspace.absolute_path,
-      `/session/${encodeURIComponent(attempt.opencode_session_id)}/message`,
+      sessionMessagePath(attempt.opencode_session_id),
       { timeoutMs: 10_000 },
     );
   } catch {
@@ -480,7 +485,7 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
   try {
     const previousMessages = await ocServer<MessageWithParts[]>(
       workspace.absolute_path,
-      `/session/${encodeURIComponent(attempt.opencode_session_id)}/message`,
+      sessionMessagePath(attempt.opencode_session_id),
       { timeoutMs: 10_000 },
     );
     const lastMessageId = Array.isArray(previousMessages)
@@ -543,7 +548,7 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
     await applyWorkflowSessionPermissions(workspace.absolute_path, attempt.opencode_session_id, config.permissions);
     await ocServer(
       workspace.absolute_path,
-      `/session/${encodeURIComponent(attempt.opencode_session_id)}/prompt_async`,
+      sessionPromptAsyncPath(attempt.opencode_session_id),
       {
         method: "POST",
         body: {

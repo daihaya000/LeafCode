@@ -21,6 +21,15 @@ import {
   clampHangTimeoutMs,
 } from "./hang-timeout";
 import { ocServer } from "./oc-server";
+import {
+  PERMISSION_LIST_PATH,
+  QUESTION_LIST_PATH,
+  SESSION_STATUS_PATH,
+  sessionAbortPath,
+  sessionMessagePath,
+  sessionPermissionListPathV2,
+  sessionQuestionListPathV2,
+} from "./opencode-paths";
 import type { MessageWithParts, SessionStatus } from "./types";
 
 export const HANG_WATCHDOG_INTERVAL_MS = 15_000;
@@ -247,10 +256,10 @@ function normalizePendingList(raw: unknown): PendingRow[] {
  */
 async function hasPendingUserInput(directory: string, sessionId: string): Promise<boolean> {
   const attempts: Array<{ path: string; sessionScoped: boolean }> = [
-    { path: `/api/session/${sessionId}/permission`, sessionScoped: true },
-    { path: `/api/session/${sessionId}/question`, sessionScoped: true },
-    { path: "/permission", sessionScoped: false },
-    { path: "/question", sessionScoped: false },
+    { path: sessionPermissionListPathV2(sessionId), sessionScoped: true },
+    { path: sessionQuestionListPathV2(sessionId), sessionScoped: true },
+    { path: PERMISSION_LIST_PATH, sessionScoped: false },
+    { path: QUESTION_LIST_PATH, sessionScoped: false },
   ];
   for (const attempt of attempts) {
     try {
@@ -338,7 +347,7 @@ async function waitForIdle(directory: string, sessionId: string): Promise<boolea
   for (let attempt = 0; attempt < idleWaitAttempts; attempt += 1) {
     await sleep(idleWaitIntervalMs);
     try {
-      const statuses = await ocServer<Record<string, SessionStatus>>(directory, "/session/status", {
+      const statuses = await ocServer<Record<string, SessionStatus>>(directory, SESSION_STATUS_PATH, {
         timeoutMs: STATUS_TIMEOUT_MS,
       });
       if (!isBusy(statuses?.[sessionId])) return true;
@@ -354,7 +363,7 @@ async function resolveHang(row: SessionHangWatchRow): Promise<void> {
   logWatchdog("hang detected — stopping the turn", row);
 
   try {
-    await ocServer(row.directory, `/session/${row.session_id}/abort`, {
+    await ocServer(row.directory, sessionAbortPath(row.session_id), {
       method: "POST",
       timeoutMs: ABORT_TIMEOUT_MS,
     });
@@ -431,7 +440,7 @@ async function evaluateWatch(
   try {
     messages = await ocServer<MessageWithParts[]>(
       row.directory,
-      `/session/${row.session_id}/message`,
+      sessionMessagePath(row.session_id),
       { timeoutMs: MESSAGES_TIMEOUT_MS },
     );
   } catch (error) {
@@ -488,7 +497,7 @@ export async function runHangWatchdogTick(): Promise<void> {
     for (const [directory, rows] of byDirectory) {
       let statuses: Record<string, SessionStatus>;
       try {
-        statuses = await ocServer<Record<string, SessionStatus>>(directory, "/session/status", {
+        statuses = await ocServer<Record<string, SessionStatus>>(directory, SESSION_STATUS_PATH, {
           timeoutMs: STATUS_TIMEOUT_MS,
         });
       } catch {

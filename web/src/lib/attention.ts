@@ -1,3 +1,12 @@
+import { isResolvedRequestEventType } from "./opencode-events";
+import {
+  permissionReplyPathV1,
+  permissionReplyPathV2,
+  questionRejectPathV1,
+  questionRejectPathV2,
+  questionReplyPathV1,
+  questionReplyPathV2,
+} from "./opencode-paths";
 import type { PermissionRequest, QuestionRequest } from "./types";
 
 export type AttentionItem =
@@ -106,25 +115,24 @@ export function parseGlobalEvent(raw: string): AttentionItem | null {
 }
 
 export function replyPath(item: AttentionItem): string {
+  const { sessionID, id, version } = item.request;
   if (item.kind === "permission") {
-    if (item.request.version === "v2") {
-      return `/api/session/${item.request.sessionID}/permission/${item.request.id}/reply`;
-    }
-    return `/session/${item.request.sessionID}/permissions/${item.request.id}`;
+    return version === "v2"
+      ? permissionReplyPathV2(sessionID, id)
+      : permissionReplyPathV1(sessionID, id);
   }
   // question
-  if (item.request.version === "v2") {
-    return `/api/session/${item.request.sessionID}/question/${item.request.id}/reply`;
-  }
-  return `/question/${item.request.id}/reply`;
+  return version === "v2"
+    ? questionReplyPathV2(sessionID, id)
+    : questionReplyPathV1(id);
 }
 
 export function rejectPath(item: AttentionItem): string | null {
   if (item.kind !== "question") return null;
-  if (item.request.version === "v2") {
-    return `/api/session/${item.request.sessionID}/question/${item.request.id}/reject`;
-  }
-  return `/question/${item.request.id}/reject`;
+  const { sessionID, id, version } = item.request;
+  return version === "v2"
+    ? questionRejectPathV2(sessionID, id)
+    : questionRejectPathV1(id);
 }
 
 export function isResolvedEvent(
@@ -137,14 +145,7 @@ export function isResolvedEvent(
     return null;
   }
   const { type, props } = normalizeEnvelope(envelope);
-  if (
-    type === "permission.replied" ||
-    type === "permission.v2.replied" ||
-    type === "question.replied" ||
-    type === "question.rejected" ||
-    type === "question.v2.replied" ||
-    type === "question.v2.rejected"
-  ) {
+  if (isResolvedRequestEventType(type)) {
     const requestId = String(props.requestID ?? props.id ?? "");
     const sessionID = String(props.sessionID ?? "");
     if (!requestId || !sessionID) return null;

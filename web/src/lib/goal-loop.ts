@@ -3,6 +3,12 @@ import { sweepIdleExtractions } from "./memory-idle";
 import { isIntelligenceVariant, type IntelligenceVariant } from "./model-variants";
 import { OcError, ocServer } from "./oc-server";
 import { assertSafeOpenCodeSessionId } from "./opencode-id";
+import {
+  SESSION_STATUS_PATH,
+  sessionAbortPath,
+  sessionMessagePath,
+  sessionPromptAsyncPath,
+} from "./opencode-paths";
 import type { MessageWithParts, SessionStatus } from "./types";
 import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
 import { memoryInjectionFor } from "./memory";
@@ -455,7 +461,7 @@ export async function createGoalLoop(input: {
   try {
     messages = await ocServer<MessageWithParts[]>(
       ws.absolute_path,
-      `/session/${input.sessionId}/message`,
+      sessionMessagePath(input.sessionId),
       { timeoutMs: MESSAGE_TIMEOUT_MS },
     );
   } catch {
@@ -542,7 +548,7 @@ export async function updateGoalLoopStatus(
       if (!ws) throw new Error("workspace missing");
       messages = await ocServer<MessageWithParts[]>(
         ws.absolute_path,
-        `/session/${loop.sessionId}/message`,
+        sessionMessagePath(loop.sessionId),
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       );
       tailMessageId = latestMessageId(messages);
@@ -636,7 +642,7 @@ export async function updateGoalLoopStatus(
       .run(now, loop.id, loop.revision);
     const ws = getWorkspace(workspaceId);
     if (ws && stopped.changes > 0) {
-      await ocServer(ws.absolute_path, `/session/${loop.sessionId}/abort`, {
+      await ocServer(ws.absolute_path, sessionAbortPath(loop.sessionId), {
         method: "POST",
         timeoutMs: ABORT_TIMEOUT_MS,
       }).catch(() => undefined);
@@ -698,7 +704,7 @@ export async function pauseGoalLoopForManualSend(
     try {
       const messages = await ocServer<MessageWithParts[]>(
         ws.absolute_path,
-        `/session/${loop.sessionId}/message`,
+        sessionMessagePath(loop.sessionId),
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       );
       tailMessageId = latestMessageId(messages);
@@ -1212,7 +1218,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // forever must not prevent the running-turn timeout from taking effect.
   if (loop.status === "running") expireStalledTurn(loop);
   const statuses = await retryTransientOpenCode(() =>
-    ocServer<StatusMap>(ws.absolute_path, "/session/status", {
+    ocServer<StatusMap>(ws.absolute_path, SESSION_STATUS_PATH, {
       timeoutMs: STATUS_TIMEOUT_MS,
     }),
   );
@@ -1227,7 +1233,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     messages = await retryTransientOpenCode(() =>
       ocServer<MessageWithParts[]>(
         ws.absolute_path,
-        `/session/${loop.sessionId}/message`,
+        sessionMessagePath(loop.sessionId),
         { timeoutMs: MESSAGE_TIMEOUT_MS },
       ),
     );
@@ -1303,7 +1309,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       turnKind: "verification" as const,
     };
     try {
-      await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+      await ocServer(ws.absolute_path, sessionPromptAsyncPath(loop.sessionId), {
         method: "POST",
         body,
         timeoutMs: PROMPT_TIMEOUT_MS,
@@ -1401,7 +1407,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     turnKind: "goal" as const,
   };
   try {
-    await ocServer(ws.absolute_path, `/session/${loop.sessionId}/prompt_async`, {
+    await ocServer(ws.absolute_path, sessionPromptAsyncPath(loop.sessionId), {
         method: "POST",
         body,
         timeoutMs: PROMPT_TIMEOUT_MS,

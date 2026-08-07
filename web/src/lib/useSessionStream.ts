@@ -4,6 +4,25 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { apiUrl, ApiError, ocJson } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
+import {
+  PERMISSION_LIST_PATH,
+  QUESTION_LIST_PATH,
+  SESSION_STATUS_PATH,
+  permissionReplyPathV1,
+  permissionReplyPathV2,
+  questionRejectPathV1,
+  questionRejectPathV2,
+  questionReplyPathV1,
+  questionReplyPathV2,
+  sessionAbortPath,
+  sessionCommandPath,
+  sessionMessagePath,
+  sessionPath,
+  sessionPermissionListPathV2,
+  sessionPromptAsyncPath,
+  sessionQuestionListPathV2,
+  sessionTodoPath,
+} from "./opencode-paths";
 import { isSseConnectStalled, isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import { HANG_RETRY_METADATA_KEY as HANG_RETRY_KEY } from "./hang-retry";
 import type {
@@ -811,7 +830,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     if (!skipMessages) {
       try {
         const rows = await ocJson<MessageWithParts[]>(
-          `/session/${sid}/message`,
+          sessionMessagePath(sid),
           directory,
         );
         if (stale()) return;
@@ -838,7 +857,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     try {
       const statuses = await ocJson<Record<string, SessionStatus>>(
-        "/session/status",
+        SESSION_STATUS_PATH,
         directory,
       );
       if (stale()) return;
@@ -891,7 +910,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     try {
       const session = await ocJson<{ revert?: SessionRevert | null }>(
-        `/session/${sid}`,
+        sessionPath(sid),
         directory,
       );
       if (stale()) return;
@@ -903,7 +922,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     // Recover todos
     try {
-      const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
+      const todos = await ocJson<Todo[]>(sessionTodoPath(sid), directory);
       if (stale()) return;
       if (Array.isArray(todos)) dispatch({ kind: "todos", todos });
     } catch {
@@ -948,14 +967,14 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           receivedAt: Date.now(),
         };
       };
-      const v1raw = await ocJson<unknown>("/permission", directory).catch(
+      const v1raw = await ocJson<unknown>(PERMISSION_LIST_PATH, directory).catch(
         () => [],
       );
       let v2ok = false;
       let v2raw: unknown = [];
       try {
         v2raw = await ocJson<unknown>(
-          `/api/session/${sid}/permission`,
+          sessionPermissionListPathV2(sid),
           directory,
         );
         v2ok = true;
@@ -1017,14 +1036,14 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           receivedAt: Date.now(),
         };
       };
-      const v1raw = await ocJson<unknown>("/question", directory).catch(
+      const v1raw = await ocJson<unknown>(QUESTION_LIST_PATH, directory).catch(
         () => [],
       );
       let v2ok = false;
       let v2raw: unknown = [];
       try {
         v2raw = await ocJson<unknown>(
-          `/api/session/${sid}/question`,
+          sessionQuestionListPathV2(sid),
           directory,
         );
         v2ok = true;
@@ -1794,7 +1813,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       // The BFF proxy arms the server-side hang watchdog for this send.
       const stopMutationElapsed = startMutationElapsed(startedAt);
       try {
-        await ocJson(`/session/${sid}/prompt_async`, directory, {
+        await ocJson(sessionPromptAsyncPath(sid), directory, {
           method: "POST",
           body,
           timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
@@ -1863,7 +1882,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       // The BFF proxy arms the server-side hang watchdog for this send.
       const stopMutationElapsed = startMutationElapsed(startedAt);
       try {
-        await ocJson(`/session/${sid}/command`, directory, {
+        await ocJson(sessionCommandPath(sid), directory, {
           method: "POST",
           body,
           timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
@@ -1895,7 +1914,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     if (!directory || !sid) return;
     const requestedScope = `${directory}\u0000${sid}`;
     try {
-      const todos = await ocJson<Todo[]>(`/session/${sid}/todo`, directory);
+      const todos = await ocJson<Todo[]>(sessionTodoPath(sid), directory);
       // Directory 切替と競合した in-flight 応答で古い todos を載せない。
       if (scopeRef.current !== requestedScope || sessionRef.current !== sid) {
         return;
@@ -1924,7 +1943,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       // If abort fails and the session is still busy, REST must re-lock.
       preferRestStatusRef.current = true;
       try {
-        await ocJson(`/session/${sid}/abort`, directory, {
+        await ocJson(sessionAbortPath(sid), directory, {
           method: "POST",
           timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         });
@@ -1952,7 +1971,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       try {
         if (request.version === "v2") {
           await ocJson(
-            `/api/session/${request.sessionID}/permission/${request.id}/reply`,
+            permissionReplyPathV2(request.sessionID, request.id),
             directory,
             {
               method: "POST",
@@ -1962,7 +1981,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           );
         } else {
           await ocJson(
-            `/session/${request.sessionID}/permissions/${request.id}`,
+            permissionReplyPathV1(request.sessionID, request.id),
             directory,
             {
               method: "POST",
@@ -1990,7 +2009,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       try {
         if (request.version === "v2") {
           await ocJson(
-            `/api/session/${request.sessionID}/question/${request.id}/reply`,
+            questionReplyPathV2(request.sessionID, request.id),
             directory,
             {
               method: "POST",
@@ -1999,7 +2018,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             },
           );
         } else {
-          await ocJson(`/question/${request.id}/reply`, directory, {
+          await ocJson(questionReplyPathV1(request.id), directory, {
             method: "POST",
             body: { answers },
             timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
@@ -2023,12 +2042,12 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       try {
         if (request.version === "v2") {
           await ocJson(
-            `/api/session/${request.sessionID}/question/${request.id}/reject`,
+            questionRejectPathV2(request.sessionID, request.id),
             directory,
             { method: "POST", timeoutMs: SESSION_MUTATION_TIMEOUT_MS },
           );
         } else {
-          await ocJson(`/question/${request.id}/reject`, directory, {
+          await ocJson(questionRejectPathV1(request.id), directory, {
             method: "POST",
             timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
           });

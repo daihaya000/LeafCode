@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace, listSessionBindings, updateSessionTitle } from "@/lib/db";
 import { OcError, ocServer } from "@/lib/oc-server";
+import {
+  SESSION_LIST_PATH,
+  sessionMessagePath,
+  sessionPath,
+} from "@/lib/opencode-paths";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import {
   buildTranscript,
@@ -41,7 +46,7 @@ export async function POST(req: NextRequest, context: Ctx) {
   try {
     messages = await ocServer<MessageWithParts[]>(
       dir,
-      `/session/${sessionId}/message`,
+      sessionMessagePath(sessionId),
     );
   } catch (err) {
     return NextResponse.json(
@@ -63,7 +68,7 @@ export async function POST(req: NextRequest, context: Ctx) {
   let tempId: string | null = null;
   let title = "";
   try {
-    const temp = await ocServer<{ id: string }>(dir, "/session", {
+    const temp = await ocServer<{ id: string }>(dir, SESSION_LIST_PATH, {
       method: "POST",
       body: { title: "title-gen" },
     });
@@ -92,7 +97,7 @@ export async function POST(req: NextRequest, context: Ctx) {
 
     const result = await ocServer<{ parts: { type: string; text?: string }[] }>(
       dir,
-      `/session/${tempId}/message`,
+      sessionMessagePath(tempId),
       { method: "POST", body: promptBody, timeoutMs: 30_000 },
     );
     const raw = (result.parts ?? [])
@@ -102,7 +107,7 @@ export async function POST(req: NextRequest, context: Ctx) {
     title = sanitizeTitle(raw);
   } catch (err) {
     if (tempId)
-      await ocServer(dir, `/session/${tempId}`, { method: "DELETE" }).catch(
+      await ocServer(dir, sessionPath(tempId), { method: "DELETE" }).catch(
         () => undefined,
       );
     return NextResponse.json(
@@ -113,7 +118,7 @@ export async function POST(req: NextRequest, context: Ctx) {
 
   // Cleanup temp session BEFORE touching the original. Fail hard on cleanup error.
   try {
-    if (tempId) await ocServer(dir, `/session/${tempId}`, { method: "DELETE" });
+    if (tempId) await ocServer(dir, sessionPath(tempId), { method: "DELETE" });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "failed to clean up" },
@@ -130,7 +135,7 @@ export async function POST(req: NextRequest, context: Ctx) {
 
   // Write to original session, then DB (preserving updated_at), then manifest.
   try {
-    await ocServer(dir, `/session/${sessionId}`, {
+    await ocServer(dir, sessionPath(sessionId), {
       method: "PATCH",
       body: { title },
     });

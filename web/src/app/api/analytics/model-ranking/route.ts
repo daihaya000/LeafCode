@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb, listWorkspacesJoined } from "@/lib/db";
 import { ocServer } from "@/lib/oc-server";
 import { rankModelUsage } from "@/lib/model-ranking";
+import { sessionMessagePath } from "@/lib/opencode-paths";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
 
@@ -24,12 +25,19 @@ export async function GET(req: Request) {
     bindings.flatMap((binding) => {
       const workspace = byId.get(binding.workspace_id);
       if (!workspace) return [];
+      // `sessionMessagePath` throws on a malformed id (corrupt binding row).
+      // Build it inside the try so one bad row degrades to "no history for this
+      // session" instead of failing the whole ranking request.
+      let path: string;
+      try {
+        path = sessionMessagePath(binding.opencode_session_id);
+      } catch {
+        return [];
+      }
       return [
-        ocServer<MessageWithParts[]>(
-          workspace.absolute_path,
-          `/session/${encodeURIComponent(binding.opencode_session_id)}/message`,
-          { timeoutMs: 2500 },
-        )
+        ocServer<MessageWithParts[]>(workspace.absolute_path, path, {
+          timeoutMs: 2500,
+        })
           .then((messages) => ({ sessionId: binding.opencode_session_id, messages }))
           .catch(() => null),
       ];

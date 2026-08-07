@@ -1,3 +1,126 @@
+# 作業ログ: OpenCode API v2(Beta) 移行準備の実装(優先度順 P1〜P4)
+
+## 日付
+
+2026-08-07(同日、前ラウンドの提案を実装)
+
+## 依頼
+
+「優先度順の実装計画を立ててから実装」。前ラウンドで提案した 6 案から、
+投機的な死にコードになるもの(capability detection / フィーチャーフラグ)を
+外し、4 段階に絞って実装した。
+
+## 実装内容
+
+### P1: パスレジストリ `web/src/lib/opencode-paths.ts`(新規)
+
+- `OC_PATH_TEMPLATES` を `as const satisfies Record<string, keyof OcPaths>`
+  で宣言。**生成された OpenAPI 型に存在しないパステンプレートは `tsc` が
+  弾く**。実証済み: `prompt_async` を `prompt_async_RENAMED` に書き換えると
+  `error TS2820: ... Did you mean "/session/{sessionID}/prompt_async"?` が
+  出て、正しい候補名まで提示される。
+- v1 ビルダー(`sessionMessagePath` / `sessionPromptAsyncPath` /
+  `sessionAbortPath` / `sessionTodoPath` / `sessionDiffPath` /
+  `sessionCommandPath` / `sessionPath` / `permissionReplyPathV1` /
+  `questionReplyPathV1` / `questionRejectPathV1`)と
+  v2 ビルダー(`...PathV2` 系 5 本)、定数 4 本を提供。
+  id は `openCodeSessionPath` / `encodePathId` 経由で検証 + 1 回だけ encode。
+- 移行した呼び出し元: `goal-loop.ts` / `hang-watchdog.ts` /
+  `memory-extract.ts` / `task-service.ts` / `workflow-scheduler.ts` /
+  `attention.ts` / `useSessionStream.ts` /
+  `api/analytics/model-ranking/route.ts` / `api/diff/route.ts` /
+  `api/workspaces/[id]/sessions/[sessionId]/refresh-title/route.ts`。
+- **回帰リスクへの対処**: `model-ranking` は全 session binding をループするため、
+  1 行でも不正 id があるとビルダーの throw がルート全体を 500 にしてしまう。
+  パス構築を try で包み、その binding だけスキップするようにした
+  (従来の `.catch(() => null)` と同じ耐性を維持)。
+- テスト `opencode-paths.test.ts`(7件): 全ビルダーの厳密な出力文字列、
+  traversal id の拒否、テンプレートの一意性、v1/v2 の prefix 分離。
+
+### P2: SSE イベントレジストリ `web/src/lib/opencode-events.ts`(新規)
+
+- `HANDLED_V1_EVENT_TYPES`(14件)/ `HANDLED_V2_EVENT_TYPES`(18件、
+  `permission.v2.*`・`question.v2.*`・`session.next.*`)を宣言。
+  `eventGeneration()` / `isSessionNextEvent()` /
+  `RESOLVED_REQUEST_EVENT_TYPES` + `isResolvedRequestEventType()`。
+- `attention.ts` の `isResolvedEvent` の 6 分岐 or 連鎖を
+  `isResolvedRequestEventType()` に置換(レジストリに実消費者を持たせ、
+  宣言だけの死にコードにしない)。
+- テスト `opencode-events.test.ts`(7件):
+  - **生成スキーマとの照合**: 宣言した全イベント型が
+    `opencode-schema.d.ts` の `type: "..."` リテラルとして存在すること。
+    実証済み: 存在しない `session.renamed.upstream` を足すと
+    `expected [ 'session.renamed.upstream' ] to deeply equal []` で落ちる。
+  - 抽出正規表現自体の健全性(50件以上見つかること)。空集合同士の比較で
+    テストが空回りするのを防ぐ。
+  - `useSessionStream.ts` が比較しているイベントリテラルを走査し、
+    レジストリ未登録のものが無いこと(`busy`/`idle`/`text` 等の
+    非イベント列挙は除外リストで明示)。
+
+### P3: 生成物の鮮度チェック `opencode-schema-freshness.test.ts`(新規、3件)
+
+- P1/P2 の保証は `opencode-schema.d.ts` が最新である前提に立つ。古い生成物の
+  上では両方とも空回りするため、`docs/opencode/openapi.json` の
+  `paths` キー集合と、生成 `.d.ts` の `export interface paths` 内の
+  キー集合が**完全一致**することを検証(現在 156 パスで一致)。
+  差分があれば「`npm run gen:types` を実行してコミットせよ」の指示になる。
+- 両抽出器が >100 件を返すことを先に assert し、パース失敗による空振りを防ぐ。
+- レジストリの全テンプレートが spec 側にも存在することを再確認
+  (`satisfies` は生成物側しか見ないため)。
+- `docs/opencode/VERSION`(現在 1.17.11)が semver 形式であることを確認。
+
+### P4: ドキュメント
+
+- **`docs/specs/opencode-api-v2-migration.md`(新規)**: 現状の API サーフェス表、
+  導入した仕組みの一覧、エンジン更新時の 5 ステップ手順、意図的に未移行の
+  箇所とその理由、見送った案(capability detection)。
+- `architecture.md` §6.5.1 は要約 + spec への参照のみ。
+  **`architecture.md` は `.gitignore` 対象(ローカル専用)** と判明したため、
+  運用手順の正本は追跡対象の `docs/specs/` 側に置いた。
+
+## 意図的に未移行として残した箇所
+
+`opencode-access-mode.ts` / `opencode-skill-permission.ts` /
+`opencode-task-permission.ts` の `PATCH /session/{id}`。これらは
+「セッション id を厳格検証せず percent-encode のみ」という契約を既存テスト
+(`/session/ses%2Fweird%20id` を期待)が固定しており、throw するビルダーに
+載せると挙動が変わる。v2 の等価物も保存済みパーミッション API の形状が
+異なり単純な差し替えでは済まないため、移行時に個別設計する。
+
+## 検証結果
+
+- `npx tsc --noEmit`(web)... 成功
+- `npx eslint`(web 全体)... 0 errors(既存の warning 2件のみ、今回の変更対象外)
+- `npx vitest run`(web 全体)... **245 files / 2898 tests 成功**
+  (変更前 2872 → 新規 26 件追加、既存の失敗ゼロ)
+- ドリフト検知は P1(tsc)・P2(test)とも**意図的に壊して落ちることを実証**し、
+  検知後に復元済み。
+- AGENTS.md の方針により `next dev` / `next build` は未実行。
+
+## 変更ファイル
+
+新規:
+- `web/src/lib/opencode-paths.ts` / `opencode-paths.test.ts`
+- `web/src/lib/opencode-events.ts` / `opencode-events.test.ts`
+- `web/src/lib/opencode-schema-freshness.test.ts`
+- `docs/specs/opencode-api-v2-migration.md`
+
+変更:
+- `web/src/lib/{goal-loop,hang-watchdog,memory-extract,task-service,workflow-scheduler,attention,useSessionStream}.ts`
+- `web/src/app/api/{analytics/model-ranking,diff}/route.ts`
+- `web/src/app/api/workspaces/[id]/sessions/[sessionId]/refresh-title/route.ts`
+- `architecture.md`(gitignore 対象、ローカルのみ)
+
+## 教訓(Windows / cmd.exe)
+
+`node -e` や PowerShell の `-Command` にバッククォートやエスケープを含む
+置換スクリプトを渡すと、cmd.exe / PowerShell の解釈で**黙って壊れた内容が
+書き込まれる**(今回 PowerShell の `` `n `` がリテラルとしてファイルに入り、
+以降のバッククォートまでがテンプレートリテラル扱いになって構文エラー)。
+一括置換は Edit ツール(`replaceAll`)を使うこと。
+
+---
+
 # 作業ログ: バックエンド OpenCode CLI の V2(Beta)API との互換性調査
 
 ## 日付
