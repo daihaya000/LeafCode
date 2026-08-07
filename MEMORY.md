@@ -2,6 +2,51 @@
 
 ## 日付
 
+2026-08-07(同日、LAN IP → loopback 自動リダイレクト)
+
+## 依頼
+
+「ホストPCでアクセス確認が取れる場合 192.168.0.102 からアクセスしても
+127.0.0.1 へリダイレクトする」。ユーザー選択により実装方針を
+「ホストPC自身が LAN IP で開いたとき、loopback へ自動リダイレクト」とした。
+
+## 実装内容
+
+`web/src/lib/localhost-redirect.ts`(新規) + テスト + `(app)/layout.tsx` のフック。
+
+- `maybeRedirectToLocalhost()` をクライアントのみで実行。
+  1. `window.location.hostname` が loopback なら何もしない
+  2. private(LAN/VPN)ホストのみ対象。public ホスト名(リバースプロキシ)は残す
+  3. 到達性の証明: `http://127.0.0.1:18765/health` を `mode:"no-cors"` で fetch。
+     成功 = このブラウザはホストPC上にある(control server の Host 検証で
+     DNS リバインドは既にブロック済み)。失敗/タイムアウト = 遠隔(スマホ)で、
+     リダイレクトしない(fail-closed)
+  4. `window.location.replace()` でホスト名だけ `127.0.0.1` に差し替え。
+     プロトコル/ポート/パス/クエリは保持
+- `(app)/layout.tsx` で `useEffect` から呼ぶ(1 回だけ)
+
+### 設計メモ
+
+- control server への CORS は必要ない。`no-cors` fetch は opaque response を
+  返し、成功/失敗しか読まない。MEMORY の「到達性の証明」設計を実装した形。
+- スマホは loopback 到達不可のため永遠にリダイレクトされない。
+  ホストPC上の LAN URL だけが loopback へ移動する。
+
+## 検証結果
+
+- `npx vitest run src/lib/localhost-redirect.test.ts` ... 10 tests 成功
+- `npx vitest run src/lib` ... 125 files / 1608 tests 成功
+- `npx tsc --noEmit` ... 成功
+- `npx eslint`(新規3ファイル) ... 成功
+
+## 変更ファイル
+
+- `web/src/lib/localhost-redirect.ts`(新規)
+- `web/src/lib/localhost-redirect.test.ts`(新規)
+- `web/src/app/(app)/layout.tsx`
+
+## 日付
+
 2026-08-07(同日、前ラウンドの提案を実装)
 
 ## 依頼
