@@ -242,7 +242,7 @@ function assertCompleted(result, label) {
   assert.equal(result.signal, null, `${label}: child was terminated by ${result.signal}`);
 }
 
-test("start-webui.bat installs winget/Node.js/OpenCode/deps on a fresh machine, then reaches the host tail", { skip: !isWindows }, () => {
+test("start-webui.bat installs winget/Node.js/OpenCode/Caddy/deps on a fresh machine, then reaches the host tail", { skip: !isWindows }, () => {
   const sandbox = createSandbox({ nodeMajor: 18, nodeMajorAfterInstall: 22, opencodeExit: 1 });
   try {
     const result = sandbox.run();
@@ -250,15 +250,27 @@ test("start-webui.bat installs winget/Node.js/OpenCode/deps on a fresh machine, 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), true);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), false);
+    assert.equal(existsSync(join(sandbox.root, "caddy-winget-installed")), true, "expected Caddy to be auto-installed too");
     assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), true);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
     const log = readFileSync(sandbox.log, "utf8");
     assert.match(log, /install --id OpenJS\.NodeJS\.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /install --id SST\.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
+    assert.match(log, /install --id CaddyServer\.Caddy --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /npm .*\\web ci/);
     assert.match(log, /npm .*\\host ci/);
     assert.match(log, /npm .*\\browser-bridge ci/);
     assert.doesNotMatch(log, /npm .* install -g opencode-ai/);
+    // Install order matters for a clean first-run console transcript: Node.js
+    // and OpenCode (hard requirements) must resolve before the optional
+    // Caddy step, which itself must finish before any npm/dependency work.
+    const nodeIdx = log.indexOf("OpenJS.NodeJS.LTS");
+    const opencodeIdx = log.indexOf("SST.opencode");
+    const caddyIdx = log.indexOf("CaddyServer.Caddy");
+    const npmWebIdx = log.search(/npm .*\\web ci/);
+    assert.ok(nodeIdx >= 0 && opencodeIdx > nodeIdx, "Node.js must install before OpenCode");
+    assert.ok(caddyIdx > opencodeIdx, "Caddy must be attempted after OpenCode is resolved");
+    assert.ok(npmWebIdx > caddyIdx, "web dependency install must come after the Caddy step");
   } finally { sandbox.cleanup(); }
 });
 

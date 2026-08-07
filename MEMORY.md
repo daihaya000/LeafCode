@@ -1,3 +1,59 @@
+# 作業ログ: 新環境セットアップの再検証(静的整合性 + フルフロー統合テスト)
+
+## 日付
+
+2026-08-07
+
+## 依頼
+
+「新環境で正しくセットアップされるかテスト」(前回の Caddy 自動導入変更の
+続き)。
+
+## やったこと
+
+1. **ベースライン確認**: `cd host && npm test` を変更前にまず実行し、
+   372/372 成功であることを確認(前回の Caddy 自動導入コミット時点の状態)。
+2. **`scripts/start-webui.bat` の静的整合性チェック**: ラベル定義/
+   `goto`・`call :label` 参照を全て抽出して突き合わせるワンショットの
+   Node スクリプトで、
+   - 重複ラベル: 無し
+   - 参照されているが未定義のラベル: 無し
+   - 定義されているが未参照のラベル: `web_build_guard_passed`
+     (今回の変更より前から存在する、フォールスルー専用のマーカーラベルで
+     問題無し)
+   を確認。`:check_caddy` / `:caddy_skip_no_winget` / `:caddy_install_failed`
+   はいずれも正しく定義・参照されている。
+3. **「完全新規機」統合テストの強化**
+   (`start-webui.bat installs winget/Node.js/OpenCode/Caddy/deps on a fresh
+   machine, then reaches the host tail`、旧名称から Caddy を追記):
+   - 個別の Caddy テスト(前回追加)とは別に、Node.js 未対応バージョン +
+     OpenCode 未導入 + Caddy 未導入を**同時に**満たす唯一のフルフロー
+     シナリオに `caddy-winget-installed` マーカーの存在と
+     `install --id CaddyServer.Caddy ...` のログ行の存在を追加。
+   - さらに **インストール順序**の検証を追加: ログ中の
+     `OpenJS.NodeJS.LTS` → `SST.opencode` → `CaddyServer.Caddy` →
+     `npm ... web ci` の順で出現することを確認。必須コンポーネント
+     (Node.js/OpenCode)が任意コンポーネント(Caddy)より先に解決され、
+     Caddy の試行が web 依存関係インストールより前に完了していることを
+     保証する(セットアップ中の透明性 / 診断のしやすさのため)。
+
+## 検証結果
+
+- `cd host && npm test -- src/start-webui-bat.test.js`... 20/20 成功。
+- `cd host && npm test`(全体)... 372/372 成功(既存テストの強化のみで
+  テスト件数は前回コミットと同じ)。
+- AGENTS.md の方針により `next dev`/`next build`/exe の実起動は行わず、
+  静的解析 + サンドボックス化した `.bat` テストのみで検証。
+
+## 変更ファイル
+
+- `host/src/start-webui-bat.test.js`: 「完全新規機」フルフローテストに
+  Caddy 自動導入のアサーションとインストール順序の検証を追加。
+  (`scripts/_label-check.mjs` はラベル整合性の使い捨て確認用に一時作成し、
+  検証後に削除済み。コミット対象外。)
+
+---
+
 # 作業ログ: Caddy をセットアップ時に自動インストールするように変更
 
 ## 日付
