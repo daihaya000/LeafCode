@@ -1987,3 +1987,47 @@ memory-layer のフェーズ6(idle トリガー)を実装。goal-loop `completed
 - スイープは goal-loop スケジューラーの既存 tick 内で実行(追加の setInterval なし)
 - レジャー記録を抽出発火前に先行書き込みするため、抽出途中でクラッシュしても二重実行されない
 - host/src/index.js の未コミット変更(CADDYFILE の export 等)は別件のため手を付けず残置
+---
+
+# 本番ビルド復旧: Next.js 16 誤更新の巻き戻しとメジャー固定 (2026-08-07)
+
+## 症状
+起動時の production build が Turbopack のパニックで失敗し、host が exit 1 で終了。
+`Invalid distDirRoot: "../../../../../AppData/Roaming/opencode-webui/web-build".
+distDirRoot should not navigate out of the projectPath.`
+
+## 原因1: Next.js のメジャー更新 (dbc1727)
+- Settings の「Next.js を更新」ボタン (`POST /api/updates/nextjs`) が
+  `npm install next@latest` を実行し、15.5.20 → ^16.3.0 へメジャー跨ぎで更新されていた。
+- Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁止 (Rust 側 `Project::project_fs` で検証)。
+  本プロジェクトは OneDrive 同期回避のため `%APPDATA%\opencode-webui\web-build` へ出力する設計なので全面的に非互換。
+- 16 系での回避策は実測の結果いずれも不採用:
+  - `next build --webpack` … 後述の原因2 とは別に webpack 自体が Next 17 で削除予定
+  - `web/.next-prod` ジャンクション … OneDrive が実体を追跡する危険
+  - ビルド後に外部へ移動 … Next 非サポート
+- 対応: `web/package.json` / `package-lock.json` を dbc1727 の親へ戻し (`next: 15.5.20`)、`npm ci`。
+
+## 原因2: クライアントコンポーネントがサーバ専用モジュールを取り込んでいた
+- `PartView.tsx`("use client") が `@/lib/memory` から `stripMemoryInjectionBlock` を import。
+  `memory.ts` → `db.ts` → `paths.ts` が `node:fs` / `node:os` を引き、
+  `UnhandledSchemeError: Reading from "node:os" is not handled by plugins` でビルド失敗。
+- 対応: 純粋関数を `web/src/lib/memory-text.ts` へ分離し、`memory.ts` は再エクスポートのみ。
+  `PartView.tsx` は `@/lib/memory-text` を import。
+
+## 再発防止: 更新ボタンをメジャー内に固定 (ユーザー承認済み)
+- `web/src/lib/nextjs-major.ts`(新規): `majorOf` / `installSpecForMajor` / `latestInMajor`。
+- `POST /api/updates/nextjs`: インストール済み major(取得できなければ package.json の宣言)から
+  `next@15` のようなスペックを組み立てて install。major 不明時は npm を実行せず 500。
+- `GET /api/updates/status`: abbreviated packument (`Accept: application/vnd.npm.install-v1+json`) を取得し、
+  同一 major 内の最新安定版のみを latest として提示(ボタンが入れられない 16.x を提示しない)。
+- テスト: `nextjs-major.test.ts`(6件) 追加、updates 系ルートテストを更新/追加(計29件パス)。
+
+## 検証結果
+- production build: `NEXT_DIST_DIR=%APPDATA%\opencode-webui\web-build` + `NODE_PATH=web\node_modules` で EXIT=0
+  (`✓ Compiled successfully`, postbuild の verify-tsconfig も clean)
+- web vitest: 246 files / 2908 tests 全パス、`tsc --noEmit` clean、eslint は既存 warning 2件のみ
+- host の `start-webui.bat` 系テストはこの実行環境では元から失敗
+  (HEAD で45件失敗 / 本変更後41件失敗) — 本件とは無関係の既存事象
+
+## 備考
+- Next 16 への移行は「外部 distDir をやめる/別方式にする」設計判断とセットで別途計画が必要。

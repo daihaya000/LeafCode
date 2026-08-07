@@ -24,7 +24,7 @@ import { cx } from "@/components/ui";
 import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
 import { isImageFilePart } from "@/lib/message-parts";
-import { stripMemoryInjectionBlock } from "@/lib/memory";
+import { stripMemoryInjectionBlock } from "@/lib/memory-text";
 import { providerIdFromSubagentType } from "@/lib/subagent-provider";
 import type { Part, ToolState } from "@/lib/types";
 import { formatElapsed, stripGoalLoopJsonBlock } from "@/lib/useSessionStream";

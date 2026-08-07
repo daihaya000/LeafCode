@@ -8,6 +8,7 @@ import { GITHUB_REPO, GITHUB_REPO_URL, installationRoot, isGitInstall } from "@/
 import { resolveRemoteHead } from "@/lib/github-remote";
 import { readUpdateRecord } from "@/lib/install-state";
 import { requireAuthorized } from "@/lib/api-guard";
+import { latestInMajor, majorOf } from "@/lib/nextjs-major";
 
 const execFileAsync = promisify(execFile);
 const WEBUI_REPO = GITHUB_REPO;
@@ -184,17 +185,29 @@ function currentNextVersion(cwd: string): string | undefined {
   }
 }
 
+/** Stays inside the installed major: the update button refuses to cross one
+ *  (lib/nextjs-major.ts), so offering Next 16 here would be a dead end. */
 async function checkNextJs(): Promise<UpdateStatus> {
   const current = currentNextVersion(installationRoot());
   if (!current) return { available: false, error: "Next.jsのバージョンを取得できませんでした" };
+  const major = majorOf(current);
+  if (major === undefined) {
+    return { available: false, current, error: "Next.jsのバージョンを解釈できませんでした" };
+  }
   try {
-    const response = await fetch(`https://registry.npmjs.org/${NEXTJS_PACKAGE}/latest`, {
-      headers: { Accept: "application/json", "User-Agent": "OpenCodeWebUI" },
+    const response = await fetch(`https://registry.npmjs.org/${NEXTJS_PACKAGE}`, {
+      // Abbreviated packument: version list without the full metadata payload.
+      headers: {
+        Accept: "application/vnd.npm.install-v1+json",
+        "User-Agent": "OpenCodeWebUI",
+      },
       cache: "no-store",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10_000),
     });
-    const data = (await response.json().catch(() => ({}))) as { version?: unknown };
-    const latest = typeof data.version === "string" ? data.version : undefined;
+    const data = (await response.json().catch(() => ({}))) as { versions?: unknown };
+    const versions =
+      data.versions && typeof data.versions === "object" ? Object.keys(data.versions) : [];
+    const latest = latestInMajor(versions, major);
     if (!latest) return { available: false, current, error: "Next.jsの最新バージョンを取得できませんでした" };
     return { available: compareVersions(current, latest) < 0, current, latest };
   } catch (err) {

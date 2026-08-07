@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { installationRoot } from "@/lib/install-root";
 import { requireAuthorized } from "@/lib/api-guard";
 import { resolveNpmCli } from "@/lib/npm-cli";
+import { installSpecForMajor, majorOf } from "@/lib/nextjs-major";
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = 64 * 1024;
@@ -33,16 +34,42 @@ function readInstalledNextVersion(webDir: string): string | undefined {
   }
 }
 
+/** Range declared in `web/package.json` — the fallback when `node_modules` is
+ *  missing/unreadable. */
+function readDeclaredNextVersion(webDir: string): string | undefined {
+  try {
+    const pkg = JSON.parse(readFileSync(join(webDir, "package.json"), "utf8")) as {
+      dependencies?: Record<string, unknown>;
+    };
+    const declared = pkg.dependencies?.[NEXTJS_PACKAGE];
+    return typeof declared === "string" ? declared : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Manually triggered from Settings (not run automatically at startup).
- * Always installs `next@latest`, including major versions — the operator
- * accepted the breaking-change risk when clicking the button.
+ * Installs the newest release **within the currently installed major** — see
+ * lib/nextjs-major.ts: Next 16 rejects this project's external distDir, so
+ * `next@latest` breaks every production build. Crossing a major is a planned
+ * migration, not a button.
  */
 export async function POST(req: Request) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
 
   const webDir = join(installationRoot(), "web");
+
+  const major =
+    majorOf(readInstalledNextVersion(webDir)) ?? majorOf(readDeclaredNextVersion(webDir));
+  if (major === undefined) {
+    return NextResponse.json(
+      { ok: false, error: "現在の Next.js バージョンを特定できませんでした" },
+      { status: 500 },
+    );
+  }
+  const spec = installSpecForMajor(major);
 
   let npmCli: string;
   try {
@@ -57,7 +84,7 @@ export async function POST(req: Request) {
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
-      [npmCli, "install", `${NEXTJS_PACKAGE}@latest`],
+      [npmCli, "install", spec],
       {
         cwd: webDir,
         encoding: "utf8",
@@ -69,7 +96,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       cwd: webDir,
-      command: "npm install next@latest",
+      command: `npm install ${spec}`,
       version: readInstalledNextVersion(webDir),
       stdout: trimOutput(stdout),
       stderr: trimOutput(stderr),
@@ -80,7 +107,7 @@ export async function POST(req: Request) {
       {
         ok: false,
         cwd: webDir,
-        command: "npm install next@latest",
+        command: `npm install ${spec}`,
         error: e.message,
         code: e.code,
         stdout: trimOutput(e.stdout ?? ""),

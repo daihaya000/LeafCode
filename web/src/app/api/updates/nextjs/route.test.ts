@@ -50,14 +50,16 @@ describe("POST /api/updates/nextjs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resolveNpmCliMock.mockReturnValue("C:\\node\\node_modules\\npm\\bin\\npm-cli.js");
-    readFileSyncMock.mockImplementation(() => {
+    // The route needs the installed major before it can build the install spec.
+    readFileSyncMock.mockImplementation((path: string) => {
+      if (String(path).includes("node_modules")) return JSON.stringify({ version: "15.5.20" });
       throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     });
   });
 
-  it("runs `npm install next@latest` in the web directory and reports the installed version", async () => {
+  it("installs the newest release within the installed major and reports the version", async () => {
     mockExec((args) => {
-      expect(args).toEqual(["C:\\node\\node_modules\\npm\\bin\\npm-cli.js", "install", "next@latest"]);
+      expect(args).toEqual(["C:\\node\\node_modules\\npm\\bin\\npm-cli.js", "install", "next@15"]);
       return { stdout: "added next@15.6.0\n", stderr: "" };
     });
     readFileSyncMock.mockImplementation((path: string) => {
@@ -100,6 +102,46 @@ describe("POST /api/updates/nextjs", () => {
     expect(res.status).toBe(500);
     expect(body.ok).toBe(false);
     expect(body.error).toContain("npm-cli.js");
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the declared range in package.json when node_modules is unreadable", async () => {
+    readFileSyncMock.mockImplementation((path: string) => {
+      if (String(path).includes("node_modules")) throw new Error("ENOENT");
+      return JSON.stringify({ dependencies: { next: "15.5.20" } });
+    });
+    mockExec((args) => {
+      expect(args[2]).toBe("next@15");
+      return { stdout: "", stderr: "" };
+    });
+
+    const res = await POST(localRequest());
+    expect(res.status).toBe(200);
+  });
+
+  it("never crosses a major: an installed Next 16 stays on 16", async () => {
+    readFileSyncMock.mockImplementation((path: string) => {
+      if (String(path).includes("node_modules")) return JSON.stringify({ version: "16.3.0" });
+      throw new Error("ENOENT");
+    });
+    mockExec((args) => {
+      expect(args[2]).toBe("next@16");
+      return { stdout: "", stderr: "" };
+    });
+
+    const res = await POST(localRequest());
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 500 without executing npm when the current version cannot be determined", async () => {
+    readFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+
+    const res = await POST(localRequest());
+    const body = (await res.json()) as NextjsPostBody;
+    expect(res.status).toBe(500);
+    expect(body.ok).toBe(false);
     expect(execFileMock).not.toHaveBeenCalled();
   });
 

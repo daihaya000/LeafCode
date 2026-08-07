@@ -138,10 +138,13 @@ describe("GET /api/updates/status", () => {
       readUpdateRecordMock.mockReturnValue(null);
     });
 
-    function mockRegistryLatest(version: string) {
+    /** Abbreviated packument shape: the route picks the newest stable release
+     *  inside the installed major from this version list. */
+    function mockRegistryVersions(...published: string[]) {
+      const versions = Object.fromEntries(published.map((v) => [v, {}]));
       global.fetch = vi.fn(async (url: string | URL) => {
         if (String(url).includes("registry.npmjs.org/next")) {
-          return { json: async () => ({ version }) } as Response;
+          return { json: async () => ({ versions }) } as Response;
         }
         return { json: async () => ({}) } as Response;
       }) as unknown as typeof fetch;
@@ -152,13 +155,26 @@ describe("GET /api/updates/status", () => {
         if (String(path).includes("node_modules")) return JSON.stringify({ version: "15.5.20" });
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
       });
-      mockRegistryLatest("15.6.0");
+      mockRegistryVersions("15.5.20", "15.6.0");
 
       const res = await GET(localRequest());
       const body = (await res.json()) as StatusBody;
       expect(body.nextjs.available).toBe(true);
       expect(body.nextjs.current).toBe("15.5.20");
       expect(body.nextjs.latest).toBe("15.6.0");
+    });
+
+    it("ignores releases from a newer major (the update button cannot install them)", async () => {
+      readFileSyncMock.mockImplementation((path: string) => {
+        if (String(path).includes("node_modules")) return JSON.stringify({ version: "15.5.20" });
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
+      mockRegistryVersions("15.5.20", "16.0.0", "16.3.0");
+
+      const res = await GET(localRequest());
+      const body = (await res.json()) as StatusBody;
+      expect(body.nextjs.available).toBe(false);
+      expect(body.nextjs.latest).toBe("15.5.20");
     });
 
     it("falls back to the declared package.json range when node_modules is unreadable", async () => {
@@ -168,7 +184,7 @@ describe("GET /api/updates/status", () => {
         }
         return JSON.stringify({ dependencies: { next: "15.5.20" } });
       });
-      mockRegistryLatest("15.5.20");
+      mockRegistryVersions("15.5.20");
 
       const res = await GET(localRequest());
       const body = (await res.json()) as StatusBody;

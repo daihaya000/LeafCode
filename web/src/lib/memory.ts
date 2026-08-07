@@ -296,17 +296,10 @@ export function buildMemoryInjectionBlock(
   return `<workspace-memory>\n${lines.join("\n")}\n</workspace-memory>`;
 }
 
-/**
- * Strips a leading `<workspace-memory>…</workspace-memory>` block from user
- * text at render time. The block is internal context injected into the first
- * goal-loop message and must not be shown to the user. Returns "" when the
- * whole text was just the block.
- */
-export function stripMemoryInjectionBlock(text: string): string {
-  const match = text.match(/^\s*<workspace-memory>[\s\S]*?<\/workspace-memory>/);
-  if (!match) return text;
-  return text.slice(match[0].length).replace(/^\s*\n/, "");
-}
+// Lives in ./memory-text so client components can strip the block without
+// pulling this module's `./db` (better-sqlite3 / node built-ins) into the
+// browser bundle. Re-exported here for server-side callers.
+export { stripMemoryInjectionBlock } from "./memory-text";
 
 /**
  * Returns the best-8 injection block for a workspace and bumps each injected
