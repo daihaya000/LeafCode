@@ -1029,7 +1029,7 @@ function spawnOpencode(opencodePath) {
   });
 }
 
-function findCaddy() {
+export function findCaddy() {
   try {
     const output = execSync('where.exe caddy', {
       encoding: 'utf8',
@@ -1103,7 +1103,7 @@ function syncCaddyfileAddresses() {
 }
 
 /** Ensure a Caddyfile exists, seeding from the bundled example on first run. */
-function ensureCaddyfile() {
+export function ensureCaddyfile() {
   if (existsSync(CADDYFILE)) {
     syncCaddyfileAddresses();
     return true;

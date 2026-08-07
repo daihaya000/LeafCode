@@ -1,3 +1,106 @@
+# 作業ログ: 新規環境での初回セットアップ検証(Caddy 連携を重点確認)
+
+## 日付
+
+2026-08-07
+
+## 依頼
+
+「まったく新規の環境で exe 実行時の初回セットアップが適切に動作するかテスト。
+caddy 関連は特に」という調査依頼。
+
+## 調査した範囲
+
+- `OpenCodeWebUI.exe`(`scripts/launcher/Launcher.cs`)→
+  `scripts/start-webui.bat`(winget / Node.js / OpenCode CLI / web・host・
+  browser-bridge の依存関係 / production build)→
+  `host/src/index.js`(トレイ host 本体、OpenCode・WebUI・Caddy の起動管理)
+  という起動チェーン全体を読み、特に Caddy 関連(`findCaddy` / `ensureCaddyfile` /
+  `syncCaddyfileAddresses` / `spawnCaddy` / `resolveBrowserUrl`)を精査。
+
+## 発見した設計(バグではなく仕様として妥当と判断)
+
+- **Caddy 自体は自動インストールされない**: `scripts/start-webui.bat` は
+  winget で Node.js と OpenCode CLI は自動導入するが、Caddy を導入するステップは
+  存在しない。README にも Caddy 自体の winget パッケージ ID 等の導入手順は書かれて
+  いない(`scripts\caddy-trust.bat` 等の「導入済み前提」の手順のみ)。
+- `scripts/start-webui.bat` は `if not defined OPENCODE_WEBUI_CADDY set
+  OPENCODE_WEBUI_CADDY=1` としており、**既定で Caddy 連携が有効**になる
+  (README の「明示的なオプトイン」という説明とは字面上ややズレるが、実害は次の
+  フェイルセーフで吸収されている)。
+- `findCaddy()`(`host/src/index.js`)は `where.exe caddy` → 失敗時に
+  `%LOCALAPPDATA%\Microsoft\WinGet\Links\caddy.exe` の順で探し、両方失敗すると
+  `null` を返すのみでインストールは行わない。
+- `spawnCaddy()` は `findCaddy()` が `null` の場合、
+  `error('Caddy enabled but not found on PATH. ...')` をログ(コンソール +
+  `/api/host/logs`)に出すだけで **host 全体はクラッシュせず継続**する。
+  この経路では `ensureCaddyfile()` は一切呼ばれないため、`deploy/Caddyfile` も
+  作られない(中途半端な設定ファイルが残らない)。
+- `resolveBrowserUrl()` は Caddyfile が存在しない(=読めない)場合
+  `detectCaddyLoopbackUrl`/`detectCaddyPublicUrl` が例外を握り潰して `null` を
+  返すため `probeUrl` が `null` になり、`waitForHttpUp` の待機を一切発生させずに
+  即座に `pickBrowserUrl` が `webuiUrl`(`http://127.0.0.1:3000`)にフォール
+  バックする。**Caddy 未導入の新規機（マシン)でもブラウザは待たされずに開く**。
+- Caddy が後から導入され、`deploy/Caddyfile` が存在しない状態で次回起動すると
+  `ensureCaddyfile()` が `deploy/Caddyfile.example` からシードし、
+  `syncCaddyfileAddresses()` で現在の LAN IPv4 アドレスを site 行に反映する。
+  既存の `deploy/Caddyfile`(ユーザー編集済み)がある場合は上書きされない。
+
+## テスト(新規環境をエミュレート)
+
+- 既存の `host/src/caddy-sites.test.js` / `caddyfile.test.js` /
+  `index.test.js`(`pickBrowserUrl` / `parseCaddyPublicUrl` /
+  `parseCaddyLoopbackUrl` / `isOurCaddyCommandLine` / `shouldRestartCaddy` 等)
+  は Caddy まわりの純粋ロジックを既にカバーしていたが、**`findCaddy` /
+  `ensureCaddyfile`(副作用ありの実処理)は無テストだった**ため、
+  `host/src/index.js` の当該2関数を(既存の他の内部関数と同じ慣習で)
+  `export` し、新規 `host/src/caddy-setup.test.js` を追加:
+  - `findCaddy` が `PATH` にも WinGet Links にも無い場合 `null` を返す
+    (`PATH` を `%SystemRoot%\System32` のみに絞り、`LOCALAPPDATA` を空の
+    一時ディレクトリに差し替えて検証。`where.exe` 自体は Windows の既定探索
+    順序で解決されるため、この方法で「caddy だけが無い」状態を安全に再現できる)。
+  - `findCaddy` が WinGet Links のシムにフォールバックすることを、一時
+    ディレクトリにダミー `caddy.exe` を置いて検証。
+  - `findCaddy` が実環境(このマシンには caddy 導入済み)で実 caddy を解決
+    することを確認(未導入マシンでは自動的にアサーションをスキップ)。
+  - `ensureCaddyfile` が `OPENCODE_WEBUI_CADDYFILE` を一時パスに向けた状態
+    (キャッシュバスティング付き動的 `import()` で env 反映後のモジュールを
+    再ロード)で、初回は example からシードし、2回目はユーザー編集を
+    上書きしない no-op になることを確認。
+  - `ensureCaddyfile` が書き込み先の親ディレクトリが無い(書き込み失敗)
+    場合も例外を投げず `false` を返すことを確認(host のクラッシュ防止)。
+  - 実運用中の `deploy/Caddyfile`(gitignore 対象、ユーザーのドメイン/認証
+    設定を含む)には一切触れず、すべて一時ディレクトリ上で検証した
+    (稼働中のトレイ host / Caddy への影響ゼロ)。
+
+## 検証結果
+
+- `cd host && npm test`(`node --test`、366 tests)... 全件成功
+  (新規5件含む)。
+- host には eslint 設定が無いため lint はスキップ(既存の repo 構成通り、
+  lint 対象は `web/` のみ)。
+- AGENTS.md の方針により `next dev` / `next build` / exe の実起動は行わず、
+  コード精査 + 単体テストのみで検証(稼働中の WebUI への影響なし)。
+
+## 結論
+
+- 新規環境で Caddy が未導入のまま `OpenCodeWebUI.exe` を実行しても、
+  host はクラッシュせず、WebUI は `http://127.0.0.1:3000` で正常に起動する。
+  Caddy 連携は「使えるなら使う、無ければ黙ってスキップ」という設計で、
+  ログにはエラーとして記録されるため後から原因を追跡できる。
+- 唯一の実務上のギャップは **Caddy 自体の導入手順がドキュメント化されて
+  いない**点(README は「PATH に無ければスキップ」とは書くが、導入方法
+  自体は書いていない)。バグではなくドキュメント改善の余地として記録のみ
+  行い、今回は依頼範囲外のため変更していない。
+
+## 変更ファイル
+
+- `host/src/index.js`: `findCaddy` / `ensureCaddyfile` をテスト可能にする
+  ため `export` を追加(ロジック変更なし)。
+- `host/src/caddy-setup.test.js`(新規): 上記のテスト5件。
+
+---
+
 # 作業ログ: 既存プロファイルへの vendor CLI プロキシ自動更新機構
 
 ## 日付
