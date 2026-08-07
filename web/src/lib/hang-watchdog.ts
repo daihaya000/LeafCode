@@ -39,6 +39,7 @@ export const HANG_CONFIRM_GRACE_MS = 30_000;
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGES_TIMEOUT_MS = 20_000;
 const ABORT_TIMEOUT_MS = 10_000;
+const PENDING_INPUT_TIMEOUT_MS = 5_000;
 
 export type SessionHangWatchRow = {
   session_id: string;
@@ -219,6 +220,54 @@ export function recoverInterruptedHangWatches(): void {
 
 function isBusy(status: SessionStatus | undefined): boolean {
   return status?.type === "busy" || status?.type === "retry";
+}
+
+type PendingRow = { id?: unknown; sessionID?: unknown };
+
+/** OpenCode REST often wraps lists as `{ data: T[] }` instead of a bare array. */
+function normalizePendingList(raw: unknown): PendingRow[] {
+  if (Array.isArray(raw)) return raw as PendingRow[];
+  if (raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)) {
+    return (raw as { data: PendingRow[] }).data;
+  }
+  return [];
+}
+
+/**
+ * A turn stalled on an unanswered `question` or `permission` prompt is not a
+ * hang: the engine is correctly idle-waiting for the user, and no amount of
+ * "resume the same request" will ever help. Without this check the watchdog
+ * would abort the turn (and the pending question/permission with it) once the
+ * hang threshold elapses, purely because the user has not answered yet.
+ *
+ * Checked against both the v1 (global) and v2 (session-scoped) endpoints,
+ * since either may be the active API depending on the engine version. Any
+ * single endpoint failing (404 on an older/newer engine) is treated as "no
+ * pending request there" rather than failing the whole check.
+ */
+async function hasPendingUserInput(directory: string, sessionId: string): Promise<boolean> {
+  const attempts: Array<{ path: string; sessionScoped: boolean }> = [
+    { path: `/api/session/${sessionId}/permission`, sessionScoped: true },
+    { path: `/api/session/${sessionId}/question`, sessionScoped: true },
+    { path: "/permission", sessionScoped: false },
+    { path: "/question", sessionScoped: false },
+  ];
+  for (const attempt of attempts) {
+    try {
+      const raw = await ocServer<unknown>(directory, attempt.path, {
+        timeoutMs: PENDING_INPUT_TIMEOUT_MS,
+      });
+      const rows = normalizePendingList(raw);
+      const hasPending = attempt.sessionScoped
+        ? rows.length > 0
+        : rows.some((row) => String(row.sessionID ?? "") === sessionId);
+      if (hasPending) return true;
+    } catch {
+      // Unreachable/unsupported endpoint on this engine version: keep checking
+      // the others instead of assuming a hang.
+    }
+  }
+  return false;
 }
 
 /** Newest timestamp anywhere in the transcript, in epoch milliseconds. */
@@ -409,6 +458,15 @@ async function evaluateWatch(
   }
 
   if (now - activityAt < timeoutMs) return;
+
+  if (await hasPendingUserInput(row.directory, row.session_id)) {
+    // Waiting on the user, not hung. Push the clock forward so the next check
+    // is another full timeout away instead of firing on every tick.
+    recordProgress(row.session_id, now, fingerprint);
+    logWatchdog("unanswered question/permission — not a hang, waiting for the user", row);
+    return;
+  }
+
   await resolveHang(row);
 }
 

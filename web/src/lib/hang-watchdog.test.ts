@@ -226,6 +226,79 @@ describe("runHangWatchdogTick", () => {
     expect(row.last_progress_at).toBeLessThanOrEqual(Date.now() - TIMEOUT_MS + HANG_CONFIRM_GRACE_MS);
   });
 
+  it("does not stop a turn waiting on an unanswered question", async () => {
+    arm();
+    ageWatch(TIMEOUT_MS + 1_000);
+    const stale = staleActivityAt();
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) return transcript(stale);
+      if (requestPath.endsWith(`/session/${SESSION}/question`)) {
+        return [{ id: "q1", sessionID: SESSION, questions: [] }];
+      }
+      if (requestPath.endsWith(`/session/${SESSION}/permission`)) return [];
+      if (requestPath === "/question" || requestPath.endsWith("/question")) return [];
+      if (requestPath === "/permission" || requestPath.endsWith("/permission")) return [];
+      return busyStatus();
+    });
+
+    // First tick records the fingerprint (grace window)…
+    await runHangWatchdogTick();
+    ageWatch(HANG_CONFIRM_GRACE_MS + 1_000);
+    // …second tick confirms no transcript progress, but the unanswered
+    // question must stop the abort from firing.
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    const row = getHangWatch(SESSION)!;
+    expect(row.state).toBe("armed");
+    expect(row.last_progress_at).toBeGreaterThan(Date.now() - 1_000);
+  });
+
+  it("does not stop a turn waiting on an unanswered permission", async () => {
+    arm();
+    ageWatch(TIMEOUT_MS + 1_000);
+    const stale = staleActivityAt();
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) return transcript(stale);
+      if (requestPath.endsWith(`/session/${SESSION}/permission`)) {
+        return [{ id: "p1", sessionID: SESSION, permission: "bash" }];
+      }
+      if (requestPath.endsWith(`/session/${SESSION}/question`)) return [];
+      if (requestPath === "/question" || requestPath.endsWith("/question")) return [];
+      if (requestPath === "/permission" || requestPath.endsWith("/permission")) return [];
+      return busyStatus();
+    });
+
+    await runHangWatchdogTick();
+    ageWatch(HANG_CONFIRM_GRACE_MS + 1_000);
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(getHangWatch(SESSION)!.state).toBe("armed");
+  });
+
+  it("still stops the turn once the question/permission lists are empty", async () => {
+    arm();
+    ageWatch(TIMEOUT_MS + 1_000);
+    const stale = staleActivityAt();
+    let busy = true;
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) return transcript(stale);
+      if (requestPath.endsWith("/question") || requestPath.endsWith("/permission")) return [];
+      if (requestPath.endsWith("/abort")) {
+        busy = false;
+        return {};
+      }
+      return busy ? busyStatus() : {};
+    });
+
+    await runHangWatchdogTick();
+    ageWatch(HANG_CONFIRM_GRACE_MS + 1_000);
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(1);
+  });
+
   it("does not stop a turn that is still making progress", async () => {
     arm();
     ageWatch(TIMEOUT_MS + 1_000);

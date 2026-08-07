@@ -1,3 +1,69 @@
+# 作業ログ: ハングウォッチドッグが未回答の質問/パーミッションをハングと誤判定するバグ修正
+
+## 日付
+
+2026-08-07
+
+## 依頼
+
+「質問UIで未回答がハング判定されないように修正」というバグ報告。
+
+## 発見した問題（`web/src/lib/hang-watchdog.ts`）
+
+- サーバー側ハングウォッチドッグ（`docs/specs/hang-watchdog-server-side.md`）は
+  「`/session/status` が busy のまま、かつ transcript に無活動時間が
+  ハング閾値を超えた」ことだけを見て自動 abort → 1回だけ自動再送する。
+- OpenCode の `question`/`permission` ツールがユーザーの回答を待っている間、
+  エンジンはツール呼び出しを完了させられないため `/session/status` は
+  `busy` のままになり得る一方、transcript には新しい timestamp/テキストが
+  一切増えない。
+- 結果として、**ユーザーが質問カード/パーミッションカードに答える前に
+  ハング閾値（既定5分）が経過すると、ウォッチドッグがそのターンを
+  「ハングした」と誤認して `abort` してしまう**。同じリクエストは
+  hang-retry として1回だけ自動再送されるが、質問はやり直しになり、
+  ユーザーの操作が silently に無視される形になる。
+- クライアント側 `useSessionStream.ts` は `/permission`・`/question`
+  （v1/v2 両方）を見て pending 状態を UI に出しているが、サーバー側
+  ウォッチドッグには同等のチェックが存在しなかった（見落とし）。
+
+## 修正内容（`web/src/lib/hang-watchdog.ts`）
+
+- `hasPendingUserInput(directory, sessionId)` を追加。
+  `/api/session/{id}/permission`・`/api/session/{id}/question`（v2、
+  セッション scoped）と `/permission`・`/question`（v1、全体リストを
+  `sessionID` でフィルタ）の4エンドポイントを順に確認し、いずれかに
+  未解決のリクエストがあれば true を返す。個々のエンドポイントの
+  404/未対応は「ここには無い」として無視し、他のエンドポイントを試す
+  （fail-safe で誤検知しない側に倒す）。
+- `evaluateWatch()` の最終ハング確定判定
+  （`now - activityAt >= timeoutMs`）の直前にこのチェックを挿入。
+  pending な質問/パーミッションがあれば `last_progress_at` を現在時刻に
+  進めて `armed` のまま次のフルタイムアウト分待ち直す（`resolveHang` を
+  呼ばない = abort しない）。リストが空になった時点で通常のハング判定に
+  戻る。
+
+## テスト
+
+- `web/src/lib/hang-watchdog.test.ts` に3件追加:
+  - 未回答の質問がある間は abort されず `armed` のまま維持される。
+  - 未回答のパーミッションがある間も同様。
+  - 質問/パーミッションのリストが空になれば、通常どおりハング確定して
+    abort + 自動再送される（既存動作が壊れていないことの確認）。
+- 既存 `hang-watchdog.test.ts` の全22ケースは引き続き成功
+  （新規チェックが busy status のモックレスポンスと衝突しないことを確認）。
+
+## 検証結果
+
+- `npx tsc --noEmit -p .`（web）... 成功。
+- `npx eslint src/lib/hang-watchdog.ts src/lib/hang-watchdog.test.ts`... 成功。
+- `npx vitest run src/lib/hang-watchdog.test.ts src/lib/hang-retry.test.ts
+  src/lib/useSessionStream.test.ts src/lib/useSessionStream.stuck-busy.test.ts
+  src/app/api/tasks/route.test.ts "src/app/api/opencode/[...path]/route.test.ts"
+  src/components/task/TaskView.test.tsx`... 339 tests 成功。
+- `npx vitest run`（web 全体）... 241 files / 2872 tests 成功。
+- 本番ビルド（`next build`）は AGENTS.md の方針によりエージェントからは
+  未実行（ユーザー判断に委ねる）。
+
 # 作業ログ: CommandCode CLI Proxy の接続不安定バグ調査と修正
 
 ## 日付
