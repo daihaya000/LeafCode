@@ -240,6 +240,47 @@ describe("installWebUiDependencies", () => {
     expect(fs.existsSync(path.join(target, "packages", "commandcode"))).toBe(false);
   });
 
+  it("updates an already-installed CommandCode CLI Proxy when the bundle hash changes", () => {
+    const bundle = process.env.OPENCODE_WEBUI_ROOT!;
+    const vendorRoot = path.join(bundle, "vendor", "commandcode-cli-proxy");
+    const src = fs.readFileSync(path.join(vendorRoot, "packages", "commandcode-cli-proxy", "index.mjs"), "utf8");
+
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-update-"));
+    dirs.push(target);
+
+    installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
+
+    // Same bundle → no re-install on second run (idempotent).
+    const secondRound = installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
+    expect(secondRound).toEqual([]);
+
+    // Bundle content changes → existing profile is updated.
+    fs.writeFileSync(path.join(vendorRoot, "packages", "commandcode-cli-proxy", "index.mjs"), src + "\n// updated\n");
+
+    const thirdRound = installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
+    expect(thirdRound).toContain("packages/commandcode-cli-proxy");
+    expect(fs.readFileSync(path.join(target, "packages", "commandcode-cli-proxy", "index.mjs"), "utf8")).toContain("// updated");
+  });
+
+  it("records and reuses the installed CommandCode version marker", () => {
+    const bundle = process.env.OPENCODE_WEBUI_ROOT!;
+    const vendorRoot = path.join(bundle, "vendor", "commandcode-cli-proxy");
+
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-marker-"));
+    dirs.push(target);
+
+    installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
+
+    const marker = JSON.parse(fs.readFileSync(path.join(target, ".webui-vendor-versions.json"), "utf8"));
+    expect(marker).toHaveProperty("plugin/commandcode-cli-proxy.js");
+    expect(marker).toHaveProperty("packages/commandcode-cli-proxy");
+
+    // A profile without the marker still gets the file re-copied (legacy upgrade path).
+    fs.rmSync(path.join(target, ".webui-vendor-versions.json"), { force: true });
+    const legacyRound = installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false });
+    expect(legacyRound).toContain("packages/commandcode-cli-proxy");
+  });
+
   it("migrates provider.cursor-acp to cursor and agent model references", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-migrate-"));
     dirs.push(dir);

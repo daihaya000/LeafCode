@@ -1,7 +1,10 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { applyEdits, modify, parse } from "jsonc-parser";
 import { opencodeConfigDir } from "../opencode-extensions/paths";
+
+const VENDOR_VERSIONS_FILE = ".webui-vendor-versions.json";
 
 const CONFIG_SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const BROKER_URL = "{env:OPENCODE_WEBUI_BROWSER_BROKER}";
@@ -76,17 +79,81 @@ function copyVendorFiles(targetDir: string, sourceDirs: string[], relatives: str
   const copied: string[] = [];
   for (const relative of relatives) {
     const target = path.join(targetDir, relative);
-    if (fs.existsSync(target)) continue;
     for (const sourceDir of sourceDirs) {
       if (path.resolve(targetDir).toLowerCase() === path.resolve(sourceDir).toLowerCase()) continue;
       const source = path.join(sourceDir, relative);
       if (!fs.existsSync(source)) continue;
+      // Overwrite when the bundled hash differs from the installed marker.
+      const bundledHash = hashEntry(source);
+      const installedHash = readVendorVersion(targetDir, relative);
+      if (fs.existsSync(target) && installedHash === bundledHash) break;
       copyEntry(source, target);
+      writeVendorVersion(targetDir, relative, bundledHash);
       copied.push(relative);
       break;
     }
   }
   return copied;
+}
+
+/** Record of vendored-path → content-hash installed into a profile. */
+type VendorVersions = Record<string, string>;
+
+function vendorVersionsPath(targetDir: string): string {
+  return path.join(targetDir, VENDOR_VERSIONS_FILE);
+}
+
+function readVendorVersions(targetDir: string): VendorVersions {
+  const filePath = vendorVersionsPath(targetDir);
+  if (!fs.existsSync(filePath)) return {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as VendorVersions)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeVendorVersions(targetDir: string, versions: VendorVersions): void {
+  if (!fs.existsSync(targetDir)) return;
+  const tempPath = `${vendorVersionsPath(targetDir)}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tempPath, JSON.stringify(versions, null, 2), "utf8");
+  try {
+    fs.renameSync(tempPath, vendorVersionsPath(targetDir));
+  } catch (error) {
+    fs.rmSync(tempPath, { force: true });
+    throw error;
+  }
+}
+
+function readVendorVersion(targetDir: string, relative: string): string | undefined {
+  return readVendorVersions(targetDir)[relative];
+}
+
+function writeVendorVersion(targetDir: string, relative: string, hash: string): void {
+  const versions = readVendorVersions(targetDir);
+  versions[relative] = hash;
+  writeVendorVersions(targetDir, versions);
+}
+
+/** Stable content hash of a file/dir (follows tree ascending, ignores symlink identity). */
+function hashEntry(source: string): string {
+  const parts: string[] = [];
+  const walk = (entryPath: string): void => {
+    const info = fs.lstatSync(entryPath);
+    if (info.isSymbolicLink()) return;
+    if (info.isDirectory()) {
+      for (const name of fs.readdirSync(entryPath).sort()) {
+        walk(path.join(entryPath, name));
+      }
+      return;
+    }
+    parts.push(crypto.createHash("sha256").update(fs.readFileSync(entryPath)).digest("hex"));
+  };
+  walk(source);
+  return crypto.createHash("sha256").update(parts.join("|")).digest("hex");
 }
 
 /** Remove old-named vendor plugin files before copying the renamed versions. */
