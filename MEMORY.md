@@ -2158,3 +2158,47 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 - `sed -i` は .bat の CRLF を壊す(実際に一度壊して復元した)。バッチファイルは Edit で編集すること
 - 稼働中の WebUI(旧 %APPDATA% ビルドを配信中)は停止していない。次回 host 起動時に
   ミラーへ切り替わり、旧ディレクトリは自動削除される
+---
+
+# 作業ログ: 無言返答の自動再開(ハングと同様のフロー)
+
+## 日付
+
+2026-08-08
+
+## 依頼
+
+「無言返答で終了した際もハングと同様の自動再開処理を追加」。
+
+## 実装内容(web/src/lib/hang-watchdog.ts)
+
+- 従来は /session/status が idle になると即座に監視解除していた。このため
+  プロバイダが何も返さず idle で終わる「無言返答」は検知できず、保存済みの
+  リクエストも破棄されていた。
+- `hasAssistantResponse(messages, startedAt)` を追加。ウォッチ開始時刻以降の
+  最新ユーザー送信の後に、実質的なアシスタント返答(text パートで非空白 /
+  structured 出力 / error 付き)が 1 つも存在しない場合を「無言」と判定する。
+- `evaluateWatch` の idle 分岐で、監視解除前にこの判定を行い、無言であれば
+  `resolveHang`(既存の abort + 1 回だけ同一リクエスト再送)へ進める。
+- 返答ありは従来どおり監視解除。transcript 取得失敗時は武装を維持。
+- 再送回数制限(retry_used=1)/本文サイズ上限(MAX_WATCH_BODY_BYTES)等の
+  既存ガードは無言時にもそのまま適用される。
+
+## テスト(web/src/lib/hang-watchdog.test.ts)
+
+- "drops the watch once the engine is no longer busy with a response":
+  idle + 返答ありで従来どおり監視解除。
+- "resumes an idle turn that produced no assistant response":
+  idle + 無言で abort 後に /prompt_async が 1 回だけ再送され retry_used=1 になる。
+
+## 検証結果
+
+- npx vitest run src/lib/hang-watchdog.test.ts ... 23 tests 成功
+- npx vitest run(web 全体)... 247 files / 2922 tests 成功
+- npx tsc --noEmit ... 成功
+- next dev / next build は AGENTS.md の方針により未実行。
+
+## 変更ファイル
+
+- web/src/lib/hang-watchdog.ts
+- web/src/lib/hang-watchdog.test.ts

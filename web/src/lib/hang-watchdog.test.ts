@@ -68,6 +68,23 @@ function transcript(activityAt: number, text = "working"): MessageWithParts[] {
   ];
 }
 
+function completedTranscript(startedAt: number, text = "done"): MessageWithParts[] {
+  return [
+    {
+      info: { id: "user_1", role: "user", time: { created: startedAt } },
+      parts: [{ id: "user_part", messageID: "user_1", type: "text", text: "go" }],
+    },
+    {
+      info: {
+        id: "assistant_1",
+        role: "assistant",
+        time: { created: startedAt + 1, completed: startedAt + 2 },
+      },
+      parts: [{ id: "assistant_part", messageID: "assistant_1", type: "text", text }],
+    },
+  ];
+}
+
 function arm(overrides?: Partial<{ startedAt: number; body: unknown; requestPath: string }>) {
   armHangWatch({
     sessionId: SESSION,
@@ -196,11 +213,42 @@ describe("runHangWatchdogTick", () => {
     expect(getHangWatch(SESSION)).not.toBeNull();
   });
 
-  it("drops the watch once the engine is no longer busy", async () => {
+  it("drops the watch once the engine is no longer busy with a response", async () => {
     arm();
-    ocServer.mockResolvedValue({});
+    const startedAt = getHangWatch(SESSION)!.started_at;
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) =>
+      requestPath.endsWith("/message") ? completedTranscript(startedAt) : {},
+    );
     await runHangWatchdogTick();
     expect(getHangWatch(SESSION)).toBeNull();
+  });
+
+  it("resumes an idle turn that produced no assistant response", async () => {
+    arm();
+    const startedAt = getHangWatch(SESSION)!.started_at;
+    let busy = false;
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) {
+        return [
+          {
+            info: { id: "user_1", role: "user", time: { created: startedAt } },
+            parts: [{ id: "user_part", messageID: "user_1", type: "text", text: "go" }],
+          },
+        ];
+      }
+      if (requestPath.endsWith("/abort")) {
+        busy = false;
+        return {};
+      }
+      if (requestPath.endsWith("/prompt_async")) return {};
+      return busy ? busyStatus() : {};
+    });
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(1);
+    expect(callsTo("/prompt_async")).toHaveLength(1);
+    expect(getHangWatch(SESSION)!.retry_used).toBe(1);
   });
 
   it("leaves the watch alone when /session/status is unreachable", async () => {

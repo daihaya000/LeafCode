@@ -231,6 +231,29 @@ function isBusy(status: SessionStatus | undefined): boolean {
   return status?.type === "busy" || status?.type === "retry";
 }
 
+/** Whether the watched turn produced an actual assistant response. */
+function hasAssistantResponse(messages: MessageWithParts[], startedAt: number): boolean {
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.info.role !== "user") continue;
+    const created = message.info.time?.created;
+    if (typeof created !== "number" || created >= startedAt) {
+      latestUserIndex = index;
+      break;
+    }
+  }
+  if (latestUserIndex < 0) return false;
+
+  return messages.slice(latestUserIndex + 1).some((message) => {
+    if (message.info.role !== "assistant") return false;
+    if (message.info.error || message.info.structured !== undefined) return true;
+    return message.parts.some(
+      (part) => part.type === "text" && typeof part.text === "string" && part.text.trim() !== "",
+    );
+  });
+}
+
 type PendingRow = { id?: unknown; sessionID?: unknown };
 
 /** OpenCode REST often wraps lists as `{ data: T[] }` instead of a bare array. */
@@ -428,7 +451,23 @@ async function evaluateWatch(
   timeoutMs: number,
 ): Promise<void> {
   if (!isBusy(statuses?.[row.session_id])) {
-    // The engine is no longer running this turn — nothing left to watch.
+    // An idle turn can still be a silent provider response. Check the
+    // transcript before dropping the saved request so it gets the same single
+    // automatic resume as a confirmed hang.
+    try {
+      const messages = await ocServer<MessageWithParts[]>(
+        row.directory,
+        sessionMessagePath(row.session_id),
+        { timeoutMs: MESSAGES_TIMEOUT_MS },
+      );
+      if (Array.isArray(messages) && !hasAssistantResponse(messages, row.started_at)) {
+        await resolveHang(row);
+        return;
+      }
+    } catch (error) {
+      logWatchdog("could not confirm a completed response — leaving the watch armed", row, error);
+      return;
+    }
     disarmHangWatch(row.session_id);
     return;
   }
