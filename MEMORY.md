@@ -1327,3 +1327,29 @@ memory-layer のフェーズ4（自動抽出の goal-completed トリガーは�
 ## 備考
 - 注入は scheduling/prompt の過程で実行されるため、goal-loop.integration の fake DB に memories テーブルが必要になった
 - UI 除外分の単体テスト: PartView.test.tsx に「ユーザーメッセージの先頭ブロックが消える / メモリのみの場合空 / ブロックなしは維持」を追加
+---
+
+# 実装ログ: メモリ層 UI フェーズ(5)
+
+## 日付
+2026-08-07
+
+## 概要
+memory-layer のフェーズ5(UI 管理画面)を実装。設定ビューに「メモリ」タブを追加し、承認済み/候補の一覧・個別/一括承認・却下(削除)・インライン編集・「今すぐ抽出」を提供。
+
+## 実装内容
+- `web/src/components/settings/MemorySettings.tsx`(新規):
+  - ワークスペース選択(GET /api/workspaces)→ セッション選択(GET /api/workspaces/:id/sessions)
+  - 承認済み/候補タブ切替、一括承認・個別承認(POST /api/memory/:id/approve)
+  - 編集をインラインテキストエリア+種別ドロップダウンで保存(PATCH /api/memory/:id)、削除(DELETE /api/memory/:id)
+  - 「今すぐ抽出」(POST /api/memory/extract)で抽出した件数を表示
+- `web/src/components/settings/SettingsView.tsx`: SettingsTab に `memory` 追加、tabs 配列に「メモリ」、render 分岐 `{activeTab === "memory" && <MemorySettings />}`
+- テスト `MemorySettings.test.tsx`(3件): タブ一覧表示・編集 PATCH・抽出 POST
+
+## 検証結果
+- web vitest 全体 241 files / 2869 tests 全パス(前回 2866 → +3)
+- tsc --noEmit / eslint clean(SettingsView の既存テスト 29件もパス)
+
+## 備考
+- 既定で最初のワークスペースを自動選択し、そのセッション列をロード
+- 抽出は選択セッションを指定。テストは waitFor でボタン活性化を確認してから click する
