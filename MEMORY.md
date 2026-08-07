@@ -35,16 +35,74 @@
 - `package.json` / `host/package.json` に OpenCode CLI のバージョンピンは無く、
   winget 等で都度最新を導入する運用(V1/V2 のどちらを使うかはコード側の実装で決まる)。
 
-## 結論
+## 結論(初回、後で訂正)
 
-現状は **非互換(未実装)**。V1 で安定運用されており、V2(Beta)のエンドポイント/
-イベントへ切り替える追加実装(`useSessionStream.ts` の SSE ハンドリングと
-`goal-loop.ts` 等の REST 呼び出し先の差し替え)は行われていない。ガード層のみ
-V2 パスを認識して安全側に倒す準備がある。
+初回調査では「非互換(未実装)」と結論したが、**これは不正確だった**(下記の
+訂正ラウンドを参照)。ガード層のみ V2 パスを認識して安全側に倒す準備がある、
+という部分は正しい。
 
 ## 変更ファイル
 
 なし(調査のみ)。
+
+---
+
+# 作業ログ: 上記調査の訂正 + 将来のV2移行に向けた準備策の検討
+
+## 日付
+
+2026-08-07(同日、追調査)
+
+## 依頼
+
+「あらかじめ将来的な移行を踏まえた準備としてできることはあるか」というフォローアップ。
+
+## 訂正した事実(前回の「非互換」判定は不正確)
+
+`useSessionStream.ts` を精査した結果、**V2 API は既に部分採用済み**と判明:
+
+- **V2 REST 採用済み**: パーミッション/質問の返信は
+  `/api/session/{id}/permission/{id}/reply`,
+  `/api/session/{id}/question/{id}/reply` という**真の V2 パス**を使用中
+  (`attention.ts:111-125`。`opencode-schema.d.ts` の
+  `v2.session.permission.reply` operationId のパスと一致確認済み)。
+- **V2 SSE 採用済み**: `session.next.text.delta` / `session.next.tool.input.delta` /
+  `session.next.tool.called/success/failed` / `session.next.step.failed` 等、
+  SessionNext 系の細粒度ストリーミングイベントを
+  `useSessionStream.ts:1323-1591` で既に処理している。
+- **V1 のまま**: セッション作成・prompt 送信・ステータス取得・メッセージ一覧・
+  shell・init 等の基幹操作(`goal-loop.ts` 等)。
+
+→ 実態は「V1 メイン + V2 を部分採用したハイブリッド」。前回ラウンドの
+「型定義のみで未使用」という結論はイベント/パーミッション経路に限れば誤り。
+
+## 提案した準備策(実装はしていない、口頭提案のみ)
+
+1. **パス文字列のハードコード解消**(優先度高): `goal-loop.ts` /
+   `task-service.ts` / `hang-watchdog.ts` / `workflow-scheduler.ts` /
+   `memory-extract.ts` に散在する生パス文字列(`"/session"` 等)を
+   セッション操作のクライアント関数群に集約し、切替時の変更点を1箇所化。
+2. **イベント正規化ロジックの整理**: `useSessionStream.ts` の巨大な if 連鎖
+   (1155-1591行)をテーブル駆動/アダプタ関数に切り出し、V1イベント廃止時に
+   安全に削れる形にする。
+3. **Capability detection**: `/api/health`(V2)のレスポンスを見て起動時に
+   V2 セッション API の利用可否を判定する仕組みを追加(現状は受動的処理のみ)。
+4. **フィーチャーフラグの下地**: `auto-settings.ts` のパターンを流用し
+   `engine.prefer_v2_session_api` 等の設定キーで段階ロールアウト/即時
+   ロールバックを可能にする。
+5. **スキーマ差分監視の運用化**(優先度高・低コスト): 既存の
+   `web/package.json` の `gen:types`(`openapi-typescript
+   ../docs/opencode/openapi.json`)と `docs/opencode/VERSION`
+  (現在 `1.17.11`)を使い、CLI 新版リリース時に定期的に再生成 → `tsc` エラーで
+   V2 operationId の破壊的変更を検知するフローを運用に組み込む。
+6. **API 使用箇所の一覧文書化**: 現状のハイブリッド実態を `architecture.md`
+   等に明記(誤認防止。今回自分自身が一度誤認した)。
+
+いずれもユーザーの意思決定待ちで、この時点では未着手。
+
+## 変更ファイル
+
+なし(調査・提案のみ)。
 
 ---
 
