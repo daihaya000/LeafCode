@@ -325,10 +325,10 @@ function latestMessageId(messages: MessageWithParts[]): string | null {
 
 /**
  * OpenCode splits one turn into many assistant messages (one per step), and
- * only the last one carries the `structured` payload we asked for. Picking the
- * *first* assistant after the boundary therefore grabbed an intermediate step
- * and paused the loop with "structured result unreadable" on turn 1, so scan
- * backwards for the newest completed assistant instead.
+ * only the last one carries the result payload we asked for. The latest
+ * message is therefore the only safe candidate: scanning backwards could
+ * consume an earlier completed result while a newer assistant step is still
+ * silent or streaming.
  */
 function finalAssistantAfter(
   messages: MessageWithParts[],
@@ -338,13 +338,11 @@ function finalAssistantAfter(
   // The boundary is gone (reverted or pruned): we cannot tell this turn's reply
   // from work that predates the loop, so refuse to pick one.
   if (start === null) return null;
-  for (let i = messages.length - 1; i >= start; i -= 1) {
-    const m = messages[i];
-    if (m?.info.role === "assistant" && typeof m.info.time?.completed === "number") {
-      return m;
-    }
-  }
-  return null;
+  if (start >= messages.length) return null;
+  const last = messages[messages.length - 1];
+  return last?.info.role === "assistant" && typeof last.info.time?.completed === "number"
+    ? last
+    : null;
 }
 
 /**
@@ -779,6 +777,7 @@ This is turn ${turnNumber} of at most ${maxTurns}. ${turnNumber - 1} loop turn(s
 Rules:
 - One turn = one iteration. Do the smallest useful increment, then end this turn and let the WebUI prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
 - Report only work you actually performed in this turn. Never simulate, narrate, or count future turns as if they already happened.
+- Write a brief human-readable summary before the JSON block. Do not make the JSON block your only output; the WebUI hides that internal block in the chat.
 - Continue autonomously until the goal is completed, blocked, paused, or stopped by the WebUI.
 - Do not ask the user questions unless truly blocked.
 - Do not claim completion unless the goal and acceptance criteria are satisfied. A completed claim will be independently verified before the loop ends.
@@ -819,6 +818,7 @@ Only ${turnsExecuted} loop turn(s) of at most ${maxTurns} have actually been exe
 Rules:
 - Verify each acceptance criterion above and report whether the claim is actually true.
 - Check the claim against the real transcript and repository state, not against the claim's own narration. Reject it (return progress) if it reports more turns, iterations, or work than the ${turnsExecuted} executed turn(s) could contain, or if the evidence is simulated rather than observable.
+- Write a brief human-readable verification summary before the JSON block. Do not make the JSON block your only output; the WebUI hides that internal block in the chat.
 - If the claim is fully verified, return verified_completed.
 - If the claim is not fully verified or more work is needed, return progress.
 - If you are blocked from verifying, return blocked.

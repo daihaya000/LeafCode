@@ -103,9 +103,9 @@ describe("goalLoopTestSeams", () => {
     });
   });
 
-  it("ignores assistant messages that are still streaming", () => {
+  it("does not reuse an earlier result while the latest assistant step is streaming", () => {
     const messages = [msg("u1", "user"), msg("a1", "assistant"), running("a2")];
-    expect(goalLoopTestSeams.finalAssistantAfter(messages, "u1")?.info.id).toBe("a1");
+    expect(goalLoopTestSeams.finalAssistantAfter(messages, "u1")).toBeNull();
     expect(goalLoopTestSeams.finalAssistantAfter([running("a1")], null)).toBeNull();
   });
 

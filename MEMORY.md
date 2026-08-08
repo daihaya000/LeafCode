@@ -2434,3 +2434,39 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 
 - `web/src/components/task/TaskView.tsx`
 - `web/src/components/task/TaskView.test.tsx`
+
+---
+
+# 作業ログ: 無言に見えるGoal Loop完了と古い結果の誤採用を修正
+
+## 日付
+
+2026-08-08
+
+## 事象
+
+- Goal Loopの完了ターンがfenced JSONだけを返すと、内部結果JSONをチャット表示から隠す処理により、画面上は無言のままループが完了したように見えた。
+- OpenCodeが1ターンを複数assistantメッセージへ分割する途中で、最後のassistantステップがまだ無言・streaming中でも、`finalAssistantAfter` が後ろから古い完了済みassistant結果を拾う可能性があった。
+
+## 修正
+
+- Goal Loopの結果候補を境界後の最後のassistantメッセージだけに限定し、最後のステップが未完了なら結果を適用しないようにした。
+- JSONブロックだけの応答は、チャット上に結果の `summary` を表示するようにした。通常の自然文付きJSONは従来どおりJSON部分だけを隠す。
+- Goal / verificationプロンプトに、JSONブロック前の人間向け要約を要求する指示を追加した。
+- 古い結果の誤採用とJSON-only応答の表示を単体・統合テストで固定した。
+
+## 検証結果
+
+- 対象テスト: 3 files / 129 tests 成功
+- Web全体: 247 files / 2931 tests 成功
+- `npm run typecheck` 成功
+- 対象ファイルの `npx eslint` 成功
+- `next build` はプロジェクト指示により未実行
+
+## 変更ファイル
+
+- `web/src/lib/goal-loop.ts`
+- `web/src/lib/goal-loop.test.ts`
+- `web/src/lib/goal-loop.integration.test.ts`
+- `web/src/lib/useSessionStream.ts`
+- `web/src/lib/useSessionStream.test.ts`

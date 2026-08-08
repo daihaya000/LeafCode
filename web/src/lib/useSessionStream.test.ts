@@ -770,6 +770,12 @@ describe("stripGoalLoopJsonBlock", () => {
     expect(stripGoalLoopJsonBlock(text)).toBe("検証完了。");
   });
 
+  it("keeps the summary visible when the result block is the whole reply", () => {
+    const text =
+      "```json\n{\"status\":\"verified_completed\",\"summary\":\"all green\",\"evidence\":\"tsc+vitest pass\"}\n```";
+    expect(stripGoalLoopJsonBlock(text)).toBe("all green");
+  });
+
   it("does not strip a generic trailing json block", () => {
     const text = "メモ。\n```json\n{\"foo\":1,\"bar\":2}\n```";
     expect(stripGoalLoopJsonBlock(text)).toBe(text);

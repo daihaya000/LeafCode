@@ -191,6 +191,13 @@ function msg(
   };
 }
 
+function streamingAssistant(id: string): MessageWithParts {
+  return {
+    info: { id, role: "assistant", time: { created: 3 } },
+    parts: [],
+  };
+}
+
 function setupWorkspace(workspaceId: string, sessionId: string): void {
   const projectId = `prj-${workspaceId}`;
   testDb
@@ -226,6 +233,33 @@ beforeEach(() => {
 });
 
 describe("goal loop integration", () => {
+  it("does not consume an earlier result while the latest assistant step is silent", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+
+    // A previous step has a completion-shaped payload, but the latest step is
+    // still streaming without text. It must not advance the loop prematurely.
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("intermediate", "assistant", { status: "completed", summary: "stale claim" }),
+      streamingAssistant("silent-tail"),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(getGoalLoop("ws-1")?.progress).toHaveLength(0);
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("intermediate", "assistant", { status: "completed", summary: "stale claim" }),
+      msg("final", "assistant", { status: "progress", summary: "actual progress" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.summary).toBe("actual progress");
+  });
+
   it("does not send prompt_async twice when two ticks race on the same queued loop", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({

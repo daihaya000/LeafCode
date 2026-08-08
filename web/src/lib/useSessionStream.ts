@@ -418,7 +418,12 @@ export function stripGoalLoopJsonBlock(text: string): string {
     r.status === "blocked" ||
     r.status === "verified_completed"
   ) {
-    return text.slice(0, match.index).replace(/\n+$/, "");
+    const visible = text.slice(0, match.index).replace(/\n+$/, "");
+    // A model may follow the contract with the JSON block as its whole reply.
+    // Keep its summary visible so a real result is not mistaken for silence.
+    if (visible.trim()) return visible;
+    const summary = typeof r.summary === "string" ? r.summary.trim() : "";
+    return summary || text;
   }
   return text;
 }
