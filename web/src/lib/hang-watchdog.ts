@@ -45,6 +45,14 @@ export const MAX_WATCH_BODY_BYTES = 2_000_000;
  */
 export const HANG_CONFIRM_GRACE_MS = 30_000;
 
+/**
+ * Idle can be reported briefly between assistant steps. Before treating a
+ * turn with no user-visible response as silent, require its transcript to be
+ * unchanged for this long. This is deliberately much shorter than the hang
+ * timeout but long enough to cover a normal step transition.
+ */
+export const SILENT_RESPONSE_GRACE_MS = 30_000;
+
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGES_TIMEOUT_MS = 20_000;
 const ABORT_TIMEOUT_MS = 10_000;
@@ -280,6 +288,29 @@ function hasAssistantResponse(messages: MessageWithParts[], startedAt: number): 
   });
 }
 
+/**
+ * Avoid retrying an idle gap between assistant steps. The first observation
+ * and every transcript change start a fresh quiet window; only an unchanged
+ * no-response transcript is eligible for the silent-turn retry afterwards.
+ */
+function waitForSilentResponseGrace(
+  row: SessionHangWatchRow,
+  messages: MessageWithParts[],
+): boolean {
+  const now = Date.now();
+  const fingerprint = progressFingerprint(messages);
+  if (row.progress_fingerprint !== fingerprint) {
+    recordProgress(row.session_id, now, fingerprint);
+    return true;
+  }
+  const activityAt = Math.max(
+    row.started_at,
+    row.last_progress_at,
+    latestActivityAt(messages),
+  );
+  return now - activityAt < SILENT_RESPONSE_GRACE_MS;
+}
+
 type PendingRow = { id?: unknown; sessionID?: unknown };
 
 /** OpenCode REST often wraps lists as `{ data: T[] }` instead of a bare array. */
@@ -496,6 +527,7 @@ async function evaluateWatch(
 
     if (!hasActiveTool(messages, row.started_at)) {
       if (!hasAssistantResponse(messages, row.started_at)) {
+        if (waitForSilentResponseGrace(row, messages)) return;
         await resolveHang(row);
         return;
       }

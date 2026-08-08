@@ -25,6 +25,7 @@ const {
   recoverInterruptedHangWatches,
   runHangWatchdogTick,
   setHangWatchdogIdleWaitForTests,
+  SILENT_RESPONSE_GRACE_MS,
 } = await import("./hang-watchdog");
 
 const DIR = "C:\\work\\repo";
@@ -253,10 +254,10 @@ describe("runHangWatchdogTick", () => {
 
   it("resumes an idle turn that produced no assistant response", async () => {
     arm();
-    const startedAt = getHangWatch(SESSION)!.started_at;
     let busy = false;
     ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
       if (requestPath.endsWith("/message")) {
+        const startedAt = getHangWatch(SESSION)!.started_at;
         return [
           {
             info: { id: "user_1", role: "user", time: { created: startedAt } },
@@ -272,11 +273,67 @@ describe("runHangWatchdogTick", () => {
       return busy ? busyStatus() : {};
     });
 
+    // The first idle observation may only be a gap between assistant steps.
+    await runHangWatchdogTick();
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(callsTo("/prompt_async")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).not.toBeNull();
+
+    ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
     await runHangWatchdogTick();
 
     expect(callsTo("/abort")).toHaveLength(1);
     expect(callsTo("/prompt_async")).toHaveLength(1);
     expect(getHangWatch(SESSION)!.retry_used).toBe(1);
+  });
+
+  it("extends the silent grace window when reasoning is still changing", async () => {
+    arm();
+    let reasoning = "first";
+    let busy = false;
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) {
+        const startedAt = getHangWatch(SESSION)!.started_at;
+        const assistantAt = startedAt + 1_000;
+        return [
+          {
+            info: {
+              id: "user_1",
+              role: "user",
+              time: { created: startedAt },
+            },
+            parts: [{ id: "user_part", messageID: "user_1", type: "text", text: "go" }],
+          },
+          {
+            info: {
+              id: "assistant_1",
+              role: "assistant",
+              time: { created: assistantAt - 1_000, completed: assistantAt },
+            },
+            parts: [{ id: "reasoning_part", messageID: "assistant_1", type: "reasoning", text: reasoning }],
+          },
+        ];
+      }
+      if (requestPath.endsWith("/abort")) {
+        busy = false;
+        return {};
+      }
+      if (requestPath.endsWith("/prompt_async")) return {};
+      return busy ? busyStatus() : {};
+    });
+
+    await runHangWatchdogTick();
+    expect(callsTo("/abort")).toHaveLength(0);
+
+    ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
+    reasoning = "second";
+    await runHangWatchdogTick();
+    expect(callsTo("/abort")).toHaveLength(0);
+
+    ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
+    await runHangWatchdogTick();
+    expect(callsTo("/abort")).toHaveLength(1);
+    expect(callsTo("/prompt_async")).toHaveLength(1);
   });
 
   it("leaves the watch alone when /session/status is unreachable", async () => {
