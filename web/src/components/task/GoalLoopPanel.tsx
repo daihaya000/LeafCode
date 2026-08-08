@@ -143,7 +143,9 @@ export function GoalLoopPanel({
     loop.status !== "completed" &&
     loop.status !== "blocked" &&
     loop.status !== "stopped";
-  const canResume = loop.status === "paused";
+  // Pause is applied after the current turn. While that request is pending,
+  // let the user cancel it instead of leaving only a disabled pause button.
+  const canResume = loop.status === "paused" || loop.pauseRequested;
   const canEditMaxTurns = loop.status === "paused" && Boolean(onUpdateMaxTurns);
 
   const handleStop = () => {

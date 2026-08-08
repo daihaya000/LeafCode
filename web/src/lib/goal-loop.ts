@@ -538,6 +538,20 @@ export async function updateGoalLoopStatus(
       )
       .run(now, loop.id, loop.revision);
   } else if (action === "resume") {
+    // A pause requested during an in-flight turn is not paused yet. Resume in
+    // this state means cancelling that pending pause, so the current turn can
+    // complete normally.
+    if (loop.pauseRequested && loop.status !== "paused") {
+      getDb()
+        .prepare(
+          `UPDATE goal_loops
+           SET pause_requested = 0, revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ? AND pause_requested = 1
+             AND status IN ('queued', 'running', 'verifying_completed')`,
+        )
+        .run(now, loop.id, loop.revision);
+      return getGoalLoop(workspaceId);
+    }
     // Re-anchor the read boundary to the current transcript tail so any
     // messages that arrived while paused (e.g. a manual user send) are not
     // mistaken for the loop's own turn result on the next tick.

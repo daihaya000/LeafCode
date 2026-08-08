@@ -353,6 +353,18 @@ describe("goal loop integration", () => {
     expect(resumed?.pauseRequested).toBe(false);
     expect(resumed?.status).toBe("queued");
   });
+
+  it("resume cancels a deferred pause while the turn is still running", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    await updateGoalLoopStatus("ws-1", "pause");
+
+    const resumed = await updateGoalLoopStatus("ws-1", "resume");
+
+    expect(resumed?.status).toBe("running");
+    expect(resumed?.pauseRequested).toBe(false);
+  });
 });
 
 describe("goal loop verification turn", () => {

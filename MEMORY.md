@@ -2,6 +2,25 @@
 
 ## 日付
 
+2026-08-08(Goalループ一時停止後の再開操作)
+
+## 依頼
+
+「Goalループ　一時停止後　再開ボタンがない」。
+
+## 実装内容
+
+- `GoalLoopPanel` で、現在ターン完了後に一時停止する `pauseRequested` 状態でも再開ボタンを表示するようにした。
+- `updateGoalLoopStatus` の resume で、まだ `paused` になっていない保留中の一時停止要求を取り消せるようにした。
+- 遅延一時停止中の再開操作をUIテスト・統合テストで追加検証した。
+
+## 検証結果
+
+- GoalLoopPanel / goal-loop 統合テスト: 80 tests 成功
+- `npm run typecheck`: 成功
+
+## 日付
+
 2026-08-08(CodexBar OpenRouter 設定・全体率の整合)
 
 ## 依頼

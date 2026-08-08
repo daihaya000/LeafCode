@@ -181,6 +181,19 @@ describe("GoalLoopPanel", () => {
     expect(screen.getByRole("button", { name: "ループを再開" })).toBeTruthy();
   });
 
+  it("shows resume button while a deferred pause is pending", () => {
+    const onAction = vi.fn();
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ status: "running", pauseRequested: true })}
+        busy={false}
+        onAction={onAction}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "ループを再開" }));
+    expect(onAction).toHaveBeenCalledWith("resume");
+  });
+
   it("explains what resuming will do for each pause reason", () => {
     render(
       <GoalLoopPanel
