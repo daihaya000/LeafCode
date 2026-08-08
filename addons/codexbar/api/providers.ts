@@ -16,6 +16,7 @@ const PROVIDER_CATALOG = [
   { id: "cursor", name: "Cursor" },
   { id: "qwen-cloud", name: "Qwen Cloud" },
   { id: "synthetic", name: "Synthetic" },
+  { id: "openrouter", name: "OpenRouter" },
 ] as const;
 
 type ProviderId = (typeof PROVIDER_CATALOG)[number]["id"];

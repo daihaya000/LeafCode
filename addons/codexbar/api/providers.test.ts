@@ -59,6 +59,21 @@ describe("CodexBar provider settings API", () => {
     expect(JSON.stringify(body)).not.toContain("not-returned");
   });
 
+  it("accepts OpenRouter in the native enabledProviders setting", async () => {
+    await fs.writeFile(
+      path.join(appData, "CodexBar", "config.json"),
+      JSON.stringify({ enabledProviders: ["codex", "openrouter"] }),
+    );
+
+    const response = await GET(localReq());
+    const body = await responseJson(response);
+
+    expect(response.status).toBe(200);
+    expect(body.providers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "openrouter", name: "OpenRouter", enabled: true, configurable: true }),
+    ]));
+  });
+
   it("deduplicates enabledProviders, preserves unrelated config, and rejects stale writes", async () => {
     const initial = await responseJson(await GET(localReq()));
     const updatedResponse = await PUT(

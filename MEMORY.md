@@ -2,6 +2,31 @@
 
 ## 日付
 
+2026-08-08(CodexBar OpenRouter 設定・全体率の整合)
+
+## 依頼
+
+CodexBar addon の「プロバイダー設定が不正」エラーと、WebUI/WinForms 間の全体率不一致を修正。
+
+## 実装内容
+
+- `addons/codexbar/api/providers.ts` の固定カタログへ `openrouter` を追加。`enabledProviders` に OpenRouter があっても設定 API が 503 にならないようにした。
+- WebUI の旧スナップショット互換処理で、上限なし OpenRouter の旧 `usedPercent: 0` を利用率なしとして扱う。従量課金額は表示したまま全体平均から除外する。
+- OpenRouter の表示名、ブランドアイコン、OpenCode provider ID のアイコン対応を追加。
+- CodexBarWin の exporter は上限なしクレジット専用プロバイダーを `usedPercent: null` で出力し、Kraken LCD も数値なしの利用率を 0% と誤表示しないようにした。
+
+## 検証結果
+
+- `npm --prefix web run test -- ../addons/codexbar/lib/codexbar.test.ts ../addons/codexbar/api/providers.test.ts ../addons/codexbar/CodexBarWidget.providers.test.tsx` ... 45 tests 成功
+- `npm --prefix web run typecheck` ... 成功
+- CodexBarWin: 別出力先 Release ビルドと `--self-test` ... 成功
+
+## 運用メモ
+
+稼働中の WebUI は production mirror の旧 `next start` であり、この作業中に WebUI を停止するビルド/再起動は行わなかった。次回の通常の WebUI 再起動で更新済み build が反映される。
+
+## 日付
+
 2026-08-08(累計思考時間表示)
 
 ## 依頼

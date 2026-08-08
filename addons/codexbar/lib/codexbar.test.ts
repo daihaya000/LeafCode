@@ -255,6 +255,22 @@ describe("parseCodexBarSnapshot credits", () => {
     });
     expect(overallUsedPercent(u)).toBe(0);
   });
+
+  it("excludes an unbounded OpenRouter key from the overall percentage", () => {
+    const u = parseCodexBarSnapshot({
+      providers: [
+        { codexBarProviderId: "codex", usedPercent: 50 },
+        {
+          codexBarProviderId: "openrouter",
+          usedPercent: 0,
+          credits: { title: "利用額", used: 4.26, limit: null, balance: null },
+        },
+      ],
+    });
+
+    expect(u.providers[1].usedPercent).toBeNull();
+    expect(overallUsedPercent(u)).toBe(50);
+  });
 });
 
 describe("percentTone", () => {
@@ -362,6 +378,7 @@ describe("providerLabel", () => {
     expect(providerLabel("codex")).toBe("Codex");
     expect(providerLabel("opencode-go")).toBe("OpenCode");
     expect(providerLabel("synthetic")).toBe("Synthetic");
+    expect(providerLabel("openrouter")).toBe("OpenRouter");
     expect(providerLabel("mystery")).toBe("Mystery");
     expect(providerLabel("")).toBe("Unknown");
   });
@@ -380,6 +397,7 @@ describe("providerIconSrc", () => {
     expect(providerIconSrc("opencode-go")).toBe("/icons/opencode.png");
     expect(providerIconSrc("cursor")).toBe("/icons/cursor.png");
     expect(providerIconSrc("synthetic")).toBe("/icons/synthetic.png");
+    expect(providerIconSrc("openrouter")).toBe("/icons/openrouter.svg");
     expect(providerIconSrc("mystery")).toBeNull();
     expect(providerIconSrc("")).toBeNull();
   });

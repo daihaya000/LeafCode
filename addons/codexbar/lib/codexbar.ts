@@ -98,7 +98,8 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
         !!p && typeof p === "object" && !Array.isArray(p),
     )
     .map((p) => {
-      const usedPercent = asNumber(p.usedPercent);
+      const id = asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown";
+      const rawUsedPercent = asNumber(p.usedPercent);
       const windows: CodexBarWindow[] = Array.isArray(p.windows)
         ? p.windows
             .filter(
@@ -127,6 +128,17 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
         credits !== null && credits.used !== null && credits.limit !== null && credits.limit > 0
           ? (credits.used / credits.limit) * 100
           : null;
+      // Older CodexBarWin snapshots encode the absent percentage for an
+      // unbounded OpenRouter key as 0. Its spend is displayable, but has no
+      // limit to contribute to an overall utilization average.
+      const usedPercent =
+        id === "openrouter" &&
+        windows.length === 0 &&
+        credits !== null &&
+        credits.used !== null &&
+        credits.limit === null
+          ? null
+          : rawUsedPercent;
       const representative =
         usedPercent === null
           ? creditPercent
@@ -134,7 +146,7 @@ export function parseCodexBarSnapshot(raw: unknown): CodexBarUsage {
             ? usedPercent
             : Math.max(usedPercent, creditPercent);
       return {
-        id: asString(p.codexBarProviderId) ?? asString(p.opencodeProviderId) ?? "unknown",
+        id,
         opencodeId: asString(p.opencodeProviderId),
         plan: asString(p.plan),
         planMonthlyUsd: asNumber(p.planMonthlyUsd),
@@ -180,6 +192,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   synthetic: "Synthetic",
   "qwen-cloud": "Qwen Cloud",
   qwen: "Qwen Cloud",
+  openrouter: "OpenRouter",
 };
 
 export function providerLabel(id: string): string {
@@ -202,6 +215,7 @@ const PROVIDER_ICONS: Record<string, string> = {
   synthetic: "synthetic.png",
   "qwen-cloud": "qwen.png",
   qwen: "qwen.png",
+  openrouter: "openrouter.svg",
 };
 
 /** Public path of a provider's icon, or null when there is no bundled icon. */
@@ -232,6 +246,7 @@ const OPENCODE_TO_CODEXBAR: Record<string, string> = {
   synthetic: "synthetic",
   "qwen-cloud": "qwen-cloud",
   qwen: "qwen",
+  openrouter: "openrouter",
 };
 
 /** Public path of a brand icon for an OpenCode provider id, or null. */
