@@ -1441,6 +1441,25 @@ opencode-schema.d.ts・goal-loop.md)を読んで確定した。
 - `npm run --prefix web lint` ... 成功
 - `npm run --prefix web test` ... 232 test files, 2811 tests 成功
 
+## 日付
+
+2026-08-08(自動再開通知の自動消去)
+
+## 依頼
+
+「応答が10分止まったため自動的に停止し、同じ処理を再開しました」などの通知を30秒で消す。
+
+## 実装内容
+
+- `TaskView` の自動再開通知を表示から30秒後に自動消去するようにした。
+- 再開回数単位の手動消去と、新しい自動再開時の再表示は維持した。
+- 30秒経過前後の表示を `TaskView.test.tsx` で検証した。
+
+## 検証結果
+
+- `npm run test -- src/components/task/TaskView.test.tsx` ... 115 tests 成功
+- `npm run typecheck` ... 成功
+
 ---
 
 # 作業ログ: WebUI ユーザーログイン機能

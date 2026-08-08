@@ -2032,6 +2032,14 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [dismissedHangResumeCount, setDismissedHangResumeCount] = useState(0);
   useEffect(() => setDismissedHangResumeCount(0), [taskId]);
   const hangResumeVisible = hangResumeCount > 0 && hangResumeCount !== dismissedHangResumeCount;
+  useEffect(() => {
+    if (!hangResumeVisible) return;
+    const timer = window.setTimeout(
+      () => setDismissedHangResumeCount(hangResumeCount),
+      30_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [hangResumeCount, hangResumeVisible]);
   const [hangTimeoutLabel, setHangTimeoutLabel] = useState(() =>
     formatHangTimeout(readHangTimeoutMs()),
   );

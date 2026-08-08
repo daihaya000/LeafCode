@@ -1377,6 +1377,44 @@ describe("TaskView", () => {
     expect(notice.textContent).not.toContain("回）");
   });
 
+  it("automatically closes the hang-resume notice after 30 seconds", async () => {
+    vi.useFakeTimers();
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({
+      ...streamMock,
+      status: { type: "idle" },
+      messages: [
+        {
+          info: { id: "user-retry", role: "user", time: { created: 2 } },
+          parts: [
+            {
+              id: "text-retry",
+              type: "text",
+              text: "続けて",
+              metadata: { [HANG_RETRY_METADATA_KEY]: true },
+            },
+          ],
+        },
+      ],
+      visibleMessages: [],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    expect(screen.getByTestId("hang-resume-notice")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(29_999);
+    });
+    expect(screen.getByTestId("hang-resume-notice")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByTestId("hang-resume-notice")).toBeNull();
+  });
+
   it("counts repeated automatic resumes", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();
@@ -1405,8 +1443,8 @@ describe("TaskView", () => {
     expect(notice.textContent).toContain("（2回）");
   });
 
-  // The notice is informational and never clears itself, so it must be
-  // closable — but only for the resumes the user actually acknowledged.
+  // The notice is informational and closes automatically after 30 seconds,
+  // while remaining manually closable for the resumes the user acknowledged.
   it("closes the automatic-resume notice and reopens it after a further resume", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();
