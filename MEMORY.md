@@ -2253,6 +2253,40 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 
 ---
 
+# 作業ログ: 実行中ツールの idle 瞬間に監視を解除しない
+
+## 日付
+
+2026-08-08
+
+## 確認内容
+
+- 実行中の shell tool が画面に残っていても、OpenCode engine の `/session/status`
+  が agent step の切り替え中に一時的に `idle` を返すことがある。
+- 既存の idle 分岐は transcript にアシスタント返答があると watch を削除していたため、
+  その後も `running` の tool が残るケースではハング監視が失われていた。
+
+## 実装内容
+
+- `web/src/lib/hang-watchdog.ts` に `hasActiveTool()` を追加した。
+- status が idle でも transcript に `running` / `pending` の tool part があれば、
+  実行中ターンとして通常の無活動判定を継続する。
+- 実行中 tool がない完了ターンと、無言返答の自動再開処理は従来どおり維持した。
+- `web/src/lib/hang-watchdog.test.ts` に idle status + 実行中 tool の停止・1回再開テストを追加した。
+
+## 検証結果
+
+- `npm run typecheck` 成功
+- `npm run lint` 成功（既存警告2件）
+- `npm test` 成功（247 files / 2925 tests）
+
+## 変更ファイル
+
+- `web/src/lib/hang-watchdog.ts`
+- `web/src/lib/hang-watchdog.test.ts`
+
+---
+
 # Browser Bridge MCP 動作チェック (2026-08-08)
 
 ## 結果

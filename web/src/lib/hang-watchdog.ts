@@ -231,6 +231,32 @@ function isBusy(status: SessionStatus | undefined): boolean {
   return status?.type === "busy" || status?.type === "retry";
 }
 
+/**
+ * The engine can briefly report `idle` between agent steps while a tool part
+ * is still running. Do not discard a watch in that gap: the transcript is the
+ * more reliable source for an in-flight command.
+ */
+function hasActiveTool(messages: MessageWithParts[], startedAt: number): boolean {
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.info.role !== "user") continue;
+    const created = message.info.time?.created;
+    if (typeof created !== "number" || created >= startedAt) {
+      latestUserIndex = index;
+      break;
+    }
+  }
+
+  return messages.slice(latestUserIndex + 1).some((message) =>
+    message.parts.some(
+      (part) =>
+        part.type === "tool" &&
+        (part.state?.status === "running" || part.state?.status === "pending"),
+    ),
+  );
+}
+
 /** Whether the watched turn produced an actual assistant response. */
 function hasAssistantResponse(messages: MessageWithParts[], startedAt: number): boolean {
   let latestUserIndex = -1;
@@ -450,41 +476,48 @@ async function evaluateWatch(
   statuses: Record<string, SessionStatus>,
   timeoutMs: number,
 ): Promise<void> {
+  let messages: MessageWithParts[] | null = null;
   if (!isBusy(statuses?.[row.session_id])) {
-    // An idle turn can still be a silent provider response. Check the
-    // transcript before dropping the saved request so it gets the same single
-    // automatic resume as a confirmed hang.
+    // An idle turn can still be a silent provider response, or the engine can
+    // briefly report idle between agent steps while a tool is still running.
+    // Check the transcript before dropping the saved request in either case.
     try {
-      const messages = await ocServer<MessageWithParts[]>(
+      const transcript = await ocServer<MessageWithParts[]>(
         row.directory,
         sessionMessagePath(row.session_id),
         { timeoutMs: MESSAGES_TIMEOUT_MS },
       );
-      if (Array.isArray(messages) && !hasAssistantResponse(messages, row.started_at)) {
-        await resolveHang(row);
-        return;
-      }
+      if (!Array.isArray(transcript)) return;
+      messages = transcript;
     } catch (error) {
       logWatchdog("could not confirm a completed response — leaving the watch armed", row, error);
       return;
     }
-    disarmHangWatch(row.session_id);
-    return;
+
+    if (!hasActiveTool(messages, row.started_at)) {
+      if (!hasAssistantResponse(messages, row.started_at)) {
+        await resolveHang(row);
+        return;
+      }
+      disarmHangWatch(row.session_id);
+      return;
+    }
   }
 
   const now = Date.now();
   if (now - row.last_progress_at < timeoutMs) return;
 
-  let messages: MessageWithParts[];
-  try {
-    messages = await ocServer<MessageWithParts[]>(
-      row.directory,
-      sessionMessagePath(row.session_id),
-      { timeoutMs: MESSAGES_TIMEOUT_MS },
-    );
-  } catch (error) {
-    logWatchdog("could not confirm activity — leaving the watch armed", row, error);
-    return;
+  if (messages === null) {
+    try {
+      messages = await ocServer<MessageWithParts[]>(
+        row.directory,
+        sessionMessagePath(row.session_id),
+        { timeoutMs: MESSAGES_TIMEOUT_MS },
+      );
+    } catch (error) {
+      logWatchdog("could not confirm activity — leaving the watch armed", row, error);
+      return;
+    }
   }
   if (!Array.isArray(messages)) return;
 

@@ -223,6 +223,34 @@ describe("runHangWatchdogTick", () => {
     expect(getHangWatch(SESSION)).toBeNull();
   });
 
+  it("keeps watching an active tool across a transient idle status", async () => {
+    arm();
+    ageWatch(TIMEOUT_MS + 1_000);
+    const stale = staleActivityAt();
+    let busy = false;
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
+      if (requestPath.endsWith("/message")) return transcript(stale);
+      if (requestPath.endsWith("/abort")) {
+        busy = false;
+        return {};
+      }
+      if (requestPath.endsWith("/prompt_async")) return {};
+      return busy ? busyStatus() : {};
+    });
+
+    // The engine reports idle while the transcript still contains a running
+    // tool. The first pass records the transcript shape for confirmation.
+    await runHangWatchdogTick();
+    expect(getHangWatch(SESSION)).not.toBeNull();
+    expect(callsTo("/abort")).toHaveLength(0);
+
+    ageWatch(HANG_CONFIRM_GRACE_MS + 1_000);
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(1);
+    expect(callsTo("/prompt_async")).toHaveLength(1);
+  });
+
   it("resumes an idle turn that produced no assistant response", async () => {
     arm();
     const startedAt = getHangWatch(SESSION)!.started_at;
