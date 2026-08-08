@@ -2,6 +2,27 @@
 
 ## 日付
 
+2026-08-08(累計思考時間表示)
+
+## 依頼
+
+「累計金額のように累計思考時間も表示する」。
+
+## 実装内容
+
+- `web/src/components/task/TaskView.tsx` で、アシスタント応答ごとの
+  `time.completed - time.created` を合計し、累計コストの横に
+  「累計思考 Xs / Xm ss / Xh mm」形式で表示するようにした。
+- 完了時刻のない応答やアシスタント以外のメッセージは集計対象外。
+- 表示には既存の `formatElapsed()` を利用し、累計が0秒の場合は表示しない。
+
+## 検証結果
+
+- `npm run typecheck` ... 成功
+- `npm run test -- src/components/task/TaskView.test.tsx` ... 113 tests 成功
+
+## 日付
+
 2026-08-07(同日、LAN IP → loopback 自動リダイレクト)
 
 ## 依頼

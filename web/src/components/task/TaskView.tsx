@@ -747,6 +747,19 @@ export function TaskView({ taskId }: { taskId: string }) {
    */
   const { messages: streamMessages, sendPrompt: streamSendPrompt } = stream;
   const streamSessionError = stream.sessionError;
+  const cumulativeThinkingSeconds = useMemo(
+    () =>
+      streamMessages.reduce((total, message) => {
+        if (message.info.role !== "assistant") return total;
+        const created = message.info.time?.created;
+        const completed = message.info.time?.completed;
+        if (typeof created !== "number" || typeof completed !== "number") {
+          return total;
+        }
+        return total + Math.max(0, Math.round((completed - created) / 1000));
+      }, 0),
+    [streamMessages],
+  );
 
   useEffect(() => {
     const previous = prevSessionErrorRef.current;
@@ -3409,6 +3422,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                   title="このセッションの累計コスト"
                 >
                   累計 {formatCostValue(task.cost!, costPrefs)}
+                </span>
+              </>
+            )}
+            {cumulativeThinkingSeconds > 0 && (
+              <>
+                <span className="mx-1">·</span>
+                <span className="shrink-0" title="このセッションの累計思考時間">
+                  累計思考時間 {formatElapsed(cumulativeThinkingSeconds)}
                 </span>
               </>
             )}
