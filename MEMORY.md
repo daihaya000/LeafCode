@@ -2202,3 +2202,30 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 
 - web/src/lib/hang-watchdog.ts
 - web/src/lib/hang-watchdog.test.ts
+
+---
+
+# 作業ログ: ハング判定閾値の表示同期
+
+## 日付
+
+2026-08-08
+
+## 確認内容
+
+- サーバーの `hang-timeout` は DB の `600000ms`（10分）だった。
+- 画面の shell ツール警告は localStorage の既定値 `300000ms`（5分）を使っていたため、7分台で警告だけが表示され、サーバー watchdog の確認対象にはまだなっていなかった。
+- 対象セッションの watchdog 行は `armed` で登録済みだった。
+
+## 実装内容
+
+- `web/src/components/HangTimeoutSync.tsx` を追加し、ログイン後の共通レイアウトでサーバー設定とブラウザ設定を同期する。
+- サーバー設定が存在する場合はサーバー値を画面へ反映し、未設定の場合のみ既存 localStorage のカスタム値をサーバーへ移行する。
+- 設定画面は `webui:hang-timeout` イベントを購読し、同期後の入力値も更新する。
+- `web/src/lib/hang-timeout.test.ts` にサーバー値採用と未設定時の移行テストを追加した。
+
+## 検証結果
+
+- `npm run typecheck` 成功
+- `npm run lint` 成功（既存警告2件）
+- `npm test` 成功（247 files / 2924 tests）

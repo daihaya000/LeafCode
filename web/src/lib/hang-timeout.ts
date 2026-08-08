@@ -75,3 +75,15 @@ export async function readHangTimeoutFromServer(): Promise<number | null> {
     return null;
   }
 }
+
+/** Reconcile the client display with the server-side watchdog setting. */
+export async function reconcileHangTimeout(): Promise<void> {
+  const stored = await readHangTimeoutFromServer();
+  if (stored !== null) {
+    if (stored !== readHangTimeoutMs()) writeHangTimeoutMs(stored);
+    return;
+  }
+
+  const local = readHangTimeoutMs();
+  if (local !== DEFAULT_HANG_TIMEOUT_MS) await syncHangTimeoutToServer(local);
+}
