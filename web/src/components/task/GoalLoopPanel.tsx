@@ -245,10 +245,11 @@ export function GoalLoopPanel({
               size="sm"
               disabled={busy}
               aria-label="ループを再開"
+              title="ループを再開"
               onClick={() => onAction("resume")}
             >
               <Play className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">再開</span>
+              <span>再開</span>
             </Button>
           )}
           {canStop && (

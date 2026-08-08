@@ -168,6 +168,7 @@ describe("GoalLoopPanel", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "ループを再開" }));
     expect(onAction).toHaveBeenCalledWith("resume");
+    expect(screen.getByRole("button", { name: "ループを再開" }).textContent).toContain("再開");
   });
 
   it("shows resume button when paused by a scheduler error", () => {
