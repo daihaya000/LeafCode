@@ -1684,6 +1684,23 @@ export function TaskView({ taskId }: { taskId: string }) {
     ],
   );
 
+  const toggleGoalLoop = useCallback(() => {
+    const nextEnabled = !goalLoopEnabled;
+    if (nextEnabled && goalLoop?.status === "stopped") {
+      setInput(goalLoop.goal);
+      setGoalLoopAcceptance((goalLoop.acceptance ?? []).join("\n"));
+      setGoalLoopMaxTurns(goalLoop.maxTurns);
+      setAgent(goalLoop.agent ?? "");
+      setIntelligence(goalLoop.variant ?? "");
+      setModel(
+        goalLoop.providerID && goalLoop.modelID
+          ? `${goalLoop.providerID}::${goalLoop.modelID}`
+          : "",
+      );
+    }
+    setGoalLoopEnabled(nextEnabled);
+  }, [goalLoop, goalLoopEnabled]);
+
   const changeGoalLoopState = useCallback(
     async (action: "pause" | "resume" | "stop") => {
       if (goalLoopBusyRef.current) return;
@@ -4395,7 +4412,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                       <GoalLoopToggle
                         enabled={goalLoopEnabled}
                         disabled={!task.sessionId || goalLoopBusy || working}
-                        onToggle={() => setGoalLoopEnabled((v) => !v)}
+                        onToggle={toggleGoalLoop}
                       />
                     )}
                     {!goalLoopLive && (

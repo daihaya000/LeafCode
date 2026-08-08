@@ -1683,6 +1683,9 @@ describe("TaskView", () => {
             ...(loop === undefined ? {} : { goalLoop: loop }),
           });
         }
+        if (path === "/api/tasks/ws1/goal-loop") {
+          return Promise.resolve({ loop: loop ?? null });
+        }
         return Promise.resolve({ task: task(0.1) });
       });
     }
@@ -1713,6 +1716,51 @@ describe("TaskView", () => {
 
       fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
       expect(screen.queryByLabelText("承認条件")).toBeNull();
+    });
+
+    it("restores a stopped loop's goal and settings when the composer is reopened", async () => {
+      const stoppedLoop = {
+        id: "loop-stopped",
+        workspaceId: "ws1",
+        sessionId: "sess1",
+        status: "stopped" as const,
+        goal: "停止前の目標",
+        acceptance: ["テストが通る", "lint が通る"],
+        maxTurns: 7,
+        turnCount: 2,
+        lastMessageId: null,
+        lastPromptAt: null,
+        agent: "build",
+        providerID: "anthropic",
+        modelID: "claude-opus-5",
+        variant: "high" as const,
+        progress: [],
+        summary: "",
+        evidence: "",
+        blockedReason: "",
+        error: "",
+        revision: 3,
+        turnKind: "goal" as const,
+        pauseReason: "" as const,
+        rejectedClaims: 0,
+        pauseRequested: false,
+        createdAt: "2026-08-08T00:00:00Z",
+        updatedAt: "2026-08-08T00:10:00Z",
+      };
+      setupIdle(useSessionStream(), stoppedLoop);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      fireEvent.click(screen.getByRole("button", { name: TOGGLE }));
+
+      expect(
+        (screen.getByRole("combobox", { name: "フォローアップを送信" }) as HTMLTextAreaElement)
+          .value,
+      ).toBe("停止前の目標");
+      expect((screen.getByLabelText("承認条件") as HTMLTextAreaElement).value).toBe(
+        "テストが通る\nlint が通る",
+      );
+      expect((screen.getByLabelText("最大ターン数") as HTMLInputElement).value).toBe("7");
     });
 
     it("starts the loop with the composer text as the goal instead of sending a prompt", async () => {

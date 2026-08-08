@@ -2302,3 +2302,34 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 - `C:\\Users\\Daichi\\.config\\opencode\\opencode.jsonc` の server path を実在する `browser-bridge\\mcp\\server.mjs` に修正。
 - 新規セットアップの `resolveServerPath()` とインストールテストは既に正しいパスを使用していたため変更不要。
 - 修正後の installer dry-run は up to date、Browser Bridge テストは 87 tests / 87 pass。
+
+---
+
+# 作業ログ: 停止済みGoal Loopのコンポーサー復元
+
+## 日付
+
+2026-08-08
+
+## 依頼
+
+「ループを完全停止したあと、再度コンポーザーからループを再作成するとき、前回の入力内容/設定を復元してほしい」。
+
+## 実装内容
+
+- 停止済み (`stopped`) のGoal LoopでコンポーサーのループトグルをONにしたとき、
+  保存済みの `goal`、承認条件、最大ターン数を入力欄へ復元する。
+- 同時に、前回のエージェント、モデル、variantもコンポーサー設定へ戻す。
+- 既存のGoal Loop DBレコードに必要な値が保存されているため、新しい永続化テーブルは追加していない。
+- `TaskView.test.tsx` に停止済みループの復元テストを追加した。
+
+## 検証結果
+
+- `npm run typecheck` 成功
+- `npm run lint` 成功（既存警告2件）
+- `npm test` 成功（247 files / 2928 tests）
+
+## 変更ファイル
+
+- `web/src/components/task/TaskView.tsx`
+- `web/src/components/task/TaskView.test.tsx`
