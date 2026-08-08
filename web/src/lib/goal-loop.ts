@@ -522,36 +522,27 @@ export async function updateGoalLoopStatus(
   if (!loop) return null;
   const now = new Date().toISOString();
   if (action === "pause") {
-    getDb()
+    const paused = getDb()
       .prepare(
-        // Pausing overwrites `status`, so a loop stopped while waiting to send
-        // the verification prompt would lose that fact. Fold it into
-        // `turn_kind` here so resume can put the loop back into
-        // `verifying_completed` instead of silently skipping verification.
         `UPDATE goal_loops
-         SET status = CASE WHEN status = 'queued' THEN 'paused' ELSE status END,
-             pause_requested = CASE WHEN status = 'queued' THEN 0 ELSE 1 END,
-             pause_reason = CASE WHEN status = 'queued' THEN 'user' ELSE pause_reason END,
+         SET status = 'paused', pause_requested = 0, pause_reason = 'user', error = '',
              turn_kind = CASE WHEN status = 'verifying_completed' THEN 'verification' ELSE turn_kind END,
              revision = revision + 1, updated_at = ?
          WHERE id = ? AND revision = ? AND status IN ('queued', 'running', 'verifying_completed')`,
       )
       .run(now, loop.id, loop.revision);
-  } else if (action === "resume") {
-    // A pause requested during an in-flight turn is not paused yet. Resume in
-    // this state means cancelling that pending pause, so the current turn can
-    // complete normally.
-    if (loop.pauseRequested && loop.status !== "paused") {
-      getDb()
-        .prepare(
-          `UPDATE goal_loops
-           SET pause_requested = 0, revision = revision + 1, updated_at = ?
-           WHERE id = ? AND revision = ? AND pause_requested = 1
-             AND status IN ('queued', 'running', 'verifying_completed')`,
-        )
-        .run(now, loop.id, loop.revision);
-      return getGoalLoop(workspaceId);
+    // Abort the in-flight OpenCode request after the loop is paused in the DB.
+    // The revision bump makes any late result harmless if abort races with it.
+    if (paused.changes > 0 && (loop.status === "running" || loop.status === "verifying_completed")) {
+      const ws = getWorkspace(workspaceId);
+      if (ws) {
+        await ocServer(ws.absolute_path, sessionAbortPath(loop.sessionId), {
+          method: "POST",
+          timeoutMs: ABORT_TIMEOUT_MS,
+        }).catch(() => undefined);
+      }
     }
+  } else if (action === "resume") {
     // Re-anchor the read boundary to the current transcript tail so any
     // messages that arrived while paused (e.g. a manual user send) are not
     // mistaken for the loop's own turn result on the next tick.

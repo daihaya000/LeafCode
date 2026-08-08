@@ -324,46 +324,22 @@ describe("goal loop integration", () => {
     expect(loop?.lastMessageId).toBe("manual-reply");
   });
 
-  it("resume clears pause_requested so a user pause does not re-trigger after re-running", async () => {
+  it("pauses an in-flight turn immediately and resumes cleanly", async () => {
     setupWorkspace("ws-1", "sess-1");
     await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
-    // Drive one goal turn to running, then request a pause (18b records
-    // pause_requested=1 without aborting the in-flight turn).
+    // Drive one goal turn to running, then pause it immediately.
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     const running = getGoalLoop("ws-1")!;
     expect(running.status).toBe("running");
     await updateGoalLoopStatus("ws-1", "pause");
-    expect(getGoalLoop("ws-1")?.pauseRequested).toBe(true);
-
-    // The in-flight turn resolves while pause_requested is still set. 18c
-    // applies the result and transitions to `paused` (user).
-    h.messageResponse = [
-      msg("m0", "assistant"),
-      msg("loop-prompt", "user", undefined, "<!-- webui-goal-loop-prompt -->\n\nwork"),
-      msg("loop-reply", "assistant", { status: "progress", summary: "step", evidence: "ok" }),
-    ];
-    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     const paused = getGoalLoop("ws-1")!;
     expect(paused.status).toBe("paused");
     expect(paused.pauseReason).toBe("user");
+    expect(paused.pauseRequested).toBe(false);
 
-    // Resume must clear `pause_requested`; otherwise the next applyAssistantResult
-    // would see the stale flag and re-pause immediately, trapping the loop.
     const resumed = await updateGoalLoopStatus("ws-1", "resume");
     expect(resumed?.pauseRequested).toBe(false);
     expect(resumed?.status).toBe("queued");
-  });
-
-  it("resume cancels a deferred pause while the turn is still running", async () => {
-    setupWorkspace("ws-1", "sess-1");
-    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
-    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
-    await updateGoalLoopStatus("ws-1", "pause");
-
-    const resumed = await updateGoalLoopStatus("ws-1", "resume");
-
-    expect(resumed?.status).toBe("running");
-    expect(resumed?.pauseRequested).toBe(false);
   });
 });
 
@@ -703,14 +679,9 @@ describe("goal loop failure recovery", () => {
     );
 
     const after = getGoalLoop("ws-1")!;
-    // Per docs/specs/goal-loop.md transition 18b: pause on a `running` loop
-    // does NOT overwrite `status` — it sets `pause_requested = 1` and lets the
-    // in-flight turn finish, then `applyAssistantResult` flips it to `paused`.
-    // Here the stale `applyAssistantResult` call is rejected by the revision
-    // CAS (pause bumped revision), so the loop stays in its pre-pause `running`
-    // state and the late result is not recorded. Stop, by contrast, is an
-    // immediate terminal transition (18 -> stopped).
-    expect(after.status).toBe(action === "pause" ? "running" : "stopped");
+    // Both pause and stop bump the revision before aborting. A late result
+    // must therefore be rejected by the revision CAS.
+    expect(after.status).toBe(action === "pause" ? "paused" : "stopped");
     expect(after.progress.some((progress) => progress.summary === "late")).toBe(false);
     },
   );
@@ -812,12 +783,10 @@ describe("goal loop failure recovery", () => {
     expect(getGoalLoop("ws-1")?.status).toBe("verifying_completed");
 
     const paused = await updateGoalLoopStatus("ws-1", "pause");
-    // Per docs/specs/goal-loop.md transition 18b: pausing a
-    // `verifying_completed` loop keeps `status` and records `pause_requested`
-    // (folded into `turn_kind = 'verification'` so resume restores it). The
-    // loop only reaches `paused` once the in-flight verification turn resolves.
-    expect(paused?.status).toBe("verifying_completed");
-    expect(paused?.pauseRequested).toBe(true);
+    // The verification phase is also aborted immediately, while turn_kind is
+    // retained so resume returns to verification.
+    expect(paused?.status).toBe("paused");
+    expect(paused?.pauseRequested).toBe(false);
     expect(paused?.turnKind).toBe("verification");
   });
 

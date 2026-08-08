@@ -2,6 +2,26 @@
 
 ## 日付
 
+2026-08-08(Goalループ一時停止の即時化)
+
+## 依頼
+
+Goalループの一時停止を、現在ターン完了後ではなく即時停止する挙動へ変更。
+
+## 実装内容
+
+- `pause` 操作で `running` / `verifying_completed` も即時 `paused` へCAS遷移するよう変更。
+- 実行中のOpenCodeセッションへabortを送り、競合する遅延応答はrevision CASで破棄。
+- 検証フェーズの `turn_kind` は保持し、再開時に検証へ戻れるようにした。
+- Goal Loop仕様書と統合テストを即時停止の挙動へ更新。
+
+## 検証結果
+
+- GoalLoopPanel / goal-loop統合テスト: 78 tests 成功
+- `npm run typecheck`: 成功
+
+## 日付
+
 2026-08-08(Goalループ再開ボタンのモバイル表示)
 
 ## 依頼

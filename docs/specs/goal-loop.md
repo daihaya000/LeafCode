@@ -85,8 +85,8 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | 16 | `running` | プロンプト POST がタイムアウト・ネットワーク断・5xx・409・429 | `paused` | `pause_reason = 'unknown_delivery'`。**再送もロールバックもしない** |
 | 17 | `running` | 結果読取時に `last_message_id` が履歴に存在しない | `paused` | `pause_reason = 'boundary_lost'` |
 | 18a | `queued` | `PATCH action=pause` | `paused` | in-flight ターンがないため即時停止。`pause_reason = 'user'` |
-| 18b | `running` / `verifying_completed` | `PATCH action=pause` | 状態維持 | `pause_requested = 1`。現在の goal / verification ターンの結果を適用してから停止する。次ターンは送信しない |
-| 18c | `running` (`pause_requested = 1`) | 構造化結果を適用 | `paused` | 結果・progress・summary/evidence を保存してから `pause_reason = 'user'` で停止。ターン上限や完了・blocked の終端結果は user pause より優先 |
+| 18b | `running` / `verifying_completed` | `PATCH action=pause` | `paused` | `pause_reason = 'user'`。実行中のOpenCodeリクエストをabortし、後着結果は破棄する |
+| 18c | `running` (`pause_requested = 1`) | 旧形式の遅延停止結果 | `paused` | 既存データ互換のため残す。新規の一時停止では使用しない |
 | 19 | `queued` / `running` / `verifying_completed` | 手動送信を検出 | `paused` | `pause_reason = 'manual_send'`、`last_message_id` = 履歴末尾（読めた場合） |
 | 20 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・マーカー付きプロンプトへの構造化応答を発見 | 6〜12 に従う | 失われた進捗を復元して適用する |
 | 21 | `paused` (`pause_reason='unknown_delivery'`) | `PATCH action=resume`・応答未発見 | `paused` | `pause_reason` は**維持**。`error` 本文のみ更新。**再送しない** |
@@ -144,7 +144,7 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 | `turn_kind` | TEXT NOT NULL | `'goal'` | `'goal'` \| `'verification'`。I6 |
 | `pause_reason` | TEXT NOT NULL | `''` | 下表の enum。I5 |
 | `rejected_claims` | INTEGER NOT NULL | `0` | 完了宣言が検証で棄却された累計。E |
-| `pause_requested` | INTEGER NOT NULL | `0` | running / verifying_completed 中のユーザー停止要求。現在ターンの結果適用後に `paused` へ遷移 |
+| `pause_requested` | INTEGER NOT NULL | `0` | 旧形式の遅延停止要求。新規のユーザー一時停止では設定しない |
 
 `pause_reason` の値:
 
@@ -167,17 +167,13 @@ A・B・C・E は「状態遷移表を書けば自明に見つかる」種類の
 
 ## 是正仕様
 
-### A. 現在ターンを完了してから一時停止する
+### A. 現在ターンを即時中断して一時停止する
 
-1. ユーザーによる `pause` は queued では即時停止、running / verifying_completed では
-   `pause_requested = 1` を記録するだけにする。in-flight の OpenCode 呼び出しは abort しない。
-2. `applyAssistantResult` は `pause_requested = 1` の場合でも構造化結果・progress・summary・evidence を
-   通常どおり保存し、次の送信先を決める前に `paused` + `pause_reason = 'user'` にする。ただし
-   `completed` / `blocked` / ターン上限 / 検証棄却上限はそれぞれの終端・安全停止理由を優先する。
-3. `pause_requested = 1` の間はスケジューラが次の goal / verification プロンプトを送信しない。
-   再度の pause は冪等に成功し、stop は従来どおり即時 abort を試みる。
-4. UI は `pause_requested = 1` の間、「このターンの完了後に一時停止します」と表示し、
-   一時停止ボタンを無効化する。queued の即時停止と、手動送信・エラーによる安全停止の挙動は変えない。
+1. ユーザーによる `pause` は queued / running / verifying_completed のいずれでも即時に
+   `paused` へ遷移し、running / verifying_completed の OpenCode 呼び出しは abort する。
+2. abort と結果処理が競合しても、pause が先に revision を更新するため、後着した結果は保存しない。
+3. `pause_requested` は旧形式の遅延停止データを読むために残すが、新規のユーザー一時停止では設定しない。
+4. UI は停止要求後すぐに「一時停止」状態と再開ボタンを表示する。
 
 ### B. 検証フェーズを pause/resume で失わない
 
