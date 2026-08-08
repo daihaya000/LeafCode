@@ -2262,3 +2262,9 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 - `browser_list_tabs` は拡張機能未接続のため `EXTENSION_DISCONNECTED`。
 - Broker は `http://127.0.0.1:18766` で稼働し、Bearer token も設定済み。
 - グローバル設定の server path が存在しない `web\\browser-bridge\\mcp\\server.mjs` を指している。正しい実体はプロジェクト直下の `browser-bridge\\mcp\\server.mjs`。インストーラの dry-run でも既存設定との差分として検出された。
+
+## 修正
+
+- `C:\\Users\\Daichi\\.config\\opencode\\opencode.jsonc` の server path を実在する `browser-bridge\\mcp\\server.mjs` に修正。
+- 新規セットアップの `resolveServerPath()` とインストールテストは既に正しいパスを使用していたため変更不要。
+- 修正後の installer dry-run は up to date、Browser Bridge テストは 87 tests / 87 pass。
