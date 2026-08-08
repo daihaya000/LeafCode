@@ -2250,3 +2250,15 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 - `npm run typecheck` 成功
 - `npm run lint` 成功（既存警告2件）
 - `npm test` 成功（247 files / 2924 tests）
+
+---
+
+# Browser Bridge MCP 動作チェック (2026-08-08)
+
+## 結果
+
+- Browser Bridge の内部テストは 87 tests / 87 pass。
+- 実 MCP stdio クライアントで接続成功。7 ツールを列挙し、`browser_status` は `paired: true` / `extension.connected: false` を返した。
+- `browser_list_tabs` は拡張機能未接続のため `EXTENSION_DISCONNECTED`。
+- Broker は `http://127.0.0.1:18766` で稼働し、Bearer token も設定済み。
+- グローバル設定の server path が存在しない `web\\browser-bridge\\mcp\\server.mjs` を指している。正しい実体はプロジェクト直下の `browser-bridge\\mcp\\server.mjs`。インストーラの dry-run でも既存設定との差分として検出された。
