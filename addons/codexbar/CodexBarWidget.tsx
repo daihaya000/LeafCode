@@ -102,9 +102,11 @@ function saveCollapsed(v: boolean) {
 /** Provider list layout: two-column keeps the sidebar widget shorter. */
 function loadTwoColumn(): boolean {
   try {
-    return localStorage.getItem(LAYOUT_KEY) === "2";
+    const saved = localStorage.getItem(LAYOUT_KEY);
+    // Two-column is the preferred default; only a saved "1" opts out.
+    return saved === null ? true : saved === "2";
   } catch {
-    return false;
+    return true;
   }
 }
 function saveTwoColumn(v: boolean) {
@@ -435,7 +437,7 @@ export function CodexBarWidget() {
   const [tokens, setTokens] = useState<CodexTokensResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(true);
-  const [twoColumn, setTwoColumn] = useState(false);
+  const [twoColumn, setTwoColumn] = useState(true);
   const [providerCollapsed, setProviderCollapsed] = useState<Record<string, boolean>>(
     {},
   );

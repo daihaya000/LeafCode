@@ -1,3 +1,33 @@
+# 作業ログ: CodexBar 二列表示をデフォルト化
+
+## 日付
+
+2026-08-09
+
+## 依頼
+
+「CodexBarAddon 二列表示をデフォルト化」。
+
+## 実装内容
+
+- `addons/codexbar/CodexBarWidget.tsx`
+  - `loadTwoColumn()`: localStorage 未保存時は `true`（二列）を既定とし、
+    保存値 `"1"` が明示されている場合のみ一列へオプトアウトするよう変更。
+    （従来は `"2"` 一致時のみ二列）
+  - `twoColumn` の初期 state を `true` に変更（`useEffect` で保存値を反映）。
+- `addons/codexbar/CodexBarWidget.test.tsx` の二列レイアウトテストを新デフォルトへ更新。
+
+## 検証結果
+
+- `npx vitest run addons/codexbar/CodexBarWidget.test.tsx` ... 6 tests 成功
+- `npx tsc --noEmit`(web) ... 成功
+- eslint: addons は web の base path 外のため既存どおり対象外
+
+## 変更ファイル
+
+- `addons/codexbar/CodexBarWidget.tsx`
+- `addons/codexbar/CodexBarWidget.test.tsx`
+
 # 作業ログ: 初回ユーザー追加時の admin session required 修正
 
 ## 日付

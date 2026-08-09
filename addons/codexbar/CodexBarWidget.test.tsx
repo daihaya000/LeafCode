@@ -257,30 +257,30 @@ describe("CodexBarWidget two-column layout", () => {
     });
   });
 
-  it("defaults to a single column and toggles into a two-column grid", async () => {
+  it("defaults to two columns and toggles into a single column", async () => {
     const { container } = render(<CodexBarWidget />);
     await screen.findByText("Codex");
 
     const list = container.querySelector("ul");
     expect(list).not.toBeNull();
-    expect(list!.className).not.toContain("grid-cols-2");
+    expect(list!.className).toContain("grid-cols-2");
 
-    const toggle = screen.getByRole("button", { name: "2列表示にする" });
+    const toggle = screen.getByRole("button", { name: "1列表示にする" });
     fireEvent.click(toggle);
 
-    expect(container.querySelector("ul")!.className).toContain("grid-cols-2");
-    expect(screen.getByRole("button", { name: "1列表示にする" })).not.toBeNull();
+    expect(container.querySelector("ul")!.className).not.toContain("grid-cols-2");
+    expect(screen.getByRole("button", { name: "2列表示にする" })).not.toBeNull();
   });
 
-  it("persists the two-column preference across remounts", async () => {
+  it("persists the explicit single-column preference across remounts", async () => {
     const { container, unmount } = render(<CodexBarWidget />);
     await screen.findByText("Codex");
-    fireEvent.click(screen.getByRole("button", { name: "2列表示にする" }));
-    expect(container.querySelector("ul")!.className).toContain("grid-cols-2");
+    fireEvent.click(screen.getByRole("button", { name: "1列表示にする" }));
+    expect(container.querySelector("ul")!.className).not.toContain("grid-cols-2");
     unmount();
 
     const second = render(<CodexBarWidget />);
     await second.findByText("Codex");
-    expect(second.container.querySelector("ul")!.className).toContain("grid-cols-2");
+    expect(second.container.querySelector("ul")!.className).not.toContain("grid-cols-2");
   });
 });
