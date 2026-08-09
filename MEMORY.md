@@ -1,5 +1,22 @@
 # 作業ログ: バグハント完了
 
+## リモート端末のプロジェクト追加
+
+### 日付
+
+2026-08-09
+
+### 修正内容
+
+- プロジェクト追加のアイコン版とラベル付き版は、どちらも同じ `AddProjectButton` を使用している。
+- Windowsのリモートブラウザから追加すると接続先ホスト上のネイティブダイアログが開いて待機していたため、ネイティブ選択をloopback URLからの利用時だけに制限した。
+- LAN/VPNなど非loopback URLでは、両方のボタンがネイティブAPIを呼ばず即座にWeb内フォルダ選択を開く。
+
+### 検証結果
+
+- `npm test -- --run src/components/AddProjectButton.test.tsx src/components/ui.test.ts` ... 25 tests 成功
+- `npm run typecheck` ... 成功
+
 ## 日付
 
 2026-08-09

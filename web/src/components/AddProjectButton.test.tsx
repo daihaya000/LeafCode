@@ -142,6 +142,18 @@ describe("AddProjectButton path sync (row click opens + syncs field)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("opens the in-app picker immediately for a remote Windows browser", async () => {
+    mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    vi.stubGlobal("location", { hostname: "192.168.0.50" });
+
+    render(<AddProjectButton />);
+    openDialog();
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
+    expect(sendJson).not.toHaveBeenCalled();
+    expect(getJson).toHaveBeenCalledWith("/api/browse/dirs", undefined);
+  });
+
   it("falls back to the in-app picker when the host-only API denies the request", async () => {
     mockClientPlatform("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     sendJson.mockImplementation((method: string, path: string) => {

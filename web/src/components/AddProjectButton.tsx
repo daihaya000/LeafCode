@@ -95,6 +95,17 @@ function isWindowsClient(): boolean {
   return candidates.some((v) => /win/i.test(v));
 }
 
+function isLoopbackClientUrl(): boolean {
+  if (typeof location === "undefined") return false;
+  const hostname = location.hostname.toLowerCase();
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  );
+}
+
 export function AddProjectButton({
   onAdded,
   variant = "button",
@@ -263,7 +274,9 @@ export function AddProjectButton({
     setError(null);
     setNotice(null);
 
-    if (!isWindowsClient()) {
+    // A native picker always opens on the server desktop. Never request it
+    // from a remote browser, even when that browser itself runs on Windows.
+    if (!isWindowsClient() || !isLoopbackClientUrl()) {
       setOpen(true);
       return;
     }
