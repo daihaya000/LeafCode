@@ -1847,6 +1847,10 @@ export function TaskView({ taskId }: { taskId: string }) {
   const refreshTodos = stream.refreshTodos;
   const resync = stream.resync;
   const streamAbort = stream.abort;
+  const markTaskHang = useCallback(() => {
+    if (!working || stream.aborting) return;
+    void streamAbort("ハングと判定して停止しました");
+  }, [stream.aborting, streamAbort, working]);
   useEffect(() => {
     if (prevStreamScopeKeyRef.current !== streamScopeKey) {
       prevStreamScopeKeyRef.current = streamScopeKey;
@@ -4036,6 +4040,8 @@ export function TaskView({ taskId }: { taskId: string }) {
                         siblingTaskCallIds={siblingTaskCallIds}
                         modelLabels={modelLabels}
                         costPrefs={costPrefs}
+                        onMarkHang={markTaskHang}
+                        markHangBusy={stream.aborting}
                       />
                     ))}
                     {planPaths.get(m.info.id) && (

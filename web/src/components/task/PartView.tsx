@@ -20,7 +20,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { cx } from "@/components/ui";
+import { Button, cx } from "@/components/ui";
 import type { CostDisplayPrefs } from "@/lib/currency";
 import { isTaskToolName } from "@/lib/match-child-session";
 import { isImageFilePart } from "@/lib/message-parts";
@@ -183,6 +183,8 @@ const ToolPartView = memo(function ToolPartView({
   siblingTaskCallIds = EMPTY_TASK_CALL_IDS,
   modelLabels,
   costPrefs,
+  onMarkHang,
+  markHangBusy = false,
 }: {
   part: Part;
   directory?: string | null;
@@ -190,6 +192,8 @@ const ToolPartView = memo(function ToolPartView({
   siblingTaskCallIds?: string[];
   modelLabels?: Readonly<Record<string, string>>;
   costPrefs?: CostDisplayPrefs;
+  onMarkHang?: () => void;
+  markHangBusy?: boolean;
 }) {
   const state = part.state;
   const status = state?.status ?? "pending";
@@ -354,10 +358,24 @@ const ToolPartView = memo(function ToolPartView({
           role="status"
         >
           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
+          <span className="min-w-0 flex-1">
             {Math.round(hangTimeoutMs / 60_000)}分以上実行中です。ログが増えていない場合はハングの可能性があります。
-            必要なら上部の停止ボタンで中断できます。
+            {!onMarkHang && "必要なら上部の停止ボタンで中断できます。"}
           </span>
+          {onMarkHang && (
+            <Button
+              variant="danger"
+              size="sm"
+              busy={markHangBusy}
+              disabled={markHangBusy}
+              aria-label="ハングと判定して停止"
+              title="ハングと判定して停止"
+              onClick={onMarkHang}
+              className="mt-[-2px]"
+            >
+              ハング判定
+            </Button>
+          )}
         </div>
       )}
       {showNested && directory && rootSessionId && (
@@ -551,6 +569,8 @@ export const PartView = memo(function PartView({
   siblingTaskCallIds,
   modelLabels,
   costPrefs,
+  onMarkHang,
+  markHangBusy,
 }: {
   part: Part;
   role: "user" | "assistant";
@@ -560,6 +580,8 @@ export const PartView = memo(function PartView({
   siblingTaskCallIds?: string[];
   modelLabels?: Readonly<Record<string, string>>;
   costPrefs?: CostDisplayPrefs;
+  onMarkHang?: () => void;
+  markHangBusy?: boolean;
 }) {
   switch (part.type) {
     case "text": {
@@ -592,6 +614,8 @@ export const PartView = memo(function PartView({
           siblingTaskCallIds={siblingTaskCallIds}
           modelLabels={modelLabels}
           costPrefs={costPrefs}
+          onMarkHang={onMarkHang}
+          markHangBusy={markHangBusy}
         />
       );
     case "file": {

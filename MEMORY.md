@@ -2647,3 +2647,23 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm --prefix browser-bridge test` ... 88 tests 成功
 - `npm --prefix web run typecheck` ... 成功
 - 対象ESLint ... 成功
+
+# 作業ログ: 長時間ツールの手動ハング判定ボタン (2026-08-09)
+
+## 依頼
+
+「5分以上経過しているものを手動でハング判定できるボタンを表示させる」。
+
+## 実装内容
+
+- `PartView` の既存長時間 shell ツール警告に「ハング判定」ボタンを追加した。
+- ボタンは既存のハング判定時間（既定5分、設定変更時は設定値）を超えた場合だけ表示する。
+- `TaskView` から現在セッションの `stream.abort()` を呼び出し、通常の停止処理と同じ再同期・busy制御を利用する。
+- 閾値到達前の非表示と、到達後のクリック動作を `PartView.test.tsx` で検証した。
+
+## 検証結果
+
+- `npm --prefix web test` ... 247 files / 2942 tests 成功
+- `npm --prefix web run typecheck` ... 成功
+- `npx eslint src/components/task/PartView.tsx src/components/task/TaskView.tsx` ... 成功
+- 本番ビルドはプロジェクト指示により未実行。

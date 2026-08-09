@@ -262,4 +262,32 @@ describe("PartView long-running tool display", () => {
       "ハングの可能性があります",
     );
   });
+
+  it("shows a manual hang judgment button after the threshold", () => {
+    vi.useFakeTimers();
+    const startedAt = new Date("2026-08-01T00:00:00Z").getTime();
+    vi.setSystemTime(startedAt);
+    const onMarkHang = vi.fn();
+    const part: Part = {
+      id: "p6",
+      messageID: "m6",
+      type: "tool",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "sleep 600" },
+        time: { start: startedAt },
+      },
+    };
+
+    render(<PartView part={part} role="assistant" onMarkHang={onMarkHang} />);
+    expect(screen.queryByRole("button", { name: "ハングと判定して停止" })).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(300_000);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "ハングと判定して停止" }));
+    expect(onMarkHang).toHaveBeenCalledTimes(1);
+  });
 });
