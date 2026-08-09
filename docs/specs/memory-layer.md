@@ -43,10 +43,18 @@ CREATE TABLE memories (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   last_used_at INTEGER,
-  use_count INTEGER NOT NULL DEFAULT 0
+  use_count INTEGER NOT NULL DEFAULT 0,
+  revision INTEGER NOT NULL DEFAULT 0          -- optimistic concurrency token
 );
 CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
 CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
+
+CREATE TABLE memory_session_injections (
+  workspace_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  injected_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, session_id)
+);
 ```
 
 `id TEXT PRIMARY KEY` を他テーブル(`goal_loops` 等)と揃えたまま FTS5 を使うため、
@@ -91,8 +99,8 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 | --- | --- | --- |
 | `memory_search` | `query`, `kind?`, `limit?`(既定5) | FTS5検索 + `last_used_at` 更新。承認済み限定 |
 | `memory_add` | `kind`, `content` | `provenance='agent'` で追加(詳細は汚染対策参照) |
-| `memory_update` | `id`, `content?`, `kind?` | 上書き。存在しないidはエラー |
-| `memory_delete` | `id` | 削除。FTS同期削除 |
+| `memory_update` | `id`, `expectedRevision`, `content?`, `kind?` | revision一致時だけ上書き。競合はエラー |
+| `memory_delete` | `id`, `expectedRevision` | revision一致時だけ削除。FTS同期削除 |
 
 サーバーはホストのDBを直接開く(`better-sqlite3`)。
 
@@ -115,7 +123,9 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 なる(プロンプトインジェクションで記憶を汚染される可能性)。
 
 - `provenance='agent'` の全行は管理UIに常時一覧表示し、ワンクリックで削除・承認取消できる。
-- 注入時は各行に出所(`provenance` と抽出元)を添える。
+- 注入時は各行に出所(`provenance` と抽出元)を添える。内容の改行・`<`・`>`は
+  プロンプト境界を壊さない形に変換し、メモリは「参照情報」であって命令ではないと
+  明示する。
 - `memory_add`/`memory_delete` はすべて監査ログに記録する。
 
 ## 自動抽出
@@ -145,11 +155,13 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 
 OpenCode の `message` API はシステム文脈の上書きを許さないため、先頭ユーザーメッセージに
 プレフィックスを付与して注入する。送信は goal-loop が使用するものと同一のメッセージ送信経路
-から行う。
+から行う。通常セッションの `prompt_async` では、検証済みディレクトリとworkspaceが
+一意に対応する場合に限り、`(workspace_id, session_id)` ごとに一度だけ注入する。
+複数workspaceに一致する、またはディレクトリが一致しないセッションは注入しない。
 
 ```
 <workspace-memory>
-- (承認済み記憶を use_count 降順で最大8件、各1行)
+- (承認済み記憶を use_count 降順で最大8件、出所付きで各1行)
 </workspace-memory>
 ```
 
@@ -169,11 +181,14 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 
 | メソッド / パス | 意味 |
 | --- | --- |
-| `GET /api/memory?workspace_id=&approved=&kind=` | 一覧 |
-| `POST /api/memory/:id/approve` | 承認(`approved=1`) |
-| `PATCH /api/memory/:id` | 内容・種別編集 |
-| `DELETE /api/memory/:id` | 削除 |
+| `GET /api/memory?workspace_id=&approved=&kind=` | workspace必須の一覧 |
+| `POST /api/memory/:id/approve` | `workspaceId`, `expectedRevision`一致時に承認(`approved=1`) |
+| `PATCH /api/memory/:id` | `workspaceId`, `expectedRevision`一致時に内容・種別編集 |
+| `DELETE /api/memory/:id?workspace_id=&expected_revision=` | workspace/revision一致時に削除 |
 | `POST /api/memory/extract` | 手動抽出(対象セッションid指定) |
+
+revision不一致は `409 Conflict` として現在の行を返す。これにより複数セッションの
+管理UI/MCPが古い表示内容で上書きしない。
 
 承認・削除・抽出は `audit-log.js` 相当のWeb側監査(既存pattern)に記録する。
 

@@ -12,12 +12,27 @@ vi.mock("@/lib/allowlist", () => ({
 // session bindings and would otherwise open the user's actual database.
 const goalLoopHook = vi.hoisted(() => ({
   workspaceIds: [] as string[],
+  directoryWorkspaceIds: [] as string[],
   outcomes: [] as ("noLoop" | "paused" | "conflict")[],
   calls: [] as { workspaceId: string; sessionId: string }[],
+  memoryClaimAvailable: false,
+  memoryClaims: [] as { workspaceId: string; sessionId: string }[],
 }));
 
 vi.mock("@/lib/db", () => ({
   findWorkspaceIdsBySession: vi.fn(() => goalLoopHook.workspaceIds),
+  findWorkspaceIdsBySessionAndDirectory: vi.fn(() => goalLoopHook.directoryWorkspaceIds),
+}));
+
+vi.mock("@/lib/memory", () => ({
+  claimMemoryInjectionForSession: vi.fn((workspaceId: string, sessionId: string) => {
+    if (!goalLoopHook.memoryClaimAvailable) return null;
+    goalLoopHook.memoryClaimAvailable = false;
+    const claim = { workspaceId, sessionId };
+    goalLoopHook.memoryClaims.push(claim);
+    return { ...claim, block: "<workspace-memory>\n- [fact] shared\n</workspace-memory>" };
+  }),
+  releaseMemoryInjectionClaim: vi.fn(),
 }));
 
 vi.mock("@/lib/goal-loop", () => ({
@@ -49,8 +64,11 @@ import { GET, POST } from "./route";
 
 beforeEach(() => {
   goalLoopHook.workspaceIds = [];
+  goalLoopHook.directoryWorkspaceIds = [];
   goalLoopHook.outcomes = [];
   goalLoopHook.calls = [];
+  goalLoopHook.memoryClaimAvailable = false;
+  goalLoopHook.memoryClaims = [];
   hangWatch.armed = [];
   hangWatch.disarmed = [];
 });
@@ -110,6 +128,47 @@ function sessionWritePost(
 }
 
 describe("POST /api/opencode/session/:id/prompt_async variant validation", () => {
+  it("injects shared memory only for the matching workspace directory", async () => {
+    goalLoopHook.directoryWorkspaceIds = ["ws-1"];
+    goalLoopHook.memoryClaimAvailable = true;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const first = await post(JSON.stringify({ parts: [{ type: "text", text: "hello" }] }));
+    expect(first.status).toBe(200);
+    const firstBody = JSON.parse(
+      new TextDecoder().decode(fetchMock.mock.calls[0]![1]?.body as ArrayBuffer),
+    ) as { parts: { text: string }[] };
+    expect(firstBody.parts[0]?.text).toContain("shared");
+
+    const second = await post(JSON.stringify({ parts: [{ type: "text", text: "again" }] }));
+    expect(second.status).toBe(200);
+    const secondBody = JSON.parse(
+      new TextDecoder().decode(fetchMock.mock.calls[1]![1]?.body as ArrayBuffer),
+    ) as { parts: { text: string }[] };
+    expect(secondBody.parts[0]?.text).toBe("again");
+    expect(goalLoopHook.memoryClaims).toEqual([{ workspaceId: "ws-1", sessionId: "session-1" }]);
+    fetchMock.mockRestore();
+  });
+
+  it("does not inject memory when the session directory is ambiguous", async () => {
+    goalLoopHook.directoryWorkspaceIds = ["ws-1", "ws-2"];
+    goalLoopHook.memoryClaimAvailable = true;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await post(JSON.stringify({ parts: [{ type: "text", text: "hello" }] }));
+    expect(response.status).toBe(200);
+    const body = JSON.parse(
+      new TextDecoder().decode(fetchMock.mock.calls[0]![1]?.body as ArrayBuffer),
+    ) as { parts: { text: string }[] };
+    expect(body.parts[0]?.text).toBe("hello");
+    expect(goalLoopHook.memoryClaims).toHaveLength(0);
+    fetchMock.mockRestore();
+  });
+
   it("returns 400 without calling upstream for an invalid variant", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

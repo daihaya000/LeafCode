@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { findWorkspaceIdsBySession } from "@/lib/db";
-import { memoryInjectionFor } from "@/lib/memory";
+import {
+  findWorkspaceIdsBySession,
+  findWorkspaceIdsBySessionAndDirectory,
+} from "@/lib/db";
+import {
+  claimMemoryInjectionForSession,
+  releaseMemoryInjectionClaim,
+  type MemoryInjectionClaim,
+} from "@/lib/memory";
 import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
 import { pauseGoalLoopForManualSend } from "@/lib/goal-loop";
 import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
@@ -106,25 +113,29 @@ function isImageGuardedWrite(pathname: string): boolean {
 function injectWorkspaceMemory(
   requestBody: ArrayBuffer,
   sessionId: string,
-): ArrayBuffer {
-  const workspaces = findWorkspaceIdsBySession(sessionId);
+  directory: string,
+): { body: ArrayBuffer; claim: MemoryInjectionClaim | null } {
+  const workspaces = findWorkspaceIdsBySessionAndDirectory(sessionId, directory);
   // A session can belong to more than one workspace; inject only when the
   // ownership is unambiguous so one project's context never leaks into another.
-  if (workspaces.length !== 1) return requestBody;
+  if (workspaces.length !== 1) return { body: requestBody, claim: null };
   try {
     const body = JSON.parse(new TextDecoder().decode(requestBody)) as {
       parts?: Array<{ type?: unknown; text?: unknown }>;
     };
     const firstText = body.parts?.find((part) => part.type === "text" && typeof part.text === "string");
-    if (!firstText || typeof firstText.text !== "string" || firstText.text.startsWith("<workspace-memory>")) {
-      return requestBody;
+    if (
+      !firstText ||
+      typeof firstText.text !== "string"
+    ) {
+      return { body: requestBody, claim: null };
     }
-    const memory = memoryInjectionFor(workspaces[0]!);
-    if (!memory) return requestBody;
-    firstText.text = `${memory}\n${firstText.text}`;
-    return new TextEncoder().encode(JSON.stringify(body)).buffer;
+    const claim = claimMemoryInjectionForSession(workspaces[0]!, sessionId);
+    if (!claim) return { body: requestBody, claim: null };
+    firstText.text = `${claim.block}\n${firstText.text}`;
+    return { body: new TextEncoder().encode(JSON.stringify(body)).buffer, claim };
   } catch {
-    return requestBody;
+    return { body: requestBody, claim: null };
   }
 }
 
@@ -469,6 +480,7 @@ async function proxy(
 
   let requestBody: ArrayBuffer | undefined;
   let upstream: Response;
+  let memoryClaim: MemoryInjectionClaim | null = null;
   /** Session whose hang watch this request armed, so a rejected send can undo it. */
   let armedWatchSessionId: string | null = null;
   /**
@@ -559,7 +571,9 @@ async function proxy(
           }
         }
         if (/^\/session\/[^/]+\/prompt_async$/.test(pathname)) {
-          requestBody = injectWorkspaceMemory(requestBody, manualSessionId);
+          const injection = injectWorkspaceMemory(requestBody, manualSessionId, directory!);
+          requestBody = injection.body;
+          memoryClaim = injection.claim;
         }
       }
 
@@ -684,6 +698,10 @@ async function proxy(
   }
 
   // A rejected send (invalid model, unknown session…) never started a turn.
+  if (memoryClaim && !upstream.ok) {
+    releaseMemoryInjectionClaim(memoryClaim.workspaceId, memoryClaim.sessionId);
+    memoryClaim = null;
+  }
   if (armedWatchSessionId && !upstream.ok) {
     disarmHangWatch(armedWatchSessionId);
   }

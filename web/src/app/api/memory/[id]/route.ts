@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
   deleteMemory,
+  getMemoryById,
   isMemoryKind,
   logMemoryAudit,
   updateMemory,
@@ -12,6 +13,12 @@ export const dynamic = "force-dynamic";
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+function parseRevisionParam(value: string | null): number | null {
+  if (value === null || !/^(0|[1-9]\d*)$/.test(value)) return null;
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) ? revision : null;
 }
 
 /** PATCH /api/memory/:id  — edit content / kind. */
@@ -59,7 +66,15 @@ export async function PATCH(
   } catch (err) {
     return badRequest(err instanceof Error ? err.message : "invalid update");
   }
-  if (!updated) return NextResponse.json({ error: "memory not found" }, { status: 404 });
+  if (!updated) {
+    const current = getMemoryById(id, body.workspaceId);
+    return current
+      ? NextResponse.json(
+          { error: "memory changed in another session", memory: current },
+          { status: 409 },
+        )
+      : NextResponse.json({ error: "memory not found" }, { status: 404 });
+  }
 
   logMemoryAudit("update", { memoryId: id, workspaceId: updated.workspaceId });
   return NextResponse.json({ memory: updated });
@@ -76,13 +91,20 @@ export async function DELETE(
   if (!id) return badRequest("invalid memory id");
 
   const workspaceId = req.nextUrl.searchParams.get("workspace_id");
-  const expectedRevision = Number(req.nextUrl.searchParams.get("expected_revision"));
+  const expectedRevisionParam = req.nextUrl.searchParams.get("expected_revision");
+  const expectedRevision = parseRevisionParam(expectedRevisionParam);
   if (!workspaceId) return badRequest("workspace_id is required");
-  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+  if (expectedRevision === null) {
     return badRequest("expected_revision is required");
   }
   if (!deleteMemory(id, workspaceId, expectedRevision)) {
-    return NextResponse.json({ error: "memory not found" }, { status: 404 });
+    const current = getMemoryById(id, workspaceId);
+    return current
+      ? NextResponse.json(
+          { error: "memory changed in another session", memory: current },
+          { status: 409 },
+        )
+      : NextResponse.json({ error: "memory not found" }, { status: 404 });
   }
   logMemoryAudit("delete", { memoryId: id, workspaceId });
   return NextResponse.json({ ok: true });

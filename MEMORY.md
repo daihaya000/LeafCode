@@ -2617,3 +2617,33 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 検証: `npm --prefix web run typecheck`、
 `npm --prefix web test -- src/lib/memory.test.ts src/lib/db.memory-migration.test.ts src/app/api/memory/route.test.ts` (18件成功)、
 `npm --prefix browser-bridge test` (88件成功)。
+
+# 検証・レビュー・デバッグ記録: セッション横断メモリ (2026-08-09)
+
+## 発見して修正した問題
+
+- stale revision の更新・削除・承認が `404 not found` になり、共同編集競合を
+  正しく伝えられなかった。現在は同一workspaceに行が残っている場合 `409 Conflict`
+  と現在値を返し、UIは一覧を再読み込みする。
+- DELETEの `expected_revision` 未指定が `Number(null) === 0` によりrevision 0の行を
+  削除できた。未指定を明示的に400で拒否するよう修正した。
+- MCP起動がWebUIのDBマイグレーションより先になると、既存DBにrevision列がなく
+  更新SQLが失敗した。MCP起動時にもrevision列を追加する。
+- 通常セッションへのメモリ注入が毎ターン実行され、履歴とコンテキストを不必要に
+  膨らませていた。`memory_session_injections` のworkspace/session一意claimで
+  セッションごとに一度だけ注入する。
+- session IDだけでworkspaceを解決していたため、ディレクトリが異なるリクエストに
+  メモリを注入し得た。検証済みディレクトリとworkspaceのパスが一致する場合だけ
+  注入し、複数workspaceに一致する場合はfail closedする。
+- メモリ本文の改行や`<workspace-memory>`境界が注入ブロックを壊せた。出所を付与し、
+  改行・山括弧をサニタイズし、内部ノートを命令として扱わない注意書きを追加した。
+- `deleteProject` はworkspaceのFK cascadeを直接発火させるため、`deleteWorkspace`の
+  明示cleanupを通らず、メモリ・監査ログが孤児化し得た。project削除側にもworkspace
+  サブクエリによるcleanupを追加した。
+
+## 検証
+
+- `npm --prefix web test` ... 247 files / 2941 tests 成功
+- `npm --prefix browser-bridge test` ... 88 tests 成功
+- `npm --prefix web run typecheck` ... 成功
+- 対象ESLint ... 成功

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Badge, cx } from "@/components/ui";
-import { getJson, sendJson } from "@/lib/client";
+import { ApiError, getJson, sendJson } from "@/lib/client";
 
 type MemoryDto = {
   id: string;
@@ -138,6 +138,15 @@ export function MemorySettings() {
 
   const hint = (message: string) => setNotice(message);
   const alert = (message: string) => setLoadError(message);
+  const handleMutationError = (err: unknown, fallback: string) => {
+    if (err instanceof ApiError && err.status === 409) {
+      setEditingId(null);
+      void loadMemories(selectedWorkspace);
+      alert("別のセッションで更新されたため、最新の内容を再読み込みしました。");
+      return;
+    }
+    alert(err instanceof Error ? err.message : fallback);
+  };
 
   const approveOne = async (memory: MemoryDto) => {
     try {
@@ -152,7 +161,7 @@ export function MemorySettings() {
       }
       void loadMemories(selectedWorkspace);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "承認に失敗しました");
+      handleMutationError(err, "承認に失敗しました");
     }
   };
 
@@ -171,7 +180,7 @@ export function MemorySettings() {
       hint(`${candidates.length}件を承認しました`);
       void loadMemories(selectedWorkspace);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "一括承認に失敗しました");
+      handleMutationError(err, "一括承認に失敗しました");
     } finally {
       setBusy(false);
     }
@@ -186,7 +195,7 @@ export function MemorySettings() {
       setMemories((prev) => prev.filter((m) => m.id !== memory.id));
       hint("削除しました");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "削除に失敗しました");
+      handleMutationError(err, "削除に失敗しました");
     }
   };
 
@@ -210,7 +219,7 @@ export function MemorySettings() {
       setEditingId(null);
       hint("保存しました");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "保存に失敗しました");
+      handleMutationError(err, "保存に失敗しました");
     }
   };
 

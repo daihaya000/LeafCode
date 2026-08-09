@@ -73,11 +73,13 @@ describe("MemorySettings", () => {
             id: "m1", workspaceId: "ws-1", kind: "fact", content: "Use pnpm.",
             sourceSessionId: null, provenance: "manual", approved: true,
             createdAt: 1700000000000, updatedAt: 1700000000000, lastUsedAt: null, useCount: 3,
+            revision: 0,
           },
           {
             id: "m2", workspaceId: "ws-1", kind: "lesson", content: "Always lint before commit.",
             sourceSessionId: "session-1", provenance: "auto-extract", approved: false,
             createdAt: 1700000000000, updatedAt: 1700000000000, lastUsedAt: null, useCount: 1,
+            revision: 0,
           },
         ],
       });
@@ -104,6 +106,7 @@ describe("MemorySettings", () => {
           {
             id: "m1", workspaceId: "ws-1", kind: "fact", content: "Old", sourceSessionId: null,
             provenance: "manual", approved: true, createdAt: 1, updatedAt: 1, lastUsedAt: null, useCount: 0,
+            revision: 0,
           },
         ],
       });
@@ -126,6 +129,7 @@ describe("MemorySettings", () => {
     });
     expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({
       content: "New content",
+      expectedRevision: 0,
     });
   });
 

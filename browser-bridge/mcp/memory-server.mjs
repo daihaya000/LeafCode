@@ -105,6 +105,10 @@ function createMemoryStore(db, workspaceId) {
       created_at INTEGER NOT NULL
     );
   `);
+  const memoryColumns = db.pragma('table_info(memories)');
+  if (!memoryColumns.some((column) => column.name === 'revision')) {
+    db.exec('ALTER TABLE memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+  }
 
   const selectById = db.prepare('SELECT * FROM memories WHERE id = ? AND workspace_id = ?');
   const insert = db.prepare(`
@@ -180,8 +184,9 @@ function createMemoryStore(db, workspaceId) {
         expectedRevision,
       );
       if (changed.changes === 0) {
-        const error = new Error('memory not found');
-        error.code = 'NOT_FOUND';
+        const conflict = Boolean(selectById.get(id, workspaceId));
+        const error = new Error(conflict ? 'memory revision conflict' : 'memory not found');
+        error.code = conflict ? 'CONFLICT' : 'NOT_FOUND';
         throw error;
       }
       audit.run('update', workspaceId, id, null, now);
@@ -190,8 +195,9 @@ function createMemoryStore(db, workspaceId) {
     delete({ id, expectedRevision }) {
       const changed = remove.run(id, workspaceId, expectedRevision);
       if (changed.changes === 0) {
-        const error = new Error('memory not found');
-        error.code = 'NOT_FOUND';
+        const conflict = Boolean(selectById.get(id, workspaceId));
+        const error = new Error(conflict ? 'memory revision conflict' : 'memory not found');
+        error.code = conflict ? 'CONFLICT' : 'NOT_FOUND';
         throw error;
       }
       audit.run('delete', workspaceId, id, null, Date.now());

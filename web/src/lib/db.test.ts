@@ -13,6 +13,7 @@ const {
   createWorkspace,
   deleteProject,
   getDb,
+  findWorkspaceIdsBySessionAndDirectory,
   listSessionBindings,
   primaryBindings,
   setSessionFavorite,
@@ -67,6 +68,29 @@ test("session favorites are stored per workspace and ordered first", () => {
   });
   expect(setSessionFavorite("ws-1", "ses-2", false)).toBe(true);
   expect(listSessionBindings("ws-1").find((s) => s.opencode_session_id === "ses-2")?.favorite).toBe(0);
+});
+
+test("session workspace lookup is constrained to the request directory", () => {
+  const rootPath = path.join(testDataDir, "directory-scope");
+  const project = upsertProject({ name: "DirectoryScope", rootPath });
+  createWorkspace({
+    id: "ws-directory-scope",
+    projectId: project.id,
+    displayName: "Directory Scope",
+    absolutePath: rootPath,
+    isolation: "current_folder",
+  });
+  bindSession("ws-directory-scope", "ses-directory-scope", "Session");
+
+  expect(
+    findWorkspaceIdsBySessionAndDirectory("ses-directory-scope", rootPath),
+  ).toEqual(["ws-directory-scope"]);
+  expect(
+    findWorkspaceIdsBySessionAndDirectory(
+      "ses-directory-scope",
+      path.join(testDataDir, "other-directory"),
+    ),
+  ).toEqual([]);
 });
 
 test("bindSession throws on unsafe opencode_session_id (R22)", () => {
@@ -149,6 +173,20 @@ test("foreign_keys pragma is ON so ON DELETE CASCADE fires", () => {
     isolation: "current_folder",
   });
   bindSession("ws-fk", "ses-fk", "Session", "2026-07-22T10:00:00.000Z");
+  getDb()
+    .prepare(
+      `INSERT INTO memories
+        (id, workspace_id, kind, content, provenance, approved, created_at, updated_at)
+       VALUES ('memory-fk', 'ws-fk', 'fact', 'cleanup me', 'manual', 1, 1, 1)`,
+    )
+    .run();
+  getDb()
+    .prepare(
+      `INSERT INTO memory_audit_log
+        (action, workspace_id, memory_id, created_at)
+       VALUES ('create', 'ws-fk', 'memory-fk', 1)`,
+    )
+    .run();
   expect(getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get("ws-fk")).toBeTruthy();
   expect(
     getDb()
@@ -162,5 +200,9 @@ test("foreign_keys pragma is ON so ON DELETE CASCADE fires", () => {
     getDb()
       .prepare("SELECT * FROM session_bindings WHERE workspace_id = ?")
       .get("ws-fk"),
+  ).toBeUndefined();
+  expect(getDb().prepare("SELECT * FROM memories WHERE id = 'memory-fk'").get()).toBeUndefined();
+  expect(
+    getDb().prepare("SELECT * FROM memory_audit_log WHERE memory_id = 'memory-fk'").get(),
   ).toBeUndefined();
 });

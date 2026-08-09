@@ -130,6 +130,30 @@ describe("memory API", () => {
     expect(res.status).toBe(200);
   });
 
+  it("returns conflict for a stale revision and rejects a missing delete revision", async () => {
+    const created = createMemory({
+      workspaceId: "ws-a",
+      kind: "fact",
+      content: "revision one",
+      provenance: "manual",
+    });
+    const first = await PATCH(req(`/api/memory/${created.id}`, {
+      method: "PATCH",
+      body: { workspaceId: "ws-a", expectedRevision: 0, content: "revision two" },
+    }), { params: Promise.resolve({ id: created.id }) });
+    expect(first.status).toBe(200);
+    const stale = await PATCH(req(`/api/memory/${created.id}`, {
+      method: "PATCH",
+      body: { workspaceId: "ws-a", expectedRevision: 0, content: "stale" },
+    }), { params: Promise.resolve({ id: created.id }) });
+    expect(stale.status).toBe(409);
+    const missingDeleteRevision = await DELETE(
+      req(`/api/memory/${created.id}?workspace_id=ws-a`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: created.id }) },
+    );
+    expect(missingDeleteRevision.status).toBe(400);
+  });
+
   it("extract endpoint rejects a missing body", async () => {
     const res = await POST(req("/api/memory/extract", { method: "POST", body: {} }));
     expect(res.status).toBe(400);

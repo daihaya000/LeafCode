@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
 import { dbPath, ensureDataDir } from "./paths";
 import type { TaskExecutionMode } from "./types";
+import path from "node:path";
 
 let db: Database.Database | null = null;
 
@@ -371,6 +372,14 @@ export function getDb(): Database.Database {
       extracted_at INTEGER NOT NULL,
       PRIMARY KEY (workspace_id, session_id)
     );
+    CREATE TABLE IF NOT EXISTS memory_session_injections (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      injected_at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, session_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_session_injections_workspace
+      ON memory_session_injections(workspace_id, injected_at DESC);
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
@@ -746,6 +755,30 @@ export function findWorkspaceIdsBySession(opencodeSessionId: string): string[] {
   return rows.map((row) => row.workspace_id);
 }
 
+/** Resolve a session only within the validated directory of the request. */
+export function findWorkspaceIdsBySessionAndDirectory(
+  opencodeSessionId: string,
+  directory: string,
+): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT w.id, w.absolute_path
+       FROM workspaces w
+       JOIN session_bindings sb ON sb.workspace_id = w.id
+       WHERE sb.opencode_session_id = ?`,
+    )
+    .all(opencodeSessionId) as { id: string; absolute_path: string }[];
+  const normalizedDirectory = normalizeComparablePath(directory);
+  return rows
+    .filter((row) => normalizeComparablePath(row.absolute_path) === normalizedDirectory)
+    .map((row) => row.id);
+}
+
+function normalizeComparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 /**
  * Insert a workspace row verbatim (preserving id/status/created_at), skipping
  * when the id already exists. Used to restore workspaces from a project-local
@@ -880,6 +913,7 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   // along with its audit trail before deleting the workspace row.
   getDb().prepare("DELETE FROM memories WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_audit_log WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM memory_session_injections WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   return row;
 }
@@ -894,6 +928,24 @@ export function getProject(id: string): ProjectRow | undefined {
 export function deleteProject(id: string): ProjectRow | undefined {
   const row = getProject(id);
   if (!row) return undefined;
+  // Project deletion cascades workspaces directly and therefore does not pass
+  // through deleteWorkspace. Clean memory tables explicitly to avoid orphaned
+  // content when this low-level helper is used by restore/maintenance code.
+  getDb()
+    .prepare(
+      "DELETE FROM memories WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM memory_audit_log WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM memory_session_injections WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
   getDb().prepare("DELETE FROM projects WHERE id = ?").run(id);
   return row;
 }

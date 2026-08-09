@@ -23,8 +23,7 @@ function createMemorySchema(db) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_used_at INTEGER,
-      use_count INTEGER NOT NULL DEFAULT 0,
-      revision INTEGER NOT NULL DEFAULT 0
+      use_count INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
     CREATE TABLE memory_audit_log (
@@ -88,6 +87,11 @@ test('memory MCP: add, search (FTS + bump), update, delete flows', async (t) => 
     listed.tools.map((tool) => tool.name).sort(),
     ['memory_add', 'memory_delete', 'memory_search', 'memory_update'],
   );
+  const migrated = new Database(path.join(dir, 'webui.db'));
+  assert.ok(
+    migrated.pragma('table_info(memories)').some((column) => column.name === 'revision'),
+  );
+  migrated.close();
 
   // Add two approved memories.
   const added = await client.callTool({
@@ -143,6 +147,12 @@ test('memory MCP: add, search (FTS + bump), update, delete flows', async (t) => 
   assert.equal(updated.isError, undefined);
   const updatedJson = JSON.parse(updated.content[0].text);
   assert.equal(updatedJson.kind, 'preference');
+
+  const stale = await client.callTool({
+    name: 'memory_update',
+    arguments: { id: secondId, expectedRevision: 0, content: 'stale write' },
+  });
+  assert.equal(stale.isError, true);
 
   // Delete and confirm gone.
   const deleted = await client.callTool({

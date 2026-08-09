@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
-import { approveMemory, logMemoryAudit } from "@/lib/memory";
+import { approveMemory, getMemoryById, logMemoryAudit } from "@/lib/memory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +31,13 @@ export async function POST(
   }
   const approved = approveMemory(id, body.workspaceId, body.expectedRevision);
   if (!approved) {
-    return NextResponse.json({ error: "memory not found" }, { status: 404 });
+    const current = getMemoryById(id, body.workspaceId);
+    return current
+      ? NextResponse.json(
+          { error: "memory changed in another session", memory: current },
+          { status: 409 },
+        )
+      : NextResponse.json({ error: "memory not found" }, { status: 404 });
   }
   logMemoryAudit("approve", { memoryId: id, workspaceId: approved.workspaceId });
   return NextResponse.json({ memory: approved });
