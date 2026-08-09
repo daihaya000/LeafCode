@@ -2132,7 +2132,15 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
     // Goal loop mode: the composer text is the goal, not a chat turn. Hand it
     // to the loop API and restore the draft when the API rejects it.
-    if (goalLoopEnabled && !goalLoopLive) {
+    // A terminal loop must never reinterpret a normal follow-up as a new goal,
+    // even if the completion refresh and the composer event are in the same
+    // render turn.
+    if (
+      goalLoopEnabled &&
+      !goalLoopLive &&
+      goalLoop?.status !== "completed" &&
+      goalLoop?.status !== "blocked"
+    ) {
       if (attachments.length > 0) {
         setGoalLoopError(
           "ループでは添付ファイルを利用できません。添付を削除してから開始してください。",

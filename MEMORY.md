@@ -2530,3 +2530,24 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 - `npm run typecheck` ... 成功
 - `npm run test -- src/components/task/TaskView.test.tsx` ... 116 tests 成功
 - `npm run lint -- src/components/task/TaskView.tsx src/components/task/TaskView.test.tsx` ... 成功
+## 日付
+
+2026-08-09(Goalループ完了直後の送信レース対策)
+
+## 依頼
+
+同じ「ループ完了後、普通に会話したあと、ループ判定で勝手に会話が継続される」
+不具合が再発。
+
+## 追加修正
+
+完了状態を検知して `goalLoopEnabled` を解除する effect だけでは、状態更新と
+composer の送信イベントが同じ描画タイミングに発生するレースを防げなかった。
+通常送信の Goal 開始分岐自体でも `completed` / `blocked` を拒否し、完了系状態を
+新しい Goal ループとして誤送信しないようにした。
+
+## 検証結果
+
+- `npm run typecheck` ... 成功
+- `npm run test -- src/components/task/TaskView.test.tsx` ... 116 tests 成功
+- `npm run lint -- src/components/task/TaskView.tsx` ... 成功
