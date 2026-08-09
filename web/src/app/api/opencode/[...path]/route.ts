@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
+import { collaborationContextFor } from "@/lib/collaboration-context";
 import {
   findWorkspaceIdsBySession,
   findWorkspaceIdsBySessionAndDirectory,
@@ -136,6 +137,35 @@ function injectWorkspaceMemory(
     return { body: new TextEncoder().encode(JSON.stringify(body)).buffer, claim };
   } catch {
     return { body: requestBody, claim: null };
+  }
+}
+
+async function injectCollaborationContext(
+  requestBody: ArrayBuffer,
+  sessionId: string,
+  directory: string,
+): Promise<ArrayBuffer> {
+  const workspaces = findWorkspaceIdsBySessionAndDirectory(sessionId, directory);
+  if (workspaces.length !== 1) return requestBody;
+  try {
+    const block = await collaborationContextFor({
+      workspaceId: workspaces[0]!,
+      sessionId,
+      directory,
+    });
+    if (!block) return requestBody;
+    const body = JSON.parse(new TextDecoder().decode(requestBody)) as {
+      parts?: Array<{ type?: unknown; text?: unknown }>;
+    };
+    const firstText = body.parts?.find(
+      (part) => part.type === "text" && typeof part.text === "string",
+    );
+    if (!firstText || typeof firstText.text !== "string") return requestBody;
+    firstText.text = `${block}\n${firstText.text}`;
+    return new TextEncoder().encode(JSON.stringify(body)).buffer;
+  } catch {
+    // Collaboration awareness is best-effort and must never block a prompt.
+    return requestBody;
   }
 }
 
@@ -574,6 +604,11 @@ async function proxy(
           const injection = injectWorkspaceMemory(requestBody, manualSessionId, directory!);
           requestBody = injection.body;
           memoryClaim = injection.claim;
+          requestBody = await injectCollaborationContext(
+            requestBody,
+            manualSessionId,
+            directory!,
+          );
         }
       }
 

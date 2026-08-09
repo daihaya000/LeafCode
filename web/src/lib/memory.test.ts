@@ -223,5 +223,9 @@ describe("memory CRUD + injection", () => {
     expect(stripMemoryInjectionBlock(`prefix\n${block}\nrest`)).toBe(`prefix\n${block}\nrest`);
     expect(stripMemoryInjectionBlock(block)).toBe("");
     expect(stripMemoryInjectionBlock("plain text")).toBe("plain text");
+    const collaboration = `<collaboration-context>\n- peer: busy\n</collaboration-context>`;
+    expect(stripMemoryInjectionBlock(`${collaboration}\n${block}\nUser question`)).toBe(
+      "User question",
+    );
   });
 });

@@ -17,6 +17,7 @@ const goalLoopHook = vi.hoisted(() => ({
   calls: [] as { workspaceId: string; sessionId: string }[],
   memoryClaimAvailable: false,
   memoryClaims: [] as { workspaceId: string; sessionId: string }[],
+  collaborationBlock: "",
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -33,6 +34,10 @@ vi.mock("@/lib/memory", () => ({
     return { ...claim, block: "<workspace-memory>\n- [fact] shared\n</workspace-memory>" };
   }),
   releaseMemoryInjectionClaim: vi.fn(),
+}));
+
+vi.mock("@/lib/collaboration-context", () => ({
+  collaborationContextFor: vi.fn(async () => goalLoopHook.collaborationBlock),
 }));
 
 vi.mock("@/lib/goal-loop", () => ({
@@ -69,6 +74,7 @@ beforeEach(() => {
   goalLoopHook.calls = [];
   goalLoopHook.memoryClaimAvailable = false;
   goalLoopHook.memoryClaims = [];
+  goalLoopHook.collaborationBlock = "";
   hangWatch.armed = [];
   hangWatch.disarmed = [];
 });
@@ -166,6 +172,25 @@ describe("POST /api/opencode/session/:id/prompt_async variant validation", () =>
     ) as { parts: { text: string }[] };
     expect(body.parts[0]?.text).toBe("hello");
     expect(goalLoopHook.memoryClaims).toHaveLength(0);
+    fetchMock.mockRestore();
+  });
+
+  it("injects live collaboration context on every prompt", async () => {
+    goalLoopHook.directoryWorkspaceIds = ["ws-1"];
+    goalLoopHook.collaborationBlock =
+      "<collaboration-context>\n- peer: busy; files: src/a.ts\n</collaboration-context>";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const response = await post(JSON.stringify({ parts: [{ type: "text", text: "hello" }] }));
+
+    expect(response.status).toBe(200);
+    const body = JSON.parse(
+      new TextDecoder().decode(fetchMock.mock.calls[0]![1]?.body as ArrayBuffer),
+    ) as { parts: { text: string }[] };
+    expect(body.parts[0]?.text).toContain("peer: busy; files: src/a.ts");
+    expect(body.parts[0]?.text).toContain("hello");
     fetchMock.mockRestore();
   });
 

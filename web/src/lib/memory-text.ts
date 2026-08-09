@@ -7,13 +7,15 @@
  */
 
 /**
- * Strips a leading `<workspace-memory>…</workspace-memory>` block from user
- * text at render time. The block is internal context injected into the first
- * goal-loop message and must not be shown to the user. Returns "" when the
- * whole text was just the block.
+ * Strips leading workspace-memory and collaboration-context blocks from user
+ * text at render time. These are internal context persisted in the transcript
+ * and must not be shown to the user. Returns "" when no visible text remains.
  */
 export function stripMemoryInjectionBlock(text: string): string {
-  const match = text.match(/^\s*<workspace-memory>[\s\S]*?<\/workspace-memory>/);
-  if (!match) return text;
-  return text.slice(match[0].length).replace(/^\s*\n/, "");
+  let shown = text;
+  const internalBlock = /^\s*<(workspace-memory|collaboration-context)>[\s\S]*?<\/\1>/;
+  while (internalBlock.test(shown)) {
+    shown = shown.replace(internalBlock, "").replace(/^\s*\n/, "");
+  }
+  return shown;
 }
