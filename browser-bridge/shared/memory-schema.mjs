@@ -79,6 +79,11 @@ function assertLimit(value) {
   return value;
 }
 
+function assertRevision(value) {
+  if (!Number.isSafeInteger(value) || value < 0) invalidInput();
+  return value;
+}
+
 /**
  * Validate an MCP input and return a frozen normalized copy.
  * Throws an Error with `code = 'INVALID_REQUEST'` on malformed input.
@@ -97,19 +102,21 @@ export const memoryValidate = Object.freeze({
     return Object.freeze({ kind: args.kind, content: args.content });
   },
   update(args) {
-    assertObject(args, ['id', 'content', 'kind']);
+    assertObject(args, ['id', 'content', 'kind', 'expectedRevision']);
     assertId(args.id);
+    assertRevision(args.expectedRevision);
     if (args.content === undefined && args.kind === undefined) invalidInput();
     if (args.content !== undefined) assertContent(args.content);
     if (args.kind !== undefined) assertKind(args.kind);
-    const next = { id: args.id };
+    const next = { id: args.id, expectedRevision: args.expectedRevision };
     if (args.content !== undefined) next.content = args.content;
     if (args.kind !== undefined) next.kind = args.kind;
     return Object.freeze(next);
   },
   delete(args) {
-    assertObject(args, ['id']);
+    assertObject(args, ['id', 'expectedRevision']);
     assertId(args.id);
-    return Object.freeze({ id: args.id });
+    assertRevision(args.expectedRevision);
+    return Object.freeze({ id: args.id, expectedRevision: args.expectedRevision });
   },
 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { findWorkspaceIdsBySession } from "@/lib/db";
+import { memoryInjectionFor } from "@/lib/memory";
 import { directoryHeaders, withDirectoryQuery } from "@/lib/directory-header";
 import { pauseGoalLoopForManualSend } from "@/lib/goal-loop";
 import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
@@ -100,6 +101,31 @@ function isImageGuardedWrite(pathname: string): boolean {
     /^\/session\/[^/]+\/message$/.test(pathname) ||
     /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
   );
+}
+
+function injectWorkspaceMemory(
+  requestBody: ArrayBuffer,
+  sessionId: string,
+): ArrayBuffer {
+  const workspaces = findWorkspaceIdsBySession(sessionId);
+  // A session can belong to more than one workspace; inject only when the
+  // ownership is unambiguous so one project's context never leaks into another.
+  if (workspaces.length !== 1) return requestBody;
+  try {
+    const body = JSON.parse(new TextDecoder().decode(requestBody)) as {
+      parts?: Array<{ type?: unknown; text?: unknown }>;
+    };
+    const firstText = body.parts?.find((part) => part.type === "text" && typeof part.text === "string");
+    if (!firstText || typeof firstText.text !== "string" || firstText.text.startsWith("<workspace-memory>")) {
+      return requestBody;
+    }
+    const memory = memoryInjectionFor(workspaces[0]!);
+    if (!memory) return requestBody;
+    firstText.text = `${memory}\n${firstText.text}`;
+    return new TextEncoder().encode(JSON.stringify(body)).buffer;
+  } catch {
+    return requestBody;
+  }
 }
 
 import { requireAuthorized } from "@/lib/api-guard";
@@ -531,6 +557,9 @@ async function proxy(
               { status: 409 },
             );
           }
+        }
+        if (/^\/session\/[^/]+\/prompt_async$/.test(pathname)) {
+          requestBody = injectWorkspaceMemory(requestBody, manualSessionId);
         }
       }
 

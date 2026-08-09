@@ -50,12 +50,12 @@ describe("memories FTS trigger sync", () => {
     });
     expect(searchMemories({ workspaceId: "ws-m", query: "tangram", limit: 5 })).toHaveLength(1);
 
-    updateMemory(m.id, "ws-m", { content: "tangram puzzle reframed" });
+    updateMemory(m.id, "ws-m", 0, { content: "tangram puzzle reframed" });
     expect(searchMemories({ workspaceId: "ws-m", query: "reframed", limit: 5 })).toHaveLength(1);
     // The old token is gone after the UPDATE trigger replaced content.
     expect(searchMemories({ workspaceId: "ws-m", query: "color", limit: 5 })).toHaveLength(0);
 
-    deleteMemory(m.id, "ws-m");
+    deleteMemory(m.id, "ws-m", 1);
     expect(searchMemories({ workspaceId: "ws-m", query: "tangram", limit: 5 })).toHaveLength(0);
   });
 

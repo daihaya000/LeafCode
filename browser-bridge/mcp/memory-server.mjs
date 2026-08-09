@@ -113,8 +113,8 @@ function createMemoryStore(db, workspaceId) {
        created_at, updated_at, last_used_at, use_count)
     VALUES (?, ?, ?, ?, NULL, ?, 1, ?, ?, NULL, 0)
   `);
-  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), updated_at = ? WHERE id = ? AND workspace_id = ?');
-  const remove = db.prepare('DELETE FROM memories WHERE id = ? AND workspace_id = ?');
+  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), updated_at = ?, revision = revision + 1 WHERE id = ? AND workspace_id = ? AND revision = ?');
+  const remove = db.prepare('DELETE FROM memories WHERE id = ? AND workspace_id = ? AND revision = ?');
   const audit = db.prepare(`
     INSERT INTO memory_audit_log
       (action, workspace_id, memory_id, session_id, detail, created_at)
@@ -164,7 +164,7 @@ function createMemoryStore(db, workspaceId) {
       audit.run('create', workspaceId, id, 'provenance=agent', now);
       return toMemoryDto(selectById.get(id, workspaceId));
     },
-    update({ id, content, kind }) {
+    update({ id, content, kind, expectedRevision }) {
       if (content !== undefined && memoryContentError(content)) {
         const error = new Error(memoryContentError(content));
         error.code = 'INVALID_REQUEST';
@@ -177,6 +177,7 @@ function createMemoryStore(db, workspaceId) {
         now,
         id,
         workspaceId,
+        expectedRevision,
       );
       if (changed.changes === 0) {
         const error = new Error('memory not found');
@@ -186,8 +187,8 @@ function createMemoryStore(db, workspaceId) {
       audit.run('update', workspaceId, id, null, now);
       return toMemoryDto(selectById.get(id, workspaceId));
     },
-    delete({ id }) {
-      const changed = remove.run(id, workspaceId);
+    delete({ id, expectedRevision }) {
+      const changed = remove.run(id, workspaceId, expectedRevision);
       if (changed.changes === 0) {
         const error = new Error('memory not found');
         error.code = 'NOT_FOUND';
@@ -230,6 +231,7 @@ function buildTools(server, store) {
     description: 'Overwrite content and/or kind of an existing memory by id. Errors when the id does not exist.',
     inputSchema: z.object({
       id: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),
+      expectedRevision: z.number().int().min(0),
       content: z.string().min(1).max(2000).optional(),
       kind: kindSchema.optional(),
     }).strict(),
@@ -241,6 +243,7 @@ function buildTools(server, store) {
     description: 'Permanently delete a memory by id. Errors when the id does not exist.',
     inputSchema: z.object({
       id: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),
+      expectedRevision: z.number().int().min(0),
     }).strict(),
     annotations: DESTRUCTIVE_ANNOTATIONS,
   }, async (args) => textResult(store.delete(memoryValidate.delete(args))));

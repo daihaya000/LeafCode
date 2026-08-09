@@ -34,6 +34,7 @@ export type MemoryRow = {
   updated_at: number;
   last_used_at: number | null;
   use_count: number;
+  revision: number;
 };
 
 /** Public DTO (camelCase) surfaced by the web API / UI. */
@@ -49,6 +50,7 @@ export type MemoryDto = {
   updatedAt: number;
   lastUsedAt: number | null;
   useCount: number;
+  revision: number;
 };
 
 export function isMemoryKind(value: unknown): value is MemoryKind {
@@ -83,6 +85,7 @@ export function toMemoryDto(row: MemoryRow): MemoryDto {
     updatedAt: row.updated_at,
     lastUsedAt: row.last_used_at,
     useCount: row.use_count,
+    revision: row.revision,
   };
 }
 
@@ -163,19 +166,25 @@ export function listMemories(filter?: {
   return rows.map(toMemoryDto);
 }
 
-export function approveMemory(id: string, workspaceId: string): MemoryDto | undefined {
+export function approveMemory(
+  id: string,
+  workspaceId: string,
+  expectedRevision: number,
+): MemoryDto | undefined {
   const now = Date.now();
   const result = getDb()
     .prepare(
-      `UPDATE memories SET approved = 1, updated_at = ? WHERE id = ? AND workspace_id = ?`,
+      `UPDATE memories SET approved = 1, updated_at = ?, revision = revision + 1
+       WHERE id = ? AND workspace_id = ? AND revision = ?`,
     )
-    .run(now, id, workspaceId);
+    .run(now, id, workspaceId, expectedRevision);
   return result.changes > 0 ? getMemoryById(id, workspaceId) : undefined;
 }
 
 export function updateMemory(
   id: string,
   workspaceId: string,
+  expectedRevision: number,
   patch: { content?: string; kind?: MemoryKind },
 ): MemoryDto | undefined {
   if (patch.kind !== undefined && !isMemoryKind(patch.kind)) {
@@ -197,18 +206,22 @@ export function updateMemory(
   }
   if (assignments.length === 0) return getMemoryById(id, workspaceId);
   assignments.push("updated_at = ?");
+  assignments.push("revision = revision + 1");
   params.push(Date.now());
   params.push(id);
   const result = getDb()
-    .prepare(`UPDATE memories SET ${assignments.join(", ")} WHERE id = ? AND workspace_id = ?`)
-    .run(...params, workspaceId);
+    .prepare(
+      `UPDATE memories SET ${assignments.join(", ")}
+       WHERE id = ? AND workspace_id = ? AND revision = ?`,
+    )
+    .run(...params, workspaceId, expectedRevision);
   return result.changes > 0 ? getMemoryById(id, workspaceId) : undefined;
 }
 
-export function deleteMemory(id: string, workspaceId: string): boolean {
+export function deleteMemory(id: string, workspaceId: string, expectedRevision: number): boolean {
   return getDb()
-    .prepare("DELETE FROM memories WHERE id = ? AND workspace_id = ?")
-    .run(id, workspaceId).changes > 0;
+    .prepare("DELETE FROM memories WHERE id = ? AND workspace_id = ? AND revision = ?")
+    .run(id, workspaceId, expectedRevision).changes > 0;
 }
 
 /** Count approved rows for a workspace (used by the injection cap). */

@@ -331,7 +331,8 @@ export function getDb(): Database.Database {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_used_at INTEGER,
-      use_count INTEGER NOT NULL DEFAULT 0
+      use_count INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_memories_ws ON memories(workspace_id, approved);
     CREATE TABLE IF NOT EXISTS memory_audit_log (
@@ -398,6 +399,12 @@ export function getDb(): Database.Database {
   }
   if (!hasWorkspaceColumn("primary_session_id")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN primary_session_id TEXT");
+  }
+  const memoryColumns = db
+    .prepare("PRAGMA table_info(memories)")
+    .all() as { name: string }[];
+  if (!memoryColumns.some((column) => column.name === "revision")) {
+    db.exec("ALTER TABLE memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
   }
   if (!hasWorkspaceColumn("revision")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");

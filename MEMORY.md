@@ -2604,3 +2604,16 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 検証: `npm --prefix web test -- src/lib/memory.test.ts src/lib/db.memory-migration.test.ts src/lib/memory-idle.test.ts src/app/api/memory/route.test.ts src/components/settings/MemorySettings.test.tsx` (28件成功)、
 `npm --prefix browser-bridge test` (88件成功)、`npm --prefix web run typecheck`、
 `npm --prefix web run lint -- src/lib/memory-extract.ts src/lib/memory.ts src/lib/memory-idle.ts src/app/api/memory src/components/settings/MemorySettings.tsx`。
+
+# 修正記録: セッション横断メモリ共有と共同編集保護 (2026-08-09)
+
+- 通常の `prompt_async` を通すBFFで、セッションが単一workspaceへ紐付く場合に
+  承認済みworkspace memoryを注入するようにした。複数workspaceへ紐付く曖昧な
+  sessionは注入せず、プロジェクト間の文脈漏洩を防ぐ。
+- `memories.revision` を追加し、承認・更新・削除は期待revisionとの比較更新にした。
+  UIとMCPはrevisionを送信し、別セッションの更新後に古い状態で操作した場合は
+  変更されない。
+
+検証: `npm --prefix web run typecheck`、
+`npm --prefix web test -- src/lib/memory.test.ts src/lib/db.memory-migration.test.ts src/app/api/memory/route.test.ts` (18件成功)、
+`npm --prefix browser-bridge test` (88件成功)。

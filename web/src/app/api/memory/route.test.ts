@@ -80,7 +80,7 @@ describe("memory API", () => {
     });
     const apr = await approvePOST(req(`/api/memory/${created.id}/approve`, {
       method: "POST",
-      body: { workspaceId: "ws-a" },
+      body: { workspaceId: "ws-a", expectedRevision: 0 },
     }), {
       params: Promise.resolve({ id: created.id }),
     });
@@ -88,11 +88,11 @@ describe("memory API", () => {
 
     const pat = await PATCH(req(`/api/memory/${created.id}`, {
       method: "PATCH",
-      body: { workspaceId: "ws-a", content: "candidate updated", kind: "fact" },
+      body: { workspaceId: "ws-a", expectedRevision: 1, content: "candidate updated", kind: "fact" },
     }), { params: Promise.resolve({ id: created.id }) });
     expect(pat.status).toBe(200);
 
-    const del = await DELETE(req(`/api/memory/${created.id}?workspace_id=ws-a`, { method: "DELETE" }), {
+    const del = await DELETE(req(`/api/memory/${created.id}?workspace_id=ws-a&expected_revision=2`, { method: "DELETE" }), {
       params: Promise.resolve({ id: created.id }),
     });
     expect(del.status).toBe(200);
@@ -101,7 +101,7 @@ describe("memory API", () => {
   it("returns 404 for an unknown memory", async () => {
     const res = await PATCH(req("/api/memory/nope", {
       method: "PATCH",
-      body: { workspaceId: "ws-a", content: "x" },
+      body: { workspaceId: "ws-a", expectedRevision: 0, content: "x" },
     }), {
       params: Promise.resolve({ id: "nope" }),
     });
@@ -118,7 +118,7 @@ describe("memory API", () => {
     expect((await GET(req("/api/memory"))).status).toBe(400);
     expect((await PATCH(req(`/api/memory/${privateMemory.id}`, {
       method: "PATCH",
-      body: { workspaceId: "ws-other", content: "changed" },
+      body: { workspaceId: "ws-other", expectedRevision: 0, content: "changed" },
     }), { params: Promise.resolve({ id: privateMemory.id }) })).status).toBe(404);
   });
 

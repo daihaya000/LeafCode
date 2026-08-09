@@ -26,6 +26,7 @@ export async function PATCH(
 
   const body = (await req.json().catch(() => null)) as {
     workspaceId?: unknown;
+    expectedRevision?: unknown;
     content?: unknown;
     kind?: unknown;
   } | null;
@@ -33,8 +34,16 @@ export async function PATCH(
   if (typeof body.workspaceId !== "string" || !body.workspaceId) {
     return badRequest("workspaceId is required");
   }
+  if (
+    typeof body.expectedRevision !== "number" ||
+    !Number.isSafeInteger(body.expectedRevision) ||
+    body.expectedRevision < 0
+  ) {
+    return badRequest("expectedRevision is required");
+  }
+  const expectedRevision = body.expectedRevision;
 
-  const patch: { content?: string; kind?: Parameters<typeof updateMemory>[2]["kind"] } = {};
+  const patch: { content?: string; kind?: Parameters<typeof updateMemory>[3]["kind"] } = {};
   if (body.content !== undefined) {
     if (typeof body.content !== "string") return badRequest("content must be a string");
     patch.content = body.content;
@@ -46,7 +55,7 @@ export async function PATCH(
 
   let updated: ReturnType<typeof updateMemory>;
   try {
-    updated = updateMemory(id, body.workspaceId, patch);
+    updated = updateMemory(id, body.workspaceId, expectedRevision, patch);
   } catch (err) {
     return badRequest(err instanceof Error ? err.message : "invalid update");
   }
@@ -67,8 +76,12 @@ export async function DELETE(
   if (!id) return badRequest("invalid memory id");
 
   const workspaceId = req.nextUrl.searchParams.get("workspace_id");
+  const expectedRevision = Number(req.nextUrl.searchParams.get("expected_revision"));
   if (!workspaceId) return badRequest("workspace_id is required");
-  if (!deleteMemory(id, workspaceId)) {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+    return badRequest("expected_revision is required");
+  }
+  if (!deleteMemory(id, workspaceId, expectedRevision)) {
     return NextResponse.json({ error: "memory not found" }, { status: 404 });
   }
   logMemoryAudit("delete", { memoryId: id, workspaceId });

@@ -23,7 +23,8 @@ function createMemorySchema(db) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_used_at INTEGER,
-      use_count INTEGER NOT NULL DEFAULT 0
+      use_count INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
     CREATE TABLE memory_audit_log (
@@ -137,7 +138,7 @@ test('memory MCP: add, search (FTS + bump), update, delete flows', async (t) => 
   // Update content/kind and verify.
   const updated = await client.callTool({
     name: 'memory_update',
-    arguments: { id: secondId, kind: 'preference', content: 'Prefer .env for secrets' },
+    arguments: { id: secondId, expectedRevision: 0, kind: 'preference', content: 'Prefer .env for secrets' },
   });
   assert.equal(updated.isError, undefined);
   const updatedJson = JSON.parse(updated.content[0].text);
@@ -146,7 +147,7 @@ test('memory MCP: add, search (FTS + bump), update, delete flows', async (t) => 
   // Delete and confirm gone.
   const deleted = await client.callTool({
     name: 'memory_delete',
-    arguments: { id: secondId },
+    arguments: { id: secondId, expectedRevision: 1 },
   });
   assert.equal(deleted.isError, undefined);
   const delHits = JSON.parse((await client.callTool({
@@ -180,7 +181,7 @@ test('memory MCP: validation and not-found errors', async (t) => {
 
   const missing = await client.callTool({
     name: 'memory_update',
-    arguments: { id: 'no-such-id', content: 'x' },
+    arguments: { id: 'no-such-id', expectedRevision: 0, content: 'x' },
   });
   assert.equal(missing.isError, true);
 
@@ -210,12 +211,12 @@ test('memory MCP: cannot modify a memory in another workspace', async (t) => {
 
   const updated = await client.callTool({
     name: 'memory_update',
-    arguments: { id: 'other-memory', content: 'changed' },
+    arguments: { id: 'other-memory', expectedRevision: 0, content: 'changed' },
   });
   assert.equal(updated.isError, true);
   const deleted = await client.callTool({
     name: 'memory_delete',
-    arguments: { id: 'other-memory' },
+    arguments: { id: 'other-memory', expectedRevision: 0 },
   });
   assert.equal(deleted.isError, true);
 });

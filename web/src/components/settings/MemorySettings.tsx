@@ -20,6 +20,7 @@ type MemoryDto = {
   updatedAt: number;
   lastUsedAt: number | null;
   useCount: number;
+  revision: number;
 };
 
 type WorkspaceRow = {
@@ -138,15 +139,15 @@ export function MemorySettings() {
   const hint = (message: string) => setNotice(message);
   const alert = (message: string) => setLoadError(message);
 
-  const approveOne = async (id: string) => {
+  const approveOne = async (memory: MemoryDto) => {
     try {
       const data = await sendJson<{ memory?: MemoryDto }>(
         "POST",
-        `/api/memory/${encodeURIComponent(id)}/approve`,
-        { workspaceId: selectedWorkspace },
+        `/api/memory/${encodeURIComponent(memory.id)}/approve`,
+        { workspaceId: selectedWorkspace, expectedRevision: memory.revision },
       );
       if (data.memory) {
-        setMemories((prev) => prev.map((m) => (m.id === id ? data.memory! : m)));
+        setMemories((prev) => prev.map((m) => (m.id === memory.id ? data.memory! : m)));
         hint("承認しました");
       }
       void loadMemories(selectedWorkspace);
@@ -160,8 +161,11 @@ export function MemorySettings() {
     setBusy(true);
     try {
       for (const id of candidates.map((m) => m.id)) {
+        const memory = candidates.find((m) => m.id === id);
+        if (!memory) continue;
         await sendJson("POST", `/api/memory/${encodeURIComponent(id)}/approve`, {
           workspaceId: selectedWorkspace,
+          expectedRevision: memory.revision,
         });
       }
       hint(`${candidates.length}件を承認しました`);
@@ -173,13 +177,13 @@ export function MemorySettings() {
     }
   };
 
-  const removeOne = async (id: string) => {
+  const removeOne = async (memory: MemoryDto) => {
     try {
       await sendJson(
         "DELETE",
-        `/api/memory/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(selectedWorkspace)}`,
+        `/api/memory/${encodeURIComponent(memory.id)}?workspace_id=${encodeURIComponent(selectedWorkspace)}&expected_revision=${memory.revision}`,
       );
-      setMemories((prev) => prev.filter((m) => m.id !== id));
+      setMemories((prev) => prev.filter((m) => m.id !== memory.id));
       hint("削除しました");
     } catch (err) {
       alert(err instanceof Error ? err.message : "削除に失敗しました");
@@ -193,15 +197,15 @@ export function MemorySettings() {
     setNotice(null);
   };
 
-  const saveEdit = async (id: string) => {
+  const saveEdit = async (memory: MemoryDto) => {
     try {
       const data = await sendJson<{ memory?: MemoryDto }>(
         "PATCH",
-        `/api/memory/${encodeURIComponent(id)}`,
-        { workspaceId: selectedWorkspace, content: editContent, kind: editKind },
+        `/api/memory/${encodeURIComponent(memory.id)}`,
+        { workspaceId: selectedWorkspace, expectedRevision: memory.revision, content: editContent, kind: editKind },
       );
       if (data.memory) {
-        setMemories((prev) => prev.map((m) => (m.id === id ? data.memory! : m)));
+        setMemories((prev) => prev.map((m) => (m.id === memory.id ? data.memory! : m)));
       }
       setEditingId(null);
       hint("保存しました");
@@ -367,7 +371,7 @@ export function MemorySettings() {
                         </option>
                       ))}
                     </select>
-                    <Button size="sm" onClick={() => void saveEdit(m.id)}>
+                    <Button size="sm" onClick={() => void saveEdit(m)}>
                       保存
                     </Button>
                     <Button
@@ -397,7 +401,7 @@ export function MemorySettings() {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {!m.approved && (
-                      <Button size="sm" onClick={() => void approveOne(m.id)}>
+                      <Button size="sm" onClick={() => void approveOne(m)}>
                         承認
                       </Button>
                     )}
@@ -411,7 +415,7 @@ export function MemorySettings() {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => void removeOne(m.id)}
+                      onClick={() => void removeOne(m)}
                     >
                       削除
                     </Button>

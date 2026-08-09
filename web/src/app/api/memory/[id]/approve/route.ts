@@ -15,11 +15,21 @@ export async function POST(
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "invalid memory id" }, { status: 400 });
 
-  const body = (await req.json().catch(() => null)) as { workspaceId?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as {
+    workspaceId?: unknown;
+    expectedRevision?: unknown;
+  } | null;
   if (typeof body?.workspaceId !== "string" || !body.workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
   }
-  const approved = approveMemory(id, body.workspaceId);
+  if (
+    typeof body.expectedRevision !== "number" ||
+    !Number.isSafeInteger(body.expectedRevision) ||
+    body.expectedRevision < 0
+  ) {
+    return NextResponse.json({ error: "expectedRevision is required" }, { status: 400 });
+  }
+  const approved = approveMemory(id, body.workspaceId, body.expectedRevision);
   if (!approved) {
     return NextResponse.json({ error: "memory not found" }, { status: 404 });
   }
