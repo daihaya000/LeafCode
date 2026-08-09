@@ -99,6 +99,7 @@ export function ProfilesSettings() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createFrom, setCreateFrom] = useState<"empty" | string>("empty");
+  const [moveSource, setMoveSource] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [unregisterConfirm, setUnregisterConfirm] = useState<ProfileDto | null>(null);
@@ -259,7 +260,9 @@ export function ProfilesSettings() {
     setActionBusy("migrate");
     setActionError(null);
     try {
-      const res = await sendJson<{ jobId: string }>("POST", "/api/profiles/migrate", {});
+      const res = await sendJson<{ jobId: string }>("POST", "/api/profiles/migrate", {
+        mode: moveSource ? "move" : "copy",
+      });
       if (!mountedRef.current) return;
       setJobId(res.jobId);
       setJob({ state: "running", copied: 0, total: 0 });
@@ -272,7 +275,7 @@ export function ProfilesSettings() {
         if (mountedRef.current) setActionBusy(null);
       }
     }
-  }, []);
+  }, [moveSource]);
 
   const doCreate = useCallback(async () => {
     if (!createName.trim() || actionBusyRef.current !== null || busyIdRef.current !== null) return;
@@ -477,10 +480,18 @@ export function ProfilesSettings() {
                 <h3 className="text-sm font-semibold text-text">dataDir への移行</h3>
               </div>
               <p className="mt-1 text-xs leading-5 text-muted">
-            現在の設定（約 {formatBytes(migration.estimatedBytes)}）を{" "}
-            <code className="font-mono">%APPDATA%\opencode-webui\profiles\default</code>{" "}
-            に複製し、リンクを切り替えます。コピー元は削除されません。
+                現在の設定（約 {formatBytes(migration.estimatedBytes)}）を{" "}
+                <code className="font-mono">%APPDATA%\opencode-webui\profiles\default</code>{" "}
+                に移し、リンクを切り替えます。
               </p>
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  checked={moveSource}
+                  onChange={(event) => setMoveSource(event.target.checked)}
+                />
+                元のプロファイルを削除して移動する
+              </label>
             </div>
             <Button
               className="shrink-0"

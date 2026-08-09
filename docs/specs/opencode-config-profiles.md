@@ -138,7 +138,7 @@ type ProfilesState = {
   - `<profileId>`: 複製。`node_modules` は**含める**（プラグインの実行時依存）。`.git` は**除外する**（複製が元リポジトリと同じ remote を持ち誤って push される事故を防ぐため。移行と異なり複製は別リポジトリ扱い）。非同期ジョブとして実行し `{ jobId }` を返す。
   - 生成先は常に `dataDir()/profiles/<slug>`。slug 衝突時は `-2`, `-3` を付す。
 - `POST /api/profiles/migrate`
-  - `default` を dataDir へ移行する。非同期ジョブとして `{ jobId }` を返す。
+  - 本文 `{ mode?: "copy" | "move" }`。`default` を dataDir へ移行する。既定の `copy` はコピー元をバックアップとして残し、`move` はリンク切替成功後にコピー元を削除する。非同期ジョブとして `{ jobId }` を返す。
 - `GET /api/profiles/jobs/[jobId]`
   - 応答: `{ state: "running" | "done" | "error", copied: number, total: number, note?: string, error?: string }`
 - `PATCH /api/profiles/[id]`
@@ -162,7 +162,7 @@ type ProfilesState = {
 設定画面に「プロファイル」タブを追加する（`SettingsView` の `SettingsTab` union・タブ配列・描画分岐に追加）。
 
 - プロファイルを一覧表示し、各行に表示名・実パス・`active` バッジを出す。`external` なプロファイルには「dataDir 外」バッジを付ける。デスクトップはテーブル、モバイルはカード（既存 `AgentsSettings` と同じ二段構え）。
-- `default` が dataDir 外にある間は上部に**移行カード**を表示する。コピー容量（約 250 MB）と所要時間、コピー元が削除されないことを明記し、実行ボタンを置く。
+- `default` が dataDir 外にある間は上部に**移行カード**を表示する。コピー容量（約 250 MB）と所要時間、既定ではコピー元が削除されないことを明記し、「元のプロファイルを削除して移動する」オプションと実行ボタンを置く。
 - 移行・複製の進行中は進捗（`copied / total`）を表示し、他の操作を無効化する。
 - 「切替」操作は確認を挟む。確認ダイアログには、**OpenCode が再起動され進行中のタスクが中断されること**を明記する。
 - 切替の流れ: `activate` → `/api/host/restart`（`target: "opencode"`）→ `/api/health` を `opencode.ok` になるまでポーリング。既存の再起動フローと同じ待機・タイムアウト表現を使う。

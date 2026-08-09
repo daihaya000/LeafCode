@@ -2481,6 +2481,37 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 
 ---
 
+# 作業ログ: 既存プロファイル移行の移動オプション
+
+## 日付
+
+2026-08-09
+
+## 実装内容
+
+- 既存プロファイル移行 API に `mode: "copy" | "move"` を追加した。
+- `copy` は従来どおり元ディレクトリを移行前バックアップとして残す。
+- `move` はコピー・ジャンクション切替成功後に元ディレクトリを削除し、レジストリからも旧エントリを除外する。
+- 元ディレクトリの削除に失敗した場合は、移行自体を成功扱いにして旧プロファイルをバックアップとして残し、ジョブ注記で知らせる。
+- プロファイル設定画面に「元のプロファイルを削除して移動する」チェックボックスを追加した。既定は `copy`。
+- 仕様書の API と画面説明を更新した。
+
+## 検証結果
+
+- `npx vitest run src/lib/profiles/service.test.ts src/components/settings/ProfilesSettings.test.tsx` 成功（34 tests）。
+- `npx tsc --noEmit` 成功。
+
+## 変更ファイル
+
+- `web/src/lib/profiles/service.ts`
+- `web/src/lib/profiles/service.test.ts`
+- `web/src/app/api/profiles/migrate/route.ts`
+- `web/src/components/settings/ProfilesSettings.tsx`
+- `web/src/components/settings/ProfilesSettings.test.tsx`
+- `docs/specs/opencode-config-profiles.md`
+
+---
+
 # 作業ログ: 停止済みGoal Loopのコンポーサー復元
 
 ## 日付

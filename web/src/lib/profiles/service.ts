@@ -288,9 +288,10 @@ export function installDependencies(id: string): InstallDependenciesResult {
 // migrate
 // ---------------------------------------------------------------------------
 
+export type MigrateMode = "copy" | "move";
 export type MigrateResult = { jobId: string } | ActivateError;
 
-export function migrateDefault(): MigrateResult {
+export function migrateDefault(mode: MigrateMode = "copy"): MigrateResult {
   const { state, link } = ensureRegistry();
 
   if (link.state !== "link" || !link.target) {
@@ -356,18 +357,34 @@ export function migrateDefault(): MigrateResult {
     // Update registry: rename old default to a backup label, add new default.
     const freshState = readState();
     const oldEntry = freshState.profiles.find((p) => p.id === sourceId);
-    if (oldEntry) {
+    let sourceRemovalNote: string | undefined;
+    let sourceRemoved = false;
+    if (mode === "move") {
+      try {
+        // The link already points at finalDest, so removing the old target
+        // cannot affect the active profile or follow the junction.
+        await fsp.rm(sourcePath, { recursive: true, force: false });
+        sourceRemoved = true;
+      } catch {
+        sourceRemovalNote = "元のプロファイルを削除できなかったため、移行前バックアップとして残しました。";
+      }
+    }
+    if (oldEntry && !sourceRemoved) {
       oldEntry.name = "default（移行前バックアップ）";
       oldEntry.external = true;
+    } else if (oldEntry && sourceRemoved) {
+      freshState.profiles = freshState.profiles.filter((p) => p.id !== sourceId);
     }
     const newProfile = makeProfile("default", finalDest);
     freshState.profiles.push(newProfile);
     freshState.activeId = newProfile.id;
     writeState(freshState);
 
-    return result.dereferenced
-      ? "一部の symlink を実体コピーに置き換えました。"
-      : undefined;
+    const notes = [
+      result.dereferenced ? "一部の symlink を実体コピーに置き換えました。" : undefined,
+      sourceRemovalNote,
+    ].filter(Boolean);
+    return notes.length > 0 ? notes.join(" ") : undefined;
   });
 
   return { jobId: job.id };

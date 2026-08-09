@@ -91,6 +91,7 @@ describe("ProfilesSettings", () => {
       expect(screen.getAllByText("dataDir への移行").length).toBeGreaterThan(0);
     });
     expect(screen.getAllByText("移行を開始").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("元のプロファイルを削除して移動する")).toBeTruthy();
   });
 
   it("does not start migration twice before the first request settles", async () => {

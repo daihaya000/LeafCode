@@ -419,6 +419,33 @@ describe("migrateDefault", () => {
     expect(state.activeId).toBe(newDefault.id);
   });
 
+  it("moves default to dataDir and removes the source when requested", async () => {
+    const source = makeConfigDir(path.join(sandbox, "onedrive"), "D");
+    fs.mkdirSync(path.join(source, "packages"), { recursive: true });
+    setupLink(source);
+    seedRegistry();
+
+    const result = migrateDefault("move");
+    await waitForJob((result as { jobId: string }).jobId);
+
+    const job = getJob((result as { jobId: string }).jobId)!;
+    expect(job.state).toBe("done");
+    expect(fs.existsSync(source)).toBe(false);
+    expect(fs.realpathSync(linkPath())).toBe(
+      fs.realpathSync(path.join(profilesDir(), "default")),
+    );
+
+    const state = JSON.parse(
+      fs.readFileSync(
+        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        "utf8",
+      ),
+    );
+    expect(state.profiles).toHaveLength(1);
+    expect(state.profiles[0].name).toBe("default");
+    expect(state.profiles[0].external).toBeUndefined();
+  });
+
   it("returns 409 when there is no external active profile", async () => {
     // Already migrated: active is inside profilesRoot
     const inside = makeConfigDir(path.join(profilesDir(), "default"), "D");
