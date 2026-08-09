@@ -187,7 +187,7 @@ export function createProfile(input: {
     return { status: 409, error: "プロファイル名が不正です。" };
   }
 
-  const { state } = ensureRegistry();
+  const { state, link } = ensureRegistry();
   const slug = resolveSlug(
     input.name,
     state.profiles.map((p) => path.basename(p.path)),
@@ -203,10 +203,26 @@ export function createProfile(input: {
     );
     installWebUiDependencies(dest, readProfileSetupSettings());
     const profile = makeProfile(input.name, dest);
+
+    // On a completely new installation there is no config link to activate.
+    // Do not replace a real directory or an existing external profile.
+    const firstProfile = state.profiles.length === 0 && link.state === "missing";
+    if (firstProfile) {
+      try {
+        swapLink(dest);
+      } catch (error) {
+        fs.rmSync(dest, { recursive: true, force: true });
+        return {
+          status: 409,
+          error: error instanceof Error ? error.message : "プロファイルのリンク作成に失敗しました。",
+        };
+      }
+      state.activeId = profile.id;
+    }
     registerProfile(state, profile);
     return {
       kind: "created",
-      profile: { ...profile, active: false, exists: true },
+      profile: { ...profile, active: firstProfile, exists: true },
     };
   }
 

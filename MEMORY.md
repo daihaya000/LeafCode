@@ -2450,6 +2450,37 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 
 ---
 
+# 作業ログ: 初回プロファイル作成時のグローバルリンク自動作成
+
+## 日付
+
+2026-08-09
+
+## 原因
+
+- `ensureRegistry()` は既存の `~/.config/opencode` リンクを登録するだけで、リンクが無い初回状態では作成しなかった。
+- 空プロファイル作成もプロファイルを登録するだけで、初回プロファイルをアクティブ化していなかった。
+
+## 修正
+
+- グローバルリンクが `missing` かつプロファイルが0件のとき、空プロファイル作成後に junction を作成してアクティブ化するようにした。
+- 既存の実体ディレクトリや外部プロファイルは置換しない。
+- `~/.config` が未作成の環境でもリンク作成できるよう親ディレクトリを作成する。
+- 作成失敗時は新規プロファイルの一時ディレクトリを削除する。
+
+## 検証結果
+
+- `npx vitest run src/lib/profiles/link.test.ts src/lib/profiles/service.test.ts` 成功（33 tests）。
+- `npx tsc --noEmit` 成功。
+
+## 変更ファイル
+
+- `web/src/lib/profiles/link.ts`
+- `web/src/lib/profiles/service.ts`
+- `web/src/lib/profiles/service.test.ts`
+
+---
+
 # 作業ログ: 停止済みGoal Loopのコンポーサー復元
 
 ## 日付

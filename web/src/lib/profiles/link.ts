@@ -89,6 +89,9 @@ export function swapLink(
 ): void {
   const target = path.resolve(nextTarget);
 
+  // A first-run installation may not have created ~/.config yet.
+  fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+
   if (!isValidProfileDir(target)) {
     throw new Error(
       `${target} は OpenCode の設定ディレクトリとして認識できません。`,

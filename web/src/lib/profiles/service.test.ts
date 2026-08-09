@@ -201,6 +201,31 @@ describe("listProfiles", () => {
   });
 });
 
+describe("createProfile", () => {
+  it("creates and activates the first empty profile when the global link is missing", () => {
+    const result = createProfile({ name: "default", from: "empty" });
+    const created = result as { kind: "created"; profile: { active: boolean; path: string } };
+
+    expect(created.kind).toBe("created");
+    expect(fs.lstatSync(linkPath()).isSymbolicLink()).toBe(true);
+    expect(fs.realpathSync(linkPath())).toBe(
+      fs.realpathSync(created.profile.path),
+    );
+    expect(created.profile.active).toBe(true);
+    expect(ensureRegistry().state.activeId).not.toBeNull();
+  });
+
+  it("does not replace an existing real config directory", () => {
+    makeConfigDir(linkPath(), "REAL");
+
+    const result = createProfile({ name: "work", from: "empty" });
+
+    expect((result as { kind: string }).kind).toBe("created");
+    expect(fs.lstatSync(linkPath()).isDirectory()).toBe(true);
+    expect(fs.readFileSync(path.join(linkPath(), "opencode.jsonc"), "utf8")).toContain("REAL");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // activate
 // ---------------------------------------------------------------------------
