@@ -363,6 +363,24 @@ test('POST /users rejects a request with no session at all', async () => {
   assert.equal(res.statusCode, 403);
 });
 
+test('POST /users bootstraps the first admin without a session', async () => {
+  let upserted = null;
+  const handle = createControlRequestHandler({
+    ...noopHandlers,
+    authStore: authStoreStub({
+      hasUsers: () => false,
+      upsertUser: (username, password) => {
+        upserted = { username, password };
+        return { ok: true };
+      },
+    }),
+    sessionSecret: 'test-secret',
+  });
+  const res = await postJson(handle, '/users', { username: 'admin', password: 'secret' });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(upserted, { username: 'admin', password: 'secret' });
+});
+
 test('POST /users rejects a non-admin session', async () => {
   const handle = createControlRequestHandler({
     ...noopHandlers,

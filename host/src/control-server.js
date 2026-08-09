@@ -490,10 +490,13 @@ export function createControlRequestHandler(handlers) {
         return;
       }
 
-      // Mutating operations (POST/DELETE) require an admin session.
+      // Mutating operations (POST/DELETE) require an admin session. The one
+      // exception is the first POST on a fresh install: there cannot be an
+      // admin session until that first admin user exists.
       const session = await resolveSession(req);
       const ip = clientIpOf(req) ?? undefined;
-      if (!session || authStore.isAdmin?.(session.username) !== true) {
+      const bootstrap = method === 'POST' && !authStore.hasUsers();
+      if ((!session && !bootstrap) || (session && authStore.isAdmin?.(session.username) !== true)) {
         auditLog.record({
           action: 'authz.denied',
           actor: session?.username,
@@ -544,7 +547,7 @@ export function createControlRequestHandler(handlers) {
       auditLog.record({
         // The password itself is never recorded, only that it was set.
         action: existed ? 'user.update' : 'user.create',
-        actor: session.username,
+        actor: session?.username ?? username,
         target: username,
         ip,
         result: result.ok ? 'allow' : 'deny',

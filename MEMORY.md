@@ -1,3 +1,22 @@
+# 作業ログ: 初回ユーザー追加時の admin session required 修正
+
+## 日付
+
+2026-08-09
+
+## 実施内容
+
+- ユーザー追加 API は既存ユーザーがある場合、従来どおり admin セッションを要求。
+- ユーザー未登録の初回 POST だけは、管理者セッションを作成できないためホスト上で許可。
+- 初回ユーザー作成時の監査ログで null セッションを参照しないよう修正。
+- `host/src/control-server.test.js` に初回作成の回帰テストを追加。
+
+## 検証結果
+
+- host control-server tests: 88 passed
+- Web `typecheck`: 成功
+- Web `lint`: エラーなし（既存 warning 2件）
+
 # 作業ログ: OpenCode API v2(Beta) 移行準備の実装(優先度順 P1〜P4)
 
 ## 日付
