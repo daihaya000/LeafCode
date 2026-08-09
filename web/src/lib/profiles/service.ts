@@ -18,6 +18,7 @@ import {
   PENDING_COPY_PREFIX,
   profilesRoot,
   resolveSlug,
+  globalConfigLinkPath,
 } from "./paths";
 import {
   ensureRegistry,
@@ -96,6 +97,21 @@ export async function listProfiles(): Promise<ListResult> {
     migration = {
       needed: true,
       sourcePath: activeProfile.path,
+      estimatedBytes,
+    };
+  } else if (link.state === "realdir" && isValidProfileDir(globalConfigLinkPath())) {
+    // A legacy installation may still have the config as a real directory,
+    // so it is not registered as a switchable profile yet. Offer migration
+    // before requiring the user to create a junction manually.
+    let estimatedBytes = 0;
+    try {
+      estimatedBytes = await computeDirSizeBytes(globalConfigLinkPath());
+    } catch {
+      /* best effort */
+    }
+    migration = {
+      needed: true,
+      sourcePath: globalConfigLinkPath(),
       estimatedBytes,
     };
   }
@@ -294,24 +310,25 @@ export type MigrateResult = { jobId: string } | ActivateError;
 export function migrateDefault(mode: MigrateMode = "copy"): MigrateResult {
   const { state, link } = ensureRegistry();
 
-  if (link.state !== "link" || !link.target) {
+  const realdirMigration = link.state === "realdir";
+  if ((!realdirMigration && link.state !== "link") || (!realdirMigration && !link.target)) {
     return { status: 409, error: "リンクが存在しないため移行できません。" };
   }
 
   const activeId = resolveActiveId(state, link);
   const active = state.profiles.find((p) => p.id === activeId);
-  if (!active?.external) {
+  const sourcePath = realdirMigration ? globalConfigLinkPath() : active?.path;
+  if (!sourcePath || (!realdirMigration && !active?.external)) {
     return { status: 409, error: "移行対象のプロファイルが見つかりません。" };
   }
-  if (!dirExists(active.path) || !isValidProfileDir(active.path)) {
+  if (!dirExists(sourcePath) || !isValidProfileDir(sourcePath)) {
     return { status: 409, error: "移行元が設定ディレクトリとして認識できません。" };
   }
   if (isBusy()) {
     return { status: 409, error: "別の処理が進行中です。完了してから再試行してください。" };
   }
 
-  const sourcePath = active.path;
-  const sourceId = active.id;
+  const sourceId = active?.id;
   const pendingDest = path.join(
     profilesRoot(),
     `${PENDING_COPY_PREFIX}${randomBytes(4).toString("hex")}`,
@@ -352,18 +369,39 @@ export function migrateDefault(mode: MigrateMode = "copy"): MigrateResult {
     }
 
     await fsp.rename(pendingDest, finalDest);
-    swapLink(finalDest);
+
+    // A real directory occupies the link path itself. Move it aside before
+    // replacing the path with a junction, then restore it if the swap fails.
+    let realdirBackupPath: string | undefined;
+    if (realdirMigration) {
+      realdirBackupPath = `${sourcePath}.migration-backup-${randomBytes(4).toString("hex")}`;
+      await fsp.rename(sourcePath, realdirBackupPath);
+    }
+    try {
+      swapLink(finalDest);
+    } catch (error) {
+      if (realdirBackupPath) {
+        try {
+          await fsp.rename(realdirBackupPath, sourcePath);
+        } catch {
+          /* preserve the error that caused the failed migration */
+        }
+      }
+      throw error;
+    }
 
     // Update registry: rename old default to a backup label, add new default.
     const freshState = readState();
-    const oldEntry = freshState.profiles.find((p) => p.id === sourceId);
+    const oldEntry = sourceId
+      ? freshState.profiles.find((p) => p.id === sourceId)
+      : undefined;
     let sourceRemovalNote: string | undefined;
     let sourceRemoved = false;
     if (mode === "move") {
       try {
         // The link already points at finalDest, so removing the old target
         // cannot affect the active profile or follow the junction.
-        await fsp.rm(sourcePath, { recursive: true, force: false });
+        await fsp.rm(realdirBackupPath ?? sourcePath, { recursive: true, force: false });
         sourceRemoved = true;
       } catch {
         sourceRemovalNote = "元のプロファイルを削除できなかったため、移行前バックアップとして残しました。";
@@ -374,6 +412,8 @@ export function migrateDefault(mode: MigrateMode = "copy"): MigrateResult {
       oldEntry.external = true;
     } else if (oldEntry && sourceRemoved) {
       freshState.profiles = freshState.profiles.filter((p) => p.id !== sourceId);
+    } else if (realdirBackupPath && !sourceRemoved) {
+      freshState.profiles.push(makeProfile("default（移行前バックアップ）", realdirBackupPath));
     }
     const newProfile = makeProfile("default", finalDest);
     freshState.profiles.push(newProfile);

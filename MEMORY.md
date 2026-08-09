@@ -2531,6 +2531,26 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 
 ---
 
+# 作業ログ: 実体ディレクトリからのプロファイル移行導線
+
+## 日付
+
+2026-08-09
+
+## 追加修正
+
+- `~/.config/opencode` がまだ junction ではなく実体ディレクトリの場合も、プロファイル設定画面に移行カードを表示するようにした。
+- 実体ディレクトリを `profiles/default` へ複製後、元のパスを一時バックアップ名へ退避して junction に置換する。
+- `copy` は退避した元ディレクトリを外部バックアップとしてレジストリに残し、`move` は退避先を削除して旧エントリを除外する。
+- junction 置換に失敗した場合は退避ディレクトリを元のパスへ戻す。
+
+## 検証結果
+
+- `npx vitest run src/lib/profiles/service.test.ts src/components/settings/ProfilesSettings.test.tsx` 成功（35 tests）。
+- `npx tsc --noEmit` 成功。
+
+---
+
 # 作業ログ: 停止済みGoal Loopのコンポーサー復元
 
 ## 日付

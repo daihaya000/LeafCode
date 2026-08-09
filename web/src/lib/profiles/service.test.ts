@@ -138,6 +138,7 @@ describe("listProfiles", () => {
     expect(result.linkState).toBe("realdir");
     expect(result.canSwitch).toBe(false);
     expect(result.reason).toMatch(/実体ディレクトリ/);
+    expect(result.migration?.needed).toBe(true);
   });
 
   it("migrates legacy provider cursor-acp → cursor across all profiles", async () => {
@@ -444,6 +445,30 @@ describe("migrateDefault", () => {
     expect(state.profiles).toHaveLength(1);
     expect(state.profiles[0].name).toBe("default");
     expect(state.profiles[0].external).toBeUndefined();
+  });
+
+  it("converts a legacy real directory into a junction during migration", async () => {
+    const source = makeConfigDir(linkPath(), "REAL");
+    fs.mkdirSync(path.join(source, "packages"), { recursive: true });
+
+    const result = migrateDefault("move");
+    await waitForJob((result as { jobId: string }).jobId);
+
+    const job = getJob((result as { jobId: string }).jobId)!;
+    expect(job.state).toBe("done");
+    expect(fs.lstatSync(linkPath()).isSymbolicLink()).toBe(true);
+    expect(fs.realpathSync(linkPath())).toBe(
+      fs.realpathSync(path.join(profilesDir(), "default")),
+    );
+
+    const state = JSON.parse(
+      fs.readFileSync(
+        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        "utf8",
+      ),
+    );
+    expect(state.profiles).toHaveLength(1);
+    expect(state.profiles[0].name).toBe("default");
   });
 
   it("returns 409 when there is no external active profile", async () => {

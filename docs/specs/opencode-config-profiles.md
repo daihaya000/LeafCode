@@ -138,7 +138,7 @@ type ProfilesState = {
   - `<profileId>`: 複製。`node_modules` は**含める**（プラグインの実行時依存）。`.git` は**除外する**（複製が元リポジトリと同じ remote を持ち誤って push される事故を防ぐため。移行と異なり複製は別リポジトリ扱い）。非同期ジョブとして実行し `{ jobId }` を返す。
   - 生成先は常に `dataDir()/profiles/<slug>`。slug 衝突時は `-2`, `-3` を付す。
 - `POST /api/profiles/migrate`
-  - 本文 `{ mode?: "copy" | "move" }`。`default` を dataDir へ移行する。既定の `copy` はコピー元をバックアップとして残し、`move` はリンク切替成功後にコピー元を削除する。非同期ジョブとして `{ jobId }` を返す。
+  - 本文 `{ mode?: "copy" | "move" }`。`default` を dataDir へ移行する。既定の `copy` はコピー元をバックアップとして残し、`move` はリンク切替成功後にコピー元を削除する。リンクがまだ無い実体ディレクトリも移行対象とし、元のパスを退避または削除して junction に置換する。非同期ジョブとして `{ jobId }` を返す。
 - `GET /api/profiles/jobs/[jobId]`
   - 応答: `{ state: "running" | "done" | "error", copied: number, total: number, note?: string, error?: string }`
 - `PATCH /api/profiles/[id]`
