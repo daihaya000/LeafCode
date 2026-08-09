@@ -1986,6 +1986,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     if (typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver(pinned);
       ro.observe(content);
+      // An error detail can expand in a child effect before this observer is
+      // attached. Check once now so that initial layout change is not missed.
+      pinned();
       return () => ro.disconnect();
     }
     // Fallback for test/legacy environments without ResizeObserver.
