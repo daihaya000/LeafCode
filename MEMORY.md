@@ -1,5 +1,24 @@
 # 作業ログ: HomeViewのAuto選択をTaskViewへ引き継ぐ
 
+# 作業ログ: バグハント
+
+## 日付
+
+2026-08-09
+
+## 発見事項
+
+- `web/src/lib/useSessionStream.stuck-busy.test.ts` は単独実行でも4件中2件が失敗した。SSEイベントが継続している場合と、送信後にセッションがstatus mapから消えた場合に、期待する `busy` ではなく `idle` になる。作業中表示または送信ロックが早く解除される可能性がある。
+- `web/src/lib/opencode-events.test.ts` は単独実行でも `session.next.step.ended` の網羅性チェックに失敗した。`useSessionStream.ts` が分岐するイベントと `HANDLED_EVENT_TYPES` の登録が不一致で、イベント処理のドリフト検知が失敗している。
+- `npm run lint` はエラーなしだが、`TaskView.tsx` の `useEffect` の `taskId` 依存漏れと、2つのテストファイルの未使用変数について警告が残っている。
+
+## 検証
+
+- `npm run typecheck` ... 成功
+- `npm test -- --run` ... 248 files中246成功、2957 tests中2954成功
+- 新機能の `collaboration-context.test.ts` と proxy route tests ... 成功
+- 失敗した2テストファイルは単独実行でも再現
+
 ## 日付
 
 2026-08-09
