@@ -4,6 +4,28 @@
 
 2026-08-09
 
+## 作業完了後も「作業中」が残る不具合
+
+### 原因
+
+`session.idle` の直後、同じSSEバースト内で遅れて届いた `session.status=busy/retry` が、Reactの再描画前に状態を再びbusyへ戻す可能性があった。
+
+### 修正内容
+
+- `useSessionStream` のイベント処理で idle 後の遅延busy/retryを無視する同期判定を追加。
+- 新しい送信時は `pendingMutation` を先に立てるため、正規の次ターンは従来どおりbusyへ遷移する。
+- idle/busyイベント受信時に `statusRef` も同期更新し、イベントバースト中の古い参照を防止。
+- 遅延busyを抑止する回帰テストを追加。
+
+### 検証結果
+
+- `npm run test -- --run src/lib/useSessionStream.test.ts` ... 64 tests 成功
+- `npm run typecheck` ... 成功
+
+## 日付
+
+2026-08-09
+
 ## 依頼
 
 HomeViewでAutoを選んで開始したタスクのTaskViewコンポーザーが、Autoの解決先モデルへ切り替わらずAuto表示を維持するようにする。

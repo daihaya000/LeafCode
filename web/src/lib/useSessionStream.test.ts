@@ -10,6 +10,7 @@ import {
   MESSAGE_REFETCH_TRUST_SSE_MS,
   nextReconcileDelayMs,
   resolveResyncStatus,
+  shouldApplySessionEventStatus,
   sessionStreamReducer,
   SESSION_COMMAND_TIMEOUT_MS,
   SESSION_HANG_TIMEOUT_MS,
@@ -650,6 +651,28 @@ describe("filterGoalLoopMessages", () => {
     ];
     const out = filterGoalLoopMessages(msgs);
     expect(out.map((m) => m.info.id)).toEqual(["u1"]);
+  });
+});
+
+describe("shouldApplySessionEventStatus", () => {
+  it("ignores a delayed busy event after idle", () => {
+    expect(
+      shouldApplySessionEventStatus({
+        currentType: "idle",
+        nextType: "busy",
+        pendingMutation: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts a new turn after idle once a mutation is pending", () => {
+    expect(
+      shouldApplySessionEventStatus({
+        currentType: "idle",
+        nextType: "busy",
+        pendingMutation: true,
+      }),
+    ).toBe(true);
   });
 });
 

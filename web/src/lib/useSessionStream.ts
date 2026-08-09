@@ -287,6 +287,23 @@ export function resolveResyncStatus(opts: {
   return { apply: !staleIdle && !staleBusy, clearPending: false };
 }
 
+/**
+ * Do not let a delayed busy event undo a terminal idle event before React has
+ * rendered the idle state. A new send marks pendingMutation first, so a real
+ * subsequent turn is still accepted.
+ */
+export function shouldApplySessionEventStatus(opts: {
+  currentType: SessionStatus["type"] | undefined | null;
+  nextType: SessionStatus["type"];
+  pendingMutation: boolean;
+}): boolean {
+  return !(
+    !opts.pendingMutation &&
+    opts.currentType === "idle" &&
+    (opts.nextType === "busy" || opts.nextType === "retry")
+  );
+}
+
 export function createInitialStreamState(scopeKey = ""): StreamState {
   return {
     scopeKey,
@@ -1233,9 +1250,19 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (type === "session.status") {
         if (props.sessionID === sid && props.status) {
           const status = props.status as SessionStatus;
+          if (
+            !shouldApplySessionEventStatus({
+              currentType: statusRef.current?.type,
+              nextType: status.type,
+              pendingMutation: pendingMutationRef.current,
+            })
+          ) {
+            return;
+          }
           if (status.type === "busy" || status.type === "retry" || status.type === "idle") {
             pendingMutationRef.current = false;
           }
+          statusRef.current = status;
           dispatch({ kind: "status", status });
           if (status.type === "idle") {
             dispatch({ kind: "sessionError", message: null });
@@ -1246,6 +1273,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (type === "session.idle") {
         if (props.sessionID === sid) {
           pendingMutationRef.current = false;
+          statusRef.current = { type: "idle" };
           dispatch({ kind: "status", status: { type: "idle" } });
           dispatch({ kind: "sessionError", message: null });
           // After busy-period init skip, pull the authoritative message list.
@@ -1794,6 +1822,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       idleStreakRef.current = 0;
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
+      statusRef.current = { type: "busy" };
       const startedAt = Date.now();
       mutationStartedAtRef.current = startedAt;
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
@@ -1864,6 +1893,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       idleStreakRef.current = 0;
       dispatch({ kind: "sessionError", message: null });
       dispatch({ kind: "status", status: { type: "busy" } });
+      statusRef.current = { type: "busy" };
       const startedAt = Date.now();
       mutationStartedAtRef.current = startedAt;
       const body: Record<string, unknown> = {
