@@ -102,6 +102,8 @@ export function isPrivateAddress(value: string): boolean {
   if (/^10\./.test(v)) return true;
   if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(v)) return true;
   if (/^192\.168\./.test(v)) return true;
+  // Tailscale and several other VPNs use the shared CGNAT range.
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)) return true;
   // IPv6 unique local (fc00::/7).
   if (/^fc/.test(v) || /^fd/.test(v)) return true;
   // IPv4 link-local.

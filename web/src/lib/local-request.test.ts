@@ -174,6 +174,7 @@ describe("isPrivateAddress", () => {
     expect(isPrivateAddress("10.0.0.5")).toBe(true);
     expect(isPrivateAddress("172.16.0.5")).toBe(true);
     expect(isPrivateAddress("fd00::1")).toBe(true);
+    expect(isPrivateAddress("100.100.10.20")).toBe(true);
     expect(isPrivateAddress("203.0.113.50")).toBe(false);
     expect(isPrivateAddress("example.com")).toBe(false);
   });

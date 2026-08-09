@@ -45,6 +45,13 @@ describe("isPrivateHost", () => {
     expect(isPrivateHost("fd00::1")).toBe(true);
   });
 
+  it("accepts the shared VPN address range used by Tailscale", () => {
+    expect(isPrivateHost("100.64.0.10")).toBe(true);
+    expect(isPrivateHost("100.127.255.254")).toBe(true);
+    expect(isPrivateHost("100.63.255.255")).toBe(false);
+    expect(isPrivateHost("100.128.0.1")).toBe(false);
+  });
+
   it("rejects loopback and public addresses", () => {
     expect(isPrivateHost("127.0.0.1")).toBe(true); // loopback is trivially private
     expect(isPrivateHost("172.32.0.1")).toBe(false);
@@ -102,6 +109,14 @@ describe("maybeRedirectToLocalhost", () => {
     expect(result).toBe("http://127.0.0.1:3000/task/1?tab=overview");
     const replace = vi.mocked(window.location.replace);
     expect(replace).toHaveBeenCalledWith("http://127.0.0.1:3000/task/1?tab=overview");
+  });
+
+  it("redirects a Tailscale URL to loopback when the host control plane is reachable", async () => {
+    stubLocation("https://100.100.10.20:8443/task/1");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+
+    const result = await maybeRedirectToLocalhost();
+    expect(result).toBe("https://127.0.0.1:8443/task/1");
   });
 
   it("preserves protocol and port while swapping the hostname", async () => {

@@ -2864,3 +2864,20 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm --prefix web run typecheck` ... 成功
 - `npx eslint src/components/task/PartView.tsx src/components/task/TaskView.tsx` ... 成功
 - 本番ビルドはプロジェクト指示により未実行。
+# 作業ログ: Tailscale等のVPN経由でホストPCを127.0.0.1へフォールバック
+
+## 日付
+
+2026-08-09
+
+## 実施内容
+
+- `web/src/lib/localhost-redirect.ts` が Tailscale 標準の `100.64.0.0/10` を同一ホスト判定対象として扱うようにした。
+- ホストPC上で制御プレーンへ到達できる場合、VPNアドレスのWebUIを従来どおり `127.0.0.1` へリダイレクトする回帰テストを追加した。
+- `web/src/lib/local-request.ts` のプライベートネットワーク判定にも同じVPN帯域を追加した。
+
+## 検証結果
+
+- `npm run test -- --run src/lib/localhost-redirect.test.ts src/lib/local-request.test.ts` ... 37 tests 成功
+- `npm run typecheck` ... 成功
+- `npm run lint -- src/lib/localhost-redirect.ts src/lib/local-request.ts` ... 成功
