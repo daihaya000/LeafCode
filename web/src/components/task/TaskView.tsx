@@ -1396,17 +1396,15 @@ export function TaskView({ taskId }: { taskId: string }) {
               }
             }
           }
-          // Prefer user-configured default model, then the last actually-used
-          // model (set by HomeView on submission — including "auto" — so an
-          // Auto task carries over here), then OpenCode config.model
-          // (provider/modelID), then provider defaults. `"auto"` is part of
-          // selectableOptions (mirrors HomeView), so a default/last-used of
-          // "auto" restores here instead of silently falling back to a
-          // concrete model and flipping the dropdown on the first assistant
-          // reply.
-          let initial = "";
+          // A task created with Auto must keep Auto in the follow-up
+          // composer. Its task-scoped record takes precedence over global
+          // defaults because the latter may point at a concrete model.
+          let initial = readAutoTaskRecord(taskId)
+            ? AUTO_MODEL_VALUE
+            : "";
           const savedDefault = readDefaultModel();
           if (
+            !initial &&
             savedDefault &&
             selectableOptions.some((o) => o.value === savedDefault)
           ) {

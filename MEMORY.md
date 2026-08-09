@@ -1,3 +1,29 @@
+# 作業ログ: HomeViewのAuto選択をTaskViewへ引き継ぐ
+
+## 日付
+
+2026-08-09
+
+## 依頼
+
+HomeViewでAutoを選んで開始したタスクのTaskViewコンポーザーが、Autoの解決先モデルへ切り替わらずAuto表示を維持するようにする。
+
+## 実装内容
+
+- `web/src/components/task/TaskView.tsx` で、HomeViewが保存したタスク単位のAuto選定レコードを初期モデル解決で最優先にした。
+- ユーザー設定の具体的な既定モデルが存在しても、Autoで開始したタスクのドロップダウンはAutoを表示するようにした。
+- `TaskView.test.tsx` に、具体的な既定モデルとAutoタスクレコードが共存する回帰テストを追加した。
+
+## 検証結果
+
+- `npm run test -- --run src/components/task/TaskView.test.tsx` ... 116 tests 成功
+- `npm run typecheck` ... 成功
+
+## 変更ファイル
+
+- `web/src/components/task/TaskView.tsx`
+- `web/src/components/task/TaskView.test.tsx`
+
 # 作業ログ: CodexBar 二列表示をデフォルト化
 
 ## 日付

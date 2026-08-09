@@ -2519,6 +2519,20 @@ describe("TaskView", () => {
       // carries the concrete model Auto resolved to) must NOT flip the
       // dropdown — the user keeps Auto for every follow-up.
       readLastUsedModel.mockReturnValue("auto");
+      localStorage.setItem("webui:default-model", "anthropic::claude-opus-5");
+      sessionStorage.setItem(
+        "webui:auto-task:ws1",
+        JSON.stringify({
+          decision: {
+            providerID: "anthropic",
+            modelID: "claude-haiku-4-5",
+            variant: "minimal",
+            tier: "light",
+            mode: "cost",
+            reason: "test",
+          },
+        }),
+      );
       const streamMock = useSessionStream();
       useSessionStream.mockReturnValue({
         ...streamMock,
