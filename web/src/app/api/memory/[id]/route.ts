@@ -25,12 +25,16 @@ export async function PATCH(
   if (!id) return badRequest("invalid memory id");
 
   const body = (await req.json().catch(() => null)) as {
+    workspaceId?: unknown;
     content?: unknown;
     kind?: unknown;
   } | null;
   if (!body || typeof body !== "object") return badRequest("invalid body");
+  if (typeof body.workspaceId !== "string" || !body.workspaceId) {
+    return badRequest("workspaceId is required");
+  }
 
-  const patch: { content?: string; kind?: Parameters<typeof updateMemory>[1]["kind"] } = {};
+  const patch: { content?: string; kind?: Parameters<typeof updateMemory>[2]["kind"] } = {};
   if (body.content !== undefined) {
     if (typeof body.content !== "string") return badRequest("content must be a string");
     patch.content = body.content;
@@ -42,7 +46,7 @@ export async function PATCH(
 
   let updated: ReturnType<typeof updateMemory>;
   try {
-    updated = updateMemory(id, patch);
+    updated = updateMemory(id, body.workspaceId, patch);
   } catch (err) {
     return badRequest(err instanceof Error ? err.message : "invalid update");
   }
@@ -54,17 +58,19 @@ export async function PATCH(
 
 /** DELETE /api/memory/:id — delete a memory (reject on a candidate). */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = await requireAuthorized(_req);
+  const denied = await requireAuthorized(req);
   if (denied) return denied;
   const { id } = await params;
   if (!id) return badRequest("invalid memory id");
 
-  if (!deleteMemory(id)) {
+  const workspaceId = req.nextUrl.searchParams.get("workspace_id");
+  if (!workspaceId) return badRequest("workspace_id is required");
+  if (!deleteMemory(id, workspaceId)) {
     return NextResponse.json({ error: "memory not found" }, { status: 404 });
   }
-  logMemoryAudit("delete", { memoryId: id });
+  logMemoryAudit("delete", { memoryId: id, workspaceId });
   return NextResponse.json({ ok: true });
 }

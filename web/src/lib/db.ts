@@ -334,6 +334,17 @@ export function getDb(): Database.Database {
       use_count INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_memories_ws ON memories(workspace_id, approved);
+    CREATE TABLE IF NOT EXISTS memory_audit_log (
+      id INTEGER PRIMARY KEY,
+      action TEXT NOT NULL,
+      workspace_id TEXT,
+      memory_id TEXT,
+      session_id TEXT,
+      detail TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_audit_workspace
+      ON memory_audit_log(workspace_id, created_at DESC);
     -- FTS5 access path. id is carried as an UNINDEXED column (TEXT PK does not
     -- align with SQLite rowid), so the sync never relies on rowid.
     CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
@@ -858,6 +869,10 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   const row = getWorkspace(id);
   if (!row) return undefined;
   getDb().prepare("DELETE FROM session_bindings WHERE workspace_id = ?").run(id);
+  // memories has no FK on older installed databases, so clean it explicitly
+  // along with its audit trail before deleting the workspace row.
+  getDb().prepare("DELETE FROM memories WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM memory_audit_log WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   return row;
 }

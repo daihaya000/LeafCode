@@ -92,15 +92,34 @@ function createMemoryStore(db, workspaceId) {
     throw new Error('memory-mcp requires a workspace (--workspace=<id> or OPENCODE_WEBUI_MEMORY_WORKSPACE)');
   }
 
-  const selectById = db.prepare('SELECT * FROM memories WHERE id = ?');
+  // Keep MCP writes auditable even when it starts before the WebUI has opened
+  // an existing database and applied its schema initialization.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory_audit_log (
+      id INTEGER PRIMARY KEY,
+      action TEXT NOT NULL,
+      workspace_id TEXT,
+      memory_id TEXT,
+      session_id TEXT,
+      detail TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
+  const selectById = db.prepare('SELECT * FROM memories WHERE id = ? AND workspace_id = ?');
   const insert = db.prepare(`
     INSERT INTO memories
       (id, workspace_id, kind, content, source_session_id, provenance, approved,
        created_at, updated_at, last_used_at, use_count)
     VALUES (?, ?, ?, ?, NULL, ?, 1, ?, ?, NULL, 0)
   `);
-  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), updated_at = ? WHERE id = ?');
-  const remove = db.prepare('DELETE FROM memories WHERE id = ?');
+  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), updated_at = ? WHERE id = ? AND workspace_id = ?');
+  const remove = db.prepare('DELETE FROM memories WHERE id = ? AND workspace_id = ?');
+  const audit = db.prepare(`
+    INSERT INTO memory_audit_log
+      (action, workspace_id, memory_id, session_id, detail, created_at)
+    VALUES (?, ?, ?, NULL, ?, ?)
+  `);
 
   return {
     workspaceId,
@@ -142,7 +161,8 @@ function createMemoryStore(db, workspaceId) {
       const id = randomUUID();
       const now = Date.now();
       insert.run(id, workspaceId, kind, content.trim(), 'agent', now, now);
-      return toMemoryDto(selectById.get(id));
+      audit.run('create', workspaceId, id, 'provenance=agent', now);
+      return toMemoryDto(selectById.get(id, workspaceId));
     },
     update({ id, content, kind }) {
       if (content !== undefined && memoryContentError(content)) {
@@ -156,21 +176,24 @@ function createMemoryStore(db, workspaceId) {
         kind !== undefined ? kind : null,
         now,
         id,
+        workspaceId,
       );
       if (changed.changes === 0) {
         const error = new Error('memory not found');
         error.code = 'NOT_FOUND';
         throw error;
       }
-      return toMemoryDto(selectById.get(id));
+      audit.run('update', workspaceId, id, null, now);
+      return toMemoryDto(selectById.get(id, workspaceId));
     },
     delete({ id }) {
-      const changed = remove.run(id);
+      const changed = remove.run(id, workspaceId);
       if (changed.changes === 0) {
         const error = new Error('memory not found');
         error.code = 'NOT_FOUND';
         throw error;
       }
+      audit.run('delete', workspaceId, id, null, Date.now());
       return { ok: true };
     },
   };

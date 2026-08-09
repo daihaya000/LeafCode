@@ -26,6 +26,15 @@ function createMemorySchema(db) {
       use_count INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
+    CREATE TABLE memory_audit_log (
+      id INTEGER PRIMARY KEY,
+      action TEXT NOT NULL,
+      workspace_id TEXT,
+      memory_id TEXT,
+      session_id TEXT,
+      detail TEXT,
+      created_at INTEGER NOT NULL
+    );
     CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
     CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
       INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);
@@ -182,6 +191,33 @@ test('memory MCP: validation and not-found errors', async (t) => {
   assert.equal(tooLong.isError, true);
 
   assert.equal(stderr, '');
+});
+
+test('memory MCP: cannot modify a memory in another workspace', async (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const db = new Database(path.join(dir, 'webui.db'));
+  createMemorySchema(db);
+  db.prepare(
+    `INSERT INTO memories (id, workspace_id, kind, content, provenance, approved, created_at, updated_at, use_count)
+     VALUES ('other-memory', 'ws-2', 'fact', 'private', 'manual', 1, 1, 1, 0)`,
+  ).run();
+  db.close();
+
+  const transport = new StdioClientTransport(mkLaunch(dir));
+  const client = await connectClient(transport);
+  t.after(() => client.close());
+  t.after(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const updated = await client.callTool({
+    name: 'memory_update',
+    arguments: { id: 'other-memory', content: 'changed' },
+  });
+  assert.equal(updated.isError, true);
+  const deleted = await client.callTool({
+    name: 'memory_delete',
+    arguments: { id: 'other-memory' },
+  });
+  assert.equal(deleted.isError, true);
 });
 
 test('memory MCP requires a workspace; CLI --workspace wins over env', async () => {

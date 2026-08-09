@@ -80,7 +80,7 @@ describe("memory CRUD + injection", () => {
     });
     expect(searchMemories({ workspaceId: "ws-1", query: "tests", limit: 10 })).toHaveLength(0);
     expect(memoryInjectionFor("ws-1")).not.toContain("always run tests before commit");
-    approveMemory(cand.id);
+    approveMemory(cand.id, "ws-1");
     expect(countApprovedMemories("ws-1")).toBe(2);
     const found = searchMemories({ workspaceId: "ws-1", query: "tests", limit: 10 });
     expect(found).toHaveLength(1);
@@ -97,17 +97,31 @@ describe("memory CRUD + injection", () => {
       content: "old",
       provenance: "manual",
     });
-    const upd = updateMemory(m.id, { content: "new", kind: "preference" });
+    const upd = updateMemory(m.id, "ws-1", { content: "new", kind: "preference" });
     expect(upd?.content).toBe("new");
     expect(upd?.kind).toBe("preference");
-    expect(() => updateMemory(m.id, { content: "" })).toThrow(RangeError);
-    expect(deleteMemory(m.id)).toBe(true);
+    expect(() => updateMemory(m.id, "ws-1", { content: "" })).toThrow(RangeError);
+    expect(deleteMemory(m.id, "ws-1")).toBe(true);
     const present = (
       getDb().prepare("SELECT COUNT(*) AS n FROM memories WHERE id = ?").get(m.id) as {
         n: number;
       }
     ).n;
     expect(present).toBe(0);
+  });
+
+  it("does not update or delete a memory from another workspace", () => {
+    const m = createMemory({
+      workspaceId: "ws-private",
+      kind: "fact",
+      content: "private convention",
+      provenance: "manual",
+    });
+    expect(updateMemory(m.id, "ws-other", { content: "changed" })).toBeUndefined();
+    expect(deleteMemory(m.id, "ws-other")).toBe(false);
+    expect(getDb().prepare("SELECT content FROM memories WHERE id = ?").get(m.id)).toEqual({
+      content: "private convention",
+    });
   });
 
   it("dedupes exact duplicates in batch insert", () => {

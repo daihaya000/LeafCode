@@ -143,7 +143,7 @@ export function MemorySettings() {
       const data = await sendJson<{ memory?: MemoryDto }>(
         "POST",
         `/api/memory/${encodeURIComponent(id)}/approve`,
-        {},
+        { workspaceId: selectedWorkspace },
       );
       if (data.memory) {
         setMemories((prev) => prev.map((m) => (m.id === id ? data.memory! : m)));
@@ -160,7 +160,9 @@ export function MemorySettings() {
     setBusy(true);
     try {
       for (const id of candidates.map((m) => m.id)) {
-        await sendJson("POST", `/api/memory/${encodeURIComponent(id)}/approve`, {});
+        await sendJson("POST", `/api/memory/${encodeURIComponent(id)}/approve`, {
+          workspaceId: selectedWorkspace,
+        });
       }
       hint(`${candidates.length}件を承認しました`);
       void loadMemories(selectedWorkspace);
@@ -173,7 +175,10 @@ export function MemorySettings() {
 
   const removeOne = async (id: string) => {
     try {
-      await sendJson("DELETE", `/api/memory/${encodeURIComponent(id)}`);
+      await sendJson(
+        "DELETE",
+        `/api/memory/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(selectedWorkspace)}`,
+      );
       setMemories((prev) => prev.filter((m) => m.id !== id));
       hint("削除しました");
     } catch (err) {
@@ -193,7 +198,7 @@ export function MemorySettings() {
       const data = await sendJson<{ memory?: MemoryDto }>(
         "PATCH",
         `/api/memory/${encodeURIComponent(id)}`,
-        { content: editContent, kind: editKind },
+        { workspaceId: selectedWorkspace, content: editContent, kind: editKind },
       );
       if (data.memory) {
         setMemories((prev) => prev.map((m) => (m.id === id ? data.memory! : m)));

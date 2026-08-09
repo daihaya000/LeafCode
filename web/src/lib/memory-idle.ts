@@ -21,6 +21,7 @@ import { runMemoryExtraction } from "./memory-extract";
 import { isAutoExtractEnabled } from "./goal-memory-hook";
 
 export const IDLE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
+const inFlightIdleExtractions = new Set<string>();
 
 export type SessionBindingRow = {
   workspaceId: string;
@@ -70,23 +71,32 @@ export function idleSessionsSince(
 }
 
 /**
- * Launch extraction for an idle session (marking the ledger first so a crash
- * mid-extraction still counts as handled). Fire-and-forget: never throws.
+ * Launch extraction for an idle session. A process-local in-flight guard avoids
+ * duplicate scheduler launches; the durable ledger is written only on success.
  */
 function launchIdleExtraction(row: SessionBindingRow): boolean {
   if (!getWorkspace(row.workspaceId)) return false;
-  markIdleExtracted(row.workspaceId, row.sessionId);
+  const key = `${row.workspaceId}\u0000${row.sessionId}`;
+  if (inFlightIdleExtractions.has(key)) return false;
+  inFlightIdleExtractions.add(key);
   void runMemoryExtraction({
     workspaceId: row.workspaceId,
     sessionId: row.sessionId,
-  }).catch(() => {
-    // Background extraction must never surface an error to the scheduler.
-  });
+  })
+    .then((result) => {
+      if (!result.error) markIdleExtracted(row.workspaceId, row.sessionId);
+    })
+    .catch(() => {
+      // A later sweep retries failed background extractions.
+    })
+    .finally(() => {
+      inFlightIdleExtractions.delete(key);
+    });
   return true;
 }
 
 /**
- * Sweep every bound session idle past the threshold and not yet extracted.
+ * Sweep every bound session idle past the threshold and not yet successfully extracted.
  * Returns the number of extractions launched this tick. Gated by the
  * `memory.auto_extract` setting (shared with the goal-completed hook).
  */

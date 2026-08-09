@@ -17,7 +17,10 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   const { searchParams } = req.nextUrl;
-  const workspaceId = searchParams.get("workspace_id") ?? undefined;
+  const workspaceId = searchParams.get("workspace_id");
+  if (!workspaceId) {
+    return NextResponse.json({ error: "workspace_id is required" }, { status: 400 });
+  }
   const approved = parseApproved(searchParams.get("approved"));
   const kindParam = searchParams.get("kind");
   const kind = kindParam && isMemoryKind(kindParam) ? kindParam : undefined;

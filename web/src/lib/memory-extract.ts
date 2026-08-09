@@ -14,6 +14,7 @@ import { chooseAutoModel, type AutoDecision } from "./auto-model";
 import { OcError, ocServer } from "./oc-server";
 import {
   SESSION_LIST_PATH,
+  sessionPath,
   sessionMessagePath,
   sessionPromptAsyncPath,
 } from "./opencode-paths";
@@ -207,6 +208,7 @@ export async function runMemoryExtraction(input: {
   }
 
   try {
+  try {
     await ocServer(directory, sessionPromptAsyncPath(sessionID), {
       method: "POST",
       body: { parts: [{ type: "text", text: buildExtractionPrompt(transcript) }] },
@@ -267,4 +269,16 @@ export async function runMemoryExtraction(input: {
     detail: `created=${result.created} skipped=${result.skipped}`,
   });
   return result;
+  } finally {
+    // Extraction sessions are implementation details; never leave them in the
+    // user's session list after a successful run, error, or timeout.
+    try {
+      await ocServer(directory, sessionPath(sessionID), {
+        method: "DELETE",
+        timeoutMs: 10_000,
+      });
+    } catch {
+      // Cleanup must not replace the extraction result.
+    }
+  }
 }

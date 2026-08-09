@@ -78,28 +78,48 @@ describe("memory API", () => {
       provenance: "auto-extract",
       approved: false,
     });
-    const apr = await approvePOST(req(`/api/memory/${created.id}/approve`, { method: "POST" }), {
+    const apr = await approvePOST(req(`/api/memory/${created.id}/approve`, {
+      method: "POST",
+      body: { workspaceId: "ws-a" },
+    }), {
       params: Promise.resolve({ id: created.id }),
     });
     expect(apr.status).toBe(200);
 
     const pat = await PATCH(req(`/api/memory/${created.id}`, {
       method: "PATCH",
-      body: { content: "candidate updated", kind: "fact" },
+      body: { workspaceId: "ws-a", content: "candidate updated", kind: "fact" },
     }), { params: Promise.resolve({ id: created.id }) });
     expect(pat.status).toBe(200);
 
-    const del = await DELETE(req(`/api/memory/${created.id}`, { method: "DELETE" }), {
+    const del = await DELETE(req(`/api/memory/${created.id}?workspace_id=ws-a`, { method: "DELETE" }), {
       params: Promise.resolve({ id: created.id }),
     });
     expect(del.status).toBe(200);
   });
 
   it("returns 404 for an unknown memory", async () => {
-    const res = await PATCH(req("/api/memory/nope", { method: "PATCH", body: { content: "x" } }), {
+    const res = await PATCH(req("/api/memory/nope", {
+      method: "PATCH",
+      body: { workspaceId: "ws-a", content: "x" },
+    }), {
       params: Promise.resolve({ id: "nope" }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it("requires a workspace and rejects an operation scoped to another workspace", async () => {
+    const privateMemory = createMemory({
+      workspaceId: "ws-a",
+      kind: "fact",
+      content: "private",
+      provenance: "manual",
+    });
+    expect((await GET(req("/api/memory"))).status).toBe(400);
+    expect((await PATCH(req(`/api/memory/${privateMemory.id}`, {
+      method: "PATCH",
+      body: { workspaceId: "ws-other", content: "changed" },
+    }), { params: Promise.resolve({ id: privateMemory.id }) })).status).toBe(404);
   });
 
   it("extract endpoint accepts workspace + session", async () => {

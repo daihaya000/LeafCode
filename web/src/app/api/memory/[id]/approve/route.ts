@@ -15,7 +15,11 @@ export async function POST(
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "invalid memory id" }, { status: 400 });
 
-  const approved = approveMemory(id);
+  const body = (await req.json().catch(() => null)) as { workspaceId?: unknown } | null;
+  if (typeof body?.workspaceId !== "string" || !body.workspaceId) {
+    return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+  }
+  const approved = approveMemory(id, body.workspaceId);
   if (!approved) {
     return NextResponse.json({ error: "memory not found" }, { status: 404 });
   }

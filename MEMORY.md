@@ -2589,3 +2589,18 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 
 検証: `npm --prefix browser-bridge test` (87件成功)、
 `npm --prefix web run typecheck` (成功)。
+
+# 修正記録: メモリ機能レビュー指摘への対応 (2026-08-09)
+
+- Web API は `workspace_id` / `workspaceId` を必須化し、承認・更新・削除の
+  DB操作を `(id, workspace_id)` で限定した。設定UIもworkspace IDを送る。
+- MCP の更新・削除・取得も固定workspaceをSQL条件に加え、他workspaceのIDを
+  拒否する統合テストを追加した。
+- `memory_audit_log` をSQLiteに追加。Web APIとMCPの書き込み操作を永続記録し、
+  workspace削除時にはメモリおよび監査記録を明示削除する。
+- 抽出用の一時sessionを `finally` でbest-effort削除し、idle抽出ledgerは成功後に
+  記録する形へ変更した。処理中重複はプロセス内Setで抑止し、失敗は次回sweepで再試行する。
+
+検証: `npm --prefix web test -- src/lib/memory.test.ts src/lib/db.memory-migration.test.ts src/lib/memory-idle.test.ts src/app/api/memory/route.test.ts src/components/settings/MemorySettings.test.tsx` (28件成功)、
+`npm --prefix browser-bridge test` (88件成功)、`npm --prefix web run typecheck`、
+`npm --prefix web run lint -- src/lib/memory-extract.ts src/lib/memory.ts src/lib/memory-idle.ts src/app/api/memory src/components/settings/MemorySettings.tsx`。
