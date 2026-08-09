@@ -68,6 +68,7 @@ export const HANDLED_V2_EVENT_TYPES = [
   "session.next.tool.called",
   "session.next.tool.success",
   "session.next.tool.failed",
+  "session.next.step.ended",
   "session.next.step.failed",
 ] as const;
 

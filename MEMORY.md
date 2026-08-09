@@ -1,3 +1,22 @@
+# 作業ログ: バグハント完了
+
+## 日付
+
+2026-08-09
+
+## 修正内容
+
+- `useSessionStream` が初期REST `idle` と実際のSSE完了イベントを区別し、初期接続時の `busy` を受け入れつつ、完了後の遅延 `busy` を抑止するようにした。
+- `session.next.step.ended` をイベント登録へ追加した。
+- TaskViewのモデル・エージェント取得エフェクトをタスクID変更時にも再実行するようにした。
+- lintの未使用変数を削除した。
+
+## 検証結果
+
+- Web全体テスト: 248 files / 2957 tests 成功
+- `npm run typecheck`: 成功
+- `npm run lint`: エラー・警告なし
+
 # 作業ログ: HomeViewのAuto選択をTaskViewへ引き継ぐ
 
 # 作業ログ: バグハント

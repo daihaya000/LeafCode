@@ -282,6 +282,7 @@ export function resolveResyncStatus(opts: {
   // optimistically unlocked (abort) and need the truth from REST.
   const staleBusy =
     !opts.preferRestStatus &&
+    opts.connection === "live" &&
     cur === "idle" &&
     (opts.next.type === "busy" || opts.next.type === "retry");
   return { apply: !staleIdle && !staleBusy, clearPending: false };
@@ -296,9 +297,11 @@ export function shouldApplySessionEventStatus(opts: {
   currentType: SessionStatus["type"] | undefined | null;
   nextType: SessionStatus["type"];
   pendingMutation: boolean;
+  allowBusyAfterInitialIdle?: boolean;
 }): boolean {
   return !(
     !opts.pendingMutation &&
+    !opts.allowBusyAfterInitialIdle &&
     opts.currentType === "idle" &&
     (opts.nextType === "busy" || opts.nextType === "retry")
   );
@@ -761,6 +764,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const idleStreakRef = useRef(0);
   /** Last SSE event scoped to this session — proves the turn is still running. */
   const sessionActivityAtRef = useRef(Date.now());
+  /** Distinguish an authoritative idle event from an initial REST idle snapshot. */
+  const sessionIdleEventReceivedRef = useRef(false);
   /** Track safety net timers to clear on unmount/session change */
   const safetyNetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Tracks elapsed-time tick for the in-flight mutation. */
@@ -800,6 +805,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     mutationStartedAtRef.current = null;
     preferRestStatusRef.current = false;
     idleStreakRef.current = 0;
+    sessionIdleEventReceivedRef.current = false;
     sessionActivityAtRef.current = Date.now();
     // A slow pass on the previous session must not delay the new session's first
     // reconcile.
@@ -1255,6 +1261,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
               currentType: statusRef.current?.type,
               nextType: status.type,
               pendingMutation: pendingMutationRef.current,
+              allowBusyAfterInitialIdle: !sessionIdleEventReceivedRef.current,
             })
           ) {
             return;
@@ -1265,6 +1272,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           statusRef.current = status;
           dispatch({ kind: "status", status });
           if (status.type === "idle") {
+            sessionIdleEventReceivedRef.current = true;
             dispatch({ kind: "sessionError", message: null });
           }
         }
@@ -1272,6 +1280,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       }
       if (type === "session.idle") {
         if (props.sessionID === sid) {
+          sessionIdleEventReceivedRef.current = true;
           pendingMutationRef.current = false;
           statusRef.current = { type: "idle" };
           dispatch({ kind: "status", status: { type: "idle" } });
@@ -1829,6 +1838,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (!directory || !sid) throw new Error("session not ready");
       // Guard resync init for the whole POST window, not only after success.
       pendingMutationRef.current = true;
+      sessionIdleEventReceivedRef.current = false;
       // Start the stuck-busy recovery window at the send, not at the last event
       // of the previous turn.
       sessionActivityAtRef.current = Date.now();
@@ -1900,6 +1910,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       const sid = opts?.sessionId ?? sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
       pendingMutationRef.current = true;
+      sessionIdleEventReceivedRef.current = false;
       // Start the stuck-busy recovery window at the send, not at the last event
       // of the previous turn.
       sessionActivityAtRef.current = Date.now();

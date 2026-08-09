@@ -1,7 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 const testDataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-webui-memory-"));
 const previousAppData = process.env.APPDATA;

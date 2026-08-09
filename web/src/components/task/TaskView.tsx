@@ -517,7 +517,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       goalLoopRefreshSequenceRef.current += 1;
       goalLoopRefreshBusyRef.current = null;
     };
-  }, []);
+  }, [taskId]);
   const [tab, setTab] = useState<ChatTab>("chat");
   const [viewTab, setViewTab] = useState<"chat" | "workflow" | "diff">("chat");
   const [workflowFocusNode, setWorkflowFocusNode] = useState<string | null>(null);
@@ -1489,7 +1489,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         /* non-fatal */
       }
     })();
-  }, []);
+  }, [taskId]);
 
   const refreshTask = useCallback(async () => {
     if (!mountedRef.current) return;

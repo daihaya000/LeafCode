@@ -263,9 +263,6 @@ describe("installWebUiDependencies", () => {
   });
 
   it("records and reuses the installed CommandCode version marker", () => {
-    const bundle = process.env.OPENCODE_WEBUI_ROOT!;
-    const vendorRoot = path.join(bundle, "vendor", "commandcode-cli-proxy");
-
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-marker-"));
     dirs.push(target);
 
