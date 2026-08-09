@@ -53,13 +53,14 @@
 # machine's current addresses (host/src/caddy-sites.js), so DHCP changes and a
 # Wi-Fi adapter joining alongside Ethernet are handled automatically. Loopback
 # entries and any hostname you add by hand are preserved -- add a VPN hostname
-# or public domain here and it will survive the sync.
+# or public domain here and it will survive the sync. The placeholder
+# `example-hostname` from the old template is dropped automatically.
 # Host-only APIs (folder picker, voice input, restart) work through this proxy
 # only when the browser is on the same PC and reaches Caddy via a loopback
 # hostname (localhost / 127.0.0.1). The BFF rejects spoofable private
 # X-Forwarded-For values, so LAN/VPN clients cannot use host-only APIs even
 # when Caddy rewrites the Host header. Use a loopback URL on the host PC.
-https://localhost:8443, https://127.0.0.1:8443, https://192.168.1.100:8443, https://example-hostname:8443 {
+https://localhost:8443, https://127.0.0.1:8443, https://192.168.1.100:8443 {
 	tls internal
 
 	@hostOnlyApis path /api/browse/folder* /api/host/voice-input* /api/host/restart* /api/host/logs* /api/updates/*

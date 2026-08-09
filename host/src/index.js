@@ -30,7 +30,7 @@ import {
 } from './web-runtime.js';
 import { parseListeningPids } from './port-plan.js';
 import { readPort } from './port-config.js';
-import { syncCaddySiteAddresses } from './caddy-sites.js';
+import { isPlaceholderHost, syncCaddySiteAddresses } from './caddy-sites.js';
 import {
   closeControlServer,
   createControlServer,
@@ -176,6 +176,8 @@ export function parseCaddySiteUrls(text) {
           if (!addr) continue;
           const https = /^https:\/\/([^\s{]+)/i.exec(addr);
           if (https) {
+            const host = https[1].split(':')[0];
+            if (isPlaceholderHost(host)) continue;
             candidates.push(`https://${https[1]}`);
             continue;
           }

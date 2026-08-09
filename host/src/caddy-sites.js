@@ -16,6 +16,18 @@
 
 const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 
+/**
+ * Placeholder hostnames from the bundled example that are documentation only:
+ * they must never be issued a certificate nor advertised as a public URL.
+ * `example-hostname` is dropped from the site line whenever the sync runs.
+ */
+const PLACEHOLDER_HOSTS = new Set(['example-hostname']);
+
+/** True for placeholder hostnames from the example that must never be advertised. */
+export function isPlaceholderHost(host) {
+  return typeof host === 'string' && PLACEHOLDER_HOSTS.has(host.toLowerCase());
+}
+
 /** True when `host` is a bare IPv4 literal (not a hostname/domain). */
 export function isIpv4Literal(host) {
   if (typeof host !== 'string' || !IPV4_RE.test(host)) return false;
@@ -95,17 +107,22 @@ export function syncCaddySiteAddresses(text, addresses) {
     site.entries.find((e) => e.port != null)?.port ?? 8443;
 
   const kept = site.entries.filter(
-    (e) => isLoopbackHost(e.host) || !isIpv4Literal(e.host),
+    (e) =>
+      !PLACEHOLDER_HOSTS.has(e.host.toLowerCase()) &&
+      (isLoopbackHost(e.host) || !isIpv4Literal(e.host)),
   );
-  const existingIps = site.entries
-    .filter((e) => isIpv4Literal(e.host) && !isLoopbackHost(e.host))
-    .map((e) => e.host)
-    .sort();
 
-  if (
-    existingIps.length === wanted.length &&
-    existingIps.every((ip, i) => ip === wanted[i])
-  ) {
+  // Compare against the current list (including any placeholder hostnames) so a
+  // stale `example-hostname` is removed even when the IPs are already correct.
+  const current = site.entries.map((e) => ({
+    host: e.host,
+    port: e.port ?? port,
+  }));
+  const target = [
+    ...kept.map((e) => ({ host: e.host, port: e.port ?? port })),
+    ...wanted.map((ip) => ({ host: ip, port })),
+  ];
+  if (sameEntries(current, target)) {
     return { text, changed: false, addresses: wanted };
   }
 
@@ -119,4 +136,13 @@ export function syncCaddySiteAddresses(text, addresses) {
   lines[site.index] = `${indent}${rendered.join(', ')} {`;
 
   return { text: lines.join('\n'), changed: true, addresses: wanted };
+}
+
+/** True when two entry lists have the same hosts and ports in the same order. */
+function sameEntries(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].host !== b[i].host || a[i].port !== b[i].port) return false;
+  }
+  return true;
 }
