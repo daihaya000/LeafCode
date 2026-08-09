@@ -37,7 +37,11 @@ describe("GraphPanel", () => {
   beforeEach(() => {
     setVisible(true);
     getJson.mockReset();
-    getJson.mockResolvedValue(payloadWith(1));
+    getJson.mockImplementation((url: string) =>
+      url === "/api/git/repositories"
+        ? Promise.resolve({ repositories: [{ path: "/repo", name: "repo" }] })
+        : Promise.resolve(payloadWith(1)),
+    );
   });
 
   afterEach(() => {
@@ -50,11 +54,36 @@ describe("GraphPanel", () => {
     render(<GraphPanel directory="/repo" />);
 
     await screen.findByText("commit 0");
-    expect(getJson).toHaveBeenCalledTimes(1);
+    expect(getJson).toHaveBeenCalledTimes(2);
     expect(getJson).toHaveBeenCalledWith(
       "/api/git/log",
       expect.objectContaining({ directory: "/repo" }),
     );
+  });
+
+  it("switches the graph to a selected child repository", async () => {
+    getJson.mockImplementation((url: string, params?: { directory?: string }) => {
+      if (url === "/api/git/repositories") {
+        return Promise.resolve({
+          repositories: [
+            { path: "/parent/api", name: "api" },
+            { path: "/parent/web", name: "web" },
+          ],
+        });
+      }
+      return Promise.resolve({ ...payloadWith(1), currentBranch: params?.directory });
+    });
+    render(<GraphPanel directory="/parent" />);
+
+    const web = await screen.findByRole("tab", { name: "web" });
+    fireEvent.click(web);
+
+    await screen.findByTitle("/parent/web");
+    expect(getJson).toHaveBeenCalledWith(
+      "/api/git/log",
+      expect.objectContaining({ directory: "/parent/web" }),
+    );
+    expect(web.getAttribute("aria-selected")).toBe("true");
   });
 
   it("shows the commit ID as a graph label", async () => {
@@ -94,9 +123,11 @@ describe("GraphPanel", () => {
 
   it("exposes expandable commit rows to assistive technology", async () => {
     getJson.mockImplementation((url: string) =>
-      url === "/api/git/show"
-        ? Promise.resolve({ files: [] })
-        : Promise.resolve(payloadWith(1)),
+      url === "/api/git/repositories"
+        ? Promise.resolve({ repositories: [{ path: "/repo", name: "repo" }] })
+        : url === "/api/git/show"
+          ? Promise.resolve({ files: [] })
+          : Promise.resolve(payloadWith(1)),
     );
     render(<GraphPanel directory="/repo" />);
 
@@ -114,7 +145,7 @@ describe("GraphPanel", () => {
       <GraphPanel directory="/repo" refreshKey={0} />,
     );
     await screen.findByText("commit 0");
-    expect(getJson).toHaveBeenCalledTimes(1);
+    expect(getJson).toHaveBeenCalledTimes(2);
 
     getJson.mockResolvedValueOnce(payloadWith(2));
     await act(async () => {
@@ -122,7 +153,7 @@ describe("GraphPanel", () => {
     });
 
     await screen.findByText("commit 1");
-    expect(getJson).toHaveBeenCalledTimes(2);
+    expect(getJson).toHaveBeenCalledTimes(3);
   });
 
   it("polls faster while the agent is working, and stops polling on unmount", async () => {
@@ -134,7 +165,7 @@ describe("GraphPanel", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(getJson).toHaveBeenCalledTimes(1);
+    expect(getJson).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);
@@ -171,8 +202,14 @@ describe("GraphPanel", () => {
     const oldPending = new Promise<GraphLogPayload>((resolve) => {
       resolveOld = resolve;
     });
-    getJson.mockImplementationOnce(() => oldPending);
-    getJson.mockResolvedValueOnce(payloadWith(1));
+    getJson.mockImplementation((url: string, params?: { directory?: string }) => {
+      if (url === "/api/git/repositories") {
+        return Promise.resolve({
+          repositories: [{ path: params?.directory, name: "repo" }],
+        });
+      }
+      return params?.directory === "/repo-a" ? oldPending : Promise.resolve(payloadWith(1));
+    });
 
     const { rerender } = render(<GraphPanel directory="/repo-a" />);
     await act(async () => {
@@ -210,6 +247,9 @@ describe("GraphPanel", () => {
       resolveShow = resolve;
     });
     getJson.mockImplementation((url: string) => {
+      if (url === "/api/git/repositories") {
+        return Promise.resolve({ repositories: [{ path: "/repo", name: "repo" }] });
+      }
       if (url === "/api/git/log") return Promise.resolve(payloadWith(1));
       return showPending;
     });
@@ -231,6 +271,9 @@ describe("GraphPanel", () => {
       resolveShow = resolve;
     });
     getJson.mockImplementation((url: string) => {
+      if (url === "/api/git/repositories") {
+        return Promise.resolve({ repositories: [{ path: "/repo", name: "repo" }] });
+      }
       if (url === "/api/git/log") return Promise.resolve(payloadWith(1));
       return showPending;
     });

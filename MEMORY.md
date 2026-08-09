@@ -4,6 +4,20 @@
 
 2026-08-09
 
+## 子リポジトリのGitグラフ表示
+
+### 実装内容
+
+- `GET /api/git/repositories` を追加し、許可済みの開いたフォルダ自身と直下の `.git` を持つ子フォルダを列挙するようにした。
+- `GraphPanel` は親フォルダへ直接 `git log` を実行せず、列挙された最初のリポジトリを対象にするよう変更した。
+- 複数リポジトリがある場合はグラフヘッダーにタブを表示し、選択中のリポジトリへログ、コミット詳細、差分の要求を切り替えるようにした。
+
+### 検証結果
+
+- `npm run test -- --run src/components/task/GraphPanel.test.tsx` ... 13 tests 成功
+- `npm run typecheck` ... 成功
+- `npm run lint -- src/components/task/GraphPanel.tsx src/components/task/GraphPanel.test.tsx src/app/api/git/repositories/route.ts` ... 成功
+
 ## 作業完了後も「作業中」が残る不具合
 
 ### 原因

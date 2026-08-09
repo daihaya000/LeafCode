@@ -25,6 +25,8 @@ const POLL_ACTIVE_MS = 4000;
 /** Slower baseline poll to pick up commits made outside this session (other terminal, etc.). */
 const POLL_IDLE_MS = 15000;
 
+type GraphRepository = { path: string; name: string };
+
 const LANE_STROKE = [
   "var(--accent)",
   "var(--working)",
@@ -176,6 +178,9 @@ export function GraphPanel({
   working?: boolean;
 }) {
   const [payload, setPayload] = useState<GraphLogPayload | null>(null);
+  const [repositories, setRepositories] = useState<GraphRepository[]>([]);
+  const [selectedDirectory, setSelectedDirectory] = useState<string | null>(null);
+  const [repositoriesLoading, setRepositoriesLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,14 +201,42 @@ export function GraphPanel({
   const busyRef = useRef(false);
   const detailBusyRef = useRef(new Set<string>());
   const reqIdRef = useRef(0);
-  const directoryRef = useRef(directory);
+  const directoryRef = useRef(selectedDirectory);
   const mountedRef = useRef(false);
-  directoryRef.current = directory;
+  directoryRef.current = selectedDirectory;
+
+  useEffect(() => {
+    let cancelled = false;
+    setSelectedDirectory(null);
+    setRepositories([]);
+    setRepositoriesLoading(true);
+    setError(null);
+    void getJson<{ repositories: GraphRepository[] }>("/api/git/repositories", {
+      directory,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        setRepositories(data.repositories);
+        setSelectedDirectory(data.repositories[0]?.path ?? null);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "リポジトリを取得できませんでした");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRepositoriesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [directory]);
 
   const load = useCallback(
     async (opts?: { append?: boolean; limit?: number; silent?: boolean }) => {
       const append = Boolean(opts?.append);
       const silent = Boolean(opts?.silent);
+      if (!selectedDirectory) return;
       const id = ++reqIdRef.current;
       busyRef.current = true;
       if (!silent) {
@@ -215,7 +248,7 @@ export function GraphPanel({
         const skipCount = append ? commitCountRef.current : 0;
         const limit = opts?.limit ?? DEFAULT_LIMIT;
         const data = await getJson<GraphLogPayload>("/api/git/log", {
-          directory,
+          directory: selectedDirectory,
           limit: String(limit),
           skip: String(skipCount),
         });
@@ -247,11 +280,11 @@ export function GraphPanel({
         }
       }
     },
-    [directory],
+    [selectedDirectory],
   );
 
   // Always call the latest `load` from effects that must NOT re-fire merely
-  // because `load`'s identity changed (e.g. when `directory` changes, the
+  // because `load`'s identity changed (e.g. when the selected repository changes, the
   // directory-reset effect below already handles that case on its own).
   const loadRef = useRef(load);
   useEffect(() => {
@@ -268,7 +301,7 @@ export function GraphPanel({
   }, []);
 
   useEffect(() => {
-    // Invalidate in-flight log/show requests from the previous directory.
+    // Invalidate in-flight log/show requests from the previous repository.
     reqIdRef.current += 1;
     busyRef.current = false;
     setPayload(null);
@@ -279,8 +312,8 @@ export function GraphPanel({
     setLoadingCommits(new Set());
     setError(null); // R21/R11#2-3: Clear error when directory changes
     commitCountRef.current = 0;
-    void load();
-  }, [directory, load]);
+    if (selectedDirectory) void load();
+  }, [selectedDirectory, load]);
 
   // Refetch immediately when an external action (commit/merge/revert/resync)
   // bumps refreshKey, preserving whatever depth the user had already loaded.
@@ -348,11 +381,12 @@ export function GraphPanel({
     setExpanded(hash);
     setFileDiff(null);
     if (filesByCommit[hash]) return;
-    const detailKey = `${directory}\u0000${hash}`;
+    if (!selectedDirectory) return;
+    const detailKey = `${selectedDirectory}\u0000${hash}`;
     if (detailBusyRef.current.has(detailKey)) return;
     detailBusyRef.current.add(detailKey);
     setLoadingCommits((prev) => new Set(prev).add(hash));
-    const dir = directory;
+    const dir = selectedDirectory;
     try {
       const data = await getJson<GraphShowPayload>("/api/git/show", {
         directory: dir,
@@ -383,7 +417,8 @@ export function GraphPanel({
       setFileDiff(null);
       return;
     }
-    const dir = directory;
+    if (!selectedDirectory) return;
+    const dir = selectedDirectory;
     setFileBusy(true);
     try {
       const data = await getJson<GraphShowPayload>("/api/git/show", {
@@ -422,7 +457,7 @@ export function GraphPanel({
           title="更新"
           aria-label="グラフを更新"
           busy={loading}
-          disabled={loading || loadingMore}
+          disabled={!selectedDirectory || loading || loadingMore}
           className="h-9 w-9"
           onClick={() => void load()}
         >
@@ -430,8 +465,35 @@ export function GraphPanel({
         </Button>
       </div>
 
+      {repositories.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="グラフのリポジトリ"
+          className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-2.5 py-1.5"
+        >
+          {repositories.map((repository) => (
+            <button
+              key={repository.path}
+              type="button"
+              role="tab"
+              aria-selected={repository.path === selectedDirectory}
+              title={repository.path}
+              onClick={() => setSelectedDirectory(repository.path)}
+              className={cx(
+                "shrink-0 rounded-md px-2 py-1 text-xs transition-colors",
+                repository.path === selectedDirectory
+                  ? "bg-accent/15 text-accent"
+                  : "text-muted hover:bg-surface-2 hover:text-text",
+              )}
+            >
+              {repository.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        {loading && !payload && (
+        {(repositoriesLoading || (loading && !payload)) && (
           <div className="flex justify-center py-10">
             <Spinner />
           </div>
@@ -443,6 +505,11 @@ export function GraphPanel({
             className="border-b border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
           >
             {error}
+          </p>
+        )}
+        {!repositoriesLoading && !error && repositories.length === 0 && (
+          <p className="py-10 text-center text-sm text-faint">
+            子リポジトリが見つかりません
           </p>
         )}
         {payload && rows.length === 0 && !loading && (
