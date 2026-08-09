@@ -2895,3 +2895,19 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm run test -- --run src/lib/localhost-redirect.test.ts src/lib/local-request.test.ts` ... 37 tests 成功
 - `npm run typecheck` ... 成功
 - `npm run lint -- src/lib/localhost-redirect.ts src/lib/local-request.ts` ... 成功
+
+# 作業ログ: エラー詳細展開後のメッセージ追従
+
+## 日付
+
+2026-08-09
+
+## 実施内容
+
+- `TaskView` のメッセージコンテンツ用 `ResizeObserver` を、非同期のタスク読み込み後にも接続し直すようにした。
+- 展開済みのエラーやツール詳細による高さ変化でも、最下部を追従中なら従来の再ピン処理が継続する。
+
+## 検証結果
+
+- `npm test -- TaskView.test.tsx` ... 116 tests 成功
+- `npm run typecheck` ... 成功

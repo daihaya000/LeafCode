@@ -1991,7 +1991,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     // Fallback for test/legacy environments without ResizeObserver.
     const id = setInterval(pinned, 200);
     return () => clearInterval(id);
-  }, [isAtBottom, scrollToBottom]);
+  }, [isAtBottom, scrollToBottom, task?.id]);
 
   const currentTool = useMemo(() => {
     for (let i = stream.messages.length - 1; i >= 0; i--) {
