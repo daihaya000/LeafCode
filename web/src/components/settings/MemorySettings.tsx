@@ -262,9 +262,18 @@ export function MemorySettings() {
         <h2 className="text-sm font-semibold text-muted">メモリ</h2>
       </div>
 
+      <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3 text-xs leading-5 text-muted">
+        <p>
+          このワークスペースで繰り返し使う事実・好み・教訓を、セッションをまたいで保持します。
+        </p>
+        <p className="mt-1 text-faint">
+          会話から抽出した内容はまず「候補」になります。内容を確認して承認すると、今後の会話でエージェントが参照できるようになります。
+        </p>
+      </div>
+
       <div className="mb-4 space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <label className="flex flex-col gap-1.5">
-          <span className="shrink-0 text-sm text-muted">ワークスペース</span>
+          <span className="shrink-0 text-sm text-muted">保存先ワークスペース</span>
           <select
             value={selectedWorkspace}
             onChange={(e) => void selectedWorkspaceChanged(e.target.value)}
@@ -280,7 +289,7 @@ export function MemorySettings() {
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="shrink-0 text-sm text-muted">抽出元セッション</span>
+          <span className="shrink-0 text-sm text-muted">記憶を探す会話</span>
           <div className="flex gap-2">
             <select
               aria-label="抽出元セッション"
@@ -301,9 +310,12 @@ export function MemorySettings() {
               disabled={busy || !selectedWorkspace || !selectedSession}
               onClick={() => void runExtract()}
             >
-              今すぐ抽出
+              候補を抽出
             </Button>
           </div>
+          <span className="text-[11px] text-faint">
+            選んだ会話の末尾をAIが読み、長く役立つ内容だけを候補として作成します。抽出にはモデル利用料がかかる場合があります。
+          </span>
         </label>
 
         {notice && <p className="text-[11px] text-success">{notice}</p>}
@@ -321,7 +333,7 @@ export function MemorySettings() {
               : "text-muted hover:text-text",
           )}
         >
-          承認済み ({approved.length})
+          使用中 ({approved.length})
         </button>
         <button
           type="button"
@@ -350,8 +362,8 @@ export function MemorySettings() {
       {rows.length === 0 ? (
         <p className="rounded-xl border border-border bg-surface px-4 py-3 text-[11px] text-faint">
           {tab === "approved"
-            ? "承認済みメモリはありません。"
-            : "承認候補はありません。"}
+            ? "使用中のメモリはありません。候補を承認すると、今後の会話で利用されます。"
+            : "確認待ちの候補はありません。上の「候補を抽出」から作成できます。"}
         </p>
       ) : (
         <ul className="space-y-2">

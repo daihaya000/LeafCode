@@ -87,6 +87,13 @@ describe("MemorySettings", () => {
 
     render(<MemorySettings />);
 
+    expect(screen.getByText(/セッションをまたいで保持します/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "会話から抽出した内容はまず「候補」になります。内容を確認して承認すると、今後の会話でエージェントが参照できるようになります。",
+      ),
+    ).toBeTruthy();
+
     // Approved tab shows the approved memory.
     await waitFor(() => expect(screen.getByText("Use pnpm.")).toBeTruthy());
     expect(screen.getByText("3回", { exact: false })).toBeTruthy();
@@ -94,7 +101,7 @@ describe("MemorySettings", () => {
     // Candidate is hidden until we switch to the candidates tab.
     expect(screen.queryByText("Always lint before commit.")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /候補/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^候補 \(/ }));
     expect(await screen.findByText("Always lint before commit.")).toBeTruthy();
   });
 
@@ -151,7 +158,7 @@ describe("MemorySettings", () => {
       target: { value: "session-9" },
     });
     const extractButton = await waitFor(() => {
-      const b = screen.getByRole("button", { name: "今すぐ抽出" }) as HTMLButtonElement;
+      const b = screen.getByRole("button", { name: "候補を抽出" }) as HTMLButtonElement;
       expect(b.disabled).toBe(false);
       return b;
     });

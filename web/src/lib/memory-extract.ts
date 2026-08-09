@@ -32,6 +32,23 @@ export type ExtractionResult = {
   error?: string;
 };
 
+type ExtractionModel = Pick<AutoDecision, "providerID" | "modelID" | "variant">;
+
+export function buildExtractionSessionBody(model: ExtractionModel | null) {
+  return {
+    title: "memory-extract",
+    ...(model
+      ? {
+          model: {
+            providerID: model.providerID,
+            id: model.modelID,
+            variant: model.variant || undefined,
+          },
+        }
+      : {}),
+  };
+}
+
 /** Join a message's text parts into plain text. */
 export function messageText(message: MessageWithParts): string {
   return (message.parts ?? [])
@@ -191,19 +208,17 @@ export async function runMemoryExtraction(input: {
   try {
     const created = await ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
       method: "POST",
-      body: model
-        ? { title: "memory-extract", model: { providerID: model.providerID, modelID: model.modelID, variant: model.variant || undefined } }
-        : { title: "memory-extract" },
+      body: buildExtractionSessionBody(model),
       timeoutMs: 10_000,
     });
     sessionID = created?.id ?? null;
     if (!sessionID) throw new OcError("session create returned no id", 500);
-  } catch {
+  } catch (err) {
     return {
       created: 0,
       skipped: 0,
       errors: [],
-      error: "could not create extraction session",
+      error: `抽出用セッションを作成できませんでした: ${err instanceof Error ? err.message : "原因不明のエラー"}`,
     };
   }
 

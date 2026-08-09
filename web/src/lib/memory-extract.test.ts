@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildExtractionSessionBody,
   buildExtractionPrompt,
   extractTranscriptTail,
   lastJsonBlock,
@@ -89,5 +90,24 @@ describe("buildExtractionPrompt", () => {
     const prompt = buildExtractionPrompt("the transcript");
     expect(prompt).toContain("the transcript");
     expect(prompt).toContain('"memories"');
+  });
+});
+
+describe("buildExtractionSessionBody", () => {
+  it("uses the OpenCode session model schema", () => {
+    expect(
+      buildExtractionSessionBody({
+        providerID: "openai",
+        modelID: "gpt-5",
+        variant: "low",
+      }),
+    ).toEqual({
+      title: "memory-extract",
+      model: { providerID: "openai", id: "gpt-5", variant: "low" },
+    });
+  });
+
+  it("lets OpenCode choose the default model when no model is resolved", () => {
+    expect(buildExtractionSessionBody(null)).toEqual({ title: "memory-extract" });
   });
 });
