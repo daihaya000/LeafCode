@@ -247,6 +247,15 @@ https://localhost:8443, https://127.0.0.1:8443, https://192.168.0.102:8443 {
   assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://192.168.0.102:8443');
 });
 
+test('parseCaddyPublicUrl skips the example-hostname placeholder', () => {
+  const caddyfile = `https://localhost:8443, https://127.0.0.1:8443, https://example-hostname:8443, https://192.168.0.102:8443 {
+	tls internal
+	reverse_proxy 127.0.0.1:3000
+}
+`;
+  assert.equal(host.parseCaddyPublicUrl(caddyfile), 'https://192.168.0.102:8443');
+});
+
 test('parseCaddyLoopbackUrl prefers 127.0.0.1 over localhost', () => {
   const caddyfile = `https://localhost:8443, https://127.0.0.1:8443, https://192.168.0.102:8443 {
 	tls internal

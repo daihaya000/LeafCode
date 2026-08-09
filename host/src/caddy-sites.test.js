@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isIpv4Literal, syncCaddySiteAddresses } from './caddy-sites.js';
+import { isIpv4Literal, isPlaceholderHost, syncCaddySiteAddresses } from './caddy-sites.js';
 
 const BASE = `{
 	admin localhost:2019
@@ -96,4 +96,23 @@ test('ignores non-IPv4 junk in the detected address list', () => {
   assert.equal(result.changed, true);
   assert.doesNotMatch(result.text, /not-an-ip/);
   assert.match(result.text, /https:\/\/192\.168\.0\.9:8443/);
+});
+
+test('drops the example-hostname placeholder from the site line', () => {
+  const withPlaceholder = BASE.replace(
+    'https://192.168.0.102:8443 {',
+    'https://example-hostname:8443, https://192.168.0.102:8443 {',
+  );
+  const result = syncCaddySiteAddresses(withPlaceholder, ['192.168.0.102']);
+  assert.equal(result.changed, true);
+  assert.doesNotMatch(result.text, /example-hostname/);
+  assert.match(result.text, /https:\/\/localhost:8443/);
+  assert.match(result.text, /https:\/\/192\.168\.0\.102:8443/);
+});
+
+test('isPlaceholderHost rejects real hostnames', () => {
+  assert.equal(isPlaceholderHost('example-hostname'), true);
+  assert.equal(isPlaceholderHost('EXAMPLE-HOSTNAME'), true);
+  assert.equal(isPlaceholderHost('my-desktop'), false);
+  assert.equal(isPlaceholderHost('webui.example.com'), false);
 });
