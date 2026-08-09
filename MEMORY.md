@@ -2551,3 +2551,41 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm run typecheck` ... 成功
 - `npm run test -- src/components/task/TaskView.test.tsx` ... 116 tests 成功
 - `npm run lint -- src/components/task/TaskView.tsx` ... 成功
+
+# レビュー記録: メモリ機能の実装上の問題点 (2026-08-09)
+
+対象: `web/src/lib/memory*.ts`、メモリ API、goal-loop 連携、
+`browser-bridge/mcp/memory-server.mjs`。
+
+- **高: MCP の更新・削除がワークスペースにスコープされない。**
+  `memory-server.mjs` の `memory_update` / `memory_delete` は `WHERE id = ?`
+  だけで実行される。MCP プロセスは起動時に workspace を固定しているが、別
+  workspace の memory ID を入力できれば読み書きできる。`workspace_id = ?` を
+  条件に追加し、取得も同じ条件で行う必要がある。
+- **高: Web API が workspace 境界を強制しない。** `GET /api/memory` は
+  `workspace_id` が省略可能で全 workspace の行を返し、`PATCH` / `DELETE` /
+  `approve` は ID だけで対象を操作する。メモリ層の「workspace 単位」という
+  契約を API で守れていない。workspace ID を必須にして、各更新系の SQL にも
+  workspace 条件を付けるべきである。
+- **中: workspace 削除時に memories が残る。** `memories.workspace_id` は
+  `workspaces` への FK/CASCADE を持たず、`deleteWorkspace` も memories を
+  削除しない。削除済み workspace の内容と FTS 行が DB に永続し、UI から通常は
+  到達できない孤児データになる。FK + `ON DELETE CASCADE`（既存 DB 向けには明示
+  削除を含むマイグレーション）を追加する必要がある。
+- **中: 自動抽出用の throwaway session を削除しない。**
+  `runMemoryExtraction` は session を作成するが、成功・失敗・タイムアウトの
+  いずれでも `DELETE /session/:id` を発行しない。goal completed と idle の実行
+  回数に比例して OpenCode 側に `memory-extract` セッションが蓄積するため、
+  `finally` で best-effort に削除すべきである。
+- **中: idle 抽出は失敗しても永久に再試行されない。**
+  `launchIdleExtraction` は非同期処理の開始前に `markIdleExtracted` を実行し、
+  例外を握り潰す。そのためモデル障害・タイムアウト・DB失敗で候補が一件も
+  作られなくても、同一 session は以後抽出対象外になる。成功完了後に ledger を
+  記録するか、失敗状態と再試行方針を ledger に持たせる必要がある。
+- **中: MCP からの書き込みは監査されない。** 仕様は `memory_add` /
+  `memory_delete` の全操作を監査対象とするが、MCP の `add` / `update` / `delete`
+  は DB を直接操作するだけで監査ログを出さない。プロンプト汚染の調査経路が
+  欠落するため、Web API と共通の永続監査基盤に記録する必要がある。
+
+検証: `npm --prefix browser-bridge test` (87件成功)、
+`npm --prefix web run typecheck` (成功)。
