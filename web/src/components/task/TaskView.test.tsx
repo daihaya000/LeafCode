@@ -2752,6 +2752,46 @@ describe("TaskView", () => {
       );
     });
 
+    it("does not treat the next chat message as a new loop after completion", async () => {
+      const streamMock = useSessionStream();
+      sendJson.mockResolvedValue({
+        loop: {
+          id: "loop1",
+          status: "completed",
+          progress: [],
+          turnCount: 1,
+          maxTurns: 10,
+        },
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      fireEvent.click(screen.getByRole("button", { name: GOAL_LOOP_TOGGLE_LABEL }));
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "フォローアップを送信" }),
+        { target: { value: "loop goal" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "ループを開始" }));
+
+      await waitFor(() =>
+        expect(sendJson).toHaveBeenCalledWith(
+          "POST",
+          "/api/tasks/ws1/goal-loop",
+          expect.any(Object),
+        ),
+      );
+
+      fireEvent.change(
+        screen.getByRole("combobox", { name: "フォローアップを送信" }),
+        { target: { value: "ordinary chat" } },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "送信" }));
+
+      await waitFor(() => expect(streamMock.sendPrompt).toHaveBeenCalled());
+      expect(
+        sendJson.mock.calls.filter(([, path]) => path === "/api/tasks/ws1/goal-loop"),
+      ).toHaveLength(1);
+    });
+
     it("does not start the same goal loop twice while the request is pending", async () => {
       let resolveLoop: ((value: unknown) => void) | undefined;
       sendJson.mockImplementation((_method: string, path: string) => {

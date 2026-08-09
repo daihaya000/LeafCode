@@ -1775,6 +1775,19 @@ export function TaskView({ taskId }: { taskId: string }) {
     goalLoop?.status === "running" ||
     goalLoop?.status === "verifying_completed" ||
     goalLoop?.status === "paused";
+
+  // Loop mode is a one-shot composer mode. Keep a completed/blocked/stopped
+  // loop from interpreting the next ordinary chat message as a new goal.
+  useEffect(() => {
+    if (
+      goalLoop?.status === "completed" ||
+      goalLoop?.status === "blocked" ||
+      goalLoop?.status === "stopped"
+    ) {
+      setGoalLoopEnabled(false);
+    }
+  }, [goalLoop?.status]);
+
   /** Composer is waiting for POST /goal-loop to answer. */
   const goalLoopStarting = goalLoopEnabled && !goalLoopLive && goalLoopBusy;
   // NextAction invalidation key: changes when conversation content, revert

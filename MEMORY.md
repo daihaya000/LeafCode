@@ -2504,3 +2504,29 @@ Next 16 の Turbopack は distDir がプロジェクト外へ出ることを禁�
 - `web/src/lib/goal-loop.integration.test.ts`
 - `web/src/lib/useSessionStream.ts`
 - `web/src/lib/useSessionStream.test.ts`
+## 日付
+
+2026-08-09(Goalループ完了後の通常会話誤再開)
+
+## 依頼
+
+「ループ完了後、普通に会話したあと、ループ判定で勝手に会話が継続されるバグ」。
+
+## 原因
+
+`TaskView` の `goalLoopEnabled` がループ完了後も残っていた。`completed` は
+非 live 扱いになるため、次の通常メッセージが composer の新規 Goal ループ開始条件
+(`goalLoopEnabled && !goalLoopLive`) に入り、意図せず新しいループとして送信されていた。
+
+## 修正内容
+
+- Goal ループが `completed` / `blocked` / `stopped` になった時点で composer の
+  ループモードを自動解除。
+- 完了後の通常会話が通常の `sendPrompt` に進み、Goal ループ API を再度呼ばない
+  回帰テストを追加。
+
+## 検証結果
+
+- `npm run typecheck` ... 成功
+- `npm run test -- src/components/task/TaskView.test.tsx` ... 116 tests 成功
+- `npm run lint -- src/components/task/TaskView.tsx src/components/task/TaskView.test.tsx` ... 成功
