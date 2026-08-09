@@ -46,6 +46,10 @@ HomeViewでAutoを選んで開始したタスクのTaskViewコンポーザーが
 - `web/src/components/task/TaskView.tsx`
 - `web/src/components/task/TaskView.test.tsx`
 
+## 追加修正
+
+- TaskViewの`model` stateをAutoタスクレコードから同期初期化し、プロバイダー取得中の空stateを経由して具体的な解決モデルへシードされる競合も防止した。
+
 # 作業ログ: CodexBar 二列表示をデフォルト化
 
 ## 日付

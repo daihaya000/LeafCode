@@ -573,7 +573,12 @@ export function TaskView({ taskId }: { taskId: string }) {
   >({});
   const [agents, setAgents] = useState<string[]>([]);
   const [agentModels, setAgentModels] = useState<Record<string, { providerID: string; modelID: string }>>({});
-  const [model, setModel] = useState("");
+  // Seed Auto synchronously for tasks created from HomeView. Waiting for the
+  // provider fetch leaves a render where the model is empty, allowing the
+  // assistant-reply seeding effect to replace Auto with its resolved model.
+  const [model, setModel] = useState(() =>
+    readAutoTaskRecord(taskId) ? AUTO_MODEL_VALUE : "",
+  );
   const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const inputRef = useRef(input);
