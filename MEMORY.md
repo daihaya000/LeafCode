@@ -22,6 +22,10 @@
 - `npm run test -- --run src/lib/useSessionStream.test.ts` ... 64 tests 成功
 - `npm run typecheck` ... 成功
 
+### 追加修正
+
+v2の最終 `session.next.step.ended` では `session.idle` が別途届かない場合があるため、このイベント直後の再同期だけREST状態を優先するようにした。SSE接続中のidle抑止で完了判定が遅れる経路を解消する。
+
 ## 日付
 
 2026-08-09

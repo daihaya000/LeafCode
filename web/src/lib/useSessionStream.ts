@@ -1374,6 +1374,19 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
       // OpenCode "session.next.*" streaming events (v2 path).
       if (type.startsWith("session.next.") && sid && props.sessionID === sid) {
+        if (type === "session.next.step.ended") {
+          // v2 can finish a step without a separate session.idle event. The
+          // normal reconcile intentionally suppresses REST idle while SSE is
+          // live, which would leave the composer locked after the final step.
+          // A step boundary is the authoritative point to consult REST.
+          preferRestStatusRef.current = true;
+          void resync().finally(() => {
+            if (scopeRef.current === effectScope) {
+              preferRestStatusRef.current = false;
+            }
+          });
+          return;
+        }
         if (
           type === "session.next.text.started" ||
           type === "session.next.reasoning.started"
