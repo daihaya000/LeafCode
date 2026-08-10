@@ -58,7 +58,44 @@ const DEFAULT_STATE: StateFile = {
   },
   providerIcons: {},
   knownModelKeys: [],
-  modelPricing: {},
+  // Default manual pricing for models whose cost is not reported by OpenCode.
+  // Ollama Cloud does not publish per-token prices, so values below are
+  // representative vendor-equivalent prices (mostly from OpenRouter / vendor
+  // APIs) in USD per 1M tokens. Users can override via the WebUI.
+  modelPricing: {
+    // Google: gemma-4-31b-it via OpenRouter
+    "ollama-cloud::gemma4": { input: 0.1, output: 0.34 },
+    // Alibaba Cloud: qwen3.5-plus (closest public sibling)
+    "ollama-cloud::qwen3.5": { input: 0.3, output: 1.8 },
+    // OpenAI: gpt-oss-120b via OpenRouter
+    "ollama-cloud::gpt-oss": { input: 0.037, output: 0.17 },
+    // NVIDIA: nemotron-3-super-120b via OpenRouter
+    "ollama-cloud::nemotron-3-super": { input: 0.085, output: 0.4 },
+    // MiniMax: minimax-m2.7 via OpenRouter
+    "ollama-cloud::minimax-m2.7": { input: 0.3, output: 1.2 },
+    // Z.ai: glm-5.1 via OpenRouter
+    "ollama-cloud::glm-5.1": { input: 0.952, output: 2.992 },
+    // NVIDIA: nemotron-3-nano-30b via OpenRouter
+    "ollama-cloud::nemotron-3-nano": { input: 0.05, output: 0.2 },
+    // Moonshot AI: kimi-k2.6 via OpenRouter
+    "ollama-cloud::kimi-k2.6": { input: 0.5795, output: 2.44 },
+    // MiniMax: minimax-m3 via OpenRouter
+    "ollama-cloud::minimax-m3": { input: 0.3, output: 1.2 },
+    // DeepSeek: deepseek-v4-flash via OpenRouter
+    "ollama-cloud::deepseek-v4-flash": { input: 0.14, output: 0.28 },
+    // DeepSeek: deepseek-v4-pro via OpenRouter
+    "ollama-cloud::deepseek-v4-pro": { input: 0.435, output: 0.87 },
+    // Z.ai: glm-5.2 via OpenRouter
+    "ollama-cloud::glm-5.2": { input: 0.5026, output: 1.5796 },
+    // Moonshot AI: kimi-k2.7-code via OpenRouter
+    "ollama-cloud::kimi-k2.7-code": { input: 0.7, output: 3.5 },
+    // Mistral AI: mistral-large-2512 (closest public Large v3 successor)
+    "ollama-cloud::mistral-large-3": { input: 0.5, output: 1.5 },
+    // NVIDIA: nemotron-3-ultra-550b via OpenRouter
+    "ollama-cloud::nemotron-3-ultra": { input: 0.6, output: 3.6 },
+    // Moonshot AI: kimi-k3 from Ollama Cloud pricing page
+    "ollama-cloud::kimi-k3": { input: 3, cachedInput: 0.3, output: 15 },
+  },
 };
 
 function emptyState(): StateFile {
