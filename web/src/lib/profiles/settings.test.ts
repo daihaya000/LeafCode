@@ -28,7 +28,11 @@ describe("readQwenNativeSettings / writeQwenNativeSettings", () => {
   });
 
   it("round-trips a complete settings object", () => {
-    const next = { ...QWEN_NATIVE_DEFAULTS, enabled: true, model: "qwen2.5vl:32b" };
+    const next = {
+      ...QWEN_NATIVE_DEFAULTS,
+      enabled: true,
+      opencodeModel: "ollama::qwen2.5vl:7b",
+    };
     writeQwenNativeSettings(next);
     expect(readQwenNativeSettings()).toEqual(next);
   });
@@ -41,21 +45,39 @@ describe("readQwenNativeSettings / writeQwenNativeSettings", () => {
     );
     const settings = readQwenNativeSettings();
     expect(settings.enabled).toBe(true);
-    expect(settings.baseUrl).toBe(QWEN_NATIVE_DEFAULTS.baseUrl);
-    expect(settings.model).toBe(QWEN_NATIVE_DEFAULTS.model);
+    expect(settings.opencodeModel).toBe("");
     expect(settings.timeoutMs).toBe(QWEN_NATIVE_DEFAULTS.timeoutMs);
-    expect(settings.maxTokens).toBe(QWEN_NATIVE_DEFAULTS.maxTokens);
   });
 
   it("ignores invalid numeric fields", () => {
     fs.writeFileSync(
       path.join(testDir, "qwen-native-settings.json"),
-      JSON.stringify({ enabled: true, timeoutMs: -1, maxTokens: "big" as unknown as number }),
+      JSON.stringify({ enabled: true, timeoutMs: -1 }),
       "utf8",
     );
-    const settings = readQwenNativeSettings();
-    expect(settings.timeoutMs).toBe(QWEN_NATIVE_DEFAULTS.timeoutMs);
-    expect(settings.maxTokens).toBe(QWEN_NATIVE_DEFAULTS.maxTokens);
+    expect(readQwenNativeSettings().timeoutMs).toBe(QWEN_NATIVE_DEFAULTS.timeoutMs);
+  });
+
+  it("drops the removed OpenAI-compatible endpoint fields", () => {
+    fs.writeFileSync(
+      path.join(testDir, "qwen-native-settings.json"),
+      JSON.stringify({
+        enabled: true,
+        source: "endpoint",
+        opencodeModel: "",
+        baseUrl: "http://127.0.0.1:11434/v1",
+        model: "qwen2.5vl:7b",
+        apiKey: "ollama",
+        timeoutMs: 120_000,
+        maxTokens: 2048,
+      }),
+      "utf8",
+    );
+    expect(readQwenNativeSettings()).toEqual({
+      enabled: true,
+      opencodeModel: "",
+      timeoutMs: 120_000,
+    });
   });
 
   it("falls back to defaults on malformed JSON", () => {

@@ -8,13 +8,8 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/profiles/settings", () => ({
   QWEN_NATIVE_DEFAULTS: {
     enabled: false,
-    source: "endpoint",
     opencodeModel: "",
-    baseUrl: "http://127.0.0.1:11434/v1",
-    model: "qwen2.5vl:7b",
-    apiKey: "ollama",
     timeoutMs: 120_000,
-    maxTokens: 2048,
   },
   readQwenNativeSettings: h.read,
   writeQwenNativeSettings: h.write,
@@ -34,13 +29,8 @@ const local = (method: string, body?: unknown) =>
 
 const DEFAULT_SETTINGS = {
   enabled: false,
-  source: "endpoint",
   opencodeModel: "",
-  baseUrl: "http://127.0.0.1:11434/v1",
-  model: "qwen2.5vl:7b",
-  apiKey: "ollama",
   timeoutMs: 120_000,
-  maxTokens: 2048,
 };
 
 beforeEach(() => {
@@ -55,12 +45,27 @@ describe("/api/qwen-native/settings", () => {
     expect(await response.json()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("saves valid settings on PUT", async () => {
-    const next = { ...DEFAULT_SETTINGS, enabled: true, model: "qwen2.5vl:32b" };
+  it("saves an OpenCode registered image model", async () => {
+    const next = {
+      ...DEFAULT_SETTINGS,
+      enabled: true,
+      opencodeModel: "openai::gpt-4o",
+    };
     const response = await PUT(local("PUT", next));
     expect(response.status).toBe(200);
     expect(h.write).toHaveBeenCalledWith(next);
     expect(await response.json()).toEqual(next);
+  });
+
+  it("accepts a locally registered Ollama model id with a tag", async () => {
+    const next = {
+      ...DEFAULT_SETTINGS,
+      enabled: true,
+      opencodeModel: "ollama::qwen2.5vl:7b",
+    };
+    const response = await PUT(local("PUT", next));
+    expect(response.status).toBe(200);
+    expect(h.write).toHaveBeenCalledWith(next);
   });
 
   it("rejects missing fields", async () => {
@@ -68,25 +73,27 @@ describe("/api/qwen-native/settings", () => {
     expect(response.status).toBe(400);
   });
 
-  it("saves an OpenCode registered image model", async () => {
-    const next = {
-      ...DEFAULT_SETTINGS,
-      enabled: true,
-      source: "opencode",
-      opencodeModel: "openai::gpt-4o",
-    };
-    const response = await PUT(local("PUT", next));
+  it("rejects enabling without an OpenCode model", async () => {
+    const response = await PUT(local("PUT", { ...DEFAULT_SETTINGS, enabled: true }));
+    expect(response.status).toBe(400);
+    expect(h.write).not.toHaveBeenCalled();
+  });
+
+  it("rejects a model without the providerID::modelID form", async () => {
+    const response = await PUT(
+      local("PUT", { ...DEFAULT_SETTINGS, enabled: true, opencodeModel: "qwen2.5vl:7b" }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("keeps a disabled setting saveable without a model", async () => {
+    const response = await PUT(local("PUT", DEFAULT_SETTINGS));
     expect(response.status).toBe(200);
-    expect(h.write).toHaveBeenCalledWith(next);
+    expect(h.write).toHaveBeenCalledWith(DEFAULT_SETTINGS);
   });
 
   it("rejects non-positive timeoutMs", async () => {
     const response = await PUT(local("PUT", { ...DEFAULT_SETTINGS, timeoutMs: -1 }));
-    expect(response.status).toBe(400);
-  });
-
-  it("rejects non-finite maxTokens", async () => {
-    const response = await PUT(local("PUT", { ...DEFAULT_SETTINGS, maxTokens: Number.NaN }));
     expect(response.status).toBe(400);
   });
 });

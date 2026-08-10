@@ -2271,7 +2271,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenNativeAvailable;
     if (sendingImageBlocked) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していないか、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、画像事前解析も有効ではありません。画像対応モデルを選ぶか、設定の「画像解析」タブで事前解析モデルを選んで有効化してください。",
       );
       return;
     }
@@ -2577,7 +2577,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
     if (!imageInputAvailable) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していないか、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、画像事前解析も有効ではありません。画像対応モデルを選ぶか、設定の「画像解析」タブで事前解析モデルを選んで有効化してください。",
       );
       return;
     }
@@ -4508,7 +4508,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   buttonDisabled: !task.sessionId || composerLocked || !imageInputAvailable,
                   buttonTitle: imageInputAvailable
                     ? "画像を添付"
-                    : "画像対応モデルを選ぶか、Ollama画像解析を有効にしてください",
+                    : "画像対応モデルを選ぶか、設定の「画像解析」タブで事前解析を有効にしてください",
                   onFilesSelected: (files) => void addImageFiles(files),
                   onTrigger: () => fileInputRef.current?.click(),
                 }}

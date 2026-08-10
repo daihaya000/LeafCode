@@ -1,4 +1,22 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({
+  settings: {
+    enabled: false,
+    opencodeModel: "",
+    timeoutMs: 120_000,
+  },
+  ocServer: vi.fn(),
+}));
+
+// Keep these unit tests independent from the developer's persisted settings.
+vi.mock("./profiles/settings", () => ({
+  QWEN_NATIVE_DEFAULTS: { enabled: false, opencodeModel: "", timeoutMs: 120_000 },
+  readQwenNativeSettings: () => ({ ...h.settings }),
+}));
+
+vi.mock("./oc-server", () => ({ ocServer: h.ocServer }));
+
 import {
   analyzeNativeImages,
   isQwenNativeVisionAvailable,
@@ -6,70 +24,116 @@ import {
   rewriteNativeRequest,
 } from "./qwen-native-vision";
 
-// Keep these unit tests independent from the developer's persisted settings.
-vi.mock("./profiles/settings", () => {
-  const defaults = {
-    enabled: false,
-    source: "endpoint",
-    opencodeModel: "",
-    baseUrl: "http://127.0.0.1:11434/v1",
-    model: "qwen2.5vl:7b",
-    apiKey: "ollama",
-    timeoutMs: 120_000,
-    maxTokens: 2048,
-  };
-  return {
-    QWEN_NATIVE_DEFAULTS: defaults,
-    readQwenNativeSettings: () => ({ ...defaults }),
-  };
-});
-
 const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-const previousBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
+
+beforeEach(() => {
+  h.settings = { enabled: false, opencodeModel: "", timeoutMs: 120_000 };
+  h.ocServer.mockReset().mockImplementation(async (_dir: string | null, path: string) => {
+    if (path === "/session") return { id: "session-1" };
+    if (path === "/experimental/tool/ids") return ["bash", "read"];
+    if (path.endsWith("/message")) {
+      return { parts: [{ type: "text", text: "A dialog is open." }] };
+    }
+    return {};
+  });
+});
 
 afterEach(() => {
   if (previousEnabled === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
   else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousEnabled;
-  if (previousBaseUrl === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
-  else process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = previousBaseUrl;
-  vi.unstubAllGlobals();
+  if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
+  else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
 });
 
-it("calls local Ollama and returns visual analysis", async () => {
+it("stays unavailable while no OpenCode model is selected", () => {
   process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
-  process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = "http://ollama.example/v1/";
-  const fetchMock = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ choices: [{ message: { content: "A dialog is open." } }] }), { status: 200 }),
-  );
+  expect(isQwenNativeVisionAvailable()).toBe(false);
+});
 
-  await expect(analyzeNativeImages(
-    "What is shown?",
-    [{ dataUrl: "data:image/png;base64,AA==", mime: "image/png" }],
-    fetchMock,
-  )).resolves.toBe("A dialog is open.");
+it("becomes available once an OpenCode registered model is selected", () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 120_000,
+  };
+  expect(isQwenNativeVisionAvailable()).toBe(true);
+});
 
-  expect(fetchMock).toHaveBeenCalledWith(
-    "http://ollama.example/v1/chat/completions",
-    expect.objectContaining({
-      method: "POST",
-      headers: expect.objectContaining({ authorization: "Bearer ollama" }),
-    }),
+it("analyzes images with the selected OpenCode model in a throwaway session", async () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 60_000,
+  };
+
+  await expect(
+    analyzeNativeImages(
+      "What is shown?",
+      [{ dataUrl: "data:image/png;base64,AA==", mime: "image/png" }],
+      "C:\\repo",
+    ),
+  ).resolves.toBe("A dialog is open.");
+
+  const messageCall = h.ocServer.mock.calls.find(([, path]) =>
+    String(path).endsWith("/message"),
   );
-  const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-  expect(request.model).toBe("qwen2.5vl:7b");
-  expect(request.messages[0].content).toEqual(
-    expect.arrayContaining([expect.objectContaining({ type: "image_url" })]),
+  expect(messageCall?.[0]).toBe("C:\\repo");
+  expect(messageCall?.[2]).toMatchObject({
+    timeoutMs: 60_000,
+    body: {
+      model: { providerID: "ollama", modelID: "qwen2.5vl:7b" },
+      // Tools are disabled so the analysis session cannot touch the workspace.
+      tools: { bash: false, read: false },
+    },
+  });
+  // The temporary session is deleted afterwards.
+  expect(
+    h.ocServer.mock.calls.some(
+      ([, path, init]) =>
+        String(path) === "/session/session-1" &&
+        (init as { method?: string } | undefined)?.method === "DELETE",
+    ),
+  ).toBe(true);
+});
+
+it("prefers OPENCODE_WEBUI_QWEN_MODEL over the saved model", async () => {
+  h.settings = { enabled: true, opencodeModel: "openai::gpt-4o", timeoutMs: 120_000 };
+  process.env.OPENCODE_WEBUI_QWEN_MODEL = "anthropic::claude-vision";
+
+  await analyzeNativeImages("What is shown?", [
+    { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+  ]);
+
+  const messageCall = h.ocServer.mock.calls.find(([, path]) =>
+    String(path).endsWith("/message"),
   );
+  expect((messageCall?.[2] as { body: { model: unknown } }).body.model).toEqual({
+    providerID: "anthropic",
+    modelID: "claude-vision",
+  });
+});
+
+it("rejects analysis while the feature is disabled", async () => {
+  await expect(
+    analyzeNativeImages("x", [{ dataUrl: "data:image/png;base64,AA==", mime: "image/png" }]),
+  ).rejects.toThrow("not enabled");
 });
 
 it("rewrites image parts into an untrusted analysis context", async () => {
-  process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ choices: [{ message: { content: "Visible text" } }] }), { status: 200 }),
-    ),
-  );
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 120_000,
+  };
+  h.ocServer.mockImplementation(async (_dir: string | null, path: string) => {
+    if (path === "/session") return { id: "session-1" };
+    if (path === "/experimental/tool/ids") return ["bash"];
+    if (path.endsWith("/message")) {
+      return { parts: [{ type: "text", text: "Visible text" }] };
+    }
+    return {};
+  });
 
   const body = await rewriteNativeRequest({
     parts: [
@@ -78,7 +142,6 @@ it("rewrites image parts into an untrusted analysis context", async () => {
     ],
   });
 
-  expect(isQwenNativeVisionAvailable()).toBe(true);
   expect(body.parts).toHaveLength(1);
   expect((body.parts as { text: string }[])[0]?.text).toContain("Visible text");
   expect((body.parts as { text: string }[])[0]?.text).toContain("未信頼データ");

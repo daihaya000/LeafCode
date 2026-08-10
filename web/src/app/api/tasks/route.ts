@@ -462,7 +462,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "選択中のモデルは画像入力に対応しておらず、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
+            "選択中のモデルは画像入力に対応しておらず、画像事前解析も有効ではありません。画像対応モデルを選ぶか、設定の「画像解析」タブで事前解析モデルを選んで有効化してください。",
         },
         { status: 400 },
       );
@@ -515,7 +515,7 @@ export async function POST(req: NextRequest) {
     }));
     let promptForSend = prompt;
     if (qwenNativeFallback) {
-      const analysis = await analyzeNativeImages(prompt, qwenImages, fetch, workspace.absolute_path);
+      const analysis = await analyzeNativeImages(prompt, qwenImages, workspace.absolute_path);
       promptForSend = nativeImageContext(prompt, analysis);
     }
 

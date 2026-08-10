@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
-  QWEN_NATIVE_DEFAULTS,
   readQwenNativeSettings,
   writeQwenNativeSettings,
   type QwenNativeSettings,
@@ -9,6 +8,9 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** `providerID::modelID` 形式のみ受け付ける。 */
+const MODEL_RE = /^[^\s:][^\s]*::[^\s]+$/;
 
 function isFinitePositive(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -18,23 +20,16 @@ function sanitizeInput(body: unknown): QwenNativeSettings | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const value = body as Record<string, unknown>;
   if (typeof value.enabled !== "boolean") return null;
-  if (value.source !== "endpoint" && value.source !== "opencode") return null;
   if (typeof value.opencodeModel !== "string") return null;
-  if (value.source === "opencode" && !value.opencodeModel.trim()) return null;
-  if (typeof value.baseUrl !== "string" || !value.baseUrl.trim()) return null;
-  if (typeof value.model !== "string" || !value.model.trim()) return null;
-  if (typeof value.apiKey !== "string") return null;
+  const opencodeModel = value.opencodeModel.trim();
+  // 事前解析は OpenCode 登録モデルのみ。有効化するならモデル指定が必須。
+  if (value.enabled && !MODEL_RE.test(opencodeModel)) return null;
+  if (opencodeModel && !MODEL_RE.test(opencodeModel)) return null;
   if (!isFinitePositive(value.timeoutMs)) return null;
-  if (!isFinitePositive(value.maxTokens)) return null;
   return {
     enabled: value.enabled,
-    source: value.source,
-    opencodeModel: value.opencodeModel.trim(),
-    baseUrl: value.baseUrl.trim(),
-    model: value.model.trim(),
-    apiKey: value.apiKey.trim() || QWEN_NATIVE_DEFAULTS.apiKey,
+    opencodeModel,
     timeoutMs: value.timeoutMs,
-    maxTokens: value.maxTokens,
   };
 }
 

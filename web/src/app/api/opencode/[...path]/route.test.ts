@@ -532,14 +532,21 @@ describe("POST session image capability validation", () => {
   it("analyzes image parts natively before forwarding to a text-only model", async () => {
     const directory = "C:\\repo\\qwen-native";
     const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-    const previousBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+    const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
     process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
-    process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = "http://ollama.example/v1";
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    // 事前解析は OpenCode 登録モデル経由（使い捨てセッション）で行われる。
+    process.env.OPENCODE_WEBUI_QWEN_MODEL = "ollama::qwen2.5vl:7b";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = new URL(String(input));
-      if (url.hostname === "ollama.example") {
+      if (url.pathname === "/experimental/tool/ids") {
+        return Promise.resolve(jsonResponse(["bash"]));
+      }
+      if (url.pathname === "/session" && (init?.method ?? "GET") === "POST") {
+        return Promise.resolve(jsonResponse({ id: "analysis-1" }));
+      }
+      if (url.pathname === "/session/analysis-1/message") {
         return Promise.resolve(jsonResponse({
-          choices: [{ message: { content: "Native visual analysis" } }],
+          parts: [{ type: "text", text: "Native visual analysis" }],
         }));
       }
       if (url.pathname === "/provider") {
@@ -582,8 +589,8 @@ describe("POST session image capability validation", () => {
       fetchMock.mockRestore();
       if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
       else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
-      if (previousBaseUrl === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
-      else process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = previousBaseUrl;
+      if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
+      else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
     }
   });
 

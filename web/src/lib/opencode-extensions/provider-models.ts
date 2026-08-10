@@ -245,6 +245,42 @@ function configuredProvidersFromContent(
   });
 }
 
+/**
+ * `opencode.jsonc` に直接定義された画像対応モデル一覧。
+ * OpenCode の `/provider` が `connected` に載せないローカルプロバイダー
+ * （登録済みの Ollama など）でも画像解析の選択肢として提示するために使う。
+ */
+export function listConfiguredImageModels(): {
+  value: string;
+  label: string;
+  group: string;
+}[] {
+  const root = parseJsoncConfig(readConfigContentForProviders());
+  if (!isRecord(root.provider)) return [];
+  return Object.entries(root.provider).flatMap(([id, raw]) => {
+    if (!isRecord(raw)) return [];
+    const providerName =
+      typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id;
+    if (!isRecord(raw.models)) return [];
+    return Object.entries(raw.models).flatMap(([modelID, model]) => {
+      if (!isRecord(model)) return [];
+      const modalities = isRecord(model.modalities) ? model.modalities : null;
+      const inputs = Array.isArray(modalities?.input) ? modalities.input : [];
+      if (model.attachment !== true && !inputs.includes("image")) return [];
+      return [
+        {
+          value: `${id}::${modelID}`,
+          label:
+            typeof model.name === "string" && model.name.trim()
+              ? model.name.trim()
+              : modelID,
+          group: providerName,
+        },
+      ];
+    });
+  });
+}
+
 function envNameFromRef(value: string): string | undefined {
   const match = value.match(/^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/);
   return match?.[1];
@@ -315,7 +351,8 @@ function providerConfigFromInput(input: CustomProviderInput): {
     throw new ExtensionsError("invalid-name", "Base URL は http:// または https:// で入力してください");
   }
   const models = input.models.map((model) => {
-    const modelID = validateIdentifier(model.id, "モデルID", "/");
+    // Ollama のタグ付きモデルID（`qwen2.5vl:7b`）を通すため `:` も許可する。
+    const modelID = validateIdentifier(model.id, "モデルID", "/:");
     return [modelID, { name: model.name?.trim() || modelID }];
   });
   if (models.length === 0) {
@@ -342,21 +379,47 @@ function providerConfigFromInput(input: CustomProviderInput): {
   };
 }
 
+async function ensureConfigFile(filePath: string): Promise<void> {
+  if (fs.existsSync(filePath)) return;
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises
+    .writeFile(
+      filePath,
+      '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
+      { encoding: "utf8", flag: "wx" },
+    )
+    .catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== "EEXIST") throw err;
+    });
+}
+
+/**
+ * `provider.<id>` を作成または上書きする（存在しても衝突エラーにしない）。
+ * 検出したモデル一覧を丸ごと入れ替えるローカル Ollama 登録などで使う。
+ */
+export async function upsertProviderEntry(
+  providerID: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  const id = validateIdentifier(providerID, "プロバイダーID");
+  const filePath = opencodeConfigFilePath();
+  await ensureConfigFile(filePath);
+  await updateConfigFile(filePath, (content) => {
+    const root = parseJsoncConfig(content);
+    if (root.provider !== undefined && !isRecord(root.provider)) {
+      throw new ExtensionsError("config", "provider 設定が不正です");
+    }
+    const edits = modify(content, ["provider", id], config, {
+      formattingOptions: detectFormatting(content),
+    });
+    return applyEdits(content, edits);
+  });
+}
+
 export async function addCustomProvider(input: CustomProviderInput): Promise<void> {
   const { id, config } = providerConfigFromInput(input);
   const filePath = opencodeConfigFilePath();
-  if (!fs.existsSync(filePath)) {
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.promises
-      .writeFile(
-        filePath,
-        '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
-        { encoding: "utf8", flag: "wx" },
-      )
-      .catch((err: NodeJS.ErrnoException) => {
-        if (err.code !== "EEXIST") throw err;
-      });
-  }
+  await ensureConfigFile(filePath);
   await updateConfigFile(filePath, (content) => {
     const root = parseJsoncConfig(content);
     if (root.provider !== undefined && !isRecord(root.provider)) {

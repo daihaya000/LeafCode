@@ -27,11 +27,13 @@ vi.mock("@/lib/paths", () => ({
 import {
   addCustomProvider,
   deleteCustomProvider,
+  listConfiguredImageModels,
   listProviderModels,
   saveProviderModelOrder,
   setProviderIconOverride,
   setProviderModelEnabled,
   updateCustomProvider,
+  upsertProviderEntry,
 } from "./provider-models";
 
 let data: string;
@@ -516,6 +518,26 @@ describe("addCustomProvider", () => {
     });
   });
 
+  it("accepts tagged model ids so local Ollama models can be registered", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
+    );
+
+    await addCustomProvider({
+      id: "ollama-local",
+      name: "Ollama",
+      baseURL: "http://127.0.0.1:11434/v1",
+      models: [{ id: "qwen2.5vl:7b" }],
+    });
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider["ollama-local"].models["qwen2.5vl:7b"]).toMatchObject({
+      name: "qwen2.5vl:7b",
+    });
+  });
+
   it("rejects duplicate provider ids", async () => {
     process.env.OPENCODE_CONFIG_DIR = data;
     fs.writeFileSync(
@@ -531,6 +553,75 @@ describe("addCustomProvider", () => {
         models: [{ id: "my-model" }],
       }),
     ).rejects.toMatchObject({ code: "conflict" });
+  });
+});
+
+describe("upsertProviderEntry / listConfiguredImageModels", () => {
+  it("creates then overwrites the provider entry without a conflict error", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
+    );
+
+    await upsertProviderEntry("ollama", {
+      name: "Ollama (ローカル)",
+      options: { baseURL: "http://127.0.0.1:11434/v1" },
+      models: { "llava:13b": { name: "llava:13b", attachment: true } },
+    });
+    await upsertProviderEntry("ollama", {
+      name: "Ollama (ローカル)",
+      options: { baseURL: "http://127.0.0.1:11434/v1" },
+      models: {
+        "qwen2.5vl:7b": {
+          name: "qwen2.5vl:7b",
+          attachment: true,
+          modalities: { input: ["text", "image"], output: ["text"] },
+        },
+        "llama3:8b": { name: "llama3:8b" },
+      },
+    });
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    // 再登録は差分マージではなく丸ごと置き換え。
+    expect(Object.keys(config.provider.ollama.models)).toEqual([
+      "qwen2.5vl:7b",
+      "llama3:8b",
+    ]);
+  });
+
+  it("lists only image-capable models declared in the config file", async () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          ollama: {
+            name: "Ollama (ローカル)",
+            models: {
+              "qwen2.5vl:7b": { name: "qwen2.5vl:7b", attachment: true },
+              "gemma3:4b": { modalities: { input: ["text", "image"] } },
+              "llama3:8b": { name: "llama3:8b" },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(listConfiguredImageModels()).toEqual([
+      {
+        value: "ollama::qwen2.5vl:7b",
+        label: "qwen2.5vl:7b",
+        group: "Ollama (ローカル)",
+      },
+      { value: "ollama::gemma3:4b", label: "gemma3:4b", group: "Ollama (ローカル)" },
+    ]);
+  });
+
+  it("returns nothing when the config has no provider section", () => {
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
+    expect(listConfiguredImageModels()).toEqual([]);
   });
 });
 

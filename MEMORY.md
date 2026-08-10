@@ -1,10 +1,53 @@
 # 作業ログ: 選択中スキル説明のコントラスト強化
 
+# 作業ログ: 画像解析のOpenCode登録モデル一本化 / Ollama自動セットアップのボタン化
+
 ## 日付
 
 2026-08-11
 
-## 作業ログ: ハング自動再開通知の非表示化
+## 実装内容
+
+### 画像事前解析をOpenCode登録モデルへ一本化
+
+- `QwenNativeSettings` から `source` / `baseUrl` / `model` / `apiKey` / `maxTokens` を削除し、`{ enabled, opencodeModel, timeoutMs }` のみにした。旧設定ファイルの endpoint 系フィールドは読み捨てる（`readQwenNativeSettings` が移行を吸収）。
+- `qwen-native-vision.ts` からOpenAI互換 `/chat/completions` 直叩き経路と再試行ロジックを削除。解析は常に `providerID::modelID` のOpenCode登録モデルで、ツール無効の使い捨てセッション経由で実行する。
+- `analyzeNativeImages(prompt, images, directory)` に簡約（`fetchImpl` 引数を削除）。呼び出し側 `api/tasks/route.ts` も更新。
+- 環境変数は `OPENCODE_WEBUI_QWEN_NATIVE=1`（強制有効化）と新設 `OPENCODE_WEBUI_QWEN_MODEL=providerID::modelID`（解析モデル上書き）のみ。`OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL` / `_MODEL` / `_API_KEY` は廃止。
+- 有効化にはモデル選択が必須（`isQwenNativeVisionAvailable()` は `enabled && opencodeModel` で判定）。`PUT /api/qwen-native/settings` も `providerID::modelID` 形式を検証する。
+- `GET /api/qwen-native/models` は `/provider` の画像対応モデルに加え、`opencode.jsonc` に直接定義された画像対応モデル（`attachment: true` / `modalities.input` に image）をマージして返す。エンジン再起動前の登録直後や、エンジン到達不可時でも候補を出せる。
+
+### ローカルOllamaのOpenCodeプロバイダー登録
+
+- `web/src/lib/ollama-provider.ts` を新設。`ollama` provider として `npm: @ai-sdk/openai-compatible` / `baseURL: http://127.0.0.1:11434/v1` / `apiKey: ollama` を `opencode.jsonc` へ書き込む。検出モデル名から画像対応を推定し（`vl` / `vision` / `llava` / `minicpm-v` / `moondream` / `pixtral` / `internvl` / `gemma3`、`gemma3:1b` は除外）、該当モデルに `attachment: true` と `modalities.input: [text, image]` を付与する。
+- `provider-models.ts` に `upsertProviderEntry()`（衝突エラーにしない作成/上書き）と `listConfiguredImageModels()` を追加。設定ファイル生成処理は `ensureConfigFile()` へ共通化。
+- モデルIDの許可文字に `:` を追加。`qwen2.5vl:7b` のようなタグ付きIDが登録できるようになり、既存の「ローカルOllamaを追加」プリセットの保存失敗も解消。
+
+### 起動時自動セットアップの廃止とボタン化
+
+- `scripts/start-webui.bat` から `:check_ollama`（winget自動インストール + 自動Pull）と呼び出しを削除。`OPENCODE_WEBUI_OLLAMA` / `OPENCODE_WEBUI_OLLAMA_MODEL` も廃止。
+- `POST /api/ollama/setup` を新設。インストール（未導入時のみ）→ 指定モデルのPull（未取得時のみ）→ provider登録 を一括実行し、実行ステップと `modelValue`（`ollama::<model>`）を返す。
+- `VisionSettings.tsx` を作り直し: endpoint入力欄（Base URL / モデル名 / APIキー / 最大トークン）を削除し、モデル選択＋タイムアウトのみに。「ローカルOllama」パネルに取得モデル名入力と「Ollamaをセットアップ」ボタンを配置し、成功時は解析モデルの選択を自動反映する。
+- 単発の `POST /api/ollama/install` / `POST /api/ollama/pull` は `setup` へ統合したため削除（`GET /api/ollama/status` は維持）。
+- 画像非対応モデルへの画像添付時のエラー文言を「Ollama画像解析を有効に」から「設定の『画像解析』タブで事前解析モデルを選んで有効化」へ更新（TaskView / HomeView / tasks route / opencodeプロキシ）。
+
+## 検証結果
+
+- `npm --prefix web run typecheck` ... 成功
+- `npm --prefix web run lint` ... 成功
+- `npx vitest run` ... 266ファイル / 3158 tests 成功（1 skipped）
+- `npm run test:encoding` ... 7件成功（`start-webui.bat` のASCII+CRLF維持を確認）
+
+## 注意点
+
+- provider登録は `opencode.jsonc` への書き込みのため、OpenCodeエンジン再起動後に `/provider` へ反映される。UIにも再起動が必要な旨を表示している。
+- 旧 endpoint 設定で有効化していた環境は、移行後にOpenCode登録モデルを選び直すまで事前解析が無効になる（`enabled` だけでは有効にならない）。
+
+# 作業ログ: ハング自動再開通知の非表示化
+
+## 日付
+
+2026-08-11
 
 ### 実装内容
 

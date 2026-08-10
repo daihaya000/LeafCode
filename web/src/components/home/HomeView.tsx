@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -796,7 +796,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenNativeAvailable;
     if (sendingImageBlocked) {
       setError(
-        "選択中のモデルは画像入力に対応していないか、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
+        "選択中のモデルは画像入力に対応していないか、画像事前解析も有効ではありません。画像対応モデルを選ぶか、設定の「画像解析」タブで事前解析モデルを選んで有効化してください。",
       );
       return;
     }

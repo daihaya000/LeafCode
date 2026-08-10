@@ -619,7 +619,7 @@ async function proxy(
                 return NextResponse.json(
                   {
                     error: nativeError
-                      ? "ローカルQwen画像解析に失敗しました。Ollamaと画像対応モデルの起動状態を確認してください。"
+                      ? "画像の事前解析に失敗しました。設定の「画像解析」タブで選んだ解析モデルが利用できる状態か確認してください。"
                       : "image input is not supported by the selected model",
                   },
                   { status: nativeError ? 502 : 400 },

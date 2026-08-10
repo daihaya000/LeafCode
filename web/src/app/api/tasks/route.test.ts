@@ -1420,24 +1420,35 @@ describe("POST /api/tasks auto model selection", () => {
     expect(provisionWorkspace).not.toHaveBeenCalled();
   });
 
-  it("analyzes an image natively before sending it to an Auto-selected text model", async () => {
+  it("analyzes an image with the registered OpenCode model before sending it to an Auto-selected text model", async () => {
     const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-    const previousBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+    const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
     process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
-    // Force the endpoint path so the test is independent from persisted UI settings.
-    process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = "http://ollama.example/v1";
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ choices: [{ message: { content: "A native Qwen analysis." } }] }),
-        { status: 200 },
-      ),
-    );
+    // Force the analysis model so the test is independent from persisted UI settings.
+    process.env.OPENCODE_WEBUI_QWEN_MODEL = "ollama::qwen2.5vl:7b";
     try {
       const ocServer = await mockOc({
         provider: providerFixture({
           [CHEAP]: { variants: { minimal: {} } },
           [MID]: { capabilities: { input: { image: false } } },
         }),
+      });
+      // The analysis runs in a throwaway OpenCode session (/session → /message).
+      ocServer.mockImplementation(async (_dir: string | null, path: string) => {
+        if (path === "/provider") {
+          return providerFixture({
+            [CHEAP]: { variants: { minimal: {} } },
+            [MID]: { capabilities: { input: { image: false } } },
+          });
+        }
+        if (path === "/agent") return [];
+        if (path === "/session") return { id: "session-1" };
+        if (path === "/command") return [];
+        if (path === "/experimental/tool/ids") return ["bash"];
+        if (path.endsWith("/message")) {
+          return { parts: [{ type: "text", text: "A native Qwen analysis." }] };
+        }
+        return {};
       });
 
       const res = await post({
@@ -1459,11 +1470,10 @@ describe("POST /api/tasks auto model selection", () => {
         ],
       });
     } finally {
-      fetchMock.mockRestore();
       if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
       else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
-      if (previousBaseUrl === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
-      else process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = previousBaseUrl;
+      if (previousModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_MODEL;
+      else process.env.OPENCODE_WEBUI_QWEN_MODEL = previousModel;
     }
   });
 

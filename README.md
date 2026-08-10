@@ -133,11 +133,11 @@ cd OpenCodeWebUI
 | --- | --- | --- |
 | **Caddy 逆プロキシ（推奨）** | `OPENCODE_WEBUI_CADDY=1` | HTTPS で安全に公開。トレイ host が Caddy を連動管理 |
 | 直接バインド | `OPENCODE_WEBUI_HOST=0.0.0.0` | 全インターフェースで待ち受け。**VPN と認証なしで公開しないでください** |
-| Qwen画像ネイティブ統合 | `OPENCODE_WEBUI_QWEN_NATIVE=1` | 画像非対応モデル使用時にOpenAI互換の画像対応モデルで事前解析。既定はローカルOllama `qwen2.5vl:7b`。`OPENCODE_WEBUI_QWEN_LOCAL_MODEL` / `OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL`で変更可能。設定画面の「画像解析」タブからも変更可（OpenAI・Gemini・DashScope等のリモートエンドポイントも指定可） |
+| 画像事前解析 | `OPENCODE_WEBUI_QWEN_NATIVE=1` | 画像非対応モデル使用時に、OpenCode登録済みの画像対応モデルで事前解析。解析モデルは `OPENCODE_WEBUI_QWEN_MODEL=providerID::modelID` で上書き可。通常は設定画面の「画像解析」タブで選択 |
 
-Qwen画像ネイティブ統合を利用すると、画像非対応モデルへ添付した画像と依頼文が事前解析用のOpenAI互換エンドポイントへ送信されます。ローカルOllama（`ollama run qwen2.5vl:7b`）または外部API（OpenAI・Gemini・DashScope等）のいずれかを用意し、`OPENCODE_WEBUI_QWEN_NATIVE=1`を設定してWebUIを再起動するか、設定画面の「画像解析」タブで有効化してください。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、事前解析は行いません。
+事前解析に使うモデルは**OpenCode登録モデルへ一本化**しています。設定画面の「画像解析」タブで、OpenCodeに接続済みのプロバイダーが持つ画像入力対応モデルだけを選択できます。認証情報はOpenCode側の登録をそのまま使用し、WebUIの設定ファイルへAPIキーを複製しません。解析時はツールを無効化した一時セッションを作成し、応答取得後に削除します。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、事前解析は行いません。
 
-「画像解析」タブで「OpenCode登録モデル」を選ぶと、OpenCode CLIに接続済みのプロバイダーから画像入力対応モデルだけを事前解析用に選択できます。認証情報はOpenCode側の登録をそのまま使用し、WebUIの設定ファイルへAPIキーを複製しません。解析時はツールを無効化した一時セッションを作成し、応答取得後に削除します。
+ローカルOllamaも同じ仕組みで使います。「画像解析」タブの **「Ollamaをセットアップ」** ボタンが、Ollama本体のインストール（winget）→ モデル取得（既定 `qwen2.5vl:7b`）→ `opencode.jsonc` へのプロバイダー登録 までを一括で行います。起動時の自動インストール／自動Pullは行いません。登録したモデルはOpenCode再起動後に解析へ利用できます。
 
 ```bat
 set OPENCODE_WEBUI_CADDY=1
@@ -286,7 +286,7 @@ production build は**リポジトリ内では実行されません**。`scripts
 | 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
 | UI-0〜4 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ / モバイル / ⌘K） |
 | R | リモート: トレイ管理の Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`） |
-| MM | ローカルOllamaのQwen Visionモデルで画像非対応モデルを補助（`OPENCODE_WEBUI_QWEN_NATIVE=1`） |
+| MM | OpenCode登録済みの画像対応モデル（ローカルOllama含む）で画像非対応モデルを補助（`OPENCODE_WEBUI_QWEN_NATIVE=1`） |
 
 ---
 

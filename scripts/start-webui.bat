@@ -50,7 +50,6 @@ if errorlevel 1 goto :failure
 call :check_opencode
 if errorlevel 1 goto :failure
 call :check_caddy
-call :check_ollama
 call :install_web
 if errorlevel 1 goto :failure
 call :install_host
@@ -201,58 +200,9 @@ exit /b 0
 echo [OpenCode WebUI] Caddy installation failed; continuing without the optional reverse proxy. See README for manual setup.
 exit /b 0
 
-rem Ollama (local image analysis backend) is optional: the Vision settings tab
-rem manages install/pull on demand, so a failure here never blocks startup.
-rem OPENCODE_WEBUI_OLLAMA=0 skips the automatic install and model pull entirely.
-:check_ollama
-if "%OPENCODE_WEBUI_OLLAMA%"=="0" exit /b 0
-if "%OPENCODE_WEBUI_QWEN_NATIVE%"=="1" goto :check_ollama_proceed
-if not exist "%APPDATA%\opencode-webui\qwen-native-settings.json" exit /b 0
-:check_ollama_proceed
-call where ollama >nul 2>&1
-if not errorlevel 1 (
-  set "OLLAMA_CMD=ollama"
-  goto :ollama_pull
-)
-if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe" (
-  set "OLLAMA_CMD=%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe"
-  goto :ollama_pull
-)
-if exist "%ProgramFiles%\Ollama\ollama.exe" (
-  set "OLLAMA_CMD=%ProgramFiles%\Ollama\ollama.exe"
-  goto :ollama_pull
-)
-call where winget >nul 2>&1
-if errorlevel 1 goto :ollama_skip_no_winget
-echo [OpenCode WebUI] Installing Ollama ^(optional local image analysis^)...
-call winget install --id Ollama.Ollama --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-if errorlevel 1 goto :ollama_install_failed
-if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe" set "OLLAMA_CMD=%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe"
-if not defined OLLAMA_CMD if exist "%ProgramFiles%\Ollama\ollama.exe" set "OLLAMA_CMD=%ProgramFiles%\Ollama\ollama.exe"
-
-:ollama_pull
-if "%OPENCODE_WEBUI_OLLAMA_MODEL%"=="" set "OPENCODE_WEBUI_OLLAMA_MODEL=qwen2.5vl:7b"
-if not defined OLLAMA_CMD goto :ollama_skip_no_binary
-echo [OpenCode WebUI] Pulling Ollama model %OPENCODE_WEBUI_OLLAMA_MODEL% ^(optional, may take a while^)...
-call "%OLLAMA_CMD%" pull %OPENCODE_WEBUI_OLLAMA_MODEL% >nul 2>&1
-if errorlevel 1 goto :ollama_pull_failed
-exit /b 0
-
-:ollama_skip_no_winget
-echo [OpenCode WebUI] winget not found; skipping automatic Ollama install. See README for manual setup.
-exit /b 0
-
-:ollama_install_failed
-echo [OpenCode WebUI] Ollama installation failed; continuing without local image analysis. See README for manual setup.
-exit /b 0
-
-:ollama_skip_no_binary
-echo [OpenCode WebUI] Ollama binary not on PATH yet; skipping model pull. Restart after PATH refresh.
-exit /b 0
-
-:ollama_pull_failed
-echo [OpenCode WebUI] Ollama model pull failed; continuing. You can pull it later from the Vision settings tab.
-exit /b 0
+rem Ollama (local image analysis backend) is no longer installed at startup.
+rem Use Settings -> Image analysis -> "Ollama setup" in the WebUI, which
+rem installs Ollama, pulls the model, and registers it as an OpenCode provider.
 
 :install_web
 if not exist "web\node_modules\" goto :install_web_run
