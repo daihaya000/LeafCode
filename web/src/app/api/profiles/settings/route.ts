@@ -17,10 +17,11 @@ export async function PUT(req: Request) {
   if (denied) return denied;
 
   const body = (await req.json().catch(() => undefined)) as
-    | { browserBridge?: unknown; cursorAcp?: unknown; claudeAuth?: unknown; commandcodeAuth?: unknown }
+    | { browserBridge?: unknown; qwenMm?: unknown; cursorAcp?: unknown; claudeAuth?: unknown; commandcodeAuth?: unknown }
     | undefined;
   if (
     typeof body?.browserBridge !== "boolean" ||
+    typeof body.qwenMm !== "boolean" ||
     typeof body.cursorAcp !== "boolean" ||
     typeof body.claudeAuth !== "boolean" ||
     typeof body.commandcodeAuth !== "boolean"
@@ -31,6 +32,7 @@ export async function PUT(req: Request) {
     return NextResponse.json(
       writeProfileSetupSettings({
         browserBridge: body.browserBridge,
+        qwenMm: body.qwenMm,
         cursorAcp: body.cursorAcp,
         claudeAuth: body.claudeAuth,
         commandcodeAuth: body.commandcodeAuth,

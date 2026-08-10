@@ -45,6 +45,7 @@ type JobResponse = {
 type LoadState = "loading" | "ready" | "error";
 type ProfileSetupSettings = {
   browserBridge: boolean;
+  qwenMm: boolean;
   cursorAcp: boolean;
   claudeAuth: boolean;
   commandcodeAuth: boolean;
@@ -567,6 +568,7 @@ export function ProfilesSettings() {
           <div className="mt-3 grid gap-2 lg:grid-cols-4">
             {([
               ["browserBridge", "Browser Bridge", "ブラウザ操作用のMCPを追加"],
+              ["qwenMm", "Qwen-MM-Plugins", "画像非対応モデル向けの画像・OCR用MCPを追加"],
               ["cursorAcp", "Cursor CLI Proxy", "Cursor連携プラグインとプロバイダーを追加"],
               ["claudeAuth", "Claude CLI Proxy", "Claudeサブスクリプション認証プラグインを追加"],
               ["commandcodeAuth", "CommandCode CLI Proxy", "CommandCode CLI経由の認証・ローカルプロキシを追加"],

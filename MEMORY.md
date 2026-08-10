@@ -1,3 +1,22 @@
+# 作業ログ: プロファイル新規作成時の Qwen-MM-Plugins セットアップ
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- プロファイル設定画面の「新規作成時のセットアップ」に `Qwen-MM-Plugins` チェックボックスを追加し、既定で有効化した。
+- 新規プロファイル作成・複製・既存プロファイルへの依存適用で、`mcp.qwen-mm-plugins-core` を未設定時だけ追加する。
+- MCP は `uvx --from "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-core` を実行し、DashScope/Serper の環境変数を引き継ぐ。
+- 保存済みの旧設定ファイルは `qwenMm` 欠落時に有効として読み、既存利用者にも既定値を適用する。
+
+## 検証結果
+
+- `npm.cmd test -- --run src/lib/profiles/webui-dependencies.test.ts src/app/api/profiles/settings/route.test.ts src/components/settings/ProfilesSettings.test.tsx` ... 34 tests 成功
+- `npm.cmd run typecheck` ... 成功
+- 対象 ESLint / `git diff --check` ... 成功
+
 # 作業ログ: 手動モデル価格設定（コスト未返却モデル対応）
 
 # 作業ログ: EXE起動時のブラウザ自動起動設定

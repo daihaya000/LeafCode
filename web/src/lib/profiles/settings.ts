@@ -4,6 +4,7 @@ import { dataDir } from "../paths";
 
 export type ProfileSetupSettings = {
   browserBridge: boolean;
+  qwenMm: boolean;
   cursorAcp: boolean;
   claudeAuth: boolean;
   commandcodeAuth: boolean;
@@ -11,6 +12,7 @@ export type ProfileSetupSettings = {
 
 const DEFAULT_SETTINGS: ProfileSetupSettings = {
   browserBridge: true,
+  qwenMm: true,
   cursorAcp: true,
   claudeAuth: true,
   commandcodeAuth: true,
@@ -25,6 +27,7 @@ export function readProfileSetupSettings(): ProfileSetupSettings {
     const parsed = JSON.parse(fs.readFileSync(settingsPath(), "utf8")) as Partial<ProfileSetupSettings>;
     return {
       browserBridge: parsed.browserBridge !== false,
+      qwenMm: parsed.qwenMm !== false,
       cursorAcp: parsed.cursorAcp !== false,
       claudeAuth: parsed.claudeAuth !== false,
       commandcodeAuth: parsed.commandcodeAuth !== false,
