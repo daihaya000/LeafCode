@@ -1,5 +1,24 @@
 # 作業ログ: EXE起動直後のHomeView/TaskView軽量化
 
+## 作業ログ: プロジェクト設定のスキルタブ
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- プロジェクト設定に「スキル」タブを追加し、`.opencode/skills/<name>/SKILL.md` の一覧表示・新規作成・編集・削除に対応した。
+- プロジェクトスキル用APIとして `GET/POST /api/projects/[id]/skills` と `GET/PUT/DELETE /api/projects/[id]/skills/[name]` を追加した。
+- スキル名を安全な文字種に限定し、2MB上限、プロジェクトルート内判定、シンボリックリンク拒否を実装した。削除時はスキルの補助ファイルを含むディレクトリ全体を削除する。
+- UIテストとファイル操作の単体テストを追加した。
+
+## 検証結果
+
+- `npm run typecheck`（web）... 成功
+- 対象ファイルのESLint ... 成功
+- `ProjectSettingsView.test.tsx` / `project-skills.test.ts` ... 5件成功、Windowsでシンボリックリンク作成権限に依存する1件はスキップ
+
 ## 日付
 
 2026-08-10

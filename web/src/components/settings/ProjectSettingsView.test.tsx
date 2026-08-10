@@ -127,4 +127,73 @@ describe("ProjectSettingsView", () => {
       ),
     );
   });
+
+  it("creates and saves a project skill", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path.endsWith("/skills")) {
+        return Promise.resolve({
+          project: { id: "project-1", name: "Fixture", rootPath: "C:\\repo" },
+          skills: [],
+        });
+      }
+      return Promise.resolve({
+        project: { id: "project-1", name: "Fixture", rootPath: "C:\\repo" },
+        files: [
+          {
+            key: "AGENTS.md",
+            label: "AGENTS.md",
+            description: "Agent instructions",
+            exists: true,
+            content: "Existing",
+          },
+        ],
+      });
+    });
+    const createdSkill = {
+      name: "code-review",
+      path: "C:\\repo\\.opencode\\skills\\code-review\\SKILL.md",
+      relativePath: ".opencode/skills/code-review/SKILL.md",
+      exists: true,
+      content: "---\nname: code-review\ndescription: \"\"\n---\n\n# code-review\n",
+    };
+    sendJson.mockImplementation(async (method: string, url: string, body?: unknown) => {
+      if (method === "POST" && url.endsWith("/skills")) {
+        return { ok: true, skill: createdSkill };
+      }
+      if (method === "PUT" && url.includes("/skills/code-review")) {
+        const content = (body as { content?: string })?.content ?? "";
+        return { ok: true, skill: { ...createdSkill, content } };
+      }
+      return { ok: true };
+    });
+
+    render(<ProjectSettingsView projectId="project-1" />);
+    fireEvent.click(screen.getByRole("tab", { name: "スキル" }));
+    await waitFor(() => expect(getJson).toHaveBeenCalledWith("/api/projects/project-1/skills"));
+
+    fireEvent.change(await screen.findByPlaceholderText("新しいスキル名"), {
+      target: { value: "code-review" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "スキルを作成" }));
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/projects/project-1/skills",
+        expect.objectContaining({ name: "code-review" }),
+      ),
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "スキル「code-review」の内容" });
+    fireEvent.change(editor, { target: { value: "Updated skill" } });
+    fireEvent.click(screen.getByRole("button", { name: "スキルを保存" }));
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/projects/project-1/skills/code-review",
+        { content: "Updated skill" },
+      ),
+    );
+  });
 });

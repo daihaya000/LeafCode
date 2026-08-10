@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, FileText, Plus, Trash2, Users } from "lucide-react";
+import { ArrowLeft, FileText, Plus, Sparkles, Trash2, Users } from "lucide-react";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import { Badge, Button, cx, Spinner } from "@/components/ui";
@@ -12,6 +12,7 @@ import type {
   ProjectSettingFileKey,
 } from "@/lib/project-settings";
 import type { ProjectAgentDto } from "@/lib/project-agents";
+import type { ProjectSkillDto } from "@/lib/project-skills";
 
 type ProjectSettingsResponse = {
   project: { id: string; name: string; rootPath: string };
@@ -23,7 +24,12 @@ type ProjectAgentsResponse = {
   agents: ProjectAgentDto[];
 };
 
-type Tab = "files" | "agents";
+type ProjectSkillsResponse = {
+  project: { id: string; name: string; rootPath: string };
+  skills: ProjectSkillDto[];
+};
+
+type Tab = "files" | "agents" | "skills";
 
 const DEFAULT_AGENT_TEMPLATE = `---
 description: ""
@@ -32,19 +38,27 @@ model: openai/gpt-5
 ---
 `;
 
+function defaultSkillTemplate(name: string): string {
+  return `---\nname: ${name}\ndescription: ""\n---\n\n# ${name}\n`;
+}
+
 export function ProjectSettingsView({ projectId }: { projectId: string }) {
   const [tab, setTab] = useState<Tab>("files");
   const [data, setData] = useState<ProjectSettingsResponse | null>(null);
   const [agents, setAgents] = useState<ProjectAgentDto[]>([]);
+  const [skills, setSkills] = useState<ProjectSkillDto[]>([]);
   const [activeFile, setActiveFile] = useState<ProjectSettingFileKey>("AGENTS.md");
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [activeSkill, setActiveSkill] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [newAgentName, setNewAgentName] = useState("");
+  const [newSkillName, setNewSkillName] = useState("");
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const [creatingSkill, setCreatingSkill] = useState(false);
   const setScrollTarget = useMobileScrollTarget();
 
   const loadFiles = useCallback(async () => {
@@ -86,13 +100,33 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
     }
   }, [projectId]);
 
+  const loadSkills = useCallback(async () => {
+    setError(null);
+    try {
+      const result = await getJson<ProjectSkillsResponse>(
+        `/api/projects/${encodeURIComponent(projectId)}/skills`,
+      );
+      setSkills(result.skills);
+      if (result.skills.length > 0) {
+        setActiveSkill(result.skills[0].name);
+        setDraft(result.skills[0].content);
+      } else {
+        setActiveSkill(null);
+        setDraft("");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "スキル一覧の取得に失敗しました");
+    }
+  }, [projectId]);
+
   useEffect(() => {
     void loadFiles();
   }, [loadFiles]);
 
   useEffect(() => {
     if (tab === "agents") void loadAgents();
-  }, [tab, loadAgents]);
+    if (tab === "skills") void loadSkills();
+  }, [tab, loadAgents, loadSkills]);
 
   const selectFile = (key: ProjectSettingFileKey) => {
     const file = data?.files.find((candidate) => candidate.key === key);
@@ -108,6 +142,15 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
     if (!agent) return;
     setActiveAgent(name);
     setDraft(agent.content);
+    setMessage(null);
+    setError(null);
+  };
+
+  const selectSkill = (name: string) => {
+    const skill = skills.find((candidate) => candidate.name === name);
+    if (!skill) return;
+    setActiveSkill(name);
+    setDraft(skill.content);
     setMessage(null);
     setError(null);
   };
@@ -219,8 +262,83 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
     }
   };
 
+  const saveSkill = async () => {
+    if (saving || !activeSkill) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await sendJson<{ skill: ProjectSkillDto }>(
+        "PUT",
+        `/api/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(activeSkill)}`,
+        { content: draft },
+      );
+      setSkills((current) =>
+        current.map((skill) => (skill.name === activeSkill ? res.skill : skill)),
+      );
+      setMessage(`スキル「${activeSkill}」を保存しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "スキルの保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createSkill = async () => {
+    if (creatingSkill) return;
+    const name = newSkillName.trim();
+    if (!name) return;
+    const content = defaultSkillTemplate(name);
+    setCreatingSkill(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await sendJson<{ skill: ProjectSkillDto }>(
+        "POST",
+        `/api/projects/${encodeURIComponent(projectId)}/skills`,
+        { name, content },
+      );
+      setSkills((current) =>
+        [...current, res.skill].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setActiveSkill(name);
+      setDraft(content);
+      setNewSkillName("");
+      setMessage(`スキル「${name}」を作成しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "スキルの作成に失敗しました");
+    } finally {
+      setCreatingSkill(false);
+    }
+  };
+
+  const removeSkill = async (name: string) => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await sendJson(
+        "DELETE",
+        `/api/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(name)}`,
+      );
+      const remaining = skills.filter((skill) => skill.name !== name);
+      setSkills(remaining);
+      if (activeSkill === name) {
+        setActiveSkill(remaining[0]?.name ?? null);
+        setDraft(remaining[0]?.content ?? "");
+      }
+      setMessage(`スキル「${name}」を削除しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "スキルの削除に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const selected = data?.files.find((file) => file.key === activeFile);
   const selectedAgent = agents.find((a) => a.name === activeAgent);
+  const selectedSkill = skills.find((skill) => skill.name === activeSkill);
 
   return (
     <div className="flex h-full flex-col">
@@ -251,6 +369,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
               {([
                 { key: "files", label: "設定ファイル" },
                 { key: "agents", label: "サブエージェント" },
+                { key: "skills", label: "スキル" },
               ] as const).map((t) => (
                 <button
                   key={t.key}
@@ -449,6 +568,112 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                 ) : (
                   <p className="py-12 text-center text-sm text-faint">
                     左の「+」からサブエージェントを作成してください
+                  </p>
+                )}
+              </section>
+            </div>
+          )}
+
+          {tab === "skills" && (
+            <div className="grid gap-4 md:grid-cols-[15rem_minmax(0,1fr)]">
+              <nav aria-label="プロジェクトスキル" className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newSkillName}
+                    onChange={(event) => setNewSkillName(event.target.value)}
+                    aria-label="新規スキル名"
+                    placeholder="新しいスキル名"
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-primary"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void createSkill();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="スキルを作成"
+                    title="スキルを作成"
+                    disabled={creatingSkill || !newSkillName.trim()}
+                    onClick={() => void createSkill()}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:bg-surface-2 hover:text-text disabled:opacity-40"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                {skills.map((skill) => (
+                  <div
+                    key={skill.name}
+                    className={cx(
+                      "flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors",
+                      activeSkill === skill.name
+                        ? "border-primary bg-primary/10"
+                        : "border-transparent hover:bg-surface-2",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectSkill(skill.name)}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-text">
+                          {skill.name}
+                        </span>
+                        <span className="block truncate font-mono text-[10px] text-faint">
+                          {skill.relativePath}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`スキル「${skill.name}」を削除`}
+                      title="削除"
+                      disabled={saving}
+                      onClick={() => void removeSkill(skill.name)}
+                      className="shrink-0 rounded-lg p-1.5 text-faint hover:bg-danger-bg hover:text-danger disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {skills.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-faint">
+                    スキルがありません
+                  </p>
+                )}
+              </nav>
+
+              <section className="min-w-0 rounded-xl border border-border bg-surface p-4">
+                {selectedSkill ? (
+                  <>
+                    <div className="mb-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="font-mono text-sm font-semibold text-text">
+                          {selectedSkill.name}
+                        </h2>
+                        <Badge tone="neutral">.opencode/skills</Badge>
+                      </div>
+                      <p className="mt-1 truncate font-mono text-[11px] text-faint">
+                        {selectedSkill.relativePath}
+                      </p>
+                    </div>
+                    <textarea
+                      aria-label={`スキル「${selectedSkill.name}」の内容`}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      spellCheck={false}
+                      className="min-h-[28rem] w-full resize-y rounded-lg border border-border bg-bg px-3 py-3 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <Button type="button" variant="primary" busy={saving} onClick={() => void saveSkill()}>
+                        スキルを保存
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="py-12 text-center text-sm text-faint">
+                    左の「+」からスキルを作成してください
                   </p>
                 )}
               </section>
