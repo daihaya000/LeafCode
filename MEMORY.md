@@ -20,6 +20,27 @@
 - 新規設定画面テスト ... 1 test 成功
 - `Sidebar.test.tsx` / `SettingsView.test.tsx` ... 70 tests 成功
 
+# 作業ログ: プロジェクト固有サブエージェント編集機能
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- プロジェクト設定画面に「サブエージェント」タブを追加し、各プロジェクトの `.opencode/agent(s)/*.md` を作成・編集・削除できるようにした。
+- `src/lib/project-agents.ts` を新設し、プロジェクトルート配下のエージェント定義ファイルを安全に列挙・読み書き・削除するヘルパーを提供。パストラバーサル・シンボリックリンク外部書き込み・2MB超を拒否。
+- `GET/POST /api/projects/[id]/agents` で一覧・作成、`GET/PUT/DELETE /api/projects/[id]/agents/[name]` で個別読み書き削除を行うAPIを追加。
+- 設定ファイル編集タブとサブエージェントタブを切り替えられるUIにリファクタリング。
+
+## 検証結果
+
+- `npm run typecheck`（web）... 成功
+- 対象ファイルのESLint ... 成功
+- 新規agents APIテスト ... 6 tests 成功
+- 新規設定画面テスト（ファイル保存+サブエージェント作成・保存）... 2 tests 成功
+- 既存テスト（Sidebar / SettingsView / settings route）... 74 tests 成功
+
 # 調査ログ: デフォルトモデルが再起動後にリセットされたように見える原因
 
 ## 日付
