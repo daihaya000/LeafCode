@@ -355,7 +355,7 @@ rem Optional: set OPENCODE_WEBUI_QWEN_MM=0 to skip.
 :install_qwen_mm_mcp
 if "%OPENCODE_WEBUI_QWEN_MM%"=="0" exit /b 0
 echo [OpenCode WebUI] Registering Qwen-MM-Plugins core MCP server...
-call node browser-bridge\scripts\install-qwen-mm-mcp.mjs
+call node browser-bridge\scripts\install-qwen-mm-mcp.mjs --force
 if errorlevel 1 echo [OpenCode WebUI] Qwen-MM-Plugins MCP registration failed; continuing.
 exit /b 0
 

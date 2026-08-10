@@ -40,6 +40,7 @@ test('buildDesiredEntry uses uvx command with the core profile and env placehold
   const entry = buildDesiredEntry();
   assert.equal(entry.type, 'local');
   assert.equal(entry.enabled, true);
+  assert.equal(entry.timeout, 300000);
   assert.ok(entry.command[0] === 'uvx');
   assert.ok(entry.command[1] === '--from');
   assert.ok(entry.command[2].includes('qwen-mm-plugins[core]'));

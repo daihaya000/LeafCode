@@ -72,6 +72,7 @@ describe("installWebUiDependencies", () => {
       "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main",
       "qwen-mm-plugins-core",
     ]);
+    expect(entry.timeout).toBe(300000);
     expect(entry.environment).toEqual({
       DASHSCOPE_API_KEY: "{env:DASHSCOPE_API_KEY}",
       SERPER_API_KEY: "{env:SERPER_API_KEY}",

@@ -11,6 +11,7 @@ const BROKER_URL = "{env:OPENCODE_WEBUI_BROWSER_BROKER}";
 const BROKER_TOKEN = "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}";
 const QWEN_MM_ENTRY = "qwen-mm-plugins-core";
 const QWEN_MM_FROM = "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main";
+const QWEN_MM_TIMEOUT_MS = 300000;
 
 /**
  * OpenCode-side dependencies used by the WebUI.  The browser extension itself
@@ -38,6 +39,7 @@ export function qwenMmMcpEntry(): Record<string, unknown> {
     type: "local",
     command: ["uvx", "--from", QWEN_MM_FROM, QWEN_MM_ENTRY],
     enabled: true,
+    timeout: QWEN_MM_TIMEOUT_MS,
     environment: {
       DASHSCOPE_API_KEY: "{env:DASHSCOPE_API_KEY}",
       SERPER_API_KEY: "{env:SERPER_API_KEY}",

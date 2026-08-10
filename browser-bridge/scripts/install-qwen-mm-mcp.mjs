@@ -37,6 +37,7 @@ const SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const FORMATTING_OPTIONS = { insertSpaces: true, tabSize: 2, eol: '\n' };
 const ENTRY_KEY = 'qwen-mm-plugins-core';
 const UVX_FROM = 'qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main';
+const MCP_TIMEOUT_MS = 300000;
 const ENV_DASHSCOPE = '{env:DASHSCOPE_API_KEY}';
 const ENV_SERPER = '{env:SERPER_API_KEY}';
 
@@ -76,6 +77,7 @@ export function buildDesiredEntry() {
     type: 'local',
     command: ['uvx', '--from', UVX_FROM, ENTRY_KEY],
     enabled: true,
+    timeout: MCP_TIMEOUT_MS,
     environment: {
       DASHSCOPE_API_KEY: ENV_DASHSCOPE,
       SERPER_API_KEY: ENV_SERPER,

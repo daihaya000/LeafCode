@@ -1,3 +1,34 @@
+# 作業ログ: Qwen-MM-Plugins MCP 初回接続タイムアウト修正
+
+## 日付
+
+2026-08-10
+
+## 原因
+
+- OpenCode のローカル MCP 接続タイムアウトは既定30秒。
+- Qwen-MM-Plugins `core` は初回 `uvx` 起動時に Git リポジトリと Python 依存を取得・展開するため、初回接続が `Operation timed out after 30000ms` になった。
+- `uvx` の同じコマンドを依存キャッシュ後に直接MCPクライアントから起動すると14ツールを正常列挙でき、パッケージコマンド自体の誤りではなかった。
+
+## 修正内容
+
+- `qwen-mm-plugins-core` のMCPエントリに `timeout: 300000`（5分）を追加。
+- グローバル初回セットアップのQwen MCP登録を `--force` にし、旧エントリ（timeoutなし）も次回起動時に管理対象設定へ更新する。
+- プロファイル新規作成・複製用のQwen MCPエントリにも同じ5分タイムアウトを追加。
+- 実環境の `C:\Users\Daichi\.config\opencode\opencode.jsonc` を更新し、OpenCodeを再起動した。
+
+## 実機検証
+
+- `GET http://127.0.0.1:4096/mcp` ... `qwen-mm-plugins-core: connected`
+- `GET http://127.0.0.1:3000/api/extensions/mcp` ... `runtime: connected`, `pendingRestart: false`
+
+## テスト
+
+- Qwen MCPインストーラ ... 14 tests 成功
+- プロファイル依存/API/UI ... 34 tests 成功
+- start-webui / bat encoding ... 31 tests 成功
+- WebUI typecheck / 対象ESLint / `git diff --check` ... 成功
+
 # 作業ログ: プロファイル新規作成時の Qwen-MM-Plugins セットアップ
 
 ## 日付
