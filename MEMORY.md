@@ -3621,3 +3621,42 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 
 - `npm.cmd test -- --run src/components/settings/SettingsView.test.tsx src/app/api/updates/status/route.test.ts` ... 41 tests 成功
 - `npm.cmd run typecheck` ... 成功
+# 調査: Qwen-MM-Plugins の実装方式を参考にした画像非対応モデル対応の検討
+
+## 日付
+2026-08-10
+
+## 目的
+GitHub の QwenLM/Qwen-MM-Plugins を参考に、OpenCodeWebUI の画像非対応モデルでも画像を扱えるようにする仕組みの導入可能性を調査した。
+
+## Qwen-MM-Plugins の実装方式
+- 各capabilityは **skill**（モデルにツールの存在を知らせる）+ **MCP server**（ツール本体）の組。
+- `install.sh` が Claude Code / Codex / Qoder / OpenClaw / Qwen Code / Gemini CLI / opencode など主要ハーネスへ横断インストール可能。
+- opencode は「Register the skill + MCP yourself」で対応（インストーラ未カバー）。
+- 画像・動画・文書の動的解像度読み取り、OCR、grounding、セグメンテーション、ASR、vision chat を MCP ツールとして提供。
+- ネイティブの画像/動画/文書読み取りは API キー不要。vision_chat / OCR / grounding / ASR / 生成は DashScope API 必須。
+- MCP サーバは `uvx` で Python 依存を自動インストール（uv 必須、手動 pip 不要）。
+- Windows は WSL2 のみ対応、ネイティブ未検証。
+
+## 現行コードの画像対応判定
+- `web/src/components/task/TaskView.tsx:2496` の `imageSupported` 判定と `web/src/app/api/tasks/route.ts:127` / `web/src/app/api/opencode/[...path]/route.ts:342` の `supportsImageInput()` が OpenCode の `/provider` capabilities を参照。
+- 画像非対応モデルでは UI の添付ボタンが無効化され、送信時に 400 で弾かれる。
+- 現在は Browser Bridge MCP（`browser-bridge/scripts/install-mcp.mjs`）が `opencode.jsonc` の `mcp` エントリを jsonc-parser で非破壊編集する既存パターンあり。
+
+## 結論: 対応可能
+**技術的には対応可能**。最小構成は Qwen-MM-Plugins の core capability をローカル MCP として opencode に登録するだけ。
+
+### 最小実装案
+1. `opencode.jsonc` の `mcp` セクションへ `qwen-mm-plugins-core` エントリを追加（uvx command + env）。
+2. 既存 `browser-bridge/scripts/install-mcp.mjs` と同様の jsonc-parser ベース非破壊編集インストーラを新設。
+3. `web/src/components/settings/ExtensionsSettings.tsx` の MCP 一覧で表示・状態確認可能（既存機能）。
+4. `supportsImageInput` の fail-closed ロジックは維持し、画像添付時は画像対応モデルを選ぶ案内を継続。MCP 経由で画像非対応モデルでも `vision_chat` / `ocr` ツールを呼べるため、ユーザーが意図的にツール経由で画像を処理可能。
+
+### 制約・留意点
+- **uv のインストールが前提**（uvx 依存）。Windows ネイティブは未検証で WSL2 推奨。
+- DashScope API キー（`DASHSCOPE_API_KEY`）が必要なツールと不要なツールがある。
+- 画像非対応モデルでも MCP ツール経由なら画像処理可能だが、`supportsImageInput` の UI 判定は OpenCode の `/provider` capabilities 依存のまま。MCP ツールの存在とは独立。
+- OpenCodeWebUI 側は MCP エントリの追加・一覧表示のみ。ツール自体の実行は OpenCode 本体が担うため、WebUI 本体のフォーク不要。
+
+### 検証
+- 本調査は設計検討のみ。コード変更・テスト実行は未実施。
