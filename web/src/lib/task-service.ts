@@ -97,7 +97,7 @@ async function sessionMetaFor(
           model?: { id?: string; providerID?: string; variant?: string };
         }[]
       >(dir, SESSION_LIST_PATH, { timeoutMs: 1500 });
-      for (const s of sessions) {
+      await Promise.all(sessions.map(async (s) => {
         const meta: SessionMeta = {};
         if (typeof s.cost === "number") meta.cost = s.cost;
         if (typeof s.agent === "string") meta.agent = s.agent;
@@ -125,7 +125,7 @@ async function sessionMetaFor(
           }
         }
         metas[s.id] = meta;
-      }
+      }));
     }),
   );
   return metas;

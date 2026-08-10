@@ -334,6 +334,24 @@ HomeViewでAutoを選んで開始したタスクのTaskViewコンポーザーが
 
 ## Caddy公開URL確認
 
+## プロジェクト読み込み遅延の原因
+
+### 調査結果
+
+- `/api/projects` 自体は実測約3msで、SQLiteのプロジェクト一覧取得は原因ではなかった。
+- サイドバーは `/api/projects` の結果を `/api/tasks` と `/api/tasks/archived` の完了後に反映する。
+- `77a94fa` で追加された推定コスト処理が、コスト0の全セッションについて `/session/:id/message` を最大1.5秒タイムアウト付きで直列取得していた。
+- そのためセッション数に比例して初回タスク一覧が遅延し、プロジェクト一覧の表示も巻き込まれていた。実測では各タスクAPIが約5秒だった。
+
+### 修正内容
+
+- セッション履歴取得をディレクトリ内で並列化し、推定コスト表示を維持しながら待ち時間をセッション数に比例させないようにした。
+
+### 検証結果
+
+- `npm exec vitest run src/lib/task-service.test.ts` ... 14 tests 成功
+- `npm exec tsc -- --noEmit` ... 成功
+
 - `deploy/Caddyfile` は `100.98.131.68` を HTTPS site address として登録済み。
 - Caddy は `https://100.98.131.68:8443` で稼働し、`curl -k -I` で `200 OK` と `Via: 1.1 Caddy` を確認した。
 - `http://100.98.131.68:3000` は Next.js の直接入口であり、Caddy経由の入口は `https://100.98.131.68:8443`。同じ `:3000` はバックエンドが使用するため、Caddy入口にはできない。
