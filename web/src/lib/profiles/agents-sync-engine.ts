@@ -100,8 +100,12 @@ function isSymlinkTo(linkPath: string, target: string): boolean {
 /** Best-effort cross-platform directory symlink. Falls back to junction on Windows. */
 function symlinkDir(target: string, linkPath: string): void {
   mkdirp(path.dirname(linkPath));
-  if (fs.existsSync(linkPath) || fs.lstatSync(linkPath, { throwIfNoEntry: false })) {
-    fs.rmSync(linkPath, { recursive: true, force: true });
+  const existing = fs.lstatSync(linkPath, { throwIfNoEntry: false });
+  if (existing) {
+    if (!existing.isSymbolicLink()) {
+      throw new Error("sync target exists and is not a symbolic link");
+    }
+    fs.rmSync(linkPath, { force: true });
   }
   if (process.platform === "win32") {
     try {
@@ -231,8 +235,12 @@ export function applyAgentsSync(): AgentsSyncResult {
     const names = readDirNames(p.opencodeSkills);
     for (const name of names) {
       const masterSkillPath = path.join(p.opencodeSkills, name);
-      const linkPaths = [p.claudeSkills, p.codexSkills, p.agentsSkills];
-      for (const root of linkPaths) {
+      const linkRoots: Array<[string, string]> = [
+        ["claude", p.claudeSkills],
+        ["codex", p.codexSkills],
+        ["agents", p.agentsSkills],
+      ];
+      for (const [side, root] of linkRoots) {
         const linkPath = path.join(root, name);
         try {
           if (isSymlinkTo(linkPath, masterSkillPath)) {
@@ -243,7 +251,7 @@ export function applyAgentsSync(): AgentsSyncResult {
           }
         } catch (err) {
           result.skills.errors.push(
-            `${path.basename(root)}/${name}: ${err instanceof Error ? err.message : String(err)}`,
+            `${side}/${name}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }

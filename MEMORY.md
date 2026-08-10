@@ -3448,3 +3448,22 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npx vitest run` ... 250 files / 2982 tests 成功
 - `npx tsc --noEmit --pretty false` ... 成功
 - 対象ファイルの `npx eslint` ... 成功
+
+## デバッグ: AGENTS同期による既存スキルディレクトリの破壊防止
+
+### 日付
+
+2026-08-10
+
+### 発見と修正
+
+- AGENTS同期のスキルミラー先に通常のディレクトリが存在する場合、従来の`symlinkDir`は再帰削除してからシンボリックリンクへ置換していた。
+- 既存ディレクトリを削除せず、`blocked`結果として同期を失敗させるように変更した。
+- 同期エラーのラベルを`skills/<name>`から`claude/<name>`・`codex/<name>`・`agents/<name>`へ正確にした。
+- 一時ホームディレクトリを使う実ファイルテストを追加し、AGENTS.md作成、3方向のスキルミラー、既存ディレクトリ保持を検証した。
+
+### 検証結果
+
+- `npx vitest run src/lib/profiles/agents-sync-engine.test.ts src/app/api/profiles/agents-md/route.test.ts src/components/settings/SettingsView.test.tsx src/components/settings/ProfilesSettings.test.tsx` ... 4 files / 47 tests 成功
+- `npx tsc --noEmit --pretty false` ... 成功
+- 対象ファイルの`npx eslint` ... 成功
