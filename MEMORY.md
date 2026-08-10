@@ -3410,3 +3410,10 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - Host: `npm test` 377 tests 成功
 - Browser Bridge: `npm test` 88 tests 成功
 - 稼働中ヘルスチェック: WebUI/OpenCodeとも正常（OpenCode 1.18.14）
+
+## 2026-08-10 Goal Loop turn 1: コスト推定境界監査
+
+- 実機の `Session.tokens` で `input + cache.read + output + reasoning` が `total` と一致することを確認した。
+- 標準価格、Fast価格、キャッシュ読取・書込、未知モデル、ゼロ使用量、異常なキャッシュ量を検証する `openai-pricing.test.ts` を追加した。
+- 関連21テスト、TypeScript、ESLintが成功した。
+- `Session.model` は現在モデルのみを返すため、1セッション内でモデルを切り替えた場合の集計推定は残余確認事項として次ターンへ引き継ぐ。
