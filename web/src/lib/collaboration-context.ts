@@ -38,15 +38,23 @@ export function prependCollaborationContext(
 ): Record<string, unknown> {
   if (!block) return body;
   const parts = Array.isArray(body.parts) ? [...body.parts] : [];
-  const firstText = parts.find(
+  const firstTextIndex = parts.findIndex(
     (part): part is { type: "text"; text: string } =>
       !!part &&
       typeof part === "object" &&
       (part as { type?: unknown }).type === "text" &&
       typeof (part as { text?: unknown }).text === "string",
   );
-  if (!firstText) return body;
-  firstText.text = `${block}\n${firstText.text}`;
+  if (firstTextIndex < 0) return body;
+  const firstText = parts[firstTextIndex] as {
+    type: "text";
+    text: string;
+    [key: string]: unknown;
+  };
+  parts[firstTextIndex] = {
+    ...firstText,
+    text: `${block}\n${firstText.text}`,
+  };
   return { ...body, parts };
 }
 
@@ -81,31 +89,36 @@ export async function collaborationContextFor(input: {
     return "";
   }
 
-  const active = selectActiveCollaborationBindings(
-    listSessionBindings(input.workspaceId),
-    statuses,
-    input.sessionId,
-  );
+  try {
+    const active = selectActiveCollaborationBindings(
+      listSessionBindings(input.workspaceId),
+      statuses,
+      input.sessionId,
+    );
 
-  const peers = await Promise.all(
-    active.map(async (binding): Promise<CollaborationPeer> => {
-      let messages: MessageWithParts[] = [];
-      try {
-        messages = await ocServer<MessageWithParts[]>(
-          input.directory,
-          sessionMessagePath(binding.opencode_session_id),
-          { timeoutMs: 3_000 },
-        );
-      } catch {
-        // Presence is still useful when a peer transcript is temporarily unavailable.
-      }
-      return {
-        sessionId: binding.opencode_session_id,
-        title: binding.title,
-        status: statuses[binding.opencode_session_id]!.type as "busy" | "retry",
-        files: [...extractSessionTouchedPaths(messages, input.directory)].sort(),
-      };
-    }),
-  );
-  return buildCollaborationContextBlock(peers);
+    const peers = await Promise.all(
+      active.map(async (binding): Promise<CollaborationPeer> => {
+        let messages: MessageWithParts[] = [];
+        try {
+          messages = await ocServer<MessageWithParts[]>(
+            input.directory,
+            sessionMessagePath(binding.opencode_session_id),
+            { timeoutMs: 3_000 },
+          );
+        } catch {
+          // Presence is still useful when a peer transcript is temporarily unavailable.
+        }
+        return {
+          sessionId: binding.opencode_session_id,
+          title: binding.title,
+          status: statuses[binding.opencode_session_id]!.type as "busy" | "retry",
+          files: [...extractSessionTouchedPaths(messages, input.directory)].sort(),
+        };
+      }),
+    );
+    return buildCollaborationContextBlock(peers);
+  } catch {
+    // Database or transcript-shape failures must not block an internal prompt.
+    return "";
+  }
 }

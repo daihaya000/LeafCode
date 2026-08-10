@@ -67,5 +67,6 @@ describe("buildCollaborationContextBlock", () => {
       ],
       agent: "build",
     });
+    expect(body.parts[0]?.text).toBe("work");
   });
 });

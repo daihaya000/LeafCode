@@ -219,6 +219,7 @@ export function Sidebar({
   const refreshRequestRef = useRef(0);
   const refreshBusyRef = useRef(false);
   const refreshQueuedRef = useRef(false);
+  const activeCostRequestRef = useRef(0);
   const mountedRef = useRef(false);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -341,6 +342,7 @@ export function Sidebar({
 
   const refresh = useCallback(async () => {
     if (!mountedRef.current) return;
+    activeCostRequestRef.current += 1;
     if (refreshBusyRef.current) {
       refreshQueuedRef.current = true;
       return;
@@ -384,16 +386,23 @@ export function Sidebar({
       .filter((task) => task.status === "working")
       .map((task) => task.id);
     if (activeIds.length === 0) return;
+    const requestId = ++activeCostRequestRef.current;
     const results = await Promise.allSettled(
       activeIds.map(async (id) => {
         const data = await getJson<{ cost?: number }>(`/api/tasks/${id}/cost`);
-        return { id, cost: data.cost };
+        const cost =
+          typeof data.cost === "number" && Number.isFinite(data.cost) && data.cost >= 0
+            ? data.cost
+            : undefined;
+        return { id, cost };
       }),
     );
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || requestId !== activeCostRequestRef.current) return;
     const costs = new Map(
       results.flatMap((result) =>
-        result.status === "fulfilled" ? [[result.value.id, result.value.cost] as const] : [],
+        result.status === "fulfilled" && result.value.cost !== undefined
+          ? [[result.value.id, result.value.cost] as const]
+          : [],
       ),
     );
     if (costs.size === 0) return;

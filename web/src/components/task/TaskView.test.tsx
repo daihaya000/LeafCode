@@ -474,6 +474,40 @@ describe("TaskView", () => {
     expect(getJson).toHaveBeenCalledTimes(3);
   });
 
+  it("ignores an older overlapping cost response", async () => {
+    const first = deferred<{ cost: number }>();
+    const second = deferred<{ cost: number }>();
+    let costCalls = 0;
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/sidepanel-width") return Promise.resolve({ value: null });
+      if (path === "/api/tasks/ws1/cost") {
+        costCalls += 1;
+        return costCalls === 1 ? first.promise : second.promise;
+      }
+      return Promise.resolve({ task: task(0.1) });
+    });
+    vi.useFakeTimers();
+    render(<TaskView taskId="ws1" />);
+
+    await flushTaskLoad();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(costCalls).toBe(2);
+
+    await act(async () => {
+      second.resolve({ cost: 0.3 });
+      await second.promise;
+    });
+    expect(screen.getByText("累計コスト $0.3000")).toBeTruthy();
+
+    await act(async () => {
+      first.resolve({ cost: 0.2 });
+      await first.promise;
+    });
+    expect(screen.getByText("累計コスト $0.3000")).toBeTruthy();
+  });
+
   it("shows cumulative cost when the task does not report a cost", async () => {
     taskResponseCosts = [0];
     useSessionStream.mockReturnValue({

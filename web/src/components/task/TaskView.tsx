@@ -489,12 +489,14 @@ export function TaskView({ taskId }: { taskId: string }) {
   const taskRef = useRef<TaskSummary | null>(null);
   const taskIdRef = useRef(taskId);
   const refreshSequenceRef = useRef(0);
+  const taskCostRequestRef = useRef(0);
   const goalLoopRefreshSequenceRef = useRef(0);
   const goalLoopRefreshBusyRef = useRef<string | null>(null);
   const mountedRef = useRef(false);
   if (taskIdRef.current !== taskId) {
     taskIdRef.current = taskId;
     taskRef.current = readCachedTaskSummary(taskId);
+    taskCostRequestRef.current += 1;
   }
 
   useEffect(() => {
@@ -1524,6 +1526,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const refreshTask = useCallback(async () => {
     if (!mountedRef.current) return;
+    taskCostRequestRef.current += 1;
     const sequence = ++refreshSequenceRef.current;
     const requestedTaskId = taskId;
     try {
@@ -1558,12 +1561,24 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   const refreshTaskCost = useCallback(async () => {
     if (!mountedRef.current) return;
+    const requestId = ++taskCostRequestRef.current;
     try {
       const data = await getJson<{ cost?: number }>(`/api/tasks/${taskId}/cost`);
-      if (!mountedRef.current || taskIdRef.current !== taskId) return;
+      if (
+        !mountedRef.current ||
+        taskIdRef.current !== taskId ||
+        requestId !== taskCostRequestRef.current
+      ) {
+        return;
+      }
+      const cost =
+        typeof data.cost === "number" && Number.isFinite(data.cost) && data.cost >= 0
+          ? data.cost
+          : undefined;
+      if (cost === undefined) return;
       setTask((current) => {
         if (!current || current.id !== taskId) return current;
-        const next = { ...current, cost: data.cost };
+        const next = { ...current, cost };
         taskRef.current = next;
         rememberTaskSummary(next);
         return next;

@@ -3387,3 +3387,26 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - 関連テスト ... 3 files / 171 tests 成功
 - `npm.cmd run typecheck` ... 成功
 - ESLint対象ファイル ... 成功
+
+## 2026-08-10 本日コミット分の徹底デバッグ
+
+### 対象
+
+- 09:38から13:26までの23コミット（75d22e5からf938940）をレビューした。
+- コスト・トークン表示、ライブコストポーリング、AGENTS.md編集API、共同認識コンテキストを重点確認した。
+
+### 発見と修正
+
+- Sidebar/TaskViewの3秒コスト更新が重なると、遅れて返った古い応答が新しい金額を巻き戻す問題を、リクエスト世代チェックで修正した。
+- AGENTS.md PATCH APIでJSON本文が`null`のとき500になる入力検証漏れを修正し、400を返す回帰テストを追加した。
+- `Session.cost`が0のOpenAIセッションで、負荷削減コミット後にサイドバーの推定コストが消える回帰を再現した。履歴全件取得を戻さず、`Session.tokens`と`Session.model`から定数時間で補完するようにした。
+- 共同認識コンテキストの本文を非破壊コピーに変更し、DBや履歴形状の例外が内部送信を止めないようbest-effort退避を追加した。
+
+### 検証
+
+- Web: `npx vitest run` 249 files / 2973 tests 成功
+- Web: `npx tsc --noEmit` 成功
+- Web: `npx eslint src` 成功
+- Host: `npm test` 377 tests 成功
+- Browser Bridge: `npm test` 88 tests 成功
+- 稼働中ヘルスチェック: WebUI/OpenCodeとも正常（OpenCode 1.18.14）

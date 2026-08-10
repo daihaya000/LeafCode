@@ -118,6 +118,19 @@ describe("listTasks cost aggregation", () => {
     expect(tasks[0].cost).toBe(0);
     expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
   });
+
+  it("estimates cost from aggregate session tokens without reading the transcript", async () => {
+    h.ocResponses["/repo/session"] = [{
+      id: "sess1",
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 1_000_000, output: 100_000, reasoning: 0, cache: { read: 0, write: 0 } },
+    }];
+
+    const { tasks } = await listTasks();
+    expect(tasks[0].cost).toBe(0.32);
+    expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
+  });
 });
 
 describe("getTask cost aggregation", () => {
@@ -131,6 +144,16 @@ describe("getTask cost aggregation", () => {
     h.ocResponses["/repo/session/sess1"] = { cost: 3.75 };
     await expect(getTaskCost("ws1")).resolves.toBe(3.75);
     expect(h.ocCalls).toContain("/repo/session/sess1");
+    expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
+  });
+
+  it("estimates a lightweight task cost from aggregate session tokens", async () => {
+    h.ocResponses["/repo/session/sess1"] = {
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 1_000_000, output: 100_000, reasoning: 0, cache: { read: 0, write: 0 } },
+    };
+    await expect(getTaskCost("ws1")).resolves.toBe(0.32);
     expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
   });
 });

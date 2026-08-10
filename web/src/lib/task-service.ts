@@ -7,9 +7,10 @@ import {
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
 import { SESSION_LIST_PATH, SESSION_STATUS_PATH, sessionPath } from "./opencode-paths";
+import { estimateOpenAIApiCost } from "./openai-pricing";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
-import type { SessionStatus, TaskSummary } from "./types";
+import type { MessageInfo, SessionStatus, TaskSummary } from "./types";
 
 type StatusMap = Record<string, SessionStatus>;
 
@@ -23,6 +24,12 @@ type SessionMeta = {
 };
 type MetaMap = Record<string, SessionMeta>;
 
+type SessionUsage = {
+  cost?: number;
+  tokens?: MessageInfo["tokens"];
+  model?: { id?: string; providerID?: string; variant?: string };
+};
+
 const EMPTY_STAT: DirStat = {
   git: false,
   branch: null,
@@ -30,6 +37,17 @@ const EMPTY_STAT: DirStat = {
   deletions: 0,
   files: 0,
 };
+
+function estimateSessionCost(session: SessionUsage): number | null {
+  if (!session.tokens || !session.model?.providerID || !session.model.id) {
+    return null;
+  }
+  return estimateOpenAIApiCost({
+    providerID: session.model.providerID,
+    modelID: session.model.id,
+    tokens: session.tokens,
+  });
+}
 
 async function globalEngineOk(): Promise<boolean> {
   try {
@@ -88,21 +106,22 @@ async function sessionMetaFor(
   await Promise.allSettled(
     dirs.map(async (dir) => {
       const sessions = await ocServer<
-        {
-          id: string;
-          cost?: number;
-          agent?: string;
-          model?: { id?: string; providerID?: string; variant?: string };
-        }[]
+        (SessionUsage & { id: string; agent?: string })[]
       >(dir, SESSION_LIST_PATH, { timeoutMs: 1500 });
       for (const s of sessions) {
         const meta: SessionMeta = {};
-        if (typeof s.cost === "number") meta.cost = s.cost;
+        if (typeof s.cost === "number" && Number.isFinite(s.cost) && s.cost >= 0) {
+          meta.cost = s.cost;
+        }
         if (typeof s.agent === "string") meta.agent = s.agent;
         if (typeof s.model?.providerID === "string")
           meta.providerID = s.model.providerID;
         if (typeof s.model?.id === "string") meta.modelID = s.model.id;
         if (typeof s.model?.variant === "string") meta.variant = s.model.variant;
+        if ((meta.cost ?? 0) <= 0) {
+          const estimated = estimateSessionCost(s);
+          if (estimated !== null) meta.cost = estimated;
+        }
         metas[s.id] = meta;
       }
     }),
@@ -256,10 +275,15 @@ export async function getTaskCost(id: string): Promise<number | undefined> {
   if (!ws) return undefined;
   const binding = primaryBindings().get(id);
   if (!binding) return undefined;
-  const session = await ocServer<{ cost?: number }>(
+  const session = await ocServer<SessionUsage>(
     ws.absolute_path,
     sessionPath(binding.opencode_session_id),
     { timeoutMs: 1500 },
   );
-  return typeof session.cost === "number" ? session.cost : undefined;
+  const reportedCost =
+    typeof session.cost === "number" && Number.isFinite(session.cost) && session.cost >= 0
+      ? session.cost
+      : undefined;
+  if (reportedCost !== undefined && reportedCost > 0) return reportedCost;
+  return estimateSessionCost(session) ?? reportedCost;
 }

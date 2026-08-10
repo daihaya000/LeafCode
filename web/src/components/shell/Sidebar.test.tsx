@@ -318,6 +318,83 @@ describe("Sidebar", () => {
     expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("¥30.0");
   });
 
+  it("ignores an older overlapping sidebar cost response", async () => {
+    let firstResolve!: (value: { cost: number }) => void;
+    let secondResolve!: (value: { cost: number }) => void;
+    const first = new Promise<{ cost: number }>((resolve) => {
+      firstResolve = resolve;
+    });
+    const second = new Promise<{ cost: number }>((resolve) => {
+      secondResolve = resolve;
+    });
+    let costCalls = 0;
+    usePathname.mockReturnValue("/task/ws1");
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/projects") {
+        return Promise.resolve({
+          projects: [{
+            id: "prj1",
+            name: "Repo",
+            rootPath: "/repo",
+            favorite: false,
+            lastOpenedAt: null,
+          }],
+        });
+      }
+      if (path === "/api/tasks") {
+        return Promise.resolve({
+          tasks: [{
+            id: "ws1",
+            projectId: "prj1",
+            projectName: "Repo",
+            title: "Task title",
+            directory: "/repo",
+            isolation: "current_folder",
+            status: "working",
+            sessionId: "sess1",
+            branch: "main",
+            additions: 0,
+            deletions: 0,
+            filesChanged: 0,
+            cost: 0.1,
+            createdAt: "2026-07-18T00:00:00Z",
+            updatedAt: "2026-07-18T00:00:00Z",
+          }],
+          engineOk: true,
+        });
+      }
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
+      if (path === "/api/tasks/ws1/cost") {
+        costCalls += 1;
+        return costCalls === 1 ? first : second;
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    vi.useFakeTimers();
+
+    render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(costCalls).toBe(2);
+
+    await act(async () => {
+      secondResolve({ cost: 0.3 });
+      await second;
+    });
+    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("¥45.0");
+
+    await act(async () => {
+      firstResolve({ cost: 0.2 });
+      await first;
+    });
+    expect(screen.getByTitle("このセッションの累計コスト").textContent).toContain("¥45.0");
+  });
+
   it("does not overlap active-task and engine-health refreshes", async () => {
     let taskCalls = 0;
     getJson.mockImplementation((path: string) => {
