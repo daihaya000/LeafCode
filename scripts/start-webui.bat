@@ -56,6 +56,9 @@ call :install_host
 if errorlevel 1 goto :failure
 call :install_browser_bridge
 if errorlevel 1 goto :failure
+call :check_uv
+if errorlevel 1 goto :failure
+call :install_qwen_mm_mcp
 call :restore_code_page
 goto :start_host
 
@@ -314,6 +317,47 @@ exit /b 9
 popd
 call :fail 9 "Browser Bridge dependencies could not be installed." error-9
 exit /b 9
+
+rem uv (Astral) is required by the Qwen-MM-Plugins MCP server, which uses
+rem `uvx` to launch. Like Node.js/OpenCode this is a hard requirement when
+rem the Qwen-MM plugin is enabled, but unlike them the plugin itself is
+rem optional: set OPENCODE_WEBUI_QWEN_MM=0 to skip the whole step.
+:check_uv
+if "%OPENCODE_WEBUI_QWEN_MM%"=="0" exit /b 0
+call uv --version >nul 2>&1
+if not errorlevel 1 exit /b 0
+call where winget >nul 2>&1
+if errorlevel 1 goto :uv_skip_no_winget
+echo [OpenCode WebUI] Installing uv ^(Astral^) for Qwen-MM-Plugins MCP...
+call winget install --id astral-sh.uv --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+if errorlevel 1 goto :uv_install_failed
+call uv --version >nul 2>&1
+if not errorlevel 1 exit /b 0
+goto :uv_install_failed
+
+:uv_skip_no_winget
+echo [OpenCode WebUI] winget not found; skipping uv install. Qwen-MM-Plugins MCP needs uv.
+echo [OpenCode WebUI] Set OPENCODE_WEBUI_QWEN_MM=0 to silence this, or install uv manually.
+exit /b 0
+
+:uv_install_failed
+echo [OpenCode WebUI] uv installation failed; continuing without Qwen-MM-Plugins MCP.
+echo [OpenCode WebUI] Set OPENCODE_WEBUI_QWEN_MM=0 to silence this, or install uv manually.
+exit /b 0
+
+rem Register the Qwen-MM-Plugins core MCP server (vision tools for image-
+rem incapable models) into the OpenCode config. Native image/video/document
+rem reading needs no API key; vision_chat/ocr/grounding/ASR/generation need
+rem DASHSCOPE_API_KEY, web tools need SERPER_API_KEY. Both are passed through
+rem from the environment as {env:...} placeholders, so the entry is written
+rem even when the keys are absent (the tools simply fail at call time).
+rem Optional: set OPENCODE_WEBUI_QWEN_MM=0 to skip.
+:install_qwen_mm_mcp
+if "%OPENCODE_WEBUI_QWEN_MM%"=="0" exit /b 0
+echo [OpenCode WebUI] Registering Qwen-MM-Plugins core MCP server...
+call node browser-bridge\scripts\install-qwen-mm-mcp.mjs
+if errorlevel 1 echo [OpenCode WebUI] Qwen-MM-Plugins MCP registration failed; continuing.
+exit /b 0
 
 :resolve_dist_dir
 rem Production builds run in the hard-link mirror outside the synced tree

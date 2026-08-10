@@ -3660,3 +3660,55 @@ GitHub の QwenLM/Qwen-MM-Plugins を参考に、OpenCodeWebUI の画像非対�
 
 ### 検証
 - 本調査は設計検討のみ。コード変更・テスト実行は未実施。
+# 実装: Qwen-MM-Plugins MCP 対応（画像非対応モデルの画像利用）
+
+## 日付
+2026-08-10
+
+## 目的
+QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencode に登録し、画像非対応モデルでも MCP ツール経由で画像/動画/文書読み取り・OCR・grounding・ASR・vision chat を利用可能にする。新規作成時のセットアップ（初回起動）にも対応する。
+
+## 実装内容
+
+### インストーラ (browser-bridge/scripts/install-qwen-mm-mcp.mjs 新設)
+- 既存 `install-mcp.mjs` と同じ jsonc-parser ベースの非破壊編集。
+- `mcp.qwen-mm-plugins-core` エントリを追加: `uvx --from "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main" qwen-mm-plugins-core`
+- `DASHSCOPE_API_KEY` / `SERPER_API_KEY` を `{env:...}` プレースホルダで注入。キー未設定でもエントリを書き、ネイティブ読み取りツールは利用可能。API キー必須ツールは実行時にエラー。
+- `--scope` / `--path` / `--force` / `--uninstall` / `--dry-run` をサポート。
+
+### 起動用バッチ (scripts/install-qwen-mm-mcp.bat 新設)
+- `install-browser-bridge-mcp.bat` と同じ ASCII/CRLF/BOM なし形式。
+- `node browser-bridge/scripts/install-qwen-mm-mcp.mjs` を呼び出し。
+
+### start-webui.bat への組込み
+- `:check_uv` ... `uv --version` を確認し、未導入なら winget で `astral-sh.uv` を導入。失敗時は警告のみで続行（Caddy と同じ非致命扱い）。
+- `:install_qwen_mm_mcp` ... `node browser-bridge/scripts/install-qwen-mm-mcp.mjs` を実行。
+- `OPENCODE_WEBUI_QWEN_MM=0` で両ステップをスキップ可能。
+- 実行順序: browser-bridge deps → uv → qwen-mm MCP 登録 → host 起動。
+
+### package.json
+- ルート: `install:qwen-mm-mcp` スクリプト追加。
+- browser-bridge: `install-qwen-mm-mcp` スクリプト追加。
+
+### テスト
+- `browser-bridge/test/install-qwen-mm-mcp.test.mjs` 新設 (14 tests): parseArgs / deepEqual / buildDesiredEntry / resolveConfigPath / install / idempotent / force / dry-run / uninstall / JSONCエラー / scope=project / path 上書き。
+- `host/src/start-webui-bat.test.js` に uv と qwen-mm のモックを追加 (24 tests):
+  - winget.cmd に `astral-sh.uv` ブランチ追加。
+  - uv.cmd モック、node.cmd に qwen-mm インストーラ呼び出し追加。
+  - fresh machine テストで uv インストール・実行順序・qwen-mm 登録を検証。
+  - uv 既存時スキップ、uv 失敗時非致命、QWEN_MM=0 スキップ、winget 無し時スキップの専用テスト追加。
+
+### README
+- 機能表に MM 行追加、環境変数表に `OPENCODE_WEBUI_QWEN_MM=1` 追加、初回起動説明に uv を追記、ドキュメント表に Qwen-MM-Plugins リポジトリリンク追加。
+
+## 設計判断
+- **uv は winget で自動導入**: Node.js/OpenCode と同じパターン。失敗時は非致命。
+- **API キーはオプション**: ネイティブ読み取りは不要、vision_chat/ocr/grounding/ASR/生成は DASHSCOPE_API_KEY 必須。エントリは常に書き、キー未設定時はツール実行時にエラー。
+- **capability は core のみ**: 画像/動画/文書/3D読み取り + OCR/grounding/segmentation/ASR/vision chat/web search。
+- **WebUI 本体はフォーク不要**: MCP エントリの追加・一覧表示のみ。ツール実行は OpenCode 本体が担う。
+
+## 検証結果
+- `browser-bridge` 全テスト ... 102 tests 成功（+14 新規）
+- `host` 全テスト ... 385 tests 成功（+4 新規、start-webui-bat 24 tests）
+- `bat-encoding` ... 7 tests 成功
+- `web typecheck` ... 成功
