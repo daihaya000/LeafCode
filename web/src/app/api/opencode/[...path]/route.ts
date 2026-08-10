@@ -19,6 +19,10 @@ import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
 import { isIntelligenceVariant } from "@/lib/model-variants";
 import { ocServer } from "@/lib/oc-server";
 import {
+  isQwenMmConnected,
+  rewriteQwenMmRequest,
+} from "@/lib/qwen-mm-fallback";
+import {
   OPENCODE_BASE_URL,
   isBlockedOpencodeWrite,
   maskSecrets,
@@ -112,6 +116,11 @@ function isImageGuardedWrite(pathname: string): boolean {
     /^\/session\/[^/]+\/message$/.test(pathname) ||
     /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
   );
+}
+
+function imageSessionId(pathname: string): string | null {
+  const match = /^(?:\/api)?\/session\/([^/]+)\/(?:prompt_async|command|prompt|message)$/.exec(pathname);
+  return match?.[1] ?? null;
 }
 
 function injectWorkspaceMemory(
@@ -547,7 +556,7 @@ async function proxy(
       }
       if (req.method === "POST" && isImageGuardedWrite(pathname)) {
         try {
-          const body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;
+          let body = JSON.parse(new TextDecoder().decode(requestBody)) as unknown;
           const variant =
             body && typeof body === "object" && !Array.isArray(body)
               ? (body as { variant?: unknown }).variant
@@ -569,10 +578,29 @@ async function proxy(
               );
             }
             if (!(await supportsImageInput(directory, body))) {
-              return NextResponse.json(
-                { error: "image input is not supported by the selected model" },
-                { status: 400 },
-              );
+              let qwenMmConnected = false;
+              try {
+                const status = await ocServer<Record<string, { status?: unknown }>>(
+                  directory,
+                  "/mcp",
+                );
+                qwenMmConnected = isQwenMmConnected(status);
+              } catch {
+                qwenMmConnected = false;
+              }
+              const sessionId = imageSessionId(pathname);
+              if (!qwenMmConnected || !sessionId || !body || typeof body !== "object" || Array.isArray(body)) {
+                return NextResponse.json(
+                  { error: "image input is not supported by the selected model" },
+                  { status: 400 },
+                );
+              }
+              try {
+                body = rewriteQwenMmRequest(body as Record<string, unknown>, sessionId);
+                requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
+              } catch {
+                return NextResponse.json({ error: "invalid files" }, { status: 400 });
+              }
             }
           }
         } catch {

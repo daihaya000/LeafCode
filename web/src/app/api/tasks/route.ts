@@ -32,6 +32,11 @@ import {
 import { listTasks } from "@/lib/task-service";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
+  isQwenMmConnected,
+  persistQwenMmImages,
+  qwenMmImageInstructions,
+} from "@/lib/qwen-mm-fallback";
+import {
   ServiceError,
   destroyWorkspace,
   isIsolation,
@@ -157,6 +162,18 @@ async function supportsImageInput(
     return (
       capabilities?.input?.image === true || capabilities?.attachment === true
     );
+  } catch {
+    return false;
+  }
+}
+
+async function supportsQwenMmFallback(): Promise<boolean> {
+  try {
+    const status = await ocServer<Record<string, { status?: unknown }>>(
+      null,
+      "/mcp",
+    );
+    return isQwenMmConnected(status);
   } catch {
     return false;
   }
@@ -392,6 +409,14 @@ export async function POST(req: NextRequest) {
   }
   const codexBarUsage = auto ? parseCodexBarUsage(body?.codexBarUsage) : undefined;
 
+  // Auto normally restricts candidates to native image-capable models. When
+  // the Qwen MCP is connected, the image will be converted to a text-only
+  // tool instruction after provisioning, so Auto may choose any suitable
+  // text model instead.
+  const qwenMmForAuto = auto && files.length > 0
+    ? await supportsQwenMmFallback()
+    : false;
+
   // From here on the resolved Auto model is indistinguishable from a manually
   // selected one: everything downstream reads `effectiveModel` / `variant`.
   let effectiveModel: ModelReference | undefined = body?.model;
@@ -408,7 +433,7 @@ export async function POST(req: NextRequest) {
       try {
         decision = await resolveAutoModel(
           prompt,
-          files,
+          qwenMmForAuto ? [] : files,
           autoOptimize,
           codexBarUsage,
           autoRouteOverrides,
@@ -446,17 +471,18 @@ export async function POST(req: NextRequest) {
 
   // Redundant for Auto (candidates were already narrowed to image-capable
   // models) but kept as a second check on the shared code path.
-  if (
-    files.length > 0 &&
-    !(await supportsImageInput(effectiveModel, body?.agent))
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "選択中のモデルは画像入力に対応していないか、画像対応を確認できません。",
-      },
-      { status: 400 },
-    );
+  let qwenMmFallback = false;
+  if (files.length > 0 && !(await supportsImageInput(effectiveModel, body?.agent))) {
+    qwenMmFallback = qwenMmForAuto || (await supportsQwenMmFallback());
+    if (!qwenMmFallback) {
+      return NextResponse.json(
+        {
+          error:
+            "選択中のモデルは画像入力に対応しておらず、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const title =
@@ -498,6 +524,20 @@ export async function POST(req: NextRequest) {
     // Bind before prompt so create-failure rollback can delete the OpenCode
     // session via destroyWorkspace (bindings are the only id source there).
     bindSession(workspace.id, session.id, title);
+
+    const promptForSend = qwenMmFallback
+      ? qwenMmImageInstructions(
+          prompt,
+          persistQwenMmImages(
+            files.map((file) => ({
+              dataUrl: file.uri,
+              mime: file.mime,
+              ...(file.name ? { name: file.name } : {}),
+            })),
+            session.id,
+          ),
+        )
+      : prompt;
 
     // This is deliberately before the first command/prompt: with the task
     // tool allowed, OpenCode creates a child session without ever emitting a
@@ -543,7 +583,9 @@ export async function POST(req: NextRequest) {
         command: parsedCommand.command,
         arguments: parsedCommand.arguments,
       };
-      if (files.length > 0) {
+      if (qwenMmFallback) {
+        commandBody.parts = [{ type: "text", text: promptForSend }];
+      } else if (files.length > 0) {
         commandBody.parts = files.map((file) => ({
           type: "file",
           url: file.uri,
@@ -574,13 +616,15 @@ export async function POST(req: NextRequest) {
     } else {
       const promptBody: Record<string, unknown> = {
         parts: [
-          { type: "text", text: prompt },
-          ...files.map((file) => ({
-            type: "file",
-            url: file.uri,
-            mime: file.mime,
-            ...(file.name ? { filename: file.name } : {}),
-          })),
+          { type: "text", text: promptForSend },
+          ...(qwenMmFallback
+            ? []
+            : files.map((file) => ({
+                type: "file",
+                url: file.uri,
+                mime: file.mime,
+                ...(file.name ? { filename: file.name } : {}),
+              }))),
         ],
       };
       if (effectiveModel?.providerID && effectiveModel.modelID) {

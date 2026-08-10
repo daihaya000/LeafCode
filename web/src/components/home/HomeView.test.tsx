@@ -297,6 +297,59 @@ describe("HomeView image attachments", () => {
     );
   });
 
+  it("allows an image attachment for a text-only model when Qwen MCP is connected", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  text: { name: "Text", capabilities: { input: { image: false } } },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "text" },
+          }),
+        });
+      }
+      if (path === "/api/extensions/mcp") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            servers: [{ name: "qwen-mm-plugins-core", enabled: true, runtime: "connected" }],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    await waitFor(() => expect((attach as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(await screen.findByLabelText("画像ファイルを選択"), {
+      target: { files: [new File(["image"], "fallback.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByRole("img", { name: "fallback.png" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith(
+        "POST",
+        "/api/tasks",
+        expect.objectContaining({
+          model: { providerID: "openai", modelID: "text" },
+          files: [expect.objectContaining({ name: "fallback.png", mime: "image/png" })],
+        }),
+      ),
+    );
+  });
+
   it("blocks image submission when the selected agent model lacks image capability", async () => {
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider") {

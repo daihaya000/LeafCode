@@ -1,4 +1,7 @@
 import { NextRequest } from "next/server";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/allowlist", () => ({
@@ -285,8 +288,9 @@ describe("POST session image capability validation", () => {
 
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
-      // Only the live capability query happened — never the forwarded write.
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // The live capability query and the Qwen MCP status query happened;
+      // the write was never forwarded.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       const [providerUrl] = fetchMock.mock.calls[0] ?? [];
       expect(new URL(String(providerUrl)).pathname).toBe("/provider");
       fetchMock.mockRestore();
@@ -316,8 +320,9 @@ describe("POST session image capability validation", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
-    // Only the live capability query happened — never the forwarded write.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The capability query and the fail-closed Qwen MCP status query happened;
+    // the write was never forwarded.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [providerUrl] = fetchMock.mock.calls[0] ?? [];
     expect(new URL(String(providerUrl)).pathname).toBe("/provider");
     fetchMock.mockRestore();
@@ -443,8 +448,63 @@ describe("POST session image capability validation", () => {
     expect(await response.json()).toEqual({
       error: "image input is not supported by the selected model",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     fetchMock.mockRestore();
+  });
+
+  it("rewrites image parts through the connected Qwen MCP for a text-only model", async () => {
+    const directory = "C:\\repo\\qwen-mm-fallback";
+    const previousAppData = process.env.APPDATA;
+    const appData = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-qwen-route-"));
+    process.env.APPDATA = appData;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/provider") {
+        return Promise.resolve(jsonResponse({
+          all: [{
+            id: "text-provider",
+            models: { text: { capabilities: { input: { image: false } } } },
+          }],
+          connected: ["text-provider"],
+        }));
+      }
+      if (pathname === "/mcp") {
+        return Promise.resolve(jsonResponse({
+          "qwen-mm-plugins-core": { status: "connected" },
+        }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    try {
+      const response = await sessionPost(
+        "prompt_async",
+        {
+          model: { providerID: "text-provider", modelID: "text" },
+          parts: [
+            { type: "text", text: "画像を説明して" },
+            { type: "file", mime: "image/png", url: "data:image/png;base64,AA==" },
+          ],
+        },
+        "application/json",
+        directory,
+      );
+
+      expect(response.status).toBe(200);
+      const upstreamInit = fetchMock.mock.calls.at(-1)?.[1] as RequestInit | undefined;
+      const upstreamBody = await new Response(upstreamInit?.body).json() as {
+        parts: { type: string; text?: string }[];
+      };
+      expect(upstreamBody.parts).toHaveLength(1);
+      expect(upstreamBody.parts[0]?.type).toBe("text");
+      expect(upstreamBody.parts[0]?.text).toContain("vision_chat");
+      expect(upstreamBody.parts[0]?.text).toContain("画像を説明して");
+    } finally {
+      fetchMock.mockRestore();
+      fs.rmSync(appData, { recursive: true, force: true });
+      if (previousAppData === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = previousAppData;
+    }
   });
 
   it("forwards image parts after the provider cache confirms capability", async () => {
@@ -522,7 +582,7 @@ describe("POST session image capability validation", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRestore();
   });
 
@@ -610,7 +670,7 @@ describe("POST session image capability validation", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "image input is not supported by the selected model" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRestore();
   });
 

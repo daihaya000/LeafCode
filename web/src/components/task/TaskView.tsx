@@ -575,6 +575,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [modelCapabilities, setModelCapabilities] = useState<
     Record<string, { attachment?: boolean; image?: boolean }>
   >({});
+  const [qwenMmConnected, setQwenMmConnected] = useState(false);
   const [agents, setAgents] = useState<string[]>([]);
   const [agentModels, setAgentModels] = useState<Record<string, { providerID: string; modelID: string }>>({});
   // Seed Auto synchronously for tasks created from HomeView. Waiting for the
@@ -1347,12 +1348,29 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes, providerModelsRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes, mcpRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
+          timedFetch("/api/extensions/mcp").catch(() => undefined),
         ]);
+
+        const mcpData = mcpRes?.ok
+          ? ((await mcpRes.json().catch(() => ({}))) as {
+              servers?: { name?: unknown; enabled?: unknown; runtime?: unknown }[];
+            })
+          : null;
+        setQwenMmConnected(
+          Boolean(
+            mcpData?.servers?.some(
+              (server) =>
+                server.name === "qwen-mm-plugins-core" &&
+                server.enabled !== false &&
+                server.runtime === "connected",
+            ),
+          ),
+        );
 
         const data = providerRes.ok
           ? ((await providerRes.json()) as ProviderResponse)
@@ -2268,10 +2286,10 @@ export function TaskView({ taskId }: { taskId: string }) {
           ? modelCapabilities[sendingModelKey]?.image === true ||
             modelCapabilities[sendingModelKey]?.attachment === true
           : false;
-    const sendingImageBlocked = hasImage && !sendingImageSupported;
+    const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenMmConnected;
     if (sendingImageBlocked) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していないか、画像対応を確認できません。画像を削除するか、画像対応モデルを選んでください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
       );
       return;
     }
@@ -2304,7 +2322,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       }
       const resolved = resolveAutoSelection(
         text,
-        hasImage,
+        hasImage && !qwenMmConnected,
         attachments.length,
       );
       if (!resolved) {
@@ -2426,6 +2444,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     agent,
     agentModels,
     modelCapabilities,
+    qwenMmConnected,
     intelligence,
     slashCommands,
     touchActivity,
@@ -2506,8 +2525,9 @@ export function TaskView({ taskId }: { taskId: string }) {
         ? modelCapabilities[effectiveModelKey]?.image === true ||
           modelCapabilities[effectiveModelKey]?.attachment === true
         : false;
+  const imageInputAvailable = imageSupported || qwenMmConnected;
   const hasImageAttachment = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
-  const showImageWarning = hasImageAttachment && !imageSupported;
+  const showImageWarning = hasImageAttachment && !imageSupported && !qwenMmConnected;
 
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -2518,9 +2538,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     });
 
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
-    if (!imageSupported) {
+    if (!imageInputAvailable) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していないか、画像対応を確認できません。画像対応モデルを選んでください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
       );
       return;
     }
@@ -2561,7 +2581,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         `一部の画像をスキップしました（上限 ${MAX_IMAGE_COUNT} 枚 / ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB）。`,
       );
     }
-  }, [imageSupported]);
+  }, [imageInputAvailable]);
 
   const removeAttachment = useCallback((index: number) => {
     const next = attachmentsRef.current.filter((_, i) => i !== index);
@@ -4455,11 +4475,11 @@ export function TaskView({ taskId }: { taskId: string }) {
                 }
                 attachmentControl={{
                   inputRef: fileInputRef,
-                  inputDisabled: !imageSupported,
-                  buttonDisabled: !task.sessionId || composerLocked || !imageSupported,
-                  buttonTitle: imageSupported
+                  inputDisabled: !imageInputAvailable,
+                  buttonDisabled: !task.sessionId || composerLocked || !imageInputAvailable,
+                  buttonTitle: imageInputAvailable
                     ? "画像を添付"
-                    : "選択中のエージェント/モデルは画像入力に対応していません",
+                    : "画像対応モデルを選ぶか、Qwen-MM-Plugins MCPを接続してください",
                   onFilesSelected: (files) => void addImageFiles(files),
                   onTrigger: () => fileInputRef.current?.click(),
                 }}

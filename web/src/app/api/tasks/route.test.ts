@@ -918,7 +918,12 @@ describe("POST /api/tasks auto model selection", () => {
   }
 
   async function mockOc(
-    overrides: { provider?: unknown; agents?: unknown; commands?: unknown } = {},
+    overrides: {
+      provider?: unknown;
+      agents?: unknown;
+      commands?: unknown;
+      mcp?: unknown;
+    } = {},
   ) {
     const { ocServer } = await import("@/lib/oc-server");
     const fn = ocServer as ReturnType<typeof vi.fn>;
@@ -927,6 +932,7 @@ describe("POST /api/tasks auto model selection", () => {
       if (path === "/agent") return overrides.agents ?? [];
       if (path === "/session") return { id: "session-1" };
       if (path === "/command") return overrides.commands ?? [];
+      if (path === "/mcp") return overrides.mcp ?? {};
       return {};
     });
     fn.mockClear();
@@ -1407,6 +1413,38 @@ describe("POST /api/tasks auto model selection", () => {
 
     expect(res.status).toBe(400);
     expect(provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("lets Auto choose a text-only model when Qwen MCP can inspect the image", async () => {
+    const ocServer = await mockOc({
+      provider: providerFixture({
+        [CHEAP]: { variants: { minimal: {} } },
+        [MID]: { capabilities: { input: { image: false } } },
+      }),
+      mcp: { "qwen-mm-plugins-core": { status: "connected" } },
+    });
+
+    const res = await post({
+      projectId: "project-1",
+      prompt: LIGHT_PROMPT,
+      isolation: "current_folder",
+      auto: true,
+      files: [image],
+    });
+
+    expect(res.status).toBe(200);
+    expect(promptBodyOf(ocServer)).toMatchObject({
+      model: { providerID: "anthropic", modelID: CHEAP },
+      parts: [
+        {
+          type: "text",
+          text: expect.stringContaining("vision_chat"),
+        },
+      ],
+    });
+    expect(promptBodyOf(ocServer)?.parts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "file" })]),
+    );
   });
 
   it("returns 502 without provisioning when /provider is unavailable", async () => {

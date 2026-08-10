@@ -212,6 +212,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [modelCapabilities, setModelCapabilities] = useState<
     Record<string, { attachment?: boolean; image?: boolean }>
   >({});
+  const [qwenMmConnected, setQwenMmConnected] = useState(false);
   const [agents, setAgents] = useState<string[]>([]);
   const [agentModels, setAgentModels] = useState<
     Record<string, { providerID: string; modelID: string }>
@@ -455,13 +456,30 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes, providerModelsRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes, mcpRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
+          timedFetch("/api/extensions/mcp").catch(() => undefined),
         ]);
         if (cancelled || !mountedRef.current) return;
+
+        const mcpData = mcpRes?.ok
+          ? ((await mcpRes.json().catch(() => ({}))) as {
+              servers?: { name?: unknown; enabled?: unknown; runtime?: unknown }[];
+            })
+          : null;
+        setQwenMmConnected(
+          Boolean(
+            mcpData?.servers?.some(
+              (server) =>
+                server.name === "qwen-mm-plugins-core" &&
+                server.enabled !== false &&
+                server.runtime === "connected",
+            ),
+          ),
+        );
 
         const data = providerRes.ok
           ? ((await providerRes.json()) as ProviderResponse)
@@ -727,6 +745,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const selectedModelSupportsImage = model
     ? selectedModel?.image === true || modelCapabilities[model]?.attachment === true
     : false;
+  const selectedModelCanUseImage = selectedModelSupportsImage || qwenMmConnected;
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
@@ -763,10 +782,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             modelCapabilities[sendingModelKey]?.attachment === true
           : false;
     const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
-    const sendingImageBlocked = hasImage && !sendingImageSupported;
+    const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenMmConnected;
     if (sendingImageBlocked) {
       setError(
-        "選択中のモデルは画像入力に対応していないか、画像対応を確認できません。画像を削除するか、画像対応モデルを選んでください。",
+        "選択中のモデルは画像入力に対応していないか、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
       );
       return;
     }
@@ -923,6 +942,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     baseBranch,
     model,
     modelCapabilities,
+    qwenMmConnected,
     agent,
     agentModels,
     intelligence,
@@ -1266,14 +1286,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               inputRef: fileInputRef,
               inputDisabled: submitting,
               inputAriaLabel: "画像ファイルを選択",
-              buttonDisabled: submitting || !selectedModelSupportsImage,
-              buttonTitle: selectedModelSupportsImage
+              buttonDisabled: submitting || !selectedModelCanUseImage,
+              buttonTitle: selectedModelCanUseImage
                 ? "画像を添付"
                 : "選択中のモデルは画像入力に対応していません",
               buttonClassName: "flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-bg px-2 text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-40",
               onFilesSelected: (files) => void addImageFiles(files),
               onTrigger: () => {
-                if (selectedModelSupportsImage) fileInputRef.current?.click();
+                if (selectedModelCanUseImage) fileInputRef.current?.click();
               },
             }}
             toolbar={<>

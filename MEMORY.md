@@ -1,5 +1,27 @@
 # 作業ログ: Qwen-MM-Plugins MCP 初回接続タイムアウト修正
 
+# 作業ログ: 画像非対応モデル向け Qwen-MM-Plugins fallback
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- 初期タスク作成で、選択モデルが画像入力非対応でもQwen-MM-Plugins MCPが接続済みなら画像を受け付けるようにした。
+- 画像のdata URLを `%APPDATA%/opencode-webui/qwen-mm-attachments/<sessionId>/` に保存し、text-onlyモデルへ `vision_chat` / `ocr` を使う指示と絶対パスを渡す。古い添付は7日後にbest effortで削除する。
+- Auto＋画像では、Qwen MCP接続時に画像対応モデルだけへ絞らず、適切なtext-onlyモデルも候補にできるようにした。
+- 継続プロンプトのv1 `parts` とv2 `prompt.files` も、画像非対応モデルの場合だけ同じfallbackへ変換し、画像対応モデルと非画像ファイルは従来どおり通す。
+- HomeView / TaskView が `/api/extensions/mcp` の接続状態を確認し、Qwen MCP接続時は画像添付UIを有効化する。MCP未接続かつ画像非対応の場合だけ警告・送信拒否する。
+
+## 検証結果
+
+- fallback、初期タスク、proxy、HomeView、TaskViewの関連テスト ... 319 tests 成功
+- `npm.cmd run typecheck` ... 成功
+- `npm.cmd run lint` ... 成功
+- Web全体テスト ... 3032/3033 成功。`src/lib/session.test.ts` の1件は既存の認証テスト不一致（実装が送る `trustedDeviceToken: null` を期待値が含まない）で、本変更とは無関係。
+- 現環境の `DASHSCOPE_API_KEY` は未設定のため、実際のQwen `vision_chat` / OCR APIによる画像回答は未確認。
+
 ## 日付
 
 2026-08-10
