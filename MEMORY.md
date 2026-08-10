@@ -4594,3 +4594,32 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `npm exec tsc -- --noEmit` 成功。
 - `npm exec eslint -- src/lib/goal-loop.ts src/lib/goal-loop.integration.test.ts` 成功。
 - 関連5ファイルのVitest: 99 tests passed。
+
+---
+
+# 追加: compact完了待ちのタイムアウト・異常終了時にpromptを送信しない回帰テスト
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- 既存実装を確認したところ、`autoCompactGoalLoop` はcompact完了待ちのタイムアウト時に `OcError` を投げ、`/api/session/{id}/compact` 呼び出し自体が失敗した場合もそのまま例外を伝播する。呼び出し元の `processLoop` はこの例外を投げた地点より前でターンをclaimしていないため、いずれの場合もpromptは送信されない。実装コードの修正は不要と判断した。
+- lockは `finally` で解放されるため、タイムアウト・異常終了時もowner限定解放が効くことを確認した。
+
+## 回帰テスト
+
+- `web/src/lib/goal-loop.integration.test.ts`:
+  - `reachQueuedTurnTwoWithHighUsage` ヘルパーを追加。turn 1はauto-compact off（`createGoalLoop` が発火するfire-and-forgetなscheduler tickと競合しないようにするため）で正常完了させ、turn 2をqueuedのまま高使用率状態で待機させる。
+  - 「compact完了待ちがタイムアウトした場合、prompt未送信・lock解放・ループはqueuedのまま」を検証（`vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync(31_000)` でCOMPACT_TIMEOUT_MS=30_000を実時間なしに越えさせる）。
+  - 「`/api/session/{id}/compact` 呼び出し自体が失敗した場合、prompt未送信・lock解放・ループはqueuedのまま」を検証。
+  - 「schedulerTickではcompactタイムアウト時にpause_reason='scheduler_error'で一時停止し、prompt未送信のまま保持する」を検証(`runGoalLoopSchedulerTick` 経由)。
+  - 実装のtimeout throwを一時的に取り除いて上記2テストが実際に落ちることを確認済み(false positiveでないことのサニティチェック)。
+
+## 検証結果
+
+- `npm exec tsc -- --noEmit` 成功。
+- `npm exec eslint -- src/lib/goal-loop.ts src/lib/goal-loop.integration.test.ts` 成功。
+- `npx vitest run src/lib/goal-loop.integration.test.ts` ... 39 tests passed。
+- `npx vitest run`(web全体) ... 264 files / 3132 tests passed / 1 skipped。

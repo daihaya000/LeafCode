@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import type { MessageWithParts } from "./types";
 
@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   tokenSavingThreshold: null as string | null,
   providerResponse: { all: [] } as unknown,
   compactedMessageResponse: null as MessageWithParts[] | null,
+  compactFailureError: null as (Error & { status?: number }) | null,
 }));
 
 vi.mock("./oc-server", () => ({
@@ -41,6 +42,7 @@ vi.mock("./oc-server", () => ({
       return h.providerResponse;
     }
     if (path.endsWith("/compact")) {
+      if (h.compactFailureError) throw h.compactFailureError;
       if (h.compactedMessageResponse) h.messageResponse = h.compactedMessageResponse;
       return {};
     }
@@ -118,6 +120,8 @@ import {
   getGoalLoop,
   goalLoopTestSeams,
   pauseGoalLoopForManualSend,
+  resetSchedulerTickingForTest,
+  runGoalLoopSchedulerTick,
   updateGoalLoopStatus,
 } from "./goal-loop";
 
@@ -230,11 +234,12 @@ function msg(
   };
 }
 
-function tokenMsg(id: string, total: number): MessageWithParts {
+function tokenMsg(id: string, total: number, structured?: unknown): MessageWithParts {
+  const base = msg(id, "assistant", structured);
   return {
-    ...msg(id, "assistant"),
+    ...base,
     info: {
-      ...msg(id, "assistant").info,
+      ...base.info,
       providerID: "provider-1",
       modelID: "model-1",
       tokens: { total, input: 0, output: 0, reasoning: 0 },
@@ -285,6 +290,11 @@ beforeEach(() => {
   h.tokenSavingThreshold = null;
   h.providerResponse = { all: [] };
   h.compactedMessageResponse = null;
+  h.compactFailureError = null;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("goal loop integration", () => {
@@ -1183,6 +1193,91 @@ describe("goal loop server-side auto compact", () => {
     h.compactedMessageResponse = [msg("m0", "assistant"), tokenMsg("a0", 20)];
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     expect(h.ocCalls.some((call) => call.path.endsWith("/compact"))).toBe(true);
+    expect(h.promptAsyncCount).toBe(1);
+  });
+
+  /**
+   * Drive a loop through a normal turn 1 (auto-compact off, so the
+   * fire-and-forget scheduler tick that `createGoalLoop` triggers cannot race
+   * with the lock/usage state this test controls) and land it back in
+   * `queued` for turn 2 with a high-usage reply already in the transcript.
+   * Auto-compact is only switched on after this point, and `processLoop` is
+   * called directly (a test seam, not `createGoalLoop`/`updateGoalLoopStatus`),
+   * so no further background tick can fire.
+   */
+  async function reachQueuedTurnTwoWithHighUsage(): Promise<void> {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test", maxTurns: 5 });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(h.promptAsyncCount).toBe(1);
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      tokenMsg("a1", 90, { status: "progress", summary: "still working" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+
+    h.tokenSavingMode = "auto";
+    h.tokenSavingThreshold = "80";
+    h.providerResponse = {
+      all: [{ id: "provider-1", models: { "model-1": { limit: { context: 100 } } } }],
+    };
+  }
+
+  it("does not send a prompt when compact completion cannot be confirmed before the wait deadline", async () => {
+    await reachQueuedTurnTwoWithHighUsage();
+
+    vi.useFakeTimers();
+    const pending = goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const expectation = expect(pending).rejects.toThrow(
+      /コンテキスト圧縮完了を確認できませんでした/,
+    );
+    await vi.advanceTimersByTimeAsync(31_000);
+    await expectation;
+
+    // Turn 2's prompt must never have gone out while completion was unconfirmed.
+    expect(h.promptAsyncCount).toBe(1);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    // The lock must be released even though the wait timed out.
+    const lockRow = testDb
+      .prepare("SELECT * FROM session_compaction_locks WHERE session_id = ?")
+      .get("sess-1");
+    expect(lockRow).toBeUndefined();
+  });
+
+  it("does not send a prompt when the compact request itself fails", async () => {
+    await reachQueuedTurnTwoWithHighUsage();
+
+    h.compactFailureError = Object.assign(new Error("OpenCode compact endpoint crashed"), {
+      status: 500,
+    });
+    await expect(goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!)).rejects.toThrow(
+      "OpenCode compact endpoint crashed",
+    );
+
+    expect(h.promptAsyncCount).toBe(1);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    const lockRow = testDb
+      .prepare("SELECT * FROM session_compaction_locks WHERE session_id = ?")
+      .get("sess-1");
+    expect(lockRow).toBeUndefined();
+  });
+
+  it("pauses the loop with scheduler_error instead of sending a prompt when the scheduler tick hits the compact timeout", async () => {
+    await reachQueuedTurnTwoWithHighUsage();
+
+    vi.useFakeTimers();
+    resetSchedulerTickingForTest();
+    const pending = runGoalLoopSchedulerTick();
+    await vi.advanceTimersByTimeAsync(31_000);
+    await pending;
+
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.pauseReason).toBe("scheduler_error");
+    expect(loop.error).toContain("コンテキスト圧縮完了を確認できませんでした");
     expect(h.promptAsyncCount).toBe(1);
   });
 });
