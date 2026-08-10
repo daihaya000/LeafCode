@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, cx } from "@/components/ui";
-import { getJson, sendJson } from "@/lib/client";
+import { getJson, sendJson, timedFetch } from "@/lib/client";
 
 type QwenNativeSettings = {
   enabled: boolean;
@@ -11,6 +11,13 @@ type QwenNativeSettings = {
   apiKey: string;
   timeoutMs: number;
   maxTokens: number;
+};
+
+type OllamaStatus = {
+  installed: boolean;
+  running: boolean;
+  version: string | null;
+  models: string[];
 };
 
 const DEFAULTS: QwenNativeSettings = {
@@ -45,20 +52,25 @@ export function VisionSettings() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [statusAvailable, setStatusAvailable] = useState<boolean | null>(null);
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [ollamaBusy, setOllamaBusy] = useState<"install" | "pull" | null>(null);
+  const [ollamaMessage, setOllamaMessage] = useState<string | null>(null);
   const mountedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [saved, status] = await Promise.all([
+      const [saved, status, ollama] = await Promise.all([
         getJson<QwenNativeSettings>("/api/qwen-native/settings"),
         getJson<{ nativeAvailable: boolean }>("/api/qwen-native/status").catch(() => null),
+        getJson<OllamaStatus>("/api/ollama/status").catch(() => null),
       ]);
       if (!mountedRef.current) return;
       setSettings(saved);
       setDraft(saved);
       if (status) setStatusAvailable(status.nativeAvailable);
+      if (ollama) setOllamaStatus(ollama);
     } catch (err) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : "設定を読み込めませんでした");
@@ -67,6 +79,71 @@ export function VisionSettings() {
       if (mountedRef.current) setLoading(false);
     }
   }, []);
+
+  const refreshOllamaStatus = useCallback(async () => {
+    const ollama = await getJson<OllamaStatus>("/api/ollama/status").catch(() => null);
+    if (mountedRef.current && ollama) setOllamaStatus(ollama);
+  }, []);
+
+  const installOllama = useCallback(async () => {
+    if (ollamaBusy) return;
+    setOllamaBusy("install");
+    setOllamaMessage(null);
+    try {
+      const res = await timedFetch("/api/ollama/install", {
+        method: "POST",
+        timeoutMs: 200_000,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        installed?: boolean;
+        message?: string;
+      };
+      if (!mountedRef.current) return;
+      if (res.ok && data.installed) {
+        setOllamaMessage(data.message ?? "Ollamaをインストールしました");
+        await refreshOllamaStatus();
+      } else {
+        setOllamaMessage(data.message ?? "Ollamaのインストールに失敗しました");
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setOllamaMessage(err instanceof Error ? err.message : "Ollamaのインストールに失敗しました");
+      }
+    } finally {
+      if (mountedRef.current) setOllamaBusy(null);
+    }
+  }, [ollamaBusy, refreshOllamaStatus]);
+
+  const pullModel = useCallback(async (model: string) => {
+    if (ollamaBusy || !model.trim()) return;
+    setOllamaBusy("pull");
+    setOllamaMessage(null);
+    try {
+      const res = await timedFetch("/api/ollama/pull", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model }),
+        timeoutMs: 300_000,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!mountedRef.current) return;
+      if (res.ok && data.ok) {
+        setOllamaMessage(`モデル「${model}」を取得しました`);
+        await refreshOllamaStatus();
+      } else {
+        setOllamaMessage(data.error ?? `モデル「${model}」の取得に失敗しました`);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setOllamaMessage(err instanceof Error ? err.message : "モデルの取得に失敗しました");
+      }
+    } finally {
+      if (mountedRef.current) setOllamaBusy(null);
+    }
+  }, [ollamaBusy, refreshOllamaStatus]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -332,6 +409,107 @@ export function VisionSettings() {
           )}
         </div>
       </fieldset>
+
+      <div className="rounded-2xl border border-border bg-surface px-5 py-4 text-xs text-muted">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-sm font-semibold text-text">Ollama 導入状況</h4>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => void refreshOllamaStatus()}
+            disabled={ollamaBusy !== null}
+            aria-label="Ollama導入状況を再確認"
+          >
+            再確認
+          </Button>
+        </div>
+        <dl className="mt-2 grid gap-1.5 sm:grid-cols-3">
+          <div>
+            <dt className="text-faint">インストール</dt>
+            <dd>
+              {ollamaStatus === null ? (
+                <span className="text-faint">取得中…</span>
+              ) : ollamaStatus.installed ? (
+                <span className="text-success">
+                  あり{ollamaStatus.version ? `（v${ollamaStatus.version}）` : ""}
+                </span>
+              ) : (
+                <span className="text-danger">未導入</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-faint">サービス</dt>
+            <dd>
+              {ollamaStatus === null ? (
+                <span className="text-faint">取得中…</span>
+              ) : ollamaStatus.running ? (
+                <span className="text-success">起動中</span>
+              ) : (
+                <span className="text-warning">停止中</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-faint">取得済みモデル</dt>
+            <dd>
+              {ollamaStatus === null ? (
+                <span className="text-faint">取得中…</span>
+              ) : ollamaStatus.models.length === 0 ? (
+                <span className="text-faint">なし</span>
+              ) : (
+                <span className="font-mono text-muted">
+                  {ollamaStatus.models.join(", ")}
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
+        {ollamaMessage && (
+          <p
+            role="status"
+            className="mt-2 rounded-md border border-border bg-bg px-2 py-1.5 text-xs text-muted"
+          >
+            {ollamaMessage}
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {ollamaStatus && !ollamaStatus.installed && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void installOllama()}
+              disabled={ollamaBusy !== null}
+              busy={ollamaBusy === "install"}
+            >
+              Ollama を winget でインストール
+            </Button>
+          )}
+          {ollamaStatus && ollamaStatus.installed && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => void pullModel(draft.model.trim() || DEFAULTS.model)}
+              disabled={ollamaBusy !== null || !draft.model.trim()}
+              busy={ollamaBusy === "pull"}
+            >
+              設定中のモデルをPull（{draft.model.trim() || DEFAULTS.model}）
+            </Button>
+          )}
+        </div>
+        {ollamaStatus && !ollamaStatus.installed && (
+          <p className="mt-2 text-faint">
+            Ollama未導入時はwinget経由で自動インストールします（管理者権限の確認ダイアログが出ます）。
+          </p>
+        )}
+        {ollamaStatus && ollamaStatus.installed && !ollamaStatus.running && (
+          <p className="mt-2 text-faint">
+            Ollamaは導入済みですがサービスが停止しています。<code className="font-mono">ollama serve</code> またはスタートメニューから起動してください。
+          </p>
+        )}
+      </div>
 
       <div className="rounded-2xl border border-border bg-surface px-5 py-4 text-xs text-muted">
         <h4 className="text-sm font-semibold text-text">使い方</h4>

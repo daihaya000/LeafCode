@@ -1,8 +1,32 @@
 import { NextRequest } from "next/server";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/profiles/settings", () => ({
+  readQwenNativeSettings: vi.fn(() => ({
+    enabled: false,
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "qwen2.5vl:7b",
+    apiKey: "ollama",
+    timeoutMs: 120_000,
+    maxTokens: 2048,
+  })),
+  QWEN_NATIVE_DEFAULTS: {
+    enabled: false,
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "qwen2.5vl:7b",
+    apiKey: "ollama",
+    timeoutMs: 120_000,
+    maxTokens: 2048,
+  },
+}));
+
 import { GET } from "./route";
 
 const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+
+beforeEach(() => {
+  delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+});
 
 afterEach(() => {
   if (previousEnabled === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;

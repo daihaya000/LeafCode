@@ -72,6 +72,14 @@ vi.mock("@/lib/hang-watchdog", () => ({
   }),
 }));
 
+vi.mock("@/lib/qwen-native-vision", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/qwen-native-vision")>();
+  return {
+    ...actual,
+    isQwenNativeVisionAvailable: () => process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1",
+  };
+});
+
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { SSE_UPSTREAM_CONNECT_TIMEOUT_MS } from "@/lib/sse-health";
 import { GET, POST } from "./route";

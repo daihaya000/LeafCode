@@ -94,6 +94,13 @@ vi.mock("@/lib/opencode-skill-permission", () => ({
 vi.mock("@/lib/opencode-access-mode", () => ({
   setSessionEditPermission: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/lib/qwen-native-vision", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/qwen-native-vision")>();
+  return {
+    ...actual,
+    isQwenNativeVisionAvailable: () => process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1",
+  };
+});
 
 import { POST } from "./route";
 

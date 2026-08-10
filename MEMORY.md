@@ -1,5 +1,28 @@
 # 作業ログ: Qwen-MM-Plugins MCP 初回接続タイムアウト修正
 
+# 作業ログ: Ollamaセットアップ自動化
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- `web/src/lib/ollama-cli.ts` を新設: Ollama本体の導入検知・バージョン取得・モデル一覧・モデルPull・winget経由の自動インストールを提供。
+- APIルートを新設:
+  - `GET /api/ollama/status`: インストール有無・サービス起動状態・バージョン・取得済みモデル一覧を返す。
+  - `POST /api/ollama/install`: winget経由でOllama本体をインストール（Windowsのみ）。
+  - `POST /api/ollama/pull`: 指定モデルをPull。
+- `VisionSettings.tsx` に「Ollama 導入状況」パネルを追加。インストール状態・サービス状態・取得済みモデルを表示し、未導入時は「Ollama を winget でインストール」ボタン、導入済み時は「設定中のモデルをPull」ボタンを提供。
+- `scripts/start-webui.bat` に `:check_ollama` を追加（Caddyと同じくオプション扱い・起動ブロックしない）。`OPENCODE_WEBUI_QWEN_NATIVE=1` または `qwen-native-settings.json` 存在時に限り、winget経由でOllamaをインストールし `qwen2.5vl:7b` をPull。`OPENCODE_WEBUI_OLLAMA=0` でスキップ可能。モデルは `OPENCODE_WEBUI_OLLAMA_MODEL` で変更可。
+- 既存テストの `isQwenNativeVisionAvailable` を環境変数のみ判定するようモック化し、開発者の実際の設定ファイルに依存しないよう隔離。
+
+## 検証
+
+- typecheck / Lint 成功
+- 関連398件のテスト成功（ollama-cli.test.ts / qwen-native / SettingsView / opencode route / tasks route 等）
+- `test:encoding` 7件成功 / `start-webui-bat.test.js` 20件成功
+
 # 作業ログ: Qwen画像解析のWebUIネイティブ統合
 
 # 作業ログ: 画像解析設定タブ新設
