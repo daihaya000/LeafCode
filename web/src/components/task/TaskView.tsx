@@ -765,6 +765,17 @@ export function TaskView({ taskId }: { taskId: string }) {
       }, 0),
     [streamMessages],
   );
+  const cumulativeTokens = useMemo(
+    () =>
+      streamMessages.reduce(
+        (total, message) =>
+          message.info.role === "assistant"
+            ? total + (message.info.tokens?.total ?? 0)
+            : total,
+        0,
+      ),
+    [streamMessages],
+  );
 
   useEffect(() => {
     const previous = prevSessionErrorRef.current;
@@ -3478,6 +3489,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                   title="このセッションの累計コスト"
                 >
                   累計 {formatCostValue(task.cost!, costPrefs)}
+                </span>
+              </>
+            )}
+            {cumulativeTokens > 0 && (
+              <>
+                <span className="mx-1">·</span>
+                <span className="shrink-0" title="このセッションの累計トークン数">
+                  累計トークン {formatTokens(cumulativeTokens)}
                 </span>
               </>
             )}
