@@ -4226,6 +4226,7 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `web/src/lib/db.ts` にworkspace/session単位のsnapshot表を追加する。保存するのはpeerのID・状態・ファイル一覧の正規化済みsnapshot、fingerprint、更新時刻だけとし、本文は保存しない。
 - `web/src/lib/collaboration-context.ts` に正規化・安定fingerprint・差分生成を追加する。
 - 直前snapshotと同一なら注入しない。変更時は全体blockではなく、追加・変更・終了したpeerだけの短いupdate blockを注入する。
+- **compact後は必ずfull snapshotを再注入する**: OpenCodeのcompactは古いuserメッセージを残す場合があるため、差分のみ注入すると過去peer情報が欠落するリスクがある。`session.compacted` SSE受信時にsnapshot claimを無効化し、次回送信時はfull blockを注入する。これにより「前回差分→今回full」の順で履歴に残り、情報欠落を防ぐ。
 - BFF routeの注入関数は `{ body, claim }` を返す形にし、明示的なupstream拒否時だけclaimを解放する。ネットワークタイムアウトは送信済みか判別できないため即時再注入せず、claimに短いTTLを設ける。
 - snapshotは古い行をTTLでbest-effort削除し、workspace削除時はcascadeさせる。
 
@@ -4259,6 +4260,7 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - sessionごとのin-flight lockとcooldownを設け、連続送信・複数タブで二重compactしない。
 - compact失敗時はプロンプトを消失させず、入力を復元してエラーを表示する。OpenCode非対応・状態競合時は既存送信動作を壊さない。
 - `useSessionStream.ts` の `session.compacted` 後のresyncを完了条件に利用し、圧縮前の古いusageを表示し続けない。
+- **compact完了検知**: `session.compacted` SSEは`scheduleNextResync`のみを行い`pendingMutationRef`を更新しないため、compact完了を確実に待つには追加の完了検知が必要。compact開始時にフラグを立て、`session.compacted`受信またはresync後のusage低下で完了判定する。timeout fallback（例: 30秒）も設け、未検知時に送信を止めない。
 
 ### テスト
 
@@ -4274,8 +4276,9 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `web/src/lib/goal-loop.ts` の固定規約を短い共通blockへ分離する。
 - turn 1は現行の完全prompt、turn 2以降は「次の最小作業・turn番号・goal・必要なacceptance・直近2件のprogress・JSON出力契約」だけを送る。
 - 変化しない規約をprompt先頭、turn固有情報を末尾に置き、providerのprefix cacheを壊しにくくする。
-- verification promptは検証品質を優先し、別途短縮するまで現行の完全版を維持する。
+- **verification promptは短縮しない**: 検証プロンプトは前回claimの`summary`/`evidence`に依存し、検証品質が完了判定に直結するため、現行の完全版を維持する。ただしclaim引き渡し部分は短縮後のprogress形式と整合させる。
 - Goal LoopはBFFを通らず `ocServer` から送信されるため、Phase 2のclient自動compact対象外。必要ならこのphaseで、直前turnがidleのときだけserver側で同じ閾値判定を追加する。
+- **Goal Loop自動compactの競合リスク**: Goal Loopの`prompt_async`はOpenCodeエンジンのstatusを直接操作しないため、compact中のターン送信が競合する。Goal Loopへcompactを組み込む場合は、ターン完了（idle）を確認してからcompact→次ターン送信の順を保証し、compact未完了時は次ターンを遅延させる。ただし初期実装ではGoal Loopにはcompactを組み込まず、client送信時のみ適用する。
 
 ### テスト・完了条件
 
