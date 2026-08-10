@@ -24,6 +24,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
+import { __clearProviderResponseCacheForTest } from "@/lib/opencode-extensions/provider-models";
 import { GET, POST } from "./route";
 
 /** Loopback request so the shared API guard authorizes these handler calls. */
@@ -64,6 +65,7 @@ beforeEach(() => {
   fs.writeFileSync(path.join(data, "opencode.jsonc"), "{}\n");
   h.ocServer.mockReset();
   h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
+  __clearProviderResponseCacheForTest();
 });
 
 afterEach(() => {

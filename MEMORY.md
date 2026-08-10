@@ -1,3 +1,73 @@
+# 作業ログ: 起動直後のフロント高速化（provider-models キャッシュ + tasks 空リスト早期return）
+
+## 日付
+
+2026-08-11
+
+## 症状
+
+トレイ host 起動直後の Home 画面が体感遅い。ブラウザで開いてから入力可能になるまでに1秒程度待つ。
+
+## 計測（修正前）
+
+`http://127.0.0.1:3000` の起動直後APIレイテンシ:
+
+| API | レイテンシ | 原因 |
+| --- | --- | --- |
+| `/api/tasks` | 0.34s | `listTasks()` が各 workspace dir ごとに `/session`, `/session/status`, `dirStat` を並列コール |
+| `/api/opencode/provider` | 0.99s | OpenCode の `/provider` への透過プロキシ（maskSecrets 済み） |
+| `/api/extensions/provider-models` | 0.64s | **同じ OpenCode `/provider` を再取得** + WebUI state 読み込み + JSONC parse |
+
+Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider` と `/api/extensions/provider-models` は**同じ OpenCode `/provider` を2回コール**しており、これが最大の無駄。
+
+## 根本原因
+
+`web/src/lib/opencode-extensions/provider-models.ts` の `listProviderModels()` が毎回 `ocServer(null, "/provider", {timeoutMs: 3000})` を呼ぶ。Home の初回バーストで `/api/opencode/provider`（透過プロキシ）と `/api/extensions/provider-models` が同時に同じ OpenCode `/provider` を叩く。OpenCode の `/provider` は connected provider 全体の capability を列挙する重いエンドポイントで、1回あたり ~0.6-1.0s かかる。
+
+`listTasks()` も空のワークスペース一覧に対しては無駄に `sessionStatusFor` / `sessionMetaFor` の Promise.all を組み、それぞれが `ocServer` を呼ぼうとする（実際は `dirs.length === 0` でマップされないが `globalEngineOk` は1回、ただし呼び出しパスが整理されていなかった）。
+
+## 修正
+
+### 1. `provider-models.ts` に5秒TTLキャッシュを追加
+
+`fetchProviderResponse()` を新設。OpenCode `/provider` の生レスポンスをプロセス内で5秒キャッシュし、Home の初回バーストで2回目を in-memory ヒットに圧縮。`disabled` state はディスクから毎回再計算するため、ユーザーが設定を変えても即座に反映される。
+
+- `web/src/lib/opencode-extensions/provider-models.ts:70`
+- テスト用に `__clearProviderResponseCacheForTest()` を export
+
+### 2. `task-service.ts` の `listTasks()` に空リスト早期returnを追加
+
+`dirs.length === 0` のときは `sessionStatusFor` / `sessionMetaFor` / `dirStat` の Promise.all をスキップし、`globalEngineOk()` 1回だけ呼んで `{ tasks: [], engineOk }` を返す。新規インストール直後や全 workspace 削除後の Home 起動で、`/api/tasks` が ~340ms から ~10ms（`/global/health` 1回分）に短縮される。
+
+- `web/src/lib/task-service.ts:316`
+
+### 3. テスト更新
+
+- `provider-models.test.ts`, `provider-models/route.test.ts`: `beforeEach` でキャッシュクリア
+- `task-service.test.ts`: 空リスト時の `/global/health` 単一呼び出しを検証するテストを追加
+
+## 計測（修正後）
+
+| API | 修正前 | 修正後（1回目） | 修正後（2回目・キャッシュヒット） |
+| --- | --- | --- | --- |
+| `/api/extensions/provider-models` | 0.81s | 0.81s | **0.48s**（OpenCode `/provider` 呼び出し分が消滅） |
+
+`/api/tasks` は空リスト時のみ高速化（今回はワークスペースが存在するため 0.38s で据え置き）。
+
+## 検証
+
+- `npx tsc --noEmit`: 合格
+- `npx eslint <変更ファイル>`: 合格
+- `npx vitest run`: 267 ファイル 3168 passed / 1 skipped（既存）
+
+## 残存リスク・制約
+
+- `/api/opencode/provider`（透過プロキシ）は独自に OpenCode `/provider` を叩いており、今回はキャッシュ対象外。透過プロキシ側に GET レスポンスキャッシュを入れると `maskSecrets` の一貫性や SSE 混入リスクがあり、別件として扱う。
+- テスト実行時間全体（~39s、うち transform 35s）は Vitest の変換オーバーヘッドが支配的で、今回の趣旨（起動直後のフロント高速化）の対象外。
+- Home の初回レンダリングは依然として `/api/opencode/provider`（0.99s）に律速される。これを削るには `HomeView` が `provider-models` の結果だけを使うようリファクタリングする必要があり、影響範囲が大きいため別件。
+
+---
+
 # 作業ログ: 選択中スキル説明のコントラスト強化
 
 # 作業ログ: ローカルOllamaのVLモデルが画像非対応と判定される不具合の修正

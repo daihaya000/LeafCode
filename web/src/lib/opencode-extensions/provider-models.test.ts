@@ -27,6 +27,7 @@ vi.mock("@/lib/paths", () => ({
 import {
   addCustomProvider,
   deleteCustomProvider,
+  __clearProviderResponseCacheForTest,
   listConfiguredImageModels,
   listProviderModels,
   saveProviderModelOrder,
@@ -98,6 +99,7 @@ beforeEach(() => {
   );
   h.ocServer.mockReset();
   h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
+  __clearProviderResponseCacheForTest();
 });
 
 afterEach(() => {

@@ -63,14 +63,45 @@ type ProviderResponse = {
 };
 
 /**
+ * OpenCode's `/provider` response is stable for seconds at a time, and Home
+ * fetches both `/api/opencode/provider` (the transparent proxy) and this
+ * endpoint in the same `Promise.all` burst. Caching the raw upstream result
+ * for a short TTL collapses the second call into an in-memory hit, cutting
+ * the worst-case Home boot latency roughly in half without affecting the
+ * per-model disabled state (which is recomputed from disk on every call).
+ */
+const PROVIDER_RESPONSE_CACHE_TTL_MS = 5_000;
+let providerResponseCache: { at: number; data: ProviderResponse } | null =
+  null;
+
+/** Test-only: drop the in-memory `/provider` cache between tests. */
+export function __clearProviderResponseCacheForTest(): void {
+  providerResponseCache = null;
+}
+
+async function fetchProviderResponse(): Promise<ProviderResponse> {
+  const now = Date.now();
+  const cached = providerResponseCache;
+  if (cached && now - cached.at < PROVIDER_RESPONSE_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const data = await ocServer<ProviderResponse>(null, "/provider", {
+    timeoutMs: 3000,
+  });
+  providerResponseCache = {
+    at: now,
+    data,
+  };
+  return data;
+}
+
+/**
  * List all providers and their models, merged with the WebUI-local
  * disabled state. Only connected providers are included when the
  * `connected` list is non-empty.
  */
 export async function listProviderModels(): Promise<ProviderModelsDto[]> {
-  const data = await ocServer<ProviderResponse>(null, "/provider", {
-    timeoutMs: 3000,
-  });
+  const data = await fetchProviderResponse();
 
   const state = readProviderModelState();
   // Mutable copy: newly-discovered models may get an automatic default

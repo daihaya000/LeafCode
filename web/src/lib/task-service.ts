@@ -315,6 +315,14 @@ export async function listTasks(): Promise<{
   const bindings = primaryBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
 
+  // Fast path for a fresh install / empty task list: skip the per-directory
+  // /session + /session/status fan-out (each round-trips to the OpenCode
+  // engine) and only confirm the engine is reachable. Cuts the Home boot API
+  // call from ~340ms to a single /global/health check when no workspaces exist.
+  if (dirs.length === 0) {
+    return { tasks: [], engineOk: await globalEngineOk() };
+  }
+
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
     sessionStatusFor(dirs),
     Promise.all(dirs.map((d) => dirStat(d))),

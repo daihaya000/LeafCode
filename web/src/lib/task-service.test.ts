@@ -80,6 +80,16 @@ beforeEach(() => {
 });
 
 describe("listTasks cost aggregation", () => {
+  it("returns an empty list and skips per-directory fan-out when no workspaces exist", async () => {
+    h.workspaces = [];
+    h.bindings = new Map();
+    const { tasks, engineOk } = await listTasks();
+    expect(tasks).toEqual([]);
+    expect(engineOk).toBe(true);
+    // Only the single /global/health call should reach the engine.
+    expect(h.ocCalls).toEqual(["/global/health"]);
+  });
+
   it("attaches Session.cost from /session to the bound task", async () => {
     h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 0.1234 }];
     const { tasks } = await listTasks();
