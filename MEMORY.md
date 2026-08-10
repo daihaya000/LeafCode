@@ -3122,3 +3122,19 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 
 - `npm test -- TaskView.test.tsx` ... 116 tests 成功
 - `npm run typecheck` ... 成功
+## 日付
+
+2026-08-10
+
+## HTTPS証明書表示の明文化
+
+### 修正内容
+
+- 接続設定の証明書欄を「HTTPS接続用の信頼証明書」と明記した。
+- CaddyのHTTPS接続でブラウザ警告を消すため、接続端末へルートCA証明書をインストールする必要があることを説明するようにした。
+- ダウンロードリンクを「VPN接続用ルートCAをダウンロード」のように、接続種別と用途が分かる表示へ変更した。
+
+### 検証結果
+
+- `npm run test -- --run src/components/settings/SettingsView.test.tsx` ... 29 tests 成功
+- `npm run typecheck` ... 成功

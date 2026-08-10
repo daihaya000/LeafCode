@@ -808,7 +808,9 @@ describe("SettingsView", () => {
     // Caddy + Tailscale(VPN) + Localhost(常時追加)
     expect(screen.getAllByRole("button", { name: "URLをコピー" })).toHaveLength(3);
     expect(screen.getByRole("link", { name: "https://webui.example.com" }).getAttribute("target")).toBe("_blank");
-    const dl = screen.getByRole("link", { name: "VPN 証明書DL" });
+    const dl = screen.getByRole("link", {
+      name: "VPN接続用ルートCAをダウンロード",
+    });
     expect(dl.getAttribute("href")).toBe(
       "http://100.64.0.10:8080/caddy-root.crt",
     );
