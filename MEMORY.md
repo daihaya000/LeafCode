@@ -258,6 +258,17 @@ HomeViewでAutoを選んで開始したタスクのTaskViewコンポーザーが
 - `npm run test -- --run src/components/task/TaskView.test.tsx` ... 116 tests 成功
 - `npm run typecheck` ... 成功
 
+## 日付
+
+2026-08-10
+
+## Caddy公開URL確認
+
+- `deploy/Caddyfile` は `100.98.131.68` を HTTPS site address として登録済み。
+- Caddy は `https://100.98.131.68:8443` で稼働し、`curl -k -I` で `200 OK` と `Via: 1.1 Caddy` を確認した。
+- `http://100.98.131.68:3000` は Next.js の直接入口であり、Caddy経由の入口は `https://100.98.131.68:8443`。同じ `:3000` はバックエンドが使用するため、Caddy入口にはできない。
+- 追加のコード変更は不要。
+
 ## 変更ファイル
 
 - `web/src/components/task/TaskView.tsx`
