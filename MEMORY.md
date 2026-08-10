@@ -1,3 +1,30 @@
+# 作業ログ: 手動モデル価格設定（コスト未返却モデル対応）
+
+## 日付
+
+2026-08-10
+
+### 依頼
+
+使用コストが返ってこないモデルを、設定→プロバイダー/モデルから手動設定できるようにする。
+
+### 実装内容
+
+- `provider-model-state.ts` に `modelPricing`（`providerID::modelID` → USD/100万トークン）を追加し、読み書き・削除を実装。
+- `ProviderModelDto` に `pricing` を追加し、`listProviderModels` が各モデルの手動価格を返すようにした。
+- `PATCH /api/extensions/provider-models/[key]` に `{ pricing }` 分岐を追加（`null` でクリア、0以上の数値検証）。
+- `openai-pricing.ts` の `estimateOpenAIApiCost` に手動価格引数を追加し、`catalogPrice` を分離。
+- クライアント側レジストリ `model-pricing-registry.ts` を新設し、HomeView/TaskView がプロバイダー一覧取得時に手動価格を登録。MessageMetaHeader/TaskView の推定コストが手動価格を優先。
+- サーバー側 `task-service.ts` は `readProviderModelState().modelPricing` を直接参照して推定。
+- `ProviderModelsSettings.tsx` にモデル行の「価格設定」インラインエディタ（input/output/cachedInput/cacheWrite）を追加。
+
+### 検証結果
+
+- `npx tsc --noEmit`（web）... 成功
+- `npx eslint`（対象ファイル）... 成功
+- 関連テスト（openai-pricing / task-service / ProviderModelsSettings / provider-models route / provider-model-state）... 全件成功
+- Web全体テスト ... 3010/3011 成功（`session.test.ts` の1件は本変更と無関係の既存未コミット認証作業由来）
+
 # 作業ログ: 承認済み端末のログイン省略
 
 ## 日付
