@@ -210,21 +210,31 @@ if "%OPENCODE_WEBUI_QWEN_NATIVE%"=="1" goto :check_ollama_proceed
 if not exist "%APPDATA%\opencode-webui\qwen-native-settings.json" exit /b 0
 :check_ollama_proceed
 call where ollama >nul 2>&1
-if not errorlevel 1 goto :ollama_pull
-if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe" goto :ollama_pull
+if not errorlevel 1 (
+  set "OLLAMA_CMD=ollama"
+  goto :ollama_pull
+)
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe" (
+  set "OLLAMA_CMD=%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe"
+  goto :ollama_pull
+)
+if exist "%ProgramFiles%\Ollama\ollama.exe" (
+  set "OLLAMA_CMD=%ProgramFiles%\Ollama\ollama.exe"
+  goto :ollama_pull
+)
 call where winget >nul 2>&1
 if errorlevel 1 goto :ollama_skip_no_winget
 echo [OpenCode WebUI] Installing Ollama ^(optional local image analysis^)...
 call winget install --id Ollama.Ollama --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
 if errorlevel 1 goto :ollama_install_failed
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe" set "OLLAMA_CMD=%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe"
+if not defined OLLAMA_CMD if exist "%ProgramFiles%\Ollama\ollama.exe" set "OLLAMA_CMD=%ProgramFiles%\Ollama\ollama.exe"
 
 :ollama_pull
 if "%OPENCODE_WEBUI_OLLAMA_MODEL%"=="" set "OPENCODE_WEBUI_OLLAMA_MODEL=qwen2.5vl:7b"
-call where ollama >nul 2>&1
-if errorlevel 1 goto :ollama_skip_no_binary
-if not exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ollama.exe" if not exist "%ProgramFiles%\Ollama\ollama.exe" goto :ollama_skip_no_binary
+if not defined OLLAMA_CMD goto :ollama_skip_no_binary
 echo [OpenCode WebUI] Pulling Ollama model %OPENCODE_WEBUI_OLLAMA_MODEL% ^(optional, may take a while^)...
-call ollama pull %OPENCODE_WEBUI_OLLAMA_MODEL% >nul 2>&1
+call "%OLLAMA_CMD%" pull %OPENCODE_WEBUI_OLLAMA_MODEL% >nul 2>&1
 if errorlevel 1 goto :ollama_pull_failed
 exit /b 0
 

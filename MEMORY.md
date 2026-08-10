@@ -41,6 +41,18 @@
 
 2026-08-10
 
+## バグハント
+
+- 画像解析の環境変数（`OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL` / `MODEL` / `API_KEY`）を指定しても、永続設定の `source: opencode` が優先されてOpenCode登録モデルへ誤接続する不具合を修正。環境変数が指定された場合はendpoint経路を選択する。
+- `scripts/start-webui.bat` はOllamaをwinget導入した直後、PATH未反映を理由にモデルPullをスキップしていた。WinGet Links / Program Filesの絶対パスを使って導入直後もPullするよう修正。
+- `qwen-native-vision.test.ts` が開発環境の永続設定を読み、テスト結果が実ユーザー設定に依存していたため、設定をモック化。
+
+## 検証結果
+
+- 対象画像解析・OpenCodeプロキシテスト 57件 成功
+- `npm run typecheck` / `npm run lint -- --quiet`（web） 成功
+- `npm run test:encoding` 成功
+
 ## 実装内容
 
 - 画像解析設定へ `source: endpoint | opencode` と `opencodeModel` を追加した。既存設定は `endpoint` として移行する。

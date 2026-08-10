@@ -6,6 +6,24 @@ import {
   rewriteNativeRequest,
 } from "./qwen-native-vision";
 
+// Keep these unit tests independent from the developer's persisted settings.
+vi.mock("./profiles/settings", () => {
+  const defaults = {
+    enabled: false,
+    source: "endpoint",
+    opencodeModel: "",
+    baseUrl: "http://127.0.0.1:11434/v1",
+    model: "qwen2.5vl:7b",
+    apiKey: "ollama",
+    timeoutMs: 120_000,
+    maxTokens: 2048,
+  };
+  return {
+    QWEN_NATIVE_DEFAULTS: defaults,
+    readQwenNativeSettings: () => ({ ...defaults }),
+  };
+});
+
 const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
 const previousBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
 

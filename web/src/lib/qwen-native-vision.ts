@@ -28,21 +28,24 @@ export class QwenNativeVisionError extends Error {
 
 function resolveSettings() {
   const fileSettings = readQwenNativeSettings();
+  const envBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL?.trim();
+  const envModel = process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL?.trim();
+  const envApiKey = process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY?.trim();
   return {
     enabled:
       process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1" || fileSettings.enabled,
-    source: fileSettings.source,
+    source: envBaseUrl || envModel || envApiKey ? "endpoint" : fileSettings.source,
     opencodeModel: fileSettings.opencodeModel,
     baseUrl:
-      process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL?.trim() ||
+      envBaseUrl ||
       fileSettings.baseUrl ||
       QWEN_NATIVE_DEFAULTS.baseUrl,
     model:
-      process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL?.trim() ||
+      envModel ||
       fileSettings.model ||
       QWEN_NATIVE_DEFAULTS.model,
     apiKey:
-      process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY?.trim() ||
+      envApiKey ||
       fileSettings.apiKey ||
       QWEN_NATIVE_DEFAULTS.apiKey,
     timeoutMs: fileSettings.timeoutMs || QWEN_NATIVE_DEFAULTS.timeoutMs,
