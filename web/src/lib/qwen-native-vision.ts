@@ -1,6 +1,5 @@
-const DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
-const DEFAULT_MODEL = "qwen2.5vl:7b";
-const NATIVE_TIMEOUT_MS = 120_000;
+import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
+
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
 
@@ -25,8 +24,30 @@ export class QwenNativeVisionError extends Error {
   }
 }
 
+function resolveSettings() {
+  const fileSettings = readQwenNativeSettings();
+  return {
+    enabled:
+      process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1" || fileSettings.enabled,
+    baseUrl:
+      process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL?.trim() ||
+      fileSettings.baseUrl ||
+      QWEN_NATIVE_DEFAULTS.baseUrl,
+    model:
+      process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL?.trim() ||
+      fileSettings.model ||
+      QWEN_NATIVE_DEFAULTS.model,
+    apiKey:
+      process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY?.trim() ||
+      fileSettings.apiKey ||
+      QWEN_NATIVE_DEFAULTS.apiKey,
+    timeoutMs: fileSettings.timeoutMs || QWEN_NATIVE_DEFAULTS.timeoutMs,
+    maxTokens: fileSettings.maxTokens || QWEN_NATIVE_DEFAULTS.maxTokens,
+  };
+}
+
 export function isQwenNativeVisionAvailable(): boolean {
-  return process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1";
+  return resolveSettings().enabled;
 }
 
 function isImagePart(part: unknown): part is Record<string, unknown> {
@@ -94,11 +115,12 @@ export async function analyzeNativeImages(
     }
   }
 
-  const baseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL?.trim() || DEFAULT_BASE_URL;
-  const apiKey = process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY?.trim() || "ollama";
+  const config = resolveSettings();
+  const baseUrl = config.baseUrl;
+  const apiKey = config.apiKey;
   const endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const body = {
-    model: process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL?.trim() || DEFAULT_MODEL,
+    model: config.model,
     messages: [{
       role: "user",
       content: [
@@ -106,7 +128,7 @@ export async function analyzeNativeImages(
         { type: "text", text: analysisPrompt(prompt) },
       ],
     }],
-    max_tokens: 2048,
+    max_tokens: config.maxTokens,
   };
 
   let lastError: QwenNativeVisionError | undefined;
@@ -119,7 +141,7 @@ export async function analyzeNativeImages(
           "content-type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(NATIVE_TIMEOUT_MS),
+        signal: AbortSignal.timeout(config.timeoutMs),
         cache: "no-store",
       });
       const payload = (await response.json().catch(() => ({}))) as QwenChatResponse;

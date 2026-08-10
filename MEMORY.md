@@ -2,6 +2,28 @@
 
 # 作業ログ: Qwen画像解析のWebUIネイティブ統合
 
+# 作業ログ: 画像解析設定タブ新設
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- 設定画面に「画像解析」タブを新設し、ローカルOllama Qwen Visionの接続先・モデル・APIキー・タイムアウト・最大トークンをUIから変更できるようにした。
+- `web/src/lib/profiles/settings.ts` に `QwenNativeSettings` 型と `readQwenNativeSettings` / `writeQwenNativeSettings` / `QWEN_NATIVE_DEFAULTS` を追加し、`%APPDATA%/opencode-webui/qwen-native-settings.json` へ永続化する。
+- `web/src/lib/qwen-native-vision.ts` を更新し、環境変数を優先しつつファイル設定を読む `resolveSettings()` 経由で各種値を解決するようにした。
+- `web/src/app/api/qwen-native/settings/route.ts` (GET/PUT) を新設し、設定の読み書きAPIを提供する。
+- `web/src/components/settings/VisionSettings.tsx` を新設し、有効化切替・Base URL・モデル・APIキー・タイムアウト・最大トークンの編集と保存、利用状態表示を行う。
+- `SettingsView.tsx` に `vision` タブを登録した。
+- 既存の `OPENCODE_WEBUI_QWEN_NATIVE=1` 等の環境変数は引き続き最優先。ファイル設定はフォールバック。
+
+## 検証
+
+- typecheck / Lint 成功
+- `settings.test.ts` / `qwen-native/settings/route.test.ts` / `qwen-native-vision.test.ts` / `SettingsView.test.tsx` など関連392件のテスト成功
+- `test:encoding` 7件成功 / `start-webui-bat.test.js` 20件成功
+
 # 作業ログ: Qwen-MM-Plugins MCPセットアップの削除
 
 ## 日付

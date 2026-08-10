@@ -31,6 +31,7 @@ import { ProfileAgentsSyncSettings } from "@/components/settings/ProfileAgentsSy
 import { ProviderModelsSettings } from "@/components/settings/ProviderModelsSettings";
 import { ModelRankingSettings } from "@/components/settings/ModelRankingSettings";
 import { MemorySettings } from "@/components/settings/MemorySettings";
+import { VisionSettings } from "@/components/settings/VisionSettings";
 import { AddonSettings } from "@/components/addons/AddonSettings";
 import { HostLogPanel } from "@/components/settings/HostLogPanel";
 import { Badge, Button, cx, Spinner, timeAgo } from "@/components/ui";
@@ -119,7 +120,8 @@ type SettingsTab =
   | "ranking"
   | "profiles"
   | "users"
-  | "memory";
+  | "memory"
+  | "vision";
 
 type UpdateTarget = "webui" | "opencode" | "nextjs";
 
@@ -929,6 +931,7 @@ export function SettingsView() {
     { key: "addons", label: "アドオン" },
     { key: "users", label: "ユーザー" },
     { key: "memory", label: "メモリ" },
+    { key: "vision", label: "画像解析" },
   ];
   const tabRefs = useRef<Partial<Record<SettingsTab, HTMLButtonElement>>>({});
   const moveTab = (index: number) => {
@@ -1993,6 +1996,7 @@ export function SettingsView() {
         )}
 
         {activeTab === "memory" && <MemorySettings />}
+        {activeTab === "vision" && <VisionSettings />}
       </main>
       </div>
     </div>
