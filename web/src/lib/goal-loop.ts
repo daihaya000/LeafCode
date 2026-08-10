@@ -1,6 +1,24 @@
-import { getDb, getWorkspace, listSessionBindings, touchSessionActivity } from "./db";
+import {
+  getDb,
+  getSetting,
+  getWorkspace,
+  listSessionBindings,
+  releaseSessionCompactionLock,
+  touchSessionActivity,
+  tryAcquireSessionCompactionLock,
+} from "./db";
+import { computeContextUsage } from "./context-usage";
+import {
+  clampThreshold,
+  DEFAULT_TOKEN_SAVING_THRESHOLD,
+  isTokenSavingMode,
+} from "./token-saving-settings";
 import { sweepIdleExtractions } from "./memory-idle";
-import { isIntelligenceVariant, type IntelligenceVariant } from "./model-variants";
+import {
+  isIntelligenceVariant,
+  type IntelligenceVariant,
+  type ProviderModelMeta,
+} from "./model-variants";
 import { OcError, ocServer } from "./oc-server";
 import { assertSafeOpenCodeSessionId } from "./opencode-id";
 import {
@@ -156,6 +174,9 @@ const SCHEDULER_INTERVAL_MS = 2_500;
 const PROMPT_TIMEOUT_MS = 120_000;
 const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
+const COMPACT_TIMEOUT_MS = 30_000;
+const COMPACT_POLL_MS = 250;
+const COMPACT_LOCK_TTL_MS = 60_000;
 /**
  * Aborting is a best-effort courtesy on the stop path. It must not inherit
  * PROMPT_TIMEOUT_MS: a wedged engine would then hold the stop request for two
@@ -260,6 +281,81 @@ async function retryTransientOpenCode<T>(operation: () => Promise<T>): Promise<T
     }
   }
   throw lastError;
+}
+
+type ProviderResponse = {
+  all?: Array<{
+    id?: string;
+    models?: Record<string, ProviderModelMeta>;
+  }>;
+};
+
+function providerModelsMap(response: ProviderResponse): Record<string, ProviderModelMeta> {
+  const result: Record<string, ProviderModelMeta> = {};
+  for (const provider of response.all ?? []) {
+    if (!provider.id || !provider.models) continue;
+    for (const [modelId, model] of Object.entries(provider.models)) {
+      result[`${provider.id}::${modelId}`] = model;
+    }
+  }
+  return result;
+}
+
+type GoalLoopCompactionResult = "not_needed" | "compacted" | "conflict";
+
+async function autoCompactGoalLoop(
+  loop: GoalLoopDto,
+  directory: string,
+  messages: MessageWithParts[],
+): Promise<GoalLoopCompactionResult> {
+  const mode = getSetting("token-saving");
+  if (!isTokenSavingMode(mode) || mode !== "auto") return "not_needed";
+
+  const providers = await retryTransientOpenCode(() =>
+    ocServer<ProviderResponse>(directory, "/provider", { timeoutMs: STATUS_TIMEOUT_MS }),
+  );
+  const usage = computeContextUsage(messages, providerModelsMap(providers));
+  const threshold = clampThreshold(
+    Number(getSetting("token-saving-threshold") ?? DEFAULT_TOKEN_SAVING_THRESHOLD),
+  );
+  if (!usage || usage.pct < threshold) return "not_needed";
+
+  const ownerId = `goal-loop:${loop.id}`;
+  if (!tryAcquireSessionCompactionLock(loop.sessionId, ownerId, Date.now(), COMPACT_LOCK_TTL_MS)) {
+    return "conflict";
+  }
+  try {
+    await ocServer(directory, `/api/session/${assertSafeOpenCodeSessionId(loop.sessionId)}/compact`, {
+      method: "POST",
+      body: {},
+      timeoutMs: COMPACT_TIMEOUT_MS,
+    });
+
+    const deadline = Date.now() + COMPACT_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise<void>((resolve) => setTimeout(resolve, COMPACT_POLL_MS));
+      const status = await retryTransientOpenCode(() =>
+        ocServer<StatusMap>(directory, SESSION_STATUS_PATH, { timeoutMs: STATUS_TIMEOUT_MS }),
+      );
+      if (status[loop.sessionId] && status[loop.sessionId].type !== "idle") continue;
+      const currentMessages = await retryTransientOpenCode(() =>
+        ocServer<MessageWithParts[]>(directory, sessionMessagePath(loop.sessionId), {
+          timeoutMs: MESSAGE_TIMEOUT_MS,
+        }),
+      );
+      const currentUsage = computeContextUsage(currentMessages, providerModelsMap(providers));
+      if (
+        currentMessages.length < messages.length ||
+        currentUsage === null ||
+        currentUsage.used < usage.used
+      ) {
+        return "compacted";
+      }
+    }
+    throw new OcError("OpenCodeのコンテキスト圧縮完了を確認できませんでした。", 408);
+  } finally {
+    releaseSessionCompactionLock(loop.sessionId, ownerId);
+  }
 }
 
 function safeJsonArray<T>(value: string, fallback: T[]): T[] {
@@ -1325,6 +1421,9 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
 
   if (loop.status === "verifying_completed") {
     if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
+    if ((await autoCompactGoalLoop(loop, ws.absolute_path, messages)) === "conflict") {
+      return;
+    }
     const anchor = latestMessageId(messages);
     const now = new Date().toISOString();
     const claimed = getDb()
@@ -1429,6 +1528,12 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
         loop.id,
         fresh?.revision ?? loop.revision,
       );
+    return;
+  }
+
+  if ((await autoCompactGoalLoop(loop, ws.absolute_path, messages)) === "conflict") {
+    // Keep the loop queued. The next scheduler tick retries after the other
+    // tab/process releases the session compaction lock.
     return;
   }
 

@@ -4567,3 +4567,30 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `npx tsc --noEmit --pretty false` 成功。
 - 対象eslint 成功。
 - `npx vitest run` 成功: 264 files / 3128 tests passed / 1 skipped。
+
+---
+
+# 実装: Goal Loopのserver-side自動compact
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- `web/src/lib/goal-loop.ts` の `ocServer` 直送経路でも、token-saving設定が `auto` の場合だけcontext使用率を確認するよう変更。
+- `/provider` のmodel context limitと最新assistant messageのtoken使用量から、既存の `computeContextUsage` で閾値判定する。
+- 閾値到達時は既存のsession単位compact lockを取得し、`/api/session/{id}/compact` を実行する。
+- compact後はsession statusとtranscriptをpollし、compact反映を確認してからGoal Loopの次promptを送信する。
+- 別タブ・別プロセスがlockを保持している場合はGoal Loopをqueuedのまま送信せず、次回scheduler tickで再試行する。
+- Goal turnだけでなくverification turnにも同じcompact判定を適用する。lockは成功・失敗を問わずfinallyでowner限定解放する。
+
+## 回帰テスト
+
+- `web/src/lib/goal-loop.integration.test.ts` に、lock競合中のprompt未送信、lock解放後のcompact実行とprompt再開を追加。
+
+## 検証結果
+
+- `npm exec tsc -- --noEmit` 成功。
+- `npm exec eslint -- src/lib/goal-loop.ts src/lib/goal-loop.integration.test.ts` 成功。
+- 関連5ファイルのVitest: 99 tests passed。

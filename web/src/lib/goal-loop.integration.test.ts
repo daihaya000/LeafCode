@@ -12,6 +12,10 @@ const h = vi.hoisted(() => ({
   promptAsyncFailureStatus: 408,
   statusFailuresRemaining: 0,
   messageFailuresRemaining: 0,
+  tokenSavingMode: null as string | null,
+  tokenSavingThreshold: null as string | null,
+  providerResponse: { all: [] } as unknown,
+  compactedMessageResponse: null as MessageWithParts[] | null,
 }));
 
 vi.mock("./oc-server", () => ({
@@ -32,6 +36,13 @@ vi.mock("./oc-server", () => ({
         throw err;
       }
       return h.statusResponse;
+    }
+    if (path === "/provider") {
+      return h.providerResponse;
+    }
+    if (path.endsWith("/compact")) {
+      if (h.compactedMessageResponse) h.messageResponse = h.compactedMessageResponse;
+      return {};
     }
     if (path.endsWith("/message")) {
       if (h.messageFailuresRemaining > 0) {
@@ -82,6 +93,23 @@ vi.mock("./db", () => ({
       .prepare("SELECT * FROM session_bindings WHERE workspace_id = ? ORDER BY updated_at DESC")
       .all(workspaceId) as unknown[],
   touchSessionActivity: () => true,
+  getSetting: (key: string) =>
+    key === "token-saving"
+      ? h.tokenSavingMode
+      : key === "token-saving-threshold"
+        ? h.tokenSavingThreshold
+        : null,
+  tryAcquireSessionCompactionLock: (sessionId: string, ownerId: string, now: number, ttlMs: number) =>
+    testDb
+      .prepare(
+        `INSERT OR IGNORE INTO session_compaction_locks (session_id, owner_id, acquired_at, expires_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(sessionId, ownerId, now, now + ttlMs).changes === 1,
+  releaseSessionCompactionLock: (sessionId: string, ownerId: string) =>
+    testDb
+      .prepare("DELETE FROM session_compaction_locks WHERE session_id = ? AND owner_id = ?")
+      .run(sessionId, ownerId).changes === 1,
 }));
 
 // Must come after mocks.
@@ -152,6 +180,12 @@ function makeDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
+    CREATE TABLE IF NOT EXISTS session_compaction_locks (
+      session_id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      acquired_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
@@ -196,6 +230,18 @@ function msg(
   };
 }
 
+function tokenMsg(id: string, total: number): MessageWithParts {
+  return {
+    ...msg(id, "assistant"),
+    info: {
+      ...msg(id, "assistant").info,
+      providerID: "provider-1",
+      modelID: "model-1",
+      tokens: { total, input: 0, output: 0, reasoning: 0 },
+    },
+  };
+}
+
 function streamingAssistant(id: string): MessageWithParts {
   return {
     info: { id, role: "assistant", time: { created: 3 } },
@@ -235,6 +281,10 @@ beforeEach(() => {
   h.promptAsyncFailureStatus = 408;
   h.statusFailuresRemaining = 0;
   h.messageFailuresRemaining = 0;
+  h.tokenSavingMode = null;
+  h.tokenSavingThreshold = null;
+  h.providerResponse = { all: [] };
+  h.compactedMessageResponse = null;
 });
 
 describe("goal loop integration", () => {
@@ -1105,6 +1155,35 @@ describe("goal loop lost read boundary (docs/specs/goal-loop.md I4)", () => {
     expect(resumed?.progress).toHaveLength(0);
     expect(resumed?.status).toBe("paused");
     expect(resumed?.pauseReason).toBe("unknown_delivery");
+  });
+});
+
+describe("goal loop server-side auto compact", () => {
+  it("keeps a queued loop unsent during a lock conflict and retries after release", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    h.tokenSavingMode = "auto";
+    h.tokenSavingThreshold = "80";
+    h.providerResponse = {
+      all: [{ id: "provider-1", models: { "model-1": { limit: { context: 100 } } } }],
+    };
+    h.messageResponse = [msg("m0", "assistant"), tokenMsg("a0", 90)];
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+
+    testDb
+      .prepare(
+        `INSERT INTO session_compaction_locks (session_id, owner_id, acquired_at, expires_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run("sess-1", "other-owner", Date.now(), Date.now() + 60_000);
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(h.promptAsyncCount).toBe(0);
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+
+    testDb.prepare("DELETE FROM session_compaction_locks WHERE session_id = ?").run("sess-1");
+    h.compactedMessageResponse = [msg("m0", "assistant"), tokenMsg("a0", 20)];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(h.ocCalls.some((call) => call.path.endsWith("/compact"))).toBe(true);
+    expect(h.promptAsyncCount).toBe(1);
   });
 });
 
