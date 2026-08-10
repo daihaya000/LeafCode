@@ -4,6 +4,7 @@ import { DEFAULT_COST_PREFS } from "@/lib/currency";
 import { MessageMetaHeader } from "./MessageMetaHeader";
 
 vi.mock("@addons/codexbar", () => ({
+  formatTokens: (tokens: number) => `${(tokens / 1000).toFixed(1)}k`,
   providerIconSrcForOpencodeId: (id?: string) =>
     id === "openai" ? "/openai.svg" : null,
 }));
@@ -69,12 +70,13 @@ describe("MessageMetaHeader", () => {
     expect(text.indexOf("GPT-5.6 Luna")).toBeLessThan(text.indexOf("effort high"));
   });
 
-  it("shows thinking time between time and cost when completed exists", () => {
+  it("shows tokens and thinking time between time and cost when completed exists", () => {
     render(
       <MessageMetaHeader
         info={{
           modelID: "gpt-5.6-luna",
           cost: 0.05,
+          tokens: { total: 12_345, input: 10_000, output: 2_000, reasoning: 345 },
           time: {
             created: 0,
             completed: 65_000,
@@ -86,7 +88,9 @@ describe("MessageMetaHeader", () => {
     );
 
     const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
+    expect(text).toContain("トークン 12.3k");
     expect(text).toContain("思考 1m 05s");
+    expect(text.indexOf("トークン 12.3k")).toBeLessThan(text.indexOf("思考 1m 05s"));
     expect(text.indexOf("思考 1m 05s")).toBeLessThan(text.indexOf("cost"));
   });
 

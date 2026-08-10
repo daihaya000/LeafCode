@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import { formatTokens } from "@addons/codexbar";
 import { cx, formatMessageTime } from "@/components/ui";
 import { formatCost, type CostDisplayPrefs } from "@/lib/currency";
 import type { MessageInfo } from "@/lib/types";
@@ -9,7 +10,7 @@ import { ProviderIcon } from "./ProviderIcon";
 
 type MetaInfo = Pick<
   MessageInfo,
-  "providerID" | "modelID" | "cost" | "time"
+  "providerID" | "modelID" | "cost" | "time" | "tokens"
 >;
 
 function thinkingDuration(info: MetaInfo): number | null {
@@ -41,10 +42,12 @@ export function MessageMetaHeader({
       : "";
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
   const thinking = thinkingDuration(info);
+  const tokens = info.tokens?.total ?? 0;
   const fields = [
     model ? { key: "model", text: model } : null,
     effortLabel ? { key: "effort", text: `effort ${effortLabel}` } : null,
     time ? { key: "time", text: time } : null,
+    tokens > 0 ? { key: "tokens", text: `トークン ${formatTokens(tokens)}` } : null,
     thinking != null
       ? { key: "thinking", text: `思考 ${formatElapsed(thinking)}` }
       : null,
