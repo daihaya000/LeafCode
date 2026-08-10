@@ -1108,6 +1108,21 @@ export function SettingsView() {
                         <code>npm install next@latest</code> を実行します（いずれも手動操作。起動時には自動実行されません）。
                       </p>
                     </div>
+                    {updateAvailability && (
+                      <div className="rounded-md border border-border bg-bg/40 px-2 py-1.5 text-[11px] leading-snug text-muted">
+                        <p className="font-medium">現在のバージョン</p>
+                        <ul className="mt-0.5 list-disc pl-4">
+                          <li>
+                            WebUI: コミット {updateAvailability.webui.current ?? "不明"}
+                            {updateAvailability.webui.currentDate
+                              ? `（${updateAvailability.webui.currentDate}）`
+                              : ""}
+                          </li>
+                          <li>OpenCode CLI: バージョン {updateAvailability.opencode.current ?? "不明"}</li>
+                          <li>Next.js: バージョン {updateAvailability.nextjs.current ?? "不明"}</li>
+                        </ul>
+                      </div>
+                    )}
                     {updateAvailability &&
                       (updateAvailability.webui.available ||
                         updateAvailability.opencode.available ||

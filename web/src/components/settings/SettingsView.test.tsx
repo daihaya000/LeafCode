@@ -223,6 +223,24 @@ function mockSettingsGetJson(roots: string[]) {
   });
 }
 
+function mockUpdateStatus() {
+  getJson.mockImplementation((path: string) => {
+    if (path === "/api/health") return Promise.resolve({ webui: { ok: true }, opencode: { ok: true } });
+    if (path === "/api/projects") return Promise.resolve({ projects: [] });
+    if (path === "/api/roots") return Promise.resolve({ roots: [] });
+    if (path === "/api/workspaces/orphans") return Promise.resolve({ orphans: [], stray: [] });
+    if (path === "/api/access") return Promise.resolve({ bind: "127.0.0.1", port: 3000, localUrl: "http://localhost:3000", hint: "", addresses: [] });
+    if (path === "/api/updates/status") {
+      return Promise.resolve({
+        webui: { available: false, current: "abc1234", currentDate: "2026/08/10 12:00" },
+        opencode: { available: false, current: "1.18.14" },
+        nextjs: { available: false, current: "16.3.0" },
+      });
+    }
+    return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+  });
+}
+
 describe("SettingsView", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -267,6 +285,17 @@ describe("SettingsView", () => {
     expect(screen.getByRole("tab", { name: "エンジン" }).getAttribute("aria-selected")).toBe(
       "true",
     );
+  });
+
+  it("shows current component versions even when no updates are available", async () => {
+    mockUpdateStatus();
+    render(<SettingsView />);
+
+    expect(await screen.findByText("現在のバージョン")).toBeTruthy();
+    expect(screen.getByText(/WebUI: コミット abc1234/)).toBeTruthy();
+    expect(screen.getByText("OpenCode CLI: バージョン 1.18.14")).toBeTruthy();
+    expect(screen.getByText("Next.js: バージョン 16.3.0")).toBeTruthy();
+    expect(screen.queryByText("利用可能なアップデート")).toBeNull();
   });
 
   it("supports roving keyboard navigation across settings tabs", async () => {

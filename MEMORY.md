@@ -3467,3 +3467,19 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npx vitest run src/lib/profiles/agents-sync-engine.test.ts src/app/api/profiles/agents-md/route.test.ts src/components/settings/SettingsView.test.tsx src/components/settings/ProfilesSettings.test.tsx` ... 4 files / 47 tests 成功
 - `npx tsc --noEmit --pretty false` ... 成功
 - 対象ファイルの`npx eslint` ... 成功
+## 設定画面の現在バージョン表示
+
+### 日付
+
+2026-08-10
+
+### 修正内容
+
+- 設定画面のアップデート欄に、更新の有無にかかわらず WebUI のコミット、OpenCode CLI、Next.js の現在バージョンを表示するようにした。
+- 更新候補がある場合の既存の警告表示は維持した。
+- 更新なしの場合も現在バージョンを表示する回帰テストを追加した。
+
+### 検証結果
+
+- `npm.cmd test -- --run src/components/settings/SettingsView.test.tsx src/app/api/updates/status/route.test.ts` ... 41 tests 成功
+- `npm.cmd run typecheck` ... 成功
