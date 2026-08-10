@@ -602,6 +602,52 @@ describe("renameProfile", () => {
     expect(updated.profiles[0].name).toBe("新しい名前");
     expect(updated.profiles[0].path).toBe(originalPath);
   });
+
+  it("falls back to copy+delete when rename returns EPERM (active profile)", () => {
+    const inside = makeConfigDir(path.join(profilesDir(), "work"), "W");
+    setupLink(inside);
+    seedRegistry();
+
+    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const id = state.profiles[0].id;
+
+    // Force fs.renameSync to fail with EPERM once for this directory, so the
+    // copy-then-delete fallback path is exercised.
+    const realRenameSync = fs.renameSync;
+    const realCpSync = fs.cpSync;
+    let renameAttempted = false;
+    fs.renameSync = ((src: fs.PathLike, dest: fs.PathLike) => {
+      if (String(src).endsWith("work")) {
+        renameAttempted = true;
+        const e = new Error("EPERM: operation not permitted, rename");
+        (e as NodeJS.ErrnoException).code = "EPERM";
+        throw e;
+      }
+      return realRenameSync(src, dest);
+    }) as typeof fs.renameSync;
+    try {
+      const result = renameProfile(id, "personal");
+      expect(result).toEqual({ ok: true });
+      expect(renameAttempted).toBe(true);
+
+      // New directory exists with content
+      state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+      const updated = state.profiles.find((p: { id: string }) => p.id === id);
+      expect(updated.name).toBe("personal");
+      expect(updated.path).toBe(path.join(profilesDir(), "personal"));
+      expect(fs.existsSync(path.join(profilesDir(), "personal", "opencode.jsonc"))).toBe(true);
+      // Old directory removed by fallback
+      expect(fs.existsSync(path.join(profilesDir(), "work"))).toBe(false);
+      // Link repointed to new path
+      expect(path.resolve(fs.readlinkSync(linkPath()))).toBe(
+        path.resolve(path.join(profilesDir(), "personal")),
+      );
+    } finally {
+      fs.renameSync = realRenameSync;
+      fs.cpSync = realCpSync;
+    }
+  });
 });
 
 describe("deleteProfile", () => {

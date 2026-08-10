@@ -12,7 +12,7 @@ import {
   verifyCopy,
 } from "./copy";
 import { isBusy, startJob } from "./jobs";
-import { isValidProfileDir, swapLink } from "./link";
+import { isValidProfileDir, removeLink, swapLink } from "./link";
 import {
   isInside,
   isValidProfileName,
@@ -453,6 +453,7 @@ export function renameProfile(
   // Only managed profiles (inside profilesRoot) can be renamed on disk.
   // External profiles keep their original directory; only the label changes.
   if (isInside(profilesRoot(), profile.path) && fs.existsSync(profile.path)) {
+    const linkPath = globalConfigLinkPath();
     const wasActive =
       link.state === "link" &&
       link.target !== null &&
@@ -468,13 +469,64 @@ export function renameProfile(
       if (fs.existsSync(newPath)) {
         return { status: 409, error: "リネーム先のディレクトリが既に存在します。" };
       }
+
+      // Windows refuses to rename a directory that is the target of an active
+      // junction (EPERM). Detach the junction first, rename the directory, then
+      // repoint the junction at the new path. On non-Windows or non-active
+      // profiles the junction is simply not touched here.
+      if (wasActive) {
+        try {
+          removeLink(linkPath);
+        } catch (err) {
+          return {
+            status: 500,
+            error: err instanceof Error ? err.message : "ジャンクションの削除に失敗しました。",
+          };
+        }
+      }
+
       try {
         fs.renameSync(profile.path, newPath);
-      } catch (err) {
-        return {
-          status: 500,
-          error: err instanceof Error ? err.message : "ディレクトリのリネームに失敗しました。",
-        };
+      } catch {
+        // EPERM can happen when a process (e.g. opencode serve) holds a handle
+        // inside the directory. Fall back to copy-then-delete, which operates
+        // file-by-file and tolerates open handles on the source tree.
+        try {
+          fs.cpSync(profile.path, newPath, {
+            recursive: true,
+            force: true,
+            errorOnExist: true,
+          });
+        } catch (copyErr) {
+          // Restore the junction if we removed it but both rename and copy failed.
+          if (wasActive) {
+            try {
+              fs.symlinkSync(profile.path, linkPath, "junction");
+            } catch {
+              /* best effort — the rename failure is the primary error */
+            }
+          }
+          // Clean up a partial copy so a retry starts fresh.
+          try {
+            fs.rmSync(newPath, { recursive: true, force: true });
+          } catch {
+            /* best effort */
+          }
+          return {
+            status: 500,
+            error:
+              copyErr instanceof Error
+                ? copyErr.message
+                : "ディレクトリのリネームに失敗しました。",
+          };
+        }
+        // Copy succeeded; remove the old directory. This may fail if a handle
+        // is still open, but the profile is already logically moved.
+        try {
+          fs.rmSync(profile.path, { recursive: true, force: true });
+        } catch {
+          /* best effort — leftover directory will be cleaned up on next start */
+        }
       }
       profile.path = newPath;
 
