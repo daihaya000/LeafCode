@@ -14,6 +14,10 @@ import { readWorkflowWorkspaceSnapshot } from "./workflow-git";
 import { isWorkflowModeEnabled } from "./workflow-feature";
 import { workflowArtifactsForPrompt } from "./workflow-artifacts";
 import { recordReviewGateAttempt } from "./workflow-control";
+import {
+  collaborationContextFor,
+  prependCollaborationContext,
+} from "./collaboration-context";
 import { evaluateWorkflowGraphRuntime } from "./workflow-graph-runtime";
 import { executeReviewGate, parseReviewGateInput } from "./workflow-control-executor";
 import {
@@ -546,15 +550,23 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
   if (saved.changes !== 1) return;
   try {
     await applyWorkflowSessionPermissions(workspace.absolute_path, attempt.opencode_session_id, config.permissions);
+    const sendBody = prependCollaborationContext(
+      {
+        parts: [{ type: "text", text: prompt.promptText }],
+        ...modelBody(config),
+      },
+      await collaborationContextFor({
+        workspaceId: workspace.id,
+        sessionId: attempt.opencode_session_id,
+        directory: workspace.absolute_path,
+      }),
+    );
     await ocServer(
       workspace.absolute_path,
       sessionPromptAsyncPath(attempt.opencode_session_id),
       {
         method: "POST",
-        body: {
-          parts: [{ type: "text", text: prompt.promptText }],
-          ...modelBody(config),
-        },
+        body: sendBody,
         timeoutMs: 120_000,
       },
     );

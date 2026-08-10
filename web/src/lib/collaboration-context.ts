@@ -32,6 +32,24 @@ ${lines.join("\n")}
 </collaboration-context>`;
 }
 
+export function prependCollaborationContext(
+  body: Record<string, unknown>,
+  block: string,
+): Record<string, unknown> {
+  if (!block) return body;
+  const parts = Array.isArray(body.parts) ? [...body.parts] : [];
+  const firstText = parts.find(
+    (part): part is { type: "text"; text: string } =>
+      !!part &&
+      typeof part === "object" &&
+      (part as { type?: unknown }).type === "text" &&
+      typeof (part as { text?: unknown }).text === "string",
+  );
+  if (!firstText) return body;
+  firstText.text = `${block}\n${firstText.text}`;
+  return { ...body, parts };
+}
+
 export function selectActiveCollaborationBindings(
   bindings: SessionBindingRow[],
   statuses: Record<string, SessionStatus>,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCollaborationContextBlock,
+  prependCollaborationContext,
   selectActiveCollaborationBindings,
 } from "./collaboration-context";
 
@@ -52,5 +53,19 @@ describe("buildCollaborationContextBlock", () => {
         (item) => item.opencode_session_id,
       ),
     ).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("prepends context to the first text part without changing other fields", () => {
+    const body = {
+      parts: [{ type: "text", text: "work" }, { type: "file", path: "x" }],
+      agent: "build",
+    };
+    expect(prependCollaborationContext(body, "<collaboration-context>peer</collaboration-context>")).toEqual({
+      parts: [
+        { type: "text", text: "<collaboration-context>peer</collaboration-context>\nwork" },
+        { type: "file", path: "x" },
+      ],
+      agent: "build",
+    });
   });
 });

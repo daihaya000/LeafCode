@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAllowedDirectory } from "@/lib/allowlist";
-import { collaborationContextFor } from "@/lib/collaboration-context";
+import {
+  collaborationContextFor,
+  prependCollaborationContext,
+} from "@/lib/collaboration-context";
 import {
   findWorkspaceIdsBySession,
   findWorkspaceIdsBySessionAndDirectory,
@@ -154,15 +157,10 @@ async function injectCollaborationContext(
       directory,
     });
     if (!block) return requestBody;
-    const body = JSON.parse(new TextDecoder().decode(requestBody)) as {
-      parts?: Array<{ type?: unknown; text?: unknown }>;
-    };
-    const firstText = body.parts?.find(
-      (part) => part.type === "text" && typeof part.text === "string",
-    );
-    if (!firstText || typeof firstText.text !== "string") return requestBody;
-    firstText.text = `${block}\n${firstText.text}`;
-    return new TextEncoder().encode(JSON.stringify(body)).buffer;
+    const body = JSON.parse(new TextDecoder().decode(requestBody)) as Record<string, unknown>;
+    return new TextEncoder()
+      .encode(JSON.stringify(prependCollaborationContext(body, block)))
+      .buffer;
   } catch {
     // Collaboration awareness is best-effort and must never block a prompt.
     return requestBody;

@@ -38,6 +38,15 @@ vi.mock("@/lib/memory", () => ({
 
 vi.mock("@/lib/collaboration-context", () => ({
   collaborationContextFor: vi.fn(async () => goalLoopHook.collaborationBlock),
+  prependCollaborationContext: vi.fn((body: Record<string, unknown>, block: string) => {
+    if (!block || !Array.isArray(body.parts)) return body;
+    const part = body.parts.find(
+      (item) => item && typeof item === "object" && (item as { type?: unknown }).type === "text",
+    ) as { text?: unknown } | undefined;
+    if (typeof part?.text !== "string") return body;
+    part.text = `${block}\n${part.text}`;
+    return body;
+  }),
 }));
 
 vi.mock("@/lib/goal-loop", () => ({

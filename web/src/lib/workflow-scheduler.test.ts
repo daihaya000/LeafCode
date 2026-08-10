@@ -17,6 +17,10 @@ vi.mock("./oc-server", () => ({
   },
 }));
 vi.mock("./git", () => ({ runGit }));
+vi.mock("./collaboration-context", () => ({
+  collaborationContextFor: vi.fn(async () => ""),
+  prependCollaborationContext: vi.fn((body: Record<string, unknown>) => body),
+}));
 
 const testDataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-webui-workflow-scheduler-"));
 const previousAppData = process.env.APPDATA;

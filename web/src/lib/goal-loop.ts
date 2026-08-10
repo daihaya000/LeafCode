@@ -12,6 +12,10 @@ import {
 import type { MessageWithParts, SessionStatus } from "./types";
 import { scheduleAutoExtractAfterGoalCompleted } from "./goal-memory-hook";
 import { memoryInjectionFor } from "./memory";
+import {
+  collaborationContextFor,
+  prependCollaborationContext,
+} from "./collaboration-context";
 
 export type GoalLoopStatus =
   | "queued"
@@ -1307,6 +1311,14 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       body.model = { providerID: loop.providerID, modelID: loop.modelID };
     }
     if (loop.variant) body.variant = loop.variant;
+    const verificationBody = prependCollaborationContext(
+      body,
+      await collaborationContextFor({
+        workspaceId: loop.workspaceId,
+        sessionId: loop.sessionId,
+        directory: ws.absolute_path,
+      }),
+    );
     const claimedLoop = {
       ...loop,
       revision: loop.revision + 1,
@@ -1316,7 +1328,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     try {
       await ocServer(ws.absolute_path, sessionPromptAsyncPath(loop.sessionId), {
         method: "POST",
-        body,
+        body: verificationBody,
         timeoutMs: PROMPT_TIMEOUT_MS,
       });
     } catch (err) {
@@ -1404,6 +1416,14 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     body.model = { providerID: loop.providerID, modelID: loop.modelID };
   }
   if (loop.variant) body.variant = loop.variant;
+  const goalBody = prependCollaborationContext(
+    body,
+    await collaborationContextFor({
+      workspaceId: loop.workspaceId,
+      sessionId: loop.sessionId,
+      directory: ws.absolute_path,
+    }),
+  );
   const claimedLoop = {
     ...loop,
     revision: loop.revision + 1,
@@ -1414,7 +1434,7 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   try {
     await ocServer(ws.absolute_path, sessionPromptAsyncPath(loop.sessionId), {
         method: "POST",
-        body,
+        body: goalBody,
         timeoutMs: PROMPT_TIMEOUT_MS,
       });
   } catch (err) {

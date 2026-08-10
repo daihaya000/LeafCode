@@ -64,6 +64,11 @@ vi.mock("./oc-server", () => ({
   }),
 }));
 
+vi.mock("./collaboration-context", () => ({
+  collaborationContextFor: vi.fn(async () => ""),
+  prependCollaborationContext: vi.fn((body: Record<string, unknown>) => body),
+}));
+
 // Provide a fresh in-memory DB for each test.
 let testDb: Database.Database;
 vi.mock("./db", () => ({
