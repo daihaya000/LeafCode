@@ -3488,7 +3488,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   className="shrink-0"
                   title="このセッションの累計コスト"
                 >
-                  累計 {formatCostValue(task.cost!, costPrefs)}
+                  累計コスト {formatCostValue(task.cost!, costPrefs)}
                 </span>
               </>
             )}

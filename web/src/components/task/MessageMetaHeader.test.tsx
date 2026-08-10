@@ -12,7 +12,7 @@ vi.mock("@addons/codexbar", () => ({
 afterEach(() => cleanup());
 
 describe("MessageMetaHeader", () => {
-  it("shows provider icon, resolved model label, time, then cost (cost last, no USD suffix by default)", () => {
+  it("shows provider icon, resolved model label, time, then Japanese cost label", () => {
     render(
       <MessageMetaHeader
         info={{
@@ -31,14 +31,14 @@ describe("MessageMetaHeader", () => {
       "GPT-5.6 Sol",
     );
     // Default prefs → JPY without USD suffix.
-    expect(screen.getByText("cost ¥18.8")).toBeTruthy();
+    expect(screen.getByText("コスト ¥18.8")).toBeTruthy();
     const meta = screen.getByLabelText("応答メタデータ");
     expect(meta.textContent).toContain("14:32");
     expect(meta.textContent).not.toContain("$0.1250");
-    // Cost renders after model and time (cost is last).
+    // Cost renders after the model and time.
     const text = meta.textContent ?? "";
     expect(text.indexOf("GPT-5.6 Sol")).toBeLessThan(text.indexOf("14:32"));
-    expect(text.indexOf("14:32")).toBeLessThan(text.indexOf("cost ¥18.8"));
+    expect(text.indexOf("14:32")).toBeLessThan(text.indexOf("コスト ¥18.8"));
   });
 
   it("falls back to modelID and hides a zero cost without stray separators", () => {
@@ -51,7 +51,7 @@ describe("MessageMetaHeader", () => {
 
     const meta = screen.getByLabelText("応答メタデータ");
     expect(screen.getByText("fallback-model")).toBeTruthy();
-    expect(meta.textContent).not.toContain("cost");
+    expect(meta.textContent).not.toContain("コスト");
     expect(meta.textContent).not.toMatch(/·\s*·|^\s*·|·\s*$/);
   });
 
@@ -68,10 +68,10 @@ describe("MessageMetaHeader", () => {
       />,
     );
 
-    expect(screen.getByText("推定 cost $0.3200")).toBeTruthy();
+    expect(screen.getByText("コスト 推定 $0.3200")).toBeTruthy();
   });
 
-  it("shows the effort immediately after the model", () => {
+  it("shows the reasoning effort immediately after the model in Japanese", () => {
     render(
       <MessageMetaHeader
         info={{ modelID: "gpt-5.6-luna", time: { created: 1 } }}
@@ -82,11 +82,11 @@ describe("MessageMetaHeader", () => {
     );
 
     const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
-    expect(text).toContain("GPT-5.6 Luna·effort high·");
-    expect(text.indexOf("GPT-5.6 Luna")).toBeLessThan(text.indexOf("effort high"));
+    expect(text).toContain("GPT-5.6 Luna·推論強度 high·");
+    expect(text.indexOf("GPT-5.6 Luna")).toBeLessThan(text.indexOf("推論強度 high"));
   });
 
-  it("shows tokens and thinking time between time and cost when completed exists", () => {
+  it("shows cost, tokens, and thinking time in the header order", () => {
     render(
       <MessageMetaHeader
         info={{
@@ -105,9 +105,10 @@ describe("MessageMetaHeader", () => {
 
     const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
     expect(text).toContain("トークン 12.3k");
-    expect(text).toContain("思考 1m 05s");
-    expect(text.indexOf("トークン 12.3k")).toBeLessThan(text.indexOf("思考 1m 05s"));
-    expect(text.indexOf("思考 1m 05s")).toBeLessThan(text.indexOf("cost"));
+    expect(text).toContain("コスト ¥7.5");
+    expect(text).toContain("思考時間 1m 05s");
+    expect(text.indexOf("コスト ¥7.5")).toBeLessThan(text.indexOf("トークン 12.3k"));
+    expect(text.indexOf("トークン 12.3k")).toBeLessThan(text.indexOf("思考時間 1m 05s"));
   });
 
   it("hides thinking time when only created is present", () => {
@@ -119,7 +120,7 @@ describe("MessageMetaHeader", () => {
     );
 
     const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
-    expect(text).not.toContain("思考");
+    expect(text).not.toContain("思考時間");
   });
 
   it("uses a CPU fallback when the provider icon is unknown or broken", () => {

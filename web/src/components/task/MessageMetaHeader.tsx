@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import { formatTokens } from "@addons/codexbar";
 import { cx, formatMessageTime } from "@/components/ui";
-import { formatCost, type CostDisplayPrefs } from "@/lib/currency";
+import { formatCostValue, type CostDisplayPrefs } from "@/lib/currency";
 import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
 import type { MessageInfo } from "@/lib/types";
 import { formatElapsed } from "@/lib/useSessionStream";
@@ -41,22 +41,22 @@ export function MessageMetaHeader({
     typeof info.cost === "number" && info.cost > 0 ? info.cost : null;
   const estimatedCost = reportedCost === null ? estimateOpenAIApiCost(info) : null;
   const cost = reportedCost !== null
-    ? formatCost(reportedCost, costPrefs)
+    ? formatCostValue(reportedCost, costPrefs)
     : estimatedCost !== null
-      ? `推定 ${formatCost(estimatedCost, costPrefs)}`
+      ? `推定 ${formatCostValue(estimatedCost, costPrefs)}`
       : "";
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
   const thinking = thinkingDuration(info);
   const tokens = info.tokens?.total ?? 0;
   const fields = [
     model ? { key: "model", text: model } : null,
-    effortLabel ? { key: "effort", text: `effort ${effortLabel}` } : null,
+    effortLabel ? { key: "effort", text: `推論強度 ${effortLabel}` } : null,
     time ? { key: "time", text: time } : null,
+    cost ? { key: "cost", text: `コスト ${cost}` } : null,
     tokens > 0 ? { key: "tokens", text: `トークン ${formatTokens(tokens)}` } : null,
     thinking != null
-      ? { key: "thinking", text: `思考 ${formatElapsed(thinking)}` }
+      ? { key: "thinking", text: `思考時間 ${formatElapsed(thinking)}` }
       : null,
-    cost ? { key: "cost", text: cost } : null,
   ].filter((field): field is { key: string; text: string } => field !== null);
 
   if (fields.length === 0) return null;

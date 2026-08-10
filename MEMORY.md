@@ -3226,3 +3226,20 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm run typecheck` passed.
 - Profile settings and open-target tests passed: 18 tests.
 - `git diff --check` passed.
+## 表示指標の日本語統一
+
+### 日付
+
+2026-08-10
+
+### 修正内容
+
+- エージェント応答のメタ情報を `モデル・推論強度・時刻・コスト・トークン・思考時間` の順に統一した。
+- ヘッダーの金額表示を「累計コスト」と明記し、応答側と同じ指標順にした。
+- 応答の「トークン」は `MessageInfo.tokens` の定義どおり各 assistant ターンの使用量であり、累計ではない。ヘッダーの「累計トークン」のみ各 assistant ターンの `tokens.total` を合計する。
+
+### 検証結果
+
+- `npm test -- --run src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx src/components/task/TaskView.test.tsx` ... 132 tests 成功
+- `npx eslint src/components/task/MessageMetaHeader.tsx src/components/task/TaskView.tsx src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx src/components/task/TaskView.test.tsx` ... 成功
+- `npm run typecheck` ... 成功
