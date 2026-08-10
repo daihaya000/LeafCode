@@ -34,14 +34,32 @@ export async function unrevertSession(directory: string, sessionId: string) {
  * manual compact button and the automatic pre-send compact in TaskView.
  * Throws on failure so callers can restore the composer draft.
  */
+export function isCompactionLockConflict(error: unknown): boolean {
+  const status =
+    error && typeof error === "object" && "status" in error
+      ? (error as { status?: unknown }).status
+      : undefined;
+  const message = error instanceof Error ? error.message : "";
+  return status === 409 && message.includes("session compaction already in progress");
+}
+
 export async function compactSession(
   directory: string,
   sessionId: string,
 ): Promise<void> {
-  await ocJson(`/api/session/${sessionId}/compact`, directory, {
-    method: "POST",
-    body: {},
-  });
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      await ocJson(`/api/session/${sessionId}/compact`, directory, {
+        method: "POST",
+        body: {},
+      });
+      return;
+    } catch (error) {
+      if (!isCompactionLockConflict(error) || Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 }
 
 /** Collect plain text from a user message for the composer. */

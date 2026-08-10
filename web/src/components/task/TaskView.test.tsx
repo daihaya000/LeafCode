@@ -149,6 +149,7 @@ vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
 vi.mock("./SessionActions", () => ({
   CompactButton: () => <button type="button" aria-label="コンパクト">コンパクト</button>,
   MessageRevertButton: () => null,
+  isCompactionLockConflict: () => false,
   unrevertSession,
   useSessionActions: () => ({
     busy: null,

@@ -16,8 +16,10 @@ const {
   findWorkspaceIdsBySessionAndDirectory,
   listSessionBindings,
   primaryBindings,
+  releaseSessionCompactionLock,
   setSessionFavorite,
   touchSessionActivity,
+  tryAcquireSessionCompactionLock,
   upsertProject,
 } = await import("./db");
 
@@ -53,6 +55,27 @@ test("touchSessionActivity updates only the matching binding", () => {
     ).updated_at,
   ).toBe("2026-07-22T11:00:00.000Z");
   expect(touchSessionActivity("ws-2", "ses-1", "t2")).toBe(false);
+});
+
+test("session compaction lock is exclusive per session", () => {
+  expect(tryAcquireSessionCompactionLock("ses-lock-1", "owner-a", 1_000, 100)).toBe(true);
+  expect(tryAcquireSessionCompactionLock("ses-lock-1", "owner-b", 1_050, 100)).toBe(false);
+  expect(tryAcquireSessionCompactionLock("ses-lock-2", "owner-b", 1_050, 100)).toBe(true);
+});
+
+test("session compaction lock releases only for its owner", () => {
+  expect(tryAcquireSessionCompactionLock("ses-lock-release", "owner-a", 2_000, 100)).toBe(true);
+  expect(releaseSessionCompactionLock("ses-lock-release", "owner-b")).toBe(false);
+  expect(tryAcquireSessionCompactionLock("ses-lock-release", "owner-b", 2_050, 100)).toBe(false);
+  expect(releaseSessionCompactionLock("ses-lock-release", "owner-a")).toBe(true);
+  expect(tryAcquireSessionCompactionLock("ses-lock-release", "owner-b", 2_050, 100)).toBe(true);
+});
+
+test("expired session compaction lock is reclaimed on the next acquire", () => {
+  expect(tryAcquireSessionCompactionLock("ses-lock-expiry", "owner-a", 3_000, 100)).toBe(true);
+  expect(tryAcquireSessionCompactionLock("ses-lock-expiry", "owner-b", 3_100, 100)).toBe(true);
+  expect(releaseSessionCompactionLock("ses-lock-expiry", "owner-a")).toBe(false);
+  expect(releaseSessionCompactionLock("ses-lock-expiry", "owner-b")).toBe(true);
 });
 
 test("session favorites are stored per workspace and ordered first", () => {

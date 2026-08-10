@@ -194,6 +194,7 @@ import { QuestionCard } from "./QuestionCard";
 import {
   CompactButton,
   compactSession,
+  isCompactionLockConflict,
   MessageRevertButton,
   useSessionActions,
 } from "./SessionActions";
@@ -2392,7 +2393,12 @@ export function TaskView({ taskId }: { taskId: string }) {
             // triggers a resync. Request an authoritative refetch here too so
             // the next prompt is not sent against the pre-compact transcript.
             await stream.resync();
-          } catch {
+          } catch (error) {
+            if (isCompactionLockConflict(error)) {
+              throw new Error(
+                "別のタブでコンテキスト圧縮が実行中のため送信を中止しました。状態を確認してから再試行してください。",
+              );
+            }
             // Compact failure is non-fatal: proceed with the send so the
             // user's prompt is not lost. The engine may still compact on its
             // own at a higher threshold.

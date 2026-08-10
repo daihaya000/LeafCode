@@ -1,6 +1,11 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageRevertButton, useSessionActions } from "./SessionActions";
+import {
+  compactSession,
+  isCompactionLockConflict,
+  MessageRevertButton,
+  useSessionActions,
+} from "./SessionActions";
 import type { MessageWithParts } from "@/lib/types";
 
 const { ocJson } = vi.hoisted(() => ({ ocJson: vi.fn() }));
@@ -201,5 +206,48 @@ describe("SessionActions error UX", () => {
         preview: "data:image/png;base64,AA",
       }),
     ]);
+  });
+});
+
+describe("compactSession lock handling", () => {
+  afterEach(() => {
+    ocJson.mockReset();
+  });
+
+  it("retries a session-lock conflict and succeeds after the owner releases", async () => {
+    ocJson
+      .mockRejectedValueOnce(
+        Object.assign(new Error("session compaction already in progress"), {
+          status: 409,
+        }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    await compactSession("/repo", "ses-1");
+
+    expect(ocJson).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry an unrelated OpenCode 409", async () => {
+    const error = Object.assign(new Error("session is busy"), { status: 409 });
+    ocJson.mockRejectedValueOnce(error);
+
+    await expect(compactSession("/repo", "ses-1")).rejects.toBe(error);
+    expect(ocJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("distinguishes the WebUI lock conflict from other errors", () => {
+    expect(
+      isCompactionLockConflict(
+        Object.assign(new Error("session compaction already in progress"), {
+          status: 409,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isCompactionLockConflict(
+        Object.assign(new Error("session is busy"), { status: 409 }),
+      ),
+    ).toBe(false);
   });
 });

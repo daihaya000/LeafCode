@@ -8,6 +8,8 @@ import {
   markCollaborationSnapshotCompacted,
   findWorkspaceIdsBySession,
   findWorkspaceIdsBySessionAndDirectory,
+  releaseSessionCompactionLock,
+  tryAcquireSessionCompactionLock,
 } from "@/lib/db";
 import {
   claimMemoryInjectionForSession,
@@ -124,6 +126,16 @@ function compactSessionId(method: string, pathname: string): string | null {
   if (method !== "POST") return null;
   const match = /^(?:\/api)?\/session\/([^/]+)\/compact$/.exec(pathname);
   return match ? match[1] : null;
+}
+
+function compactLockConflict(): Response {
+  return NextResponse.json(
+    {
+      error: "session compaction already in progress",
+      code: "session_compaction_locked",
+    },
+    { status: 409 },
+  );
 }
 
 function injectWorkspaceMemory(
@@ -525,6 +537,7 @@ async function proxy(
   let requestBody: ArrayBuffer | undefined;
   let upstream: Response;
   let memoryClaim: MemoryInjectionClaim | null = null;
+  let compactionLock: { sessionId: string; ownerId: string } | null = null;
   /** Session whose hang watch this request armed, so a rejected send can undo it. */
   let armedWatchSessionId: string | null = null;
   /**
@@ -649,6 +662,17 @@ async function proxy(
         }
       }
 
+      const compactionSessionId =
+        compactSessionId(req.method, pathname) ??
+        compactSessionId(req.method, resolvedPathname);
+      if (compactionSessionId) {
+        const ownerId = crypto.randomUUID();
+        if (!tryAcquireSessionCompactionLock(compactionSessionId, ownerId)) {
+          return compactLockConflict();
+        }
+        compactionLock = { sessionId: compactionSessionId, ownerId };
+      }
+
       // Arm the server-side hang watchdog before the send is forwarded:
       // `session.command` / `session.prompt` block until the turn finishes, so
       // arming afterwards would start watching only once it is already over.
@@ -722,8 +746,15 @@ async function proxy(
     }
     upstream = await fetch(target, init);
     clearSseConnectTimer();
+    if (compactionLock) {
+      releaseSessionCompactionLock(compactionLock.sessionId, compactionLock.ownerId);
+      compactionLock = null;
+    }
   } catch (err) {
     clearSseConnectTimer();
+    // Keep an ambiguous network-failure lock until its TTL expires: the
+    // upstream may have accepted the compact even though its response was
+    // lost, and releasing immediately would allow a duplicate compact.
     // The send never reached the engine, so there is no turn to watch. A client
     // abort/timeout on a synchronous command is deliberately *not* treated as a
     // failure here: the engine keeps running that turn.

@@ -394,6 +394,16 @@ export function getDb(): Database.Database {
       compacted_at INTEGER,
       PRIMARY KEY (workspace_id, session_id)
     );
+    -- Session-level compaction lock shared by all WebUI tabs/processes.
+    -- Expired rows are removed atomically by tryAcquireSessionCompactionLock.
+    CREATE TABLE IF NOT EXISTS session_compaction_locks (
+      session_id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      acquired_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_compaction_locks_expiry
+      ON session_compaction_locks(expires_at);
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
@@ -1075,4 +1085,46 @@ export function clearCollaborationSnapshotCompacted(
       `UPDATE collaboration_snapshots SET compacted_at = NULL WHERE workspace_id = ? AND session_id = ?`,
     )
     .run(workspaceId, sessionId);
+}
+
+export const SESSION_COMPACTION_LOCK_TTL_MS = 60_000;
+
+/**
+ * Acquire the one compaction lock for a session. The expired-row cleanup and
+ * INSERT happen in one transaction, so concurrent tabs cannot both acquire
+ * the same session lock.
+ */
+export function tryAcquireSessionCompactionLock(
+  sessionId: string,
+  ownerId: string,
+  now = Date.now(),
+  ttlMs = SESSION_COMPACTION_LOCK_TTL_MS,
+): boolean {
+  const expiresAt = now + Math.max(1, Math.round(ttlMs));
+  return getDb().transaction(() => {
+    getDb()
+      .prepare("DELETE FROM session_compaction_locks WHERE expires_at <= ?")
+      .run(now);
+    const result = getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO session_compaction_locks
+          (session_id, owner_id, acquired_at, expires_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(sessionId, ownerId, now, expiresAt);
+    return result.changes === 1;
+  })();
+}
+
+/** Release only the lock owned by this request. */
+export function releaseSessionCompactionLock(
+  sessionId: string,
+  ownerId: string,
+): boolean {
+  const result = getDb()
+    .prepare(
+      "DELETE FROM session_compaction_locks WHERE session_id = ? AND owner_id = ?",
+    )
+    .run(sessionId, ownerId);
+  return result.changes === 1;
 }

@@ -4508,7 +4508,7 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 
 ## 残余リスク
 
-- compactのin-flight/cooldownはTaskViewインスタンス単位であり、複数ブラウザタブ間の原子的な二重compact防止ではない。SQLite lockを追加する場合は次の改善候補とする。
+- compactのin-flight/cooldownはTaskViewインスタンス単位だが、複数ブラウザタブ間の原子的な二重compact防止は`session_compaction_locks`で実装済み（Phase 4補完）。
 - compact完了は既存の`session.compacted`イベントに伴う`stream.resync()`で待つ。SSE欠落時はcompact POST成功後のresync結果に依存するため、将来は明示的なcompletion waiterとtimeoutを追加できる。
 
 ---
@@ -4538,3 +4538,32 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `npx vitest run` 成功: 264 files / 3121 tests passed / 1 skipped。
 - `npx tsc --noEmit --pretty false` 成功。
 - `npx eslint src/lib/goal-loop.ts src/lib/goal-loop.test.ts` 成功。
+
+---
+
+# 実装: session単位の二重compact防止ロック
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- `db.ts` に `session_compaction_locks` 表を追加。sessionごとにowner・取得時刻・期限を保持する。
+- `tryAcquireSessionCompactionLock` は期限切れ行の削除とINSERTを同一transactionで実行し、複数タブ・複数WebUIプロセスでも1つだけ取得できる。
+- `releaseSessionCompactionLock` はsession IDとowner IDの一致時だけ解放する。期限切れ後に別ownerが取得したロックを旧ownerが解放することはない。
+- BFFのcompact経路でlockを取得し、upstreamのレスポンス受信後に解放する。ネットワーク例外時はcompactがupstreamへ届いた可能性があるため即時解放せず、TTL（60秒）で自然回収する。
+- lock競合時は`session_compaction_locked`付きHTTP 409を返す。
+- `compactSession`はこの409だけ最大10秒リトライし、解消しない場合はTaskViewがprompt送信を中止してcomposer内容を復元する。他のOpenCode 409はリトライしない。
+
+## 回帰テスト
+
+- DB: 同一sessionの排他、別sessionの独立取得、owner限定解放、期限切れ後の再取得。
+- BFF: lock取得・解放、競合時のupstream未送信、compact成功後のcontext claim reset。
+- client: lock競合だけリトライし、無関係な409は即時失敗すること。
+
+## 検証結果
+
+- `npx tsc --noEmit --pretty false` 成功。
+- 対象eslint 成功。
+- `npx vitest run` 成功: 264 files / 3128 tests passed / 1 skipped。

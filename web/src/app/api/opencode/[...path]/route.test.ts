@@ -19,6 +19,9 @@ const goalLoopHook = vi.hoisted(() => ({
   memoryClaims: [] as { workspaceId: string; sessionId: string }[],
   memoryReleases: [] as { workspaceId: string; sessionId: string }[],
   compactMarks: [] as { workspaceId: string; sessionId: string }[],
+  compactionLockAvailable: true,
+  compactionLockAcquires: [] as { sessionId: string; ownerId: string }[],
+  compactionLockReleases: [] as { sessionId: string; ownerId: string }[],
   collaborationBlock: "",
 }));
 
@@ -27,6 +30,14 @@ vi.mock("@/lib/db", () => ({
   findWorkspaceIdsBySessionAndDirectory: vi.fn(() => goalLoopHook.directoryWorkspaceIds),
   markCollaborationSnapshotCompacted: vi.fn((workspaceId: string, sessionId: string) => {
     goalLoopHook.compactMarks.push({ workspaceId, sessionId });
+  }),
+  tryAcquireSessionCompactionLock: vi.fn((sessionId: string, ownerId: string) => {
+    goalLoopHook.compactionLockAcquires.push({ sessionId, ownerId });
+    return goalLoopHook.compactionLockAvailable;
+  }),
+  releaseSessionCompactionLock: vi.fn((sessionId: string, ownerId: string) => {
+    goalLoopHook.compactionLockReleases.push({ sessionId, ownerId });
+    return true;
   }),
 }));
 
@@ -100,6 +111,9 @@ beforeEach(() => {
   goalLoopHook.memoryClaims = [];
   goalLoopHook.memoryReleases = [];
   goalLoopHook.compactMarks = [];
+  goalLoopHook.compactionLockAvailable = true;
+  goalLoopHook.compactionLockAcquires = [];
+  goalLoopHook.compactionLockReleases = [];
   goalLoopHook.collaborationBlock = "";
   hangWatch.armed = [];
   hangWatch.disarmed = [];
@@ -175,6 +189,25 @@ describe("POST /api/opencode/session/:id/prompt_async variant validation", () =>
     expect(goalLoopHook.compactMarks).toEqual([
       { workspaceId: "ws-1", sessionId: "session-1" },
     ]);
+    expect(goalLoopHook.compactionLockAcquires).toHaveLength(1);
+    expect(goalLoopHook.compactionLockReleases).toHaveLength(1);
+    fetchMock.mockRestore();
+  });
+
+  it("rejects a compact when another tab owns the session lock", async () => {
+    goalLoopHook.compactionLockAvailable = false;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const response = await sessionPost("compact", {});
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "session_compaction_locked",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(goalLoopHook.compactionLockReleases).toEqual([]);
     fetchMock.mockRestore();
   });
 
