@@ -1,3 +1,21 @@
+# 作業ログ: プロバイダー/モデルへのローカルOllama追加
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- `ProviderModelsSettings` にローカルOllama用の登録プリセットを追加。
+- `http://127.0.0.1:11434/v1` をBase URLに設定し、OllamaステータスAPIから取得済みモデルを登録フォームへ自動入力する。
+- Ollama未導入またはモデル未取得時は `qwen2.5vl:7b` を既定モデルとして提示する。
+
+## 検証
+
+- `npm run typecheck` 成功
+- `ProviderModelsSettings.test.tsx` 33件成功
+- 対象ファイルの ESLint 成功
+
 # 作業ログ: ワークフロー機能の設定トグル追加（デフォルトOFF）
 
 ## 日付
@@ -102,6 +120,26 @@
 - web/src/components/shell/Sidebar.test.tsx
 - web/src/components/settings/SettingsView.tsx
 - web/src/components/settings/SettingsView.test.tsx
+
+---
+
+# 作業ログ: プロファイルリネームのEPERM対策
+
+## 日付
+2026-08-11
+
+## 実装内容
+
+- アクティブプロファイルのディレクトリをリネームする際、WindowsがジャンクションターゲットのリネームをEPERMで拒否する問題を修正。
+- ジャンクションを先に削除してからディレクトリをリネームし、新パスへジャンクションを再作成するフローに変更。
+- それでもEPERMが出る場合（プロセスがディレクトリを掴んでいる等）は `fs.cpSync` でコピー後に旧ディレクトリを削除するフォールバックを追加。
+- EPERMフォールバックのテストを1件追加（計28件）。
+
+## 検証結果
+
+- `npx vitest run src/lib/profiles/service.test.ts` ... 28件成功
+- `npx tsc --noEmit` ... 成功
+- `npx eslint`（対象ファイル） ... 成功
 
 ---
 
