@@ -1,5 +1,30 @@
 # 作業ログ: 手動モデル価格設定（コスト未返却モデル対応）
 
+# 調査ログ: デフォルトモデルが再起動後にリセットされたように見える原因
+
+## 日付
+
+2026-08-10
+
+## 結論
+
+- デフォルトモデルの保存値自体は再起動で消えていない。`web/src/lib/db.ts` は `%APPDATA%/opencode-webui/webui.db` の `settings` テーブルへ保存し、稼働中の SQLite と `/api/settings/default-model` はどちらも `openai::gpt-5.6-luna` を返した。
+- 主因は、再起動後に Caddy/Tailscale の IP・ポート・HTTP/HTTPS が変わって別 origin になると、origin 単位の `localStorage` (`webui:default-model`) が空になること。
+- `HomeView.tsx` と `TaskView.tsx` の DB 復元 effect は、サーバー値を取得した後に `writeDefaultModel(serverValue)` で localStorage へ書くだけで、既に実行済みのモデル選択処理へ `setModel` を行わない。特に `HomeView` は `DEFAULT_MODEL_EVENT` を購読していないため、先に provider/config 取得が完了すると fallback のモデル選択がそのまま残る。
+- `ProviderModelsSettings.tsx` 自体は DB 値を再取得して表示するため、設定画面ではなく新規タスク composer の選択がリセットされたように見える。`TaskView` もイベント購読はあるが、モデル options 読み込み前のイベントは無視されるため同じ競合余地がある。
+
+## 根拠
+
+- `web/src/lib/default-model.ts`: サーバー読み込みは非同期で、失敗も `null` として握りつぶす。
+- `web/src/components/home/HomeView.tsx`: DB 復元後は localStorage 書き込みのみ、モデル初期化は別 effect 内の `readDefaultModel()` 一回だけ。
+- `web/src/app/api/settings/[key]/route.ts`: `default-model` は allowlist 対象で `setSetting` に保存される。起動時に値を空へ戻す処理はない。
+- 実稼働確認: SQLite の `settings.default-model` と `GET /api/settings/default-model` は同値を返した。
+
+## 検証
+
+- `src/lib/default-model.test.ts`、`src/app/api/settings/[key]/route.test.ts`、`src/components/settings/ProviderModelsSettings.test.tsx`: 95 tests 成功。
+- `src/components/home/HomeView.test.tsx`: 58 tests 成功。ただし DB 復元後の composer state 更新を検証する回帰テストは未実装。
+
 ## 日付
 
 2026-08-10
