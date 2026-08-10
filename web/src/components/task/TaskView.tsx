@@ -1392,7 +1392,9 @@ export function TaskView({ taskId }: { taskId: string }) {
                 value,
                 label: formatModelLabel(m.name, mid),
                 group: p.name || p.id,
-                image: m.capabilities?.input?.image === true,
+                image:
+                  m.capabilities?.input?.image === true ||
+                  m.capabilities?.attachment === true,
               });
               caps[value] = {
                 attachment: m.capabilities?.attachment === true,
@@ -4497,6 +4499,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         disabled={!task.sessionId}
                         className="max-w-[11rem] shrink-0 sm:max-w-48"
                         limitedProviders={modelLimitedProviders}
+                        imageAnalysisAvailable={qwenNativeAvailable}
                       />
                     )}
                     {intelligenceVariants.length > 0 && (

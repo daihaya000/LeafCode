@@ -9,7 +9,7 @@ export type ModelOption = {
   value: string;
   label: string;
   group: string;
-  /** True when the model accepts image inputs (capabilities.input.image). */
+  /** True when the model accepts direct image or attachment inputs. */
   image?: boolean;
 };
 export type ModelOrderPreference = {

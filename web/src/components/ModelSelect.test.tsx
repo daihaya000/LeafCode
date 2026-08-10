@@ -138,4 +138,20 @@ describe("ModelSelect", () => {
     const autoOption = screen.getByRole("option", { name: /^Auto$/ });
     expect(autoOption.className).not.toContain("text-danger");
   });
+
+  it("marks text-only models with an eye when image pre-analysis is available", () => {
+    render(
+      <ModelSelect
+        value="anthropic::claude"
+        options={options}
+        onChange={vi.fn()}
+        imageAnalysisAvailable
+      />,
+    );
+
+    expect(screen.getByLabelText("画像事前解析を使用")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "モデル" }));
+    expect(screen.getAllByLabelText("画像事前解析を使用")).toHaveLength(3);
+  });
 });

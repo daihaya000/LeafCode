@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Check, Cpu, ImageIcon } from "lucide-react";
+import { ChevronDown, Check, Cpu, Eye, ImageIcon } from "lucide-react";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { cx } from "@/components/ui";
 import type { ModelOption } from "@/lib/model-options";
@@ -58,6 +58,7 @@ export function ModelSelect({
   ariaLabel = "モデル",
   emptyLabel = "モデル",
   limitedProviders,
+  imageAnalysisAvailable = false,
 }: {
   value: string;
   options: ModelOption[];
@@ -73,6 +74,8 @@ export function ModelSelect({
    * the dropdown so the user can avoid picking a model that will 429.
    */
   limitedProviders?: ReadonlySet<string>;
+  /** Shows an eye badge on text-only models that can use image pre-analysis. */
+  imageAnalysisAvailable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -217,6 +220,8 @@ export function ModelSelect({
             const optionProviderID = providerIDFromValue(option.value);
             const optionLimited =
               option.value !== "auto" && limitedSet.has(optionProviderID);
+            const usesImageAnalysis =
+              imageAnalysisAvailable && option.value !== "auto" && !option.image;
             return (
             <button
               key={option.value}
@@ -240,6 +245,12 @@ export function ModelSelect({
                 <ImageIcon
                   aria-label="画像入力対応"
                   className="h-3.5 w-3.5 shrink-0 text-primary"
+                />
+              )}
+              {usesImageAnalysis && (
+                <Eye
+                  aria-label="画像事前解析を使用"
+                  className="h-3.5 w-3.5 shrink-0 text-working"
                 />
               )}
               {option.value === value && (
@@ -325,6 +336,12 @@ export function ModelSelect({
           <ImageIcon
             aria-label="画像入力対応"
             className="h-3.5 w-3.5 shrink-0 text-primary"
+          />
+        )}
+        {imageAnalysisAvailable && value !== "auto" && !selected?.image && (
+          <Eye
+            aria-label="画像事前解析を使用"
+            className="h-3.5 w-3.5 shrink-0 text-working"
           />
         )}
         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-faint" />

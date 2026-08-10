@@ -1,5 +1,22 @@
 # 作業ログ: Qwen-MM-Plugins MCP 初回接続タイムアウト修正
 
+# 作業ログ: 画像解析利用モデルの目印表示
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- `ModelSelect` に `imageAnalysisAvailable` を追加した。
+- 画像解析が有効な場合、直接画像入力に非対応のモデルへ黄色の目アイコンを表示する。画像/添付対応モデルは既存の画像アイコンを表示する。
+- HomeView / TaskView からネイティブ画像解析の有効状態を渡すようにした。
+- `capabilities.attachment` が有効なモデルも、直接画像対応として扱うよう補正した。
+
+## 検証
+
+- ModelSelect / HomeView / TaskView の関連186件、typecheck、Lint成功
+
 # 作業ログ: Ollamaセットアップ自動化
 
 ## 日付
