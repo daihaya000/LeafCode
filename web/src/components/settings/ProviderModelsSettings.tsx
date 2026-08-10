@@ -44,6 +44,7 @@ type ModelDto = {
   id: string;
   name: string;
   enabled: boolean;
+  pricing?: { input: number; cachedInput?: number; cacheWrite?: number; output: number };
 };
 
 type ProviderDto = {
@@ -119,8 +120,7 @@ function ExtensionSwitch({
   );
 }
 
-function ProviderIcon({ provider }: { provider: ProviderDto }) {
-  const src = provider.icon || providerIconSrcForOpencodeId(provider.id);
+function ProviderIcon({ provider }: { provider: ProviderDto }) {  const src = provider.icon || providerIconSrcForOpencodeId(provider.id);
   const [broken, setBroken] = useState(false);
   if (src && !broken) {
     return (
@@ -140,6 +140,162 @@ function ProviderIcon({ provider }: { provider: ProviderDto }) {
   );
 }
 
+/**
+ * Inline editor for a model's manual token pricing (USD per 1M tokens).
+ * Used for models whose cost OpenCode does not report. `null` clears the
+ * entry so the built-in catalog / no-estimate fallback applies.
+ */
+function ModelPricingEditor({
+  model,
+  onSave,
+}: {
+  model: ModelDto;
+  onSave: (pricing: ModelDto["pricing"] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState(() =>
+    model.pricing
+      ? String(model.pricing.input)
+      : "",
+  );
+  const [output, setOutput] = useState(() =>
+    model.pricing
+      ? String(model.pricing.output)
+      : "",
+  );
+  const [cachedInput, setCachedInput] = useState(() =>
+    model.pricing?.cachedInput !== undefined
+      ? String(model.pricing.cachedInput)
+      : "",
+  );
+  const [cacheWrite, setCacheWrite] = useState(() =>
+    model.pricing?.cacheWrite !== undefined
+      ? String(model.pricing.cacheWrite)
+      : "",
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const parse = (): ModelDto["pricing"] | null => {
+    const toNum = (raw: string): number | undefined => {
+      const trimmed = raw.trim();
+      if (!trimmed) return undefined;
+      const value = Number(trimmed);
+      return Number.isFinite(value) && value >= 0 ? value : NaN;
+    };
+    const inputNum = toNum(input);
+    const outputNum = toNum(output);
+    if (inputNum === undefined && outputNum === undefined) return null;
+    if (inputNum === undefined || outputNum === undefined || Number.isNaN(inputNum) || Number.isNaN(outputNum)) {
+      setError("input と output は 0 以上の数値で入力してください");
+      return undefined;
+    }
+    const cachedInputNum = toNum(cachedInput);
+    const cacheWriteNum = toNum(cacheWrite);
+    if (
+      (cachedInputNum !== undefined && Number.isNaN(cachedInputNum)) ||
+      (cacheWriteNum !== undefined && Number.isNaN(cacheWriteNum))
+    ) {
+      setError("cachedInput と cacheWrite は 0 以上の数値で入力してください");
+      return undefined;
+    }
+    setError(null);
+    return {
+      input: inputNum,
+      output: outputNum,
+      ...(cachedInputNum !== undefined ? { cachedInput: cachedInputNum } : {}),
+      ...(cacheWriteNum !== undefined ? { cacheWrite: cacheWriteNum } : {}),
+    };
+  };
+
+  const save = () => {
+    const pricing = parse();
+    if (pricing === undefined) return;
+    onSave(pricing);
+    setOpen(false);
+  };
+
+  const clear = () => {
+    setError(null);
+    onSave(null);
+    setOpen(false);
+  };
+
+  const field = "rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-xs text-muted outline-none focus:border-primary w-24";
+
+  return (
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label={`${model.name} の価格設定`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {model.pricing ? "価格設定済み" : "価格設定"}
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-72 rounded-xl border border-border bg-surface p-3 shadow-lg">
+          <p className="mb-2 text-xs font-medium text-muted">
+            トークン価格（USD / 100万トークン）
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="grid gap-1 text-[11px] text-faint">
+              input
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="例: 2"
+                className={field}
+              />
+            </label>
+            <label className="grid gap-1 text-[11px] text-faint">
+              output
+              <input
+                value={output}
+                onChange={(e) => setOutput(e.target.value)}
+                placeholder="例: 8"
+                className={field}
+              />
+            </label>
+            <label className="grid gap-1 text-[11px] text-faint">
+              cachedInput（任意）
+              <input
+                value={cachedInput}
+                onChange={(e) => setCachedInput(e.target.value)}
+                placeholder="例: 0.5"
+                className={field}
+              />
+            </label>
+            <label className="grid gap-1 text-[11px] text-faint">
+              cacheWrite（任意）
+              <input
+                value={cacheWrite}
+                onChange={(e) => setCacheWrite(e.target.value)}
+                placeholder="例: 2.5"
+                className={field}
+              />
+            </label>
+          </div>
+          {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={save}>
+              保存
+            </Button>
+            {model.pricing && (
+              <Button variant="ghost" size="sm" onClick={clear}>
+                クリア
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              閉じる
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProviderGroup({
   provider,
   busyId,
@@ -152,6 +308,7 @@ function ProviderGroup({
   onDropProvider,
   onDragStartModel,
   onDropModel,
+  onSaveModelPricing,
 }: {
   provider: ProviderDto;
   busyId: string | null;
@@ -164,6 +321,7 @@ function ProviderGroup({
   onDropProvider: () => void;
   onDragStartModel: (model: ModelDto) => void;
   onDropModel: (model: ModelDto) => void;
+  onSaveModelPricing: (model: ModelDto, pricing: ModelDto["pricing"] | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -299,6 +457,10 @@ function ProviderGroup({
                     </Badge>
                   </div>
                 </div>
+                <ModelPricingEditor
+                  model={model}
+                  onSave={(pricing) => onSaveModelPricing(model, pricing)}
+                />
                 <ExtensionSwitch
                   name={model.name}
                   enabled={model.enabled}
@@ -545,8 +707,38 @@ export function ProviderModelsSettings() {
     [load],
   );
 
-  const saveOrder = useCallback((nextProviders: ProviderDto[]) => {
-    orderPendingRef.current += 1;
+  const saveModelPricing = useCallback(
+    async (providerId: string, model: ModelDto, pricing: ModelDto["pricing"] | null) => {
+      const key = `${providerId}::${model.id}`;
+      setBusyId(key);
+      setActionError(null);
+      try {
+        await sendJson("PATCH", `/api/extensions/provider-models/${encodeURIComponent(key)}`, {
+          pricing,
+        });
+        if (!mountedRef.current) return;
+        setProviders((prev) =>
+          prev.map((p) =>
+            p.id === providerId
+              ? {
+                  ...p,
+                  models: p.models.map((m) =>
+                    m.id === model.id ? { ...m, pricing: pricing ?? undefined } : m,
+                  ),
+                }
+              : p,
+          ),
+        );
+      } catch (err) {
+        if (mountedRef.current) setActionError(err instanceof Error ? err.message : "価格設定の保存に失敗しました");
+      } finally {
+        if (mountedRef.current) setBusyId(null);
+      }
+    },
+    [],
+  );
+
+  const saveOrder = useCallback((nextProviders: ProviderDto[]) => {    orderPendingRef.current += 1;
     setOrderSaving(true);
     const operation = orderQueueRef.current.then(async () => {
       if (!mountedRef.current) return;
@@ -1117,6 +1309,9 @@ export function ProviderModelsSettings() {
                   }}
                   onToggleModel={(model, enabled) =>
                     void toggle(`${provider.id}::${model.id}`, enabled)
+                  }
+                  onSaveModelPricing={(model, pricing) =>
+                    void saveModelPricing(provider.id, model, pricing)
                   }
                 />
               ))}

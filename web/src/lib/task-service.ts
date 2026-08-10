@@ -13,6 +13,7 @@ import {
   sessionPath,
 } from "./opencode-paths";
 import { estimateOpenAIApiCost } from "./openai-pricing";
+import { readProviderModelState } from "./provider-model-state";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
 import type { MessageInfo, MessageWithParts, SessionStatus, TaskSummary } from "./types";
@@ -57,11 +58,17 @@ function estimateSessionCost(session: SessionUsage): number | null {
   if (!session.tokens || !session.model?.providerID || !session.model.id) {
     return null;
   }
-  return estimateOpenAIApiCost({
-    providerID: session.model.providerID,
-    modelID: session.model.id,
-    tokens: session.tokens,
-  });
+  const manual = readProviderModelState().modelPricing[
+    `${session.model.providerID}::${session.model.id}`
+  ];
+  return estimateOpenAIApiCost(
+    {
+      providerID: session.model.providerID,
+      modelID: session.model.id,
+      tokens: session.tokens,
+    },
+    manual,
+  );
 }
 
 function sessionUsageFingerprint(session: SessionUsage): string | null {
@@ -91,6 +98,7 @@ function hasPositiveTokenUsage(tokens: MessageInfo["tokens"]): boolean {
 function exactMessageCost(messages: MessageWithParts[]): number | null {
   let total = 0;
   let observed = false;
+  const pricing = readProviderModelState().modelPricing;
   for (const message of messages) {
     if (message.info.role !== "assistant") continue;
     const reported = message.info.cost;
@@ -99,7 +107,10 @@ function exactMessageCost(messages: MessageWithParts[]): number | null {
       observed = true;
       continue;
     }
-    const estimated = estimateOpenAIApiCost(message.info);
+    const manual = message.info.providerID && message.info.modelID
+      ? pricing[`${message.info.providerID}::${message.info.modelID}`]
+      : undefined;
+    const estimated = estimateOpenAIApiCost(message.info, manual);
     if (estimated !== null) {
       total += estimated;
       observed = true;

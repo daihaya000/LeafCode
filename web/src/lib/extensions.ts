@@ -77,6 +77,13 @@ export type ProviderModelDto = {
   id: string;
   name: string;
   enabled: boolean;
+  /** Manual per-model token pricing (USD per 1M tokens), if configured. */
+  pricing?: {
+    input: number;
+    cachedInput?: number;
+    cacheWrite?: number;
+    output: number;
+  };
 };
 
 export type ProviderModelsDto = {

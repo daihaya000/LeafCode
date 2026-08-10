@@ -39,6 +39,7 @@ describe("readProviderModelState defaults", () => {
       },
       providerIcons: {},
       knownModelKeys: [],
+      modelPricing: {},
     });
   });
 

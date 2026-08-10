@@ -58,4 +58,43 @@ describe("estimateOpenAIApiCost", () => {
       }),
     ).toBeCloseTo(0.00002, 12);
   });
+
+  it("uses a manual price for a model outside the built-in catalog", () => {
+    expect(
+      estimateOpenAIApiCost(
+        {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-5",
+          tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+        },
+        { input: 3, output: 15 },
+      ),
+    ).toBeCloseTo(4.5, 12);
+  });
+
+  it("prefers a manual price over the built-in catalog", () => {
+    expect(
+      estimateOpenAIApiCost(
+        {
+          providerID: "openai",
+          modelID: "gpt-5.6-luna",
+          tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+        },
+        { input: 1, output: 5 },
+      ),
+    ).toBeCloseTo(1.5, 12);
+  });
+
+  it("returns null when a manual price is absent and the model is unknown", () => {
+    expect(
+      estimateOpenAIApiCost(
+        {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-5",
+          tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+        },
+        null,
+      ),
+    ).toBeNull();
+  });
 });

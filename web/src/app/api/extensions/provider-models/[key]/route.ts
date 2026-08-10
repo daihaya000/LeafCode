@@ -8,6 +8,7 @@ import { setProviderModelEnabled } from "@/lib/opencode-extensions/provider-mode
 import { updateCustomProvider } from "@/lib/opencode-extensions/provider-models";
 import { setProviderIconOverride } from "@/lib/opencode-extensions/provider-models";
 import { deleteCustomProvider } from "@/lib/opencode-extensions/provider-models";
+import { setModelPricing } from "@/lib/provider-model-state";
 import { requireAuthorized } from "@/lib/api-guard";
 
 export const runtime = "nodejs";
@@ -17,6 +18,67 @@ function isIconBody(body: unknown): boolean {
   return (
     !!body && typeof body === "object" && !Array.isArray(body) && "icon" in body
   );
+}
+
+function isPricingBody(body: unknown): boolean {
+  return (
+    !!body && typeof body === "object" && !Array.isArray(body) && "pricing" in body
+  );
+}
+
+/**
+ * Parse a manual pricing body: `{ pricing: { input, output, cachedInput?,
+ * cacheWrite? } | null }`. `null` clears the entry. All prices are USD per 1M
+ * tokens and must be non-negative finite numbers.
+ */
+function parsePricingBody(
+  body: unknown,
+): { pricing: { input: number; output: number; cachedInput?: number; cacheWrite?: number } | undefined } | { error: NextResponse } {
+  const pricing =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { pricing?: unknown }).pricing
+      : undefined;
+  if (pricing === null || pricing === undefined) return { pricing: undefined };
+  if (!pricing || typeof pricing !== "object" || Array.isArray(pricing)) {
+    return {
+      error: NextResponse.json(
+        { error: "pricing はオブジェクトで指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  const p = pricing as Record<string, unknown>;
+  const input = typeof p.input === "number" ? p.input : NaN;
+  const output = typeof p.output === "number" ? p.output : NaN;
+  if (!Number.isFinite(input) || input < 0 || !Number.isFinite(output) || output < 0) {
+    return {
+      error: NextResponse.json(
+        { error: "input と output は 0 以上の数値で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  const cachedInput = typeof p.cachedInput === "number" ? p.cachedInput : undefined;
+  const cacheWrite = typeof p.cacheWrite === "number" ? p.cacheWrite : undefined;
+  if (
+    (cachedInput !== undefined && (!Number.isFinite(cachedInput) || cachedInput < 0)) ||
+    (cacheWrite !== undefined && (!Number.isFinite(cacheWrite) || cacheWrite < 0))
+  ) {
+    return {
+      error: NextResponse.json(
+        { error: "cachedInput と cacheWrite は 0 以上の数値で指定してください" },
+        { status: 400 },
+      ),
+    };
+  }
+  return {
+    pricing: {
+      input,
+      output,
+      ...(cachedInput !== undefined ? { cachedInput } : {}),
+      ...(cacheWrite !== undefined ? { cacheWrite } : {}),
+    },
+  };
 }
 
 /**
@@ -40,6 +102,17 @@ export async function PATCH(req: NextRequest,
       return NextResponse.json({ ok: true });
     } catch (err) {
       return extensionsErrorResponse(err, "アイコンを更新できません");
+    }
+  }
+
+  if (isPricingBody(body)) {
+    const parsed = parsePricingBody(body);
+    if ("error" in parsed) return parsed.error;
+    try {
+      await setModelPricing(decodeURIComponent(key), parsed.pricing);
+      return NextResponse.json({ ok: true });
+    } catch (err) {
+      return extensionsErrorResponse(err, "価格設定を更新できません");
     }
   }
 

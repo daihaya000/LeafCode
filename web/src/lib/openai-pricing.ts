@@ -1,6 +1,6 @@
 import type { MessageInfo } from "./types";
 
-type TokenPrice = {
+export type TokenPrice = {
   input: number;
   cachedInput?: number;
   cacheWrite?: number;
@@ -51,11 +51,12 @@ const FAST: Record<string, TokenPrice> = {
 };
 
 /** Estimate direct OpenAI API token cost when OpenCode did not report one. */
-export function estimateOpenAIApiCost(info: Pick<MessageInfo, "providerID" | "modelID" | "tokens">): number | null {
-  if (info.providerID !== "openai" || !info.modelID || !info.tokens) return null;
-  const fast = info.modelID.endsWith("-fast");
-  const modelID = fast ? info.modelID.slice(0, -5) : info.modelID;
-  const price = (fast ? FAST : STANDARD)[modelID];
+export function estimateOpenAIApiCost(
+  info: Pick<MessageInfo, "providerID" | "modelID" | "tokens">,
+  manualPrice?: TokenPrice | null,
+): number | null {
+  if (!info.modelID || !info.tokens) return null;
+  const price = manualPrice ?? catalogPrice(info.providerID, info.modelID);
   if (!price) return null;
 
   const input = Math.max(0, info.tokens.input || 0);
@@ -70,4 +71,15 @@ export function estimateOpenAIApiCost(info: Pick<MessageInfo, "providerID" | "mo
       output * price.output) /
     1_000_000;
   return cost > 0 && Number.isFinite(cost) ? cost : null;
+}
+
+/** Look up the built-in OpenAI catalog price for a provider/model. */
+export function catalogPrice(
+  providerID: string | undefined,
+  modelID: string,
+): TokenPrice | null {
+  if (providerID !== "openai" || !modelID) return null;
+  const fast = modelID.endsWith("-fast");
+  const base = fast ? modelID.slice(0, -5) : modelID;
+  return (fast ? FAST : STANDARD)[base] ?? null;
 }

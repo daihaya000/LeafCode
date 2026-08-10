@@ -5,6 +5,7 @@ import { formatTokens } from "@addons/codexbar";
 import { cx, formatMessageTime } from "@/components/ui";
 import { formatCostValue, type CostDisplayPrefs } from "@/lib/currency";
 import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
+import { lookupModelPricing } from "@/lib/model-pricing-registry";
 import type { MessageInfo } from "@/lib/types";
 import { formatElapsed } from "@/lib/useSessionStream";
 import { ProviderIcon } from "./ProviderIcon";
@@ -39,7 +40,9 @@ export function MessageMetaHeader({
   const effortLabel = effort?.trim() || "";
   const reportedCost =
     typeof info.cost === "number" && info.cost > 0 ? info.cost : null;
-  const estimatedCost = reportedCost === null ? estimateOpenAIApiCost(info) : null;
+  const estimatedCost = reportedCost === null
+    ? estimateOpenAIApiCost(info, lookupModelPricing(info.providerID, info.modelID))
+    : null;
   const cost = reportedCost !== null
     ? formatCostValue(reportedCost, costPrefs)
     : estimatedCost !== null

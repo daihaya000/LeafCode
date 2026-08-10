@@ -218,6 +218,53 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
     expect(res.status).toBe(400);
   });
 
+  it("sets manual pricing for a model via { pricing }", async () => {
+    const res = await patch("openai::gpt-5", {
+      pricing: { input: 2, output: 8, cachedInput: 0.5 },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json())).toEqual({ ok: true });
+
+    const state = readState() as { modelPricing?: Record<string, unknown> };
+    expect(state.modelPricing).toEqual({
+      "openai::gpt-5": { input: 2, output: 8, cachedInput: 0.5 },
+    });
+  });
+
+  it("clears manual pricing when pricing is null", async () => {
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({
+        disabled: {},
+        modelPricing: { "openai::gpt-5": { input: 2, output: 8 } },
+      }),
+    );
+
+    const res = await patch("openai::gpt-5", { pricing: null });
+    expect(res.status).toBe(200);
+
+    const state = readState() as { modelPricing?: Record<string, unknown> };
+    expect(state.modelPricing).toEqual({});
+  });
+
+  it("returns 400 for invalid pricing values", async () => {
+    const res = await patch("openai::gpt-5", { pricing: { input: -1, output: 8 } });
+    expect(res.status).toBe(400);
+  });
+
+  it("reflects manual pricing in the GET listing", async () => {
+    await patch("openai::gpt-5", { pricing: { input: 2, output: 8 } });
+
+    const res = await GET(localReq());
+    const body = (await res.json()) as {
+      providers: { id: string; models: { id: string; pricing?: unknown }[] }[];
+    };
+    const openai = body.providers.find((p) => p.id === "openai")!;
+    const gpt5 = openai.models.find((m) => m.id === "gpt-5")!;
+    expect(gpt5.pricing).toEqual({ input: 2, output: 8 });
+  });
+
   it("updates a configured provider", async () => {
     fs.writeFileSync(
       path.join(data, "opencode.jsonc"),

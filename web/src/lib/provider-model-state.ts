@@ -2,6 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { dataDir } from "./paths";
 
+export type ModelPricing = {
+  /** USD per 1M input tokens. */
+  input: number;
+  /** USD per 1M cached-input tokens; defaults to `input` when omitted. */
+  cachedInput?: number;
+  /** USD per 1M cache-write tokens; defaults to `input` when omitted. */
+  cacheWrite?: number;
+  /** USD per 1M output tokens. */
+  output: number;
+};
+
 type StateFile = {
   disabled: Record<string, true>;
   providerOrder: string[];
@@ -17,6 +28,12 @@ type StateFile = {
    * models that were implicitly enabled.
    */
   knownModelKeys: string[] | undefined;
+  /**
+   * Manual per-model token pricing (`providerID::modelID` → USD per 1M
+   * tokens) for models whose cost OpenCode does not report. Used to estimate
+   * usage cost in the UI and task list.
+   */
+  modelPricing: Record<string, ModelPricing>;
 };
 
 /**
@@ -41,6 +58,7 @@ const DEFAULT_STATE: StateFile = {
   },
   providerIcons: {},
   knownModelKeys: [],
+  modelPricing: {},
 };
 
 function emptyState(): StateFile {
@@ -57,6 +75,7 @@ function emptyState(): StateFile {
     // Brand-new profiles have nothing to grandfather, so the auto
     // fast/old-generation default rule applies from the very first list.
     knownModelKeys: [],
+    modelPricing: {},
   };
 }
 
@@ -153,7 +172,31 @@ export function readProviderModelState(): StateFile {
             (id): id is string => typeof id === "string",
           )
         : undefined;
-      return { disabled, providerOrder, modelOrder, providerIcons, knownModelKeys };
+      const modelPricing: Record<string, ModelPricing> = {};
+      if (
+        parsed.modelPricing &&
+        typeof parsed.modelPricing === "object" &&
+        !Array.isArray(parsed.modelPricing)
+      ) {
+        for (const [key, value] of Object.entries(parsed.modelPricing)) {
+          if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+          const price = value as Record<string, unknown>;
+          const input = typeof price.input === "number" ? price.input : NaN;
+          const output = typeof price.output === "number" ? price.output : NaN;
+          if (!Number.isFinite(input) || !Number.isFinite(output)) continue;
+          const cachedInput =
+            typeof price.cachedInput === "number" ? price.cachedInput : undefined;
+          const cacheWrite =
+            typeof price.cacheWrite === "number" ? price.cacheWrite : undefined;
+          modelPricing[key] = {
+            input,
+            output,
+            ...(Number.isFinite(cachedInput) ? { cachedInput } : {}),
+            ...(Number.isFinite(cacheWrite) ? { cacheWrite } : {}),
+          };
+        }
+      }
+      return { disabled, providerOrder, modelOrder, providerIcons, knownModelKeys, modelPricing };
     }
     console.warn(
       "[provider-model] 状態ファイルの形式が不正なため無視します",
@@ -308,6 +351,21 @@ export async function setProviderIcon(
 }
 
 /**
+ * Set or clear a manual per-model pricing entry (`providerID::modelID`).
+ * Passing `undefined` removes the entry. Used to estimate usage cost for
+ * models whose cost OpenCode does not report.
+ */
+export async function setModelPricing(
+  key: string,
+  pricing: ModelPricing | undefined,
+): Promise<void> {
+  await withStateLock((state) => {
+    if (pricing) state.modelPricing[key] = pricing;
+    else delete state.modelPricing[key];
+  });
+}
+
+/**
  * Drop every WebUI-local trace of a provider that was removed from
  * `opencode.jsonc`: its own disabled flag, all `providerID::modelID`
  * disabled flags, its saved model order, its position in providerOrder,
@@ -323,6 +381,11 @@ export async function removeProviderState(providerID: string): Promise<void> {
     state.providerOrder = state.providerOrder.filter((id) => id !== providerID);
     delete state.modelOrder[providerID];
     delete state.providerIcons[providerID];
+    delete state.modelPricing[providerID];
+    const pricingPrefix = `${providerID}::`;
+    for (const key of Object.keys(state.modelPricing)) {
+      if (key.startsWith(pricingPrefix)) delete state.modelPricing[key];
+    }
     if (state.knownModelKeys) {
       state.knownModelKeys = state.knownModelKeys.filter(
         (key) => key !== providerID && !key.startsWith(prefix),

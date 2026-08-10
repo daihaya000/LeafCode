@@ -97,6 +97,7 @@ import { useSlashCommands } from "@/lib/useSlashCommands";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { ProviderModelsDto } from "@/lib/extensions";
+import { setModelPricingRegistry } from "@/lib/model-pricing-registry";
 import type { ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
@@ -460,6 +461,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         const providerModels = providerModelsRes.ok
           ? ((await providerModelsRes.json()) as { providers?: ProviderModelsDto[] })
           : null;
+        setModelPricingRegistry(providerModels?.providers);
 
         if (data) {
           const connectedList = data.connected ?? [];

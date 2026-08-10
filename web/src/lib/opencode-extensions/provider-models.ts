@@ -120,6 +120,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
       id: modelID,
       name: formatModelLabel(model.name, modelID),
       enabled: providerEnabled && !disabled[`${id}::${modelID}`],
+      pricing: state.modelPricing[`${id}::${modelID}`],
     }));
 
     // Sort models using saved order first, then existing intelligence ordering.
@@ -137,6 +138,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
         id: modelID,
         name: opt.label,
         enabled: providerEnabled && !disabled[`${id}::${modelID}`],
+        pricing: state.modelPricing[`${id}::${modelID}`],
       };
     });
 

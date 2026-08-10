@@ -130,6 +130,7 @@ import { countHangRetryUserMessages } from "@/lib/hang-retry";
 import { formatHangTimeout, readHangTimeoutMs, subscribeHangTimeout } from "@/lib/hang-timeout";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
+import { lookupModelPricing, setModelPricingRegistry } from "@/lib/model-pricing-registry";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
   readSideWidthFromServer,
@@ -791,7 +792,10 @@ export function TaskView({ taskId }: { taskId: string }) {
         total += reported;
         continue;
       }
-      const estimate = estimateOpenAIApiCost(message.info);
+      const estimate = estimateOpenAIApiCost(
+        message.info,
+        lookupModelPricing(message.info.providerID, message.info.modelID),
+      );
       if (estimate !== null) {
         total += estimate;
       }
@@ -1355,6 +1359,7 @@ export function TaskView({ taskId }: { taskId: string }) {
         const providerModels = providerModelsRes.ok
           ? ((await providerModelsRes.json()) as { providers?: ProviderModelsDto[] })
           : null;
+        setModelPricingRegistry(providerModels?.providers);
 
         if (data) {
           // An omitted `connected` field is the legacy unrestricted shape.
