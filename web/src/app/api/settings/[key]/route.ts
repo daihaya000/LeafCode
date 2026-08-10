@@ -9,6 +9,14 @@ import {
 import { getSetting, setSetting } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
 import { WORKFLOW_MODE_SETTING_KEY } from "@/lib/workflow-feature";
+import {
+  isTokenSavingMode,
+  TOKEN_SAVING_SETTING_KEY,
+  TOKEN_SAVING_THRESHOLD_KEY,
+  clampThreshold,
+  MAX_TOKEN_SAVING_THRESHOLD,
+  MIN_TOKEN_SAVING_THRESHOLD,
+} from "@/lib/token-saving-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +37,8 @@ const ALLOWED_KEYS = new Set<string>([
   WORKFLOW_MODE_SETTING_KEY,
   COMMIT_AUTHOR_NAME_KEY,
   COMMIT_AUTHOR_EMAIL_KEY,
+  TOKEN_SAVING_SETTING_KEY,
+  TOKEN_SAVING_THRESHOLD_KEY,
 ]);
 
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
@@ -123,6 +133,31 @@ function normalizeSettingValue(
     } catch {
       return { ok: false, error: "auto-route-overrides must be JSON" };
     }
+  }
+
+  if (key === TOKEN_SAVING_SETTING_KEY) {
+    if (!isTokenSavingMode(value)) {
+      return {
+        ok: false,
+        error: "token-saving must be off, suggest or auto",
+      };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === TOKEN_SAVING_THRESHOLD_KEY) {
+    const n = Number(value);
+    if (
+      !Number.isFinite(n) ||
+      n < MIN_TOKEN_SAVING_THRESHOLD ||
+      n > MAX_TOKEN_SAVING_THRESHOLD
+    ) {
+      return {
+        ok: false,
+        error: `token-saving-threshold must be between ${MIN_TOKEN_SAVING_THRESHOLD} and ${MAX_TOKEN_SAVING_THRESHOLD}`,
+      };
+    }
+    return { ok: true, value: String(clampThreshold(n)) };
   }
 
   if (BOOLEAN_SETTING_KEYS.has(key)) {

@@ -79,6 +79,19 @@ import {
   isValidCommitAuthorEmail,
   isValidCommitAuthorName,
 } from "@/lib/commit-identity-keys";
+import {
+  DEFAULT_TOKEN_SAVING_THRESHOLD,
+  MAX_TOKEN_SAVING_THRESHOLD,
+  MIN_TOKEN_SAVING_THRESHOLD,
+  readTokenSavingMode,
+  readTokenSavingThreshold,
+  subscribeTokenSaving,
+  syncTokenSavingToServer,
+  tokenSavingModeLabel,
+  writeTokenSavingMode,
+  writeTokenSavingThreshold,
+  type TokenSavingMode,
+} from "@/lib/token-saving-settings";
 
 type OrphanDto = {
   id: string;
@@ -281,6 +294,12 @@ export function SettingsView() {
   );
   const [hangTimeoutMinutes, setHangTimeoutMinutes] = useState(() =>
     String(readHangTimeoutMs() / 60_000),
+  );
+  const [tokenSavingMode, setTokenSavingMode] = useState<TokenSavingMode>(
+    () => readTokenSavingMode(),
+  );
+  const [tokenSavingThreshold, setTokenSavingThreshold] = useState(() =>
+    String(readTokenSavingThreshold()),
   );
   const [commitAuthorName, setCommitAuthorName] = useState("");
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
@@ -600,6 +619,34 @@ export function SettingsView() {
       ),
     [],
   );
+
+  useEffect(
+    () =>
+      subscribeTokenSaving(() => {
+        setTokenSavingMode(readTokenSavingMode());
+        setTokenSavingThreshold(String(readTokenSavingThreshold()));
+      }),
+    [],
+  );
+
+  const commitTokenSavingMode = (mode: TokenSavingMode) => {
+    setTokenSavingMode(mode);
+    writeTokenSavingMode(mode);
+    void syncTokenSavingToServer(mode, readTokenSavingThreshold());
+  };
+
+  const commitTokenSavingThreshold = () => {
+    const n = Number(tokenSavingThreshold);
+    const clamped = Number.isFinite(n)
+      ? Math.min(
+          MAX_TOKEN_SAVING_THRESHOLD,
+          Math.max(MIN_TOKEN_SAVING_THRESHOLD, Math.round(n)),
+        )
+      : DEFAULT_TOKEN_SAVING_THRESHOLD;
+    writeTokenSavingThreshold(clamped);
+    setTokenSavingThreshold(String(clamped));
+    void syncTokenSavingToServer(readTokenSavingMode(), clamped);
+  };
 
   const commitHangTimeout = () => {
     const minutes = Number(hangTimeoutMinutes);
@@ -1361,6 +1408,55 @@ export function SettingsView() {
                 </label>
                 <p id="hang-timeout-help" className="mt-2 text-[11px] text-faint">
                   応答がない状態がこの時間続いた場合、自動停止して同じ処理を1回だけ再開します（0.17〜30分）。
+                </p>
+              </div>
+              <div className="rounded-xl border border-border bg-surface px-4 py-3">
+                <h3 className="text-sm font-semibold text-text">トークン節約</h3>
+                <p className="mt-1 text-xs text-faint">
+                  コンテキスト使用量が閾値に達したときの動作を選択します。手動送信時のみ動作し、Goal Loopには適用されません。
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(["off", "suggest", "auto"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={tokenSavingMode === mode}
+                      onClick={() => commitTokenSavingMode(mode)}
+                      className={
+                        tokenSavingMode === mode
+                          ? "rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent"
+                          : "rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+                      }
+                    >
+                      {tokenSavingModeLabel(mode)}
+                    </button>
+                  ))}
+                </div>
+                <label className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="shrink-0 text-sm text-muted">コンテキスト使用率の閾値</span>
+                  <input
+                    type="number"
+                    min={MIN_TOKEN_SAVING_THRESHOLD}
+                    max={MAX_TOKEN_SAVING_THRESHOLD}
+                    step={1}
+                    value={tokenSavingThreshold}
+                    aria-label="コンテキスト使用率の閾値"
+                    onChange={(event) => setTokenSavingThreshold(event.target.value)}
+                    onBlur={commitTokenSavingThreshold}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    className="h-9 w-full max-w-[10rem] rounded-lg border border-border bg-bg px-3 font-mono text-sm outline-none focus:border-border-strong"
+                    aria-describedby="token-saving-threshold-help"
+                  />
+                  <span className="text-xs text-faint">%</span>
+                </label>
+                <p id="token-saving-threshold-help" className="mt-2 text-[11px] text-faint">
+                  {tokenSavingMode === "off"
+                    ? "オフの場合は閾値に関わらず自動compactしません。"
+                    : tokenSavingMode === "suggest"
+                      ? `使用率が${readTokenSavingThreshold()}%に達したらcompactを提案します（${MIN_TOKEN_SAVING_THRESHOLD}〜${MAX_TOKEN_SAVING_THRESHOLD}%）。`
+                      : `使用率が${readTokenSavingThreshold()}%に達したら送信前にcompactを自動実行します（${MIN_TOKEN_SAVING_THRESHOLD}〜${MAX_TOKEN_SAVING_THRESHOLD}%）。`}
                 </p>
               </div>
             </section>

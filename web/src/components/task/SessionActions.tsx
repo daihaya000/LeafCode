@@ -29,6 +29,21 @@ export async function unrevertSession(directory: string, sessionId: string) {
   });
 }
 
+/**
+ * Compact the session context via OpenCode's standard API. Shared by the
+ * manual compact button and the automatic pre-send compact in TaskView.
+ * Throws on failure so callers can restore the composer draft.
+ */
+export async function compactSession(
+  directory: string,
+  sessionId: string,
+): Promise<void> {
+  await ocJson(`/api/session/${sessionId}/compact`, directory, {
+    method: "POST",
+    body: {},
+  });
+}
+
 /** Collect plain text from a user message for the composer. */
 export function messagePlainText(msg: MessageWithParts | undefined): string {
   if (!msg) return "";
@@ -146,10 +161,7 @@ export function useSessionActions({
 
   const compact = useCallback(() => {
     void run("compact", async () => {
-      await ocJson(`/api/session/${sessionId}/compact`, directory, {
-        method: "POST",
-        body: {},
-      });
+      await compactSession(directory, sessionId);
       return "ok" as const;
     });
   }, [run, directory, sessionId]);

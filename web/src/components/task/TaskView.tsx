@@ -89,6 +89,10 @@ import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import { computeContextUsage } from "@/lib/context-usage";
 import { lastTurnTokenUsage } from "@/lib/token-usage";
 import {
+  readTokenSavingMode,
+  readTokenSavingThreshold,
+} from "@/lib/token-saving-settings";
+import {
   readChatTab,
   readShowDiff,
   readSidePanel,
@@ -190,6 +194,7 @@ const LazyWorkflowPanel = lazy(() => import("./WorkflowPanel").then((m) => ({ de
 import { QuestionCard } from "./QuestionCard";
 import {
   CompactButton,
+  compactSession,
   MessageRevertButton,
   useSessionActions,
 } from "./SessionActions";
@@ -543,6 +548,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [focusFile, setFocusFile] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [tokenSavingNotice, setTokenSavingNotice] = useState<string | null>(null);
   const [dismissedSessionError, setDismissedSessionError] = useState<string | null>(null);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("queue");
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
@@ -1899,6 +1905,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   /** Scope that owns the in-flight send — other sessions must stay editable. */
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
   const sendingScopeRef = useRef<string | null>(null);
+  const autoCompactInFlightRef = useRef(false);
+  const autoCompactCooldownRef = useRef<number>(0);
   const composerLocked =
     (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
   const voiceDisabled = composerLocked || !task?.sessionId;
@@ -2341,6 +2349,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     setInput("");
     setAttachments([]);
     setSendError(null);
+    setTokenSavingNotice(null);
     setSendingScopeKey(sendScopeKey);
     setSending(true);
     stickRef.current = true;
@@ -2375,6 +2384,46 @@ export function TaskView({ taskId }: { taskId: string }) {
           );
         }
         setGoalLoop(paused.loop);
+      }
+      // Token-saving: compact or suggest before sending when context usage
+      // exceeds the configured threshold. Only runs when the session is idle
+      // and no permission/question is pending. See token-saving Phase 2.
+      const savingMode = readTokenSavingMode();
+      const savingThreshold = readTokenSavingThreshold();
+      if (
+        savingMode !== "off" &&
+        contextUsage &&
+        contextUsage.pct >= savingThreshold &&
+        stream.status?.type === "idle" &&
+        stream.permissions.length === 0 &&
+        stream.questions.length === 0
+      ) {
+        if (
+          savingMode === "auto" &&
+          !autoCompactInFlightRef.current &&
+          Date.now() - autoCompactCooldownRef.current > 60_000
+        ) {
+          autoCompactInFlightRef.current = true;
+          autoCompactCooldownRef.current = Date.now();
+          try {
+            await compactSession(task?.directory ?? "", sendSessionId);
+            // Wait for the compact to settle: the session.compacted SSE event
+            // triggers a resync. Request an authoritative refetch here too so
+            // the next prompt is not sent against the pre-compact transcript.
+            await stream.resync();
+          } catch {
+            // Compact failure is non-fatal: proceed with the send so the
+            // user's prompt is not lost. The engine may still compact on its
+            // own at a higher threshold.
+          } finally {
+            autoCompactInFlightRef.current = false;
+          }
+        } else if (savingMode === "suggest") {
+          // Suggest mode: show a non-blocking notice but do not auto-compact.
+          setTokenSavingNotice(
+            `コンテキスト使用率が${contextUsage.pct}%に達しました。圧縮ボタンでコンテキストを圧縮できます。`,
+          );
+        }
       }
       await touchActivity(sendSessionId, sendTaskId);
       // `"auto".split("::")` yields `["auto"]`, so modelID stays undefined and
@@ -2456,6 +2505,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     startGoalLoop,
     working,
     deliveryMode,
+    contextUsage,
+    task?.directory,
   ]);
 
   // Drain the local queue only after the engine reports idle. This avoids
@@ -4375,6 +4426,14 @@ export function TaskView({ taskId }: { taskId: string }) {
                   className="mt-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-1.5 text-xs text-danger"
                 >
                   {sendError}
+                </p>
+              )}
+              {tokenSavingNotice && (
+                <p
+                  role="status"
+                  className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-1.5 text-xs text-warning"
+                >
+                  {tokenSavingNotice}
                 </p>
               )}
               {goalLoopError && !goalLoopLive && (
