@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { formatTokens } from "@addons/codexbar";
 import { cx, formatMessageTime } from "@/components/ui";
 import { formatCost, type CostDisplayPrefs } from "@/lib/currency";
+import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
 import type { MessageInfo } from "@/lib/types";
 import { formatElapsed } from "@/lib/useSessionStream";
 import { ProviderIcon } from "./ProviderIcon";
@@ -36,9 +37,13 @@ export function MessageMetaHeader({
 }) {
   const model = modelLabel?.trim() || info.modelID?.trim() || "";
   const effortLabel = effort?.trim() || "";
-  const cost =
-    typeof info.cost === "number" && info.cost > 0
-      ? formatCost(info.cost, costPrefs)
+  const reportedCost =
+    typeof info.cost === "number" && info.cost > 0 ? info.cost : null;
+  const estimatedCost = reportedCost === null ? estimateOpenAIApiCost(info) : null;
+  const cost = reportedCost !== null
+    ? formatCost(reportedCost, costPrefs)
+    : estimatedCost !== null
+      ? `推定 ${formatCost(estimatedCost, costPrefs)}`
       : "";
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
   const thinking = thinkingDuration(info);

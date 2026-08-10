@@ -55,6 +55,22 @@ describe("MessageMetaHeader", () => {
     expect(meta.textContent).not.toMatch(/·\s*·|^\s*·|·\s*$/);
   });
 
+  it("estimates OpenAI API cost from tokens when reported cost is zero", () => {
+    render(
+      <MessageMetaHeader
+        info={{
+          providerID: "openai",
+          modelID: "gpt-5.6-luna",
+          cost: 0,
+          tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+        }}
+        costPrefs={{ ...DEFAULT_COST_PREFS, currency: "USD" }}
+      />,
+    );
+
+    expect(screen.getByText("推定 cost $0.3200")).toBeTruthy();
+  });
+
   it("shows the effort immediately after the model", () => {
     render(
       <MessageMetaHeader

@@ -1,5 +1,24 @@
 # 作業ログ: バグハント完了
 
+## 日付
+
+2026-08-10
+
+## OpenAI公式価格による推定コスト表示
+
+### 修正内容
+
+- OpenAI公式API価格表（`https://platform.openai.com/docs/pricing`）の標準価格とFast mode価格を `web/src/lib/openai-pricing.ts` に追加した。
+- OpenCodeの `cost` が0または未提供の場合、OpenAI公式価格と応答の入力・出力・推論・キャッシュトークンからUSDコストを推定する。
+- 表示通貨とUSD/JPYレートは既存のコスト表示設定を使用し、実測値ではなく「推定」と明記する。
+- 公式価格カタログにないモデルは推測せず、価格表示しない。
+
+### 検証結果
+
+- `npm run test -- --run src/components/task/MessageMetaHeader.test.tsx` ... 8 tests 成功
+- `npm run typecheck` ... 成功
+- `npx eslint src/components/task/MessageMetaHeader.tsx src/lib/openai-pricing.ts` ... 成功
+
 ## エージェント応答のトークン表示
 
 ### 日付
