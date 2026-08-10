@@ -18,6 +18,7 @@ export async function GET(req: Request) {
     name: p.name,
     rootPath: p.root_path,
     favorite: Boolean(p.favorite),
+    archived: Boolean(p.archived),
     lastOpenedAt: p.last_opened_at,
     createdAt: p.created_at,
   }));
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
       name: row.name,
       rootPath: row.root_path,
       favorite: Boolean(row.favorite),
+      archived: Boolean(row.archived),
       lastOpenedAt: row.last_opened_at,
       createdAt: row.created_at,
     },
@@ -96,6 +98,7 @@ export async function PATCH(req: NextRequest) {
         name: string;
         root_path: string;
         favorite: number;
+        archived: number;
       }
     | undefined;
 
@@ -119,6 +122,7 @@ export async function PATCH(req: NextRequest) {
       name: row.name,
       rootPath: row.root_path,
       favorite: Boolean(row.favorite),
+      archived: Boolean(row.archived),
       lastOpenedAt: row.last_opened_at,
       createdAt: row.created_at,
     },

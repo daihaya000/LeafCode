@@ -8,6 +8,8 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   Check,
   Copy,
   Download,
@@ -253,6 +255,7 @@ export function SettingsView() {
   );
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [archivedProjects, setArchivedProjects] = useState<ProjectDto[]>([]);
   const [roots, setRoots] = useState<string[]>([]);
   const [orphans, setOrphans] = useState<OrphanDto[]>([]);
   const [stray, setStray] = useState<StrayDto[]>([]);
@@ -420,7 +423,7 @@ export function SettingsView() {
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
-    const [h, p, r, o, a, host, updates] = await Promise.allSettled([
+    const [h, p, r, o, a, host, updates, ap] = await Promise.allSettled([
       getJson<HealthDto>("/api/health"),
       getJson<{ projects: ProjectDto[] }>("/api/projects"),
       getJson<{ roots: string[] }>("/api/roots"),
@@ -438,6 +441,7 @@ export function SettingsView() {
         opencode: UpdateAvailability;
         nextjs: UpdateAvailability;
       }>("/api/updates/status"),
+      getJson<{ projects: ProjectDto[] }>("/api/projects/archived"),
     ]);
     if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
     if (h.status === "fulfilled") setHealth(h.value);
@@ -451,6 +455,8 @@ export function SettingsView() {
     if (host.status === "fulfilled") setHostOk(host.value.ok);
     else setHostOk(false);
     if (updates.status === "fulfilled") setUpdateAvailability(updates.value);
+    if (ap.status === "fulfilled")
+      setArchivedProjects(ap.value.projects ?? []);
   }, []);
 
   useEffect(() => {
@@ -758,7 +764,25 @@ export function SettingsView() {
       });
     });
 
-  const removeProject = (p: ProjectDto, confirmed = false) => {
+  const archiveProjectAction = (p: ProjectDto) =>
+    void guard(async () => {
+      await sendJson(
+        "PATCH",
+        `/api/projects/${encodeURIComponent(p.id)}/archive`,
+      );
+      notifyTasksChanged();
+    });
+
+  const restoreArchivedProject = (p: ProjectDto) =>
+    void guard(async () => {
+      await sendJson(
+        "PATCH",
+        `/api/projects/${encodeURIComponent(p.id)}/restore`,
+      );
+      notifyTasksChanged();
+    });
+
+  const destroyArchivedProject = (p: ProjectDto, confirmed = false) => {
     if (!confirmed) {
       projectTriggerRef.current =
         document.activeElement instanceof HTMLElement
@@ -1493,7 +1517,7 @@ export function SettingsView() {
                   className="mb-3 rounded-xl border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
                 >
                   <p id="project-delete-confirm-description">
-                    プロジェクト「{pendingProjectDelete.name}」を削除しますか？
+                    アーカイブ済みプロジェクト「{pendingProjectDelete.name}」を完全に削除しますか？
                     <br />
                     関連タスクとworktreeも削除されます。
                   </p>
@@ -1506,7 +1530,7 @@ export function SettingsView() {
                         const project = pendingProjectDelete;
                         projectTriggerRef.current = null;
                         setPendingProjectDelete(null);
-                        removeProject(project, true);
+                        destroyArchivedProject(project, true);
                       }}
                     >
                       削除する
@@ -1565,12 +1589,12 @@ export function SettingsView() {
                     <button
                       type="button"
                       disabled={busy}
-                      aria-label={`${p.name}を削除`}
-                      title="プロジェクトを削除"
-                      onClick={() => void removeProject(p)}
-                      className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
+                      aria-label={`${p.name}をアーカイブ`}
+                      title="プロジェクトをアーカイブ"
+                      onClick={() => void archiveProjectAction(p)}
+                      className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2 hover:text-text"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Archive className="h-4 w-4" />
                     </button>
                   </li>
                 ))}
@@ -1581,6 +1605,49 @@ export function SettingsView() {
                 )}
               </ul>
             </section>
+
+            {archivedProjects.length > 0 && (
+              <section>
+                <h2 className="mb-3 text-sm font-semibold text-muted">
+                  アーカイブ済みプロジェクト
+                </h2>
+                <ul className="space-y-2">
+                  {archivedProjects.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 opacity-80"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{p.name}</p>
+                        <p className="truncate font-mono text-xs text-faint">
+                          {p.rootPath}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={`${p.name}を復元`}
+                        title="プロジェクトを復元"
+                        onClick={() => void restoreArchivedProject(p)}
+                        className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2 hover:text-text"
+                      >
+                        <ArchiveRestore className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={`${p.name}を完全に削除`}
+                        title="プロジェクトを完全に削除"
+                        onClick={() => void destroyArchivedProject(p)}
+                        className="cursor-pointer rounded-lg p-2 text-faint hover:bg-danger-bg hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">

@@ -45,6 +45,8 @@ type SidebarConfirmation = {
 const EXPANDED_KEY = "webui.sidebar.expanded";
 const WIDTH_KEY = "webui.sidebar.width";
 const ARCHIVED_EXPANDED_KEY = "webui.sidebar.archived_expanded";
+const ARCHIVED_PROJECTS_EXPANDED_KEY =
+  "webui.sidebar.archived_projects_expanded";
 const DEFAULT_WIDTH = 240;
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
@@ -136,6 +138,22 @@ function saveArchivedExpanded(value: boolean) {
   }
 }
 
+function loadArchivedProjectsExpanded(): boolean {
+  try {
+    return localStorage.getItem(ARCHIVED_PROJECTS_EXPANDED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveArchivedProjectsExpanded(value: boolean) {
+  try {
+    localStorage.setItem(ARCHIVED_PROJECTS_EXPANDED_KEY, String(value));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Compact branch / isolation label for the task list. */
 function sidebarBranchLabel(task: TaskSummary): string {
   if (task.isolation === "temporary_copy") return "一時コピー";
@@ -196,6 +214,9 @@ export function Sidebar({
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsLoadError, setProjectsLoadError] = useState(false);
+  const [archivedProjects, setArchivedProjects] = useState<ProjectDto[]>([]);
+  const [archivedProjectsExpanded, setArchivedProjectsExpanded] =
+    useState(false);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [archivedTasks, setArchivedTasks] = useState<TaskSummary[]>([]);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -350,11 +371,12 @@ export function Sidebar({
     refreshBusyRef.current = true;
     const requestId = ++refreshRequestRef.current;
     try {
-      const [projectsResult, tasksResult, archivedResult] =
+      const [projectsResult, tasksResult, archivedResult, archivedProjectsResult] =
         await Promise.allSettled([
           getJson<{ projects: ProjectDto[] }>("/api/projects"),
           getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
           getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived"),
+          getJson<{ projects: ProjectDto[] }>("/api/projects/archived"),
         ]);
       if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
       if (projectsResult.status === "fulfilled") {
@@ -370,6 +392,9 @@ export function Sidebar({
       }
       if (archivedResult.status === "fulfilled") {
         setArchivedTasks(archivedResult.value.tasks ?? []);
+      }
+      if (archivedProjectsResult.status === "fulfilled") {
+        setArchivedProjects(archivedProjectsResult.value.projects ?? []);
       }
     } finally {
       refreshBusyRef.current = false;
@@ -850,7 +875,53 @@ export function Sidebar({
     }
   };
 
-  const removeProject = async (
+  const archiveProjectAction = async (
+    p: ProjectDto,
+    e: React.MouseEvent | undefined,
+  ) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    const actionKey = `archive-project:${p.id}`;
+    if (!beginAction(actionKey)) return;
+    try {
+      await sendJson("PATCH", `/api/projects/${encodeURIComponent(p.id)}/archive`);
+      notifyTasksChanged();
+      await refresh();
+      if (activeTaskId) {
+        const still = tasks.find((t) => t.id === activeTaskId);
+        if (!still || still.projectId === p.id) router.push("/");
+      }
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "プロジェクトのアーカイブに失敗しました",
+      );
+    } finally {
+      endAction(actionKey);
+    }
+  };
+
+  const restoreArchivedProject = async (
+    p: ProjectDto,
+    e: React.MouseEvent | undefined,
+  ) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    const actionKey = `restore-project:${p.id}`;
+    if (!beginAction(actionKey)) return;
+    try {
+      await sendJson("PATCH", `/api/projects/${encodeURIComponent(p.id)}/restore`);
+      notifyTasksChanged();
+      await refresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "プロジェクトの復元に失敗しました",
+      );
+    } finally {
+      endAction(actionKey);
+    }
+  };
+
+  const destroyArchivedProject = async (
     p: ProjectDto,
     e: React.MouseEvent | undefined,
     confirmed = false,
@@ -859,26 +930,22 @@ export function Sidebar({
     e?.stopPropagation();
     if (!confirmed) {
       requestConfirmation({
-        title: "プロジェクトを削除",
-        description: `プロジェクト「${p.name}」と関連タスク・worktreeを削除します。`,
+        title: "プロジェクトを完全に削除",
+        description: `アーカイブ済みプロジェクト「${p.name}」と関連タスク・worktreeを完全に削除します。`,
         onConfirm: () => {
           confirmationTriggerRef.current = null;
           setPendingConfirmation(null);
-          void removeProject(p, undefined, true);
+          void destroyArchivedProject(p, undefined, true);
         },
       });
       return;
     }
-    const actionKey = `remove-project:${p.id}`;
+    const actionKey = `destroy-project:${p.id}`;
     if (!beginAction(actionKey)) return;
     try {
       await sendJson("DELETE", "/api/projects", undefined, { id: p.id });
       notifyTasksChanged();
       await refresh();
-      if (activeTaskId) {
-        const still = tasks.find((t) => t.id === activeTaskId);
-        if (!still || still.projectId === p.id) router.push("/");
-      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "削除に失敗しました");
     } finally {
@@ -1104,14 +1171,14 @@ export function Sidebar({
                       </button>
                       <button
                         type="button"
-                        aria-label={`${p.name}を削除`}
-                        title="プロジェクトを削除"
-                        aria-busy={actionBusyKey === `remove-project:${p.id}`}
+                        aria-label={`${p.name}をアーカイブ`}
+                        title="プロジェクトをアーカイブ"
+                        aria-busy={actionBusyKey === `archive-project:${p.id}`}
                         disabled={actionBusyKey !== null}
-                        onClick={(e) => void removeProject(p, e)}
-                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-danger-bg hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
+                        onClick={(e) => void archiveProjectAction(p, e)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-40 md:h-8 md:w-8"
                       >
-                        <Trash2 className="h-3 w-3" aria-hidden="true" />
+                        <Archive className="h-3 w-3" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -1428,6 +1495,82 @@ export function Sidebar({
             </ul>
           )}
         </div>
+
+        {archivedProjects.length > 0 && (
+          <div className="mt-2">
+            <button
+              type="button"
+              aria-expanded={archivedProjectsExpanded}
+              aria-label={`アーカイブ済みプロジェクト${archivedProjectsExpanded ? "を折りたたむ" : "を展開"}`}
+              onClick={() =>
+                setArchivedProjectsExpanded((prev) => {
+                  const next = !prev;
+                  saveArchivedProjectsExpanded(next);
+                  return next;
+                })
+              }
+              className="flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+            >
+              <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">
+                アーカイブ済みプロジェクト
+              </span>
+              <span className="tabular-nums text-[10px] text-muted">
+                {archivedProjects.length}
+              </span>
+              <ChevronRight
+                className={cx(
+                  "h-3 w-3 shrink-0 transition-transform",
+                  archivedProjectsExpanded && "rotate-90",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+            {archivedProjectsExpanded && (
+              <ul className="mb-1 ml-2 space-y-0.5 border-l border-border pl-1.5">
+                {archivedProjects.map((p) => (
+                  <li key={p.id}>
+                    <div className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-surface-2 hover:text-text">
+                      <span className="min-w-0 flex-1 truncate" title={p.rootPath}>
+                        {p.name}
+                      </span>
+                      <div className="flex shrink-0 items-center">
+                        <button
+                          type="button"
+                          aria-label={`「${p.name}」を復元`}
+                          title={`「${p.name}」を復元`}
+                          aria-busy={actionBusyKey === `restore-project:${p.id}`}
+                          disabled={actionBusyKey !== null}
+                          onClick={(e) => void restoreArchivedProject(p, e)}
+                          className={cx(
+                            TASK_ROW_ACTION_BTN,
+                            "text-faint hover:bg-surface-2 hover:text-text",
+                          )}
+                        >
+                          <ArchiveRestore className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`「${p.name}」を完全に削除`}
+                          title={`「${p.name}」を完全に削除`}
+                          aria-busy={actionBusyKey === `destroy-project:${p.id}`}
+                          disabled={actionBusyKey !== null}
+                          onClick={(e) => void destroyArchivedProject(p, e)}
+                          className={cx(
+                            TASK_ROW_ACTION_BTN,
+                            "text-muted hover:bg-danger-bg hover:text-danger",
+                          )}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {orphanCount > 0 && (
           <Link

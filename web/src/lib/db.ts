@@ -11,6 +11,7 @@ export type ProjectRow = {
   name: string;
   root_path: string;
   favorite: number;
+  archived: number;
   last_opened_at: string | null;
   created_at: string;
 };
@@ -133,6 +134,7 @@ export function getDb(): Database.Database {
       name TEXT NOT NULL,
       root_path TEXT NOT NULL UNIQUE,
       favorite INTEGER NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
       last_opened_at TEXT,
       created_at TEXT NOT NULL
     );
@@ -465,6 +467,12 @@ export function getDb(): Database.Database {
   if (!workflowAttemptColumns.some((column) => column.name === "usage_snapshot")) {
     db.exec("ALTER TABLE workflow_node_attempts ADD COLUMN usage_snapshot TEXT NOT NULL DEFAULT '{}'");
   }
+  const projectColumns = db
+    .prepare("PRAGMA table_info(projects)")
+    .all() as { name: string }[];
+  if (!projectColumns.some((column) => column.name === "archived")) {
+    db.exec("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+  }
   return db;
 }
 
@@ -505,9 +513,26 @@ export function listProjects(): ProjectRow[] {
   return getDb()
     .prepare(
       `SELECT * FROM projects
+       WHERE archived = 0
        ORDER BY favorite DESC, COALESCE(last_opened_at, created_at) DESC`,
     )
     .all() as ProjectRow[];
+}
+
+export function listArchivedProjects(): ProjectRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM projects
+       WHERE archived = 1
+       ORDER BY COALESCE(last_opened_at, created_at) DESC`,
+    )
+    .all() as ProjectRow[];
+}
+
+export function setProjectArchived(id: string, archived: boolean): void {
+  getDb()
+    .prepare(`UPDATE projects SET archived = ? WHERE id = ?`)
+    .run(archived ? 1 : 0, id);
 }
 
 export function upsertProject(input: {

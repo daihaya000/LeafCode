@@ -231,6 +231,7 @@ export type ProjectDto = {
   name: string;
   rootPath: string;
   favorite: boolean;
+  archived: boolean;
   lastOpenedAt: string | null;
 };
 

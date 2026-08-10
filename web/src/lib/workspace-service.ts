@@ -11,11 +11,13 @@ import {
   deleteProject,
   deleteWorkspace,
   getDb,
+  getProject,
   getWorkspace,
   listProjects,
   listSessionBindings,
   listWorkspaces,
   removeAllowedRoot,
+  setProjectArchived,
   setWorkspaceStatus,
 } from "./db";
 import { addWorktree, removeWorktree, runGit } from "./git";
@@ -295,6 +297,31 @@ export async function restoreWorkspace(id: string): Promise<void> {
   persistProjectSessions(row.project_id);
 }
 
+/** Archive a project: archive all its active workspaces and mark the project. */
+export async function archiveProject(projectId: string): Promise<void> {
+  const project = getProject(projectId);
+  if (!project) throw new ServiceError("project not found", 404);
+  if (project.archived) return;
+  const workspaces = listWorkspaces(projectId);
+  for (const ws of workspaces) {
+    if (ws.status === "active") {
+      stopActiveWorkflowForArchive(ws.id);
+      setWorkspaceStatus(ws.id, "archived");
+    }
+  }
+  setProjectArchived(projectId, true);
+  persistProjectSessions(projectId);
+}
+
+/** Restore an archived project back to active. Workspaces remain archived and can be restored individually. */
+export async function restoreProject(projectId: string): Promise<void> {
+  const project = getProject(projectId);
+  if (!project) throw new ServiceError("project not found", 404);
+  if (!project.archived) return;
+  setProjectArchived(projectId, false);
+  persistProjectSessions(projectId);
+}
+
 /** Remove worktree/copy and metadata. Marks orphaned + throws 409 on disk failure. */
 export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   const row = getWorkspace(id);
@@ -368,16 +395,21 @@ export async function destroyWorkspace(id: string): Promise<WorkspaceRow> {
   return row;
 }
 
-/** Destroy all workspaces for a project, then delete the project row. */
+/** Destroy all workspaces for a project, then delete the project row.
+ *  Only archived projects can be permanently destroyed. */
 export async function destroyProject(projectId: string): Promise<{
   destroyed: number;
   orphaned: number;
   errors: string[];
 }> {
-  const project = getDb()
-    .prepare("SELECT * FROM projects WHERE id = ?")
-    .get(projectId) as { id: string; root_path: string } | undefined;
+  const project = getProject(projectId);
   if (!project) throw new ServiceError("project not found", 404);
+  if (!project.archived) {
+    throw new ServiceError(
+      "アーカイブ済みのプロジェクトのみ完全削除できます。先にアーカイブしてください。",
+      409,
+    );
+  }
 
   const workspaces = listWorkspaces(projectId);
   let destroyed = 0;

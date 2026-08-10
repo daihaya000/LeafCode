@@ -1,0 +1,190 @@
+commit 13c4b578f1f826ab595c53ba8f360ad625efded1
+Author: OpenCode WebUI <local@opencode-webui>
+Date:   Thu Jul 16 14:27:32 2026 +0900
+
+    Advance Phase 0-1: permission v2, projects API, and worktree helper.
+    
+    Harden tray host to reuse healthy listeners, patch Next.js, and expand SQLite for Workspace Manager.
+    
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+diff --git a/web/src/lib/db.ts b/web/src/lib/db.ts
+index cb86098..56e5ca8 100644
+--- a/web/src/lib/db.ts
++++ b/web/src/lib/db.ts
+@@ -3,6 +3,34 @@ import { dbPath, ensureDataDir } from "./paths";
+ 
+ let db: Database.Database | null = null;
+ 
++export type ProjectRow = {
++  id: string;
++  name: string;
++  root_path: string;
++  favorite: number;
++  last_opened_at: string | null;
++  created_at: string;
++};
++
++export type WorkspaceRow = {
++  id: string;
++  project_id: string;
++  display_name: string;
++  absolute_path: string;
++  isolation: "current_folder" | "git_worktree";
++  base_branch: string | null;
++  worktree_path: string | null;
++  status: "active" | "merging" | "archived" | "orphaned";
++  created_at: string;
++};
++
++export type SessionBindingRow = {
++  workspace_id: string;
++  opencode_session_id: string;
++  title: string;
++  updated_at: string;
++};
++
+ export function getDb(): Database.Database {
+   if (db) return db;
+   ensureDataDir();
+@@ -18,6 +46,33 @@ export function getDb(): Database.Database {
+       path TEXT NOT NULL UNIQUE,
+       created_at TEXT NOT NULL
+     );
++    CREATE TABLE IF NOT EXISTS projects (
++      id TEXT PRIMARY KEY,
++      name TEXT NOT NULL,
++      root_path TEXT NOT NULL UNIQUE,
++      favorite INTEGER NOT NULL DEFAULT 0,
++      last_opened_at TEXT,
++      created_at TEXT NOT NULL
++    );
++    CREATE TABLE IF NOT EXISTS workspaces (
++      id TEXT PRIMARY KEY,
++      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
++      display_name TEXT NOT NULL,
++      absolute_path TEXT NOT NULL,
++      isolation TEXT NOT NULL,
++      base_branch TEXT,
++      worktree_path TEXT,
++      status TEXT NOT NULL DEFAULT 'active',
++      created_at TEXT NOT NULL
++    );
++    CREATE TABLE IF NOT EXISTS session_bindings (
++      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
++      opencode_session_id TEXT NOT NULL,
++      title TEXT NOT NULL DEFAULT '',
++      updated_at TEXT NOT NULL,
++      PRIMARY KEY (workspace_id, opencode_session_id)
++    );
++    CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
+   `);
+   return db;
+ }
+@@ -54,3 +109,106 @@ export function addAllowedRoot(rootPath: string): void {
+     )
+     .run(id, rootPath, new Date().toISOString());
+ }
++
++export function listProjects(): ProjectRow[] {
++  return getDb()
++    .prepare(
++      `SELECT * FROM projects
++       ORDER BY favorite DESC, COALESCE(last_opened_at, created_at) DESC`,
++    )
++    .all() as ProjectRow[];
++}
++
++export function upsertProject(input: {
++  name: string;
++  rootPath: string;
++  favorite?: boolean;
++}): ProjectRow {
++  const now = new Date().toISOString();
++  const existing = getDb()
++    .prepare("SELECT * FROM projects WHERE root_path = ?")
++    .get(input.rootPath) as ProjectRow | undefined;
++  if (existing) {
++    getDb()
++      .prepare(
++        `UPDATE projects SET name = ?, favorite = ?, last_opened_at = ? WHERE id = ?`,
++      )
++      .run(
++        input.name,
++        input.favorite === undefined ? existing.favorite : input.favorite ? 1 : 0,
++        now,
++        existing.id,
++      );
++    return getDb().prepare("SELECT * FROM projects WHERE id = ?").get(existing.id) as ProjectRow;
++  }
++  const id = crypto.randomUUID();
++  getDb()
++    .prepare(
++      `INSERT INTO projects (id, name, root_path, favorite, last_opened_at, created_at)
++       VALUES (?, ?, ?, ?, ?, ?)`,
++    )
++    .run(id, input.name, input.rootPath, input.favorite ? 1 : 0, now, now);
++  addAllowedRoot(input.rootPath);
++  return getDb().prepare("SELECT * FROM projects WHERE id = ?").get(id) as ProjectRow;
++}
++
++export function listWorkspaces(projectId?: string): WorkspaceRow[] {
++  if (projectId) {
++    return getDb()
++      .prepare(
++        `SELECT * FROM workspaces WHERE project_id = ? ORDER BY created_at DESC`,
++      )
++      .all(projectId) as WorkspaceRow[];
++  }
++  return getDb()
++    .prepare(`SELECT * FROM workspaces ORDER BY created_at DESC`)
++    .all() as WorkspaceRow[];
++}
++
++export function createWorkspace(input: {
++  projectId: string;
++  displayName: string;
++  absolutePath: string;
++  isolation: "current_folder" | "git_worktree";
++  baseBranch?: string;
++  worktreePath?: string;
++}): WorkspaceRow {
++  const id = crypto.randomUUID();
++  const now = new Date().toISOString();
++  getDb()
++    .prepare(
++      `INSERT INTO workspaces
++        (id, project_id, display_name, absolute_path, isolation, base_branch, worktree_path, status, created_at)
++       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
++    )
++    .run(
++      id,
++      input.projectId,
++      input.displayName,
++      input.absolutePath,
++      input.isolation,
++      input.baseBranch ?? null,
++      input.worktreePath ?? null,
++      now,
++    );
++  getDb()
++    .prepare(`UPDATE projects SET last_opened_at = ? WHERE id = ?`)
++    .run(now, input.projectId);
++  return getDb().prepare("SELECT * FROM workspaces WHERE id = ?").get(id) as WorkspaceRow;
++}
++
++export function bindSession(
++  workspaceId: string,
++  opencodeSessionId: string,
++  title: string,
++): void {
++  getDb()
++    .prepare(
++      `INSERT INTO session_bindings (workspace_id, opencode_session_id, title, updated_at)
++       VALUES (?, ?, ?, ?)
++       ON CONFLICT(workspace_id, opencode_session_id) DO UPDATE SET
++         title = excluded.title,
++         updated_at = excluded.updated_at`,
++    )
++    .run(workspaceId, opencodeSessionId, title, new Date().toISOString());
++}
