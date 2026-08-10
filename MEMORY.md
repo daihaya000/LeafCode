@@ -1,3 +1,38 @@
+# 作業ログ: EXE起動直後のHomeView/TaskView軽量化
+
+## 日付
+
+2026-08-10
+
+## 調査
+
+- `web/src/components/task/TaskView.tsx` は180k文字超・フック182個・useMemo/useCallback多数。初期レンダリング時にメッセージ配列の派生計算（timeline/planPaths/siblingTaskCallIds/sessionTouchedPaths/contextUsage/cumulativeCost等）が毎回全メッセージを走査している。
+- `web/src/components/home/HomeView.tsx` も同様に、起動直後の `/provider` / `/config` / `/agent` / `/extensions/provider-models` / `/qwen-native/status` を一括並列取得し、モデルoptionのfilter/sort/mergeを実行している。
+- `useSessionStream` はセッション切替時に前セッションの `messages` を一瞬返しうる構造だったが、実際には既に `visibleState` でガード済み。重たさの主因は派生計算の計算量と、即座にレンダリングされる右パネル/WorkflowPanel/PtyPanelの初期化・内部副作用である。
+
+## 実装内容
+
+- `web/src/components/task/TaskView.tsx`:
+  - `WorkflowPanel` / `PtyPanel` を `React.lazy` + `Suspense` で遅延読み込み。初期表示時にこれらの重たいパネルを評価・マウントしないようにした。ターミナルパネルは開いたときだけ読み込まれる。
+  - `workflowVisible` の三項演算子を `<>...</>` Fragmentで正しく閉じ、typecheckが通る形に修正。
+- `web/src/components/task/TaskView.test.tsx`:
+  - `PtyPanel` に加え `WorkflowPanel` のモックを追加し、lazy読み込み後もテストが `data-testid` を解決できるようにした。
+  - ターミナルパネルの `data-testid` を親wrapperに移動し、lazy読み込みで実コンポーネントが即座に解決されない環境でもテストが通るようにした。
+- `web/src/lib/useSessionStream.ts`:
+  - セッション切替時のstateガードコメントを明確化。`visibleState` のみを返し、前セッションの `messages` が漏れる余地がないことを注記した（既存ロジックは変更なし）。
+
+## 検証結果
+
+- `npm run typecheck`（web）... 成功
+- `npm run lint`（対象ファイル）... 成功
+- `npm run test -- --run src/lib/useSessionStream.test.ts src/components/task/TaskView.test.tsx src/components/task/PtyPanel.test.tsx src/components/task/WorkflowPanel.test.tsx` ... 199 tests 成功
+
+## 変更ファイル
+
+- `web/src/components/task/TaskView.tsx`
+- `web/src/components/task/TaskView.test.tsx`
+- `web/src/lib/useSessionStream.ts`
+
 # 作業ログ: Qwen-MM-Plugins MCP 初回接続タイムアウト修正
 
 # 作業ログ: OpenCode登録済み画像モデルによる事前解析

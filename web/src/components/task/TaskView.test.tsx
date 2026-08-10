@@ -144,6 +144,7 @@ vi.mock("./GraphPanel", () => ({ GraphPanel: () => null }));
 vi.mock("./PartView", () => ({ PartView: () => null }));
 vi.mock("./PermissionCard", () => ({ PermissionCard: () => null }));
 vi.mock("./PtyPanel", () => ({ PtyPanel: () => <div data-testid="pty-panel" /> }));
+vi.mock("./WorkflowPanel", () => ({ WorkflowPanel: () => <div data-testid="workflow-panel" /> }));
 vi.mock("./QuestionCard", () => ({ QuestionCard: () => null }));
 vi.mock("./SessionActions", () => ({
   CompactButton: () => <button type="button" aria-label="コンパクト">コンパクト</button>,

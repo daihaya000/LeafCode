@@ -184,8 +184,8 @@ import { PartView } from "./PartView";
 import { PlanDocumentCard } from "./PlanDocumentCard";
 import { PermissionCard } from "./PermissionCard";
 import { MarkdownViewerPanel } from "./MarkdownViewerPanel";
-import { PtyPanel } from "./PtyPanel";
-import { WorkflowPanel } from "./WorkflowPanel";
+const LazyPtyPanel = lazy(() => import("./PtyPanel").then((m) => ({ default: m.PtyPanel })));
+const LazyWorkflowPanel = lazy(() => import("./WorkflowPanel").then((m) => ({ default: m.WorkflowPanel })));
 import { QuestionCard } from "./QuestionCard";
 import {
   CompactButton,
@@ -195,6 +195,7 @@ import {
 import { NextAction } from "./NextAction";
 import { HeaderKebabMenu, type KebabGroup, type KebabItem } from "./HeaderKebabMenu";
 import { SessionSwitcherDialog } from "./SessionSwitcherDialog";
+import { lazy, Suspense } from "react";
 
 type ProviderResponse = {
   all: {
@@ -4005,7 +4006,12 @@ export function TaskView({ taskId }: { taskId: string }) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        {workflowVisible ? <WorkflowPanel taskId={taskId} onOpenChat={openWorkflowChat} onOpenDiff={openWorkflowDiff} /> : <>
+        {workflowVisible ? (
+          <Suspense fallback={null}>
+            <LazyWorkflowPanel taskId={taskId} onOpenChat={openWorkflowChat} onOpenDiff={openWorkflowDiff} />
+          </Suspense>
+        ) : (
+          <>
         {/* Chat column */}
         <div
           className={cx(
@@ -4721,8 +4727,10 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
           {sidePanel === "pty" && (
-            <div className="flex min-h-0 w-full flex-1">
-              <PtyPanel directory={task.directory} />
+            <div className="flex min-h-0 w-full flex-1" data-testid="pty-panel">
+              <Suspense fallback={null}>
+                <LazyPtyPanel directory={task.directory} />
+              </Suspense>
             </div>
           )}
           {sidePanel === "markdown" && (
@@ -4734,7 +4742,8 @@ export function TaskView({ taskId }: { taskId: string }) {
             </div>
           )}
         </div>
-        </>}
+          </>
+        )}
       </div>
 
       {sessionDialogOpen && task.sessionId && (
