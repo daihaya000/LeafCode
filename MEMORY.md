@@ -52,6 +52,7 @@
 - 対象画像解析・OpenCodeプロキシテスト 57件 成功
 - `npm run typecheck` / `npm run lint -- --quiet`（web） 成功
 - `npm run test:encoding` 成功
+- 全体テストで開発環境の永続画像解析設定に依存していた `/api/tasks` Auto画像解析テストを検出し、endpoint環境変数を明示して安定化。`src/app/api/tasks/route.test.ts` 単独88件成功。
 
 ## 実装内容
 

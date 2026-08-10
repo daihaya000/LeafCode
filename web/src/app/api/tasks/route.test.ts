@@ -1422,7 +1422,10 @@ describe("POST /api/tasks auto model selection", () => {
 
   it("analyzes an image natively before sending it to an Auto-selected text model", async () => {
     const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+    const previousBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
     process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+    // Force the endpoint path so the test is independent from persisted UI settings.
+    process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = "http://ollama.example/v1";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({ choices: [{ message: { content: "A native Qwen analysis." } }] }),
@@ -1459,6 +1462,8 @@ describe("POST /api/tasks auto model selection", () => {
       fetchMock.mockRestore();
       if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
       else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
+      if (previousBaseUrl === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+      else process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = previousBaseUrl;
     }
   });
 
