@@ -252,15 +252,32 @@ describe("goalLoopTestSeams", () => {
         workspaceId: "goal-mem-ws",
         goal: "ship it",
         acceptance: [],
-        progress: [],
+        progress: [
+          {
+            time: "2026-01-01T00:00:00.000Z",
+            status: "progress",
+            summary: "implemented the first step",
+            next: "run the focused tests",
+            evidence: "changed src/feature.ts",
+          },
+        ],
       } as never;
       const first = goalLoopTestSeams.buildGoalPromptWithMemory(loop, 1, 10);
       expect(first).toContain("<workspace-memory>");
       expect(first).toContain("<!-- webui-goal-loop-prompt -->");
+      expect(first).toContain("Rules:");
 
       const second = goalLoopTestSeams.buildGoalPromptWithMemory(loop, 2, 10);
       expect(second).toContain("<!-- webui-goal-loop-prompt -->");
       expect(second).not.toContain("<workspace-memory>");
+      expect(second).toContain("Continue the WebUI native persistent goal loop");
+      expect(second).not.toContain("- One turn = one iteration.");
+      expect(second).toContain("implemented the first step");
+      expect(second).toContain("run the focused tests");
+      expect(second).toContain("changed src/feature.ts");
+      expect(second.length).toBeLessThan(
+        goalLoopTestSeams.buildGoalPrompt(loop, 2, 10).length,
+      );
     });
   });
 
@@ -299,6 +316,38 @@ describe("goalLoopTestSeams", () => {
       );
       expect(prompt).toContain("Only 1 loop turn(s) of at most 10 have actually been executed");
       expect(prompt).toContain("reports more turns, iterations, or work than the 1 executed turn(s)");
+    });
+
+    it("preserves the latest claim summary and evidence for verification", () => {
+      const prompt = goalLoopTestSeams.buildVerificationPrompt(
+        {
+          goal: "ship it",
+          acceptance: ["tests pass"],
+          progress: [
+            {
+              time: "2026-01-01T00:00:00.000Z",
+              status: "progress",
+              summary: "older progress",
+              evidence: "old evidence",
+            },
+            {
+              time: "2026-01-01T00:01:00.000Z",
+              status: "completed",
+              summary: "final completion claim",
+              evidence: "vitest run: 42 passed; src/feature.ts changed",
+            },
+          ],
+        } as never,
+        2,
+        10,
+      );
+
+      expect(prompt).toContain("summary: final completion claim");
+      expect(prompt).toContain(
+        "evidence: vitest run: 42 passed; src/feature.ts changed",
+      );
+      expect(prompt).not.toContain("summary: older progress");
+      expect(prompt).not.toContain("evidence: old evidence");
     });
   });
 

@@ -741,16 +741,19 @@ export async function pauseGoalLoopForManualSend(
 }
 
 /**
- * Prefixes the goal prompt with the approved-memory block on the very first
- * turn. `isFirstTurn` true only for turn 1; later turns reuse the same prompt
- * shape unmodified. Returns the untruncated prompt text.
+ * Prefixes the full goal prompt with the approved-memory block on the very
+ * first turn. Later turns use the compact continuation prompt so the fixed
+ * rules do not get appended to the transcript repeatedly.
  */
 function buildGoalPromptWithMemory(
   loop: GoalLoopDto,
   turnNumber: number,
   maxTurns: number,
 ): string {
-  const prompt = buildGoalPrompt(loop, turnNumber, maxTurns);
+  const prompt =
+    turnNumber === 1
+      ? buildGoalPrompt(loop, turnNumber, maxTurns)
+      : buildGoalContinuationPrompt(loop, turnNumber, maxTurns);
   if (turnNumber !== 1) return prompt;
   const memory = memoryInjectionFor(loop.workspaceId);
   return memory ? `${memory}\n${prompt}` : prompt;
@@ -802,6 +805,50 @@ The very last thing you output this turn must be a single fenced JSON block:
 - completed: the goal is complete with concrete evidence.
 - blocked: user input or manual intervention is required (put the reason in blockedReason).
 - summary is required. Write nothing after the closing fence.`;
+}
+
+/**
+ * Short prompt used after turn 1. The goal and acceptance criteria remain in
+ * the prompt because they are the loop's durable task state, while the long
+ * static rules are reduced to the few invariants needed for one continuation
+ * turn. Keep the structured progress fields, including evidence, so the next
+ * turn and the later verification turn retain the previous claim context.
+ */
+function buildGoalContinuationPrompt(
+  loop: GoalLoopDto,
+  turnNumber: number,
+  maxTurns: number,
+): string {
+  const acceptance = loop.acceptance.length
+    ? `\n\nAcceptance criteria:\n${loop.acceptance.map((a, i) => `${i + 1}. ${a}`).join("\n")}`
+    : "";
+  const recent = loop.progress.length
+    ? `\n\nRecent progress:\n${loop.progress
+        .slice(-2)
+        .map(
+          (p) =>
+            `- ${p.time}: ${p.summary}${p.next ? ` / next: ${p.next}` : ""}${
+              p.evidence ? ` / evidence: ${p.evidence}` : ""
+            }`,
+        )
+        .join("\n")}`
+    : "";
+  return `<!-- webui-goal-loop-prompt -->
+
+Continue the WebUI native persistent goal loop. Work on exactly one smallest useful step toward the goal, then end this turn for the WebUI to continue.
+
+This is turn ${turnNumber} of at most ${maxTurns}. Report only work actually performed in this turn. Do not simulate future work or claim completion without concrete evidence.
+
+Goal:
+${loop.goal}${acceptance}${recent}
+
+The very last thing you output this turn must be a single fenced JSON block:
+
+\`\`\`json
+{"status":"progress","summary":"what changed this turn","next":"the next step","evidence":"commands run, files touched, results"}
+\`\`\`
+
+Use exactly one status: progress, completed, or blocked. summary is required. Put a blocked reason in blockedReason when status is blocked. Write nothing after the closing fence.`;
 }
 
 function buildVerificationPrompt(
@@ -1510,6 +1557,7 @@ export function stopGoalLoopSchedulerForTest(): void {
 
 export const goalLoopTestSeams = {
   buildGoalPrompt,
+  buildGoalContinuationPrompt,
   buildGoalPromptWithMemory,
   buildVerificationPrompt,
   normalizeAcceptance,

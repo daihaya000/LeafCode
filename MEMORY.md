@@ -4510,3 +4510,31 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 
 - compactのin-flight/cooldownはTaskViewインスタンス単位であり、複数ブラウザタブ間の原子的な二重compact防止ではない。SQLite lockを追加する場合は次の改善候補とする。
 - compact完了は既存の`session.compacted`イベントに伴う`stream.resync()`で待つ。SSE欠落時はcompact POST成功後のresync結果に依存するため、将来は明示的なcompletion waiterとtimeoutを追加できる。
+
+---
+
+# 実装: トークン節約機能 Phase 3 Goal Loop prompt差分化
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- `web/src/lib/goal-loop.ts` のturn 1は従来の完全promptを維持し、turn 2以降は `buildGoalContinuationPrompt` を使うよう変更。
+- continuation promptは固定Rulesを短縮し、turn番号、Goal、acceptance criteria、直近2件のprogressだけを保持する。
+- progressのsummary / next / evidenceは維持し、次turnが前turnの実施内容と証拠を参照できるようにした。
+- `buildVerificationPrompt` は変更せず、最新のcompletion claimのsummary/evidenceを従来どおり検証promptへ渡す。
+
+## 回帰テスト
+
+- turn 1だけmemory blockを注入し、turn 2以降はmemory blockを再注入しないことを確認。
+- turn 2以降が完全promptより短く、固定Rulesを繰り返さないことを確認。
+- verification promptが最新claimのsummary/evidenceを保持し、古いprogressのsummary/evidenceを混入させないことを確認。
+- marker、JSON output contract、turn番号、既存のGoal Loop継続・検証経路を維持。
+
+## 検証結果
+
+- `npx vitest run` 成功: 264 files / 3121 tests passed / 1 skipped。
+- `npx tsc --noEmit --pretty false` 成功。
+- `npx eslint src/lib/goal-loop.ts src/lib/goal-loop.test.ts` 成功。
