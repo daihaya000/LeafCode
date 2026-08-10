@@ -13,6 +13,7 @@ import { resolveHostControlUrl } from "@/lib/host-control";
  */
 
 export const SESSION_COOKIE = "webui_session";
+export const TRUSTED_DEVICE_COOKIE = "webui_trusted_device";
 
 /** Extract the session token from a Cookie header value. */
 export function sessionTokenFromCookieHeader(
@@ -35,6 +36,17 @@ export function sessionTokenFromCookieHeader(
   }
 }
 
+function trustedDeviceTokenFromCookieHeader(header: string | null | undefined): string | null {
+  if (!header) return null;
+  const match = header.match(new RegExp(`(?:^|;\\s*)${TRUSTED_DEVICE_COOKIE}=([^;]*)`));
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1]) || null;
+  } catch {
+    return null;
+  }
+}
+
 export type VerifiedSession = { username: string };
 
 /**
@@ -48,13 +60,14 @@ export async function verifySession(
   req: Request,
 ): Promise<VerifiedSession | null> {
   const token = sessionTokenFromCookieHeader(req.headers.get("cookie"));
-  if (!token) return null;
+  const trustedDeviceToken = trustedDeviceTokenFromCookieHeader(req.headers.get("cookie"));
+  if (!token && !trustedDeviceToken) return null;
 
   try {
     const res = await fetch(`${resolveHostControlUrl()}/auth/verify`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, trustedDeviceToken }),
       cache: "no-store",
       signal: AbortSignal.timeout(3000),
     });

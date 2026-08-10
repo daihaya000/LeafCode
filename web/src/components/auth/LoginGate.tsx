@@ -53,7 +53,7 @@ export function useLoginGate() {
 }
 
 type LoginFormProps = {
-  onLogin: (username: string) => void;
+  onLogin: () => void;
 };
 
 export function LoginForm({ onLogin }: LoginFormProps) {
@@ -61,6 +61,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trustDevice, setTrustDevice] = useState(false);
 
   const submit = useCallback(
     async (e: React.FormEvent) => {
@@ -68,15 +69,15 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       setError(null);
       if (!username.trim() || !password) return;
       setBusy(true);
-      const result = await login(username.trim(), password);
+      const result = await login(username.trim(), password, trustDevice);
       setBusy(false);
       if (result.ok) {
-        onLogin(username.trim());
+        onLogin();
         return;
       }
       setError(result.error);
     },
-    [username, password, onLogin],
+    [username, password, trustDevice, onLogin],
   );
 
   return (
@@ -97,6 +98,10 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             autoComplete="username"
             className="h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm outline-none focus:border-border-strong"
           />
+        </label>
+        <label className="flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
+          この端末を承認し、次回からログインを省略する
         </label>
         <label className="block">
           <span className="mb-1 block text-xs text-muted">パスワード</span>

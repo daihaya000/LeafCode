@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
     username?: string;
     password?: string;
+    trustDevice?: boolean;
   } | null;
 
   if (!body?.username || !body?.password) {
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         username: body.username,
         password: body.password,
+        trustDevice: body.trustDevice === true,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(5000),

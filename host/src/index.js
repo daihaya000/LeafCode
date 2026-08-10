@@ -63,6 +63,7 @@ import {
   verifyUser,
 } from './auth-store.js';
 import { readAuthConfig, writeAuthConfig } from './auth-config.js';
+import { createTrustedDeviceStore } from './trusted-device-store.js';
 import {
   createLoginThrottle,
   createThrottleStore,
@@ -2338,6 +2339,7 @@ async function startControlServer() {
         }),
     },
     sessionSecret: CONTROL_SECRET,
+    trustedDeviceStore: createTrustedDeviceStore(),
     controlPort: CONTROL_PORT,
     // Persisted so a host restart does not hand a brute-force attempt a fresh
     // budget. Two separate windows: per-account (protects the Windows lockout

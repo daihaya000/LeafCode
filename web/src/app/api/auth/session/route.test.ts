@@ -222,6 +222,25 @@ describe("GET /api/auth/session", () => {
     expect(body.loginRequired).toBe(true);
   });
 
+  it("accepts a verified trusted-device cookie without a session cookie", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/auth/verify")) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ trustedDeviceToken: "device-token" });
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true, username: "alice" }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(configResponse({ hasUsers: true }));
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const body = (await (
+      await GET(request({ host: "192.168.1.50:3000", cookie: "webui_trusted_device=device-token" }))
+    ).json()) as Body & { authenticated: boolean; username: string | null };
+    expect(body.authenticated).toBe(true);
+    expect(body.username).toBe("alice");
+  });
+
   it("reports authenticated=false when the host rejects the cookie", async () => {
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith("/auth/verify")) {

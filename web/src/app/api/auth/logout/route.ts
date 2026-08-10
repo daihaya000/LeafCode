@@ -4,11 +4,12 @@ import { resolveHostControlUrl } from "@/lib/host-control";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(req: Request) {
   const base = resolveHostControlUrl();
   try {
     const res = await fetch(`${base}/auth/logout`, {
       method: "POST",
+      headers: { cookie: req.headers.get("cookie") ?? "" },
       cache: "no-store",
       signal: AbortSignal.timeout(3000),
     });

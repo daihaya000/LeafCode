@@ -100,6 +100,16 @@ describe("POST /api/auth/login", () => {
     expect(res.headers.get("set-cookie")).toContain("webui_session=");
   });
 
+  it("forwards a trusted-device approval request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(hostOk());
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await POST(req({ username: "alice", password: "secret", trustDevice: true }));
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({ trustDevice: true });
+  });
+
   it("maps a host rejection to 401 without leaking the reason", async () => {
     global.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ok: false, error: "invalid credentials" }), {

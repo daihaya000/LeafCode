@@ -262,8 +262,15 @@ function authCookieHeader(token) {
   return `webui_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`;
 }
 
+function trustedDeviceCookieHeader(token) {
+  return `webui_trusted_device=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=7776000`;
+}
+
 function clearAuthCookie(res) {
-  res.setHeader('Set-Cookie', 'webui_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+  res.setHeader('Set-Cookie', [
+    'webui_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
+    'webui_trusted_device=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
+  ]);
 }
 
 /**
@@ -275,6 +282,17 @@ function getSessionCookie(header) {
   const raw = Array.isArray(header) ? header.join('; ') : header;
   if (!raw) return null;
   const match = raw.match(/(?:^|;\s*)webui_session=([^;]+)/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function getTrustedDeviceCookie(header) {
+  const raw = Array.isArray(header) ? header.join('; ') : header;
+  const match = raw?.match(/(?:^|;\s*)webui_trusted_device=([^;]+)/);
   if (!match) return null;
   try {
     return decodeURIComponent(match[1]);
@@ -320,6 +338,7 @@ function getSessionCookie(header) {
  *   ipThrottle?: ReturnType<typeof createLoginThrottle>,
  *   controlPort?: number,
  *   revocationStore?: ReturnType<typeof createRevocationStore>,
+ *   trustedDeviceStore?: { issue: (username: string) => string, verify: (token: string) => { username: string } | null, revoke: (token: string) => void },
  *   auditLog?: { record: (event: object) => void },
  * }} handlers
  * @returns {(req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void>}
@@ -664,6 +683,8 @@ export function createControlRequestHandler(handlers) {
             result: 'allow',
           });
         }
+        const trustedDeviceToken = getTrustedDeviceCookie(req.headers?.cookie);
+        if (trustedDeviceToken) handlers.trustedDeviceStore?.revoke(trustedDeviceToken);
         clearAuthCookie(res);
         res.writeHead(200, JSON_HEADERS);
         res.end(JSON.stringify({ ok: true }));
@@ -681,13 +702,18 @@ export function createControlRequestHandler(handlers) {
             ? body.token
             : getSessionCookie(req.headers?.cookie);
         const session = token ? verifySessionToken(secret, token) : null;
-        if (!session || revocationStore.isRevoked(session.jti)) {
+        const trustedDeviceToken = isPlainObject(body) && typeof body.trustedDeviceToken === 'string'
+          ? body.trustedDeviceToken
+          : getTrustedDeviceCookie(req.headers?.cookie);
+        const trustedDevice = trustedDeviceToken ? handlers.trustedDeviceStore?.verify(trustedDeviceToken) : null;
+        if ((!session || revocationStore.isRevoked(session.jti)) && !trustedDevice) {
           res.writeHead(401, JSON_HEADERS);
           res.end(JSON.stringify({ ok: false, error: 'invalid session' }));
           return;
         }
         res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ ok: true, username: session.username, jti: session.jti, isAdmin: authStore.isAdmin?.(session.username) === true }));
+        const username = trustedDevice?.username ?? session.username;
+        res.end(JSON.stringify({ ok: true, username, jti: session?.jti, isAdmin: authStore.isAdmin?.(username) === true }));
         return;
       }
       if (subRoute !== 'login') {
@@ -698,6 +724,7 @@ export function createControlRequestHandler(handlers) {
       const body = await readJsonBody(req);
       const username = isPlainObject(body) && typeof body.username === 'string' ? body.username : '';
       const password = isPlainObject(body) && typeof body.password === 'string' ? body.password : '';
+      const trustDevice = isPlainObject(body) && body.trustDevice === true;
       const clientIp = clientIpOf(req);
       if (!username || !password) {
         res.writeHead(400, JSON_HEADERS);
@@ -776,9 +803,10 @@ export function createControlRequestHandler(handlers) {
         reason: source,
       });
       const secret = handlers.sessionSecret || 'open-code-webui-no-secret';
-      const token = signSessionToken(secret, username);
-      res.writeHead(200, { ...JSON_HEADERS, 'Set-Cookie': authCookieHeader(token) });
-      res.end(JSON.stringify({ ok: true, username, source }));
+      const token = trustDevice ? handlers.trustedDeviceStore?.issue(username) : null;
+      const cookie = token ? trustedDeviceCookieHeader(token) : authCookieHeader(signSessionToken(secret, username));
+      res.writeHead(200, { ...JSON_HEADERS, 'Set-Cookie': cookie });
+      res.end(JSON.stringify({ ok: true, username, source, trustedDevice: Boolean(token) }));
       return;
     }
 

@@ -151,12 +151,12 @@ function writeStoredSession(session: AuthSession | null) {
   }
 }
 
-export async function login(username: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function login(username: string, password: string, trustDevice = false): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const result = await sendJson<{ ok: boolean; username?: string; error?: string }>(
       "POST",
       "/api/auth/login",
-      { username, password },
+      { username, password, trustDevice },
     );
     if (!result.ok || typeof result.username !== "string") {
       return { ok: false, error: result.error || "ログインに失敗しました" };

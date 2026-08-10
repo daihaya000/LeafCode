@@ -55,8 +55,8 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText("パスワード"), { target: { value: "secret" } });
     fireEvent.click(screen.getByRole("button", { name: "ログイン" }));
 
-    await waitFor(() => expect(login).toHaveBeenCalledWith("alice", "secret"));
-    await waitFor(() => expect(onLogin).toHaveBeenCalledWith("alice"));
+    await waitFor(() => expect(login).toHaveBeenCalledWith("alice", "secret", false));
+    await waitFor(() => expect(onLogin).toHaveBeenCalledWith());
   });
 
   it("shows an error when login fails", async () => {
