@@ -97,6 +97,23 @@ describe("listTasks cost aggregation", () => {
     const { tasks } = await listTasks();
     expect(tasks[0].cost).toBeUndefined();
   });
+
+  it("estimates cost from assistant tokens when Session.cost is unavailable", async () => {
+    h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 0 }];
+    h.ocResponses["/repo/session/sess1/message"] = [{
+      info: {
+        id: "msg1",
+        role: "assistant",
+        providerID: "openai",
+        modelID: "gpt-5.6-luna",
+        tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+      },
+      parts: [],
+    }];
+
+    const { tasks } = await listTasks();
+    expect(tasks[0].cost).toBe(0.32);
+  });
 });
 
 describe("getTask cost aggregation", () => {

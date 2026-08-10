@@ -6,10 +6,11 @@ import {
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
-import { SESSION_LIST_PATH, SESSION_STATUS_PATH } from "./opencode-paths";
+import { SESSION_LIST_PATH, SESSION_STATUS_PATH, sessionMessagePath } from "./opencode-paths";
+import { estimateOpenAIApiCost } from "./openai-pricing";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
-import type { SessionStatus, TaskSummary } from "./types";
+import type { MessageWithParts, SessionStatus, TaskSummary } from "./types";
 
 type StatusMap = Record<string, SessionStatus>;
 
@@ -80,7 +81,10 @@ async function sessionStatusFor(dirs: string[]): Promise<{
  * directory whose engine call fails simply contributes no entries, same
  * tolerance as sessionStatusFor.
  */
-async function sessionMetaFor(dirs: string[]): Promise<MetaMap> {
+async function sessionMetaFor(
+  dirs: string[],
+  trackedSessionIds: ReadonlySet<string>,
+): Promise<MetaMap> {
   const metas: MetaMap = {};
   if (dirs.length === 0) return metas;
   await Promise.allSettled(
@@ -101,6 +105,25 @@ async function sessionMetaFor(dirs: string[]): Promise<MetaMap> {
           meta.providerID = s.model.providerID;
         if (typeof s.model?.id === "string") meta.modelID = s.model.id;
         if (typeof s.model?.variant === "string") meta.variant = s.model.variant;
+        if ((meta.cost ?? 0) <= 0 && trackedSessionIds.has(s.id)) {
+          try {
+            const messages = await ocServer<MessageWithParts[]>(
+              dir,
+              sessionMessagePath(s.id),
+              { timeoutMs: 1500 },
+            );
+            const cost = messages.reduce((total, message) => {
+              if (message.info.role !== "assistant") return total;
+              const reported = message.info.cost ?? 0;
+              return total + (reported > 0
+                ? reported
+                : estimateOpenAIApiCost(message.info) ?? 0);
+            }, 0);
+            if (cost > 0) meta.cost = cost;
+          } catch {
+            // A missing transcript must not hide the rest of the task list.
+          }
+        }
         metas[s.id] = meta;
       }
     }),
@@ -179,7 +202,10 @@ export async function listTasks(): Promise<{
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
     sessionStatusFor(dirs),
     Promise.all(dirs.map((d) => dirStat(d))),
-    sessionMetaFor(dirs),
+    sessionMetaFor(
+      dirs,
+      new Set([...bindings.values()].map((binding) => binding.opencode_session_id)),
+    ),
   ]);
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
 
@@ -210,7 +236,10 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
     sessionStatusFor(dirs),
     Promise.all(dirs.map((d) => dirStat(d))),
-    sessionMetaFor(dirs),
+    sessionMetaFor(
+      dirs,
+      new Set([...bindings.values()].map((binding) => binding.opencode_session_id)),
+    ),
   ]);
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
 
@@ -241,7 +270,10 @@ export async function getTask(id: string): Promise<TaskSummary | null> {
   const [stat, { engineOk, statuses }, metas] = await Promise.all([
     dirStat(ws.absolute_path, 3000),
     sessionStatusFor([ws.absolute_path]),
-    sessionMetaFor([ws.absolute_path]),
+    sessionMetaFor(
+      [ws.absolute_path],
+      new Set(binding ? [binding.opencode_session_id] : []),
+    ),
   ]);
   const status = binding ? statuses[binding.opencode_session_id] : undefined;
   const meta = binding ? metas[binding.opencode_session_id] : undefined;

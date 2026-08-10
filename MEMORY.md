@@ -3276,3 +3276,21 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm test -- --run src/components/task/TaskView.test.tsx src/components/task/MessageMetaHeader.test.tsx` ... 125 tests 成功
 - `npx eslint src/components/task/TaskView.tsx src/components/task/MessageMetaHeader.tsx src/components/task/TaskView.test.tsx src/components/task/MessageMetaHeader.test.tsx` ... 成功
 - `npm run typecheck` ... 成功
+
+## サイドバーのコスト補完
+
+### 日付
+
+2026-08-10
+
+### 修正内容
+
+- タスク一覧APIがセッションの実測 `cost` を返さない場合、紐付くセッションの assistant 応答トークンからコストを合算して `TaskSummary.cost` を補完するようにした。
+- サイドバーは既存の `TaskSummary.cost` 列を使うため、追加のクライアント側リクエストなしで個別タスクのコストを表示する。
+- 実測コストがあるセッションのメッセージは読み込まず、従来の集計値を優先する。
+
+### 検証結果
+
+- `npm test -- --run src/lib/task-service.test.ts src/components/shell/Sidebar.test.tsx` ... 53 tests 成功
+- `npx eslint src/lib/task-service.ts src/lib/task-service.test.ts` ... 成功
+- `npm run typecheck` ... 成功
