@@ -100,9 +100,10 @@ vi.mock("@/lib/qwen-native-vision", async (importOriginal) => {
 
 import { assertAllowedDirectory } from "@/lib/allowlist";
 import { SSE_UPSTREAM_CONNECT_TIMEOUT_MS } from "@/lib/sse-health";
-import { GET, POST } from "./route";
+import { GET, POST, __clearGetResponseCacheForTest } from "./route";
 
 beforeEach(() => {
+  __clearGetResponseCacheForTest();
   goalLoopHook.workspaceIds = [];
   goalLoopHook.directoryWorkspaceIds = [];
   goalLoopHook.outcomes = [];
@@ -885,6 +886,71 @@ describe("GET provider/config responses", () => {
     expect(JSON.stringify(body)).not.toContain("sk-secret123");
     expect(JSON.stringify(body)).not.toContain("sk-leaked");
     expect(JSON.stringify(body)).not.toContain("sk-global");
+    fetchMock.mockRestore();
+  });
+
+  it("serves GET /provider from the short-TTL response cache on the second hit and keeps secrets masked", async () => {
+    // Two consecutive directory-less GET /provider calls (the Home composer
+    // fires /api/opencode/provider and /api/extensions/provider-models in the
+    // same burst, both hitting OpenCode /provider underneath). The second
+    // call must be an in-memory return: fetch is invoked once, not twice.
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({
+        all: [{ id: "openai", key: "sk-secret123" }],
+        connected: ["openai"],
+      }));
+
+    const first = await GET(
+      new Request("http://localhost/api/opencode/provider", {
+        headers: { host: "127.0.0.1:3000" },
+      }) as never,
+      { params: Promise.resolve({ path: ["provider"] }) },
+    );
+    const firstBody = (await first.json()) as { all: { key: string }[] };
+
+    const second = await GET(
+      new Request("http://localhost/api/opencode/provider", {
+        headers: { host: "127.0.0.1:3000" },
+      }) as never,
+      { params: Promise.resolve({ path: ["provider"] }) },
+    );
+    const secondBody = (await second.json()) as { all: { key: string }[] };
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Both responses carry the masked secret (cache must not leak the raw one).
+    expect(JSON.stringify(firstBody)).not.toContain("sk-secret123");
+    expect(JSON.stringify(secondBody)).not.toContain("sk-secret123");
+    // Cache hit returns the same masked payload as the first call.
+    expect(secondBody).toEqual(firstBody);
+    fetchMock.mockRestore();
+  });
+
+  it("does not cache GET /provider across different directories (per-directory isolation)", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = new URL(String(input));
+        return Promise.resolve(
+          jsonResponse({ dir: url.searchParams.get("directory") ?? null }),
+        );
+      });
+
+    await GET(
+      new Request("http://localhost/api/opencode/provider?directory=C%3A%5CrepoA", {
+        headers: { host: "127.0.0.1:3000" },
+      }) as never,
+      { params: Promise.resolve({ path: ["provider"] }) },
+    );
+    await GET(
+      new Request("http://localhost/api/opencode/provider?directory=C%3A%5CrepoB", {
+        headers: { host: "127.0.0.1:3000" },
+      }) as never,
+      { params: Promise.resolve({ path: ["provider"] }) },
+    );
+
+    // Two different directories => two upstream fetches.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     fetchMock.mockRestore();
   });
 });

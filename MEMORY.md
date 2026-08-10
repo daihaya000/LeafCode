@@ -1,3 +1,65 @@
+# 作業ログ: 透過プロキシ /provider GET レスポンスキャッシュ追加
+
+## 日付
+
+2026-08-11
+
+## 症状
+
+前回の provider-models キャッシュで `/api/extensions/provider-models` の2回目は短縮したが、Home 初回レンダを律速する `/api/opencode/provider`（透過プロキシ、0.99s）は未キャッシュで残っていた。
+
+## 根本原因
+
+`web/src/app/api/opencode/[...path]/route.ts` は `/provider` と `/agent` の GET を `cacheCapabilityMetadata` で**書き込み時の fail-closed 用**キャッシュには保存するが、GET レスポンス自体は毎回 OpenCode の `/provider` を `fetch()` していた。Home の `Promise.all` で `/api/opencode/provider` と `/api/extensions/provider-models` が同時に走り、両者とも OpenCode `/provider` を叩く。
+
+## 修正
+
+`route.ts` に GET レスポンス用の短いTTL（5秒）キャッシュを追加:
+
+- キャッシュキー: `${directory ?? ""}\0${pathname}`（`directory` が `null` の Home 呼び出しも含む）
+- 対象: GET `/provider` と GET `/agent` の JSON レスポンスのみ（SSE・非JSON・POST/PUT/DELETE は除外）
+- 保存内容: **maskSecrets 済み**の JSON（`/provider`）または parsed JSON（`/agent`）+ hop-by-hop除外済みヘッダ
+- TTL: 5秒（プロバイダの接続/切断が数秒で表面化するよう短めに設定）
+- 上限: 32エントリ（LRU-ish で古いものから退避）
+- キャッシュヒット時は `fetch()` をスキップし、キャッシュから `NextResponse.json()` を構築
+
+`/provider` は `shouldMaskSecrets` ブロックで `maskSecrets(json)` を返す箇所でキャッシュ保存。`/agent` は非対象のため別途 parsed JSON をキャッシュ保存するブロックを新設。
+
+- `web/src/app/api/opencode/[...path]/route.ts:240`（キャッシュ定義）、`:786`（ヒットチェック）、`:911`（`/provider` 保存）、`:939`（`/agent` 保存）
+- テスト用に `__clearGetResponseCacheForTest()` を export
+
+## 計測（修正後）
+
+| API | 修正前 | 修正後（1回目） | 修正後（2回目・キャッシュヒット） |
+| --- | --- | --- | --- |
+| `/api/opencode/provider` | 0.99s | 0.83s | **0.56s**（OpenCode `/provider` 呼び出し分が消滅） |
+| `/api/opencode/agent` | 0.015s | 0.013s | 0.016s（元々速い） |
+
+Home 初回バーストの `/api/opencode/provider` と `/api/extensions/provider-models` は `Promise.all` で同時に走るため、先に完了した側がキャッシュを温め、後から完了する側がヒットする。最悪ケースでも OpenCode `/provider` 呼び出しは1回に圧縮される。
+
+## 回帰テスト
+
+`route.test.ts` に2件追加:
+
+1. `serves GET /provider from the short-TTL response cache on the second hit and keeps secrets masked` — 2回連続 GET で `fetch` が1回だけ呼ばれ、両レスポンスの secret が masked されることを検証
+2. `does not cache GET /provider across different directories` — 異なる `directory` で2回呼ぶと `fetch` が2回呼ばれる（per-directory 分離）ことを検証
+
+`beforeEach` で `__clearGetResponseCacheForTest()` を呼び、テスト間でキャッシュが漏れないよう保証。
+
+## 検証
+
+- `npx tsc --noEmit`: 合格
+- `npx eslint <変更ファイル>`: 合格
+- `npx vitest run`: 267 ファイル 3170 passed / 1 skipped（2回連続合格）
+
+## 残存リスク・制約
+
+- キャッシュは5秒TTLのため、プロバイダ接続/切断後5秒間は古い一覧が返る可能性。Home の初回レンダでは許容範囲（ユーザーが設定を変えた直後に再読み込みすれば最新が取得される）。
+- `/config` など他の `shouldMaskSecrets` 対象パスはキャッシュ対象外（`getResponseCacheKey` で `/provider` と `/agent` のみ許可）。`/config` は頻繁に変わる設定を含むため、キャッシュは意図的に回避。
+- `ProviderModelsSettings.test.tsx` が全 vitest 実行時に1度だけ flaky に失敗したが、stash した状態（前回コミット時点）でも再現せず、再実行で2回連続合格。既存のタイミング依存の flaky テストで、今回の変更とは無関係。
+
+---
+
 # 作業ログ: 起動直後のフロント高速化（provider-models キャッシュ + tasks 空リスト早期return）
 
 ## 日付

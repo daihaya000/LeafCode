@@ -239,6 +239,52 @@ type AgentResponse = {
 const cachedProvidersByDir = new Map<string, ProviderResponse>();
 const cachedAgentsByDir = new Map<string, AgentResponse>();
 
+// Short-TTL response cache for read-only GET /provider and GET /agent JSON
+// replies. The Home composer fires both `/api/opencode/provider` and
+// `/api/extensions/provider-models` in the same Promise.all burst, and each
+// reaches OpenCode's `/provider` underneath. The provider-models route has
+// its own in-process cache; this one collapses the transparent-proxy side so
+// the second hit in the same boot burst is an in-memory return. The cache key
+// includes the directory (null allowed — Home calls without one) so the
+// masked response for one directory never leaks into another. TTL is short
+// so a provider reconnect/disconnect surfaces within seconds.
+const GET_RESPONSE_CACHE_TTL_MS = 5_000;
+const GET_RESPONSE_CACHE_MAX = 32;
+type GetResponseCacheEntry = {
+  at: number;
+  status: number;
+  headers: Record<string, string>;
+  body: unknown;
+};
+const getResponseCache = new Map<string, GetResponseCacheEntry>();
+
+/** Test-only: drop the GET response cache between tests. */
+export function __clearGetResponseCacheForTest(): void {
+  getResponseCache.clear();
+}
+
+function storeGetResponseCache(
+  key: string,
+  entry: GetResponseCacheEntry,
+): void {
+  getResponseCache.set(key, entry);
+  while (getResponseCache.size > GET_RESPONSE_CACHE_MAX) {
+    const oldest = getResponseCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    getResponseCache.delete(oldest);
+  }
+}
+
+function getResponseCacheKey(
+  directory: string | null,
+  pathname: string,
+): string | null {
+  // Only cache the two read-only metadata endpoints. Everything else (writes,
+  // /config, /session, SSE, ...) is never cached here.
+  if (pathname !== "/provider" && pathname !== "/agent") return null;
+  return `${directory ?? ""}\0${pathname}`;
+}
+
 type ImageAttachment = { mime: string; dataUrl: string };
 
 /** Collect image attachments from v1 `parts` and v2 `prompt.files` shapes. */
@@ -744,6 +790,30 @@ async function proxy(
     if (req.method !== "GET" && req.method !== "HEAD") {
       init.body = requestBody;
     }
+    // Short-TTL GET response cache for read-only /provider and /agent JSON.
+    // Skipped for SSE and for any non-GET method. See getResponseCacheKey.
+    if (req.method === "GET") {
+      const cacheKey = getResponseCacheKey(directory, pathname);
+      if (cacheKey) {
+        const cached = getResponseCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < GET_RESPONSE_CACHE_TTL_MS) {
+          // Refresh TTL position (LRU-ish) and return a fresh Response built
+          // from the cached masked JSON. Headers are rebuilt from the
+          // cached hop-by-hop-filtered set so secrets stay masked.
+          getResponseCache.delete(cacheKey);
+          getResponseCache.set(cacheKey, cached);
+          const cachedHeaders = new Headers();
+          for (const [k, v] of Object.entries(cached.headers)) {
+            cachedHeaders.set(k, v);
+          }
+          cachedHeaders.set("Cache-Control", "no-cache, no-transform");
+          return NextResponse.json(cached.body, {
+            status: cached.status,
+            headers: cachedHeaders,
+          });
+        }
+      }
+    }
     upstream = await fetch(target, init);
     clearSseConnectTimer();
     if (compactionLock) {
@@ -858,7 +928,55 @@ async function proxy(
     contentType.includes("application/json")
   ) {
     const json = await upstream.json();
-    return NextResponse.json(maskSecrets(json), {
+    const masked = maskSecrets(json);
+    // Cache the masked /provider response so the next Home boot burst hit
+    // (e.g. /api/extensions/provider-models following /api/opencode/provider)
+    // is an in-memory return. /config and other shouldMaskSecrets paths are
+    // intentionally NOT cached here — only /provider and /agent are wired in
+    // getResponseCacheKey.
+    const cacheKey = getResponseCacheKey(directory, pathname);
+    if (cacheKey && upstream.ok) {
+      const headers: Record<string, string> = {};
+      outHeaders.forEach((value, key) => {
+        headers[key] = value;
+      });
+      storeGetResponseCache(cacheKey, {
+        at: Date.now(),
+        status: upstream.status,
+        headers,
+        body: masked,
+      });
+    }
+    return NextResponse.json(masked, {
+      status: upstream.status,
+      headers: outHeaders,
+    });
+  }
+
+  // /agent GET JSON is not secret-masked but is read-only metadata that the
+  // Home composer fetches alongside /provider in the same burst. Cache the
+  // parsed JSON for the same short TTL so the second hit is in-memory.
+  if (
+    req.method === "GET" &&
+    pathname === "/agent" &&
+    contentType.includes("application/json") &&
+    upstream.ok
+  ) {
+    const json = await upstream.json();
+    const cacheKey = getResponseCacheKey(directory, pathname);
+    if (cacheKey) {
+      const headers: Record<string, string> = {};
+      outHeaders.forEach((value, key) => {
+        headers[key] = value;
+      });
+      storeGetResponseCache(cacheKey, {
+        at: Date.now(),
+        status: upstream.status,
+        headers,
+        body: json,
+      });
+    }
+    return NextResponse.json(json, {
       status: upstream.status,
       headers: outHeaders,
     });
