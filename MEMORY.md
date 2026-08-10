@@ -18,6 +18,13 @@
 - `SettingsView.tsx` に `vision` タブを登録した。
 - 既存の `OPENCODE_WEBUI_QWEN_NATIVE=1` 等の環境変数は引き続き最優先。ファイル設定はフォールバック。
 
+## 更新: 事前解析モデルのリモート対応
+
+- `VisionSettings.tsx` のラベル・説明・プレースホルダーを「ローカルOllama前提」から「OpenAI互換エンドポイント全般」へ汎用化した。
+- Base URL・モデル名・APIキーの各欄にリモートプロバイダー（OpenAI・Gemini・DashScope等）の例を併記した。
+- コア実装（`qwen-native-vision.ts`）は既にOpenAI互換 `/chat/completions` を呼ぶため変更不要。
+- READMEの説明文も汎用化し、設定画面からのリモートエンドポイント指定が可能である旨を追記した。
+
 ## 検証
 
 - typecheck / Lint 成功

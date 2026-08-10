@@ -168,10 +168,11 @@ export function VisionSettings() {
             aria-hidden="true"
           />
           <div>
-            <h3 className="text-sm font-semibold text-text">ローカルQwen画像解析</h3>
+            <h3 className="text-sm font-semibold text-text">画像事前解析</h3>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">
-              画像非対応モデル使用時に、ローカルOllamaのQwen Visionモデルで画像を事前解析します。
-              DashScope等の外部APIキーは不要です。Ollamaと画像対応モデルを事前に起動してください。
+              画像非対応モデル使用時に、OpenAI互換の画像対応モデルで画像を事前解析しテキストとして取り込みます。
+              ローカルOllama（<code className="font-mono">qwen2.5vl:7b</code> 等）だけでなく、OpenAI・Gemini・DashScope等のOpenAI互換エンドポイントも指定できます。
+              外部APIを利用する場合は該当プロバイダーのAPIキーが必要です。
             </p>
             <p className="mt-1 text-xs text-faint">
               現在の状態:{" "}
@@ -189,7 +190,7 @@ export function VisionSettings() {
         className="rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm"
         disabled={saving}
       >
-        <legend className="px-1 text-sm font-semibold text-text">接続先</legend>
+        <legend className="px-1 text-sm font-semibold text-text">事前解析モデル</legend>
 
         <label
           className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-surface-2"
@@ -201,7 +202,7 @@ export function VisionSettings() {
             className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
             checked={draft.enabled}
             onChange={(event) => updateField("enabled", event.target.checked)}
-            aria-label="ローカルQwen画像解析を有効化"
+            aria-label="画像事前解析を有効化"
           />
           <span className="min-w-0">
             <span className="block text-sm font-medium text-text">有効化</span>
@@ -217,7 +218,7 @@ export function VisionSettings() {
               className="block text-xs font-medium text-muted"
               htmlFor="qwen-native-base-url"
             >
-              Base URL
+              Base URL（OpenAI互換エンドポイント）
             </label>
             <input
               id="qwen-native-base-url"
@@ -226,15 +227,18 @@ export function VisionSettings() {
               value={draft.baseUrl}
               onChange={(event) => updateField("baseUrl", event.target.value)}
               placeholder="http://127.0.0.1:11434/v1"
-              aria-label="Ollama API Base URL"
+              aria-label="事前解析モデルのAPI Base URL"
             />
+            <p className="mt-1 text-[11px] text-faint">
+              ローカルOllama: <code className="font-mono">http://127.0.0.1:11434/v1</code> / OpenAI: <code className="font-mono">https://api.openai.com/v1</code> / Gemini: <code className="font-mono">https://generativelanguage.googleapis.com/v1beta/openai</code>
+            </p>
           </div>
           <div>
             <label
               className="block text-xs font-medium text-muted"
               htmlFor="qwen-native-model"
             >
-              モデル
+              モデル名
             </label>
             <input
               id="qwen-native-model"
@@ -243,15 +247,18 @@ export function VisionSettings() {
               value={draft.model}
               onChange={(event) => updateField("model", event.target.value)}
               placeholder="qwen2.5vl:7b"
-              aria-label="画像解析モデル名"
+              aria-label="事前解析モデル名"
             />
+            <p className="mt-1 text-[11px] text-faint">
+              例: <code className="font-mono">qwen2.5vl:7b</code> / <code className="font-mono">gpt-4o</code> / <code className="font-mono">gemini-2.5-flash</code> / <code className="font-mono">qwen-vl-max</code>
+            </p>
           </div>
           <div>
             <label
               className="block text-xs font-medium text-muted"
               htmlFor="qwen-native-api-key"
             >
-              API キー（省略可）
+              API キー
             </label>
             <input
               id="qwen-native-api-key"
@@ -260,9 +267,12 @@ export function VisionSettings() {
               value={draft.apiKey}
               onChange={(event) => updateField("apiKey", event.target.value)}
               placeholder="ollama"
-              aria-label="Ollama API キー"
+              aria-label="事前解析モデルのAPIキー"
               autoComplete="off"
             />
+            <p className="mt-1 text-[11px] text-faint">
+              ローカルOllamaは省略可（既定値 <code className="font-mono">ollama</code>）。外部APIは該当プロバイダーのキーを入力してください。
+            </p>
           </div>
           <div>
             <label
@@ -327,10 +337,10 @@ export function VisionSettings() {
         <h4 className="text-sm font-semibold text-text">使い方</h4>
         <ol className="mt-2 list-decimal space-y-1 pl-5">
           <li>
-            Ollama で画像対応モデルを事前に Pull &amp; 起動してください（例:{" "}
-            <code className="font-mono">ollama run qwen2.5vl:7b</code>）。
+            画像対応のOpenAI互換モデルを用意してください。ローカルOllama（例:{" "}
+            <code className="font-mono">ollama run qwen2.5vl:7b</code>）または外部API（OpenAI・Gemini・DashScope等）のどちらでも構いません。
           </li>
-          <li>上記フォームで Base URL・モデル名を設定し、有効化して保存します。</li>
+          <li>上記フォームで Base URL・モデル名・APIキーを設定し、有効化して保存します。</li>
           <li>
             画像非対応モデルを選んでいても、添付画像があれば WebUI が自動で事前解析し、テキストとして取り込みます。
           </li>
