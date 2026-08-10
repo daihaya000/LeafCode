@@ -50,12 +50,12 @@ export function MessageMetaHeader({
   const tokens = info.tokens?.total ?? 0;
   const fields = [
     model ? { key: "model", text: model } : null,
-    effortLabel ? { key: "effort", text: `推論強度 ${effortLabel}` } : null,
+    effortLabel ? { key: "effort", text: effortLabel } : null,
     time ? { key: "time", text: time } : null,
     cost ? { key: "cost", text: `コスト ${cost}` } : null,
     tokens > 0 ? { key: "tokens", text: `トークン ${formatTokens(tokens)}` } : null,
     thinking != null
-      ? { key: "thinking", text: `思考時間 ${formatElapsed(thinking)}` }
+      ? { key: "thinking", text: `思考 ${formatElapsed(thinking)}` }
       : null,
   ].filter((field): field is { key: string; text: string } => field !== null);
 

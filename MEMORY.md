@@ -3307,3 +3307,19 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm test -- --run src/lib/task-service.test.ts src/components/shell/Sidebar.test.tsx` ... 53 tests 成功
 - `npx eslint src/lib/task-service.ts src/lib/task-service.test.ts` ... 成功
 - `npm run typecheck` ... 成功
+# メタ情報の推論強度・思考時間ラベル簡略化
+
+## 日付
+
+2026-08-10
+
+## 修正内容
+
+- 応答メタ情報の推論強度ラベルから「推論強度」を削除し、値だけを表示するようにした。
+- 「思考時間」を「思考」に変更した。
+- `MessageMetaHeader` の回帰テストを更新した。
+
+## 検証結果
+
+- `npm test -- --run src/components/task/MessageMetaHeader.test.tsx` ... 8 tests 成功
+- `git diff --check` ... 成功
