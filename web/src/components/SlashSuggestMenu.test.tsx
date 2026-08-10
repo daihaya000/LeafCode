@@ -37,7 +37,7 @@ describe("SlashSuggestMenu", () => {
     );
 
     const description = screen.getByText("原因を調査して修正する");
-    expect(description.className).toContain("text-muted");
+    expect(description.className).toContain("text-text/70");
     expect(description.className).toContain("line-clamp-2");
     expect(screen.getByRole("option").className).toContain("bg-working-bg");
   });

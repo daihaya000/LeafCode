@@ -57,7 +57,9 @@ export function SlashSuggestMenu({
             }}
             className={cx(
               "flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors",
-              active ? "bg-working-bg" : "hover:bg-surface-2",
+              active
+                ? "border-l-2 border-accent bg-working-bg pl-2.5"
+                : "border-l-2 border-transparent hover:bg-surface-2",
             )}
           >
             <Sparkles
@@ -77,7 +79,12 @@ export function SlashSuggestMenu({
                 {item.name}
               </span>
               {item.description ? (
-                <span className="mt-0.5 block line-clamp-2 text-xs leading-4 text-muted">
+                <span
+                  className={cx(
+                    "mt-0.5 block line-clamp-2 text-xs leading-4",
+                    active ? "text-text/70" : "text-muted",
+                  )}
+                >
                   {item.description}
                 </span>
               ) : null}
