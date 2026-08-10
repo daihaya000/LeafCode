@@ -809,7 +809,7 @@ describe("SettingsView", () => {
     expect(screen.getAllByRole("button", { name: "URLをコピー" })).toHaveLength(3);
     expect(screen.getByRole("link", { name: "https://webui.example.com" }).getAttribute("target")).toBe("_blank");
     const dl = screen.getByRole("link", {
-      name: "VPN接続用ルートCAをダウンロード",
+      name: "VPN接続の端末用CA証明書をダウンロード",
     });
     expect(dl.getAttribute("href")).toBe(
       "http://100.64.0.10:8080/caddy-root.crt",

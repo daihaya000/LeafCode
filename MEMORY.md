@@ -3138,3 +3138,19 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 
 - `npm run test -- --run src/components/settings/SettingsView.test.tsx` ... 29 tests 成功
 - `npm run typecheck` ... 成功
+## 日付
+
+2026-08-10
+
+## HTTPS証明書表示の追加明文化
+
+### 修正内容
+
+- 見出しを「Caddy HTTPS用ルートCA証明書」とし、証明書の種類を明記した。
+- HTTPS接続する端末ごとにルートCA証明書をダウンロードしてインストールする必要があることを表示した。
+- ダウンロードリンクを接続種別ごとの端末向けCA証明書として明記した。
+
+### 検証結果
+
+- `npm run test -- --run src/components/settings/SettingsView.test.tsx` ... 29 tests 成功
+- `npm run typecheck` ... 成功

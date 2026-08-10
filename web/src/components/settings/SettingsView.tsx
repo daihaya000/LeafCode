@@ -1694,11 +1694,11 @@ export function SettingsView() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-muted">
-                        HTTPS接続用の信頼証明書
+                        Caddy HTTPS用ルートCA証明書
                       </p>
                       <p className="mt-0.5 text-[11px] text-faint">
-                        Caddy の HTTPS 接続でブラウザの警告を表示しないため、
-                        接続する端末にルート CA 証明書をインストールしてください。
+                        このWebUIへHTTPS接続する端末で証明書警告を消すには、端末ごとに
+                        ルートCA証明書をダウンロードしてインストールしてください。
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1710,7 +1710,7 @@ export function SettingsView() {
                           className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 text-xs font-medium text-text transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                         >
                           <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                          {kindLabel(cert.kind)}接続用ルートCAをダウンロード
+                          {kindLabel(cert.kind)}接続の端末用CA証明書をダウンロード
                         </a>
                       ))}
                     </div>
