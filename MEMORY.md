@@ -4299,3 +4299,29 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - 送信済みユーザーメッセージをWebUI側で削除・改変しない。
 - 実行中のsessionを強制compactしない。
 - Autoモデル選択の既存コスト優先ロジックを、トークン節約目的で重複実装しない。
+
+## レビュー第2弾: 追加リスクと計画修正 (2026-08-11)
+
+### compact後のmemory再注入欠落
+
+- 現状の`memory_session_injections`はsessionごとに1回限りのclaimであり、compact完了後に続くユーザーpromptでもclaimが存在するとmemory注入がスキップされる。
+- これは既存の挙動だが、Phase 2で自動compactを導入するとcompact後にmemory contextが失われたまま次ターンへ進むケースが頻発する。
+- **対応案**: `session.compacted` SSE受信時に該当sessionの`memory_session_injections`行を削除し、次回prompt_asyncでmemory再注入を許可する。collaboration contextのfull snapshot再注入と同じタイミングで処理する。これによりcompactで失われたmemory contextが次ターンで復元される。
+- **テスト**: compact後にmemory claimが解放され、次回送信で再注入されること、compact未発生時はclaimが維持されることを`memory.test.ts`と`useSessionStream`関連テストへ追加する。
+
+### Phase 0→Phase 2の順序依存
+
+- Phase 2の閾値判定はPhase 0の`context-usage.ts`と`token-usage.ts`に依存するが、現計画ではPhase 0→Phase 1→Phase 2の順で、Phase 0はPhase 1より前に完了する必要がある。
+- **確認**: 計画のPhase番号は実装順序と一致しており、Phase 0が先に完了する前提で問題ない。ただしPhase 1の注入削減効果を計測するにはPhase 0の計測基盤が必要なため、Phase 0を先にリリースして効果測定してからPhase 1を評価できるよう、Phase 0は独立リリース可能にする。
+
+### collaboration差分注入とcompactの相互作用
+
+- compact後にfull snapshotを再注入する計画だが、compactが連続発生した場合、毎回full snapshotが注入され差分削減効果が相殺されるリスクがある。
+- **対応**: compact後のfull snapshot再注入は1回限りとし、次回以降は再び差分注入へ戻す。snapshot claimに`compacted_at`時刻を記録し、compact未発生時のみ差分モードへ遷移する。
+- compact連続発生時はcooldownでcompact間隔を制限するため、実運用では相殺リスクは低いが、テストで連続compact後の注入回数を固定する。
+
+### Goal Loop短縮後の再測定
+
+- Phase 3でGoal Loop promptを短縮した後、Phase 4の計測指標でGoal Loop完了率とinput tokensを再測定する必要がある。
+- Goal LoopはPhase 2のclient自動compact対象外のため、Goal Loop単体でのトークン削減効果はprompt短縮のみに依存する。
+- **確認**: Phase 4の比較対象に「Goal Loop 10turn」が含まれており、Phase 3前後で比較可能。Phase 3リリース前にbaseline計測をPhase 0基盤で取得しておく。
