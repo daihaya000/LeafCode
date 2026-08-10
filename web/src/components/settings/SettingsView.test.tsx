@@ -99,6 +99,7 @@ function mockGetJson(
     orphans: OrphansPayload;
     access: AccessPayload;
     projects: unknown[];
+    archivedProjects: unknown[];
   }>,
 ) {
   getJson.mockImplementation((path: string) => {
@@ -110,6 +111,9 @@ function mockGetJson(
     }
     if (path === "/api/projects") {
       return Promise.resolve({ projects: overrides?.projects ?? [] });
+    }
+    if (path === "/api/projects/archived") {
+      return Promise.resolve({ projects: overrides?.archivedProjects ?? [] });
     }
     if (path === "/api/roots") return Promise.resolve({ roots: [] });
     if (path === "/api/extensions/agents") {
@@ -197,6 +201,8 @@ function mockSettingsGetJson(roots: string[]) {
       return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
     }
     if (path === "/api/projects") return Promise.resolve({ projects: [] });
+    if (path === "/api/projects/archived")
+      return Promise.resolve({ projects: [] });
     if (path === "/api/roots") return Promise.resolve({ roots: [...roots] });
     if (path === "/api/extensions/agents") {
       return Promise.resolve({ agents: [AGENT_FIXTURE] });
@@ -227,6 +233,8 @@ function mockUpdateStatus() {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/health") return Promise.resolve({ webui: { ok: true }, opencode: { ok: true } });
     if (path === "/api/projects") return Promise.resolve({ projects: [] });
+    if (path === "/api/projects/archived")
+      return Promise.resolve({ projects: [] });
     if (path === "/api/roots") return Promise.resolve({ roots: [] });
     if (path === "/api/workspaces/orphans") return Promise.resolve({ orphans: [], stray: [] });
     if (path === "/api/access") return Promise.resolve({ bind: "127.0.0.1", port: 3000, localUrl: "http://localhost:3000", hint: "", addresses: [] });
@@ -627,13 +635,14 @@ describe("SettingsView", () => {
     expect(healthPolls).toBe(2);
   });
 
-  it("shows an inline confirmation before deleting a project", async () => {
+  it("archives a project via the archive button", async () => {
     const projects = [
       {
         id: "prj1",
         name: "Repo",
         rootPath: "C:\\repo",
         favorite: false,
+        archived: false,
         lastOpenedAt: null,
       },
     ];
@@ -650,21 +659,16 @@ describe("SettingsView", () => {
     expect(
       await screen.findByRole("button", { name: "Repoをお気に入りに追加" }),
     ).toBeTruthy();
-    const deleteButton = await screen.findByRole("button", { name: "Repoを削除" });
-    deleteButton.focus();
-    fireEvent.click(deleteButton);
-    const dialog = await screen.findByRole("alertdialog");
-    expect(dialog.textContent).toContain("Repo");
-    expect(document.activeElement).toBe(dialog.querySelector("button"));
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    fireEvent.click(deleteButton);
-    (await screen.findByRole("alertdialog")).querySelector("button")?.click();
+    const archiveButton = await screen.findByRole("button", {
+      name: "Repoをアーカイブ",
+    });
+    fireEvent.click(archiveButton);
 
     await waitFor(() => {
-      expect(sendJson).toHaveBeenCalledWith("DELETE", "/api/projects", undefined, {
-        id: "prj1",
-      });
+      expect(sendJson).toHaveBeenCalledWith(
+        "PATCH",
+        "/api/projects/prj1/archive",
+      );
     });
   });
 
@@ -945,6 +949,8 @@ describe("SettingsView", () => {
         return Promise.resolve({ opencode: { ok: true, version: "1.0.0" } });
       }
       if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/projects/archived")
+        return Promise.resolve({ projects: [] });
       if (path === "/api/roots") return Promise.resolve({ roots: [] });
       if (path === "/api/extensions/agents") {
         return Promise.resolve({ agents: [AGENT_FIXTURE] });

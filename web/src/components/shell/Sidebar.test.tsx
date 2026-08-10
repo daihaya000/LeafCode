@@ -78,7 +78,10 @@ describe("Sidebar", () => {
     usePathname.mockReturnValue("/");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") return Promise.resolve({ projects: [] });
+      if (path === "/api/projects/archived")
+        return Promise.resolve({ projects: [] });
       if (path === "/api/tasks") return Promise.resolve({ tasks: [], engineOk: true });
+      if (path === "/api/tasks/archived") return Promise.resolve({ tasks: [] });
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });
   });

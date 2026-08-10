@@ -1,3 +1,60 @@
+# 作業ログ: プロジェクトの削除ボタンをアーカイブボタンへ変更
+
+## 日付
+2026-08-11
+
+## 作業内容
+
+タスクのアーカイブ機能と同様に、プロジェクトも「削除」→「アーカイブ」フローに変更した。
+
+### DB
+- `web/src/lib/db.ts`: `projects` テーブルに `archived INTEGER NOT NULL DEFAULT 0` 列を追加（新規テーブル定義＋既存DB向けALTER TABLE マイグレーション）。
+- `ProjectRow` 型に `archived: number` を追加。
+- `listProjects()` は `WHERE archived = 0` で未アーカイブのみ返すよう変更。
+- 新規 `listArchivedProjects()` と `setProjectArchived(id, archived)` を追加。
+
+### workspace-service
+- `archiveProject(projectId)`: 全 active ワークスペースを archived に切替（ワークフロー停止含む）＋ プロジェクト行を archived=1。
+- `restoreProject(projectId)`: プロジェクト行を archived=0（配下ワークスペースは個別復元）。
+- `destroyProject(projectId)`: アーカイブ済みプロジェクトのみ完全削除可能に制約追加（未アーカイブなら 409）。
+- `ProjectDto` 型に `archived: boolean` を追加。
+
+### API
+- `PATCH /api/projects/[id]/archive` 新設。
+- `PATCH /api/projects/[id]/restore` 新設。
+- `GET /api/projects/archived` 新設。
+- `GET/PATCH/POST /api/projects` のレスポンスに `archived` フィールドを含めるよう更新。
+
+### UI
+- `Sidebar.tsx`: プロジェクト行の削除ボタンをアーカイブボタン（Archive アイコン）に置換。サイドバー下部に「アーカイブ済みプロジェクト」折りたたみセクションを新設し、復元（ArchiveRestore）と完全削除（Trash2）ボタンを配置。展開状態は localStorage に永続化。
+- `SettingsView.tsx`: プロジェクトタブの削除ボタンをアーカイブボタンに置換。アーカイブ済みプロジェクト専用セクションを新設し、復元・完全削除（確認ダイアログ付き）を配置。`/api/projects/archived` を refresh で取得。
+
+### テスト
+- `SettingsView.test.tsx`: 削除確認テストをアーカイブテストに書き換え。各モックに `/api/projects/archived` を追加。
+- `Sidebar.test.tsx`: beforeEach モックに `/api/projects/archived` を追加。
+
+## 検証結果
+
+- `npx tsc --noEmit` (web) ... 成功
+- `npx eslint` 対象ファイル ... 成功
+- `npx vitest run` SettingsView / Sidebar / projects route / workspace-service / db / task-service / HomeView / AddProjectButton ... すべて成功
+
+## 変更ファイル
+
+- web/src/lib/db.ts
+- web/src/lib/workspace-service.ts
+- web/src/lib/types.ts
+- web/src/app/api/projects/route.ts
+- web/src/app/api/projects/[id]/archive/route.ts (新規)
+- web/src/app/api/projects/[id]/restore/route.ts (新規)
+- web/src/app/api/projects/archived/route.ts (新規)
+- web/src/components/shell/Sidebar.tsx
+- web/src/components/shell/Sidebar.test.tsx
+- web/src/components/settings/SettingsView.tsx
+- web/src/components/settings/SettingsView.test.tsx
+
+---
+
 # 作業ログ: プロファイル名変更で実ディレクトリもリネーム
 
 ## 日付
