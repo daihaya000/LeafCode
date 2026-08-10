@@ -298,6 +298,20 @@ describe("AttentionQueueModal", () => {
       expect(allowBtn.disabled).toBe(false);
     });
 
+    it("does not send diagnostic requests while replying to a permission", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      mockOcJson.mockResolvedValue({});
+      enqueue(permissionItem());
+      attentionState.open = true;
+
+      render(<AttentionQueueModal />);
+      (screen.getByRole("button", { name: "許可" }) as HTMLButtonElement).click();
+
+      await act(async () => {});
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
     it("フルアクセス切替時、サブエージェント不許可なら残りの task 権限を reject する", async () => {
       localStorage.setItem("webui:subagent-permission", "deny");
       mockOcJson.mockResolvedValue({});

@@ -119,9 +119,6 @@ export function AttentionQueueModal() {
       busyRef.current = true;
       setBusy(true);
       setError(null);
-      // #region debug log
-      fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'M1',location:'AttentionQueueModal.tsx:124',message:'attention response started',data:{kind:item.kind,requestId:item.request.id,sessionID:item.request.sessionID},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       try {
         await fn();
         if (!mountedRef.current) return;
@@ -140,9 +137,6 @@ export function AttentionQueueModal() {
       } finally {
         busyRef.current = false;
         if (mountedRef.current) setBusy(false);
-        // #region debug log
-        fetch('http://127.0.0.1:52338/ingest/8d185c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'8d185c',runId:'initial',hypothesisId:'M1',location:'AttentionQueueModal.tsx:145',message:'attention response finished',data:{kind:item.kind,requestId:item.request.id,mounted:mountedRef.current,busyRef:busyRef.current},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
       }
     },
     [remove],

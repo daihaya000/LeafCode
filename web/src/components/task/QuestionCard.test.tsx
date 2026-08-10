@@ -170,4 +170,29 @@ describe("QuestionCard custom answer", () => {
     expect(onReply).toHaveBeenCalledTimes(1);
     resolveReply();
   });
+
+  it("does not send diagnostic requests while rendering or answering", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const onReply = vi.fn().mockResolvedValue(undefined);
+    render(
+      createElement(QuestionCard, {
+        request: baseRequest([
+          {
+            question: "続行しますか？",
+            header: "",
+            options: [{ label: "はい", description: "" }],
+            custom: false,
+          },
+        ]),
+        onReply,
+        onReject: vi.fn(),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "はい" }));
+
+    await vi.waitFor(() => expect(onReply).toHaveBeenCalledTimes(1));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
 });

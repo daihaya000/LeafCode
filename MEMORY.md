@@ -4,6 +4,19 @@
 
 2026-08-10
 
+## 権限確認 UI の診断通信除去
+
+### 修正内容
+
+- 非フルアクセス時に表示される権限キューと質問カードから、ローカル診断サーバー (`127.0.0.1:52338`) への `fetch` を削除した。
+- 承認・回答のクリック中に UI と無関係な通信、CORS エラー、コンソールノイズが発生しないようにした。
+- 権限と質問の応答で診断通信を発生させない回帰テストを追加した。
+
+### 検証結果
+
+- `npm.cmd test -- --run src/components/task/QuestionCard.test.tsx src/components/shell/AttentionQueueModal.test.tsx src/components/task/PermissionCard.test.tsx src/lib/subagent-permission.test.ts` ... 34 tests 成功
+- `npm.cmd run typecheck` ... 成功
+
 ## OpenAI公式価格による推定コスト表示
 
 ### 修正内容
