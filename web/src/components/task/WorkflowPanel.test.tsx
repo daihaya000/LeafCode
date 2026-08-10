@@ -5,7 +5,7 @@ import { WorkflowPanel } from "./WorkflowPanel";
 const { getJson } = vi.hoisted(() => ({ getJson: vi.fn() }));
 const graphFeature = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/client", () => ({ getJson }));
-vi.mock("@/lib/workflow-feature", () => ({
+vi.mock("@/lib/workflow-feature-client", () => ({
   isWorkflowGraphEnabled: () => graphFeature.enabled,
   isWorkflowGraphEditEnabled: () => false,
 }));

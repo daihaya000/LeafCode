@@ -26,6 +26,7 @@ function resolveBuildCommitDate(commit: string): string {
   try {
     return execFileSync("git", ["show", "-s", "--format=%cI", commit], {
       encoding: "utf8",
+      cwd: gitCwd,
     }).trim();
   } catch {
     return "";

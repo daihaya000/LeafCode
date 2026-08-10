@@ -484,6 +484,34 @@ describe("ProviderModelsSettings", () => {
     expect(await screen.findByText(/OpenCode の再起動後/)).toBeTruthy();
   });
 
+  it("prefills the local Ollama provider from installed models", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/settings/default-model") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({ providers: [] });
+      }
+      if (path === "/api/ollama/status") {
+        return Promise.resolve({ models: ["llama3.2:latest", "qwen2.5:7b"] });
+      }
+      return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+
+    render(<ProviderModelsSettings />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "ローカルOllamaを追加" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("プロバイダーID")).toHaveProperty("value", "ollama");
+    });
+    expect(screen.getByLabelText("表示名")).toHaveProperty("value", "Ollama (ローカル)");
+    expect(screen.getByLabelText("Base URL")).toHaveProperty("value", "http://127.0.0.1:11434/v1");
+    expect(screen.getByLabelText("モデル（1行1件: model-id|表示名）")).toHaveProperty("value",
+      "llama3.2:latest|llama3.2:latest\nqwen2.5:7b|qwen2.5:7b",
+    );
+  });
+
   it("edits an existing configured provider via PUT", async () => {
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/default-model") {

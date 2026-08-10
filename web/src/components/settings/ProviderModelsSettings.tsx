@@ -812,6 +812,26 @@ export function ProviderModelsSettings() {
     setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", icon: "", models: "" });
   }, []);
 
+  const applyOllamaPreset = useCallback(async () => {
+    setEditingProviderId(null);
+    setAddOpen(true);
+    setAddMessage(null);
+    setActionError(null);
+    const models = await getJson<{ models?: string[] }>("/api/ollama/status")
+      .then((status) => status.models?.filter(Boolean) ?? [])
+      .catch(() => []);
+    setNewProvider({
+      id: "ollama",
+      name: "Ollama (ローカル)",
+      baseURL: "http://127.0.0.1:11434/v1",
+      apiKeyEnv: "",
+      icon: "",
+      models: (models.length > 0 ? models : ["qwen2.5vl:7b"])
+        .map((model) => `${model}|${model}`)
+        .join("\n"),
+    });
+  }, []);
+
   useEffect(() => {
     if (!deleteConfirmProvider) {
       if (
@@ -1125,6 +1145,16 @@ export function ProviderModelsSettings() {
               {addOpen ? "閉じる" : "登録"}
             </Button>
           </div>
+          {!addOpen && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-3"
+              onClick={() => void applyOllamaPreset()}
+            >
+              ローカルOllamaを追加
+            </Button>
+          )}
           {addOpen && (
             <div className="mt-4 grid gap-3">
               {iconOnlyEdit && editingProvider && (

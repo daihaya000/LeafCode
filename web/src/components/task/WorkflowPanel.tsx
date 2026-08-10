@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Circle, Loader2, PauseCircle } from "lucide-react";
 import { getJson } from "@/lib/client";
-import { isWorkflowGraphEnabled } from "@/lib/workflow-feature";
+import { isWorkflowGraphEnabled } from "@/lib/workflow-feature-client";
 import { synthesizeWorkflowGraph } from "@/lib/workflow-graph-compat";
 import type { WorkflowGraphDraft } from "@/lib/workflow-graph-types";
 import type { WorkflowView } from "@/lib/workflow-service";

@@ -5,7 +5,7 @@ import { WorkflowGraphInspector } from "./WorkflowGraphInspector";
 const { sendJson } = vi.hoisted(() => ({ sendJson: vi.fn() }));
 const feature = vi.hoisted(() => ({ editEnabled: false }));
 vi.mock("@/lib/client", () => ({ sendJson }));
-vi.mock("@/lib/workflow-feature", () => ({ isWorkflowGraphEditEnabled: () => feature.editEnabled }));
+vi.mock("@/lib/workflow-feature-client", () => ({ isWorkflowGraphEditEnabled: () => feature.editEnabled }));
 
 const graphNode = {
   id: "implement_ui",

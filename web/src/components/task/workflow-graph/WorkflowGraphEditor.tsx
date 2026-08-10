@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
 import { ApiError, sendJson } from "@/lib/client";
-import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
+import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature-client";
 import {
   getDefaultWorkflowNodeConfig,
   WORKFLOW_NODE_REGISTRY,

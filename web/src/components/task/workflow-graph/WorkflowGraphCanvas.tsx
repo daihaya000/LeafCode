@@ -23,7 +23,7 @@ import {
 import { WorkflowGraphEdge } from "./WorkflowGraphEdge";
 import { WorkflowGraphNode } from "./WorkflowGraphNode";
 import { ApiError, sendJson } from "@/lib/client";
-import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
+import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature-client";
 
 const nodeTypes = { workflowGraphNode: WorkflowGraphNode };
 const edgeTypes = { workflowGraphEdge: WorkflowGraphEdge };

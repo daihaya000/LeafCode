@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageSquare, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { sendJson } from "@/lib/client";
-import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature";
+import { isWorkflowGraphEditEnabled } from "@/lib/workflow-feature-client";
 import type { WorkflowAttemptView, WorkflowNodeView, WorkflowView } from "@/lib/workflow-service";
 import type { WorkflowGraphNode } from "@/lib/workflow-graph-types";
 import { WORKFLOW_NODE_REGISTRY } from "@/lib/workflow-node-registry";

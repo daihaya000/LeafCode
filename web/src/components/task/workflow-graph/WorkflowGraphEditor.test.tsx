@@ -4,7 +4,7 @@ import { createWorkflowGraphCompat } from "@/lib/workflow-graph-compat";
 import { createWorkflowDefinitionSnapshot } from "@/lib/workflow-types";
 
 const mocks = vi.hoisted(() => ({ sendJson: vi.fn() }));
-vi.mock("@/lib/workflow-feature", () => ({ isWorkflowGraphEditEnabled: () => true }));
+vi.mock("@/lib/workflow-feature-client", () => ({ isWorkflowGraphEditEnabled: () => true }));
 vi.mock("@/lib/client", () => ({
   sendJson: mocks.sendJson,
   ApiError: class ApiError extends Error {

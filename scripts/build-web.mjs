@@ -1,5 +1,5 @@
 import { spawnSync, execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { syncMirror } from "./web-build-mirror.mjs";
@@ -95,7 +95,15 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
 
-  const status = run(process.execPath, [nextBin, "build"], {
+  // A failed/cancelled Turbopack build can leave an incremental cache that
+  // immediately panics on the next attempt with `AssetContent::file was
+  // canceled`. Retry once from a clean generated directory. Webpack remains
+  // available as an explicit diagnostic fallback, but is not the default: on
+  // this application its large server route graph can leave webpack's parent
+  // process waiting indefinitely after the compiler worker exits.
+  const useWebpack = process.env.OPENCODE_WEBUI_USE_WEBPACK === "1";
+  const nextArgs = [nextBin, "build", ...(useWebpack ? ["--webpack"] : [])];
+  const buildOptions = {
     cwd: mirror.webDir,
     env: {
       ...process.env,
@@ -104,7 +112,19 @@ export async function main(argv = process.argv.slice(2)) {
       // would point at the old external output directory.
       NEXT_DIST_DIR: "",
     },
-  });
+  };
+  console.error(`[build-web] bundler: ${useWebpack ? "webpack" : "turbopack"}`);
+  // Rebuilding means no WebUI is serving this directory (the production
+  // guard has already passed). Remove the old generated state before the
+  // first attempt so a cancelled Turbopack task cannot be reused and printed
+  // as a panic on every startup.
+  rmSync(mirror.distDir, { recursive: true, force: true });
+  let status = run(process.execPath, nextArgs, buildOptions);
+  if (status !== 0 && !useWebpack) {
+    console.error("[build-web] Turbopack failed; clearing generated output and retrying once...");
+    rmSync(mirror.distDir, { recursive: true, force: true });
+    status = run(process.execPath, nextArgs, buildOptions);
+  }
   if (status !== 0) return status;
 
   if (!existsSync(join(mirror.distDir, "BUILD_ID"))) {

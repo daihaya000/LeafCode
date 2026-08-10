@@ -17,32 +17,26 @@
  * API routes use.
  */
 import { getSetting } from "./db";
+import {
+  DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED,
+  DEFAULT_WORKFLOW_GRAPH_ENABLED,
+  DEFAULT_WORKFLOW_MODE_ENABLED,
+  resolveWorkflowGraphRollout as resolveWorkflowGraphRolloutBase,
+  resolveWorkflowModeEnabled,
+  type WorkflowGraphRollout,
+  type WorkflowGraphRolloutPhase,
+} from "./workflow-feature-flags";
 
-export const DEFAULT_WORKFLOW_MODE_ENABLED = false;
-export const DEFAULT_WORKFLOW_GRAPH_ENABLED = false;
-export const DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED = false;
+export {
+  DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED,
+  DEFAULT_WORKFLOW_GRAPH_ENABLED,
+  DEFAULT_WORKFLOW_MODE_ENABLED,
+  resolveWorkflowModeEnabled,
+};
+export type { WorkflowGraphRollout, WorkflowGraphRolloutPhase };
 
 /** Server-side `settings` key mirrored in the settings route allowlist. */
 export const WORKFLOW_MODE_SETTING_KEY = "workflow-mode";
-
-export type WorkflowGraphRolloutPhase = "legacy" | "graph_readonly" | "graph_edit";
-export type WorkflowGraphRollout = {
-  workflowEnabled: boolean;
-  graphEnabled: boolean;
-  graphEditEnabled: boolean;
-  phase: WorkflowGraphRolloutPhase;
-  reason: "workflow_disabled" | "graph_disabled" | "graph_readonly" | "graph_edit_enabled";
-};
-
-export function resolveWorkflowModeEnabled(
-  raw: string | undefined,
-  defaultValue = DEFAULT_WORKFLOW_MODE_ENABLED,
-): boolean {
-  const normalized = raw?.trim().toLowerCase();
-  if (normalized === "true" || normalized === "1") return true;
-  if (normalized === "false" || normalized === "0") return false;
-  return defaultValue;
-}
 
 /**
  * Resolve the workflow-mode flag from the `settings` table first, then fall
@@ -76,23 +70,8 @@ export function resolveWorkflowGraphRollout(raw: {
   mode: clientVisibleFlag("MODE"),
   graph: clientVisibleFlag("GRAPH"),
   graphEdit: clientVisibleFlag("GRAPH_EDIT"),
-}): WorkflowGraphRollout {
-  const workflowEnabled = resolveWorkflowModeEnabled(raw.mode);
-  if (!workflowEnabled) {
-    return { workflowEnabled, graphEnabled: false, graphEditEnabled: false, phase: "legacy", reason: "workflow_disabled" };
-  }
-  const graphEnabled = resolveWorkflowModeEnabled(raw.graph);
-  if (!graphEnabled) {
-    return { workflowEnabled, graphEnabled, graphEditEnabled: false, phase: "legacy", reason: "graph_disabled" };
-  }
-  const graphEditEnabled = resolveWorkflowModeEnabled(raw.graphEdit);
-  return {
-    workflowEnabled,
-    graphEnabled,
-    graphEditEnabled,
-    phase: graphEditEnabled ? "graph_edit" : "graph_readonly",
-    reason: graphEditEnabled ? "graph_edit_enabled" : "graph_readonly",
-  };
+}) {
+  return resolveWorkflowGraphRolloutBase(raw);
 }
 
 export function isWorkflowGraphEnabled(): boolean {
