@@ -19,11 +19,9 @@ import { armHangWatch, disarmHangWatch } from "@/lib/hang-watchdog";
 import { isIntelligenceVariant } from "@/lib/model-variants";
 import { ocServer } from "@/lib/oc-server";
 import {
-  isQwenMmConnected,
   isQwenNativeVisionAvailable,
-  rewriteQwenNativeRequest,
-  rewriteQwenMmRequest,
-} from "@/lib/qwen-mm-fallback";
+  rewriteNativeRequest,
+} from "@/lib/qwen-native-vision";
 import {
   OPENCODE_BASE_URL,
   isBlockedOpencodeWrite,
@@ -118,11 +116,6 @@ function isImageGuardedWrite(pathname: string): boolean {
     /^\/session\/[^/]+\/message$/.test(pathname) ||
     /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
   );
-}
-
-function imageSessionId(pathname: string): string | null {
-  const match = /^(?:\/api)?\/session\/([^/]+)\/(?:prompt_async|command|prompt|message)$/.exec(pathname);
-  return match?.[1] ?? null;
 }
 
 function injectWorkspaceMemory(
@@ -580,8 +573,7 @@ async function proxy(
               );
             }
             if (!(await supportsImageInput(directory, body))) {
-              const sessionId = imageSessionId(pathname);
-              if (!sessionId || !body || typeof body !== "object" || Array.isArray(body)) {
+              if (!body || typeof body !== "object" || Array.isArray(body)) {
                 return NextResponse.json(
                   { error: "image input is not supported by the selected model" },
                   { status: 400 },
@@ -591,7 +583,7 @@ async function proxy(
               let nativeRewritten = false;
               if (isQwenNativeVisionAvailable()) {
                 try {
-                  body = await rewriteQwenNativeRequest(body as Record<string, unknown>);
+                  body = await rewriteNativeRequest(body as Record<string, unknown>);
                   requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
                   nativeRewritten = true;
                 } catch (error) {
@@ -599,34 +591,14 @@ async function proxy(
                 }
               }
               if (!nativeRewritten) {
-                let qwenMmConnected = false;
-                try {
-                  const status = await ocServer<Record<string, { status?: unknown }>>(
-                    directory,
-                    "/mcp",
-                  );
-                  qwenMmConnected = isQwenMmConnected(status);
-                } catch {
-                  qwenMmConnected = false;
-                }
-                if (!qwenMmConnected) {
-                  if (nativeError) {
-                    return NextResponse.json(
-                      { error: "ローカルQwen画像解析に失敗しました。Ollamaと画像対応モデルの起動状態を確認してください。" },
-                      { status: 502 },
-                    );
-                  }
-                  return NextResponse.json(
-                    { error: "image input is not supported by the selected model" },
-                    { status: 400 },
-                  );
-                }
-                try {
-                  body = rewriteQwenMmRequest(body as Record<string, unknown>, sessionId);
-                  requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
-                } catch {
-                  return NextResponse.json({ error: "invalid files" }, { status: 400 });
-                }
+                return NextResponse.json(
+                  {
+                    error: nativeError
+                      ? "ローカルQwen画像解析に失敗しました。Ollamaと画像対応モデルの起動状態を確認してください。"
+                      : "image input is not supported by the selected model",
+                  },
+                  { status: nativeError ? 502 : 400 },
+                );
               }
             }
           }

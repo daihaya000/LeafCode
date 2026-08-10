@@ -212,7 +212,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [modelCapabilities, setModelCapabilities] = useState<
     Record<string, { attachment?: boolean; image?: boolean }>
   >({});
-  const [qwenMmConnected, setQwenMmConnected] = useState(false);
+  const [qwenNativeAvailable, setQwenNativeAvailable] = useState(false);
   const [agents, setAgents] = useState<string[]>([]);
   const [agentModels, setAgentModels] = useState<
     Record<string, { providerID: string; modelID: string }>
@@ -456,37 +456,21 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes, providerModelsRes, mcpRes, qwenStatusRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes, qwenStatusRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
-          timedFetch("/api/extensions/mcp").catch(() => undefined),
-          timedFetch("/api/qwen-mm/status").catch(() => undefined),
+          timedFetch("/api/qwen-native/status").catch(() => undefined),
         ]);
         if (cancelled || !mountedRef.current) return;
 
-        const mcpData = mcpRes?.ok
-          ? ((await mcpRes.json().catch(() => ({}))) as {
-              servers?: { name?: unknown; enabled?: unknown; runtime?: unknown }[];
-            })
-          : null;
         const qwenStatus = qwenStatusRes?.ok
           ? ((await qwenStatusRes.json().catch(() => ({}))) as {
               nativeAvailable?: unknown;
             })
           : null;
-        setQwenMmConnected(
-          qwenStatus?.nativeAvailable === true ||
-          Boolean(
-            mcpData?.servers?.some(
-              (server) =>
-                server.name === "qwen-mm-plugins-core" &&
-                server.enabled !== false &&
-                server.runtime === "connected",
-            ),
-          ),
-        );
+        setQwenNativeAvailable(qwenStatus?.nativeAvailable === true);
 
         const data = providerRes.ok
           ? ((await providerRes.json()) as ProviderResponse)
@@ -752,7 +736,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const selectedModelSupportsImage = model
     ? selectedModel?.image === true || modelCapabilities[model]?.attachment === true
     : false;
-  const selectedModelCanUseImage = selectedModelSupportsImage || qwenMmConnected;
+  const selectedModelCanUseImage = selectedModelSupportsImage || qwenNativeAvailable;
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
@@ -789,10 +773,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             modelCapabilities[sendingModelKey]?.attachment === true
           : false;
     const hasImage = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
-    const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenMmConnected;
+    const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenNativeAvailable;
     if (sendingImageBlocked) {
       setError(
-        "選択中のモデルは画像入力に対応していないか、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
+        "選択中のモデルは画像入力に対応していないか、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
       );
       return;
     }
@@ -949,7 +933,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     baseBranch,
     model,
     modelCapabilities,
-    qwenMmConnected,
+    qwenNativeAvailable,
     agent,
     agentModels,
     intelligence,

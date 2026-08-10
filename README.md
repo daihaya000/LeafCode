@@ -65,7 +65,7 @@ cd OpenCodeWebUI
 
 ### 2. `OpenCodeWebUI.exe` をダブルクリック
 
-初回起動時に **winget → Node.js 20+ → OpenCode CLI → Caddy（リモートアクセス用、任意）→ uv（Qwen-MM-Plugins MCP 用、任意）→ 依存関係 → production build** を自動で確認・導入します（**インターネット接続が必要**）。2 回目以降は導入済みのステップをスキップしてすぐ起動します。
+初回起動時に **winget → Node.js 20+ → OpenCode CLI → Caddy（リモートアクセス用、任意）→ 依存関係 → production build** を自動で確認・導入します（**インターネット接続が必要**）。2 回目以降は導入済みのステップをスキップしてすぐ起動します。
 
 > [!IMPORTANT]
 > `OpenCodeWebUI.exe` は、同じフォルダの `scripts\start-webui.bat` を実行するだけの薄いランチャーです。
@@ -134,7 +134,6 @@ cd OpenCodeWebUI
 | **Caddy 逆プロキシ（推奨）** | `OPENCODE_WEBUI_CADDY=1` | HTTPS で安全に公開。トレイ host が Caddy を連動管理 |
 | 直接バインド | `OPENCODE_WEBUI_HOST=0.0.0.0` | 全インターフェースで待ち受け。**VPN と認証なしで公開しないでください** |
 | Qwen画像ネイティブ統合 | `OPENCODE_WEBUI_QWEN_NATIVE=1` | DashScope不要。WebUIがローカルOllamaの`qwen2.5vl:7b`で画像を直接解析。`OPENCODE_WEBUI_QWEN_LOCAL_MODEL` / `OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL`で変更可能 |
-| Qwen-MM-Plugins MCP | `OPENCODE_WEBUI_QWEN_MM=1` | 画像非対応モデルでも MCP 経由で画像/動画/文書読み取り・OCR・grounding を利用。初回起動時に uv（`astral-sh.uv`）を自動導入。`DASHSCOPE_API_KEY` / `SERPER_API_KEY` は env から参照 |
 
 Qwen画像ネイティブ統合を利用すると、画像非対応モデルへ添付した画像と依頼文がローカルOllamaへ送信されます。Ollamaで`qwen2.5vl:7b`を取得・起動し、`OPENCODE_WEBUI_QWEN_NATIVE=1`を設定してWebUIを再起動してください。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、Qwenによる事前解析は行いません。
 
@@ -285,7 +284,7 @@ production build は**リポジトリ内では実行されません**。`scripts
 | 3 | `temporary_copy` / Dev Container **検知 + host-fallback**（コンテナ起動は未） |
 | UI-0〜4 | Codex 型 UI（composer-first ホーム / タスクカード / SSE 増分タイムライン / Part レンダラ / 権限インラインカード / ファイル別 Diff ペイン / light-dark テーマ / モバイル / ⌘K） |
 | R | リモート: トレイ管理の Caddy 逆プロキシ（`OPENCODE_WEBUI_CADDY=1`） |
-| MM | Qwen-MM-Plugins MCP: 画像非対応モデルでも MCP 経由で画像/動画/文書読み取り・OCR・grounding を利用（`OPENCODE_WEBUI_QWEN_MM=1`、要 uv） |
+| MM | ローカルOllamaのQwen Visionモデルで画像非対応モデルを補助（`OPENCODE_WEBUI_QWEN_NATIVE=1`） |
 
 ---
 
@@ -296,7 +295,6 @@ production build は**リポジトリ内では実行されません**。`scripts
 | [`docs/opencode/`](./docs/opencode/) | OpenAPI スナップショット |
 | [`docs/browser-bridge-setup.md`](./docs/browser-bridge-setup.md) | Browser Bridge MCP セットアップ手順 |
 | [`docs/specs/bat-encoding-safety.md`](./docs/specs/bat-encoding-safety.md) | バッチファイルのエンコード安全規則 |
-| [Qwen-MM-Plugins](https://github.com/QwenLM/Qwen-MM-Plugins) | Qwen-MM-Plugins 本体リポジトリ |
 | [OpenCode Docs](https://opencode.ai/docs) | OpenCode 公式ドキュメント |
 
 > [!NOTE]

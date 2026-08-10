@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
-import { isQwenNativeVisionAvailable } from "@/lib/qwen-mm-fallback";
+import { isQwenNativeVisionAvailable } from "@/lib/qwen-native-vision";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

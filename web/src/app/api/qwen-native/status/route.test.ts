@@ -10,24 +10,20 @@ afterEach(() => {
 });
 
 function request() {
-  return new NextRequest("http://127.0.0.1:3000/api/qwen-mm/status", {
+  return new NextRequest("http://127.0.0.1:3000/api/qwen-native/status", {
     headers: { host: "127.0.0.1:3000" },
   });
 }
 
-it("reports native vision availability without exposing the API key", async () => {
+it("reports native vision availability without exposing local credentials", async () => {
   process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
-
   const response = await GET(request());
-
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ nativeAvailable: true });
 });
 
 it("reports unavailable when native integration is disabled", async () => {
   process.env.OPENCODE_WEBUI_QWEN_NATIVE = "0";
-
   const response = await GET(request());
-
   expect(await response.json()).toEqual({ nativeAvailable: false });
 });

@@ -8,7 +8,7 @@ function mockFetch(responses: Record<string, unknown>) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/profiles/settings")) {
-        return new Response(JSON.stringify({ browserBridge: true, qwenMm: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true }), {
+        return new Response(JSON.stringify({ browserBridge: true, cursorAcp: true, claudeAuth: true, commandcodeAuth: true }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -270,7 +270,7 @@ describe("ProfilesSettings", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "作成" })).toBeNull());
   });
 
-  it("renders Browser Bridge, Qwen-MM-Plugins, and Cursor CLI Proxy setup checkboxes", async () => {
+  it("renders Browser Bridge and Cursor CLI Proxy setup checkboxes", async () => {
     global.fetch = mockFetch({
       "/api/profiles": BASE_LIST,
       "/api/host": HOST_OK,
@@ -280,7 +280,6 @@ describe("ProfilesSettings", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Browser Bridgeの自動セットアップ")).toBeTruthy();
-      expect(screen.getByLabelText("Qwen-MM-Pluginsの自動セットアップ")).toBeTruthy();
       expect(screen.getByLabelText("Cursor CLI Proxyの自動セットアップ")).toBeTruthy();
     });
     expect(

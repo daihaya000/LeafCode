@@ -45,37 +45,12 @@ describe("installWebUiDependencies", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-"));
     dirs.push(dir);
 
-    expect(installWebUiDependencies(dir, { qwenMm: false, commandcodeAuth: false })).toEqual(["mcp.browser-bridge"]);
+    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual(["mcp.browser-bridge"]);
     const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
     expect(config.mcp["browser-bridge"].command[0]).toBe("node");
     expect(config.mcp["browser-bridge"].environment).toEqual({
       OPENCODE_WEBUI_BROWSER_BROKER: "{env:OPENCODE_WEBUI_BROWSER_BROKER}",
       OPENCODE_WEBUI_BROWSER_BROKER_TOKEN: "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}",
-    });
-  });
-
-  it("adds the Qwen-MM-Plugins MCP entry to a new profile", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-"));
-    dirs.push(dir);
-
-    expect(installWebUiDependencies(dir, {
-      browserBridge: false,
-      cursorAcp: false,
-      claudeAuth: false,
-      commandcodeAuth: false,
-    })).toEqual(["mcp.qwen-mm-plugins-core"]);
-    const config = JSON.parse(fs.readFileSync(path.join(dir, "opencode.jsonc"), "utf8"));
-    const entry = config.mcp["qwen-mm-plugins-core"];
-    expect(entry.command).toEqual([
-      "uvx",
-      "--from",
-      "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main",
-      "qwen-mm-plugins-core",
-    ]);
-    expect(entry.timeout).toBe(300000);
-    expect(entry.environment).toEqual({
-      DASHSCOPE_API_KEY: "{env:DASHSCOPE_API_KEY}",
-      SERPER_API_KEY: "{env:SERPER_API_KEY}",
     });
   });
 
@@ -85,7 +60,7 @@ describe("installWebUiDependencies", () => {
     const configPath = path.join(dir, "opencode.jsonc");
     fs.writeFileSync(configPath, '{ "mcp": { "browser-bridge": { "command": ["custom"] } } }');
 
-    expect(installWebUiDependencies(dir, { qwenMm: false, commandcodeAuth: false })).toEqual([]);
+    expect(installWebUiDependencies(dir, { commandcodeAuth: false })).toEqual([]);
     expect(fs.readFileSync(configPath, "utf8")).toContain("custom");
   });
 
@@ -102,7 +77,7 @@ describe("installWebUiDependencies", () => {
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
-    const installed = installWebUiDependencies(target, { qwenMm: false, commandcodeAuth: false });
+    const installed = installWebUiDependencies(target, { commandcodeAuth: false });
 
     expect(installed).toContain("plugin/cursor-cli-proxy.js");
     expect(installed).toContain("packages/cursor-cli-proxy");
@@ -126,7 +101,7 @@ describe("installWebUiDependencies", () => {
 
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
-    installWebUiDependencies(target, { qwenMm: false, commandcodeAuth: false });
+    installWebUiDependencies(target, { commandcodeAuth: false });
 
     const config = JSON.parse(fs.readFileSync(path.join(target, "opencode.jsonc"), "utf8"));
     expect(config.provider["cursor"].name).toBe("Bundled Cursor");
@@ -138,7 +113,6 @@ describe("installWebUiDependencies", () => {
     dirs.push(target);
     expect(installWebUiDependencies(target, {
       browserBridge: false,
-      qwenMm: false,
       cursorAcp: false,
       claudeAuth: false,
       commandcodeAuth: false,
@@ -157,7 +131,7 @@ describe("installWebUiDependencies", () => {
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
 
-    expect(installWebUiDependencies(target, { qwenMm: false })).toEqual([
+    expect(installWebUiDependencies(target)).toEqual([
       "plugin/claude-cli-proxy.js",
       "packages/claude-cli-proxy",
       "plugin/commandcode-cli-proxy.js",
@@ -190,7 +164,7 @@ describe("installWebUiDependencies", () => {
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
 
-    expect(installWebUiDependencies(target, { browserBridge: false, qwenMm: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
       "plugin/claude-cli-proxy.js",
       "packages/claude-cli-proxy",
       "provider.anthropic",
@@ -227,7 +201,7 @@ describe("installWebUiDependencies", () => {
       JSON.stringify({ provider: { anthropic: { name: "Existing Anthropic", whitelist: ["claude-opus-5"] } } }),
     );
 
-    expect(installWebUiDependencies(target, { browserBridge: false, qwenMm: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, commandcodeAuth: false })).toEqual([
       "plugin/claude-cli-proxy.js",
       "packages/claude-cli-proxy",
     ]);
@@ -240,7 +214,7 @@ describe("installWebUiDependencies", () => {
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
 
-    expect(installWebUiDependencies(target, { browserBridge: false, qwenMm: false, cursorAcp: false, claudeAuth: false })).toEqual([
+    expect(installWebUiDependencies(target, { browserBridge: false, cursorAcp: false, claudeAuth: false })).toEqual([
       "plugin/commandcode-cli-proxy.js",
       "packages/commandcode-cli-proxy",
     ]);

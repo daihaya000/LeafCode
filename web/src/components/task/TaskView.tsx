@@ -575,7 +575,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [modelCapabilities, setModelCapabilities] = useState<
     Record<string, { attachment?: boolean; image?: boolean }>
   >({});
-  const [qwenMmConnected, setQwenMmConnected] = useState(false);
+  const [qwenNativeAvailable, setQwenNativeAvailable] = useState(false);
   const [agents, setAgents] = useState<string[]>([]);
   const [agentModels, setAgentModels] = useState<Record<string, { providerID: string; modelID: string }>>({});
   // Seed Auto synchronously for tasks created from HomeView. Waiting for the
@@ -1348,36 +1348,20 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes, providerModelsRes, mcpRes, qwenStatusRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes, qwenStatusRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
-          timedFetch("/api/extensions/mcp").catch(() => undefined),
-          timedFetch("/api/qwen-mm/status").catch(() => undefined),
+          timedFetch("/api/qwen-native/status").catch(() => undefined),
         ]);
 
-        const mcpData = mcpRes?.ok
-          ? ((await mcpRes.json().catch(() => ({}))) as {
-              servers?: { name?: unknown; enabled?: unknown; runtime?: unknown }[];
-            })
-          : null;
         const qwenStatus = qwenStatusRes?.ok
           ? ((await qwenStatusRes.json().catch(() => ({}))) as {
               nativeAvailable?: unknown;
             })
           : null;
-        setQwenMmConnected(
-          qwenStatus?.nativeAvailable === true ||
-          Boolean(
-            mcpData?.servers?.some(
-              (server) =>
-                server.name === "qwen-mm-plugins-core" &&
-                server.enabled !== false &&
-                server.runtime === "connected",
-            ),
-          ),
-        );
+        setQwenNativeAvailable(qwenStatus?.nativeAvailable === true);
 
         const data = providerRes.ok
           ? ((await providerRes.json()) as ProviderResponse)
@@ -2293,10 +2277,10 @@ export function TaskView({ taskId }: { taskId: string }) {
           ? modelCapabilities[sendingModelKey]?.image === true ||
             modelCapabilities[sendingModelKey]?.attachment === true
           : false;
-    const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenMmConnected;
+    const sendingImageBlocked = hasImage && !sendingImageSupported && !qwenNativeAvailable;
     if (sendingImageBlocked) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していないか、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
       );
       return;
     }
@@ -2329,7 +2313,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       }
       const resolved = resolveAutoSelection(
         text,
-        hasImage && !qwenMmConnected,
+        hasImage && !qwenNativeAvailable,
         attachments.length,
       );
       if (!resolved) {
@@ -2451,7 +2435,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     agent,
     agentModels,
     modelCapabilities,
-    qwenMmConnected,
+    qwenNativeAvailable,
     intelligence,
     slashCommands,
     touchActivity,
@@ -2532,9 +2516,9 @@ export function TaskView({ taskId }: { taskId: string }) {
         ? modelCapabilities[effectiveModelKey]?.image === true ||
           modelCapabilities[effectiveModelKey]?.attachment === true
         : false;
-  const imageInputAvailable = imageSupported || qwenMmConnected;
+  const imageInputAvailable = imageSupported || qwenNativeAvailable;
   const hasImageAttachment = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
-  const showImageWarning = hasImageAttachment && !imageSupported && !qwenMmConnected;
+  const showImageWarning = hasImageAttachment && !imageSupported && !qwenNativeAvailable;
 
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -2547,7 +2531,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
     if (!imageInputAvailable) {
       setSendError(
-        "選択中のエージェント/モデルは画像入力に対応していないか、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
+        "選択中のエージェント/モデルは画像入力に対応していないか、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
       );
       return;
     }
@@ -4486,7 +4470,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   buttonDisabled: !task.sessionId || composerLocked || !imageInputAvailable,
                   buttonTitle: imageInputAvailable
                     ? "画像を添付"
-                    : "画像対応モデルを選ぶか、Qwen-MM-Plugins MCPを接続してください",
+                    : "画像対応モデルを選ぶか、Ollama画像解析を有効にしてください",
                   onFilesSelected: (files) => void addImageFiles(files),
                   onTrigger: () => fileInputRef.current?.click(),
                 }}

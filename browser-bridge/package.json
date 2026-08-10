@@ -6,8 +6,7 @@
   "description": "Local Browser Bridge broker, MCP server, and Chrome/Brave extension assets",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "install-mcp": "node scripts/install-mcp.mjs",
-    "install-qwen-mm-mcp": "node scripts/install-qwen-mm-mcp.mjs"
+    "install-mcp": "node scripts/install-mcp.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

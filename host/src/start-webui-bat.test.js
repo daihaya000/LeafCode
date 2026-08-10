@@ -79,7 +79,6 @@ function createSandbox(options = {}) {
       'if "%~3"=="OpenJS.NodeJS.LTS" goto :node',
       'if "%~3"=="SST.opencode" goto :opencode',
       'if "%~3"=="CaddyServer.Caddy" goto :caddy',
-      'if "%~3"=="astral-sh.uv" goto :uv',
       "exit /b 87",
       ":node",
       'if not "%SETUP_TEST_WINGET_NODE_EXIT%"=="0" exit /b %SETUP_TEST_WINGET_NODE_EXIT%',
@@ -93,18 +92,11 @@ function createSandbox(options = {}) {
       'if not "%SETUP_TEST_WINGET_CADDY_EXIT%"=="0" exit /b %SETUP_TEST_WINGET_CADDY_EXIT%',
       'type nul > "%SETUP_TEST_ROOT%\\caddy-winget-installed"',
       "exit /b 0",
-      ":uv",
-      'if not "%SETUP_TEST_WINGET_UV_EXIT%"=="0" exit /b %SETUP_TEST_WINGET_UV_EXIT%',
-      'if "%SETUP_TEST_UV_WINGET_MARKER%"=="1" type nul > "%SETUP_TEST_ROOT%\\uv-winget-installed"',
-      "exit /b 0",
     ].join("\n"));
   }
 
   if (options.caddyAlreadyInstalled) {
     writeBat(join(bin, "caddy.cmd"), "exit /b 0");
-  }
-  if (options.uvAlreadyInstalled) {
-    writeBat(join(bin, "uv.cmd"), "exit /b 0");
   }
   if (options.caddyWingetLinksShim) {
     const linksDir = join(root, "appdata-local", "Microsoft", "WinGet", "Links");
@@ -118,12 +110,8 @@ function createSandbox(options = {}) {
       'if "%~1"=="scripts\\web-build-mirror.mjs" echo %SETUP_TEST_WEB_DIST_DIR%',
       'if "%~1"=="scripts\\web-build-mirror.mjs" exit /b 0',
       'if "%~1"=="scripts\\build-web.mjs" goto :build_web',
-      'if "%~1"=="browser-bridge\\scripts\\install-qwen-mm-mcp.mjs" goto :qwen_mm',
       'if "%~1"=="-p" goto :version_query',
       'if "%~1"=="src\\index.js" goto :host_tail',
-      "exit /b 0",
-      ":qwen_mm",
-      'type nul > "%SETUP_TEST_ROOT%\\qwen-mm-installed.txt"',
       "exit /b 0",
       ":build_web",
       'echo build-web %CD% %*>>"%SETUP_TEST_LOG%"',
@@ -192,11 +180,8 @@ function createSandbox(options = {}) {
     // Caddy install this dev/CI machine may actually have.
     LOCALAPPDATA: join(root, "appdata-local"),
     OPENCODE_WEBUI_CADDY: options.caddyDisabled ? "0" : "",
-    OPENCODE_WEBUI_QWEN_MM: options.qwenMmDisabled ? "0" : "",
     SETUP_TEST_WINGET_CADDY_EXIT: String(options.wingetCaddyExit ?? 0),
     SETUP_TEST_WINGET_UV_EXIT: String(options.wingetUvExit ?? 0),
-    SETUP_TEST_UV_WINGET_MARKER: options.uvWingetMarker === false ? "0" : "1",
-    SETUP_TEST_QWEN_MM_DISABLED: options.qwenMmDisabled ? "1" : "",
     SETUP_TEST_WEB_DIST_DIR: join(root, "appdata", "opencode-webui", "web-build"),
     SETUP_TEST_ROOT: root,
     SETUP_TEST_LOG: log,
@@ -275,15 +260,12 @@ test("start-webui.bat installs winget/Node.js/OpenCode/Caddy/deps on a fresh mac
     assert.equal(existsSync(join(sandbox.root, "opencode-winget-installed")), true);
     assert.equal(existsSync(join(sandbox.root, "opencode-npm-installed")), false);
     assert.equal(existsSync(join(sandbox.root, "caddy-winget-installed")), true, "expected Caddy to be auto-installed too");
-    assert.equal(existsSync(join(sandbox.root, "uv-winget-installed")), true, "expected uv to be auto-installed too");
-    assert.equal(existsSync(join(sandbox.root, "qwen-mm-installed.txt")), true, "expected the Qwen-MM MCP installer to run");
     assert.equal(existsSync(join(sandbox.root, "appdata", "opencode-webui", "web-build", "BUILD_ID")), true);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
     const log = readFileSync(sandbox.log, "utf8");
     assert.match(log, /install --id OpenJS\.NodeJS\.LTS --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /install --id SST\.opencode --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /install --id CaddyServer\.Caddy --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
-    assert.match(log, /install --id astral-sh\.uv --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity/);
     assert.match(log, /npm .*\\web ci/);
     assert.match(log, /npm .*\\host ci/);
     assert.match(log, /npm .*\\browser-bridge ci/);
@@ -298,10 +280,6 @@ test("start-webui.bat installs winget/Node.js/OpenCode/Caddy/deps on a fresh mac
     assert.ok(nodeIdx >= 0 && opencodeIdx > nodeIdx, "Node.js must install before OpenCode");
     assert.ok(caddyIdx > opencodeIdx, "Caddy must be attempted after OpenCode is resolved");
     assert.ok(npmWebIdx > caddyIdx, "web dependency install must come after the Caddy step");
-    const uvIdx = log.indexOf("astral-sh.uv");
-    const bbCiIdx = log.search(/npm .*\\browser-bridge ci/);
-    assert.ok(uvIdx > bbCiIdx, "uv must install after browser-bridge dependencies");
-    assert.ok(existsSync(join(sandbox.root, "qwen-mm-installed.txt")), "Qwen-MM MCP installer must run after uv");
   } finally { sandbox.cleanup(); }
 });
 
@@ -312,7 +290,6 @@ test("start-webui.bat does not require winget when Node.js and OpenCode are alre
     webBuildId: true,
     hostNodeModules: true,
     browserBridgeNodeModules: true,
-    uvAlreadyInstalled: true,
   });
   try {
     const result = sandbox.run();
@@ -420,14 +397,12 @@ test("start-webui.bat skips npm ci / build / guard entirely when already install
     webBuildId: true,
     hostNodeModules: true,
     browserBridgeNodeModules: true,
-    uvAlreadyInstalled: true,
   });
   try {
     const result = sandbox.run();
     assertCompleted(result, "idempotent fast path");
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true);
-    assert.equal(existsSync(join(sandbox.root, "qwen-mm-installed.txt")), true, "Qwen-MM MCP installer runs even on the idempotent fast path");
     assert.match(result.stdout, /Existing build found; host will rebuild if sources are newer/);
     const log = existsSync(sandbox.log) ? readFileSync(sandbox.log, "utf8") : "";
     assert.doesNotMatch(log, /\bci\b/, "npm ci must not run when node_modules already exists");
@@ -444,7 +419,6 @@ test("start-webui.bat refreshes existing but invalid dependency trees", { skip: 
     npmWebLsExit: 1,
     npmHostLsExit: 1,
     npmBrowserBridgeLsExit: 1,
-    uvAlreadyInstalled: true,
   });
   try {
     const result = sandbox.run();
@@ -549,52 +523,6 @@ test("start-webui.bat runs the production WebUI guard without --stop and skips t
   assert.doesNotMatch(source, /set "NODE_PATH=/);
   // The guard already ran here; build-web.mjs must not repeat it.
   assert.match(source, /call node scripts\\build-web\.mjs --skip-guard/);
-});
-
-test("start-webui.bat does not reinstall uv when it is already on PATH", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ uvAlreadyInstalled: true });
-  try {
-    const result = sandbox.run();
-    assertCompleted(result, "uv already on PATH");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.doesNotMatch(readFileSync(sandbox.log, "utf8"), /astral-sh\.uv/);
-    assert.equal(existsSync(join(sandbox.root, "qwen-mm-installed.txt")), true, "Qwen-MM MCP installer still runs when uv is present");
-  } finally { sandbox.cleanup(); }
-});
-
-test("start-webui.bat still starts the host when the uv install fails (non-fatal)", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ wingetUvExit: 1 });
-  try {
-    const result = sandbox.run();
-    assertCompleted(result, "uv install failure is non-fatal");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.equal(existsSync(join(sandbox.root, "uv-winget-installed")), false);
-    assert.match(result.stdout, /uv installation failed; continuing without Qwen-MM-Plugins MCP/);
-    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
-  } finally { sandbox.cleanup(); }
-});
-
-test("start-webui.bat skips uv install and Qwen-MM MCP when OPENCODE_WEBUI_QWEN_MM=0", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ qwenMmDisabled: true });
-  try {
-    const result = sandbox.run();
-    assertCompleted(result, "Qwen-MM disabled");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.doesNotMatch(readFileSync(sandbox.log, "utf8"), /astral-sh\.uv/);
-    assert.doesNotMatch(result.stdout, /Qwen-MM/);
-    assert.equal(existsSync(join(sandbox.root, "qwen-mm-installed.txt")), false);
-  } finally { sandbox.cleanup(); }
-});
-
-test("start-webui.bat does not require winget for uv (skips cleanly without it)", { skip: !isWindows }, () => {
-  const sandbox = createSandbox({ withWinget: false });
-  try {
-    const result = sandbox.run();
-    assertCompleted(result, "no winget (uv)");
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /winget not found; skipping uv install/);
-    assert.equal(existsSync(join(sandbox.root, "hoststarted.txt")), true, "expected the host tail to run");
-  } finally { sandbox.cleanup(); }
 });
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {

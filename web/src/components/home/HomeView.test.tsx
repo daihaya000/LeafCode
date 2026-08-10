@@ -297,7 +297,7 @@ describe("HomeView image attachments", () => {
     );
   });
 
-  it("allows an image attachment for a text-only model when Qwen MCP is connected", async () => {
+  it("allows an image attachment for a text-only model when local Qwen vision is enabled", async () => {
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider") {
         return Promise.resolve({
@@ -317,12 +317,10 @@ describe("HomeView image attachments", () => {
           }),
         });
       }
-      if (path === "/api/extensions/mcp") {
+      if (path === "/api/qwen-native/status") {
         return Promise.resolve({
           ok: true,
-          json: async () => ({
-            servers: [{ name: "qwen-mm-plugins-core", enabled: true, runtime: "connected" }],
-          }),
+          json: async () => ({ nativeAvailable: true }),
         });
       }
       return Promise.resolve({ ok: false });
@@ -348,38 +346,6 @@ describe("HomeView image attachments", () => {
         }),
       ),
     );
-  });
-
-  it("enables image attachments when native Qwen vision is available without MCP", async () => {
-    timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            all: [{
-              id: "openai",
-              models: {
-                text: { capabilities: { input: { image: false } } },
-              },
-            }],
-            connected: ["openai"],
-            default: { openai: "text" },
-          }),
-        });
-      }
-      if (path === "/api/qwen-mm/status") {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ nativeAvailable: true }),
-        });
-      }
-      return Promise.resolve({ ok: false });
-    });
-
-    render(<HomeView />);
-
-    const attach = await screen.findByRole("button", { name: "画像を添付" });
-    await waitFor(() => expect((attach as HTMLButtonElement).disabled).toBe(false));
   });
 
   it("blocks image submission when the selected agent model lacks image capability", async () => {

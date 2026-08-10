@@ -922,7 +922,6 @@ describe("POST /api/tasks auto model selection", () => {
       provider?: unknown;
       agents?: unknown;
       commands?: unknown;
-      mcp?: unknown;
     } = {},
   ) {
     const { ocServer } = await import("@/lib/oc-server");
@@ -932,7 +931,6 @@ describe("POST /api/tasks auto model selection", () => {
       if (path === "/agent") return overrides.agents ?? [];
       if (path === "/session") return { id: "session-1" };
       if (path === "/command") return overrides.commands ?? [];
-      if (path === "/mcp") return overrides.mcp ?? {};
       return {};
     });
     fn.mockClear();
@@ -1415,42 +1413,8 @@ describe("POST /api/tasks auto model selection", () => {
     expect(provisionWorkspace).not.toHaveBeenCalled();
   });
 
-  it("lets Auto choose a text-only model when Qwen MCP can inspect the image", async () => {
-    const ocServer = await mockOc({
-      provider: providerFixture({
-        [CHEAP]: { variants: { minimal: {} } },
-        [MID]: { capabilities: { input: { image: false } } },
-      }),
-      mcp: { "qwen-mm-plugins-core": { status: "connected" } },
-    });
-
-    const res = await post({
-      projectId: "project-1",
-      prompt: LIGHT_PROMPT,
-      isolation: "current_folder",
-      auto: true,
-      files: [image],
-    });
-
-    expect(res.status).toBe(200);
-    expect(promptBodyOf(ocServer)).toMatchObject({
-      model: { providerID: "anthropic", modelID: CHEAP },
-      parts: [
-        {
-          type: "text",
-          text: expect.stringContaining("vision_chat"),
-        },
-      ],
-    });
-    expect(promptBodyOf(ocServer)?.parts).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "file" })]),
-    );
-  });
-
   it("analyzes an image natively before sending it to an Auto-selected text model", async () => {
-    const previousKey = process.env.DASHSCOPE_API_KEY;
     const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-    process.env.DASHSCOPE_API_KEY = "dashscope-secret";
     process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -1484,55 +1448,8 @@ describe("POST /api/tasks auto model selection", () => {
           },
         ],
       });
-      expect(ocServer.mock.calls.filter((call) => call[1] === "/mcp")).toEqual([]);
     } finally {
       fetchMock.mockRestore();
-      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
-      else process.env.DASHSCOPE_API_KEY = previousKey;
-      if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-      else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
-    }
-  });
-
-  it("falls back to connected MCP when native image analysis fails", async () => {
-    const previousKey = process.env.DASHSCOPE_API_KEY;
-    const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-    process.env.DASHSCOPE_API_KEY = "invalid-key";
-    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "0";
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ error: { message: "invalid API key" } }),
-        { status: 401 },
-      ),
-    );
-    try {
-      const ocServer = await mockOc({
-        provider: providerFixture({
-          [CHEAP]: { variants: { minimal: {} } },
-        }),
-        mcp: { "qwen-mm-plugins-core": { status: "connected" } },
-      });
-
-      const res = await post({
-        projectId: "project-1",
-        prompt: LIGHT_PROMPT,
-        isolation: "current_folder",
-        auto: true,
-        files: [image],
-      });
-
-      expect(res.status).toBe(200);
-      expect(promptBodyOf(ocServer)?.parts).toEqual([
-        expect.objectContaining({
-          type: "text",
-          text: expect.stringContaining("vision_chat"),
-        }),
-      ]);
-      expect(ocServer.mock.calls.some((call) => call[1] === "/mcp")).toBe(true);
-    } finally {
-      fetchMock.mockRestore();
-      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
-      else process.env.DASHSCOPE_API_KEY = previousKey;
       if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
       else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
     }

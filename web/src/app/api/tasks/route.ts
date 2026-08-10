@@ -32,13 +32,10 @@ import {
 import { listTasks } from "@/lib/task-service";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
-  analyzeQwenMmImages,
-  isQwenMmConnected,
+  analyzeNativeImages,
   isQwenNativeVisionAvailable,
-  persistQwenMmImages,
-  qwenMmImageInstructions,
-  qwenNativeImageContext,
-} from "@/lib/qwen-mm-fallback";
+  nativeImageContext,
+} from "@/lib/qwen-native-vision";
 import {
   ServiceError,
   destroyWorkspace,
@@ -165,18 +162,6 @@ async function supportsImageInput(
     return (
       capabilities?.input?.image === true || capabilities?.attachment === true
     );
-  } catch {
-    return false;
-  }
-}
-
-async function supportsQwenMmFallback(): Promise<boolean> {
-  try {
-    const status = await ocServer<Record<string, { status?: unknown }>>(
-      null,
-      "/mcp",
-    );
-    return isQwenMmConnected(status);
   } catch {
     return false;
   }
@@ -412,15 +397,9 @@ export async function POST(req: NextRequest) {
   }
   const codexBarUsage = auto ? parseCodexBarUsage(body?.codexBarUsage) : undefined;
 
-  // Auto normally restricts candidates to native image-capable models. When
-  // the Qwen MCP is connected, the image will be converted to a text-only
-  // tool instruction after provisioning, so Auto may choose any suitable
-  // text model instead.
+  // When local Qwen vision is enabled, Auto can choose a text-only model and
+  // the image will be converted to analysis text after provisioning.
   const qwenNativeForAuto = auto && files.length > 0 && isQwenNativeVisionAvailable();
-  const qwenMcpForAuto = auto && files.length > 0 && !qwenNativeForAuto
-    ? await supportsQwenMmFallback()
-    : false;
-  const qwenMmForAuto = qwenNativeForAuto || qwenMcpForAuto;
 
   // From here on the resolved Auto model is indistinguishable from a manually
   // selected one: everything downstream reads `effectiveModel` / `variant`.
@@ -438,7 +417,7 @@ export async function POST(req: NextRequest) {
       try {
         decision = await resolveAutoModel(
           prompt,
-          qwenMmForAuto ? [] : files,
+          qwenNativeForAuto ? [] : files,
           autoOptimize,
           codexBarUsage,
           autoRouteOverrides,
@@ -477,17 +456,13 @@ export async function POST(req: NextRequest) {
   // Redundant for Auto (candidates were already narrowed to image-capable
   // models) but kept as a second check on the shared code path.
   let qwenNativeFallback = false;
-  let qwenMcpFallback = false;
   if (files.length > 0 && !(await supportsImageInput(effectiveModel, body?.agent))) {
     qwenNativeFallback = isQwenNativeVisionAvailable();
-    qwenMcpFallback = qwenMcpForAuto || (
-      !qwenNativeFallback && await supportsQwenMmFallback()
-    );
-    if (!qwenNativeFallback && !qwenMcpFallback) {
+    if (!qwenNativeFallback) {
       return NextResponse.json(
         {
           error:
-            "選択中のモデルは画像入力に対応しておらず、Qwen-MM-Plugins MCPも接続されていません。画像対応モデルを選ぶか、MCPを接続してください。",
+            "選択中のモデルは画像入力に対応しておらず、ローカルQwen画像解析も有効ではありません。画像対応モデルを選ぶか、Ollama画像解析を有効にしてください。",
         },
         { status: 400 },
       );
@@ -537,25 +512,12 @@ export async function POST(req: NextRequest) {
     const qwenImages = files.map((file) => ({
       dataUrl: file.uri,
       mime: file.mime,
-      ...(file.name ? { name: file.name } : {}),
     }));
     let promptForSend = prompt;
     if (qwenNativeFallback) {
-      try {
-        const analysis = await analyzeQwenMmImages(prompt, qwenImages);
-        promptForSend = qwenNativeImageContext(prompt, analysis);
-      } catch (error) {
-        qwenMcpFallback = await supportsQwenMmFallback();
-        if (!qwenMcpFallback) throw error;
-      }
+      const analysis = await analyzeNativeImages(prompt, qwenImages);
+      promptForSend = nativeImageContext(prompt, analysis);
     }
-    if (qwenMcpFallback && promptForSend === prompt) {
-      promptForSend = qwenMmImageInstructions(
-        prompt,
-        persistQwenMmImages(qwenImages, session.id),
-      );
-    }
-    const qwenFallback = qwenNativeFallback || qwenMcpFallback;
 
     // This is deliberately before the first command/prompt: with the task
     // tool allowed, OpenCode creates a child session without ever emitting a
@@ -601,7 +563,7 @@ export async function POST(req: NextRequest) {
         command: parsedCommand.command,
         arguments: parsedCommand.arguments,
       };
-      if (qwenFallback) {
+      if (qwenNativeFallback) {
         commandBody.parts = [{ type: "text", text: promptForSend }];
       } else if (files.length > 0) {
         commandBody.parts = files.map((file) => ({
@@ -635,7 +597,7 @@ export async function POST(req: NextRequest) {
       const promptBody: Record<string, unknown> = {
         parts: [
           { type: "text", text: promptForSend },
-          ...(qwenFallback
+          ...(qwenNativeFallback
             ? []
             : files.map((file) => ({
                 type: "file",

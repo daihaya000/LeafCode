@@ -30,7 +30,8 @@ function listTrackedBatchFiles() {
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0)
     .filter((line) => /\.(bat|cmd)$/i.test(line))
-    .map((line) => join(repoRoot, line));
+    .map((line) => join(repoRoot, line))
+    .filter((filePath) => existsSync(filePath));
 }
 
 /** Walk the working tree so untracked local bats cannot slip into a hand-zipped release. */

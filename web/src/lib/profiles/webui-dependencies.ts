@@ -9,9 +9,6 @@ const VENDOR_VERSIONS_FILE = ".webui-vendor-versions.json";
 const CONFIG_SKELETON = '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
 const BROKER_URL = "{env:OPENCODE_WEBUI_BROWSER_BROKER}";
 const BROKER_TOKEN = "{env:OPENCODE_WEBUI_BROWSER_BROKER_TOKEN}";
-const QWEN_MM_ENTRY = "qwen-mm-plugins-core";
-const QWEN_MM_FROM = "qwen-mm-plugins[core] @ git+https://github.com/QwenLM/Qwen-MM-Plugins.git@main";
-const QWEN_MM_TIMEOUT_MS = 300000;
 
 /**
  * OpenCode-side dependencies used by the WebUI.  The browser extension itself
@@ -33,23 +30,8 @@ export function webUiMcpEntry(): Record<string, unknown> {
   };
 }
 
-/** MCP tools that add image reading and OCR to models without native vision input. */
-export function qwenMmMcpEntry(): Record<string, unknown> {
-  return {
-    type: "local",
-    command: ["uvx", "--from", QWEN_MM_FROM, QWEN_MM_ENTRY],
-    enabled: true,
-    timeout: QWEN_MM_TIMEOUT_MS,
-    environment: {
-      DASHSCOPE_API_KEY: "{env:DASHSCOPE_API_KEY}",
-      SERPER_API_KEY: "{env:SERPER_API_KEY}",
-    },
-  };
-}
-
 export type WebUiDependencyOptions = {
   browserBridge?: boolean;
-  qwenMm?: boolean;
   cursorAcp?: boolean;
   claudeAuth?: boolean;
   commandcodeAuth?: boolean;
@@ -350,7 +332,6 @@ export function installWebUiDependencies(
   if (options.browserBridge !== false) {
     entries.push(["mcp", "browser-bridge", webUiMcpEntry()]);
   }
-  if (options.qwenMm !== false) entries.push(["mcp", QWEN_MM_ENTRY, qwenMmMcpEntry()]);
   if (options.cursorAcp !== false && cursorProvider) entries.push(["provider", "cursor", cursorProvider]);
   if (options.claudeAuth !== false && anthropicProvider) entries.push(["provider", "anthropic", anthropicProvider]);
   for (const [parent, name, value] of entries) {
