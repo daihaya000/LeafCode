@@ -1,217 +1,149 @@
 ---
 name: bug-hunt
-description: Use when the user asks to find, diagnose, reproduce, fix, or verify bugs, crashes, errors, exceptions, regressions, flaky tests, or unexpected behavior. Also use for investigating reports like "it doesn't work", "X is broken", "why does Y happen", stack traces, and error logs. Covers root-cause analysis, minimal reproduction, fix strategy, and regression test creation.
+description: バグ、不具合、エラー、例外、クラッシュ、回帰、flaky test、性能劣化、「動かない」「壊れた」などの再現・原因調査・修正・検証を依頼されたときに使う。証拠に基づく根本原因分析と回帰防止を行う。
 ---
 
 # Bug Hunt
 
-A disciplined workflow for tracking down, fixing, and preventing bugs.
-Apply this whenever the user reports broken behavior, a crash, an error log,
-a regression, or a flaky test. Bias toward **evidence over assumption**:
-every claim about the cause must be backed by code, a log, or a reproducible
-test before it is acted on.
+不具合を再現し、原因を証明し、最小の修正と回帰テストで再発を防ぐ。
+推測ではなく、実行結果・ログ・コード・履歴を根拠に判断する。
 
-## Core principles
+## 優先規則
 
-1. **Reproduce before fixing.** A bug you cannot reproduce is a bug you cannot
-   verify. Get a failing test, a repro script, or a concrete sequence of
-   steps before touching code. If reproduction is blocked, say so explicitly
-   and enumerate what you need from the user (input, env, version, logs).
-2. **Bisect, don't guess.** When the cause is unclear, narrow it with
-   `git bisect`, build narrowing, comment-out, or log-diff. Form one
-   hypothesis at a time and test it. Do not stack multiple unverified fixes.
-3. **Fix the root cause, not the symptom.** Suppressing an error, adding a
-   try/catch that swallows it, or patching output to match expectations is
-   a fix only when the root cause is genuinely out of scope. Otherwise track
-   the symptom back to its source.
-4. **Smallest possible change.** Resist refactors "while you're in there."
-   Each edit should be traceable to the bug. Bundled refactors hide which
-   change actually fixed the issue and make review and revert harder.
-5. **Add a regression test.** The reproduction you already built becomes the
-   regression test. Without it, the bug will come back and you won't know.
-6. **Verify, don't assert.** Run the test suite, the linter, the typechecker.
-   "Should work" is not verification.
+- 最初に `AGENTS.md`、README、テスト設定、実行スクリプトを確認する。
+- プロジェクト固有の禁止事項と検証方法を、このスキルの一般則より優先する。
+- ユーザーや他のエージェントの未コミット変更を保持する。無関係な変更を修正、整形、revertしない。
+- 常駐プロセス、破壊的Git操作、本番データ操作、外部送信は明示的な許可なしに行わない。
+- 3段階以上の調査は `todowrite` で「再現、原因特定、修正、回帰テスト、検証」を追跡する。
 
-## Workflow
+## 完了条件
 
-### 1. Triage the report
+次を満たすまで「修正済み」と断定しない。
 
-Extract the contract before investigating:
+1. 期待値と実際値が明確である。
+2. 不具合を再現した、または再現不能の理由と代替証拠がある。
+3. 根本原因をコード上の因果関係として説明できる。
+4. 修正が原因へ作用することを説明できる。
+5. 回帰テスト、同等の自動検証、または具体的な手動検証が成功している。
+6. 関連する型検査・lint・テストが成功しているか、未実施理由を報告している。
 
-- **Expected behavior** — what the user/code intended.
-- **Actual behavior** — what happened instead.
-- **Inputs / preconditions** — what triggers it.
-- **Environment** — version, OS, browser, config, relevant env vars.
-- **Evidence** — stack trace, error message, log lines, screenshot, failing
-  test output. Quote the exact text; do not paraphrase stack traces.
+## 1. トリアージ
 
-If the report is vague ("it crashes"), ask the user for specifics using the
-`question` tool before diving into code. One focused question beats twenty
-minutes of speculation.
+報告から次の事実を抽出する。
 
-Use `todowrite` to track multi-step hunts so progress is visible:
+- 期待する動作
+- 実際の動作
+- 最小の入力と操作手順
+- 発生頻度と初回発生時期
+- OS、ブラウザ、ランタイム、バージョン、設定
+- エラーメッセージ、スタックトレース、ログ、スクリーンショット
+- 直前の変更、正常だった版、影響範囲
 
-- Reproduce
-- Locate root cause
-- Implement fix
-- Add regression test
-- Verify (tests + lint + typecheck)
+コード、ログ、テスト、履歴から取得できる情報は先に自分で調べる。
+不足情報が調査を実際に妨げる場合だけ、`question` で一度に答えられる具体的な質問をする。
 
-### 2. Reproduce
+## 2. 再現
 
-Pick the cheapest reliable reproduction, in this order:
+安価で決定的な方法を優先する。
 
-1. **Existing test** — find a test that exercises the path and make it fail.
-2. **New test** — write the smallest test that reproduces the bug. Use the
-   project's existing test framework; never invent a new one. Check
-   `package.json` scripts, `AGENTS.md`, or the repo's test directory.
-3. **Script / one-shot command** — for non-testable paths (build, CLI,
-   integration with an external system).
-4. **Manual repro** — last resort; document exact steps so they can be
-   scripted later.
+1. 既存の失敗テストまたは報告されたコマンド
+2. 既存テストへの最小ケース追加
+3. 一回で終了する再現スクリプトやAPI呼び出し
+4. 既存アプリでの手動操作
 
-Capture the reproduction's output verbatim. This becomes the "before" state
-you compare the fix against.
+実行したコマンド、入力、環境、実際の出力を記録する。
+再現に必要なら一時的なログやアサーションを追加してよいが、最終差分には不要な計測を残さない。
 
-If reproduction is environment-specific and you don't have access, say so
-and request a trace, a minimal repro repo, or a remote session. Do not
-attempt a blind fix.
+再現できない場合は盲目的に修正しない。ただし、スタックトレース、型・境界条件の証明、既知の競合など、原因を特定できる十分な代替証拠がある場合は進めてよい。その制約を最終報告に明記する。
 
-### 3. Locate the root cause
+## 3. 調査
 
-Navigate the evidence, not your hunch:
+### 証拠をたどる
 
-- **Stack trace** — read top-to-bottom; the first frame in *project* code is
-  usually the entry point to the bug, not necessarily the bug itself. Walk
-  down to the frame that actually holds the bad value or logic.
-- **Error message** — grep the codebase for the exact string. If it's a
-  framework/library message, grep for the symbol it references.
-- **Logs** — identify the last good line and the first bad line; the bug
-  fires between them.
-- **Diff** — `git log -p -- <path>`, `git blame`, `git bisect` on the
-  reproducing test. Regressions are almost always recent.
+- エラー文字列と関連シンボルを `grep` する。
+- 失敗地点だけでなく、悪い値が生成された地点まで呼び出し元とデータフローを追う。
+- 最後の正常状態と最初の異常状態の境界を探す。
+- 回帰なら `git log -p -- <path>`、`git blame`、必要に応じて非対話の `git bisect` を使う。
+- 依存ライブラリが原因候補なら、ロックファイル、変更履歴、公式仕様を確認する。
 
-Tools to lean on, in parallel where possible:
+調査中は簡潔な証拠表を維持する。
 
-- `grep` / `rg` for the error string and related symbols.
-- `glob` to locate the relevant module.
-- `read` on the suspect function and its callers.
-- `git log`, `git diff`, `git blame`, `git bisect` for regressions.
+| 仮説 | 根拠 | 反証方法 | 結果 |
+| --- | --- | --- | --- |
+| 例: 初期化順序が逆 | `cwd` が未設定のスタック | 呼び出し直前を記録 | 確認済み |
 
-State the hypothesis explicitly in one sentence:
+一度に検証する仮説は一つにする。反証された仮説を無言で使い続けない。
 
-> "The crash happens because `parseConfig` is called before `cwd` is set, so
-> `resolve()` throws on `undefined`."
+### バグ種別の観点
 
-Then test that single hypothesis. If it's wrong, say so and form a new one.
-Do not silently carry a disproven hypothesis forward.
+- **状態・UI**: stale state、非同期順序、コンポーネントのmount/unmount、キャッシュキー、空・loading・error状態
+- **並行処理・flaky**: 共有状態、時刻依存、乱数、未await、race、タイマー、テスト分離、リトライによる隠蔽
+- **性能**: 推測で最適化せず、同じ条件で時間・回数・メモリを修正前後に計測する
+- **境界値**: null、空、0、最大値、Unicode、パス、タイムゾーン、権限、ネットワーク切断
+- **互換性**: 公開API、永続化形式、設定、依存バージョン、旧データの具体的な利用有無
 
-### 4. Design the fix
+## 4. 根本原因を確定
 
-Before editing, decide:
+編集前に一文で因果関係を書く。
 
-- **Where** the fix lives. Prefer the layer where the bad data originates,
-  not the layer where it finally explodes. Fixing the caller is usually
-  better than hardening the callee.
-- **What** changes. Describe the semantic change, not the textual one
-  ("set `cwd` before parsing" vs "add a line").
-- **What else** depends on the current (buggy) behavior. Grep for callers
-  and tests that may rely on the broken path. A "bug" that other code
-  depends on is a design conflict, not a one-line fix.
-- **Risk**. Does the fix touch a hot path? A public API? A serialization
-  format? Flag higher-risk changes to the user before applying.
+> `parseConfig` が `cwd` の設定前に呼ばれ、`resolve(undefined)` が例外を投げる。
 
-If the fix requires a breaking change, a config migration, or coordination
-with another system, **stop and surface the decision** with the `question`
-tool rather than committing silently to a path.
+「この行で落ちる」は失敗地点であり、根本原因とは限らない。
+修正箇所は不変条件を所有する層に置く。生成元、境界での検証、利用側のどこが責任を持つかを、呼び出し契約と他の利用箇所から判断する。
 
-### 5. Implement
+原因を絞れないまま複数の変更を重ねない。仮説を3つ反証しても進展しない場合は、追加ログ、最小再現、環境アクセスを依頼する。
 
-Apply the smallest change that fixes the root cause:
+## 5. 修正
 
-- Use `edit` for targeted changes; reserve `write` for full-file rewrites.
-- Match the surrounding code style. Do not introduce new dependencies,
-  patterns, or conventions to fix a bug.
-- Do **not** add comments explaining the bug unless the user asks.
-- Do **not** refactor neighboring code. Save it for a dedicated change.
-- If you touch a public API or persisted format, update the docs and
-  changelog the project maintains.
+- 根本原因に作用する最小の変更を行う。
+- 周辺のリファクタ、命名変更、依存追加を混在させない。
+- 既存の設計、型、エラー処理、テスト方式に合わせる。
+- コメントはコードから読み取れない不変条件や理由がある場合だけ追加する。
+- 例外の握りつぶし、無制限リトライ、過度なデフォルト値、テストの弱体化で症状を隠さない。
+- 公開APIや永続化形式を変える場合は、具体的な既存利用を確認し、破壊的変更なら先にユーザーへ判断を求める。
 
-### 6. Add a regression test
+## 6. 回帰テスト
 
-Turn the reproduction from step 2 into a permanent test:
+可能なら再現ケースを恒久テストにする。
 
-- It must **fail before** the fix and **pass after**. If you can't show both
-  transitions, you haven't proven the fix.
-- Place it next to existing tests for the same module; follow their style.
-- Name it after the bug, not the fix:
-  `parses config when cwd is unset` > `fixes #1234`.
-- Cover the edge case that caused the bug, not just the happy path that
-  exposed it.
+- 修正前のコードで失敗し、修正後に成功する性質を確認する。
+- 修正前実行を記録済みなら、確認のために作業ツリーを巻き戻さない。
+- 不具合を生んだ境界条件を直接検証する。
+- 実装詳細ではなく外部から観測できる契約を検証する。
+- flaky testでは単なるリトライを解決とせず、決定性を回復する。
 
-If the project has no test framework, ask the user whether to add one or
-leave the reproduction as a documented script. Do not silently introduce a
-test framework.
+既存のテスト基盤がない、または自動化コストが不釣り合いなら、勝手に基盤を追加しない。再現可能な手動手順または一回実行の検証を残し、制約を報告する。
 
-### 7. Verify
+## 7. 検証
 
-Run the project's actual verification commands, in this order, and report
-results:
+プロジェクトで定義されたコマンドを使用し、次の順で確認する。
 
-1. **Regression test** — the one you just wrote, isolated first, then the
-   whole suite for the touched module.
-2. **Typecheck** — `tsc --noEmit`, `vue-tsc`, `pyright`, etc.
-3. **Lint** — `eslint`, `ruff`, `golangci-lint`, etc.
-4. **Full test suite** — only if the change could affect other paths.
-5. **Manual check** — reproduce the original scenario by hand when tests
-   can't cover it (UI, external system, timing-dependent bug).
+1. 新しい回帰テストまたは最小再現
+2. 変更モジュールの関連テスト
+3. 型検査とlint
+4. 影響範囲に応じた全体テスト
+5. 必要な場合のみ元の操作による手動確認
 
-Find the exact commands in `package.json`, `AGENTS.md`, `Makefile`,
-`tox.ini`, or the repo's docs. Never guess a command name; if you can't find
-it, ask.
+性能やflakyの修正は複数回実行し、修正前と同条件で比較する。
+失敗した検証を隠さない。今回の変更が原因なら直し、無関係または環境要因なら根拠とともに分離して報告する。
 
-If anything fails, **do not declare done**. Fix it or report the blocker.
+## 8. 報告
 
-### 8. Summarize for the user
+調査結果は次の順で簡潔にまとめる。
 
-Close the loop with a tight report:
+- **根本原因**: 因果関係と `path:line`
+- **修正**: 変更内容と、その場所が適切な理由
+- **回帰防止**: テスト名または手動検証手順
+- **検証結果**: 実行コマンドと成否
+- **制約・残存リスク**: 再現不能、未実施検証、意図的に触らなかった関連事項
 
-- **Root cause** — one sentence, with `file_path:line` reference.
-- **Fix** — what changed and why, with `file_path:line`.
-- **Regression test** — name and location.
-- **Verification** — which commands ran and their results.
-- **Follow-ups** — anything you noticed but intentionally did not touch
-  (nearby code smell, missing test coverage, related latent bug). Leave
-  these as suggestions, not silent edits.
+根本原因が未確定なら「修正済み」ではなく「調査結果」または「暫定対策」と明示する。
 
-## Anti-patterns to avoid
+## 禁止する進め方
 
-- **Shotgun debugging** — changing multiple things at once and hoping one
-  works. One hypothesis, one change, one verification.
-- **Fixing symptoms** — catching an exception, retrying, or defaulting a bad
-  value when the upstream logic is wrong.
-- **Blind fixes** — editing code based on a guess with no reproduction. You
-  cannot know if you fixed it.
-- **Silent refactors** — "cleaning up" while fixing. Bundled changes hide
-  the actual fix and bloat the diff.
-- **Asserting success** — claiming "fixed" without running tests. Run them.
-- **Swallowing failures** — making a failing test pass by weakening its
-  assertions. The test exists to fail; if it's wrong, fix the test, don't
-  neuter it.
-- **Ignoring flakiness** — a test that passes "eventually" is a bug. Treat
-  flaky tests as real bugs: isolate the race, add determinism, then fix.
-
-## When to stop and ask
-
-- The reproduction needs access you don't have (DB, paid API, prod env).
-- The fix requires a breaking change or a config migration.
-- Two valid fixes exist with different tradeoffs (speed vs memory, safety
-  vs ergonomics, fix-now vs fix-properly).
-- The "bug" is actually intended behavior and the user's expectation is
-  wrong — confirm before changing code.
-- You've formed and disproven three hypotheses. Step back and request more
-  evidence (logs, repro repo, pair session) rather than burning more
-  guesses.
-
-Use the `question` tool with concrete, bounded options so the user can
-unblock you in one answer.
+- 証拠なしに複数箇所を変更するショットガンデバッグ
+- 失敗を隠すだけの例外握りつぶし、リトライ、fallback
+- テストの期待値を実装に合わせて弱めること
+- 無関係な整形やリファクタを同じ差分に混ぜること
+- 実行していない検証を成功扱いすること
+- ユーザーの変更を退避・削除・revertして再現環境を作ること
