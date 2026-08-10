@@ -1447,6 +1447,89 @@ describe("POST /api/tasks auto model selection", () => {
     );
   });
 
+  it("analyzes an image natively before sending it to an Auto-selected text model", async () => {
+    const previousKey = process.env.DASHSCOPE_API_KEY;
+    process.env.DASHSCOPE_API_KEY = "dashscope-secret";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: "A native Qwen analysis." } }] }),
+        { status: 200 },
+      ),
+    );
+    try {
+      const ocServer = await mockOc({
+        provider: providerFixture({
+          [CHEAP]: { variants: { minimal: {} } },
+          [MID]: { capabilities: { input: { image: false } } },
+        }),
+      });
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        files: [image],
+      });
+
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)).toMatchObject({
+        model: { providerID: "anthropic", modelID: CHEAP },
+        parts: [
+          {
+            type: "text",
+            text: expect.stringContaining("A native Qwen analysis."),
+          },
+        ],
+      });
+      expect(ocServer.mock.calls.filter((call) => call[1] === "/mcp")).toEqual([]);
+    } finally {
+      fetchMock.mockRestore();
+      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
+      else process.env.DASHSCOPE_API_KEY = previousKey;
+    }
+  });
+
+  it("falls back to connected MCP when native image analysis fails", async () => {
+    const previousKey = process.env.DASHSCOPE_API_KEY;
+    process.env.DASHSCOPE_API_KEY = "invalid-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: "invalid API key" } }),
+        { status: 401 },
+      ),
+    );
+    try {
+      const ocServer = await mockOc({
+        provider: providerFixture({
+          [CHEAP]: { variants: { minimal: {} } },
+        }),
+        mcp: { "qwen-mm-plugins-core": { status: "connected" } },
+      });
+
+      const res = await post({
+        projectId: "project-1",
+        prompt: LIGHT_PROMPT,
+        isolation: "current_folder",
+        auto: true,
+        files: [image],
+      });
+
+      expect(res.status).toBe(200);
+      expect(promptBodyOf(ocServer)?.parts).toEqual([
+        expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining("vision_chat"),
+        }),
+      ]);
+      expect(ocServer.mock.calls.some((call) => call[1] === "/mcp")).toBe(true);
+    } finally {
+      fetchMock.mockRestore();
+      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
+      else process.env.DASHSCOPE_API_KEY = previousKey;
+    }
+  });
+
   it("returns 502 without provisioning when /provider is unavailable", async () => {
     const { ocServer } = await import("@/lib/oc-server");
     (ocServer as ReturnType<typeof vi.fn>).mockImplementation(

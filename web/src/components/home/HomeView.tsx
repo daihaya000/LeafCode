@@ -456,12 +456,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes, providerModelsRes, mcpRes] = await Promise.all([
+        const [providerRes, configRes, agentRes, providerModelsRes, mcpRes, qwenStatusRes] = await Promise.all([
           timedFetch("/api/opencode/provider"),
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
           timedFetch("/api/extensions/mcp").catch(() => undefined),
+          timedFetch("/api/qwen-mm/status").catch(() => undefined),
         ]);
         if (cancelled || !mountedRef.current) return;
 
@@ -470,7 +471,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               servers?: { name?: unknown; enabled?: unknown; runtime?: unknown }[];
             })
           : null;
+        const qwenStatus = qwenStatusRes?.ok
+          ? ((await qwenStatusRes.json().catch(() => ({}))) as {
+              nativeAvailable?: unknown;
+            })
+          : null;
         setQwenMmConnected(
+          qwenStatus?.nativeAvailable === true ||
           Boolean(
             mcpData?.servers?.some(
               (server) =>

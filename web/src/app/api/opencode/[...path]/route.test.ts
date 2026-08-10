@@ -507,6 +507,64 @@ describe("POST session image capability validation", () => {
     }
   });
 
+  it("analyzes image parts natively before forwarding to a text-only model", async () => {
+    const directory = "C:\\repo\\qwen-native";
+    const previousKey = process.env.DASHSCOPE_API_KEY;
+    const previousBaseUrl = process.env.DASHSCOPE_BASE_URL;
+    process.env.DASHSCOPE_API_KEY = "dashscope-secret";
+    process.env.DASHSCOPE_BASE_URL = "https://dashscope.example/v1";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = new URL(String(input));
+      if (url.hostname === "dashscope.example") {
+        return Promise.resolve(jsonResponse({
+          choices: [{ message: { content: "Native visual analysis" } }],
+        }));
+      }
+      if (url.pathname === "/provider") {
+        return Promise.resolve(jsonResponse({
+          all: [{
+            id: "text-provider",
+            models: { text: { capabilities: { input: { image: false } } } },
+          }],
+          connected: ["text-provider"],
+        }));
+      }
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+
+    try {
+      const response = await sessionPost(
+        "prompt_async",
+        {
+          model: { providerID: "text-provider", modelID: "text" },
+          parts: [
+            { type: "text", text: "画像を説明して" },
+            { type: "file", mime: "image/png", url: "data:image/png;base64,AA==" },
+          ],
+        },
+        "application/json",
+        directory,
+      );
+
+      expect(response.status).toBe(200);
+      const upstreamCall = fetchMock.mock.calls.find(([input]) =>
+        new URL(String(input)).pathname.endsWith("/prompt_async"),
+      );
+      const upstreamBody = await new Response(upstreamCall?.[1]?.body).json() as {
+        parts: { type: string; text?: string }[];
+      };
+      expect(upstreamBody.parts).toHaveLength(1);
+      expect(upstreamBody.parts[0]?.text).toContain("Native visual analysis");
+      expect(fetchMock.mock.calls.some(([input]) => new URL(String(input)).pathname === "/mcp")).toBe(false);
+    } finally {
+      fetchMock.mockRestore();
+      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
+      else process.env.DASHSCOPE_API_KEY = previousKey;
+      if (previousBaseUrl === undefined) delete process.env.DASHSCOPE_BASE_URL;
+      else process.env.DASHSCOPE_BASE_URL = previousBaseUrl;
+    }
+  });
+
   it("forwards image parts after the provider cache confirms capability", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

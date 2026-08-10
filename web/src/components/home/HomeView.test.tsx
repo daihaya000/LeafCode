@@ -350,6 +350,38 @@ describe("HomeView image attachments", () => {
     );
   });
 
+  it("enables image attachments when native Qwen vision is available without MCP", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/opencode/provider") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [{
+              id: "openai",
+              models: {
+                text: { capabilities: { input: { image: false } } },
+              },
+            }],
+            connected: ["openai"],
+            default: { openai: "text" },
+          }),
+        });
+      }
+      if (path === "/api/qwen-mm/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ nativeAvailable: true }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    await waitFor(() => expect((attach as HTMLButtonElement).disabled).toBe(false));
+  });
+
   it("blocks image submission when the selected agent model lacks image capability", async () => {
     timedFetch.mockImplementation((path: string) => {
       if (path === "/api/opencode/provider") {

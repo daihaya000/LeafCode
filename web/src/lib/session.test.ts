@@ -69,7 +69,10 @@ describe("verifySession", () => {
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://127.0.0.1:18765/auth/verify");
-    expect(JSON.parse(String(init.body))).toEqual({ token: "tok" });
+    expect(JSON.parse(String(init.body))).toEqual({
+      token: "tok",
+      trustedDeviceToken: null,
+    });
   });
 
   it("does not call the host when there is no cookie", async () => {

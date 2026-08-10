@@ -32,9 +32,12 @@ import {
 import { listTasks } from "@/lib/task-service";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
+  analyzeQwenMmImages,
   isQwenMmConnected,
+  isQwenNativeVisionAvailable,
   persistQwenMmImages,
   qwenMmImageInstructions,
+  qwenNativeImageContext,
 } from "@/lib/qwen-mm-fallback";
 import {
   ServiceError,
@@ -413,9 +416,11 @@ export async function POST(req: NextRequest) {
   // the Qwen MCP is connected, the image will be converted to a text-only
   // tool instruction after provisioning, so Auto may choose any suitable
   // text model instead.
-  const qwenMmForAuto = auto && files.length > 0
+  const qwenNativeForAuto = auto && files.length > 0 && isQwenNativeVisionAvailable();
+  const qwenMcpForAuto = auto && files.length > 0 && !qwenNativeForAuto
     ? await supportsQwenMmFallback()
     : false;
+  const qwenMmForAuto = qwenNativeForAuto || qwenMcpForAuto;
 
   // From here on the resolved Auto model is indistinguishable from a manually
   // selected one: everything downstream reads `effectiveModel` / `variant`.
@@ -471,10 +476,14 @@ export async function POST(req: NextRequest) {
 
   // Redundant for Auto (candidates were already narrowed to image-capable
   // models) but kept as a second check on the shared code path.
-  let qwenMmFallback = false;
+  let qwenNativeFallback = false;
+  let qwenMcpFallback = false;
   if (files.length > 0 && !(await supportsImageInput(effectiveModel, body?.agent))) {
-    qwenMmFallback = qwenMmForAuto || (await supportsQwenMmFallback());
-    if (!qwenMmFallback) {
+    qwenNativeFallback = isQwenNativeVisionAvailable();
+    qwenMcpFallback = qwenMcpForAuto || (
+      !qwenNativeFallback && await supportsQwenMmFallback()
+    );
+    if (!qwenNativeFallback && !qwenMcpFallback) {
       return NextResponse.json(
         {
           error:
@@ -525,19 +534,28 @@ export async function POST(req: NextRequest) {
     // session via destroyWorkspace (bindings are the only id source there).
     bindSession(workspace.id, session.id, title);
 
-    const promptForSend = qwenMmFallback
-      ? qwenMmImageInstructions(
-          prompt,
-          persistQwenMmImages(
-            files.map((file) => ({
-              dataUrl: file.uri,
-              mime: file.mime,
-              ...(file.name ? { name: file.name } : {}),
-            })),
-            session.id,
-          ),
-        )
-      : prompt;
+    const qwenImages = files.map((file) => ({
+      dataUrl: file.uri,
+      mime: file.mime,
+      ...(file.name ? { name: file.name } : {}),
+    }));
+    let promptForSend = prompt;
+    if (qwenNativeFallback) {
+      try {
+        const analysis = await analyzeQwenMmImages(prompt, qwenImages);
+        promptForSend = qwenNativeImageContext(prompt, analysis);
+      } catch (error) {
+        qwenMcpFallback = await supportsQwenMmFallback();
+        if (!qwenMcpFallback) throw error;
+      }
+    }
+    if (qwenMcpFallback && promptForSend === prompt) {
+      promptForSend = qwenMmImageInstructions(
+        prompt,
+        persistQwenMmImages(qwenImages, session.id),
+      );
+    }
+    const qwenFallback = qwenNativeFallback || qwenMcpFallback;
 
     // This is deliberately before the first command/prompt: with the task
     // tool allowed, OpenCode creates a child session without ever emitting a
@@ -583,7 +601,7 @@ export async function POST(req: NextRequest) {
         command: parsedCommand.command,
         arguments: parsedCommand.arguments,
       };
-      if (qwenMmFallback) {
+      if (qwenFallback) {
         commandBody.parts = [{ type: "text", text: promptForSend }];
       } else if (files.length > 0) {
         commandBody.parts = files.map((file) => ({
@@ -617,7 +635,7 @@ export async function POST(req: NextRequest) {
       const promptBody: Record<string, unknown> = {
         parts: [
           { type: "text", text: promptForSend },
-          ...(qwenMmFallback
+          ...(qwenFallback
             ? []
             : files.map((file) => ({
                 type: "file",

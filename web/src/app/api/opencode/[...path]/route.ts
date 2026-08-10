@@ -20,6 +20,8 @@ import { isIntelligenceVariant } from "@/lib/model-variants";
 import { ocServer } from "@/lib/oc-server";
 import {
   isQwenMmConnected,
+  isQwenNativeVisionAvailable,
+  rewriteQwenNativeRequest,
   rewriteQwenMmRequest,
 } from "@/lib/qwen-mm-fallback";
 import {
@@ -578,28 +580,53 @@ async function proxy(
               );
             }
             if (!(await supportsImageInput(directory, body))) {
-              let qwenMmConnected = false;
-              try {
-                const status = await ocServer<Record<string, { status?: unknown }>>(
-                  directory,
-                  "/mcp",
-                );
-                qwenMmConnected = isQwenMmConnected(status);
-              } catch {
-                qwenMmConnected = false;
-              }
               const sessionId = imageSessionId(pathname);
-              if (!qwenMmConnected || !sessionId || !body || typeof body !== "object" || Array.isArray(body)) {
+              if (!sessionId || !body || typeof body !== "object" || Array.isArray(body)) {
                 return NextResponse.json(
                   { error: "image input is not supported by the selected model" },
                   { status: 400 },
                 );
               }
-              try {
-                body = rewriteQwenMmRequest(body as Record<string, unknown>, sessionId);
-                requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
-              } catch {
-                return NextResponse.json({ error: "invalid files" }, { status: 400 });
+              let nativeError: unknown;
+              let nativeRewritten = false;
+              if (isQwenNativeVisionAvailable()) {
+                try {
+                  body = await rewriteQwenNativeRequest(body as Record<string, unknown>);
+                  requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
+                  nativeRewritten = true;
+                } catch (error) {
+                  nativeError = error;
+                }
+              }
+              if (!nativeRewritten) {
+                let qwenMmConnected = false;
+                try {
+                  const status = await ocServer<Record<string, { status?: unknown }>>(
+                    directory,
+                    "/mcp",
+                  );
+                  qwenMmConnected = isQwenMmConnected(status);
+                } catch {
+                  qwenMmConnected = false;
+                }
+                if (!qwenMmConnected) {
+                  if (nativeError) {
+                    return NextResponse.json(
+                      { error: "Qwenによる画像の事前解析に失敗しました。DASHSCOPE_API_KEYと接続状態を確認してください。" },
+                      { status: 502 },
+                    );
+                  }
+                  return NextResponse.json(
+                    { error: "image input is not supported by the selected model" },
+                    { status: 400 },
+                  );
+                }
+                try {
+                  body = rewriteQwenMmRequest(body as Record<string, unknown>, sessionId);
+                  requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
+                } catch {
+                  return NextResponse.json({ error: "invalid files" }, { status: 400 });
+                }
               }
             }
           }
