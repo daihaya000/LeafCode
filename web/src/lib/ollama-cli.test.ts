@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/ollama-cli", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ollama-cli")>();
@@ -12,6 +12,7 @@ vi.mock("@/lib/ollama-cli", async (importOriginal) => {
 });
 
 import {
+  fetchOllamaModelCapabilities,
   isOllamaInstalled,
   listOllamaModels,
   pullOllamaModel,
@@ -50,5 +51,48 @@ describe("ollama-cli (mocked)", () => {
   it("rejects pull for empty model name when the helper throws", async () => {
     pullMock.mockRejectedValue(new Error("model name is required"));
     await expect(pullOllamaModel("   ")).rejects.toThrow("model name is required");
+  });
+});
+
+describe("fetchOllamaModelCapabilities", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads vision/tools from the /api/show capabilities list", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ capabilities: ["completion", "vision"] }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchOllamaModelCapabilities("qwen2.5vl:7b")).resolves.toEqual({
+      vision: true,
+      tools: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:11434/api/show",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain("qwen2.5vl:7b");
+  });
+
+  it("returns null when the daemon is unreachable so callers can fall back", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    await expect(fetchOllamaModelCapabilities("llama3:8b")).resolves.toBeNull();
+  });
+
+  it("returns null for an unexpected response shape", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 })),
+    );
+    await expect(fetchOllamaModelCapabilities("llama3:8b")).resolves.toBeNull();
+  });
+
+  it("does not call Ollama for an empty model name", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchOllamaModelCapabilities("  ")).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

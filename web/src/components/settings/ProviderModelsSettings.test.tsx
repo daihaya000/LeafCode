@@ -484,7 +484,8 @@ describe("ProviderModelsSettings", () => {
     expect(await screen.findByText(/OpenCode の再起動後/)).toBeTruthy();
   });
 
-  it("prefills the local Ollama provider from installed models", async () => {
+  it("registers the local Ollama provider through the dedicated API", async () => {
+    // 手入力フォームは画像入力対応を表現できないため、専用APIへ委譲する。
     getJson.mockImplementation((path: string) => {
       if (path === "/api/settings/default-model") {
         return Promise.resolve({ value: null });
@@ -492,24 +493,22 @@ describe("ProviderModelsSettings", () => {
       if (path === "/api/extensions/provider-models") {
         return Promise.resolve({ providers: [] });
       }
-      if (path === "/api/ollama/status") {
-        return Promise.resolve({ models: ["llama3.2:latest", "qwen2.5:7b"] });
-      }
       return Promise.reject(new Error(`Unexpected getJson: ${path}`));
+    });
+    sendJson.mockResolvedValue({
+      ok: true,
+      models: ["qwen2.5vl:7b", "llama3:8b"],
+      visionModels: ["qwen2.5vl:7b"],
     });
 
     render(<ProviderModelsSettings />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "ローカルOllamaを追加" }));
+    fireEvent.click(await screen.findByRole("button", { name: "ローカルOllamaを登録" }));
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("プロバイダーID")).toHaveProperty("value", "ollama");
-    });
-    expect(screen.getByLabelText("表示名")).toHaveProperty("value", "Ollama (ローカル)");
-    expect(screen.getByLabelText("Base URL")).toHaveProperty("value", "http://127.0.0.1:11434/v1");
-    expect(screen.getByLabelText("モデル（1行1件: model-id|表示名）")).toHaveProperty("value",
-      "llama3.2:latest|llama3.2:latest\nqwen2.5:7b|qwen2.5:7b",
+    await waitFor(() =>
+      expect(sendJson).toHaveBeenCalledWith("POST", "/api/ollama/register", {}),
     );
+    expect(await screen.findByText(/2件のモデルを登録しました（画像対応1件）/)).toBeTruthy();
   });
 
   it("edits an existing configured provider via PUT", async () => {

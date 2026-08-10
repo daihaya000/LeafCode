@@ -1,5 +1,42 @@
 # 作業ログ: 選択中スキル説明のコントラスト強化
 
+# 作業ログ: ローカルOllamaのVLモデルが画像非対応と判定される不具合の修正
+
+## 日付
+
+2026-08-11
+
+## 症状
+
+モデル選択に出るローカルOllamaのモデルが、`qwen2.5vl:7b` を含めて全て「画像非対応」（事前解析アイコン）として表示される。
+
+## 原因
+
+`opencode.jsonc` の `provider.ollama.models.*` に `attachment` / `modalities` が無かった。OpenCodeは provider 設定のこの2フィールドから `capabilities.attachment` / `capabilities.input.image` を組み立てるため、書かれていないモデルは全て画像非対応になる。実際に稼働中エンジンの `/provider` を確認したところ、同じ設定ファイル内で `attachment: true` を持つ `cursor::auto` だけ `attach=True image=True`、`ollama::*` は全て `False` だった。
+
+既存の登録経路（プロバイダー/モデル設定の「ローカルOllamaを追加」プリセット）は汎用の手入力フォームへ流し込む実装で、フォームが `attachment` / `modalities` を表現できないため能力情報が落ちていた。
+
+## 実装内容
+
+- `ollama-cli.ts` に `fetchOllamaModelCapabilities()` を追加。Ollamaの `POST /api/show` が返す `capabilities`（`vision` / `tools`）を使い、モデル名の推測ではなく実申告で画像対応を判定する。デーモン停止・旧バージョン時は `null` を返し、名前ヒューリスティックへフォールバックする。
+- `registerOllamaProvider()` は解決した能力に応じて `attachment` / `modalities` と `tool_call` を書き込むようにした（従来は `tool_call: true` 固定だった）。
+- `POST /api/ollama/register` を追加（インストール・Pullなしの再登録）。プロバイダー/モデル設定のボタンを「ローカルOllamaを登録」に変更し、手入力フォームへの流し込みをやめてこのAPIへ委譲した。
+- `providerConfigFromInput()` が既存モデル定義の `attachment` / `modalities` / `cost` / `limit` 等を引き継ぐようにした。UIからのプロバイダー編集で画像対応情報が消える問題（Cursor等の既存プロバイダーにも影響）を防ぐ。
+- 稼働中環境の `~/.config/opencode/opencode.jsonc` も同じ内容へ更新済み（`.bak-<epoch>` を隣に作成）。`qwen2.5vl:7b` / `gemma3:4b` が画像対応、`dolphin3:8b` / `qwen2.5:3b` は非対応として登録した。**OpenCode再起動後に反映される。**
+
+## ハマりどころ
+
+- `beforeEach(() => mock.mockReset())` と式本体で書くと、`mockReset()` の戻り値（モック関数自身）を Vitest がテスト後のクリーンアップ関数として実行してしまう。モックが throw する実装だと、ファイル末尾のテストだけが「throwしたエラー」で不可解に落ちる。ブロック本体 `() => { mock.mockReset(); }` で書くこと。
+
+## 検証結果
+
+- 稼働中エンジンの `/provider` で `cursor::auto` が `attachment/image = true`、`ollama::*` が `false` であることを確認（原因特定の根拠）
+- `POST /api/show` で `qwen2.5vl:7b` → `completion,vision` / `dolphin3:8b` → `completion` を確認
+- `npm --prefix web run typecheck` ... 成功
+- `npm --prefix web run lint` ... 成功
+- `npx vitest run`（web ディレクトリ内で実行）... 267ファイル / 3167 tests 成功（1 skipped）
+  - 注: リポジトリルートから `vitest --root web` で走らせると `opencode-events` / `opencode-schema-freshness` が cwd 依存で失敗する。必ず `web/` で実行する。
+
 # 作業ログ: 画像解析のOpenCode登録モデル一本化 / Ollama自動セットアップのボタン化
 
 ## 日付

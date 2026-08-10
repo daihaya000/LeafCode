@@ -812,25 +812,40 @@ export function ProviderModelsSettings() {
     setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", icon: "", models: "" });
   }, []);
 
-  const applyOllamaPreset = useCallback(async () => {
+  /**
+   * 取得済みのローカルモデルをそのまま登録する。手入力フォームでは
+   * 画像入力対応（`attachment` / `modalities`）を表現できず、VLモデルが
+   * 画像非対応として登録されてしまうため、専用APIへ委譲する。
+   */
+  const registerOllama = useCallback(async () => {
+    if (providerMutationRef.current) return;
+    providerMutationRef.current = true;
     setEditingProviderId(null);
-    setAddOpen(true);
+    setAddBusy(true);
     setAddMessage(null);
     setActionError(null);
-    const models = await getJson<{ models?: string[] }>("/api/ollama/status")
-      .then((status) => status.models?.filter(Boolean) ?? [])
-      .catch(() => []);
-    setNewProvider({
-      id: "ollama",
-      name: "Ollama (ローカル)",
-      baseURL: "http://127.0.0.1:11434/v1",
-      apiKeyEnv: "",
-      icon: "",
-      models: (models.length > 0 ? models : ["qwen2.5vl:7b"])
-        .map((model) => `${model}|${model}`)
-        .join("\n"),
-    });
-  }, []);
+    try {
+      const result = await sendJson<{ models?: string[]; visionModels?: string[] }>(
+        "POST",
+        "/api/ollama/register",
+        {},
+      );
+      if (!mountedRef.current) return;
+      const total = result.models?.length ?? 0;
+      const vision = result.visionModels?.length ?? 0;
+      setAddMessage(
+        `ローカルOllamaの${total}件のモデルを登録しました（画像対応${vision}件）。OpenCode の再起動後に利用できます。`,
+      );
+      await load();
+    } catch (err) {
+      if (mountedRef.current) {
+        setActionError(err instanceof Error ? err.message : "Ollamaの登録に失敗しました");
+      }
+    } finally {
+      providerMutationRef.current = false;
+      if (mountedRef.current) setAddBusy(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     if (!deleteConfirmProvider) {
@@ -1150,10 +1165,14 @@ export function ProviderModelsSettings() {
               variant="ghost"
               size="sm"
               className="mt-3"
-              onClick={() => void applyOllamaPreset()}
+              disabled={addBusy}
+              onClick={() => void registerOllama()}
             >
-              ローカルOllamaを追加
+              ローカルOllamaを登録
             </Button>
+          )}
+          {!addOpen && addMessage && (
+            <p className="mt-2 text-xs text-success">{addMessage}</p>
           )}
           {addOpen && (
             <div className="mt-4 grid gap-3">

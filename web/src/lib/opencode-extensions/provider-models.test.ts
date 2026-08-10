@@ -538,6 +538,48 @@ describe("addCustomProvider", () => {
     });
   });
 
+  it("keeps image capability metadata that the edit form cannot express", async () => {
+    // 回帰: フォーム経由の編集で attachment/modalities が消えると、VLモデルが
+    // 画像非対応として扱われてしまう。
+    process.env.OPENCODE_CONFIG_DIR = data;
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          ollama: {
+            name: "Ollama",
+            options: { baseURL: "http://127.0.0.1:11434/v1" },
+            models: {
+              "qwen2.5vl:7b": {
+                name: "qwen2.5vl:7b",
+                attachment: true,
+                modalities: { input: ["text", "image"], output: ["text"] },
+                tool_call: false,
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await updateCustomProvider("ollama", {
+      id: "ollama",
+      name: "Ollama (ローカル)",
+      baseURL: "http://127.0.0.1:11434/v1",
+      models: [{ id: "qwen2.5vl:7b" }, { id: "llama3:8b" }],
+    });
+
+    const config = JSON.parse(fs.readFileSync(path.join(data, "opencode.jsonc"), "utf8"));
+    expect(config.provider.ollama.models["qwen2.5vl:7b"]).toEqual({
+      name: "qwen2.5vl:7b",
+      attachment: true,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      tool_call: false,
+    });
+    // 新規モデルには余計なフィールドを付けない。
+    expect(config.provider.ollama.models["llama3:8b"]).toEqual({ name: "llama3:8b" });
+  });
+
   it("rejects duplicate provider ids", async () => {
     process.env.OPENCODE_CONFIG_DIR = data;
     fs.writeFileSync(

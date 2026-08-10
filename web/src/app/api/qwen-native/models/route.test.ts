@@ -15,7 +15,8 @@ const request = () => new Request("http://127.0.0.1:3000/api/qwen-native/models"
 
 beforeEach(() => {
   ocServer.mockReset();
-  listConfiguredImageModels.mockReset().mockReturnValue([]);
+  listConfiguredImageModels.mockReset();
+  listConfiguredImageModels.mockReturnValue([]);
 });
 
 describe("GET /api/qwen-native/models", () => {

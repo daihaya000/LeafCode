@@ -124,6 +124,49 @@ export async function getOllamaStatus(): Promise<OllamaStatus> {
   };
 }
 
+export type OllamaModelCapabilities = {
+  vision: boolean;
+  tools: boolean;
+};
+
+/**
+ * Ollama 自身が申告するモデル能力（`POST /api/show` の `capabilities`）。
+ * 画像対応をモデル名から推測するより確実なので、登録時はこちらを優先する。
+ * デーモン停止・旧バージョン・未知の応答形状では `null` を返し、
+ * 呼び出し側の名前ヒューリスティックへフォールバックさせる。
+ */
+export async function fetchOllamaModelCapabilities(
+  model: string,
+): Promise<OllamaModelCapabilities | null> {
+  const name = model.trim();
+  if (!name) return null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    const res = await fetch(`http://${OLLAMA_HOST}:${OLLAMA_PORT}/api/show`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: name }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const payload = (await res.json().catch(() => null)) as
+      | { capabilities?: unknown }
+      | null;
+    const capabilities = payload?.capabilities;
+    if (!Array.isArray(capabilities)) return null;
+    const values = capabilities.map((entry) => String(entry).toLowerCase());
+    return {
+      vision: values.includes("vision"),
+      tools: values.includes("tools"),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function isOllamaRunning(): Promise<boolean> {
   try {
     const controller = new AbortController();

@@ -339,6 +339,46 @@ function validateIcon(value: string | undefined): string | undefined {
   throw new ExtensionsError("invalid-name", "アイコンは http(s) URL または / から始まるパスで入力してください");
 }
 
+/**
+ * フォームで表現できないモデル定義（画像入力対応・コスト・コンテキスト長など）は
+ * UI編集で失わせない。編集フォームは `id` と表示名しか持たないため、同じIDの
+ * 既存エントリからこれらのフィールドを引き継ぐ。
+ */
+const PRESERVED_MODEL_FIELDS = [
+  "attachment",
+  "modalities",
+  "reasoning",
+  "temperature",
+  "tool_call",
+  "interleaved",
+  "cost",
+  "limit",
+  "family",
+  "release_date",
+  "options",
+  "headers",
+  "status",
+] as const;
+
+function preservedModelFields(
+  existing: unknown,
+): Record<string, unknown> {
+  if (!isRecord(existing)) return {};
+  const kept: Record<string, unknown> = {};
+  for (const field of PRESERVED_MODEL_FIELDS) {
+    if (existing[field] !== undefined) kept[field] = existing[field];
+  }
+  return kept;
+}
+
+function existingProviderModels(providerID: string): Record<string, unknown> {
+  const root = parseJsoncConfig(readConfigContentForProviders());
+  if (!isRecord(root.provider)) return {};
+  const entry = root.provider[providerID];
+  if (!isRecord(entry) || !isRecord(entry.models)) return {};
+  return entry.models;
+}
+
 function providerConfigFromInput(input: CustomProviderInput): {
   id: string;
   config: Record<string, unknown>;
@@ -350,10 +390,17 @@ function providerConfigFromInput(input: CustomProviderInput): {
   if (!/^https?:\/\//.test(baseURL)) {
     throw new ExtensionsError("invalid-name", "Base URL は http:// または https:// で入力してください");
   }
+  const previousModels = existingProviderModels(id);
   const models = input.models.map((model) => {
     // Ollama のタグ付きモデルID（`qwen2.5vl:7b`）を通すため `:` も許可する。
     const modelID = validateIdentifier(model.id, "モデルID", "/:");
-    return [modelID, { name: model.name?.trim() || modelID }];
+    return [
+      modelID,
+      {
+        name: model.name?.trim() || modelID,
+        ...preservedModelFields(previousModels[modelID]),
+      },
+    ];
   });
   if (models.length === 0) {
     throw new ExtensionsError("invalid-name", "モデルを1つ以上入力してください");
