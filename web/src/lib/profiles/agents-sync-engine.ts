@@ -177,6 +177,19 @@ export function readAgentsSyncStatus(): AgentsSyncStatus {
   };
 }
 
+export function readMasterAgents(): { path: string; exists: boolean; content: string } {
+  const masterPath = paths().masterMd;
+  const content = readIfExists(masterPath);
+  return { path: masterPath, exists: content !== null, content: content ?? "" };
+}
+
+export function writeMasterAgents(content: string): { path: string } {
+  const masterPath = paths().masterMd;
+  mkdirp(path.dirname(masterPath));
+  fs.writeFileSync(masterPath, content, "utf8");
+  return { path: masterPath };
+}
+
 export function applyAgentsSync(): AgentsSyncResult {
   const p = paths();
   const result: AgentsSyncResult = {

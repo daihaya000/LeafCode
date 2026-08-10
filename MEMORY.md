@@ -3154,3 +3154,18 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 
 - `npm run test -- --run src/components/settings/SettingsView.test.tsx` ... 29 tests 成功
 - `npm run typecheck` ... 成功
+## 2026-08-10
+
+## Current profile AGENTS.md editor
+
+### Changes
+
+- Added `GET/PATCH /api/profiles/agents-md` for reading and writing the active profile's AGENTS.md.
+- Added an editor and save action to the profile settings AGENTS.md / Skills sync section.
+- The API creates the config directory when saving a new AGENTS.md and limits content to 2 MB.
+
+### Verification
+
+- `npm run typecheck` passed.
+- Profile settings and open-target tests passed: 18 tests.
+- `git diff --check` passed.

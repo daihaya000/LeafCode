@@ -27,10 +27,14 @@ type AgentsSyncResult = {
 };
 
 type LoadState = "loading" | "ready" | "error";
+type AgentsMd = { path: string; exists: boolean; content: string };
 
 export function ProfileAgentsSyncSettings() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [status, setStatus] = useState<AgentsSyncStatus | null>(null);
+  const [agentsMd, setAgentsMd] = useState<AgentsMd | null>(null);
+  const [agentsContent, setAgentsContent] = useState("");
+  const [savingAgents, setSavingAgents] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
@@ -57,9 +61,14 @@ export function ProfileAgentsSyncSettings() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await getJson<AgentsSyncStatus>("/api/profiles/agents-sync");
+      const [data, md] = await Promise.all([
+        getJson<AgentsSyncStatus>("/api/profiles/agents-sync"),
+        getJson<AgentsMd>("/api/profiles/agents-md"),
+      ]);
       if (!mountedRef.current) return;
       setStatus(data);
+      setAgentsMd(md);
+      setAgentsContent(md.content);
       setLoadState("ready");
       setError(null);
     } catch (err) {
@@ -68,6 +77,25 @@ export function ProfileAgentsSyncSettings() {
       setLoadState("error");
     }
   }, []);
+
+  const saveAgents = async () => {
+    if (savingAgents) return;
+    setSavingAgents(true);
+    setError(null);
+    setResultMessage(null);
+    try {
+      await sendJson("PATCH", "/api/profiles/agents-md", { content: agentsContent });
+      if (!mountedRef.current) return;
+      setResultMessage("現在のプロファイルのAGENTS.mdを保存しました");
+      await refresh();
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "AGENTS.mdの保存に失敗しました");
+      }
+    } finally {
+      if (mountedRef.current) setSavingAgents(false);
+    }
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -202,6 +230,33 @@ export function ProfileAgentsSyncSettings() {
                 </div>
               </div>
             </div>
+
+            {agentsMd && (
+              <div className="rounded-lg border border-border bg-bg/40 px-3 py-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text">現在のプロファイルのAGENTS.md</p>
+                    <p className="truncate text-[11px] text-faint">{agentsMd.path}</p>
+                  </div>
+                  <Badge tone={agentsMd.exists ? "success" : "neutral"}>
+                    {agentsMd.exists ? "存在" : "新規作成"}
+                  </Badge>
+                </div>
+                <textarea
+                  aria-label="現在のプロファイルのAGENTS.md"
+                  value={agentsContent}
+                  onChange={(event) => setAgentsContent(event.target.value)}
+                  rows={14}
+                  spellCheck={false}
+                  className="w-full resize-y rounded-lg border border-border bg-surface-2 px-3 py-2 font-mono text-xs leading-5 text-text outline-none focus:border-accent"
+                />
+                <div className="mt-2 flex justify-end">
+                  <Button type="button" size="sm" variant="primary" busy={savingAgents} onClick={() => void saveAgents()}>
+                    AGENTS.mdを保存
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {instructionItems.map(({ key, label, item }) => (
               <InstructionRow
