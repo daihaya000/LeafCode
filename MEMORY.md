@@ -25,6 +25,13 @@
 - `src/lib/default-model.test.ts`、`src/app/api/settings/[key]/route.test.ts`、`src/components/settings/ProviderModelsSettings.test.tsx`: 95 tests 成功。
 - `src/components/home/HomeView.test.tsx`: 58 tests 成功。ただし DB 復元後の composer state 更新を検証する回帰テストは未実装。
 
+## 修正
+
+- `HomeView` / `TaskView` がサーバー復元値を state として保持し、provider options の読み込み後にも一度適用するよう変更。
+- 手動モデル選択、Auto タスク、既存タスクの assistant モデル、Goal Loop の選択はサーバー復元で上書きしない。
+- HomeView に hydration race の回帰テストを追加。
+- `HomeView.test.tsx` / `TaskView.test.tsx` の関連 177 tests、typecheck、lint が成功。
+
 ## 日付
 
 2026-08-10

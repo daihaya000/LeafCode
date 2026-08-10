@@ -583,6 +583,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [model, setModel] = useState(() =>
     readAutoTaskRecord(taskId) ? AUTO_MODEL_VALUE : "",
   );
+  const [serverDefaultModel, setServerDefaultModel] = useState<string | null>(null);
+  const modelTouchedRef = useRef(false);
   const [agent, setAgent] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const inputRef = useRef(input);
@@ -1024,8 +1026,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   useEffect(() => {
     void (async () => {
       const serverValue = await readDefaultModelFromServer().catch(() => null);
-      if (serverValue && !readDefaultModel()) {
-        writeDefaultModel(serverValue);
+      if (serverValue) {
+        setServerDefaultModel(serverValue);
+        if (!readDefaultModel()) writeDefaultModel(serverValue);
       }
     })();
   }, []);
@@ -1113,6 +1116,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       const detail = (e as CustomEvent<string>).detail;
       const next = typeof detail === "string" && detail.length > 0 ? detail : "";
       if (!next) return;
+      modelTouchedRef.current = true;
       setModel((cur) => {
         if (cur && cur === next) return cur;
         if (modelOptions.some((o) => o.value === next)) return next;
@@ -1768,6 +1772,7 @@ export function TaskView({ taskId }: { taskId: string }) {
           ? `${goalLoop.providerID}::${goalLoop.modelID}`
           : "",
       );
+      modelTouchedRef.current = true;
     }
     setGoalLoopEnabled(nextEnabled);
   }, [goalLoop, goalLoopEnabled]);
@@ -2651,7 +2656,25 @@ export function TaskView({ taskId }: { taskId: string }) {
   const seededModelRef = useRef(false);
   useEffect(() => {
     seededModelRef.current = false;
+    modelTouchedRef.current = false;
   }, [streamScopeKey]);
+  useEffect(() => {
+    if (
+      modelTouchedRef.current ||
+      seededModelRef.current ||
+      model === AUTO_MODEL_VALUE ||
+      readAutoTaskRecord(taskId) ||
+      !serverDefaultModel
+    ) {
+      return;
+    }
+    if (!modelOptions.some((option) => option.value === serverDefaultModel)) return;
+    setModel((current) =>
+      modelTouchedRef.current || seededModelRef.current
+        ? current
+        : serverDefaultModel,
+    );
+  }, [model, modelOptions, serverDefaultModel, taskId]);
   useEffect(() => {
     if (seededModelRef.current || !stream.loaded || modelOptions.length === 0) return;
     // When the composer is set to Auto — either carried over from HomeView
@@ -4452,6 +4475,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                         value={model}
                         options={modelOptions}
                         onChange={(value) => {
+                          modelTouchedRef.current = true;
                           setModel(value);
                           setIntelligence("");
                           // The user explicitly picked a model; suppress the

@@ -217,6 +217,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     Record<string, { providerID: string; modelID: string }>
   >({});
   const [model, setModel] = useState("");
+  const [serverDefaultModel, setServerDefaultModel] = useState<string | null>(null);
+  const modelTouchedRef = useRef(false);
   const [agent, setAgent] = useState("");
   const [intelligence, setIntelligence] = useState<IntelligenceVariant | "">("");
   /**
@@ -323,14 +325,23 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     let cancelled = false;
     void (async () => {
       const serverValue = await readDefaultModelFromServer().catch(() => null);
-      if (!cancelled && mountedRef.current && serverValue && !readDefaultModel()) {
-        writeDefaultModel(serverValue);
+      if (!cancelled && mountedRef.current && serverValue) {
+        setServerDefaultModel(serverValue);
+        if (!readDefaultModel()) writeDefaultModel(serverValue);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Provider/config loading and server hydration race on a fresh origin. If
+  // the fallback wins, apply the durable default once its option is available.
+  useEffect(() => {
+    if (modelTouchedRef.current || !serverDefaultModel) return;
+    if (!modelOptions.some((option) => option.value === serverDefaultModel)) return;
+    setModel((current) => (modelTouchedRef.current ? current : serverDefaultModel));
+  }, [modelOptions, serverDefaultModel]);
 
   // Same DB → localStorage restore for the Auto settings. Only keys the server
   // actually has are applied, and only when localStorage has no copy yet, so a
@@ -1278,6 +1289,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                     disabled={submitting}
                     options={modelOptions}
                     onChange={(value) => {
+                      modelTouchedRef.current = true;
                       setModel(value);
                       setIntelligence("");
                     }}

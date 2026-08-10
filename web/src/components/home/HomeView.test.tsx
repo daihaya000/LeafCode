@@ -2,11 +2,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeView, __clearHomeComposerDraftForTest } from "./HomeView";
 
-const { getJson, sendJson, push, timedFetch } = vi.hoisted(() => ({
+const { getJson, sendJson, push, timedFetch, readDefaultModelFromServer } = vi.hoisted(() => ({
   getJson: vi.fn(),
   sendJson: vi.fn(),
   push: vi.fn(),
   timedFetch: vi.fn().mockResolvedValue({ ok: false }),
+  readDefaultModelFromServer: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -28,7 +29,7 @@ vi.mock("@/lib/default-model", () => ({
     const v = localStorage.getItem("webui:default-model");
     return typeof v === "string" && v.length > 0 ? v : null;
   },
-  readDefaultModelFromServer: () => Promise.resolve(null),
+  readDefaultModelFromServer,
   writeDefaultModel: (value: string | null) => {
     if (value) {
       localStorage.setItem("webui:default-model", value);
@@ -1085,6 +1086,7 @@ describe("HomeView last-used model", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    readDefaultModelFromServer.mockResolvedValue(null);
     localStorage.clear();
   });
 
@@ -1120,6 +1122,44 @@ describe("HomeView last-used model", () => {
     await waitFor(() => {
       expect(select.value).toBe("openai::gpt-5");
     });
+  });
+
+  it("applies the server default after provider options win the hydration race", async () => {
+    let releaseServer!: (value: string | null) => void;
+    readDefaultModelFromServer.mockImplementation(
+      () => new Promise((resolve) => {
+        releaseServer = resolve;
+      }),
+    );
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  "gpt-5": { name: "GPT-5" },
+                  vision: { name: "Vision" },
+                },
+              },
+            ],
+            connected: ["openai"],
+            default: { openai: "gpt-5" },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    const select = (await screen.findByLabelText("モデル")) as HTMLButtonElement;
+    await waitFor(() => expect(select.value).toBe("openai::gpt-5"));
+    releaseServer("openai::vision");
+    await waitFor(() => expect(select.value).toBe("openai::vision"));
   });
 
   it("prefers the configured default model over the last-used model", async () => {
