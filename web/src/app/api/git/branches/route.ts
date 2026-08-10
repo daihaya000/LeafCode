@@ -28,6 +28,14 @@ export async function GET(req: NextRequest) {
     "--symbolic-full-name",
     "@{u}",
   ]);
+  // Commits on current HEAD not present on its upstream — drives the Push
+  // button badge. `0`/empty means up-to-date; a missing upstream yields -1 so
+  // the UI can offer "publish" rather than "no commits to push".
+  const aheadCount = await runGit(check.path, [
+    "rev-list",
+    "--count",
+    "@{u}..HEAD",
+  ]);
 
   if (head.code !== 0) {
     return NextResponse.json(
@@ -43,6 +51,21 @@ export async function GET(req: NextRequest) {
 
   const current = head.stdout.trim();
   const upstreamBranch = upstream.code === 0 ? upstream.stdout.trim() : null;
+  const ahead =
+    aheadCount.code === 0 ? parseInt(aheadCount.stdout.trim(), 10) || 0 : -1;
+
+  // `git remote` lists configured remotes. The Push button needs to know
+  // whether a push target exists at all, and the publish flow falls back to
+  // "origin" — report whether that specific remote is configured so the UI can
+  // guide the user instead of emitting a blind `git push` that fails.
+  const remotesResult = await runGit(check.path, ["remote"]);
+  const remotes =
+    remotesResult.code === 0
+      ? remotesResult.stdout
+          .split(/\r?\n/)
+          .map((r) => r.trim())
+          .filter(Boolean)
+      : [];
 
   // Prefer upstream (tracking branch) if set, then main, master, else first non-current.
   // This ensures worktree branches from the user's expected base, not an arbitrary default.
@@ -61,5 +84,8 @@ export async function GET(req: NextRequest) {
     branches: list,
     defaultTarget,
     upstream: upstreamBranch,
+    ahead,
+    remotes,
+    hasRemote: remotes.length > 0,
   });
 }

@@ -42,6 +42,10 @@ function mockMetaApis() {
         branches: [],
         current: "main",
         defaultTarget: "main",
+        upstream: "origin/main",
+        ahead: 2,
+        remotes: ["origin"],
+        hasRemote: true,
       });
     }
     if (String(url).includes("/api/git/pr")) {
@@ -299,5 +303,147 @@ describe("DiffPane directory race", () => {
       resolveCommit({});
       await Promise.resolve();
     });
+  });
+
+  it("disables Push while there are uncommitted changes", async () => {
+    mockMetaApis();
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    await screen.findByText("file.ts");
+
+    const pushBtn = screen.getByRole("button", {
+      name: "現在のブランチをプッシュ",
+    }) as HTMLButtonElement;
+    expect(pushBtn.disabled).toBe(true);
+    expect(pushBtn.getAttribute("title")).toBe("先にコミットしてください");
+  });
+
+  it("enables Push when there are no uncommitted changes and ahead > 0", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          git: true,
+          branch: "main",
+          additions: 0,
+          deletions: 0,
+          files: [],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({
+          branches: [],
+          current: "main",
+          defaultTarget: "main",
+          upstream: "origin/main",
+          ahead: 2,
+          remotes: ["origin"],
+          hasRemote: true,
+        });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({ sessions: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    const pushBtn = await screen.findByRole("button", {
+      name: "現在のブランチをプッシュ",
+    }) as HTMLButtonElement;
+    expect(pushBtn.disabled).toBe(false);
+    expect(pushBtn.textContent).toContain("Push (2)");
+  });
+
+  it("disables Push when there is no remote", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          git: true,
+          branch: "main",
+          additions: 0,
+          deletions: 0,
+          files: [],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({
+          branches: [],
+          current: "main",
+          defaultTarget: "main",
+          upstream: null,
+          ahead: -1,
+          remotes: [],
+          hasRemote: false,
+        });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({ sessions: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    const pushBtn = await screen.findByRole("button", {
+      name: "現在のブランチをプッシュ",
+    }) as HTMLButtonElement;
+    expect(pushBtn.disabled).toBe(true);
+    expect(pushBtn.getAttribute("title")).toBe("リモートが設定されていません");
+  });
+
+  it("calls /api/git/push on click when enabled", async () => {
+    getJson.mockImplementation((url: string) => {
+      if (String(url).includes("/api/diff/files")) {
+        return Promise.resolve({
+          git: true,
+          branch: "main",
+          additions: 0,
+          deletions: 0,
+          files: [],
+        });
+      }
+      if (String(url).includes("/api/git/branches")) {
+        return Promise.resolve({
+          branches: [],
+          current: "main",
+          defaultTarget: "main",
+          upstream: "origin/main",
+          ahead: 1,
+          remotes: ["origin"],
+          hasRemote: true,
+        });
+      }
+      if (String(url).includes("/api/git/pr")) {
+        return Promise.resolve({ available: false });
+      }
+      if (String(url).includes("/api/workspaces/")) {
+        return Promise.resolve({ sessions: [] });
+      }
+      return Promise.resolve({});
+    });
+    sendJson.mockImplementation((method: string, url: string) => {
+      if (method === "POST" && url === "/api/git/push") {
+        return Promise.resolve({ ok: true, summary: "main -> origin/main" });
+      }
+      return Promise.resolve({});
+    });
+
+    render(<DiffPane directory="/repo-a" workspaceId="ws-a" refreshKey={0} />);
+    const pushBtn = await screen.findByRole("button", {
+      name: "現在のブランチをプッシュ",
+    });
+    fireEvent.click(pushBtn);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sendJson).toHaveBeenCalledWith(
+      "POST",
+      "/api/git/push",
+      expect.objectContaining({ directory: "/repo-a", setUpstream: false }),
+    );
   });
 });

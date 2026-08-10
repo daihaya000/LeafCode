@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  CloudUpload,
   ExternalLink,
   GitCommitHorizontal,
   GitMerge,
@@ -29,6 +30,10 @@ type BranchInfo = {
   current: string;
   branches: string[];
   defaultTarget: string | null;
+  upstream?: string | null;
+  ahead?: number;
+  remotes?: string[];
+  hasRemote?: boolean;
 };
 
 type SessionRow = {
@@ -500,6 +505,22 @@ export function DiffPane({
       return res.url ? `PR: ${res.url}` : "PR を作成しました";
     });
 
+  const push = () =>
+    run(async () => {
+      const hasUpstream = Boolean(branches?.upstream);
+      const res = await sendJson<{ summary?: string }>(
+        "POST",
+        "/api/git/push",
+        {
+          directory,
+          // First push on a branch with no upstream needs `-u` so the local
+          // branch is wired to the remote ref; subsequent pushes don't.
+          setUpstream: !hasUpstream,
+        },
+      );
+      return `プッシュしました: ${res.summary ?? ""}`;
+    });
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
       <div className="shrink-0 border-b border-border bg-surface-2 px-3 py-2 text-[11px]">
@@ -628,6 +649,36 @@ export function DiffPane({
         >
           <GitPullRequest className="h-3.5 w-3.5" />
           PR
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="inline-flex"
+          aria-label="現在のブランチをプッシュ"
+          disabled={
+            !branches?.hasRemote ||
+            busy ||
+            hasChanges ||
+            (branches?.ahead !== undefined && branches.ahead <= 0)
+          }
+          title={
+            !branches?.hasRemote
+              ? "リモートが設定されていません"
+              : hasChanges
+                ? "先にコミットしてください"
+                : branches?.upstream
+                  ? branches.ahead && branches.ahead > 0
+                    ? `${branches.ahead} コミットをプッシュ`
+                    : "プッシュするコミットはありません"
+                  : branches?.hasRemote
+                    ? "初回プッシュ（upstream を設定）"
+                    : "リモートが設定されていません"
+          }
+          onClick={() => void push()}
+        >
+          <CloudUpload className="h-3.5 w-3.5" />
+          Push
+          {branches?.ahead && branches.ahead > 0 ? ` (${branches.ahead})` : ""}
         </Button>
         <Button
           variant="ghost"
