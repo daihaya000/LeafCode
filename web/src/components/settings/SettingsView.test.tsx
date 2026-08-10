@@ -364,6 +364,38 @@ describe("SettingsView", () => {
     expect(setTheme).toHaveBeenCalledWith("light");
   });
 
+  it("exposes token-saving mode and threshold settings", async () => {
+    render(<SettingsView />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "全般" }));
+    const mode = await screen.findByRole("combobox", {
+      name: "トークン節約モード",
+    });
+    expect((mode as HTMLSelectElement).value).toBe("off");
+
+    fireEvent.change(mode, { target: { value: "auto" } });
+    expect(localStorage.getItem("webui:token-saving")).toBe("auto");
+
+    const threshold = screen.getByRole("spinbutton", {
+      name: "コンテキスト使用率の閾値",
+    });
+    fireEvent.change(threshold, { target: { value: "85" } });
+    fireEvent.blur(threshold);
+    expect(localStorage.getItem("webui:token-saving-threshold")).toBe("85");
+    await waitFor(() => {
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/token-saving",
+        { value: "auto" },
+      );
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/token-saving-threshold",
+        { value: "85" },
+      );
+    });
+  });
+
   it("exposes selected cost display options as pressed toggle buttons", async () => {
     render(<SettingsView />);
 

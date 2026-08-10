@@ -1405,41 +1405,28 @@ describe("TaskView", () => {
     expect(screen.getAllByText("コスト $0.2500")).toHaveLength(1);
   });
 
-  // The server-side watchdog hides the prompt it re-sent (it would otherwise
-  // appear twice), so the notice is the only trace of the recovery.
-  // See docs/specs/hang-watchdog-server-side.md.
-  it("reports that the hang watchdog automatically resumed the turn", async () => {
+  it("shows no hang notice for an ordinary turn", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();
-    const resumed = {
-      info: { id: "user-retry", role: "user", time: { created: 2 } },
-      parts: [
-        {
-          id: "text-retry",
-          type: "text",
-          text: "続けて",
-          metadata: { [HANG_RETRY_METADATA_KEY]: true },
-        },
-      ],
-    };
     useSessionStream.mockReturnValue({
       ...streamMock,
       status: { type: "idle" },
-      messages: [resumed],
+      messages: [
+        {
+          info: { id: "user-1", role: "user", time: { created: 1 } },
+          parts: [{ id: "text-1", type: "text", text: "hello" }],
+        },
+      ],
       visibleMessages: [],
     });
 
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    const notice = await screen.findByTestId("hang-resume-notice");
-    expect(notice.textContent).toContain("自動的に停止し、同じ処理を再開しました");
-    expect(notice.textContent).toContain("5分");
-    expect(notice.textContent).not.toContain("回）");
+    expect(screen.queryByTestId("hang-resume-notice")).toBeNull();
   });
 
-  it("automatically closes the hang-resume notice after 30 seconds", async () => {
-    vi.useFakeTimers();
+  it("does not show a notice after an automatic hang resume", async () => {
     taskStatus = "idle";
     const streamMock = useSessionStream();
     useSessionStream.mockReturnValue({
@@ -1456,101 +1443,6 @@ describe("TaskView", () => {
               metadata: { [HANG_RETRY_METADATA_KEY]: true },
             },
           ],
-        },
-      ],
-      visibleMessages: [],
-    });
-
-    render(<TaskView taskId="ws1" />);
-    await flushTaskLoad();
-    expect(screen.getByTestId("hang-resume-notice")).toBeTruthy();
-
-    await act(async () => {
-      vi.advanceTimersByTime(29_999);
-    });
-    expect(screen.getByTestId("hang-resume-notice")).toBeTruthy();
-
-    await act(async () => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(screen.queryByTestId("hang-resume-notice")).toBeNull();
-  });
-
-  it("counts repeated automatic resumes", async () => {
-    taskStatus = "idle";
-    const streamMock = useSessionStream();
-    const resumed = (id: string) => ({
-      info: { id, role: "user", time: { created: 2 } },
-      parts: [
-        {
-          id: `text-${id}`,
-          type: "text",
-          text: "続けて",
-          metadata: { [HANG_RETRY_METADATA_KEY]: true },
-        },
-      ],
-    });
-    useSessionStream.mockReturnValue({
-      ...streamMock,
-      status: { type: "idle" },
-      messages: [resumed("r1"), resumed("r2")],
-      visibleMessages: [],
-    });
-
-    render(<TaskView taskId="ws1" />);
-    await flushTaskLoad();
-
-    const notice = await screen.findByTestId("hang-resume-notice");
-    expect(notice.textContent).toContain("（2回）");
-  });
-
-  // The notice is informational and closes automatically after 30 seconds,
-  // while remaining manually closable for the resumes the user acknowledged.
-  it("closes the automatic-resume notice and reopens it after a further resume", async () => {
-    taskStatus = "idle";
-    const streamMock = useSessionStream();
-    const resumed = (id: string) => ({
-      info: { id, role: "user", time: { created: 2 } },
-      parts: [
-        {
-          id: `text-${id}`,
-          type: "text",
-          text: "続けて",
-          metadata: { [HANG_RETRY_METADATA_KEY]: true },
-        },
-      ],
-    });
-    const withMessages = (messages: unknown[]) => ({
-      ...streamMock,
-      status: { type: "idle" },
-      messages,
-      visibleMessages: [],
-    });
-    useSessionStream.mockReturnValue(withMessages([resumed("r1")]));
-
-    const view = render(<TaskView taskId="ws1" />);
-    await flushTaskLoad();
-    await screen.findByTestId("hang-resume-notice");
-
-    fireEvent.click(screen.getByLabelText("自動再開の通知を閉じる"));
-    expect(screen.queryByTestId("hang-resume-notice")).toBeNull();
-
-    useSessionStream.mockReturnValue(withMessages([resumed("r1"), resumed("r2")]));
-    view.rerender(<TaskView taskId="ws1" />);
-    const reopened = await screen.findByTestId("hang-resume-notice");
-    expect(reopened.textContent).toContain("（2回）");
-  });
-
-  it("shows no hang notice for an ordinary turn", async () => {
-    taskStatus = "idle";
-    const streamMock = useSessionStream();
-    useSessionStream.mockReturnValue({
-      ...streamMock,
-      status: { type: "idle" },
-      messages: [
-        {
-          info: { id: "user-1", role: "user", time: { created: 1 } },
-          parts: [{ id: "text-1", type: "text", text: "hello" }],
         },
       ],
       visibleMessages: [],

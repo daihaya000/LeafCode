@@ -131,8 +131,6 @@ import {
 } from "@/lib/auto-task-record";
 
 import { copyText } from "@/lib/clipboard";
-import { countHangRetryUserMessages } from "@/lib/hang-retry";
-import { formatHangTimeout, readHangTimeoutMs, subscribeHangTimeout } from "@/lib/hang-timeout";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
 import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
 import { lookupModelPricing, setModelPricingRegistry } from "@/lib/model-pricing-registry";
@@ -1907,6 +1905,12 @@ export function TaskView({ taskId }: { taskId: string }) {
   const sendingScopeRef = useRef<string | null>(null);
   const autoCompactInFlightRef = useRef(false);
   const autoCompactCooldownRef = useRef<number>(0);
+  useEffect(() => {
+    // Cooldown and in-flight state belong to one OpenCode session, not the
+    // TaskView component instance. Reset them when the bound session changes.
+    autoCompactInFlightRef.current = false;
+    autoCompactCooldownRef.current = 0;
+  }, [task?.sessionId]);
   const composerLocked =
     (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
   const voiceDisabled = composerLocked || !task?.sessionId;
@@ -2133,37 +2137,6 @@ export function TaskView({ taskId }: { taskId: string }) {
   const sessionTouchedPaths = useMemo(
     () => extractSessionTouchedPaths(stream.messages, task?.directory ?? ""),
     [stream.messages, task?.directory],
-  );
-
-  // The server-side watchdog stops a hung turn and resumes the same request
-  // once, marking the resumed prompt so it is not rendered twice. Surface that
-  // it happened — otherwise the recovery is invisible.
-  // See docs/specs/hang-watchdog-server-side.md.
-  const hangResumeCount = useMemo(
-    () => countHangRetryUserMessages(stream.messages),
-    [stream.messages],
-  );
-  // Dismissal is keyed by the count that was on screen, so closing the notice
-  // hides only what the user acknowledged: a further automatic resume bumps
-  // the count and brings the notice back.
-  const [dismissedHangResumeCount, setDismissedHangResumeCount] = useState(0);
-  useEffect(() => setDismissedHangResumeCount(0), [taskId]);
-  const hangResumeVisible = hangResumeCount > 0 && hangResumeCount !== dismissedHangResumeCount;
-  useEffect(() => {
-    if (!hangResumeVisible) return;
-    const timer = window.setTimeout(
-      () => setDismissedHangResumeCount(hangResumeCount),
-      30_000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [hangResumeCount, hangResumeVisible]);
-  const [hangTimeoutLabel, setHangTimeoutLabel] = useState(() =>
-    formatHangTimeout(readHangTimeoutMs()),
-  );
-  useEffect(
-    () =>
-      subscribeHangTimeout(() => setHangTimeoutLabel(formatHangTimeout(readHangTimeoutMs()))),
-    [],
   );
 
   // Context window usage, derived from the most recent assistant turn's
@@ -4034,27 +4007,6 @@ export function TaskView({ taskId }: { taskId: string }) {
             aria-label="Auto の選定結果を閉じる"
             onClick={dismissAutoBanner}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-surface-3 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-          >
-            <X aria-hidden="true" className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      {hangResumeVisible && (
-        <div
-          role="status"
-          data-testid="hang-resume-notice"
-          className="flex shrink-0 items-start justify-between gap-2 border-b border-warning/30 bg-warning/5 px-4 py-2 text-xs text-muted"
-        >
-          <span className="min-w-0 break-words">
-            応答が{hangTimeoutLabel}止まったため自動的に停止し、同じ処理を再開しました
-            {hangResumeCount > 1 ? `（${hangResumeCount}回）` : ""}
-          </span>
-          <button
-            type="button"
-            aria-label="自動再開の通知を閉じる"
-            onClick={() => setDismissedHangResumeCount(hangResumeCount)}
-            className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-surface-3 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
           >
             <X aria-hidden="true" className="h-3.5 w-3.5" />
           </button>

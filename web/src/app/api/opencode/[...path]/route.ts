@@ -5,6 +5,7 @@ import {
   prependCollaborationContext,
 } from "@/lib/collaboration-context";
 import {
+  markCollaborationSnapshotCompacted,
   findWorkspaceIdsBySession,
   findWorkspaceIdsBySessionAndDirectory,
 } from "@/lib/db";
@@ -116,6 +117,13 @@ function isImageGuardedWrite(pathname: string): boolean {
     /^\/session\/[^/]+\/message$/.test(pathname) ||
     /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
   );
+}
+
+/** Match the explicit context-compaction mutation for a session. */
+function compactSessionId(method: string, pathname: string): string | null {
+  if (method !== "POST") return null;
+  const match = /^(?:\/api)?\/session\/([^/]+)\/compact$/.exec(pathname);
+  return match ? match[1] : null;
 }
 
 function injectWorkspaceMemory(
@@ -768,6 +776,21 @@ async function proxy(
   }
   if (armedWatchSessionId && !upstream.ok) {
     disarmHangWatch(armedWatchSessionId);
+  }
+
+  // A successful compact can discard the original workspace-memory and
+  // collaboration blocks from the active context. Allow both injections on
+  // the next prompt so the model regains that durable context. The compact
+  // endpoint returns only after OpenCode accepts the operation; the stream
+  // separately refreshes the visible transcript on session.compacted.
+  const compactedSessionId =
+    compactSessionId(req.method, pathname) ??
+    compactSessionId(req.method, resolvedPathname);
+  if (upstream.ok && compactedSessionId) {
+    for (const workspaceId of findWorkspaceIdsBySession(compactedSessionId)) {
+      releaseMemoryInjectionClaim(workspaceId, compactedSessionId);
+      markCollaborationSnapshotCompacted(workspaceId, compactedSessionId);
+    }
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";

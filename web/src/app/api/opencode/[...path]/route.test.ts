@@ -17,12 +17,17 @@ const goalLoopHook = vi.hoisted(() => ({
   calls: [] as { workspaceId: string; sessionId: string }[],
   memoryClaimAvailable: false,
   memoryClaims: [] as { workspaceId: string; sessionId: string }[],
+  memoryReleases: [] as { workspaceId: string; sessionId: string }[],
+  compactMarks: [] as { workspaceId: string; sessionId: string }[],
   collaborationBlock: "",
 }));
 
 vi.mock("@/lib/db", () => ({
   findWorkspaceIdsBySession: vi.fn(() => goalLoopHook.workspaceIds),
   findWorkspaceIdsBySessionAndDirectory: vi.fn(() => goalLoopHook.directoryWorkspaceIds),
+  markCollaborationSnapshotCompacted: vi.fn((workspaceId: string, sessionId: string) => {
+    goalLoopHook.compactMarks.push({ workspaceId, sessionId });
+  }),
 }));
 
 vi.mock("@/lib/memory", () => ({
@@ -33,7 +38,9 @@ vi.mock("@/lib/memory", () => ({
     goalLoopHook.memoryClaims.push(claim);
     return { ...claim, block: "<workspace-memory>\n- [fact] shared\n</workspace-memory>" };
   }),
-  releaseMemoryInjectionClaim: vi.fn(),
+  releaseMemoryInjectionClaim: vi.fn((workspaceId: string, sessionId: string) => {
+    goalLoopHook.memoryReleases.push({ workspaceId, sessionId });
+  }),
 }));
 
 vi.mock("@/lib/collaboration-context", () => ({
@@ -91,6 +98,8 @@ beforeEach(() => {
   goalLoopHook.calls = [];
   goalLoopHook.memoryClaimAvailable = false;
   goalLoopHook.memoryClaims = [];
+  goalLoopHook.memoryReleases = [];
+  goalLoopHook.compactMarks = [];
   goalLoopHook.collaborationBlock = "";
   hangWatch.armed = [];
   hangWatch.disarmed = [];
@@ -111,7 +120,7 @@ function post(body: string, contentType = "application/json") {
 }
 
 function sessionPost(
-  operation: "prompt_async" | "command",
+  operation: "prompt_async" | "command" | "compact",
   body: Record<string, unknown>,
   contentType = "application/json",
   // Matches the literal "C%3A%5C%5Crepo" (two backslashes) used by the other
@@ -151,6 +160,38 @@ function sessionWritePost(
 }
 
 describe("POST /api/opencode/session/:id/prompt_async variant validation", () => {
+  it("releases workspace context claims after a successful compact", async () => {
+    goalLoopHook.workspaceIds = ["ws-1"];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const response = await sessionPost("compact", {});
+
+    expect(response.status).toBe(204);
+    expect(goalLoopHook.memoryReleases).toEqual([
+      { workspaceId: "ws-1", sessionId: "session-1" },
+    ]);
+    expect(goalLoopHook.compactMarks).toEqual([
+      { workspaceId: "ws-1", sessionId: "session-1" },
+    ]);
+    fetchMock.mockRestore();
+  });
+
+  it("does not reset workspace context claims after a rejected compact", async () => {
+    goalLoopHook.workspaceIds = ["ws-1"];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ error: "busy" }), { status: 409 }));
+
+    const response = await sessionPost("compact", {});
+
+    expect(response.status).toBe(409);
+    expect(goalLoopHook.memoryReleases).toEqual([]);
+    expect(goalLoopHook.compactMarks).toEqual([]);
+    fetchMock.mockRestore();
+  });
+
   it("injects shared memory only for the matching workspace directory", async () => {
     goalLoopHook.directoryWorkspaceIds = ["ws-1"];
     goalLoopHook.memoryClaimAvailable = true;

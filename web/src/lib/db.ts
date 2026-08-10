@@ -1049,7 +1049,8 @@ export function upsertCollaborationSnapshot(
        ON CONFLICT(workspace_id, session_id) DO UPDATE SET
          fingerprint = excluded.fingerprint,
          snapshot = excluded.snapshot,
-         injected_at = excluded.injected_at`,
+         injected_at = excluded.injected_at,
+         compacted_at = NULL`,
     )
     .run(workspaceId, sessionId, fingerprint, snapshot, Date.now());
 }

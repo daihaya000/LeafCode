@@ -87,7 +87,6 @@ import {
   readTokenSavingThreshold,
   subscribeTokenSaving,
   syncTokenSavingToServer,
-  tokenSavingModeLabel,
   writeTokenSavingMode,
   writeTokenSavingThreshold,
   type TokenSavingMode,
@@ -1415,23 +1414,24 @@ export function SettingsView() {
                 <p className="mt-1 text-xs text-faint">
                   コンテキスト使用量が閾値に達したときの動作を選択します。手動送信時のみ動作し、Goal Loopには適用されません。
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(["off", "suggest", "auto"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      aria-pressed={tokenSavingMode === mode}
-                      onClick={() => commitTokenSavingMode(mode)}
-                      className={
-                        tokenSavingMode === mode
-                          ? "rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-sm text-accent"
-                          : "rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:bg-surface-2"
+                <label className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="shrink-0 text-sm text-muted">動作</span>
+                  <select
+                    value={tokenSavingMode}
+                    aria-label="トークン節約モード"
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      if (mode === "off" || mode === "suggest" || mode === "auto") {
+                        commitTokenSavingMode(mode);
                       }
-                    >
-                      {tokenSavingModeLabel(mode)}
-                    </button>
-                  ))}
-                </div>
+                    }}
+                    className="h-9 w-full max-w-[14rem] rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none focus:border-border-strong"
+                  >
+                    <option value="off">オフ</option>
+                    <option value="suggest">提案</option>
+                    <option value="auto">自動compact</option>
+                  </select>
+                </label>
                 <label className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <span className="shrink-0 text-sm text-muted">コンテキスト使用率の閾値</span>
                   <input

@@ -405,3 +405,46 @@ describe("/api/settings/[key] auto mode settings", () => {
     });
   });
 });
+
+describe("/api/settings/[key] token-saving settings", () => {
+  beforeEach(() => {
+    getSetting.mockReset();
+    setSetting.mockReset();
+  });
+
+  it.each(["off", "suggest", "auto"])("stores %s mode", async (mode) => {
+    const res = await PUT(
+      putReq({ value: mode }, "token-saving") as never,
+      ctx("token-saving"),
+    );
+    expect(res.status).toBe(200);
+    expect(setSetting).toHaveBeenCalledWith("token-saving", mode);
+  });
+
+  it("stores a threshold within the allowed range", async () => {
+    const res = await PUT(
+      putReq({ value: "85" }, "token-saving-threshold") as never,
+      ctx("token-saving-threshold"),
+    );
+    expect(res.status).toBe(200);
+    expect(setSetting).toHaveBeenCalledWith("token-saving-threshold", "85");
+  });
+
+  it("rejects an invalid mode", async () => {
+    const res = await PUT(
+      putReq({ value: "always" }, "token-saving") as never,
+      ctx("token-saving"),
+    );
+    expect(res.status).toBe(400);
+    expect(setSetting).not.toHaveBeenCalled();
+  });
+
+  it("rejects a threshold outside the allowed range", async () => {
+    const res = await PUT(
+      putReq({ value: "99" }, "token-saving-threshold") as never,
+      ctx("token-saving-threshold"),
+    );
+    expect(res.status).toBe(400);
+    expect(setSetting).not.toHaveBeenCalled();
+  });
+});
