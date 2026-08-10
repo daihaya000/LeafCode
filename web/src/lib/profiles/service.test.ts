@@ -529,6 +529,79 @@ describe("renameProfile", () => {
     const result = renameProfile(state.profiles[0].id, "");
     expect(result).toMatchObject({ status: 409 });
   });
+
+  it("renames the managed directory and repoints the active link", () => {
+    const inside = makeConfigDir(path.join(profilesDir(), "work"), "W");
+    setupLink(inside);
+    seedRegistry();
+
+    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const id = state.profiles[0].id;
+
+    const result = renameProfile(id, "personal");
+    expect(result).toEqual({ ok: true });
+
+    state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const updated = state.profiles.find((p: { id: string }) => p.id === id);
+    expect(updated.name).toBe("personal");
+    expect(updated.path).toBe(path.join(profilesDir(), "personal"));
+    expect(fs.existsSync(path.join(profilesDir(), "personal"))).toBe(true);
+    expect(fs.existsSync(path.join(profilesDir(), "work"))).toBe(false);
+    // Active link follows the renamed directory
+    expect(path.resolve(fs.readlinkSync(linkPath()))).toBe(
+      path.resolve(path.join(profilesDir(), "personal")),
+    );
+  });
+
+  it("renames a non-active managed profile without touching the link", () => {
+    const a = makeConfigDir(path.join(sandbox, "A"), "A");
+    setupLink(a);
+    seedRegistry();
+    const inside = makeConfigDir(path.join(profilesDir(), "work"), "W");
+
+    const statePath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    let state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    state.profiles.push({ id: "work-id", name: "work", path: inside });
+    fs.writeFileSync(statePath, JSON.stringify(state));
+
+    const result = renameProfile("work-id", "personal");
+    expect(result).toEqual({ ok: true });
+
+    state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const updated = state.profiles.find((p: { id: string }) => p.id === "work-id");
+    expect(updated.name).toBe("personal");
+    expect(updated.path).toBe(path.join(profilesDir(), "personal"));
+    // Active link still points at A
+    expect(path.resolve(fs.readlinkSync(linkPath()))).toBe(path.resolve(a));
+  });
+
+  it("falls back to label-only for external profiles", () => {
+    const a = makeConfigDir(path.join(sandbox, "A"), "A");
+    setupLink(a);
+    seedRegistry();
+
+    const state = JSON.parse(
+      fs.readFileSync(
+        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        "utf8",
+      ),
+    );
+    const id = state.profiles[0].id;
+    const originalPath = state.profiles[0].path;
+
+    const result = renameProfile(id, "新しい名前");
+    expect(result).toEqual({ ok: true });
+
+    const updated = JSON.parse(
+      fs.readFileSync(
+        path.join(sandbox, "appdata", "opencode-webui", "profiles.json"),
+        "utf8",
+      ),
+    );
+    expect(updated.profiles[0].name).toBe("新しい名前");
+    expect(updated.profiles[0].path).toBe(originalPath);
+  });
 });
 
 describe("deleteProfile", () => {

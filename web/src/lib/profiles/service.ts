@@ -14,11 +14,13 @@ import {
 import { isBusy, startJob } from "./jobs";
 import { isValidProfileDir, swapLink } from "./link";
 import {
+  isInside,
   isValidProfileName,
   PENDING_COPY_PREFIX,
   profilesRoot,
   resolveSlug,
   globalConfigLinkPath,
+  samePath,
 } from "./paths";
 import {
   ensureRegistry,
@@ -441,12 +443,57 @@ export function renameProfile(
   if (!isValidProfileName(name)) {
     return { status: 409, error: "プロファイル名が不正です。" };
   }
-  const state = readState();
+  const trimmed = name.trim();
+  const { state, link } = ensureRegistry();
   const profile = state.profiles.find((p) => p.id === id);
   if (!profile) {
     return { status: 409, error: "プロファイルが見つかりません。" };
   }
-  profile.name = name.trim();
+
+  // Only managed profiles (inside profilesRoot) can be renamed on disk.
+  // External profiles keep their original directory; only the label changes.
+  if (isInside(profilesRoot(), profile.path) && fs.existsSync(profile.path)) {
+    const wasActive =
+      link.state === "link" &&
+      link.target !== null &&
+      samePath(link.target, profile.path);
+    const taken = new Set(
+      state.profiles
+        .filter((p) => p.id !== id)
+        .map((p) => path.basename(p.path).toLowerCase()),
+    );
+    const slug = resolveSlug(trimmed, taken);
+    if (slug.toLowerCase() !== path.basename(profile.path).toLowerCase()) {
+      const newPath = path.join(profilesRoot(), slug);
+      if (fs.existsSync(newPath)) {
+        return { status: 409, error: "リネーム先のディレクトリが既に存在します。" };
+      }
+      try {
+        fs.renameSync(profile.path, newPath);
+      } catch (err) {
+        return {
+          status: 500,
+          error: err instanceof Error ? err.message : "ディレクトリのリネームに失敗しました。",
+        };
+      }
+      profile.path = newPath;
+
+      // When the active profile was renamed on disk, repoint the junction so
+      // OpenCode keeps reading from the moved directory.
+      if (wasActive) {
+        try {
+          swapLink(newPath);
+        } catch (err) {
+          return {
+            status: 500,
+            error: err instanceof Error ? err.message : "リンクの追従に失敗しました。",
+          };
+        }
+      }
+    }
+  }
+
+  profile.name = trimmed;
   writeState(state);
   return { ok: true };
 }
