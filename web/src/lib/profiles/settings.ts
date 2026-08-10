@@ -11,6 +11,8 @@ export type ProfileSetupSettings = {
 
 export type QwenNativeSettings = {
   enabled: boolean;
+  source: "endpoint" | "opencode";
+  opencodeModel: string;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -20,6 +22,8 @@ export type QwenNativeSettings = {
 
 export const QWEN_NATIVE_DEFAULTS: QwenNativeSettings = {
   enabled: false,
+  source: "endpoint",
+  opencodeModel: "",
   baseUrl: "http://127.0.0.1:11434/v1",
   model: "qwen2.5vl:7b",
   apiKey: "ollama",
@@ -77,6 +81,9 @@ export function readQwenNativeSettings(): QwenNativeSettings {
     ) as Partial<QwenNativeSettings>;
     return {
       enabled: parsed.enabled === true,
+      source: parsed.source === "opencode" ? "opencode" : "endpoint",
+      opencodeModel:
+        typeof parsed.opencodeModel === "string" ? parsed.opencodeModel.trim() : "",
       baseUrl:
         typeof parsed.baseUrl === "string" && parsed.baseUrl.trim()
           ? parsed.baseUrl

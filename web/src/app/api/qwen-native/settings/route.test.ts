@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/profiles/settings", () => ({
   QWEN_NATIVE_DEFAULTS: {
     enabled: false,
+    source: "endpoint",
+    opencodeModel: "",
     baseUrl: "http://127.0.0.1:11434/v1",
     model: "qwen2.5vl:7b",
     apiKey: "ollama",
@@ -32,6 +34,8 @@ const local = (method: string, body?: unknown) =>
 
 const DEFAULT_SETTINGS = {
   enabled: false,
+  source: "endpoint",
+  opencodeModel: "",
   baseUrl: "http://127.0.0.1:11434/v1",
   model: "qwen2.5vl:7b",
   apiKey: "ollama",
@@ -62,6 +66,18 @@ describe("/api/qwen-native/settings", () => {
   it("rejects missing fields", async () => {
     const response = await PUT(local("PUT", { enabled: true }));
     expect(response.status).toBe(400);
+  });
+
+  it("saves an OpenCode registered image model", async () => {
+    const next = {
+      ...DEFAULT_SETTINGS,
+      enabled: true,
+      source: "opencode",
+      opencodeModel: "openai::gpt-4o",
+    };
+    const response = await PUT(local("PUT", next));
+    expect(response.status).toBe(200);
+    expect(h.write).toHaveBeenCalledWith(next);
   });
 
   it("rejects non-positive timeoutMs", async () => {

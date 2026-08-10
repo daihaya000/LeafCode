@@ -583,7 +583,7 @@ async function proxy(
               let nativeRewritten = false;
               if (isQwenNativeVisionAvailable()) {
                 try {
-                  body = await rewriteNativeRequest(body as Record<string, unknown>);
+                  body = await rewriteNativeRequest(body as Record<string, unknown>, directory);
                   requestBody = new TextEncoder().encode(JSON.stringify(body)).buffer;
                   nativeRewritten = true;
                 } catch (error) {

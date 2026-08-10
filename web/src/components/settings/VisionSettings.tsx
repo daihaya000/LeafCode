@@ -6,6 +6,8 @@ import { getJson, sendJson, timedFetch } from "@/lib/client";
 
 type QwenNativeSettings = {
   enabled: boolean;
+  source: "endpoint" | "opencode";
+  opencodeModel: string;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -22,6 +24,8 @@ type OllamaStatus = {
 
 const DEFAULTS: QwenNativeSettings = {
   enabled: false,
+  source: "endpoint",
+  opencodeModel: "",
   baseUrl: "http://127.0.0.1:11434/v1",
   model: "qwen2.5vl:7b",
   apiKey: "ollama",
@@ -55,22 +59,29 @@ export function VisionSettings() {
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [ollamaBusy, setOllamaBusy] = useState<"install" | "pull" | null>(null);
   const [ollamaMessage, setOllamaMessage] = useState<string | null>(null);
+  const [opencodeModels, setOpencodeModels] = useState<
+    { value: string; label: string; group: string }[]
+  >([]);
   const mountedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [saved, status, ollama] = await Promise.all([
+      const [saved, status, ollama, registeredModels] = await Promise.all([
         getJson<QwenNativeSettings>("/api/qwen-native/settings"),
         getJson<{ nativeAvailable: boolean }>("/api/qwen-native/status").catch(() => null),
         getJson<OllamaStatus>("/api/ollama/status").catch(() => null),
+        getJson<{ models: { value: string; label: string; group: string }[] }>(
+          "/api/qwen-native/models",
+        ).catch(() => null),
       ]);
       if (!mountedRef.current) return;
       setSettings(saved);
       setDraft(saved);
       if (status) setStatusAvailable(status.nativeAvailable);
       if (ollama) setOllamaStatus(ollama);
+      if (registeredModels) setOpencodeModels(registeredModels.models);
     } catch (err) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : "設定を読み込めませんでした");
@@ -167,6 +178,8 @@ export function VisionSettings() {
     setSuccess(null);
     const sanitized: QwenNativeSettings = {
       enabled: draft.enabled,
+      source: draft.source,
+      opencodeModel: draft.opencodeModel,
       baseUrl: draft.baseUrl.trim() || DEFAULTS.baseUrl,
       model: draft.model.trim() || DEFAULTS.model,
       apiKey: draft.apiKey.trim() || DEFAULTS.apiKey,
@@ -210,6 +223,8 @@ export function VisionSettings() {
   const dirty =
     !settings ||
     settings.enabled !== draft.enabled ||
+    settings.source !== draft.source ||
+    settings.opencodeModel !== draft.opencodeModel ||
     settings.baseUrl !== draft.baseUrl ||
     settings.model !== draft.model ||
     settings.apiKey !== draft.apiKey ||
@@ -289,7 +304,62 @@ export function VisionSettings() {
           </span>
         </label>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg px-3.5 py-3">
+            <input
+              type="radio"
+              name="image-analysis-source"
+              checked={draft.source === "opencode"}
+              onChange={() => updateField("source", "opencode")}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-text">OpenCode登録モデル</span>
+              <span className="block text-xs text-muted">OpenCode CLIに登録済みの認証と画像対応モデルを使用</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg px-3.5 py-3">
+            <input
+              type="radio"
+              name="image-analysis-source"
+              checked={draft.source === "endpoint"}
+              onChange={() => updateField("source", "endpoint")}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-text">OpenAI互換エンドポイント</span>
+              <span className="block text-xs text-muted">Ollamaまたは外部APIの接続先を直接指定</span>
+            </span>
+          </label>
+        </div>
+
+        {draft.source === "opencode" && (
+          <div className="mt-4">
+            <label className="block text-xs font-medium text-muted" htmlFor="qwen-opencode-model">
+              OpenCode画像対応モデル
+            </label>
+            <select
+              id="qwen-opencode-model"
+              value={draft.opencodeModel}
+              onChange={(event) => updateField("opencodeModel", event.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus:border-primary"
+            >
+              <option value="">選択してください</option>
+              {[...new Set(opencodeModels.map((model) => model.group))].map((group) => (
+                <optgroup key={group} label={group}>
+                  {opencodeModels.filter((model) => model.group === group).map((model) => (
+                    <option key={model.value} value={model.value}>{model.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {opencodeModels.length === 0 && (
+              <p className="mt-1 text-xs text-warning">接続済みの画像対応モデルが見つかりません。</p>
+            )}
+          </div>
+        )}
+
+        {draft.source === "endpoint" && <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label
               className="block text-xs font-medium text-muted"
@@ -393,13 +463,13 @@ export function VisionSettings() {
               aria-label="解析結果の最大トークン"
             />
           </div>
-        </div>
+        </div>}
 
         <div className="mt-4 flex items-center gap-2">
           <Button
             size="sm"
             onClick={() => void save()}
-            disabled={!dirty || saving}
+            disabled={!dirty || saving || (draft.source === "opencode" && !draft.opencodeModel)}
             busy={saving}
           >
             保存

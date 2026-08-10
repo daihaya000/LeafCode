@@ -1,4 +1,6 @@
 import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
+import { ocServer } from "./oc-server";
+import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "./opencode-paths";
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
@@ -29,6 +31,8 @@ function resolveSettings() {
   return {
     enabled:
       process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1" || fileSettings.enabled,
+    source: fileSettings.source,
+    opencodeModel: fileSettings.opencodeModel,
     baseUrl:
       process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL?.trim() ||
       fileSettings.baseUrl ||
@@ -103,6 +107,7 @@ export async function analyzeNativeImages(
   prompt: string,
   images: readonly NativeVisionImage[],
   fetchImpl: typeof fetch = fetch,
+  directory: string | null = null,
 ): Promise<string> {
   if (!isQwenNativeVisionAvailable()) {
     throw new QwenNativeVisionError("local Qwen vision is not enabled");
@@ -116,6 +121,9 @@ export async function analyzeNativeImages(
   }
 
   const config = resolveSettings();
+  if (config.source === "opencode") {
+    return analyzeWithOpenCode(prompt, images, config.opencodeModel, directory);
+  }
   const baseUrl = config.baseUrl;
   const apiKey = config.apiKey;
   const endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
@@ -167,8 +175,73 @@ export async function analyzeNativeImages(
   throw lastError ?? new QwenNativeVisionError("Qwen image analysis failed");
 }
 
+async function analyzeWithOpenCode(
+  prompt: string,
+  images: readonly NativeVisionImage[],
+  modelValue: string,
+  directory: string | null,
+): Promise<string> {
+  const separator = modelValue.indexOf("::");
+  if (separator <= 0 || separator === modelValue.length - 2) {
+    throw new QwenNativeVisionError("invalid OpenCode image analysis model");
+  }
+  const model = {
+    providerID: modelValue.slice(0, separator),
+    modelID: modelValue.slice(separator + 2),
+  };
+  let sessionId: string | undefined;
+  try {
+    const session = await ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
+      method: "POST",
+      body: { title: "image-analysis" },
+    });
+    sessionId = session.id;
+    const toolIds = await ocServer<unknown>(directory, "/experimental/tool/ids");
+    if (!Array.isArray(toolIds)) throw new Error("failed to read tool IDs");
+    const tools = Object.fromEntries(toolIds.map((id) => [String(id), false]));
+    const response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
+      directory,
+      sessionMessagePath(sessionId),
+      {
+        method: "POST",
+        timeoutMs: readQwenNativeSettings().timeoutMs,
+        body: {
+          model,
+          tools,
+          parts: [
+            ...images.map((image) => ({
+              type: "file",
+              mime: image.mime,
+              url: image.dataUrl,
+            })),
+            { type: "text", text: analysisPrompt(prompt) },
+          ],
+        },
+      },
+    );
+    const text = (response.parts ?? [])
+      .filter((part) => part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text!.trim())
+      .filter(Boolean)
+      .join("\n");
+    if (!text) throw new Error("OpenCode returned an empty image analysis");
+    return text;
+  } catch (error) {
+    throw new QwenNativeVisionError(
+      `OpenCode image analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    if (sessionId) {
+      await ocServer(directory, sessionPath(sessionId), { method: "DELETE" }).catch(
+        () => undefined,
+      );
+    }
+  }
+}
+
 export async function rewriteNativeRequest(
   body: Record<string, unknown>,
+  directory: string | null = null,
 ): Promise<Record<string, unknown>> {
   const parts = Array.isArray(body.parts) ? body.parts : null;
   if (parts) {
@@ -185,7 +258,7 @@ export async function rewriteNativeRequest(
         part.type === "text" && typeof part.text === "string",
     );
     const prompt = typeof textPart?.text === "string" ? textPart.text : "";
-    const analysis = await analyzeNativeImages(prompt, imageParts.map(imageFromPart));
+    const analysis = await analyzeNativeImages(prompt, imageParts.map(imageFromPart), fetch, directory);
     const text = nativeImageContext(prompt, analysis);
     if (textPart) textPart.text = text;
     else nextParts.unshift({ type: "text", text });
@@ -203,7 +276,7 @@ export async function rewriteNativeRequest(
   }) as Record<string, unknown>[];
   if (imageFiles.length === 0) return body;
   const text = typeof promptRecord.text === "string" ? promptRecord.text : "";
-  const analysis = await analyzeNativeImages(text, imageFiles.map(imageFromPart));
+  const analysis = await analyzeNativeImages(text, imageFiles.map(imageFromPart), fetch, directory);
   return {
     ...body,
     prompt: {

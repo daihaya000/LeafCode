@@ -1,5 +1,24 @@
 # 作業ログ: Qwen-MM-Plugins MCP 初回接続タイムアウト修正
 
+# 作業ログ: OpenCode登録済み画像モデルによる事前解析
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- 画像解析設定へ `source: endpoint | opencode` と `opencodeModel` を追加した。既存設定は `endpoint` として移行する。
+- `GET /api/qwen-native/models` を追加し、OpenCode `/provider` の接続済みプロバイダーから画像/添付入力対応モデルだけを返すようにした。
+- 設定画面に「OpenCode登録モデル」「OpenAI互換エンドポイント」の接続方式切替と、画像対応モデル選択欄を追加した。
+- OpenCode方式はツール無効の一時セッションへ画像と解析指示を送り、同期応答を取得後にセッションを削除する。登録済み認証情報をOpenCode側で利用し、WebUIへAPIキーを複製しない。
+- 初期タスクと継続プロンプトの両方で作業ディレクトリを解析処理へ渡す。
+- 実環境の `/provider` から OpenCode Go、Anthropic、Ollama Cloud、OpenAI等の画像対応モデル候補を取得できることを確認した。
+
+## 検証
+
+- 関連181件、typecheck、Lint成功
+
 # 作業ログ: Ollama画像解析の実接続確認
 
 ## 日付

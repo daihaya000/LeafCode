@@ -515,7 +515,7 @@ export async function POST(req: NextRequest) {
     }));
     let promptForSend = prompt;
     if (qwenNativeFallback) {
-      const analysis = await analyzeNativeImages(prompt, qwenImages);
+      const analysis = await analyzeNativeImages(prompt, qwenImages, fetch, workspace.absolute_path);
       promptForSend = nativeImageContext(prompt, analysis);
     }
 

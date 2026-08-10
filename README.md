@@ -137,6 +137,8 @@ cd OpenCodeWebUI
 
 Qwen画像ネイティブ統合を利用すると、画像非対応モデルへ添付した画像と依頼文が事前解析用のOpenAI互換エンドポイントへ送信されます。ローカルOllama（`ollama run qwen2.5vl:7b`）または外部API（OpenAI・Gemini・DashScope等）のいずれかを用意し、`OPENCODE_WEBUI_QWEN_NATIVE=1`を設定してWebUIを再起動するか、設定画面の「画像解析」タブで有効化してください。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、事前解析は行いません。
 
+「画像解析」タブで「OpenCode登録モデル」を選ぶと、OpenCode CLIに接続済みのプロバイダーから画像入力対応モデルだけを事前解析用に選択できます。認証情報はOpenCode側の登録をそのまま使用し、WebUIの設定ファイルへAPIキーを複製しません。解析時はツールを無効化した一時セッションを作成し、応答取得後に削除します。
+
 ```bat
 set OPENCODE_WEBUI_CADDY=1
 rem optional: override Caddyfile path

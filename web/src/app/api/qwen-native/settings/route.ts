@@ -18,6 +18,9 @@ function sanitizeInput(body: unknown): QwenNativeSettings | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const value = body as Record<string, unknown>;
   if (typeof value.enabled !== "boolean") return null;
+  if (value.source !== "endpoint" && value.source !== "opencode") return null;
+  if (typeof value.opencodeModel !== "string") return null;
+  if (value.source === "opencode" && !value.opencodeModel.trim()) return null;
   if (typeof value.baseUrl !== "string" || !value.baseUrl.trim()) return null;
   if (typeof value.model !== "string" || !value.model.trim()) return null;
   if (typeof value.apiKey !== "string") return null;
@@ -25,6 +28,8 @@ function sanitizeInput(body: unknown): QwenNativeSettings | null {
   if (!isFinitePositive(value.maxTokens)) return null;
   return {
     enabled: value.enabled,
+    source: value.source,
+    opencodeModel: value.opencodeModel.trim(),
     baseUrl: value.baseUrl.trim(),
     model: value.model.trim(),
     apiKey: value.apiKey.trim() || QWEN_NATIVE_DEFAULTS.apiKey,
