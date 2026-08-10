@@ -4478,3 +4478,35 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - web/src/lib/collaboration-context.test.ts
 - web/src/app/api/opencode/[...path]/route.ts
 - web/src/components/task/TaskView.tsx
+
+---
+
+# 実装: トークン節約機能 Phase 2
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- `web/src/lib/token-saving-settings.ts` を追加。`off` / `suggest` / `auto`、閾値70〜95%（既定80%）、localStorage保存、settings API同期、閾値判定関数 `shouldAutoCompact` を実装。
+- `web/src/app/api/settings/[key]/route.ts` に `token-saving` / `token-saving-threshold` のallowlistとvalidationを追加。
+- `SettingsView.tsx` の全般タブにトークン節約モードと閾値のselect/inputを追加。既存のコスト表示ボタンとrole検索が衝突しないよう、モードはselectとした。
+- `SessionActions.tsx` のcompact API呼び出しを `compactSession` として共有化。
+- `TaskView.tsx` の手動送信前に、autoモード・閾値超過・idle・permission/questionなしを確認してcompact→既存 `stream.resync()` →prompt送信を実行。suggestモードはwarning通知のみ。compact失敗時は送信を継続し、入力を失わない。
+- session変更時にcompactのin-flight/cooldownをリセットする。同一TaskView内の連続compactは60秒cooldownで抑止する。
+- compact成功時にBFF routeが `memory_session_injections` のclaimを解放し、`collaboration_snapshots.compacted_at`を記録する。次回promptでmemoryとcollaboration contextを再注入する。
+- memory budgetを実ブロック全体で4,000文字以内に補正し、長いprompt向けの安全なOR型FTS query `toFtsAnyQuery`を追加。
+
+## テスト・検証
+
+- `token-saving-settings.test.ts` にモード、閾値、cooldown、pending input、auto判定のテストを追加。
+- settings route、SettingsView、BFF compact resetの回帰テストを追加。
+- `npx tsc --noEmit --pretty false` 成功。
+- `npx eslint src` 成功。
+- `npx vitest run` 成功: 264 files / 3120 tests passed / 1 skipped。
+
+## 残余リスク
+
+- compactのin-flight/cooldownはTaskViewインスタンス単位であり、複数ブラウザタブ間の原子的な二重compact防止ではない。SQLite lockを追加する場合は次の改善候補とする。
+- compact完了は既存の`session.compacted`イベントに伴う`stream.resync()`で待つ。SSE欠落時はcompact POST成功後のresync結果に依存するため、将来は明示的なcompletion waiterとtimeoutを追加できる。

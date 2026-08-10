@@ -24,6 +24,7 @@ const {
   releaseMemoryInjectionClaim,
   searchMemories,
   stripMemoryInjectionBlock,
+  toFtsAnyQuery,
   toFtsPhrase,
   updateMemory,
 } = await import("./memory");
@@ -238,7 +239,7 @@ describe("memory CRUD + injection", () => {
     const block = buildBudgetedMemoryInjectionBlock(memories, 5, 4000);
     const lines = block.split("\n").filter((l) => l.startsWith("- ["));
     expect(lines.length).toBeLessThanOrEqual(5);
-    expect(block.length).toBeLessThanOrEqual(5000);
+    expect(block.length).toBeLessThanOrEqual(4000);
   });
 
   it("buildBudgetedMemoryInjectionBlock returns empty for empty input", () => {
@@ -284,6 +285,15 @@ describe("memory CRUD + injection", () => {
     const lines = claim!.block.split("\n").filter((l) => l.startsWith("- ["));
     expect(lines.length).toBeLessThanOrEqual(5);
     releaseMemoryInjectionClaim("ws-fts", "ses-fts");
+  });
+
+  it("builds a bounded OR query from a long prompt", () => {
+    const query = toFtsAnyQuery(
+      "Please update src/auth.ts and run tests before committing this change",
+    );
+    expect(query).toContain('"src/auth.ts"');
+    expect(query).toContain(" OR ");
+    expect(query.length).toBeLessThan(300);
   });
 
   it("claimMemoryInjectionForSession falls back to use_count order when FTS has no hits", () => {

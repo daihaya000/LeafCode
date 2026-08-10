@@ -9,6 +9,7 @@ const {
   MIN_TOKEN_SAVING_THRESHOLD,
   readTokenSavingMode,
   readTokenSavingThreshold,
+  shouldAutoCompact,
   tokenSavingModeLabel,
   writeTokenSavingMode,
   writeTokenSavingThreshold,
@@ -123,5 +124,44 @@ describe("tokenSavingModeLabel", () => {
     expect(tokenSavingModeLabel("off")).toBe("オフ");
     expect(tokenSavingModeLabel("suggest")).toBe("提案");
     expect(tokenSavingModeLabel("auto")).toBe("自動");
+  });
+});
+
+describe("shouldAutoCompact", () => {
+  const base = {
+    mode: "auto" as const,
+    usagePct: 80,
+    threshold: 80,
+    sessionIdle: true,
+    hasPendingInput: false,
+    now: 100_000,
+    cooldownUntil: 0,
+  };
+
+  it("allows auto compact at or above the threshold", () => {
+    expect(shouldAutoCompact(base)).toBe(true);
+    expect(shouldAutoCompact({ ...base, usagePct: 90 })).toBe(true);
+  });
+
+  it("does not compact below the threshold or in non-auto modes", () => {
+    expect(shouldAutoCompact({ ...base, usagePct: 79 })).toBe(false);
+    expect(shouldAutoCompact({ ...base, mode: "suggest" })).toBe(false);
+    expect(shouldAutoCompact({ ...base, mode: "off" })).toBe(false);
+  });
+
+  it("does not compact while busy or awaiting input", () => {
+    expect(shouldAutoCompact({ ...base, sessionIdle: false })).toBe(false);
+    expect(shouldAutoCompact({ ...base, hasPendingInput: true })).toBe(false);
+  });
+
+  it("respects cooldown", () => {
+    expect(shouldAutoCompact({ ...base, cooldownUntil: 100_001 })).toBe(false);
+    expect(shouldAutoCompact({ ...base, cooldownUntil: 100_000 })).toBe(true);
+  });
+
+  it("clamps an invalid threshold before comparing", () => {
+    expect(shouldAutoCompact({ ...base, threshold: 5, usagePct: 70 })).toBe(true);
+    expect(shouldAutoCompact({ ...base, threshold: 99, usagePct: 95 })).toBe(true);
+    expect(shouldAutoCompact({ ...base, threshold: 99, usagePct: 94 })).toBe(false);
   });
 });

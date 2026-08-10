@@ -91,6 +91,7 @@ import { lastTurnTokenUsage } from "@/lib/token-usage";
 import {
   readTokenSavingMode,
   readTokenSavingThreshold,
+  shouldAutoCompact,
 } from "@/lib/token-saving-settings";
 import {
   readChatTab,
@@ -2372,9 +2373,16 @@ export function TaskView({ taskId }: { taskId: string }) {
         stream.questions.length === 0
       ) {
         if (
-          savingMode === "auto" &&
-          !autoCompactInFlightRef.current &&
-          Date.now() - autoCompactCooldownRef.current > 60_000
+          shouldAutoCompact({
+            mode: savingMode,
+            usagePct: contextUsage.pct,
+            threshold: savingThreshold,
+            sessionIdle: true,
+            hasPendingInput:
+              stream.permissions.length > 0 || stream.questions.length > 0,
+            now: Date.now(),
+            cooldownUntil: autoCompactCooldownRef.current + 60_000,
+          }) && !autoCompactInFlightRef.current
         ) {
           autoCompactInFlightRef.current = true;
           autoCompactCooldownRef.current = Date.now();

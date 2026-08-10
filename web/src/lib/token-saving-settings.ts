@@ -151,3 +151,23 @@ export function tokenSavingModeLabel(mode: TokenSavingMode): string {
       return "自動";
   }
 }
+
+/** Pure gate used by the composer before a manual send. */
+export function shouldAutoCompact(input: {
+  mode: TokenSavingMode;
+  usagePct: number | null;
+  threshold: number;
+  sessionIdle: boolean;
+  hasPendingInput: boolean;
+  now: number;
+  cooldownUntil: number;
+}): boolean {
+  return (
+    input.mode === "auto" &&
+    input.usagePct !== null &&
+    input.usagePct >= clampThreshold(input.threshold) &&
+    input.sessionIdle &&
+    !input.hasPendingInput &&
+    input.now >= input.cooldownUntil
+  );
+}
