@@ -43,7 +43,7 @@ export function MessageMetaHeader({
   const cost = reportedCost !== null
     ? formatCostValue(reportedCost, costPrefs)
     : estimatedCost !== null
-      ? `推定 ${formatCostValue(estimatedCost, costPrefs)}`
+      ? formatCostValue(estimatedCost, costPrefs)
       : "";
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
   const thinking = thinkingDuration(info);

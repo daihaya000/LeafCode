@@ -779,10 +779,9 @@ export function TaskView({ taskId }: { taskId: string }) {
   );
   const cumulativeCost = useMemo(() => {
     const reportedTotal = task?.cost ?? 0;
-    if (reportedTotal > 0) return { value: reportedTotal, estimated: false };
+    if (reportedTotal > 0) return reportedTotal;
 
     let total = 0;
-    let estimated = false;
     for (const message of streamMessages) {
       if (message.info.role !== "assistant") continue;
       const reported = message.info.cost ?? 0;
@@ -793,10 +792,9 @@ export function TaskView({ taskId }: { taskId: string }) {
       const estimate = estimateOpenAIApiCost(message.info);
       if (estimate !== null) {
         total += estimate;
-        estimated = true;
       }
     }
-    return total > 0 ? { value: total, estimated } : null;
+    return total > 0 ? total : null;
   }, [streamMessages, task?.cost]);
 
   useEffect(() => {
@@ -3508,14 +3506,9 @@ export function TaskView({ taskId }: { taskId: string }) {
                 <span className="mx-1">·</span>
                 <span
                   className="shrink-0"
-                  title={
-                    cumulativeCost.estimated
-                      ? "このセッションの推定累計コスト"
-                      : "このセッションの累計コスト"
-                  }
+                  title="このセッションの累計コスト"
                 >
-                  累計コスト{cumulativeCost.estimated ? "（推定）" : ""}{" "}
-                  {formatCostValue(cumulativeCost.value, costPrefs)}
+                  累計コスト {formatCostValue(cumulativeCost, costPrefs)}
                 </span>
               </>
             )}

@@ -68,7 +68,7 @@ describe("MessageMetaHeader", () => {
       />,
     );
 
-    expect(screen.getByText("コスト 推定 $0.3200")).toBeTruthy();
+    expect(screen.getByText("コスト $0.3200")).toBeTruthy();
   });
 
   it("shows the reasoning effort immediately after the model in Japanese", () => {

@@ -3259,3 +3259,20 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm test -- --run src/components/task/TaskView.test.tsx src/components/task/MessageMetaHeader.test.tsx` ... 125 tests 成功
 - `npx eslint src/components/task/TaskView.tsx src/components/task/TaskView.test.tsx` ... 成功
 - `npm run typecheck` ... 成功
+
+## コスト表示の推定表記廃止
+
+### 日付
+
+2026-08-10
+
+### 修正内容
+
+- トークンから算出したコストも実測コストと同じ「コスト」として扱い、個別応答と累計ヘッダーの「推定」表記を削除した。
+- タスクの実測累計がない場合は、従来どおり各応答のコストを合計して「累計コスト」として表示する。
+
+### 検証結果
+
+- `npm test -- --run src/components/task/TaskView.test.tsx src/components/task/MessageMetaHeader.test.tsx` ... 125 tests 成功
+- `npx eslint src/components/task/TaskView.tsx src/components/task/MessageMetaHeader.tsx src/components/task/TaskView.test.tsx src/components/task/MessageMetaHeader.test.tsx` ... 成功
+- `npm run typecheck` ... 成功

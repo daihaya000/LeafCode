@@ -471,7 +471,7 @@ describe("TaskView", () => {
     expect(getJson).toHaveBeenCalledTimes(3);
   });
 
-  it("shows estimated cumulative cost when the task does not report a cost", async () => {
+  it("shows cumulative cost when the task does not report a cost", async () => {
     taskResponseCosts = [0];
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
@@ -490,8 +490,8 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    expect(screen.getByText("累計コスト（推定） $0.3200")).toBeTruthy();
-    expect(screen.getByTitle("このセッションの推定累計コスト")).toBeTruthy();
+    expect(screen.getByText("累計コスト $0.3200")).toBeTruthy();
+    expect(screen.getByTitle("このセッションの累計コスト")).toBeTruthy();
   });
 
   it("does not poll when the current task is idle", async () => {
