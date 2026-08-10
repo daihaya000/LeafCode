@@ -275,6 +275,9 @@ describe("TaskView", () => {
       if (path === "/api/settings/sidepanel-width") {
         return Promise.resolve({ value: null });
       }
+      if (path === "/api/tasks/ws1/cost") {
+        return Promise.resolve({ cost: taskResponseCosts.shift() ?? 0.2 });
+      }
       return Promise.resolve({ task: task(taskResponseCosts.shift() ?? 0.2) });
     });
     sendJson.mockResolvedValue(undefined);

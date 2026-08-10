@@ -6,7 +6,7 @@ import {
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
-import { SESSION_LIST_PATH, SESSION_STATUS_PATH } from "./opencode-paths";
+import { SESSION_LIST_PATH, SESSION_STATUS_PATH, sessionPath } from "./opencode-paths";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
 import type { SessionStatus, TaskSummary } from "./types";
@@ -248,4 +248,18 @@ export async function getTask(id: string): Promise<TaskSummary | null> {
   const status = binding ? statuses[binding.opencode_session_id] : undefined;
   const meta = binding ? metas[binding.opencode_session_id] : undefined;
   return toTask(ws, binding, stat, status, engineOk, meta);
+}
+
+/** Fetch only the authoritative cumulative cost for a task session. */
+export async function getTaskCost(id: string): Promise<number | undefined> {
+  const ws = listWorkspacesJoined().find((w) => w.id === id);
+  if (!ws) return undefined;
+  const binding = primaryBindings().get(id);
+  if (!binding) return undefined;
+  const session = await ocServer<{ cost?: number }>(
+    ws.absolute_path,
+    sessionPath(binding.opencode_session_id),
+    { timeoutMs: 1500 },
+  );
+  return typeof session.cost === "number" ? session.cost : undefined;
 }

@@ -260,6 +260,7 @@ describe("Sidebar", () => {
 
   it("refreshes a working task cost while the sidebar is visible", async () => {
     let calls = 0;
+    let costCalls = 0;
     usePathname.mockReturnValue("/task/ws1");
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") {
@@ -295,6 +296,10 @@ describe("Sidebar", () => {
           }],
           engineOk: true,
         });
+      }
+      if (path === "/api/tasks/ws1/cost") {
+        costCalls += 1;
+        return Promise.resolve({ cost: costCalls === 1 ? 0.2 : 0.2 });
       }
       return Promise.reject(new Error(`Unexpected request: ${path}`));
     });

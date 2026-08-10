@@ -43,7 +43,7 @@ vi.mock("./oc-server", async () => {
   };
 });
 
-import { getTask, listTasks } from "./task-service";
+import { getTask, getTaskCost, listTasks } from "./task-service";
 
 const WS = {
   id: "ws1",
@@ -125,6 +125,13 @@ describe("getTask cost aggregation", () => {
     h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 2.5 }];
     const task = await getTask("ws1");
     expect(task?.cost).toBe(2.5);
+  });
+
+  it("reads a task cost from the lightweight session endpoint", async () => {
+    h.ocResponses["/repo/session/sess1"] = { cost: 3.75 };
+    await expect(getTaskCost("ws1")).resolves.toBe(3.75);
+    expect(h.ocCalls).toContain("/repo/session/sess1");
+    expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
   });
 });
 

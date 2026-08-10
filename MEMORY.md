@@ -3375,3 +3375,15 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm.cmd test -- --run src/lib/task-service.test.ts src/components/task/TaskView.test.tsx src/components/shell/Sidebar.test.tsx` ... 3 files / 170 tests 成功
 - `npm.cmd run typecheck` ... 成功
 - `npx.cmd eslint src/lib/task-service.ts src/lib/task-service.test.ts` ... 成功
+
+## 追加修正
+
+- 3秒間隔のSidebar/TaskView更新を専用の `/api/tasks/:id/cost` に分離した。
+- 通常のタスク一覧に含まれるGit統計・全セッション状態・全セッション一覧を、コスト更新のたびに再計算しないようにした。
+- セッション詳細の `Session.cost` だけを取得し、失敗時は現在の表示を維持する。
+
+## 追加検証
+
+- 関連テスト ... 3 files / 171 tests 成功
+- `npm.cmd run typecheck` ... 成功
+- ESLint対象ファイル ... 成功

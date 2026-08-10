@@ -378,6 +378,32 @@ export function Sidebar({
     }
   }, [updateEngineHealth]);
 
+  const refreshActiveCosts = useCallback(async () => {
+    if (!mountedRef.current) return;
+    const activeIds = tasks
+      .filter((task) => task.status === "working")
+      .map((task) => task.id);
+    if (activeIds.length === 0) return;
+    const results = await Promise.allSettled(
+      activeIds.map(async (id) => {
+        const data = await getJson<{ cost?: number }>(`/api/tasks/${id}/cost`);
+        return { id, cost: data.cost };
+      }),
+    );
+    if (!mountedRef.current) return;
+    const costs = new Map(
+      results.flatMap((result) =>
+        result.status === "fulfilled" ? [[result.value.id, result.value.cost] as const] : [],
+      ),
+    );
+    if (costs.size === 0) return;
+    setTasks((current) =>
+      current.map((task) =>
+        costs.has(task.id) ? { ...task, cost: costs.get(task.id) } : task,
+      ),
+    );
+  }, [tasks]);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -481,9 +507,9 @@ export function Sidebar({
 
   useEffect(() => {
     if (!pageVisible || !hasActiveTask) return;
-    const poll = setInterval(() => void refresh(), ACTIVE_TASK_POLL_MS);
+    const poll = setInterval(() => void refreshActiveCosts(), ACTIVE_TASK_POLL_MS);
     return () => clearInterval(poll);
-  }, [hasActiveTask, pageVisible, refresh]);
+  }, [hasActiveTask, pageVisible, refreshActiveCosts]);
 
   // Re-check engine health while the "engine not connected" banner is shown so
   // it self-clears once OpenCode becomes reachable (no manual reload needed).

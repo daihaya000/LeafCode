@@ -1556,6 +1556,23 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [taskId]);
 
+  const refreshTaskCost = useCallback(async () => {
+    if (!mountedRef.current) return;
+    try {
+      const data = await getJson<{ cost?: number }>(`/api/tasks/${taskId}/cost`);
+      if (!mountedRef.current || taskIdRef.current !== taskId) return;
+      setTask((current) => {
+        if (!current || current.id !== taskId) return current;
+        const next = { ...current, cost: data.cost };
+        taskRef.current = next;
+        rememberTaskSummary(next);
+        return next;
+      });
+    } catch {
+      // Keep the current cost when the lightweight refresh fails.
+    }
+  }, [taskId]);
+
   const refreshGoalLoop = useCallback(async () => {
     if (!mountedRef.current) return;
     const requestedTaskId = taskId;
@@ -1852,17 +1869,17 @@ export function TaskView({ taskId }: { taskId: string }) {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === "visible";
       setPageVisible(visible);
-      if (visible && hasActiveTask) void refreshTask();
+      if (visible && hasActiveTask) void refreshTaskCost();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [hasActiveTask, refreshTask]);
+  }, [hasActiveTask, refreshTaskCost]);
 
   useEffect(() => {
     if (!pageVisible || !hasActiveTask) return;
-    const poll = setInterval(() => void refreshTask(), ACTIVE_TASK_POLL_MS);
+    const poll = setInterval(() => void refreshTaskCost(), ACTIVE_TASK_POLL_MS);
     return () => clearInterval(poll);
-  }, [hasActiveTask, pageVisible, refreshTask]);
+  }, [hasActiveTask, pageVisible, refreshTaskCost]);
 
   useEffect(() => {
     const activeLoop =
