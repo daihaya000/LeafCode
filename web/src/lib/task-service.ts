@@ -6,11 +6,16 @@ import {
 } from "./db";
 import { DirStat, dirStat } from "./dirstat";
 import { OcError, ocServer } from "./oc-server";
-import { SESSION_LIST_PATH, SESSION_STATUS_PATH, sessionPath } from "./opencode-paths";
+import {
+  SESSION_LIST_PATH,
+  SESSION_STATUS_PATH,
+  sessionMessagePath,
+  sessionPath,
+} from "./opencode-paths";
 import { estimateOpenAIApiCost } from "./openai-pricing";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
-import type { MessageInfo, SessionStatus, TaskSummary } from "./types";
+import type { MessageInfo, MessageWithParts, SessionStatus, TaskSummary } from "./types";
 
 type StatusMap = Record<string, SessionStatus>;
 
@@ -30,6 +35,16 @@ type SessionUsage = {
   model?: { id?: string; providerID?: string; variant?: string };
 };
 
+type SessionEntry = SessionUsage & { id: string; agent?: string };
+
+type CachedSessionEstimate = {
+  fingerprint: string;
+  cost: number;
+};
+
+const sessionEstimateCache = new Map<string, CachedSessionEstimate>();
+const SESSION_ESTIMATE_CACHE_MAX = 256;
+
 const EMPTY_STAT: DirStat = {
   git: false,
   branch: null,
@@ -47,6 +62,97 @@ function estimateSessionCost(session: SessionUsage): number | null {
     modelID: session.model.id,
     tokens: session.tokens,
   });
+}
+
+function sessionUsageFingerprint(session: SessionUsage): string | null {
+  if (!session.tokens || !session.model?.providerID || !session.model.id) {
+    return null;
+  }
+  return JSON.stringify({
+    model: {
+      providerID: session.model.providerID,
+      id: session.model.id,
+    },
+    tokens: session.tokens,
+  });
+}
+
+function hasPositiveTokenUsage(tokens: MessageInfo["tokens"]): boolean {
+  if (!tokens) return false;
+  return Boolean(
+    tokens.input > 0 ||
+      tokens.output > 0 ||
+      tokens.reasoning > 0 ||
+      (tokens.cache?.read ?? 0) > 0 ||
+      (tokens.cache?.write ?? 0) > 0,
+  );
+}
+
+function exactMessageCost(messages: MessageWithParts[]): number | null {
+  let total = 0;
+  let observed = false;
+  for (const message of messages) {
+    if (message.info.role !== "assistant") continue;
+    const reported = message.info.cost;
+    if (typeof reported === "number" && Number.isFinite(reported) && reported > 0) {
+      total += reported;
+      observed = true;
+      continue;
+    }
+    const estimated = estimateOpenAIApiCost(message.info);
+    if (estimated !== null) {
+      total += estimated;
+      observed = true;
+    } else if (hasPositiveTokenUsage(message.info.tokens)) {
+      // A partial transcript estimate would undercount unknown models.
+      return null;
+    }
+  }
+  return observed && total > 0 ? total : null;
+}
+
+async function estimateSessionCostWithCache(
+  directory: string,
+  session: SessionUsage & { id: string },
+): Promise<number | null> {
+  const aggregate = estimateSessionCost(session);
+  if (aggregate === null) return null;
+  const fingerprint = sessionUsageFingerprint(session);
+  if (!fingerprint) return aggregate;
+
+  const cacheKey = `${directory}\0${session.id}`;
+  const cached = sessionEstimateCache.get(cacheKey);
+  if (cached?.fingerprint === fingerprint) {
+    sessionEstimateCache.delete(cacheKey);
+    sessionEstimateCache.set(cacheKey, cached);
+    return cached.cost;
+  }
+
+  let messages: MessageWithParts[];
+  try {
+    messages = await ocServer<MessageWithParts[]>(
+      directory,
+      sessionMessagePath(session.id),
+      { timeoutMs: 1_500 },
+    );
+  } catch {
+    // The aggregate estimate remains useful when the transcript is unavailable.
+    return aggregate;
+  }
+
+  const cost = exactMessageCost(messages) ?? aggregate;
+  sessionEstimateCache.delete(cacheKey);
+  sessionEstimateCache.set(cacheKey, { fingerprint, cost });
+  while (sessionEstimateCache.size > SESSION_ESTIMATE_CACHE_MAX) {
+    const oldest = sessionEstimateCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    sessionEstimateCache.delete(oldest);
+  }
+  return cost;
+}
+
+export function __clearSessionEstimateCacheForTest(): void {
+  sessionEstimateCache.clear();
 }
 
 async function globalEngineOk(): Promise<boolean> {
@@ -100,14 +206,15 @@ async function sessionStatusFor(dirs: string[]): Promise<{
  */
 async function sessionMetaFor(
   dirs: string[],
+  trackedSessionIds: ReadonlySet<string>,
 ): Promise<MetaMap> {
   const metas: MetaMap = {};
   if (dirs.length === 0) return metas;
   await Promise.allSettled(
     dirs.map(async (dir) => {
-      const sessions = await ocServer<
-        (SessionUsage & { id: string; agent?: string })[]
-      >(dir, SESSION_LIST_PATH, { timeoutMs: 1500 });
+      const sessions = await ocServer<SessionEntry[]>(dir, SESSION_LIST_PATH, {
+        timeoutMs: 1500,
+      });
       for (const s of sessions) {
         const meta: SessionMeta = {};
         if (typeof s.cost === "number" && Number.isFinite(s.cost) && s.cost >= 0) {
@@ -118,8 +225,8 @@ async function sessionMetaFor(
           meta.providerID = s.model.providerID;
         if (typeof s.model?.id === "string") meta.modelID = s.model.id;
         if (typeof s.model?.variant === "string") meta.variant = s.model.variant;
-        if ((meta.cost ?? 0) <= 0) {
-          const estimated = estimateSessionCost(s);
+        if ((meta.cost ?? 0) <= 0 && trackedSessionIds.has(s.id)) {
+          const estimated = await estimateSessionCostWithCache(dir, s);
           if (estimated !== null) meta.cost = estimated;
         }
         metas[s.id] = meta;
@@ -200,7 +307,10 @@ export async function listTasks(): Promise<{
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
     sessionStatusFor(dirs),
     Promise.all(dirs.map((d) => dirStat(d))),
-    sessionMetaFor(dirs),
+    sessionMetaFor(
+      dirs,
+      new Set([...bindings.values()].map((binding) => binding.opencode_session_id)),
+    ),
   ]);
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
 
@@ -231,7 +341,10 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
     sessionStatusFor(dirs),
     Promise.all(dirs.map((d) => dirStat(d))),
-    sessionMetaFor(dirs),
+    sessionMetaFor(
+      dirs,
+      new Set([...bindings.values()].map((binding) => binding.opencode_session_id)),
+    ),
   ]);
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
 
@@ -262,7 +375,10 @@ export async function getTask(id: string): Promise<TaskSummary | null> {
   const [stat, { engineOk, statuses }, metas] = await Promise.all([
     dirStat(ws.absolute_path, 3000),
     sessionStatusFor([ws.absolute_path]),
-    sessionMetaFor([ws.absolute_path]),
+    sessionMetaFor(
+      [ws.absolute_path],
+      new Set(binding ? [binding.opencode_session_id] : []),
+    ),
   ]);
   const status = binding ? statuses[binding.opencode_session_id] : undefined;
   const meta = binding ? metas[binding.opencode_session_id] : undefined;
@@ -285,5 +401,10 @@ export async function getTaskCost(id: string): Promise<number | undefined> {
       ? session.cost
       : undefined;
   if (reportedCost !== undefined && reportedCost > 0) return reportedCost;
-  return estimateSessionCost(session) ?? reportedCost;
+  return (
+    (await estimateSessionCostWithCache(ws.absolute_path, {
+      ...session,
+      id: binding.opencode_session_id,
+    })) ?? reportedCost
+  );
 }

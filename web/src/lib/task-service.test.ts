@@ -43,7 +43,12 @@ vi.mock("./oc-server", async () => {
   };
 });
 
-import { getTask, getTaskCost, listTasks } from "./task-service";
+import {
+  __clearSessionEstimateCacheForTest,
+  getTask,
+  getTaskCost,
+  listTasks,
+} from "./task-service";
 
 const WS = {
   id: "ws1",
@@ -71,6 +76,7 @@ beforeEach(() => {
   h.ocResponses = {};
   h.ocFail = new Set();
   h.ocCalls = [];
+  __clearSessionEstimateCacheForTest();
 });
 
 describe("listTasks cost aggregation", () => {
@@ -101,6 +107,19 @@ describe("listTasks cost aggregation", () => {
     expect(tasks[0].cost).toBeUndefined();
   });
 
+  it("does not fetch transcripts for unbound sessions", async () => {
+    h.bindings = new Map();
+    h.ocResponses["/repo/session"] = [{
+      id: "unbound-session",
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+    }];
+
+    await listTasks();
+    expect(h.ocCalls).not.toContain("/repo/session/unbound-session/message");
+  });
+
   it("does not fetch the full transcript when Session.cost is unavailable", async () => {
     h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 0 }];
     h.ocResponses["/repo/session/sess1/message"] = [{
@@ -119,7 +138,7 @@ describe("listTasks cost aggregation", () => {
     expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
   });
 
-  it("estimates cost from aggregate session tokens without reading the transcript", async () => {
+  it("falls back to aggregate session tokens when the transcript is unavailable", async () => {
     h.ocResponses["/repo/session"] = [{
       id: "sess1",
       cost: 0,
@@ -129,7 +148,98 @@ describe("listTasks cost aggregation", () => {
 
     const { tasks } = await listTasks();
     expect(tasks[0].cost).toBe(0.32);
-    expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
+    expect(h.ocCalls).toContain("/repo/session/sess1/message");
+  });
+
+  it("retries transcript estimation after a temporary fetch failure", async () => {
+    h.ocResponses["/repo/session"] = [{
+      id: "sess1",
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 100_000, output: 10_000, reasoning: 0, cache: { read: 0, write: 0 } },
+    }];
+    h.ocFail.add("/repo/session/sess1/message");
+
+    await expect(listTasks()).resolves.toMatchObject({ tasks: [{ cost: 0.032 }] });
+
+    h.ocFail.delete("/repo/session/sess1/message");
+    h.ocResponses["/repo/session/sess1/message"] = [{
+      info: {
+        id: "terra-message",
+        role: "assistant",
+        providerID: "openai",
+        modelID: "gpt-5.6-terra",
+        cost: 0,
+        tokens: { input: 100_000, output: 10_000, reasoning: 0 },
+      },
+      parts: [],
+    }];
+
+    await expect(listTasks()).resolves.toMatchObject({ tasks: [{ cost: 0.32 }] });
+    expect(h.ocCalls.filter((call) => call === "/repo/session/sess1/message")).toHaveLength(2);
+  });
+
+  it("uses per-message model prices when a session switched models", async () => {
+    h.ocResponses["/repo/session"] = [{
+      id: "sess-mixed",
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 300_000, output: 15_000, reasoning: 0, cache: { read: 0, write: 0 } },
+    }];
+    h.bindings = new Map([["ws1", { ...BINDING, opencode_session_id: "sess-mixed" }]]);
+    h.ocResponses["/repo/session/sess-mixed/message"] = [
+      {
+        info: {
+          id: "terra-message",
+          role: "assistant",
+          providerID: "openai",
+          modelID: "gpt-5.6-terra",
+          cost: 0,
+          tokens: { input: 100_000, output: 10_000, reasoning: 0 },
+        },
+        parts: [],
+      },
+      {
+        info: {
+          id: "luna-message",
+          role: "assistant",
+          providerID: "openai",
+          modelID: "gpt-5.6-luna",
+          cost: 0,
+          tokens: { input: 200_000, output: 5_000, reasoning: 0 },
+        },
+        parts: [],
+      },
+    ];
+
+    const { tasks } = await listTasks();
+    expect(tasks[0].cost).toBeCloseTo(0.366, 12);
+    expect(h.ocCalls).toContain("/repo/session/sess-mixed/message");
+  });
+
+  it("reuses an unchanged exact transcript estimate", async () => {
+    h.ocResponses["/repo/session"] = [{
+      id: "sess-cached",
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 1_000_000, output: 100_000, reasoning: 0, cache: { read: 0, write: 0 } },
+    }];
+    h.bindings = new Map([["ws1", { ...BINDING, opencode_session_id: "sess-cached" }]]);
+    h.ocResponses["/repo/session/sess-cached/message"] = [{
+      info: {
+        id: "cached-message",
+        role: "assistant",
+        providerID: "openai",
+        modelID: "gpt-5.6-luna",
+        cost: 0,
+        tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+      },
+      parts: [],
+    }];
+
+    await listTasks();
+    await listTasks();
+    expect(h.ocCalls.filter((call) => call === "/repo/session/sess-cached/message")).toHaveLength(1);
   });
 });
 
@@ -154,7 +264,42 @@ describe("getTask cost aggregation", () => {
       tokens: { input: 1_000_000, output: 100_000, reasoning: 0, cache: { read: 0, write: 0 } },
     };
     await expect(getTaskCost("ws1")).resolves.toBe(0.32);
-    expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
+    expect(h.ocCalls).toContain("/repo/session/sess1/message");
+  });
+
+  it("uses per-message pricing for a mixed-model lightweight session", async () => {
+    h.ocResponses["/repo/session/sess1"] = {
+      cost: 0,
+      model: { id: "gpt-5.6-luna", providerID: "openai" },
+      tokens: { input: 300_000, output: 15_000, reasoning: 0, cache: { read: 0, write: 0 } },
+    };
+    h.ocResponses["/repo/session/sess1/message"] = [
+      {
+        info: {
+          id: "terra-message",
+          role: "assistant",
+          providerID: "openai",
+          modelID: "gpt-5.6-terra",
+          cost: 0,
+          tokens: { input: 100_000, output: 10_000, reasoning: 0 },
+        },
+        parts: [],
+      },
+      {
+        info: {
+          id: "luna-message",
+          role: "assistant",
+          providerID: "openai",
+          modelID: "gpt-5.6-luna",
+          cost: 0,
+          tokens: { input: 200_000, output: 5_000, reasoning: 0 },
+        },
+        parts: [],
+      },
+    ];
+
+    await expect(getTaskCost("ws1")).resolves.toBeCloseTo(0.366, 12);
+    expect(h.ocCalls).toContain("/repo/session/sess1/message");
   });
 });
 
