@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   bindings: new Map<string, unknown>(),
   ocResponses: {} as Record<string, unknown>,
   ocFail: new Set<string>(),
+  ocCalls: [] as string[],
 }));
 
 vi.mock("./db", () => ({
@@ -33,6 +34,7 @@ vi.mock("./oc-server", async () => {
     ...actual,
     ocServer: vi.fn(async (dir: string | null, path: string) => {
       const key = `${dir ?? ""}${path}`;
+      h.ocCalls.push(key);
       if (h.ocFail.has(key)) throw new Error("engine unavailable");
       if (path === "/session/status") return {};
       if (path === "/global/health") return { healthy: true };
@@ -68,6 +70,7 @@ beforeEach(() => {
   h.bindings = new Map([["ws1", BINDING]]);
   h.ocResponses = {};
   h.ocFail = new Set();
+  h.ocCalls = [];
 });
 
 describe("listTasks cost aggregation", () => {
@@ -98,7 +101,7 @@ describe("listTasks cost aggregation", () => {
     expect(tasks[0].cost).toBeUndefined();
   });
 
-  it("estimates cost from assistant tokens when Session.cost is unavailable", async () => {
+  it("does not fetch the full transcript when Session.cost is unavailable", async () => {
     h.ocResponses["/repo/session"] = [{ id: "sess1", cost: 0 }];
     h.ocResponses["/repo/session/sess1/message"] = [{
       info: {
@@ -112,7 +115,8 @@ describe("listTasks cost aggregation", () => {
     }];
 
     const { tasks } = await listTasks();
-    expect(tasks[0].cost).toBe(0.32);
+    expect(tasks[0].cost).toBe(0);
+    expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
   });
 });
 

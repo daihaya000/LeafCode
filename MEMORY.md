@@ -3358,3 +3358,20 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 
 - `npm test -- --run src/components/task/MessageMetaHeader.test.tsx` ... 8 tests 成功
 - `git diff --check` ... 成功
+# コスト一覧取得の負荷削減
+
+## 日付
+
+2026-08-10
+
+## 修正内容
+
+- `/api/tasks` と単一タスク取得で、`Session.cost` が0のときにセッション履歴全件を取得してコストを再集計するフォールバックを削除した。
+- 実行中の3秒ポーリングで同じ `/message` 履歴を繰り返し取得しないよう、OpenCodeの `Session.cost` を唯一の正規値として扱う。
+- `Session.cost` 未提供時に履歴を取得しないことを回帰テストで固定した。
+
+## 検証結果
+
+- `npm.cmd test -- --run src/lib/task-service.test.ts src/components/task/TaskView.test.tsx src/components/shell/Sidebar.test.tsx` ... 3 files / 170 tests 成功
+- `npm.cmd run typecheck` ... 成功
+- `npx.cmd eslint src/lib/task-service.ts src/lib/task-service.test.ts` ... 成功
