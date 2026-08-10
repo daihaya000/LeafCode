@@ -194,24 +194,25 @@ describe("HomeView image attachments", () => {
 
   it("submits an image selected without a text prompt", async () => {
     timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
+      if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  vision: {
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
                     name: "Vision",
+                    enabled: true,
                     capabilities: { input: { image: true } },
                   },
-                },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -266,21 +267,25 @@ describe("HomeView image attachments", () => {
 
   it("keeps the image attachment button visible but disabled for image-unsupported models", async () => {
     timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
+      if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  text: { name: "Text", capabilities: { input: { image: false } } },
-                },
+                enabled: true,
+                models: [
+                  {
+                    id: "text",
+                    name: "Text",
+                    enabled: true,
+                    capabilities: { input: { image: false } },
+                  },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "text" },
           }),
         });
       }
@@ -299,21 +304,25 @@ describe("HomeView image attachments", () => {
 
   it("allows an image attachment for a text-only model when local Qwen vision is enabled", async () => {
     timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
+      if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  text: { name: "Text", capabilities: { input: { image: false } } },
-                },
+                enabled: true,
+                models: [
+                  {
+                    id: "text",
+                    name: "Text",
+                    enabled: true,
+                    capabilities: { input: { image: false } },
+                  },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "text" },
           }),
         });
       }
@@ -350,22 +359,31 @@ describe("HomeView image attachments", () => {
 
   it("blocks image submission when the selected agent model lacks image capability", async () => {
     timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
+      if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  vision: { capabilities: { input: { image: true } } },
-                  "text-agent": { capabilities: { input: { image: false } } },
-                },
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
+                    name: "Vision",
+                    enabled: true,
+                    capabilities: { input: { image: true } },
+                  },
+                  {
+                    id: "text-agent",
+                    name: "Text Agent",
+                    enabled: true,
+                    capabilities: { input: { image: false } },
+                  },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -461,24 +479,25 @@ describe("HomeView image attachments", () => {
 
   it("disables attachment controls while submitting and preserves attachments after failure", async () => {
     timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
+      if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  vision: {
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
                     name: "Vision",
+                    enabled: true,
                     capabilities: { input: { image: true } },
                   },
-                },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -825,24 +844,25 @@ describe("HomeView composer draft persistence", () => {
     sendJson.mockResolvedValue({ taskId: "task-1" });
     timedFetch.mockReset();
     timedFetch.mockImplementation((path: string) => {
-      if (path === "/api/opencode/provider") {
+      if (path === "/api/extensions/provider-models") {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  vision: {
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
                     name: "Vision",
+                    enabled: true,
                     capabilities: { input: { image: true } },
                   },
-                },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -1145,22 +1165,21 @@ describe("HomeView last-used model", () => {
   it("preselects the last-used model when it is an available option", async () => {
     localStorage.setItem("webui:last-used-model", "openai::gpt-5");
     timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/provider")) {
+      if (input.endsWith("/provider-models")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  "gpt-5": { name: "GPT-5" },
-                  vision: { name: "Vision" },
-                },
+                enabled: true,
+                models: [
+                  { id: "gpt-5", name: "GPT-5", enabled: true },
+                  { id: "vision", name: "Vision", enabled: true },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -1184,22 +1203,21 @@ describe("HomeView last-used model", () => {
       }),
     );
     timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/provider")) {
+      if (input.endsWith("/provider-models")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  "gpt-5": { name: "GPT-5" },
-                  vision: { name: "Vision" },
-                },
+                enabled: true,
+                models: [
+                  { id: "gpt-5", name: "GPT-5", enabled: true },
+                  { id: "vision", name: "Vision", enabled: true },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "gpt-5" },
           }),
         });
       }
@@ -1218,22 +1236,21 @@ describe("HomeView last-used model", () => {
     localStorage.setItem("webui:default-model", "openai::vision");
     localStorage.setItem("webui:last-used-model", "openai::gpt-5");
     timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/provider")) {
+      if (input.endsWith("/provider-models")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  "gpt-5": { name: "GPT-5" },
-                  vision: { name: "Vision" },
-                },
+                enabled: true,
+                models: [
+                  { id: "gpt-5", name: "GPT-5", enabled: true },
+                  { id: "vision", name: "Vision", enabled: true },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "gpt-5" },
           }),
         });
       }
@@ -1247,22 +1264,23 @@ describe("HomeView last-used model", () => {
     });
   });
 
-  it("falls back to the provider default when last-used is not available", async () => {
+  it("falls back to the first enabled option when last-used is not available", async () => {
     localStorage.setItem("webui:last-used-model", "mystery::ghost");
     timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/provider")) {
+      if (input.endsWith("/provider-models")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: { vision: { name: "Vision" } },
+                enabled: true,
+                models: [
+                  { id: "vision", name: "Vision", enabled: true },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -1280,24 +1298,25 @@ describe("HomeView last-used model", () => {
 
   it("records the model actually submitted as last-used on success", async () => {
     timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/provider")) {
+      if (input.endsWith("/provider-models")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
-            all: [
+            providers: [
               {
                 id: "openai",
                 name: "OpenAI",
-                models: {
-                  vision: {
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
                     name: "Vision",
+                    enabled: true,
                     capabilities: { input: { image: false } },
                   },
-                },
+                ],
               },
             ],
-            connected: ["openai"],
-            default: { openai: "vision" },
           }),
         });
       }
@@ -1630,33 +1649,36 @@ describe("HomeView auto model", () => {
     return {
       ok: true,
       json: async () => ({
-        all: [
+        providers: [
           {
             id: "anthropic",
             name: "Anthropic",
-            models: {
-              "claude-haiku-4-5": {
-                name: "Haiku",
-                variants: { minimal: {}, low: {}, high: {} },
-                capabilities: { input: { image: imageCapable } },
-              },
-              "claude-opus-5": {
+            enabled: true,
+            models: [
+              {
+                id: "claude-opus-5",
                 name: "Opus",
+                enabled: true,
                 variants: { medium: {}, high: {} },
                 capabilities: { input: { image: false } },
               },
-            },
+              {
+                id: "claude-haiku-4-5",
+                name: "Haiku",
+                enabled: true,
+                variants: { minimal: {}, low: {}, high: {} },
+                capabilities: { input: { image: imageCapable } },
+              },
+            ],
           },
         ],
-        connected: ["anthropic"],
-        default: { anthropic: "claude-opus-5" },
       }),
     };
   }
 
   function mockProvider(imageCapable = true, agents?: unknown) {
     timedFetch.mockImplementation((input: string) => {
-      if (input.endsWith("/provider")) {
+      if (input.endsWith("/provider-models")) {
         return Promise.resolve(providerPayload(imageCapable));
       }
       if (input.endsWith("/agent") && agents) {

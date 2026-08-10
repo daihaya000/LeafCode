@@ -73,6 +73,19 @@ export type SkillListResponse = {
 export type McpListResponse = { servers: McpDto[] };
 export type PluginListResponse = { plugins: PluginDto[] };
 
+export type ProviderModelCapabilities = {
+  /** Top-level attachment flag (OpenCode capabilities.attachment). */
+  attachment?: boolean;
+  /** Per-modality input capabilities (OpenCode capabilities.input). */
+  input?: {
+    text?: boolean;
+    audio?: boolean;
+    image?: boolean;
+    video?: boolean;
+    pdf?: boolean;
+  };
+};
+
 export type ProviderModelDto = {
   id: string;
   name: string;
@@ -84,6 +97,13 @@ export type ProviderModelDto = {
     cacheWrite?: number;
     output: number;
   };
+  /** Live engine capabilities from OpenCode's GET /provider. Lets the Home
+   *  composer build modelCapabilities from /api/extensions/provider-models
+   *  alone and drop the separate /api/opencode/provider call. */
+  capabilities?: ProviderModelCapabilities;
+  /** Live engine per-model variants from OpenCode's GET /provider, used by
+   *  the Intelligence selector. Same shape as ProviderModelMeta.variants. */
+  variants?: Record<string, { disabled?: boolean } | undefined>;
 };
 
 export type ProviderModelsDto = {

@@ -77,7 +77,6 @@ import {
 import {
   filterEnabledModelOptions,
   formatModelLabel,
-  mergeConfiguredModelOptions,
   modelOrderPreferenceFromProviders,
   sortModelOptions,
   type ModelOption,
@@ -99,46 +98,6 @@ import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetCont
 import type { ProviderModelsDto } from "@/lib/extensions";
 import { setModelPricingRegistry } from "@/lib/model-pricing-registry";
 import type { HealthDto, ProjectDto } from "@/lib/types";
-
-type ProviderResponse = {
-  all: {
-    id: string;
-    name: string;
-    models: Record<
-      string,
-      {
-        name?: string;
-        // OpenCode's live GET /provider response nests capability flags
-        // under `capabilities` (see opencode-schema.d.ts `Model.capabilities`),
-        // not top-level `attachment`/`modalities.input[]` (that shape is only
-        // the *config* override schema for opencode.jsonc
-        // `provider.<id>.models.<id>`). Reading the old shape here always
-        // yields `undefined`, so every model was reported as
-        // image-unsupported regardless of real capability.
-        capabilities?: {
-          attachment?: boolean;
-          input?: {
-            text?: boolean;
-            audio?: boolean;
-            image?: boolean;
-            video?: boolean;
-            pdf?: boolean;
-          };
-          output?: {
-            text?: boolean;
-            audio?: boolean;
-            image?: boolean;
-            video?: boolean;
-            pdf?: boolean;
-          };
-        };
-        variants?: ProviderModelMeta["variants"];
-      }
-    >;
-  }[];
-  connected: string[];
-  default: Record<string, string>;
-};
 
 type AgentResponse = {
   name: string;
@@ -474,8 +433,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const [providerRes, configRes, agentRes, providerModelsRes, qwenStatusRes] = await Promise.all([
-          timedFetch("/api/opencode/provider"),
+        const [configRes, agentRes, providerModelsRes, qwenStatusRes] = await Promise.all([
           timedFetch("/api/opencode/config"),
           timedFetch("/api/opencode/agent"),
           timedFetch("/api/extensions/provider-models"),
@@ -490,9 +448,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : null;
         setQwenNativeAvailable(qwenStatus?.nativeAvailable === true);
 
-        const data = providerRes.ok
-          ? ((await providerRes.json()) as ProviderResponse)
-          : null;
         const config = configRes.ok
           ? ((await configRes.json()) as { model?: string; agent?: unknown })
           : null;
@@ -501,19 +456,24 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           : null;
         setModelPricingRegistry(providerModels?.providers);
 
-        if (data) {
-          const connectedList = data.connected ?? [];
-          const connected = new Set(connectedList);
+        // Build options, capabilities and variant metadata from the
+        // /api/extensions/provider-models response alone. This used to fire a
+        // separate /api/opencode/provider call in the same Promise.all; that
+        // second call hit the same OpenCode /provider underneath and doubled
+        // the Home boot latency. provider-models now forwards capabilities and
+        // variants, so the raw provider response is no longer needed here.
+        if (providerModels?.providers) {
           const options: ModelOption[] = [];
           const caps: Record<string, { attachment?: boolean; image?: boolean }> = {};
           const map: Record<string, ProviderModelMeta> = {};
-          for (const p of data.all ?? []) {
-            if (connected.size > 0 && !connected.has(p.id)) continue;
-            for (const [mid, m] of Object.entries(p.models ?? {})) {
-              const value = `${p.id}::${mid}`;
+          for (const p of providerModels.providers) {
+            if (p.enabled === false) continue;
+            for (const m of p.models ?? []) {
+              if (m.enabled === false) continue;
+              const value = `${p.id}::${m.id}`;
               options.push({
                 value,
-                label: formatModelLabel(m.name, mid),
+                label: formatModelLabel(m.name, m.id),
                 group: p.name || p.id,
                 image:
                   m.capabilities?.input?.image === true ||
@@ -530,8 +490,8 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             }
           }
           const enabledOptions = filterEnabledModelOptions(
-            mergeConfiguredModelOptions(options, providerModels?.providers),
-            providerModels?.providers,
+            options,
+            providerModels.providers,
           );
           // Auto is inserted *after* filter/sort on purpose: providerSortKey
           // ("auto") is the unknown-provider tail value, so sorting would sink
@@ -541,7 +501,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             AUTO_MODEL_OPTION,
             ...sortModelOptions(
               enabledOptions,
-              modelOrderPreferenceFromProviders(providerModels?.providers),
+              modelOrderPreferenceFromProviders(providerModels.providers),
             ),
           ];
           setModelOptions(selectableOptions);
@@ -549,9 +509,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           setProviderModelsMap(map);
 
           // Prefer the user-configured default model, then the last actually-
-          // used model, then OpenCode config.model (provider/modelID), then
-          // provider defaults. `"auto"` is part of selectableOptions, so a
-          // stored last-used Auto restores through the same check.
+          // used model, then OpenCode config.model (provider/modelID).
+          // `"auto"` is part of selectableOptions, so a stored last-used Auto
+          // restores through the same check. The provider-default fallback
+          // that used to come from /api/opencode/provider's `default` map is
+          // dropped: it was the last resort and the first enabled option
+          // below is an equivalent final fallback.
           let initial = "";
           const savedDefault = readDefaultModel();
           if (
@@ -576,17 +539,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               if (slash > 0) {
                 const value = `${cfg.slice(0, slash)}::${cfg.slice(slash + 1)}`;
                 if (selectableOptions.some((o) => o.value === value)) initial = value;
-              }
-            }
-          }
-          if (!initial) {
-            for (const pid of connectedList) {
-              const mid = data.default?.[pid];
-              if (!mid) continue;
-              const value = `${pid}::${mid}`;
-              if (selectableOptions.some((o) => o.value === value)) {
-                initial = value;
-                break;
               }
             }
           }

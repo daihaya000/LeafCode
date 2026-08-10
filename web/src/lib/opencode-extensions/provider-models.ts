@@ -56,7 +56,23 @@ type ProviderResponse = {
   all: {
     id: string;
     name: string;
-    models: Record<string, { name?: string }>;
+    models: Record<
+      string,
+      {
+        name?: string;
+        capabilities?: {
+          attachment?: boolean;
+          input?: {
+            text?: boolean;
+            audio?: boolean;
+            image?: boolean;
+            video?: boolean;
+            pdf?: boolean;
+          };
+        };
+        variants?: Record<string, { disabled?: boolean } | undefined>;
+      }
+    >;
   }[];
   connected: string[];
   default: Record<string, string>;
@@ -152,6 +168,13 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
       name: formatModelLabel(model.name, modelID),
       enabled: providerEnabled && !disabled[`${id}::${modelID}`],
       pricing: state.modelPricing[`${id}::${modelID}`],
+      capabilities: model.capabilities
+        ? {
+            attachment: model.capabilities.attachment,
+            input: model.capabilities.input,
+          }
+        : undefined,
+      variants: model.variants,
     }));
 
     // Sort models using saved order first, then existing intelligence ordering.

@@ -120,6 +120,47 @@ describe("listProviderModels", () => {
     expect(openai.models[0].enabled).toBe(true);
   });
 
+  it("forwards engine capabilities (attachment/input.image) onto each model", async () => {
+    h.ocServer.mockResolvedValue({
+      all: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            "gpt-5": {
+              name: "GPT-5",
+              capabilities: {
+                attachment: true,
+                input: { image: true, text: true },
+              },
+              variants: { high: { disabled: false }, max: {} },
+            },
+            "gpt-4o": {
+              name: "GPT-4o",
+              capabilities: { input: { text: true } },
+            },
+          },
+        },
+      ],
+      connected: ["openai"],
+      default: {},
+    });
+
+    const providers = await listProviderModels();
+    const openai = providers.find((p) => p.id === "openai")!;
+    const gpt5 = openai.models.find((m) => m.id === "gpt-5")!;
+    expect(gpt5.capabilities?.attachment).toBe(true);
+    expect(gpt5.capabilities?.input?.image).toBe(true);
+    expect(gpt5.variants).toMatchObject({
+      high: { disabled: false },
+      max: {},
+    });
+    const gpt4o = openai.models.find((m) => m.id === "gpt-4o")!;
+    expect(gpt4o.capabilities?.attachment).toBeUndefined();
+    expect(gpt4o.capabilities?.input?.image).toBeUndefined();
+    expect(gpt4o.variants).toBeUndefined();
+  });
+
   it("filters to connected providers when connected is non-empty", async () => {
     h.ocServer.mockResolvedValue({
       ...MOCK_PROVIDER_RESPONSE,
