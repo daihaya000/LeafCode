@@ -138,14 +138,6 @@ function saveArchivedExpanded(value: boolean) {
   }
 }
 
-function loadArchivedProjectsExpanded(): boolean {
-  try {
-    return localStorage.getItem(ARCHIVED_PROJECTS_EXPANDED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
 function saveArchivedProjectsExpanded(value: boolean) {
   try {
     localStorage.setItem(ARCHIVED_PROJECTS_EXPANDED_KEY, String(value));
@@ -215,8 +207,18 @@ export function Sidebar({
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [projectsLoadError, setProjectsLoadError] = useState(false);
   const [archivedProjects, setArchivedProjects] = useState<ProjectDto[]>([]);
-  const [archivedProjectsExpanded, setArchivedProjectsExpanded] =
-    useState(false);
+  const [archivedProjectsExpanded, setArchivedProjectsExpanded] = useState(
+    () => {
+      try {
+        return (
+          typeof localStorage !== "undefined" &&
+          localStorage.getItem(ARCHIVED_PROJECTS_EXPANDED_KEY) === "true"
+        );
+      } catch {
+        return false;
+      }
+    },
+  );
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [archivedTasks, setArchivedTasks] = useState<TaskSummary[]>([]);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
