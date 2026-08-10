@@ -1071,6 +1071,7 @@ describe("HomeView start mode", () => {
     getJson.mockImplementation((path: string) => {
       if (path === "/api/projects") return Promise.resolve({ projects: [{ id: "project-1", name: "Project", rootPath: "/repo", favorite: false }] });
       if (path === "/api/tasks") return Promise.resolve({ engineOk: true });
+      if (path === "/api/health") return Promise.resolve({ webui: { ok: true }, opencode: { ok: true }, workflowModeEnabled: true });
       if (path === "/api/git/branches") return Promise.resolve({ branches: ["main"], defaultTarget: "main", current: "main" });
       if (path.endsWith("/workflow")) return Promise.resolve({ workflow: { workspaceRevision: 0, run: null } });
       return Promise.reject(new Error(`Unexpected request: ${path}`));

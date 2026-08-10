@@ -238,4 +238,5 @@ export type ProjectDto = {
 export type HealthDto = {
   webui: { ok: boolean };
   opencode: { ok: boolean; version?: string; error?: string };
+  workflowModeEnabled?: boolean;
 };

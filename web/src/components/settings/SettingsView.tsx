@@ -285,6 +285,8 @@ export function SettingsView() {
   const [commitAuthorName, setCommitAuthorName] = useState("");
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitIdentityError, setCommitIdentityError] = useState<string | null>(null);
+  const [workflowModeEnabled, setWorkflowModeEnabled] = useState(false);
+  const [workflowModeBusy, setWorkflowModeBusy] = useState(false);
   const [authUsers, setAuthUsers] = useState<AuthUser[]>([]);
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -444,7 +446,10 @@ export function SettingsView() {
       getJson<{ projects: ProjectDto[] }>("/api/projects/archived"),
     ]);
     if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
-    if (h.status === "fulfilled") setHealth(h.value);
+    if (h.status === "fulfilled") {
+      setHealth(h.value);
+      setWorkflowModeEnabled(h.value.workflowModeEnabled === true);
+    }
     if (p.status === "fulfilled") setProjects(p.value.projects ?? []);
     if (r.status === "fulfilled") setRoots(r.value.roots ?? []);
     if (o.status === "fulfilled") {
@@ -484,6 +489,24 @@ export function SettingsView() {
       setError(err instanceof Error ? err.message : "ブラウザ起動設定の保存に失敗しました");
     } finally {
       setBrowserConfigBusy(false);
+    }
+  };
+
+  const toggleWorkflowMode = async (enabled: boolean) => {
+    setWorkflowModeBusy(true);
+    try {
+      await sendJson("PUT", "/api/settings/workflow-mode", {
+        value: enabled ? "1" : "",
+      });
+      setWorkflowModeEnabled(enabled);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ワークフロー設定の保存に失敗しました",
+      );
+    } finally {
+      setWorkflowModeBusy(false);
     }
   };
 
@@ -1299,6 +1322,23 @@ export function SettingsView() {
             </section>
             <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">実行</h2>
+              <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">
+                <label className="flex items-start gap-3 text-sm text-muted">
+                  <input
+                    type="checkbox"
+                    checked={workflowModeEnabled}
+                    disabled={workflowModeBusy}
+                    onChange={(event) => void toggleWorkflowMode(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+                  />
+                  <span>
+                    <span className="block text-text">ワークフロー機能を有効化</span>
+                    <span className="mt-1 block text-xs text-faint">
+                      デフォルトはオフです。オンにするとホーム画面の開始モードで「Workflowで開始」を選べるようになります（Implement → Review の固定フロー）。即時反映されます。
+                    </span>
+                  </span>
+                </label>
+              </div>
               <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">
                 <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <span className="shrink-0 text-sm text-muted">ハング判定時間</span>

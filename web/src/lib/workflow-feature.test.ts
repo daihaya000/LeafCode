@@ -1,10 +1,19 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+const { getSetting } = vi.hoisted(() => ({
+  getSetting: vi.fn((): string | null => null),
+}));
+
+vi.mock("@/lib/db", () => ({ getSetting }));
+
 import {
   DEFAULT_WORKFLOW_GRAPH_EDIT_ENABLED,
   DEFAULT_WORKFLOW_GRAPH_ENABLED,
   DEFAULT_WORKFLOW_MODE_ENABLED,
+  WORKFLOW_MODE_SETTING_KEY,
   isWorkflowModeEnabled,
   resolveWorkflowModeEnabled,
+  resolveWorkflowModeServer,
 } from "./workflow-feature";
 
 describe("resolveWorkflowModeEnabled", () => {
@@ -32,19 +41,50 @@ describe("resolveWorkflowModeEnabled", () => {
   });
 });
 
-describe("isWorkflowModeEnabled", () => {
-  const previous = process.env.OPENCODE_WEBUI_WORKFLOW_MODE;
+describe("resolveWorkflowModeServer", () => {
+  beforeEach(() => {
+    getSetting.mockReset();
+    vi.unstubAllEnvs();
+  });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    if (previous === undefined) delete process.env.OPENCODE_WEBUI_WORKFLOW_MODE;
-    else process.env.OPENCODE_WEBUI_WORKFLOW_MODE = previous;
   });
 
-  test("reads the current environment value lazily", () => {
+  test("reads the settings table first", () => {
+    getSetting.mockReturnValue("1");
+    expect(resolveWorkflowModeServer()).toBe(true);
+    expect(getSetting).toHaveBeenCalledWith(WORKFLOW_MODE_SETTING_KEY);
+  });
+
+  test("falls back to the env var when no DB row exists", () => {
+    getSetting.mockReturnValue(null);
     vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "true");
+    expect(resolveWorkflowModeServer()).toBe(true);
+  });
+
+  test("defaults to off when neither DB nor env is set", () => {
+    getSetting.mockReturnValue(null);
+    delete process.env.OPENCODE_WEBUI_WORKFLOW_MODE;
+    delete process.env.NEXT_PUBLIC_OPENCODE_WEBUI_WORKFLOW_MODE;
+    expect(resolveWorkflowModeServer()).toBe(false);
+  });
+});
+
+describe("isWorkflowModeEnabled", () => {
+  beforeEach(() => {
+    getSetting.mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("reads the settings table lazily", () => {
+    getSetting.mockReturnValue("1");
     expect(isWorkflowModeEnabled()).toBe(true);
-    vi.stubEnv("OPENCODE_WEBUI_WORKFLOW_MODE", "false");
+    getSetting.mockReturnValue("");
     expect(isWorkflowModeEnabled()).toBe(false);
   });
 });

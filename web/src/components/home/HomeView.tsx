@@ -98,7 +98,7 @@ import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { ProviderModelsDto } from "@/lib/extensions";
 import { setModelPricingRegistry } from "@/lib/model-pricing-registry";
-import type { ProjectDto } from "@/lib/types";
+import type { HealthDto, ProjectDto } from "@/lib/types";
 
 type ProviderResponse = {
   all: {
@@ -192,6 +192,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [projects, setProjects] = useState<ProjectDto[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [engineOk, setEngineOk] = useState(true);
+  const [workflowModeEnabled, setWorkflowModeEnabled] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [isolation, setIsolation] = useState<"current_folder" | "git_worktree">(
     "current_folder",
@@ -450,6 +451,23 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     } finally {
       engineRequestBusyRef.current = false;
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await getJson<HealthDto>("/api/health");
+        if (!cancelled && mountedRef.current) {
+          setWorkflowModeEnabled(data.workflowModeEnabled === true);
+        }
+      } catch {
+        /* workflow mode stays disabled on fetch failure */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -853,7 +871,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         ...(intelligence && !isAuto ? { variant: intelligence } : {}),
       });
       createdTaskId = data.taskId;
-      if (startMode === "workflow") {
+      if (startMode === "workflow" && workflowModeEnabled) {
         const current = await getJson<{ workflow: { workspaceRevision: number } }>(
           `/api/tasks/${encodeURIComponent(data.taskId)}/workflow`,
         );
@@ -915,7 +933,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       rememberHomeComposerDraft({ prompt: "", attachments: [] });
       router.push(`/task/${data.taskId}`);
     } catch (err) {
-      if (startMode === "workflow" && createdTaskId) {
+      if (startMode === "workflow" && workflowModeEnabled && createdTaskId) {
         try {
           await sendJson("DELETE", `/api/tasks/${encodeURIComponent(createdTaskId)}`);
         } catch {
@@ -951,8 +969,16 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     accessMode,
     submitting,
     engineOk,
+    workflowModeEnabled,
     router,
   ]);
+
+  // If the workflow feature is disabled while the composer still shows the
+  // Workflow start mode, snap back to Task so the submit handler never sends
+  // a workflow request against a disabled feature.
+  useEffect(() => {
+    if (!workflowModeEnabled && startMode === "workflow") setStartMode("task");
+  }, [workflowModeEnabled, startMode]);
 
   // No live session exists on Home, and a session-scoped ruleset is the only
   // enforcement OpenCode actually honours at runtime. So store the preference
@@ -1168,7 +1194,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             </GhostSelect>
             <GhostSelect
               value={startMode}
-              disabled={submitting}
+              disabled={submitting || !workflowModeEnabled}
               aria-label="開始モード"
               icon={<Play className="h-3.5 w-3.5" />}
               valueLabel={startMode === "task" ? "Taskで開始" : "Workflowで開始"}
@@ -1177,13 +1203,17 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               }}
               className="max-w-[11rem] shrink-0 sm:max-w-44"
               title={
-                startMode === "task"
-                  ? "通常のTaskとして開始"
-                  : "Implement → Reviewの固定フロー"
+                workflowModeEnabled
+                  ? startMode === "task"
+                    ? "通常のTaskとして開始"
+                    : "Implement → Reviewの固定フロー"
+                  : "ワークフロー機能は設定から有効化してください"
               }
             >
               <option value="task" title="通常のTaskとして開始">Taskで開始</option>
-              <option value="workflow" title="Implement → Reviewの固定フロー">Workflowで開始</option>
+              {workflowModeEnabled && (
+                <option value="workflow" title="Implement → Reviewの固定フロー">Workflowで開始</option>
+              )}
             </GhostSelect>
           </div>
           <Composer

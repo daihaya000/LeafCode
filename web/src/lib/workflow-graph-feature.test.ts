@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+vi.mock("@/lib/db", () => ({ getSetting: vi.fn(() => null) }));
+
 import {
   isWorkflowGraphEditEnabled,
   isWorkflowGraphEnabled,

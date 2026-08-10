@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { OPENCODE_BASE_URL } from "@/lib/opencode";
+import { isWorkflowModeEnabled } from "@/lib/workflow-feature";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,5 +31,6 @@ export async function GET() {
     webui: { ok: true },
     opencode,
     opencodeBaseUrl: OPENCODE_BASE_URL,
+    workflowModeEnabled: isWorkflowModeEnabled(),
   });
 }

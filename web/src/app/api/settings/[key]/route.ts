@@ -8,6 +8,7 @@ import {
 } from "@/lib/commit-identity-keys";
 import { getSetting, setSetting } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
+import { WORKFLOW_MODE_SETTING_KEY } from "@/lib/workflow-feature";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ const ALLOWED_KEYS = new Set<string>([
   "sidebar",
   "sidepanel-width",
   "hang-timeout",
+  WORKFLOW_MODE_SETTING_KEY,
   COMMIT_AUTHOR_NAME_KEY,
   COMMIT_AUTHOR_EMAIL_KEY,
 ]);
@@ -32,6 +34,7 @@ const ALLOWED_KEYS = new Set<string>([
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
 const BOOLEAN_SETTING_KEYS = new Set<string>([
   "auto-show-model",
+  WORKFLOW_MODE_SETTING_KEY,
 ]);
 
 const MAX_SETTING_VALUE_CHARS = 32_768;

@@ -1,3 +1,53 @@
+# 作業ログ: ワークフロー機能の設定トグル追加（デフォルトOFF）
+
+## 日付
+2026-08-11
+
+## 作業内容
+
+設定画面からワークフロー機能（Workflow開始モード）の有効化/無効化を切り替えられるようにした。デフォルトはOFF。
+
+### workflow-feature.ts
+- `WORKFLOW_MODE_SETTING_KEY = "workflow-mode"` を追加。
+- `resolveWorkflowModeServer()` を新設し、`settings` テーブル → env変数 → デフォルト(false) の順で解決。
+- `isWorkflowModeEnabled()` をDB読み取りベースへ変更。即時反映（サーバープロセスは次回tickで新しいDB値を読む）。
+
+### settings route
+- `ALLOWED_KEYS` と `BOOLEAN_SETTING_KEYS` に `workflow-mode` を追加。`"1"` / `""` でON/OFF。
+
+### /api/health
+- レスポンスに `workflowModeEnabled: isWorkflowModeEnabled()` を追加。
+- `HealthDto` に `workflowModeEnabled?: boolean` を追加。
+
+### SettingsView
+- 「実行」セクションに「ワークフロー機能を有効化」チェックボックスを追加。
+- `PUT /api/settings/workflow-mode` へ反映。`/api/health` から状態を取得。
+
+### HomeView
+- `/api/health` から `workflowModeEnabled` を取得し、開始モードセレクトの「Workflowで開始」オプション表示と送信可否を制御。
+- 無効時はセレクトをTask固定へ戻すeffectを追加。
+
+## 検証結果
+
+- `npx tsc --noEmit` (web) ... 成功
+- `npx eslint` 対象ファイル ... 成功
+- `npx vitest run` workflow-feature / workflow-graph-feature / settings route / HomeView / workflow API / workflow-scheduler ... 156 tests 成功
+
+## 変更ファイル
+
+- web/src/lib/workflow-feature.ts
+- web/src/lib/workflow-feature.test.ts
+- web/src/lib/workflow-graph-feature.test.ts
+- web/src/lib/types.ts
+- web/src/app/api/settings/[key]/route.ts
+- web/src/app/api/settings/[key]/route.test.ts
+- web/src/app/api/health/route.ts
+- web/src/components/settings/SettingsView.tsx
+- web/src/components/home/HomeView.tsx
+- web/src/components/home/HomeView.test.tsx
+
+---
+
 # 作業ログ: プロジェクトの削除ボタンをアーカイブボタンへ変更
 
 ## 日付

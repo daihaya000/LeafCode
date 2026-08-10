@@ -344,7 +344,7 @@ describe("/api/settings/[key] auto mode settings", () => {
     });
   });
 
-  for (const key of ["auto-show-model"]) {
+  for (const key of ["auto-show-model", "workflow-mode"]) {
     describe(key, () => {
       it("stores 1", async () => {
         const res = await PUT(putReq({ value: "1" }, key) as never, ctx(key));
