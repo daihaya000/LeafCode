@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCollaborationContextBlock,
+  peersFingerprint,
   prependCollaborationContext,
   selectActiveCollaborationBindings,
 } from "./collaboration-context";
@@ -68,5 +69,42 @@ describe("buildCollaborationContextBlock", () => {
       agent: "build",
     });
     expect(body.parts[0]?.text).toBe("work");
+  });
+});
+
+describe("peersFingerprint", () => {
+  it("produces identical fingerprints for the same peers regardless of order", () => {
+    const peersA = [
+      { sessionId: "ses_1", title: "A", status: "busy" as const, files: ["x.ts"] },
+      { sessionId: "ses_2", title: "B", status: "retry" as const, files: ["y.ts"] },
+    ];
+    const peersB = [...peersA].reverse();
+    expect(peersFingerprint(peersA)).toBe(peersFingerprint(peersB));
+  });
+
+  it("produces different fingerprints when files change", () => {
+    const peer1 = {
+      sessionId: "ses_1",
+      title: "A",
+      status: "busy" as const,
+      files: ["x.ts"],
+    };
+    const peer2 = { ...peer1, files: ["x.ts", "y.ts"] };
+    expect(peersFingerprint([peer1])).not.toBe(peersFingerprint([peer2]));
+  });
+
+  it("produces different fingerprints when status changes", () => {
+    const peer1 = {
+      sessionId: "ses_1",
+      title: "A",
+      status: "busy" as const,
+      files: [],
+    };
+    const peer2 = { ...peer1, status: "retry" as const };
+    expect(peersFingerprint([peer1])).not.toBe(peersFingerprint([peer2]));
+  });
+
+  it("returns a stable empty-string fingerprint for no peers", () => {
+    expect(peersFingerprint([])).toBe("");
   });
 });

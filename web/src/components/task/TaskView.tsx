@@ -87,6 +87,7 @@ import {
 import { formatTokens } from "@addons/codexbar";
 import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import { computeContextUsage } from "@/lib/context-usage";
+import { lastTurnTokenUsage } from "@/lib/token-usage";
 import {
   readChatTab,
   readShowDiff,
@@ -2164,6 +2165,10 @@ export function TaskView({ taskId }: { taskId: string }) {
     () => computeContextUsage(stream.messages, providerModelsMap),
     [stream.messages, providerModelsMap],
   );
+  const lastTurnUsage = useMemo(
+    () => lastTurnTokenUsage(stream.messages),
+    [stream.messages],
+  );
 
   // Prefer last *visible* user message for header revert
   const lastRevertMessageId = useMemo(() => {
@@ -3463,7 +3468,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             {contextUsage && (
               <span
                 className="flex min-w-0 shrink-0 items-center gap-1.5"
-                title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
+                title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）${lastTurnUsage ? `\n入力: ${formatTokens(lastTurnUsage.input)} / cache読取: ${formatTokens(lastTurnUsage.cacheRead)} (${lastTurnUsage.cacheHitPct}%)` : ""}`}
               >
                 <span className="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-surface-2">
                   <span
@@ -3553,7 +3558,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                 <span className="mx-1">·</span>
                 <span
                   className="flex shrink-0 items-center gap-1.5"
-                  title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）`}
+                  title={`コンテキスト使用量: ${formatTokens(contextUsage.used)} / ${formatTokens(contextUsage.limit)}トークン（${contextUsage.pct}%）${lastTurnUsage ? `\n入力: ${formatTokens(lastTurnUsage.input)} / cache読取: ${formatTokens(lastTurnUsage.cacheRead)} (${lastTurnUsage.cacheHitPct}%)` : ""}`}
                 >
                   <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-2">
                     <span

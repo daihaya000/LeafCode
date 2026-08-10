@@ -4363,3 +4363,67 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - Phase 3でGoal Loop promptを短縮した後、Phase 4の計測指標でGoal Loop完了率とinput tokensを再測定する必要がある。
 - Goal LoopはPhase 2のclient自動compact対象外のため、Goal Loop単体でのトークン削減効果はprompt短縮のみに依存する。
 - **確認**: Phase 4の比較対象に「Goal Loop 10turn」が含まれており、Phase 3前後で比較可能。Phase 3リリース前にbaseline計測をPhase 0基盤で取得しておく。
+
+---
+
+# 実装: トークン節約機能 Phase 0 + Phase 1
+
+## 日付
+
+2026-08-11
+
+## Phase 0: 計測基盤
+
+### 新設ファイル
+
+- `web/src/lib/token-usage.ts`: assistant messageの `input` / `cache.read` / `cache.write` / `output` / `reasoning` / `total` を集計する純粋関数。`lastTurnTokenUsage`（最新turnの内訳）と `cumulativeTokenUsage`（session累計）を提供。ゼロ使用の末尾レコードはスキップし、負値は0へclamp。message本文は保存・送信しない。
+- `web/src/lib/token-usage.test.ts`: 13テスト。空配列、ゼロ使用スキップ、最新turn選択、負値clamp、cache hit率計算、累計集計を検証。
+
+### TaskView表示
+
+- `web/src/components/task/TaskView.tsx`: `lastTurnTokenUsage` を `contextUsage` と並んで `useMemo` で計算。モバイル・デスクトップ双方のコンテキスト使用量tooltipへ「入力: X / cache読取: Y (Z%)」を追加。
+
+## Phase 1: 注入コンテキストの予算化
+
+### workspace memory
+
+- `web/src/lib/memory.ts`:
+  - `MEMORY_INJECTION_BUDGET_ITEMS = 5` / `MEMORY_INJECTION_BUDGET_CHARS = 4000` を追加。
+  - `buildBudgetedMemoryInjectionBlock` を新設。件数・文字数上限を適用して `buildMemoryInjectionBlock` へ渡す。
+  - `claimMemoryInjectionForSession` へ `query?: string` 引数を追加。FTS上位結果を優先し、ヒットなし時は `use_count` / `updated_at` 順へフォールバック。選択・usage bump・session claimを同一SQLite transaction内で実行。
+- `web/src/app/api/opencode/[...path]/route.ts`: `injectWorkspaceMemory` が `firstText.text` をqueryとして `claimMemoryInjectionForSession` へ渡すよう変更。
+
+### collaboration context
+
+- `web/src/lib/db.ts`:
+  - `collaboration_snapshots` 表を追加。workspace/session単位でfingerprint・snapshot・`compacted_at`を管理。workspace削除時はcascade。
+  - `getCollaborationSnapshot` / `upsertCollaborationSnapshot` / `markCollaborationSnapshotCompacted` / `clearCollaborationSnapshotCompacted` を追加。
+- `web/src/lib/collaboration-context.ts`:
+  - `peerFingerprintLine` / `peersFingerprint` を追加。peer順序に依存しない安定fingerprintを生成。
+  - `collaborationContextFor` を拡張: 直前snapshotと同一fingerprintなら空文字を返し注入をスキップ。compact後（`compacted_at`設定時）は次回必ずfull blockを注入。空peer時もsnapshotを更新し無駄な再fetchを防ぐ。
+
+### テスト
+
+- `web/src/lib/memory.test.ts`: `buildBudgetedMemoryInjectionBlock` の件数・文字数上限、FTS query優先、fallback、session二重claimを検証（+4件）。
+- `web/src/lib/collaboration-context.test.ts`: `peersFingerprint` の順序非依存・files/status変更検出・空peerを検証（+4件）。
+
+## 検証結果
+
+- `npx vitest run src/lib/token-usage.test.ts` ... 13 tests 成功
+- `npx vitest run src/lib/memory.test.ts` ... 16 tests 成功
+- `npx vitest run src/lib/collaboration-context.test.ts` ... 8 tests 成功
+- `npx tsc --noEmit --pretty false` ... 成功
+- `npx eslint src` ... 成功
+- `npx vitest run`（web全体）... 263 files / 3091 tests 成功 / 1 skipped
+
+## 変更ファイル
+
+- web/src/lib/token-usage.ts（新規）
+- web/src/lib/token-usage.test.ts（新規）
+- web/src/lib/memory.ts
+- web/src/lib/memory.test.ts
+- web/src/lib/db.ts
+- web/src/lib/collaboration-context.ts
+- web/src/lib/collaboration-context.test.ts
+- web/src/app/api/opencode/[...path]/route.ts
+- web/src/components/task/TaskView.tsx

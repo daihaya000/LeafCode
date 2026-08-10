@@ -382,6 +382,18 @@ export function getDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_memory_session_injections_workspace
       ON memory_session_injections(workspace_id, injected_at DESC);
+    -- Collaboration-context snapshot dedupe. One row per (workspace, session):
+    -- the last injected peer/file snapshot and its fingerprint, so unchanged
+    -- peer state is not re-injected on every prompt_async.
+    CREATE TABLE IF NOT EXISTS collaboration_snapshots (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL DEFAULT '',
+      snapshot TEXT NOT NULL DEFAULT '',
+      injected_at INTEGER NOT NULL,
+      compacted_at INTEGER,
+      PRIMARY KEY (workspace_id, session_id)
+    );
     CREATE INDEX IF NOT EXISTS idx_workspaces_project ON workspaces(project_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_workspace ON goal_loops(workspace_id);
     CREATE INDEX IF NOT EXISTS idx_goal_loops_status ON goal_loops(status);
@@ -939,6 +951,7 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   getDb().prepare("DELETE FROM memories WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_audit_log WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_session_injections WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM collaboration_snapshots WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   return row;
 }
@@ -971,10 +984,94 @@ export function deleteProject(id: string): ProjectRow | undefined {
       "DELETE FROM memory_session_injections WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
     )
     .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM collaboration_snapshots WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
   getDb().prepare("DELETE FROM projects WHERE id = ?").run(id);
   return row;
 }
 
 export function removeAllowedRoot(rootPath: string): void {
   getDb().prepare("DELETE FROM allowed_roots WHERE path = ?").run(rootPath);
+}
+
+export type CollaborationSnapshotRow = {
+  workspaceId: string;
+  sessionId: string;
+  fingerprint: string;
+  snapshot: string;
+  injectedAt: number;
+  compactedAt: number | null;
+};
+
+export function getCollaborationSnapshot(
+  workspaceId: string,
+  sessionId: string,
+): CollaborationSnapshotRow | null {
+  const row = getDb()
+    .prepare(
+      `SELECT workspace_id, session_id, fingerprint, snapshot, injected_at, compacted_at
+       FROM collaboration_snapshots WHERE workspace_id = ? AND session_id = ?`,
+    )
+    .get(workspaceId, sessionId) as
+    | {
+        workspace_id: string;
+        session_id: string;
+        fingerprint: string;
+        snapshot: string;
+        injected_at: number;
+        compacted_at: number | null;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    workspaceId: row.workspace_id,
+    sessionId: row.session_id,
+    fingerprint: row.fingerprint,
+    snapshot: row.snapshot,
+    injectedAt: row.injected_at,
+    compactedAt: row.compacted_at,
+  };
+}
+
+export function upsertCollaborationSnapshot(
+  workspaceId: string,
+  sessionId: string,
+  fingerprint: string,
+  snapshot: string,
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO collaboration_snapshots (workspace_id, session_id, fingerprint, snapshot, injected_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id, session_id) DO UPDATE SET
+         fingerprint = excluded.fingerprint,
+         snapshot = excluded.snapshot,
+         injected_at = excluded.injected_at`,
+    )
+    .run(workspaceId, sessionId, fingerprint, snapshot, Date.now());
+}
+
+export function markCollaborationSnapshotCompacted(
+  workspaceId: string,
+  sessionId: string,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE collaboration_snapshots SET compacted_at = ? WHERE workspace_id = ? AND session_id = ?`,
+    )
+    .run(Date.now(), workspaceId, sessionId);
+}
+
+export function clearCollaborationSnapshotCompacted(
+  workspaceId: string,
+  sessionId: string,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE collaboration_snapshots SET compacted_at = NULL WHERE workspace_id = ? AND session_id = ?`,
+    )
+    .run(workspaceId, sessionId);
 }

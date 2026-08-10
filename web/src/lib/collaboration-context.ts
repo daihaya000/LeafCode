@@ -1,4 +1,9 @@
-import { listSessionBindings, type SessionBindingRow } from "./db";
+import {
+  getCollaborationSnapshot,
+  listSessionBindings,
+  upsertCollaborationSnapshot,
+  type SessionBindingRow,
+} from "./db";
 import { ocServer } from "./oc-server";
 import { SESSION_STATUS_PATH, sessionMessagePath } from "./opencode-paths";
 import { extractSessionTouchedPaths } from "./session-touched-files";
@@ -16,6 +21,23 @@ export type CollaborationPeer = {
 
 function safeLine(value: string): string {
   return value.replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Normalize a peer into a stable string for fingerprinting. The order of
+ * fields is fixed so identical peer sets produce identical fingerprints
+ * regardless of map iteration order.
+ */
+export function peerFingerprintLine(peer: CollaborationPeer): string {
+  const files = peer.files.slice().sort().join(",");
+  return `${peer.sessionId}|${safeLine(peer.title)}|${peer.status}|${files}`;
+}
+
+export function peersFingerprint(peers: CollaborationPeer[]): string {
+  return peers
+    .map(peerFingerprintLine)
+    .sort()
+    .join("\n");
 }
 
 export function buildCollaborationContextBlock(peers: CollaborationPeer[]): string {
@@ -72,7 +94,15 @@ export function selectActiveCollaborationBindings(
     .slice(0, MAX_COLLABORATORS);
 }
 
-/** Build a best-effort live snapshot for injection immediately before a turn. */
+/**
+ * Build a best-effort live snapshot for injection immediately before a turn.
+ *
+ * When the peer set is unchanged since the last injection (same fingerprint),
+ * returns "" so the BFF does not re-inject the same block and inflate the
+ * context. After a compaction (`compacted_at` set on the snapshot row), the
+ * next injection is always a full block so the model regains the peer context
+ * that compaction may have discarded.
+ */
 export async function collaborationContextFor(input: {
   workspaceId: string;
   sessionId: string;
@@ -116,7 +146,46 @@ export async function collaborationContextFor(input: {
         };
       }),
     );
-    return buildCollaborationContextBlock(peers);
+
+    const fullBlock = buildCollaborationContextBlock(peers);
+    if (fullBlock === "") {
+      // No active peers: still record an empty snapshot so a subsequent
+      // turn does not re-fetch unnecessarily. Clear compacted_at too.
+      upsertCollaborationSnapshot(
+        input.workspaceId,
+        input.sessionId,
+        peersFingerprint(peers),
+        "",
+      );
+      return "";
+    }
+
+    const prev = getCollaborationSnapshot(input.workspaceId, input.sessionId);
+    const fingerprint = peersFingerprint(peers);
+
+    // After a compaction, always inject the full block once.
+    if (prev?.compactedAt) {
+      upsertCollaborationSnapshot(
+        input.workspaceId,
+        input.sessionId,
+        fingerprint,
+        fullBlock,
+      );
+      return fullBlock;
+    }
+
+    // Unchanged fingerprint → skip injection to save tokens.
+    if (prev && prev.fingerprint === fingerprint) {
+      return "";
+    }
+
+    upsertCollaborationSnapshot(
+      input.workspaceId,
+      input.sessionId,
+      fingerprint,
+      fullBlock,
+    );
+    return fullBlock;
   } catch {
     // Database or transcript-shape failures must not block an internal prompt.
     return "";

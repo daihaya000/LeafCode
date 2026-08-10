@@ -10,6 +10,7 @@ process.env.APPDATA = testDataDir;
 
 const {
   approveMemory,
+  buildBudgetedMemoryInjectionBlock,
   buildMemoryInjectionBlock,
   countApprovedMemories,
   claimMemoryInjectionForSession,
@@ -227,5 +228,94 @@ describe("memory CRUD + injection", () => {
     expect(stripMemoryInjectionBlock(`${collaboration}\n${block}\nUser question`)).toBe(
       "User question",
     );
+  });
+
+  it("buildBudgetedMemoryInjectionBlock limits item count and character budget", () => {
+    const memories = Array.from({ length: 10 }, (_, i) => ({
+      kind: "fact" as const,
+      content: `memory item ${i} `.repeat(20).trim(),
+    }));
+    const block = buildBudgetedMemoryInjectionBlock(memories, 5, 4000);
+    const lines = block.split("\n").filter((l) => l.startsWith("- ["));
+    expect(lines.length).toBeLessThanOrEqual(5);
+    expect(block.length).toBeLessThanOrEqual(5000);
+  });
+
+  it("buildBudgetedMemoryInjectionBlock returns empty for empty input", () => {
+    expect(buildBudgetedMemoryInjectionBlock([])).toBe("");
+  });
+
+  it("claimMemoryInjectionForSession uses FTS query to rank memories", () => {
+    // Set up a workspace with several approved memories.
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, root_path, created_at)
+         VALUES ('memory-fts-project', 'FTS test', '/fts-test', ?)`,
+      )
+      .run(new Date().toISOString());
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO workspaces
+          (id, project_id, display_name, absolute_path, isolation, status, created_at)
+         VALUES ('ws-fts', 'memory-fts-project', 'FTS test', '/fts-test', 'standard', 'active', ?)`,
+      )
+      .run(new Date().toISOString());
+    createMemory({
+      workspaceId: "ws-fts",
+      kind: "fact",
+      content: "always run tests before commit",
+      provenance: "manual",
+      approved: true,
+    });
+    createMemory({
+      workspaceId: "ws-fts",
+      kind: "preference",
+      content: "prefer functional style",
+      provenance: "manual",
+      approved: true,
+    });
+
+    // Query matching "tests" should rank the test memory first.
+    releaseMemoryInjectionClaim("ws-fts", "ses-fts");
+    const claim = claimMemoryInjectionForSession("ws-fts", "ses-fts", "tests");
+    expect(claim).not.toBeNull();
+    expect(claim!.block).toContain("always run tests before commit");
+    // The block should be bounded — no more than 5 items.
+    const lines = claim!.block.split("\n").filter((l) => l.startsWith("- ["));
+    expect(lines.length).toBeLessThanOrEqual(5);
+    releaseMemoryInjectionClaim("ws-fts", "ses-fts");
+  });
+
+  it("claimMemoryInjectionForSession falls back to use_count order when FTS has no hits", () => {
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, root_path, created_at)
+         VALUES ('memory-fallback-project', 'Fallback test', '/fallback-test', ?)`,
+      )
+      .run(new Date().toISOString());
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO workspaces
+          (id, project_id, display_name, absolute_path, isolation, status, created_at)
+         VALUES ('ws-fallback', 'memory-fallback-project', 'Fallback test', '/fallback-test', 'standard', 'active', ?)`,
+      )
+      .run(new Date().toISOString());
+    createMemory({
+      workspaceId: "ws-fallback",
+      kind: "fact",
+      content: "database migration steps",
+      provenance: "manual",
+      approved: true,
+    });
+    releaseMemoryInjectionClaim("ws-fallback", "ses-fallback");
+    // Query with no matches should still return the memory via fallback.
+    const claim = claimMemoryInjectionForSession(
+      "ws-fallback",
+      "ses-fallback",
+      "xyznomatch",
+    );
+    expect(claim).not.toBeNull();
+    expect(claim!.block).toContain("database migration steps");
+    releaseMemoryInjectionClaim("ws-fallback", "ses-fallback");
   });
 });

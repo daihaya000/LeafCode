@@ -138,7 +138,11 @@ function injectWorkspaceMemory(
     ) {
       return { body: requestBody, claim: null };
     }
-    const claim = claimMemoryInjectionForSession(workspaces[0]!, sessionId);
+    const claim = claimMemoryInjectionForSession(
+      workspaces[0]!,
+      sessionId,
+      firstText.text,
+    );
     if (!claim) return { body: requestBody, claim: null };
     firstText.text = `${claim.block}\n${firstText.text}`;
     return { body: new TextEncoder().encode(JSON.stringify(body)).buffer, claim };
