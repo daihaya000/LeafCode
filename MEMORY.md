@@ -1,5 +1,24 @@
 # 作業ログ: 手動モデル価格設定（コスト未返却モデル対応）
 
+# 作業ログ: EXE起動時のブラウザ自動起動設定
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- EXE 起動時のブラウザ自動起動をデフォルト OFF に変更した。既存の `OPENCODE_WEBUI_NO_BROWSER=1` による抑止も維持。
+- `%APPDATA%/opencode-webui/browser-config.json` に `autoOpenBrowser` を保存し、設定画面の「全般」から ON/OFF を切り替えられるようにした。
+- ホスト制御 API と WebUI の BFF API を追加。トレイメニューの手動「Open browser」は従来どおり利用可能。
+
+## 検証結果
+
+- `host` の全テスト ... 379 tests 成功
+- ブラウザ設定・制御サーバー対象テスト ... 90 tests 成功
+- `npm run typecheck`（web）... 成功
+- ESLint は既存依存の ESLint 10 と `eslint-config-next` の互換性エラーで実行不可
+
 # 作業ログ: プロジェクト固有設定ファイルの編集画面
 
 ## 日付

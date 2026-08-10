@@ -27,7 +27,7 @@ function clientIpOf(req) {
  * Match a host-control HTTP route.
  * @param {string} method
  * @param {string} pathname
- * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | null}
+ * @returns {'webui' | 'opencode' | 'all' | 'health' | 'stop-webui' | 'voice-input' | 'logs' | 'allow-firewall' | 'users' | 'auth' | 'auth-config' | 'browser-config' | null}
  */
 export function matchControlRoute(method, pathname) {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -39,6 +39,8 @@ export function matchControlRoute(method, pathname) {
   if (m === 'DELETE' && path === '/users') return 'users';
   if (m === 'GET' && path === '/auth/config') return 'auth-config';
   if (m === 'POST' && path === '/auth/config') return 'auth-config';
+  if (m === 'GET' && path === '/browser/config') return 'browser-config';
+  if (m === 'POST' && path === '/browser/config') return 'browser-config';
   if (m === 'POST' && path === '/auth/login') return 'auth';
   if (m === 'POST' && path === '/auth/logout') return 'auth';
   if (m === 'POST' && path === '/auth/verify') return 'auth';
@@ -656,6 +658,42 @@ export function createControlRequestHandler(handlers) {
           hasUsers: authStore.hasUsers(),
         }),
       );
+      return;
+    }
+
+    if (route === 'browser-config') {
+      const browserConfig = handlers.browserConfig;
+      if (!browserConfig?.read) {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'browser config is not supported by this host' }));
+        return;
+      }
+      const session = await resolveSession(req);
+      const noUsers = handlers.authStore?.hasUsers?.() !== true;
+      if (!noUsers && (!session || browserConfig.isAdmin?.(session.username) !== true)) {
+        res.writeHead(403, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'admin session required' }));
+        return;
+      }
+      if ((req.method?.toUpperCase() ?? 'GET') === 'GET') {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify(browserConfig.read()));
+        return;
+      }
+      const body = await readJsonBody(req);
+      if (!isPlainObject(body) || typeof body.autoOpenBrowser !== 'boolean') {
+        res.writeHead(400, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'autoOpenBrowser must be a boolean' }));
+        return;
+      }
+      const saved = browserConfig.write?.(body);
+      if (!saved) {
+        res.writeHead(501, JSON_HEADERS);
+        res.end(JSON.stringify({ ok: false, error: 'browser config is read-only on this host' }));
+        return;
+      }
+      res.writeHead(200, JSON_HEADERS);
+      res.end(JSON.stringify({ ok: true, ...saved }));
       return;
     }
 

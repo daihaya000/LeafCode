@@ -234,6 +234,8 @@ export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("engine");
   const [health, setHealth] = useState<HealthDto | null>(null);
   const [hostOk, setHostOk] = useState<boolean | null>(null);
+  const [autoOpenBrowser, setAutoOpenBrowser] = useState(false);
+  const [browserConfigBusy, setBrowserConfigBusy] = useState(false);
   const [restarting, setRestarting] = useState<"webui" | "opencode" | "all" | null>(
     null,
   );
@@ -452,6 +454,30 @@ export function SettingsView() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (activeTab !== "general") return;
+    void getJson<{ autoOpenBrowser?: boolean }>("/api/host/browser-config")
+      .then((config) => setAutoOpenBrowser(config.autoOpenBrowser === true))
+      .catch(() => {});
+  }, [activeTab]);
+
+  const toggleAutoOpenBrowser = async (enabled: boolean) => {
+    setBrowserConfigBusy(true);
+    try {
+      const result = await sendJson<{ ok?: boolean; autoOpenBrowser?: boolean; error?: string }>(
+        "POST",
+        "/api/host/browser-config",
+        { autoOpenBrowser: enabled },
+      );
+      if (!result.ok) throw new Error(result.error || "保存に失敗しました");
+      setAutoOpenBrowser(result.autoOpenBrowser === true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ブラウザ起動設定の保存に失敗しました");
+    } finally {
+      setBrowserConfigBusy(false);
+    }
+  };
 
   const refreshAuthUsers = useCallback(async () => {
     setAuthBusy(true);
@@ -1224,6 +1250,26 @@ export function SettingsView() {
 
         {activeTab === "general" && (
           <>
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-muted">起動</h2>
+              <div className="rounded-xl border border-border bg-surface px-4 py-3">
+                <label className="flex items-start gap-3 text-sm text-muted">
+                  <input
+                    type="checkbox"
+                    checked={autoOpenBrowser}
+                    disabled={browserConfigBusy || hostOk !== true}
+                    onChange={(event) => void toggleAutoOpenBrowser(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+                  />
+                  <span>
+                    <span className="block text-text">EXE 起動時にブラウザを自動で開く</span>
+                    <span className="mt-1 block text-xs text-faint">
+                      デフォルトはオフです。設定は次回の EXE 起動から反映されます。
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </section>
             <section>
               <h2 className="mb-3 text-sm font-semibold text-muted">実行</h2>
               <div className="mb-6 rounded-xl border border-border bg-surface px-4 py-3">

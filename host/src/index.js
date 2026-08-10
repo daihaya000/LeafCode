@@ -64,6 +64,7 @@ import {
 } from './auth-store.js';
 import { readAuthConfig, writeAuthConfig } from './auth-config.js';
 import { createTrustedDeviceStore } from './trusted-device-store.js';
+import { readBrowserConfig, writeBrowserConfig } from './browser-config.js';
 import {
   createLoginThrottle,
   createThrottleStore,
@@ -839,6 +840,10 @@ function openBrowser(url) {
     stdio: 'ignore',
     shell: false,
   }).unref();
+}
+
+function shouldOpenBrowser() {
+  return process.env.OPENCODE_WEBUI_NO_BROWSER !== '1' && readBrowserConfig().autoOpenBrowser;
 }
 
 function findOpencode() {
@@ -1764,7 +1769,7 @@ async function handleExistingInstance() {
     }
   }
 
-  if (process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+  if (shouldOpenBrowser()) {
     const browserUrl = await resolveBrowserUrl();
     log(`Host already running (PID ${lockPid}). Opening ${browserUrl}`);
     openBrowser(browserUrl);
@@ -2338,6 +2343,7 @@ async function startControlServer() {
           onError: (message) => error(`[auth] ${message}`),
         }),
     },
+    browserConfig: { read: readBrowserConfig, write: writeBrowserConfig, isAdmin },
     sessionSecret: CONTROL_SECRET,
     trustedDeviceStore: createTrustedDeviceStore(),
     controlPort: CONTROL_PORT,
@@ -2712,7 +2718,7 @@ async function main() {
     await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
       proc: () => opencodeProc,
     });
-    if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+    if (webReady && shouldOpenBrowser()) {
       openBrowser(await resolveBrowserUrl());
     }
     return;
@@ -2737,7 +2743,7 @@ async function main() {
 await waitUntilReady(`${OPENCODE_URL}/global/health`, 'OpenCode', 60, {
       proc: () => opencodeProc,
     });
-    if (webReady && process.env.OPENCODE_WEBUI_NO_BROWSER !== '1') {
+    if (webReady && shouldOpenBrowser()) {
       openBrowser(await resolveBrowserUrl());
     }
 }
