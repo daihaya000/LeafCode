@@ -3243,3 +3243,19 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npm test -- --run src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx src/components/task/TaskView.test.tsx` ... 132 tests 成功
 - `npx eslint src/components/task/MessageMetaHeader.tsx src/components/task/TaskView.tsx src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx src/components/task/TaskView.test.tsx` ... 成功
 - `npm run typecheck` ... 成功
+## 推定累計コスト
+
+### 日付
+
+2026-08-10
+
+### 修正内容
+
+- タスクが実測の `task.cost` を返さない場合、assistant 応答ごとの実測コストまたはOpenAI API価格による推定コストを合計するようにした。
+- 推定額を含む累計は「累計コスト（推定）」と明示し、実測のセッション累計がある場合は従来どおりそちらを優先する。
+
+### 検証結果
+
+- `npm test -- --run src/components/task/TaskView.test.tsx src/components/task/MessageMetaHeader.test.tsx` ... 125 tests 成功
+- `npx eslint src/components/task/TaskView.tsx src/components/task/TaskView.test.tsx` ... 成功
+- `npm run typecheck` ... 成功

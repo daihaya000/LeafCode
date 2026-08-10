@@ -471,6 +471,29 @@ describe("TaskView", () => {
     expect(getJson).toHaveBeenCalledTimes(3);
   });
 
+  it("shows estimated cumulative cost when the task does not report a cost", async () => {
+    taskResponseCosts = [0];
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      messages: [{
+        info: {
+          id: "assistant-1",
+          role: "assistant",
+          providerID: "openai",
+          modelID: "gpt-5.6-luna",
+          tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+        },
+        parts: [{ id: "text-1", type: "text", text: "回答" }],
+      }],
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    expect(screen.getByText("累計コスト（推定） $0.3200")).toBeTruthy();
+    expect(screen.getByTitle("このセッションの推定累計コスト")).toBeTruthy();
+  });
+
   it("does not poll when the current task is idle", async () => {
     taskStatus = "idle";
     useSessionStream.mockReturnValue({

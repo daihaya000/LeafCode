@@ -129,6 +129,7 @@ import { copyText } from "@/lib/clipboard";
 import { countHangRetryUserMessages } from "@/lib/hang-retry";
 import { formatHangTimeout, readHangTimeoutMs, subscribeHangTimeout } from "@/lib/hang-timeout";
 import { formatCostValue, useCostDisplayPrefs } from "@/lib/currency";
+import { estimateOpenAIApiCost } from "@/lib/openai-pricing";
 import { applyFaviconBadge } from "@/lib/favicon-badge";
 import {
   readSideWidthFromServer,
@@ -776,6 +777,27 @@ export function TaskView({ taskId }: { taskId: string }) {
       ),
     [streamMessages],
   );
+  const cumulativeCost = useMemo(() => {
+    const reportedTotal = task?.cost ?? 0;
+    if (reportedTotal > 0) return { value: reportedTotal, estimated: false };
+
+    let total = 0;
+    let estimated = false;
+    for (const message of streamMessages) {
+      if (message.info.role !== "assistant") continue;
+      const reported = message.info.cost ?? 0;
+      if (reported > 0) {
+        total += reported;
+        continue;
+      }
+      const estimate = estimateOpenAIApiCost(message.info);
+      if (estimate !== null) {
+        total += estimate;
+        estimated = true;
+      }
+    }
+    return total > 0 ? { value: total, estimated } : null;
+  }, [streamMessages, task?.cost]);
 
   useEffect(() => {
     const previous = prevSessionErrorRef.current;
@@ -3443,7 +3465,7 @@ export function TaskView({ taskId }: { taskId: string }) {
             {stream.connection === "down" && (
               <span className="shrink-0 text-danger">切断（再試行中）</span>
             )}
-            {(task.branch || (task.cost ?? 0) > 0 || contextUsage) && (
+            {(task.branch || cumulativeCost || contextUsage) && (
               <span className="mx-1 shrink-0">·</span>
             )}
             {task.branch && (
@@ -3481,14 +3503,19 @@ export function TaskView({ taskId }: { taskId: string }) {
                 </span>
               </>
             )}
-            {(task.cost ?? 0) > 0 && (
+            {cumulativeCost && (
               <>
                 <span className="mx-1">·</span>
                 <span
                   className="shrink-0"
-                  title="このセッションの累計コスト"
+                  title={
+                    cumulativeCost.estimated
+                      ? "このセッションの推定累計コスト"
+                      : "このセッションの累計コスト"
+                  }
                 >
-                  累計コスト {formatCostValue(task.cost!, costPrefs)}
+                  累計コスト{cumulativeCost.estimated ? "（推定）" : ""}{" "}
+                  {formatCostValue(cumulativeCost.value, costPrefs)}
                 </span>
               </>
             )}
