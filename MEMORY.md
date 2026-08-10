@@ -1,5 +1,25 @@
 # 作業ログ: 手動モデル価格設定（コスト未返却モデル対応）
 
+# 作業ログ: プロジェクト固有設定ファイルの編集画面
+
+## 日付
+
+2026-08-10
+
+## 実装内容
+
+- 各プロジェクト専用の設定画面 `/project/[id]/settings` を追加し、サイドバーと全体設定のプロジェクト一覧から移動できるようにした。
+- `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、`.github/copilot-instructions.md`、`opencode.json`、`opencode.jsonc` の内容を読み込み、新規作成・編集できるようにした。
+- `GET/PATCH /api/projects/[id]/settings` を追加した。DBに登録されたプロジェクトルートと固定ファイルリストを使い、プロジェクト外のパスやシンボリックリンクへの書き込み、2MB超の内容を拒否する。
+
+## 検証結果
+
+- `npm run typecheck`（web）... 成功
+- 対象ファイルのESLint ... 成功
+- 新規APIテスト ... 4 tests 成功
+- 新規設定画面テスト ... 1 test 成功
+- `Sidebar.test.tsx` / `SettingsView.test.tsx` ... 70 tests 成功
+
 # 調査ログ: デフォルトモデルが再起動後にリセットされたように見える原因
 
 ## 日付

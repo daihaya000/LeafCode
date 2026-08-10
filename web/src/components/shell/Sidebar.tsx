@@ -1091,6 +1091,19 @@ export function Sidebar({
                       </button>
                       <button
                         type="button"
+                        aria-label={`${p.name}の設定`}
+                        title="プロジェクト設定"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          nav(`/project/${encodeURIComponent(p.id)}/settings`);
+                        }}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:h-8 md:w-8"
+                      >
+                        <Settings className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
                         aria-label={`${p.name}を削除`}
                         title="プロジェクトを削除"
                         aria-busy={actionBusyKey === `remove-project:${p.id}`}

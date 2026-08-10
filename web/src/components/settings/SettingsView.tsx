@@ -11,6 +11,7 @@ import {
   Check,
   Copy,
   Download,
+  FileCog,
   Monitor,
   Moon,
   Plus,
@@ -19,6 +20,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { AddProjectButton } from "@/components/AddProjectButton";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
@@ -1487,6 +1489,14 @@ export function SettingsView() {
                         {timeAgo(p.lastOpenedAt)}
                       </span>
                     )}
+                    <Link
+                      href={`/project/${encodeURIComponent(p.id)}/settings`}
+                      aria-label={`${p.name}の設定`}
+                      title="プロジェクト設定"
+                      className="cursor-pointer rounded-lg p-2 text-faint hover:bg-surface-2 hover:text-text"
+                    >
+                      <FileCog className="h-4 w-4" />
+                    </Link>
                     <button
                       type="button"
                       disabled={busy}
