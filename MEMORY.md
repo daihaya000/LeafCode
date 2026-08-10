@@ -4094,3 +4094,39 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 ## 修復
 
 - スキル初回作成時に誤って上書きした既存 `MEMORY.md` 3,974行を履歴から復元し、本記録を末尾へ追記。
+
+---
+
+# 調査: WebUIのトークン節約機能
+
+## 日付
+
+2026-08-11
+
+## 現状
+
+- `context-usage.ts` は最新assistant応答のトークン数とモデルのcontext limitから現在使用率を算出し、`TaskView.tsx` がモバイル・デスクトップ双方に表示している。
+- `SessionActions.tsx` には手動のコンテキスト圧縮ボタンがあり、OpenCodeの `POST /api/session/{sessionID}/compact` を呼ぶ。OpenCode自身の自動圧縮後に作られるsynthetic continuationもUIから除外済み。
+- 通常セッションの承認済みworkspace memoryは最初の `prompt_async` に一度だけ注入される。ただし関連度ではなく `use_count` と更新日時の順で最大8件、各memoryは最大2000文字なので、最悪時は初回入力が大きくなる。
+- 並行セッション情報はmanual `prompt_async` のたびに最大5セッション・各8ファイルをuser textへ前置する。過去のsnapshotも会話履歴へ残るため、並行作業中は同種情報が累積する。
+- Goal Loopは各ターンで固定の長いルール、元のgoal、acceptance criteria、直近5件の進捗を再送する。ループ回数が多いほど入力トークンが増える。
+- Autoモデル選択は既にコスト優先が既定であり、単純な安価モデル選択は実装済み。表示はコンテキスト使用率・累計トークン・コストまであるが、cache read/writeの内訳や圧縮による削減量は表示しない。
+
+## 優先実装案
+
+1. **重複しないcollaboration context**: sessionごとに最後に注入したpeer/file snapshotのhashを保持し、変化時だけ注入する。終了したpeerの通知も一度だけ送る。最小変更で毎ターンの累積を止められるため最優先。
+2. **関連度と文字数予算付きmemory注入**: 初回prompt本文をqueryにFTS検索し、上位3から5件、合計2000から4000文字程度に制限する。現在の「頻繁に使われた8件固定」より不要な初回コンテキストを減らす。
+3. **圧縮アシスト**: 使用率70%で非阻害の提案、80から85%で次回送信前の自動compactを選択可能にする。idle時のみ、sessionごとのcooldown付きとし、OpenCode標準の限界直前自動圧縮より早く巨大履歴の反復課金を止める。
+4. **Goal Loop promptの差分化**: 1ターン目だけ完全な規約・goal・acceptanceを送り、以後は短いturn指示と最新進捗だけにする。安全規約はagent/system側へ固定できる場合はそちらへ移し、prompt prefix cacheを壊しにくくする。
+5. **節約効果の可視化**: assistant messageの `tokens.input`, `cache.read`, `cache.write`, `output`, `reasoning` を使い、直近入力、cache hit率、compact前後差分を表示する。機能ごとのA/B計測なしに自動圧縮閾値を固定しない。
+
+## 推奨順序と指標
+
+- Phase 1: collaboration dedupeとmemory budget。品質劣化リスクが低く、WebUI側だけで完結する。
+- Phase 2: cache内訳表示と、送信単位の入力トークン推移を計測する。
+- Phase 3: 計測結果を基にauto compactとGoal Loop差分promptを段階導入する。
+- 主要指標は「1完了タスク当たりinput tokens」「cache read率」「compact回数」「圧縮後にユーザーが再説明した回数」「Goal Loop完了率」とする。
+
+## 検証
+
+- 設計調査のみ。実装コードは変更しておらず、テストは未実施。
