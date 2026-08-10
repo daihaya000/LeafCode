@@ -47,7 +47,11 @@ export function MessageMetaHeader({
       : "";
   const time = formatMessageTime(info.time?.completed ?? info.time?.created);
   const thinking = thinkingDuration(info);
-  const tokens = info.tokens?.total ?? 0;
+  // `total` is the context snapshot for this turn. Show only tokens generated
+  // by this response so the per-message metadata does not look cumulative.
+  const tokens = info.tokens
+    ? Math.max(0, info.tokens.output ?? 0) + Math.max(0, info.tokens.reasoning ?? 0)
+    : 0;
   const fields = [
     model ? { key: "model", text: model } : null,
     effortLabel ? { key: "effort", text: effortLabel } : null,

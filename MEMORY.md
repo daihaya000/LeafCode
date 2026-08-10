@@ -1,5 +1,22 @@
 # 作業ログ: バグハント完了
 
+## 応答ごとのトークン消費表示
+
+### 日付
+
+2026-08-10
+
+### 修正内容
+
+- 応答メタ情報で、コンテキスト全体を含む `tokens.total` ではなく、その応答の `output + reasoning` トークンを表示するようにした。
+- 累計トークンを個別応答のトークン数として誤認しないよう回帰テストを更新した。
+
+### 検証結果
+
+- `npm.cmd test -- --run src/components/task/MessageMetaHeader.test.tsx` ... 8 tests 成功
+- `npm.cmd run typecheck` ... 成功
+- `npx.cmd eslint src/components/task/MessageMetaHeader.tsx src/components/task/MessageMetaHeader.test.tsx` ... 成功
+
 ## 日付
 
 2026-08-10
