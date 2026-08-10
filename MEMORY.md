@@ -4180,3 +4180,119 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 ## 検証
 
 - 設計調査のみ。実装コードは変更しておらず、テストは未実施。
+
+---
+
+# 実装計画: トークン節約機能
+
+## 日付
+
+2026-08-11
+
+## 方針
+
+- 既存の手動 `compact` とOpenCode標準の自動圧縮は残し、WebUI独自の機能は送信前の入力コンテキスト削減に限定する。
+- ユーザーのプロンプト、ファイル内容、メモリ本文を計測ログへ保存しない。
+- いきなり自動圧縮を既定有効にせず、低リスクの注入削減、計測、ユーザー選択式の自動圧縮の順で導入する。
+- OpenCodeへ直接送るGoal Loopは通常のBFF `prompt_async` と経路が異なるため、通常セッション用の実装をそのまま流用せず、別途適用範囲を確認する。
+
+## Phase 0: 計測の基盤
+
+### 変更対象
+
+- `web/src/lib/token-usage.ts` を新設。assistant messageの `input` / `cache.read` / `cache.write` / `output` / `reasoning` / `total` を集計する純粋関数を置く。
+- `web/src/lib/context-usage.ts` は既存の使用率計算を維持し、必要なら最新turnの内訳だけを返す関数を追加する。
+- `web/src/components/task/TaskView.tsx` の既存ヘッダー表示に、最新入力トークンとcache read率をtooltipまたは詳細表示として追加する。
+
+### 完了条件
+
+- 「節約したトークン」と推測表示せず、実際にOpenCodeが返したusageだけを表示する。
+- message本文やファイルパスを保存・送信しない。
+- `token-usage.test.ts` と既存 `context-usage.test.ts` の回帰テストが通る。
+
+## Phase 1: 注入コンテキストの予算化
+
+### workspace memory
+
+- `web/src/lib/memory.ts` の選択処理を共通化し、初回プロンプトのqueryに対するFTS上位結果を優先する。
+- FTSヒットがない場合は現在の `use_count` / `updated_at` 順をフォールバックにする。
+- 最大件数を5件、注入ブロックの合計文字数を4,000文字程度に制限する。既存の `sanitizeMemoryInjectionText` と未承認除外は維持する。
+- `claimMemoryInjectionForSession` にqueryを渡せるようにし、選択・usage更新・session claimを同一SQLite transaction内で行う。
+- `web/src/app/api/opencode/[...path]/route.ts` は最初のtext partをqueryとして通常のmanual `prompt_async`に渡す。
+- `web/src/lib/goal-loop.ts` はGoal本文をqueryに使うが、memory注入は従来どおり初回turnだけにする。
+
+### collaboration context
+
+- `web/src/lib/db.ts` にworkspace/session単位のsnapshot表を追加する。保存するのはpeerのID・状態・ファイル一覧の正規化済みsnapshot、fingerprint、更新時刻だけとし、本文は保存しない。
+- `web/src/lib/collaboration-context.ts` に正規化・安定fingerprint・差分生成を追加する。
+- 直前snapshotと同一なら注入しない。変更時は全体blockではなく、追加・変更・終了したpeerだけの短いupdate blockを注入する。
+- BFF routeの注入関数は `{ body, claim }` を返す形にし、明示的なupstream拒否時だけclaimを解放する。ネットワークタイムアウトは送信済みか判別できないため即時再注入せず、claimに短いTTLを設ける。
+- snapshotは古い行をTTLでbest-effort削除し、workspace削除時はcascadeさせる。
+
+### テスト
+
+- `web/src/lib/memory.test.ts`: query優先、fallback、4,000文字上限、session二重claim。
+- `web/src/lib/collaboration-context.test.ts`: 同一snapshotの空結果、peer追加・変更・終了のdelta、安定fingerprint、上限。
+- `web/src/app/api/opencode/[...path]/route.test.ts`: 注入なし、明示的upstream拒否時のclaim解放、画像・command・非JSON経路への非干渉。
+
+### 完了条件
+
+- 同じpeer状態の連続送信ではcollaboration blockを二度送らない。
+- memory blockは件数・文字数上限を超えない。
+- upstreamが拒否した送信を成功扱いにして次回注入を永久に抑止しない。
+
+## Phase 2: 自動compactの選択式導入
+
+### 設定
+
+- `web/src/lib/token-saving-settings.ts` を新設し、`off` / `suggest` / `auto` と閾値を管理する。
+- 初期値は `off`、閾値は80%。閾値は70～95%にclampする。
+- localStorageを即時読み取り元、既存のsettingsテーブルを他ブラウザ共有用のバックアップとする。
+- `web/src/app/api/settings/[key]/route.ts` のallowlistとvalidationを追加する。
+- `web/src/components/settings/SettingsView.tsx` の「全般」に「トークン節約」設定を追加する。
+
+### 送信フロー
+
+- `web/src/components/task/SessionActions.tsx` のcompact処理を再利用可能なPromise関数へ分離し、手動compactと自動compactで同じAPI・エラー処理を使う。
+- `TaskView.tsx` の送信直前に、最新context usageが閾値以上、sessionがidle、permission/question待ちでない場合だけ判定する。
+- `suggest` は既存compactボタンへ誘導する通知を出す。`auto` は一度だけcompactをawaitしてから送信する。
+- sessionごとのin-flight lockとcooldownを設け、連続送信・複数タブで二重compactしない。
+- compact失敗時はプロンプトを消失させず、入力を復元してエラーを表示する。OpenCode非対応・状態競合時は既存送信動作を壊さない。
+- `useSessionStream.ts` の `session.compacted` 後のresyncを完了条件に利用し、圧縮前の古いusageを表示し続けない。
+
+### テスト
+
+- `token-saving-settings.test.ts` とsettings route tests。
+- `SessionActions.test.tsx`: 手動・自動で同じcompact呼び出し、in-flight重複抑止。
+- `TaskView.test.tsx`: 閾値未満、suggest、auto、cooldown、permission待ち、compact失敗時の入力保持。
+- 稼働中hostで、80%到達時にcompactが1回だけ発生し、その後promptが送信されることを短い手動確認。
+
+## Phase 3: Goal Loopの固定prompt短縮
+
+### 変更対象
+
+- `web/src/lib/goal-loop.ts` の固定規約を短い共通blockへ分離する。
+- turn 1は現行の完全prompt、turn 2以降は「次の最小作業・turn番号・goal・必要なacceptance・直近2件のprogress・JSON出力契約」だけを送る。
+- 変化しない規約をprompt先頭、turn固有情報を末尾に置き、providerのprefix cacheを壊しにくくする。
+- verification promptは検証品質を優先し、別途短縮するまで現行の完全版を維持する。
+- Goal LoopはBFFを通らず `ocServer` から送信されるため、Phase 2のclient自動compact対象外。必要ならこのphaseで、直前turnがidleのときだけserver側で同じ閾値判定を追加する。
+
+### テスト・完了条件
+
+- `goal-loop.test.ts` でturn 1とturn 2以降のprompt内容、marker、JSON契約、progress上限を固定する。
+- 既存の自動継続、pause、verification、unreadable result判定を壊さない。
+- 10turn相当のfixtureで固定prompt文字数を現行比40%以上削減し、Goal Loop完了率を維持する。
+
+## Phase 4: 検証と段階展開
+
+- 比較対象を「通常チャット」「並行sessionあり」「memory 8件」「Goal Loop 10turn」に固定する。
+- `tokens.input`、cache read率、compact回数、compact前後のcontext使用量、再説明が必要になった回数を比較する。
+- Phase 1は既定有効、Phase 2のautoは既定off、Phase 3はテスト後に段階有効化する。
+- 検証は `npm --prefix web run typecheck`、`npm --prefix web run lint`、対象Vitest、必要に応じて全Vitestを使う。`next dev` / `next build` は実行しない。
+
+## 実装しない範囲
+
+- WebUI独自のLLM要約を追加しない。要約品質と追加コストが発生するため、compactはOpenCode標準APIを使う。
+- 送信済みユーザーメッセージをWebUI側で削除・改変しない。
+- 実行中のsessionを強制compactしない。
+- Autoモデル選択の既存コスト優先ロジックを、トークン節約目的で重複実装しない。
