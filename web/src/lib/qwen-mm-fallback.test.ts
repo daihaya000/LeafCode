@@ -14,21 +14,24 @@ import {
 
 const dirs: string[] = [];
 let previousAppData: string | undefined;
-const previousApiKey = process.env.DASHSCOPE_API_KEY;
-const previousBaseUrl = process.env.DASHSCOPE_BASE_URL;
-const previousNativeDisabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+const previousLocalApiKey = process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY;
+const previousLocalBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+const previousLocalModel = process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL;
+const previousNativeEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
 
 afterEach(() => {
   if (previousAppData === undefined) delete process.env.APPDATA;
   else process.env.APPDATA = previousAppData;
   previousAppData = undefined;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
-  if (previousApiKey === undefined) delete process.env.DASHSCOPE_API_KEY;
-  else process.env.DASHSCOPE_API_KEY = previousApiKey;
-  if (previousBaseUrl === undefined) delete process.env.DASHSCOPE_BASE_URL;
-  else process.env.DASHSCOPE_BASE_URL = previousBaseUrl;
-  if (previousNativeDisabled === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
-  else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNativeDisabled;
+  if (previousLocalApiKey === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY;
+  else process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY = previousLocalApiKey;
+  if (previousLocalBaseUrl === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+  else process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = previousLocalBaseUrl;
+  if (previousLocalModel === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL;
+  else process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL = previousLocalModel;
+  if (previousNativeEnabled === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+  else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNativeEnabled;
   vi.unstubAllGlobals();
 });
 
@@ -99,9 +102,9 @@ describe("Qwen-MM image fallback", () => {
     expect(qwenMmImageInstructions("", ["C:\\image.png"])).toContain("C:\\image.png");
   });
 
-  it("calls DashScope directly and returns native visual analysis", async () => {
-    process.env.DASHSCOPE_API_KEY = "dashscope-secret";
-    process.env.DASHSCOPE_BASE_URL = "https://dashscope.example/v1/";
+  it("calls local Ollama directly and returns native visual analysis", async () => {
+    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+    process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = "http://ollama.example/v1/";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ choices: [{ message: { content: "A settings dialog is open." } }] }),
@@ -117,14 +120,14 @@ describe("Qwen-MM image fallback", () => {
 
     expect(result).toBe("A settings dialog is open.");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://dashscope.example/v1/chat/completions",
+      "http://ollama.example/v1/chat/completions",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ authorization: "Bearer dashscope-secret" }),
+        headers: expect.objectContaining({ authorization: "Bearer ollama" }),
       }),
     );
     const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(request.model).toBe("qwen3.7-plus");
+    expect(request.model).toBe("qwen2.5vl:7b");
     expect(request.messages[0].content).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -136,7 +139,7 @@ describe("Qwen-MM image fallback", () => {
   });
 
   it("rewrites images to native analysis without requiring MCP", async () => {
-    process.env.DASHSCOPE_API_KEY = "dashscope-secret";
+    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(

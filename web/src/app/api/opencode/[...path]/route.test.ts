@@ -509,13 +509,13 @@ describe("POST session image capability validation", () => {
 
   it("analyzes image parts natively before forwarding to a text-only model", async () => {
     const directory = "C:\\repo\\qwen-native";
-    const previousKey = process.env.DASHSCOPE_API_KEY;
-    const previousBaseUrl = process.env.DASHSCOPE_BASE_URL;
-    process.env.DASHSCOPE_API_KEY = "dashscope-secret";
-    process.env.DASHSCOPE_BASE_URL = "https://dashscope.example/v1";
+    const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+    const previousBaseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
+    process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = "http://ollama.example/v1";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = new URL(String(input));
-      if (url.hostname === "dashscope.example") {
+      if (url.hostname === "ollama.example") {
         return Promise.resolve(jsonResponse({
           choices: [{ message: { content: "Native visual analysis" } }],
         }));
@@ -558,10 +558,10 @@ describe("POST session image capability validation", () => {
       expect(fetchMock.mock.calls.some(([input]) => new URL(String(input)).pathname === "/mcp")).toBe(false);
     } finally {
       fetchMock.mockRestore();
-      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
-      else process.env.DASHSCOPE_API_KEY = previousKey;
-      if (previousBaseUrl === undefined) delete process.env.DASHSCOPE_BASE_URL;
-      else process.env.DASHSCOPE_BASE_URL = previousBaseUrl;
+      if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+      else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
+      if (previousBaseUrl === undefined) delete process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL;
+      else process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL = previousBaseUrl;
     }
   });
 

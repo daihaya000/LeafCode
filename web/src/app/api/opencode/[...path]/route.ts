@@ -612,7 +612,7 @@ async function proxy(
                 if (!qwenMmConnected) {
                   if (nativeError) {
                     return NextResponse.json(
-                      { error: "Qwenによる画像の事前解析に失敗しました。DASHSCOPE_API_KEYと接続状態を確認してください。" },
+                      { error: "ローカルQwen画像解析に失敗しました。Ollamaと画像対応モデルの起動状態を確認してください。" },
                       { status: 502 },
                     );
                   }

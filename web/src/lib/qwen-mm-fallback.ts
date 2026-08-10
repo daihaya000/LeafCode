@@ -6,8 +6,8 @@ import { dataDir } from "./paths";
 const ATTACHMENTS_ROOT = "qwen-mm-attachments";
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
 const RETAIN_MS = 7 * 24 * 60 * 60 * 1000;
-const DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
-const DEFAULT_MODEL = "qwen3.7-plus";
+const DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
+const DEFAULT_MODEL = "qwen2.5vl:7b";
 const NATIVE_TIMEOUT_MS = 120_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -34,10 +34,7 @@ export class QwenNativeVisionError extends Error {
 }
 
 export function isQwenNativeVisionAvailable(): boolean {
-  return (
-    process.env.OPENCODE_WEBUI_QWEN_NATIVE !== "0" &&
-    Boolean(process.env.DASHSCOPE_API_KEY?.trim())
-  );
+  return process.env.OPENCODE_WEBUI_QWEN_NATIVE === "1";
 }
 
 function qwenNativeAnalysisPrompt(prompt: string): string {
@@ -81,9 +78,8 @@ export async function analyzeQwenMmImages(
   images: readonly QwenMmImageInput[],
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
-  const apiKey = process.env.DASHSCOPE_API_KEY?.trim();
-  if (!apiKey || process.env.OPENCODE_WEBUI_QWEN_NATIVE === "0") {
-    throw new QwenNativeVisionError("DASHSCOPE_API_KEY is not configured");
+  if (!isQwenNativeVisionAvailable()) {
+    throw new QwenNativeVisionError("local Qwen vision is not enabled");
   }
   if (images.length === 0) {
     throw new QwenNativeVisionError("no images were provided");
@@ -95,10 +91,11 @@ export async function analyzeQwenMmImages(
     }
   }
 
-  const baseUrl = process.env.DASHSCOPE_BASE_URL?.trim() || DEFAULT_BASE_URL;
+  const baseUrl = process.env.OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL?.trim() || DEFAULT_BASE_URL;
+  const apiKey = process.env.OPENCODE_WEBUI_QWEN_LOCAL_API_KEY?.trim() || "ollama";
   const endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
   const body = {
-    model: process.env.OPENCODE_WEBUI_QWEN_VISION_MODEL?.trim() || DEFAULT_MODEL,
+    model: process.env.OPENCODE_WEBUI_QWEN_LOCAL_MODEL?.trim() || DEFAULT_MODEL,
     messages: [
       {
         role: "user",

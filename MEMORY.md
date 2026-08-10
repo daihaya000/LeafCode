@@ -8,12 +8,12 @@
 
 ## 実装内容
 
-- 画像非対応モデルへの画像送信時、WebUIのBFFがDashScope OpenAI互換APIを直接呼び、`qwen3.7-plus`の視覚解析結果を元の依頼へ内部コンテキストとして追加するようにした。
+- 画像非対応モデルへの画像送信時、WebUIのBFFがローカルOllama OpenAI互換APIを直接呼び、`qwen2.5vl:7b`の視覚解析結果を元の依頼へ内部コンテキストとして追加するようにした。
 - 初期タスク、Autoモデル選択、継続プロンプトのv1 `parts` / v2 `prompt.files`へ統合した。画像対応モデルは従来どおり画像を直接受け取り、Qwen事前解析を行わない。
-- `DASHSCOPE_API_KEY`がある場合はMCP接続不要で利用可能。ネイティブ解析が失敗しQwen MCPが接続済みなら、従来のMCPツール指示方式へ自動fallbackする。
-- `GET /api/qwen-mm/status`を追加し、APIキーを公開せず利用可否だけをHomeView / TaskViewへ返すようにした。
+- `OPENCODE_WEBUI_QWEN_NATIVE=1`でMCP接続不要で利用可能。ネイティブ解析が無効または失敗した場合は、Qwen MCPが接続済みなら従来のMCPツール指示方式へ自動fallbackする。
+- `GET /api/qwen-mm/status`を追加し、接続先やAPIキーを公開せず利用可否だけをHomeView / TaskViewへ返すようにした。
 - 解析結果を画像由来の未信頼データとして明示し、画像内の命令を実行指示として扱わないよう境界文を追加した。
-- `OPENCODE_WEBUI_QWEN_VISION_MODEL`で解析モデルを変更可能。`OPENCODE_WEBUI_QWEN_NATIVE=0`でネイティブ統合を無効化できる。
+- `OPENCODE_WEBUI_QWEN_LOCAL_MODEL` / `OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL`で解析モデル・接続先を変更可能。`OPENCODE_WEBUI_QWEN_NATIVE=0`でネイティブ統合を無効化できる。
 
 ## 検証結果
 
@@ -22,7 +22,7 @@
 - `verifySession`が通常セッション検証時にも送る`trustedDeviceToken: null`へ既存テストの期待値を合わせ、全体テストをgreenへ戻した。
 - Web全体テスト ... 257 files / 3041 tests 成功
 - `npm.cmd run typecheck` / `npm.cmd run lint` / `git diff --check` ... 成功
-- 現環境の`DASHSCOPE_API_KEY`は未設定のため、実DashScope APIによる画像回答は未確認。
+- 現環境ではOllamaを起動していないため、実ローカルモデルによる画像回答は未確認。
 
 # 作業ログ: 画像非対応モデル向け Qwen-MM-Plugins fallback
 

@@ -133,10 +133,10 @@ cd OpenCodeWebUI
 | --- | --- | --- |
 | **Caddy 逆プロキシ（推奨）** | `OPENCODE_WEBUI_CADDY=1` | HTTPS で安全に公開。トレイ host が Caddy を連動管理 |
 | 直接バインド | `OPENCODE_WEBUI_HOST=0.0.0.0` | 全インターフェースで待ち受け。**VPN と認証なしで公開しないでください** |
-| Qwen画像ネイティブ統合 | `DASHSCOPE_API_KEY` | 画像非対応モデルへの送信前にWebUIが`qwen3.7-plus`で画像を直接解析。`OPENCODE_WEBUI_QWEN_VISION_MODEL`で解析モデルを変更、`OPENCODE_WEBUI_QWEN_NATIVE=0`で無効化 |
+| Qwen画像ネイティブ統合 | `OPENCODE_WEBUI_QWEN_NATIVE=1` | DashScope不要。WebUIがローカルOllamaの`qwen2.5vl:7b`で画像を直接解析。`OPENCODE_WEBUI_QWEN_LOCAL_MODEL` / `OPENCODE_WEBUI_QWEN_LOCAL_BASE_URL`で変更可能 |
 | Qwen-MM-Plugins MCP | `OPENCODE_WEBUI_QWEN_MM=1` | 画像非対応モデルでも MCP 経由で画像/動画/文書読み取り・OCR・grounding を利用。初回起動時に uv（`astral-sh.uv`）を自動導入。`DASHSCOPE_API_KEY` / `SERPER_API_KEY` は env から参照 |
 
-Qwen画像ネイティブ統合を利用すると、画像非対応モデルへ添付した画像と依頼文が解析のためDashScopeへ送信されます。APIキーを追加・変更した場合はWebUIを再起動してください。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、Qwenによる事前解析は行いません。
+Qwen画像ネイティブ統合を利用すると、画像非対応モデルへ添付した画像と依頼文がローカルOllamaへ送信されます。Ollamaで`qwen2.5vl:7b`を取得・起動し、`OPENCODE_WEBUI_QWEN_NATIVE=1`を設定してWebUIを再起動してください。画像対応モデルでは従来どおり選択モデルへ画像を直接送信し、Qwenによる事前解析は行いません。
 
 ```bat
 set OPENCODE_WEBUI_CADDY=1

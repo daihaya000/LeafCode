@@ -1449,7 +1449,9 @@ describe("POST /api/tasks auto model selection", () => {
 
   it("analyzes an image natively before sending it to an Auto-selected text model", async () => {
     const previousKey = process.env.DASHSCOPE_API_KEY;
+    const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
     process.env.DASHSCOPE_API_KEY = "dashscope-secret";
+    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "1";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({ choices: [{ message: { content: "A native Qwen analysis." } }] }),
@@ -1487,12 +1489,16 @@ describe("POST /api/tasks auto model selection", () => {
       fetchMock.mockRestore();
       if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
       else process.env.DASHSCOPE_API_KEY = previousKey;
+      if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+      else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
     }
   });
 
   it("falls back to connected MCP when native image analysis fails", async () => {
     const previousKey = process.env.DASHSCOPE_API_KEY;
+    const previousNative = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
     process.env.DASHSCOPE_API_KEY = "invalid-key";
+    process.env.OPENCODE_WEBUI_QWEN_NATIVE = "0";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({ error: { message: "invalid API key" } }),
@@ -1527,6 +1533,8 @@ describe("POST /api/tasks auto model selection", () => {
       fetchMock.mockRestore();
       if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY;
       else process.env.DASHSCOPE_API_KEY = previousKey;
+      if (previousNative === undefined) delete process.env.OPENCODE_WEBUI_QWEN_NATIVE;
+      else process.env.OPENCODE_WEBUI_QWEN_NATIVE = previousNative;
     }
   });
 
