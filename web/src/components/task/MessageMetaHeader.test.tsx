@@ -105,15 +105,15 @@ describe("MessageMetaHeader", () => {
     );
 
     const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
-    expect(text).toContain("2.3K tk");
+    expect(text).toContain("2.3Ktk");
     expect(text).not.toContain("12.3k");
     expect(text).toContain("¥7.5");
     expect(text).toContain("1m 05s");
     expect(text).not.toContain("コスト");
     expect(text).not.toContain("トークン");
     expect(text).not.toContain("思考");
-    expect(text.indexOf("¥7.5")).toBeLessThan(text.indexOf("2.3K tk"));
-    expect(text.indexOf("2.3K tk")).toBeLessThan(text.indexOf("1m 05s"));
+    expect(text.indexOf("¥7.5")).toBeLessThan(text.indexOf("2.3Ktk"));
+    expect(text.indexOf("2.3Ktk")).toBeLessThan(text.indexOf("1m 05s"));
   });
 
   it("hides thinking time when only created is present", () => {
