@@ -1,3 +1,24 @@
+# 作業ログ: Cursor proxy修正の再レビュー
+
+## 日付
+2026-08-11
+
+## 所見（実機ログ検証）
+
+- `~/.opencode-cursor/plugin.log` の稼働ログで、新bundle適用後も `x-opencode-session-id` が届かないリクエストが11件あり、いずれも resume をスキップしていた。`chat.headers` 経由のヘッダ伝搬は本番で成立していない（index.js:38148, index.js:35869）。
+- セッションIDが届いた分では、10件すべてで incremental prompt を作れず「fresh chat with full prompt」となり、その都度 `clearResumeChatId` でCursor chatを作り直していた（index.js:35914, index.js:35951）。結果としてトークン削減は現状ゼロで、chatだけが増える。
+- resume有効時はNode/Bun両ラッパーが子プロセス終了までstdoutを全バッファするため、SSEの逐次配信が失われる。合成テストで最初のchunkが20ms→412msに遅延した（index.js:36047, index.js:36068, index.js:36151）。tool_call横取りも子プロセス終了まで遅れる。
+- 失敗系の探索ツール上限は `EXPLORATION_LIMIT_MULTIPLIER = 1` で上流(5)より厳しい（index.js:35024）。成功系は連続同一意図の判定に切り替えたため、旧 `counts` / `coarseCounts` は成功経路で未使用のまま残っている。
+
+## 提案
+
+- セッション識別は実績のある `chat.params` の `output.options.headers` へ移すか、anchorを全ユーザーメッセージ連鎖のハッシュにしてヘッダ非依存にする。
+- incremental不可時にchatを破棄する方針は見直し、まず debug ログで「毎回不可」の原因を特定する。
+- 再試行は「意味のある最初のイベントまで」のみバッファし、以降は逐次配信する。
+- ストリーム逐次性とセッション伝搬の契約テストを追加する（現状テストは両方を検証していない）。
+
+---
+
 # 作業ログ: Cursor proxyレビュー4件の修正完了
 
 ## 日付
@@ -5048,6 +5069,25 @@ composer の送信イベントが同じ描画タイミングに発生するレ�
 - `npx vitest run src/lib/profiles/agents-sync-engine.test.ts src/app/api/profiles/agents-md/route.test.ts src/components/settings/SettingsView.test.tsx src/components/settings/ProfilesSettings.test.tsx` ... 4 files / 47 tests 成功
 - `npx tsc --noEmit --pretty false` ... 成功
 - 対象ファイルの`npx eslint` ... 成功
+
+## Cursor グローバル設定同期対応
+
+### 日付
+
+2026-08-11
+
+### 変更
+
+- プロファイル MCP 同期に `~/.cursor/mcp.json` を追加した。
+- AGENTS.md 同期に `~/.cursor/AGENTS.md`、Skills 同期に `~/.cursor/skills/` を追加した。
+- Cursor 内蔵の `~/.cursor/skills-cursor/` は製品管理領域のため変更対象外とした。
+- Cursor のリモート MCP は Claude の `type: sse` を流用せず、`url` / `headers` 形式へ変換する。
+
+### 検証結果
+
+- `npm exec vitest run src/lib/profiles/agents-sync-engine.test.ts src/app/api/profiles/open-target/route.test.ts` ... 2 files / 10 tests 成功
+- `npm run typecheck` ... 成功
+- 対象ファイルの `npx eslint` ... 成功
 ## 設定画面の現在バージョン表示
 
 ### 日付
