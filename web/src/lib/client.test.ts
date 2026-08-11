@@ -162,6 +162,39 @@ describe("getJson timeout", () => {
   });
 });
 
+describe("getJson in-flight deduplication", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shares identical concurrent GETs but fetches again after they settle", async () => {
+    vi.stubGlobal("location", { origin: "http://localhost:3000" });
+    let release!: (response: unknown) => void;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = getJson<{ tasks: unknown[] }>("/api/tasks");
+    const second = getJson<{ tasks: unknown[] }>("/api/tasks");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    release({ ok: true, text: async () => JSON.stringify({ tasks: [] }) });
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { tasks: [] },
+      { tasks: [] },
+    ]);
+
+    const third = getJson<{ tasks: unknown[] }>("/api/tasks");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    release({ ok: true, text: async () => JSON.stringify({ tasks: ["new"] }) });
+    await expect(third).resolves.toEqual({ tasks: ["new"] });
+  });
+});
+
 describe("getJson body read timeout", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

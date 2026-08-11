@@ -196,7 +196,32 @@ export async function timedFetch(
   }
 }
 
-export async function getJson<T>(
+// Share only requests that are currently in flight. This removes duplicate
+// boot-time GETs (HomeView, Sidebar and attention providers can all request
+// /api/tasks together) without serving stale data after a request settles.
+const inFlightJsonRequests = new Map<string, Promise<unknown>>();
+
+export function getJson<T>(
+  path: string,
+  params?: Record<string, string | undefined>,
+  init?: { timeoutMs?: number },
+): Promise<T> {
+  const key = `${apiUrl(path, params)}\0${init?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS}`;
+  const existing = inFlightJsonRequests.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const request = getJsonUnshared<T>(path, params, init);
+  inFlightJsonRequests.set(key, request);
+  const clear = () => {
+    if (inFlightJsonRequests.get(key) === request) {
+      inFlightJsonRequests.delete(key);
+    }
+  };
+  void request.then(clear, clear);
+  return request;
+}
+
+async function getJsonUnshared<T>(
   path: string,
   params?: Record<string, string | undefined>,
   init?: { timeoutMs?: number },
