@@ -34957,7 +34957,7 @@ function containsAny(text, patterns) {
 function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-var UNKNOWN_AS_SUCCESS_TOOLS, EXPLORATION_TOOLS, COARSE_LIMIT_MULTIPLIER = 3, EXPLORATION_LIMIT_MULTIPLIER = 1;
+var UNKNOWN_AS_SUCCESS_TOOLS, EXPLORATION_TOOLS, COARSE_LIMIT_MULTIPLIER = 3, EXPLORATION_LIMIT_MULTIPLIER = 3;
 var init_tool_loop_guard = __esm(() => {
   UNKNOWN_AS_SUCCESS_TOOLS = /* @__PURE__ */ new Set([
     "bash",
@@ -35979,8 +35979,10 @@ function createNodeChildForBackend(input) {
   }
   return createCursorAgentNodeChild(input.model, input.prompt, input.workspaceDirectory, input.resumeChatId);
 }
-function shouldRetryResumeChild(canRetry, sawStdout, code, stderr) {
-  return canRetry && !sawStdout && code !== 0 && isResumeSpecificFailure(stderr);
+function shouldRetryResumeChild(canRetry, code, stderr) {
+  // Do not gate on sawStdout: resume can print banners before failing.
+  // Callers must buffer stdout while canRetry so a failed attempt is discarded.
+  return canRetry && code !== 0 && isResumeSpecificFailure(stderr);
 }
 function createNodeChildWithResumeFallback(input, deps = {}) {
   const createChild = deps.createChild ?? createNodeChildForBackend;
@@ -35994,11 +35996,14 @@ function createNodeChildWithResumeFallback(input, deps = {}) {
   const events = new EventEmitter2();
   let killed = false;
   const attach = (child, canRetry) => {
-    let sawStdout = false;
+    const stdoutChunks = [];
     const stderrChunks = [];
     child.stdout.on("data", (chunk) => {
-      sawStdout = true;
-      stdout.write(chunk);
+      if (canRetry) {
+        stdoutChunks.push(Buffer.from(chunk));
+      } else {
+        stdout.write(chunk);
+      }
     });
     child.stderr.on("data", (chunk) => {
       if (canRetry) {
@@ -36010,7 +36015,8 @@ function createNodeChildWithResumeFallback(input, deps = {}) {
     child.on("error", (error45) => events.emit("error", error45));
     child.on("close", (code) => {
       const bufferedStderr = Buffer.concat(stderrChunks).toString("utf8");
-      if (shouldRetryResumeChild(canRetry, sawStdout, code, bufferedStderr)) {
+      if (shouldRetryResumeChild(canRetry, code, bufferedStderr)) {
+        // Drop partial resume stdout so the full-prompt retry is clean.
         onResumeRetry?.(bufferedStderr);
         activeChild = createChild({
           ...baseInput,
@@ -36022,6 +36028,9 @@ function createNodeChildWithResumeFallback(input, deps = {}) {
         }
         attach(activeChild, false);
         return;
+      }
+      if (stdoutChunks.length) {
+        stdout.write(Buffer.concat(stdoutChunks));
       }
       if (bufferedStderr) {
         stderr.write(bufferedStderr);
@@ -36066,18 +36075,22 @@ function createBunChildWithResumeFallback(input, deps = {}) {
           const child = activeChild;
           const stderrPromise = new Response(child.stderr).text();
           const reader = child.stdout.getReader();
-          let sawStdout = false;
+          const stdoutChunks = [];
           while (true) {
             const { value, done } = await reader.read();
             if (done)
               break;
             if (!value || value.length === 0)
               continue;
-            sawStdout = true;
-            controller.enqueue(value);
+            if (canRetry) {
+              stdoutChunks.push(value);
+            } else {
+              controller.enqueue(value);
+            }
           }
           const [code, stderrText] = await Promise.all([child.exited, stderrPromise]);
-          if (shouldRetryResumeChild(canRetry, sawStdout, code, stderrText)) {
+          if (shouldRetryResumeChild(canRetry, code, stderrText)) {
+            // Discard buffered resume stdout; retry without --resume.
             onResumeRetry?.(stderrText);
             activeChild = createChild({
               ...baseInput,
@@ -36089,6 +36102,9 @@ function createBunChildWithResumeFallback(input, deps = {}) {
             }
             canRetry = false;
             continue;
+          }
+          for (const chunk of stdoutChunks) {
+            controller.enqueue(chunk);
           }
           finalStderr = stderrText;
           resolveExited(code);

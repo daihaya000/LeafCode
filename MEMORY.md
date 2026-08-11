@@ -1,3 +1,30 @@
+# 作業ログ: 徹底バグハント tick2（/loop 3m）
+
+## 日付
+2026-08-11
+
+## 修正（高影響度）
+
+### P1 resume fallback: partial stdout 後も再試行
+- **問題**: `shouldRetryResumeChild` が `!sawStdout` 前提で、バナー等の部分 stdout 後の resume 失敗を再試行しなかった
+- **修正**: resume 試行中は stdout/stderr をバッファ。失敗時は破棄してフルプロンプト再実行。成功時のみ flush
+- **検証**: resume-fallback 4 件 PASS（partial stdout ケース含む）
+
+### P1 Loop guard: 探索ツール上限を 3 倍
+- **問題**: `EXPLORATION_LIMIT_MULTIPLIER = 1` で `git status` 等の正当な再実行が通常上限（既定 3）で打ち切られていた
+- **修正**: multiplier を 3 に（coarse と揃う）。編集系ツールは通常上限のまま
+- **検証**: tool-loop-guard 2 件 PASS
+
+## テスト合計
+- session-resume + resume-fallback + tool-loop-guard: **12/12 PASS**
+
+## 残課題（次 tick）
+- 同趣旨コマンドの fingerprint 正規化（完全一致依存）
+- resume 失敗メッセージのパターン漏れ
+- host/proxy 再起動後の本番検証
+
+---
+
 # 作業ログ: 徹底バグハント（影響度優先）/loop 3m
 
 ## 日付
