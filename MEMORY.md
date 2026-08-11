@@ -278,6 +278,37 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 - 3回目（バックグラウンド再検証後）: 52.9ms
 - ディスクキャッシュ `provider-response-cache.json` が正常に読み書きされ、バックグラウンド再検証も動作確認済み
 
+## 作業ログ: dirStat のgitコマンド統合による初回レイテンシ削減
+
+## 日付
+
+2026-08-11
+
+## 修正内容
+
+- `dirStat` のgit3コマンド（`rev-parse` + `diff --shortstat` + `status --porcelain`）を `git status --porcelain --branch` 1コマンドに統合し、branch名と変更ファイル数を1回で取得するようにした。
+- `git diff --shortstat` は別途実行し、失敗時は additions/deletions を0として返す（非ブロッキング）。
+- これにより各ディレクトリのgit実行が3コマンド→1+1コマンドに削減され、初回レイテンシの最大要因だったdirStat fan-outを大幅に短縮。
+
+## 計測（修正前）
+
+- dirStat fan-out（4ディレクトリ並列）: ~788ms（各ディレクトリ261-787ms、3コマンド逐次）
+- `/api/tasks` 初回: 274-480ms
+
+## 検証結果
+
+- `dirstat.test.ts`: 11 tests passed（branch解析、detached HEAD、ファイルカウント、メタデータフィルタリング、キャッシュ無効化）
+- `task-service.test.ts`: 24 tests passed
+- `npm run typecheck`: 成功
+- 対象3ファイルのESLint: 成功
+
+## 作業ログ: provider-models ディスクキャッシュ（stale-while-revalidate）
+
+- `/api/extensions/provider-models` 初回（コールド）: 改善前 ~900ms → 改善後 **49.2ms**（18.3x高速化）
+- 2回目（TTL内）: 8.6ms
+- 3回目（バックグラウンド再検証後）: 52.9ms
+- ディスクキャッシュ `provider-response-cache.json` が正常に読み書きされ、バックグラウンド再検証も動作確認済み
+
 ## 作業ログ: provider-modelsの同時provider取得削減
 
 ## 日付
