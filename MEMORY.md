@@ -1,3 +1,22 @@
+# 作業ログ: Cursor proxyレビュー4件の修正完了
+
+## 日付
+2026-08-11
+
+## 修正
+- OpenCode `sessionID` を `x-opencode-session-id` でproxyへ渡し、resume cache keyへ含めて別タスクを分離した。ID無しはresumeしない。
+- 画像付きなどincremental promptを作れない継続ターンは、旧resume cacheを破棄してフルプロンプトの新規Cursor chatへ切り替える。
+- resume固有エラー時はNode/Bun両経路でstdout/stderrを保留し、失敗出力を破棄してresume無し・フルプロンプトで1回だけ再実行する。
+- 反復ガードは現在ユーザーターン内の連続した同一意図だけを数える。`git status`のオプション差と`bash`/`shell`別名を同一視し、別操作・新規ユーザーターンでリセットする。停止理由も表示する。
+
+## 検証
+- Cursor CLI proxy全テスト: 24/24成功
+- `node --check vendor/cursor-cli-proxy/packages/cursor-cli-proxy/index.js`: 成功
+- `npm.cmd --prefix web run typecheck`: 成功
+- `git diff --check`: 成功
+
+---
+
 # 作業ログ: 画像解析の送信遅延改善
 
 ## 日付
