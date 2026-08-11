@@ -1,3 +1,34 @@
+﻿# 作業ログ: node --test ハング調査と再発防止
+
+## 日付
+2026-08-11
+
+## 症状
+- エージェント UI 上で `node --test .../session-resume.test.mjs .../resume-fallback...` が数分～十数分ハング
+- `test-timeout=0`（無限）の isolation ワーカーが孤児化して残存
+
+## 原因
+1. **デフォルト timeout が Infinity**: `node --test` は未指定時ハングし続ける
+2. **並行エージェント / bughunt ループ**が同一テストを多重起動し、中断後も子プロセスが生き残る
+3. **index.js 全体 import**（~1.3MB バンドル）+ isolation=process で負荷増。並行編集中は更に悪化しやすい
+4. ログ `WriteStream` が開くと event loop 保持の要因になり得る（テスト中は不要）
+
+## 対応
+- 孤児化した resume-fallback isolation プロセス 6 本を kill
+- `NODE_TEST_CONTEXT` 中は `openLogStream()` をスキップ
+- session-resume / resume-fallback / tool-loop-guard 各 test に `timeout: 10_000`
+- `package.json` に `npm test`（`--test-timeout=30000 --test-force-exit`）
+- tool-loop-guard テストを `EXPLORATION_LIMIT_MULTIPLIER = 1` 実装に整合
+
+## 検証
+- `npm --prefix vendor/cursor-cli-proxy/packages/cursor-cli-proxy test` ... **21/21 PASS** (~217ms)
+
+## エージェント運用注意
+- proxy ユニットテストは `npm --prefix vendor/cursor-cli-proxy/packages/cursor-cli-proxy test` を使う
+- 直接 `node --test` するなら必ず `--test-timeout=30000 --test-force-exit`
+- 長時間スピナーの node --test は親がいなくても kill してよい（host の `next start` / tray は触らない）
+
+---
 # 作業ログ: 徹底バグハント tick2（/loop 3m）
 
 ## 日付

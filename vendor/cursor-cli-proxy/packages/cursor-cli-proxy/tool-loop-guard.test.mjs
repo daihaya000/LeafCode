@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+// Unit tests must not hang agent shells forever (default node:test timeout is Infinity).
+const TEST_TIMEOUT_MS = 10_000;
+
 const { createToolLoopGuard } = await import("./index.js");
 
-test("allows successful exploration calls up to the exploration limit", () => {
+test("allows successful exploration calls up to the exploration limit", { timeout: TEST_TIMEOUT_MS }, () => {
   const maxRepeat = 2;
+  // EXPLORATION_LIMIT_MULTIPLIER = 3
   const explorationLimit = maxRepeat * 3;
   const guard = createToolLoopGuard([], maxRepeat);
   const toolCall = {
@@ -25,7 +29,7 @@ test("allows successful exploration calls up to the exploration limit", () => {
   assert.equal(guard.evaluate(toolCall).triggered, true);
 });
 
-test("blocks repeated successful non-exploration calls after the normal limit", () => {
+test("blocks repeated successful non-exploration calls after the normal limit", { timeout: TEST_TIMEOUT_MS }, () => {
   const guard = createToolLoopGuard([], 2);
   const toolCall = {
     id: "call-edit",

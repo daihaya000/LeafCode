@@ -17922,6 +17922,10 @@ function ensureLogDir() {
 function openLogStream() {
   if (logStream || logFileError)
     return;
+  // node:test isolation workers + WriteStream keep the event loop alive forever
+  // when agents forget --test-force-exit. Skip file logging under the test runner.
+  if (process.env.NODE_TEST_CONTEXT)
+    return;
   ensureLogDir();
   if (logFileError)
     return;

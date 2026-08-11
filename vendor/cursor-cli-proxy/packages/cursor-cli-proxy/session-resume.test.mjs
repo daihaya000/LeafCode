@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+// Unit tests must not hang agent shells forever (default node:test timeout is Infinity).
+const TEST_TIMEOUT_MS = 10_000;
+
 const { recordResumeChatId, resolvePromptForBackend } = await import("./index.js");
 
 const baseInput = {
@@ -12,7 +15,7 @@ const baseInput = {
   sessionId: "opencode-session-main",
 };
 
-test("enables session resume by default", () => {
+test("enables session resume by default", { timeout: TEST_TIMEOUT_MS }, () => {
   const previous = process.env.CURSOR_ACP_SESSION_RESUME;
   delete process.env.CURSOR_ACP_SESSION_RESUME;
   try {
@@ -29,7 +32,7 @@ test("enables session resume by default", () => {
   }
 });
 
-test("uses an incremental prompt after a captured session id", () => {
+test("uses an incremental prompt after a captured session id", { timeout: TEST_TIMEOUT_MS }, () => {
   const previous = process.env.CURSOR_ACP_SESSION_RESUME;
   process.env.CURSOR_ACP_SESSION_RESUME = "true";
   try {
@@ -65,7 +68,7 @@ test("uses an incremental prompt after a captured session id", () => {
   }
 });
 
-test("isolates Cursor chat ids by OpenCode session id", () => {
+test("isolates Cursor chat ids by OpenCode session id", { timeout: TEST_TIMEOUT_MS }, () => {
   const first = resolvePromptForBackend({
     ...baseInput,
     sessionId: "opencode-session-a",
@@ -89,7 +92,7 @@ test("isolates Cursor chat ids by OpenCode session id", () => {
   assert.equal(otherSession.usedIncremental, false);
 });
 
-test("starts a fresh chat when an image turn cannot be reduced to an incremental prompt", () => {
+test("starts a fresh chat when an image turn cannot be reduced to an incremental prompt", { timeout: TEST_TIMEOUT_MS }, () => {
   const first = resolvePromptForBackend({
     ...baseInput,
     sessionId: "opencode-session-image",
@@ -123,7 +126,7 @@ test("starts a fresh chat when an image turn cannot be reduced to an incremental
   assert.match(next.prompt, /ASSISTANT: Send the next image\./);
 });
 
-test("does not cache resume state without an OpenCode session id", () => {
+test("does not cache resume state without an OpenCode session id", { timeout: TEST_TIMEOUT_MS }, () => {
   const result = resolvePromptForBackend({
     ...baseInput,
     sessionId: "",
@@ -133,7 +136,7 @@ test("does not cache resume state without an OpenCode session id", () => {
   assert.equal(result.resumeChatId, undefined);
 });
 
-test("allows explicit opt-out of session resume", () => {
+test("allows explicit opt-out of session resume", { timeout: TEST_TIMEOUT_MS }, () => {
   const previous = process.env.CURSOR_ACP_SESSION_RESUME;
   process.env.CURSOR_ACP_SESSION_RESUME = "false";
   try {

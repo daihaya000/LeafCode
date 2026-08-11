@@ -3,6 +3,9 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
 
+// Unit tests must not hang agent shells forever (default node:test timeout is Infinity).
+const TEST_TIMEOUT_MS = 10_000;
+
 const {
   createBunChildWithResumeFallback,
   createNodeChildWithResumeFallback,
@@ -43,7 +46,7 @@ function fakeBunChild({ stdout = "", stderr = "", code = 0 }) {
   };
 }
 
-test("Node child retries once without resume and with the full prompt", async () => {
+test("Node child retries once without resume and with the full prompt", { timeout: TEST_TIMEOUT_MS }, async () => {
   const calls = [];
   const attempts = [
     { stderr: "session not found", code: 1 },
@@ -79,7 +82,7 @@ test("Node child retries once without resume and with the full prompt", async ()
   assert.equal(calls[1].resumeChatId, undefined);
 });
 
-test("Node child retries even when resume printed partial stdout", async () => {
+test("Node child retries even when resume printed partial stdout", { timeout: TEST_TIMEOUT_MS }, async () => {
   const calls = [];
   const attempts = [
     { stdout: "banner\n", stderr: "session not found", code: 1 },
@@ -113,7 +116,7 @@ test("Node child retries even when resume printed partial stdout", async () => {
   assert.equal(calls.length, 2);
 });
 
-test("Bun child retries once without resume and with the full prompt", async () => {
+test("Bun child retries once without resume and with the full prompt", { timeout: TEST_TIMEOUT_MS }, async () => {
   const calls = [];
   const attempts = [
     { stderr: "chat expired", code: 1 },
@@ -151,7 +154,7 @@ test("Bun child retries once without resume and with the full prompt", async () 
   assert.equal(calls[1].resumeChatId, undefined);
 });
 
-test("Bun child discards partial resume stdout before retry", async () => {
+test("Bun child discards partial resume stdout before retry", { timeout: TEST_TIMEOUT_MS }, async () => {
   const calls = [];
   const attempts = [
     { stdout: "stale banner", stderr: "chat expired", code: 1 },
