@@ -1241,7 +1241,7 @@ function applyAssistantResult(
   // The loop is genuinely `completed` now. Trigger background memory
   // extraction (fire-and-forget) so durable facts are captured for reuse.
   if (nextStatus === "completed") {
-    scheduleAutoExtractAfterGoalCompleted(loop);
+    scheduleAutoExtractAfterGoalCompleted(loop, assistant.info.id);
   }
 }
 

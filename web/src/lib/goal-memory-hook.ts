@@ -8,14 +8,19 @@
  */
 
 import { getSetting } from "./db";
+import { scheduleAssistantMemoryExtraction } from "./memory-auto-extract";
 import { runMemoryExtraction } from "./memory-extract";
-import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "./memory-settings";
+import {
+  MEMORY_AUTO_EXTRACT_SETTING_KEY,
+  MEMORY_WRITE_APPROVAL_SETTING_KEY,
+} from "./memory-settings";
 import type { GoalLoopDto } from "./goal-loop";
 
 export { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "./memory-settings";
+export { MEMORY_AUTO_EXTRACT_SETTING_KEY } from "./memory-settings";
 export { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
 
-export const AUTO_EXTRACT_SETTING_KEY = "memory.auto_extract";
+export const AUTO_EXTRACT_SETTING_KEY = MEMORY_AUTO_EXTRACT_SETTING_KEY;
 
 /**
  * When `true`, all memory writes (auto-extract, MCP `memory_add`, manual API
@@ -41,10 +46,22 @@ export function isAutoExtractEnabled(): boolean {
  * transition — it runs exactly once per loop because the caller only invokes
  * it after the row actually updates to `completed`.
  */
-export function scheduleAutoExtractAfterGoalCompleted(loop: GoalLoopDto): void {
+export function scheduleAutoExtractAfterGoalCompleted(
+  loop: GoalLoopDto,
+  assistantMessageId?: string,
+): void {
   if (!isAutoExtractEnabled()) return;
   const { workspaceId, sessionId } = loop;
   if (!workspaceId || !sessionId) return;
+  if (assistantMessageId) {
+    scheduleAssistantMemoryExtraction({
+      workspaceId,
+      sessionId,
+      assistantMessageId,
+      allowActiveGoalLoop: true,
+    });
+    return;
+  }
   void runMemoryExtraction({ workspaceId, sessionId }).catch(() => {
     // Background extraction must never surface an error to the goal loop.
   });

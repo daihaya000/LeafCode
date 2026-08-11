@@ -14,6 +14,10 @@ const {
   deleteProject,
   getDb,
   findWorkspaceIdsBySessionAndDirectory,
+  claimAssistantMemoryExtraction,
+  completeAssistantMemoryExtraction,
+  releaseAssistantMemoryExtraction,
+  MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS,
   listSessionBindings,
   primaryBindings,
   releaseSessionCompactionLock,
@@ -55,6 +59,34 @@ test("touchSessionActivity updates only the matching binding", () => {
     ).updated_at,
   ).toBe("2026-07-22T11:00:00.000Z");
   expect(touchSessionActivity("ws-2", "ses-1", "t2")).toBe(false);
+});
+
+test("assistant memory extraction claims are durable, exclusive, and reclaimable", () => {
+  const first = claimAssistantMemoryExtraction("ws-1", "ses-ledger", "msg-1", 10_000);
+  expect(first).toMatchObject({
+    workspaceId: "ws-1",
+    sessionId: "ses-ledger",
+    assistantMessageId: "msg-1",
+    claimedAt: 10_000,
+  });
+  expect(claimAssistantMemoryExtraction("ws-1", "ses-ledger", "msg-1", 10_001)).toBeNull();
+  expect(completeAssistantMemoryExtraction(first!)).toBe(true);
+  expect(claimAssistantMemoryExtraction("ws-1", "ses-ledger", "msg-1", 20_000)).toBeNull();
+
+  const retry = claimAssistantMemoryExtraction("ws-1", "ses-ledger", "msg-2", 30_000);
+  expect(retry).not.toBeNull();
+  expect(releaseAssistantMemoryExtraction(retry!)).toBe(true);
+  expect(claimAssistantMemoryExtraction("ws-1", "ses-ledger", "msg-2", 30_001)).not.toBeNull();
+
+  const stale = claimAssistantMemoryExtraction("ws-1", "ses-ledger", "msg-3", 40_000);
+  expect(stale).not.toBeNull();
+  const reclaimed = claimAssistantMemoryExtraction(
+    "ws-1",
+    "ses-ledger",
+    "msg-3",
+    40_000 + MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS + 1,
+  );
+  expect(reclaimed?.claimedAt).toBe(40_000 + MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS + 1);
 });
 
 test("session compaction lock is exclusive per session", () => {

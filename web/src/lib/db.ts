@@ -374,6 +374,21 @@ export function getDb(): Database.Database {
       extracted_at INTEGER NOT NULL,
       PRIMARY KEY (workspace_id, session_id)
     );
+    -- Assistant-message extraction ledger. Claims are short-lived so a
+    -- crashed/aborted extraction can be retried, while completed rows make
+    -- duplicate global-event deliveries idempotent.
+    CREATE TABLE IF NOT EXISTS memory_assistant_extracts (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      assistant_message_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'in_flight'
+        CHECK (status IN ('in_flight', 'completed')),
+      claimed_at INTEGER NOT NULL,
+      extracted_at INTEGER,
+      PRIMARY KEY (workspace_id, session_id, assistant_message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_assistant_extracts_status
+      ON memory_assistant_extracts(status, claimed_at);
     CREATE TABLE IF NOT EXISTS memory_session_injections (
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       session_id TEXT NOT NULL,
@@ -775,6 +790,114 @@ export function listIdleExtracts(): MemoryIdleExtractRow[] {
   }));
 }
 
+export const MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS = 10 * 60 * 1000;
+
+export type MemoryAssistantExtractClaim = {
+  workspaceId: string;
+  sessionId: string;
+  assistantMessageId: string;
+  claimedAt: number;
+};
+
+/**
+ * Atomically claim one completed assistant message for background extraction.
+ * Completed rows are permanent; stale in-flight rows can be reclaimed after
+ * the TTL so a killed WebUI process does not disable future learning.
+ */
+export function claimAssistantMemoryExtraction(
+  workspaceId: string,
+  sessionId: string,
+  assistantMessageId: string,
+  now = Date.now(),
+): MemoryAssistantExtractClaim | null {
+  const db = getDb();
+  return db.transaction(() => {
+    const existing = db
+      .prepare(
+        `SELECT status, claimed_at FROM memory_assistant_extracts
+         WHERE workspace_id = ? AND session_id = ? AND assistant_message_id = ?`,
+      )
+      .get(workspaceId, sessionId, assistantMessageId) as
+      | { status: "in_flight" | "completed"; claimed_at: number }
+      | undefined;
+    if (existing?.status === "completed") return null;
+    if (
+      existing &&
+      existing.status === "in_flight" &&
+      now - existing.claimed_at < MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS
+    ) {
+      return null;
+    }
+    db.prepare(
+      `INSERT INTO memory_assistant_extracts
+        (workspace_id, session_id, assistant_message_id, status, claimed_at, extracted_at)
+       VALUES (?, ?, ?, 'in_flight', ?, NULL)
+       ON CONFLICT(workspace_id, session_id, assistant_message_id) DO UPDATE SET
+         status = 'in_flight', claimed_at = excluded.claimed_at, extracted_at = NULL`,
+    ).run(workspaceId, sessionId, assistantMessageId, now);
+    return { workspaceId, sessionId, assistantMessageId, claimedAt: now };
+  })();
+}
+
+/** Mark a claimed assistant message as successfully extracted. */
+export function completeAssistantMemoryExtraction(
+  claim: MemoryAssistantExtractClaim,
+  extractedAt = Date.now(),
+): boolean {
+  return (
+    getDb()
+      .prepare(
+        `UPDATE memory_assistant_extracts
+         SET status = 'completed', extracted_at = ?
+         WHERE workspace_id = ? AND session_id = ? AND assistant_message_id = ?
+           AND status = 'in_flight' AND claimed_at = ?`,
+      )
+      .run(
+        extractedAt,
+        claim.workspaceId,
+        claim.sessionId,
+        claim.assistantMessageId,
+        claim.claimedAt,
+      ).changes > 0
+  );
+}
+
+/** Release a failed claim so a later event/retry can attempt extraction again. */
+export function releaseAssistantMemoryExtraction(
+  claim: MemoryAssistantExtractClaim,
+): boolean {
+  return (
+    getDb()
+      .prepare(
+        `DELETE FROM memory_assistant_extracts
+         WHERE workspace_id = ? AND session_id = ? AND assistant_message_id = ?
+           AND status = 'in_flight' AND claimed_at = ?`,
+      )
+      .run(
+        claim.workspaceId,
+        claim.sessionId,
+        claim.assistantMessageId,
+        claim.claimedAt,
+      ).changes > 0
+  );
+}
+
+/** Goal-loop turns have their own completion hook and must not be extracted twice. */
+export function hasActiveGoalLoopForSession(
+  workspaceId: string,
+  sessionId: string,
+): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 FROM goal_loops
+       WHERE workspace_id = ? AND opencode_session_id = ?
+         AND status IN ('queued', 'running', 'verifying_completed')
+       LIMIT 1`,
+    )
+    .get(workspaceId, sessionId);
+  return row !== undefined;
+}
+
 /** All session bindings for a workspace (newest first). */
 export function listSessionBindings(workspaceId: string): SessionBindingRow[] {
   return getDb()
@@ -960,6 +1083,8 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   // along with its audit trail before deleting the workspace row.
   getDb().prepare("DELETE FROM memories WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_audit_log WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM memory_idle_extracts WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM memory_assistant_extracts WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_session_injections WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM collaboration_snapshots WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
@@ -987,6 +1112,16 @@ export function deleteProject(id: string): ProjectRow | undefined {
   getDb()
     .prepare(
       "DELETE FROM memory_audit_log WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM memory_idle_extracts WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM memory_assistant_extracts WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
     )
     .run(id);
   getDb()

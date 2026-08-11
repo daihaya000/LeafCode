@@ -5319,3 +5319,38 @@ Hermes Agent と同様に「自動確定を既定、必要なら承認制」を�
 - 対象ファイルの `npx eslint` ... 成功
 - `git diff --check` ... 成功
 - 本番ビルドはプロジェクト指示により実行しない
+
+---
+
+# 作業ログ: 通常会話のassistant完了後メモリ抽出（第3段階）
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+改善計画の第3段階として、ブラウザが開いていない通常会話でもassistantターン完了後に自動抽出するサーバー監視と、goal/idleとの重複排除を実装した。
+
+- `web/src/lib/memory-auto-extract.ts` を新設。Node runtime起動後にOpenCode `/global/event` SSEを購読し、`message.updated` の完了済みassistantだけを処理する。SSE切断時は1秒から最大15秒のバックオフで再接続する。
+- `completedAssistantEvent` / `sseDataFromFrame` / `consumeMemoryEventStream` を純粋・注入可能な形で実装し、chunk境界・heartbeat・v1 global event envelopeに対応。
+- eventのdirectoryとsession bindingの対応が一意な場合だけworkspaceへ紐付ける。曖昧な複数workspaceはスキップしてメモリ漏洩を防ぐ。
+- `web/src/instrumentation.ts` から `startMemoryAutoExtractionMonitor()` をNode起動時に開始。ブラウザの`useSessionStream`には依存しない。
+- `web/src/lib/db.ts` に `memory_assistant_extracts` 台帳を追加。`(workspace_id, session_id, assistant_message_id)` を主キーに、`in_flight` claim、10分TTLのstale claim回収、`completed`、失敗時releaseを提供する。
+- event監視とgoal完了フックは同じclaimを共有するため、goalターンを二重抽出しない。抽出成功時は既存のidle台帳も完了扱いにして、同一sessionのidle抽出重複も抑止する。
+- assistant完了イベントで `session_bindings.updated_at` も更新し、通常会話のactivityをidle検出へ反映する。
+- workspace/project削除時にassistant抽出台帳も明示削除する。
+- `docs/specs/memory-layer.md` の通常assistant完了トリガー、global event監視、台帳、goal/idle重複排除を実装へ同期。
+
+## 回帰テスト
+
+- 新規 `web/src/lib/memory-auto-extract.test.ts`（5件）: 完了assistantイベントの抽出、user/incomplete/無関係イベントの無視、SSE chunk分割、heartbeat、同一messageの一度だけclaim。
+- `web/src/lib/db.test.ts`（11件）: assistant抽出台帳の排他、completed後の再claim拒否、release後の再試行、stale claim回収。
+- Goal Loop / idle既存テストを再実行し、既存トリガーへの回帰がないことを確認。
+
+## 検証
+
+- `npm --prefix web test -- --run src/lib/memory-auto-extract.test.ts src/lib/db.test.ts src/lib/goal-memory-hook.test.ts src/lib/goal-loop.test.ts src/lib/memory-idle.test.ts` ... 5 files / 63 tests 成功
+- `npm --prefix web run typecheck` ... 成功
+- 対象ファイルの `npx eslint` ... 成功
+- 本番ビルドはプロジェクト指示により実行しない
