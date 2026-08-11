@@ -271,6 +271,13 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 - `npm run typecheck`: 成功
 - 対象2ファイルのESLint: 成功
 
+## runtime計測（ディスクキャッシュ効果 2026-08-11）
+
+- `/api/extensions/provider-models` 初回（コールド）: 改善前 ~900ms → 改善後 **49.2ms**（18.3x高速化）
+- 2回目（TTL内）: 8.6ms
+- 3回目（バックグラウンド再検証後）: 52.9ms
+- ディスクキャッシュ `provider-response-cache.json` が正常に読み書きされ、バックグラウンド再検証も動作確認済み
+
 ## 作業ログ: provider-modelsの同時provider取得削減
 
 ## 日付
