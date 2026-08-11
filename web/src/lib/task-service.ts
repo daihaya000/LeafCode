@@ -382,14 +382,10 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
   const bindings = primaryBindings();
   const dirs = [...new Set(workspaces.map((w) => w.absolute_path))];
 
-  const [{ engineOk, statuses }, stats, metas] = await Promise.all([
-    sessionStatusFor(dirs),
-    Promise.all(dirs.map((d) => dirStat(d))),
-    sessionMetaFor(
-      dirs,
-      new Set([...bindings.values()].map((binding) => binding.opencode_session_id)),
-    ),
-  ]);
+  // Archived sidebar rows do not need live session or transcript metadata.
+  // The task view fetches full details after navigation, so only local git
+  // data is needed here for the branch label.
+  const stats = await Promise.all(dirs.map((d) => dirStat(d)));
   const statByDir = new Map(dirs.map((d, i) => [d, stats[i]]));
 
   const tasks = workspaces.map((ws) => {
@@ -398,9 +394,9 @@ export async function listArchivedTasks(): Promise<TaskSummary[]> {
       ws,
       binding,
       statByDir.get(ws.absolute_path) ?? EMPTY_STAT,
-      binding ? statuses[binding.opencode_session_id] : undefined,
-      engineOk,
-      binding ? metas[binding.opencode_session_id] : undefined,
+      undefined,
+      true,
+      undefined,
     );
   });
 

@@ -246,6 +246,24 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 # 作業ログ: provider-models globalThisキャッシュの再評価耐性
 # 作業ログ: client GET in-flight dedupによるHome初期化高速化
 
+## 作業ログ: アーカイブタスク一覧のengine fan-out削減
+
+## 日付
+
+2026-08-11
+
+## 修正内容
+
+- `listArchivedTasks` はSidebar表示に必要なDB情報とローカルgit情報だけを取得するよう変更した。
+- アーカイブ済みタスク一覧では不要な `/session/status`、`/session`、transcript取得を省略し、engineへのリモートfan-outをなくした。
+- TaskViewへ遷移した場合は既存の個別タスク取得で詳細メタデータを再取得する。
+
+## 検証結果
+
+- `task-service.test.ts`: 24 tests passed
+- アーカイブ一覧がengineを呼び出さない回帰アサーションを追加した。
+- `git diff --check`: 成功
+
 ## 日付
 
 2026-08-11

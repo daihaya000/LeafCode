@@ -58,6 +58,7 @@ import {
   __clearSessionEstimateCacheForTest,
   getTask,
   getTaskCost,
+  listArchivedTasks,
   listTasks,
 } from "./task-service";
 
@@ -444,17 +445,17 @@ describe("listArchivedTasks", () => {
       { ...WS, id: "ws2", status: "archived" },
     ];
     h.bindings = new Map();
-    const { listArchivedTasks } = await import("./task-service");
     const tasks = await listArchivedTasks();
     expect(Array.isArray(tasks)).toBe(true);
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe("ws2");
+    expect(tasks[0].status).toBe("archived");
+    expect(h.ocCalls).toEqual([]);
   });
 
   it("returns empty array when no archived workspaces exist", async () => {
     h.workspaces = [{ ...WS, id: "ws1", status: "active" }];
     h.bindings = new Map();
-    const { listArchivedTasks } = await import("./task-service");
     const tasks = await listArchivedTasks();
     expect(Array.isArray(tasks)).toBe(true);
     expect(tasks).toHaveLength(0);
