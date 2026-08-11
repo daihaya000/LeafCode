@@ -34151,23 +34151,26 @@ function evaluateToolLoopGuard(toolLoopGuard, toolCall) {
     maxRepeat: decision.maxRepeat,
     errorClass: decision.errorClass
   });
+  return createToolLoopTermination(decision, toolCall.function.name);
+}
+function createToolLoopTermination(decision, toolName) {
   if (decision.errorClass === "success") {
     return {
       reason: "loop_guard",
-      message: "",
-      tool: toolCall.function.name,
+      message: `Tool loop guard stopped repeated successful calls to "${toolName}" after ${decision.repeatCount} consecutive attempts (limit ${decision.maxRepeat}). Continue with a different action.`,
+      tool: toolName,
       fingerprint: decision.fingerprint,
       repeatCount: decision.repeatCount,
       maxRepeat: decision.maxRepeat,
       errorClass: decision.errorClass,
-      silent: true
+      silent: false
     };
   }
   const isFirstTrigger = decision.repeatCount === decision.maxRepeat + 1;
   return {
     reason: "loop_guard",
-    message: `Tool loop guard stopped repeated failing calls to "${toolCall.function.name}" after ${decision.repeatCount} attempts (limit ${decision.maxRepeat}). Adjust tool arguments and retry.`,
-    tool: toolCall.function.name,
+    message: `Tool loop guard stopped repeated failing calls to "${toolName}" after ${decision.repeatCount} attempts (limit ${decision.maxRepeat}). Adjust tool arguments and retry.`,
+    tool: toolName,
     fingerprint: decision.fingerprint,
     repeatCount: decision.repeatCount,
     maxRepeat: decision.maxRepeat,
@@ -35725,6 +35728,7 @@ __export2(exports_plugin, {
   applyCursorWriteToolContract: () => applyCursorWriteToolContract,
   createBunChildWithResumeFallback: () => createBunChildWithResumeFallback,
   createNodeChildWithResumeFallback: () => createNodeChildWithResumeFallback,
+  createToolLoopTermination: () => createToolLoopTermination,
   createToolLoopGuard: () => createToolLoopGuard,
   resolvePromptForBackend: () => resolvePromptForBackend,
   recordResumeChatId: () => recordResumeChatId,
@@ -38290,6 +38294,7 @@ export {
   plugin_entry_default as default,
   createBunChildWithResumeFallback,
   createNodeChildWithResumeFallback,
+  createToolLoopTermination,
   createToolLoopGuard,
   recordResumeChatId,
   resolvePromptForBackend

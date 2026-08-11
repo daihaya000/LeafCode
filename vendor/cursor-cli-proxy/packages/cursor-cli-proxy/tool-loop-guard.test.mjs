@@ -4,7 +4,7 @@ import { test } from "node:test";
 // Unit tests must not hang agent shells forever (default node:test timeout is Infinity).
 const TEST_TIMEOUT_MS = 10_000;
 
-const { createToolLoopGuard } = await import("./index.js");
+const { createToolLoopGuard, createToolLoopTermination } = await import("./index.js");
 
 function call(name, args, id = `${name}-${JSON.stringify(args)}`) {
   return {
@@ -60,4 +60,15 @@ test("blocks repeated successful non-exploration calls after the normal limit", 
   assert.equal(guard.evaluate(toolCall).triggered, false);
   assert.equal(guard.evaluate(toolCall).triggered, false);
   assert.equal(guard.evaluate(toolCall).triggered, true);
+});
+
+test("reports why a successful repetition was stopped", { timeout: TEST_TIMEOUT_MS }, () => {
+  const termination = createToolLoopTermination({
+    fingerprint: "shell|intent:git-status|success",
+    repeatCount: 3,
+    maxRepeat: 2,
+    errorClass: "success",
+  }, "bash");
+  assert.equal(termination.silent, false);
+  assert.match(termination.message, /3 consecutive attempts/);
 });
