@@ -36,9 +36,14 @@
 - 中断メッセージは **parts が空**のケースが多い（送信直後の停止など）。`timeline` から算出していたら検出できないため、`visibleMessages` 基準かつボタンをメッセージ配列の外（末尾直後）に描画する設計が必要だった。
 - 末尾に「parts も error も無い assistant メッセージ」が残ることがあるため、中断判定時はこれを読み飛ばす。中身のある assistant が後続する場合は従来どおり非表示。
 
+## 配置（ユーザー指示による変更）
+
+- 「再開」ボタンは Aborted 枠の**内側・右寄せ**に置く。`MessageErrorBanner`（TaskView.tsx のモジュールスコープ）でエラー文＋アクションを `justify-between` の1行に並べ、失敗表示はその下に出す。
+- 中断メッセージが parts を持たず `timeline` から除外される場合は Aborted 枠自体が描画されないため、会話末尾に同じ枠を1つだけ補う（`abortedResumeInTimeline` で二重表示を防止）。
+
 ## 検証
 
-- `npx vitest run`: 270ファイル / 3243成功 / 1スキップ
+- `npx vitest run`: 270ファイル / 3244成功 / 1スキップ
 - `npx tsc --noEmit`: 成功
 - 変更/追加4ファイルのESLint: 成功
 - 追加テスト: `aborted-resume.test.ts` 18件、`TaskView.test.tsx` の「中断ターンの再開」7件（同一プロンプト+agent/model再送、ターン内に assistant ステップが挟まる場合、parts が無い中断、失敗表示、会話が先に進んだ場合の非表示、busy中の非表示、通常完了ターンでの非表示）

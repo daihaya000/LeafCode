@@ -3765,6 +3765,23 @@ describe("TaskView voice input", () => {
       });
     });
 
+    it("puts the resume button inside the Aborted banner", async () => {
+      mountAborted();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const banner = screen.getByTestId("aborted-resume");
+      expect(banner.textContent).toContain("Aborted");
+      const button = within(banner).getByRole("button", {
+        name: "中断したターンを再開",
+      });
+      // Right-aligned: the message takes the remaining width and the action is
+      // pushed to the far edge of the same row.
+      expect(button.parentElement?.className).toContain("justify-between");
+      // Exactly one banner — the transcript copy is not duplicated at the tail.
+      expect(screen.getAllByTestId("aborted-resume")).toHaveLength(1);
+    });
+
     it("resumes when earlier assistant steps of the same turn sit in between", async () => {
       // Real transcripts split one turn across several assistant messages, so
       // the message before an abort is usually another assistant message.

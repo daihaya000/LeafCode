@@ -475,6 +475,40 @@ function saveSideWidth(n: number) {
   }
 }
 
+/**
+ * A turn-level error banner (e.g. the `Aborted` box). `action` is pinned to the
+ * right edge of the same row so recovery controls sit inside the box that
+ * explains why they are needed.
+ */
+function MessageErrorBanner({
+  message,
+  action,
+  actionError,
+  testId,
+}: {
+  message: string;
+  action?: React.ReactNode;
+  actionError?: string | null;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 break-all text-xs text-danger">{message}</p>
+        {action}
+      </div>
+      {actionError && (
+        <p role="alert" className="mt-1.5 break-all text-xs text-danger">
+          {actionError}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function TaskView({ taskId }: { taskId: string }) {
   const router = useRouter();
   const { setExtras } = useShellExtras();
@@ -3474,6 +3508,33 @@ export function TaskView({ taskId }: { taskId: string }) {
   /** Goal Loop 稼働中の再開は GoalLoopPanel が担うので、こちらは出さない。 */
   const showAbortedResume =
     !!abortedResume && !!task?.sessionId && !working && !goalLoopLive;
+  /**
+   * 中断メッセージが parts を持たない（送信直後の停止など）と `timeline` から
+   * 除外され、Aborted 枠そのものが描画されない。その場合だけ会話末尾に同じ枠を
+   * 補って再開ボタンの置き場所を確保する。
+   */
+  const abortedResumeInTimeline =
+    !!abortedResume && timeline.some((m) => m.info.id === abortedResume.messageId);
+  const abortedResumeErrorText = abortedResume
+    ? stream.visibleMessages.find((m) => m.info.id === abortedResume.messageId)
+        ?.info.error?.data?.message ?? "Aborted"
+    : "";
+  const abortedResumeAction =
+    showAbortedResume && abortedResume ? (
+      <Button
+        variant="secondary"
+        size="sm"
+        className="shrink-0"
+        aria-label="中断したターンを再開"
+        title="中断されたプロンプトを同じ内容で再送します"
+        busy={resumingAbort}
+        disabled={resumingAbort}
+        onClick={() => void resumeAbortedTurn(abortedResume)}
+      >
+        {!resumingAbort && <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />}
+        {resumingAbort ? "再開中…" : "再開"}
+      </Button>
+    ) : null;
   const currentGoalProgress = goalLoop?.progress.at(-1);
   const showInlineGoalProgress =
     Boolean(currentGoalProgress) &&
@@ -4274,42 +4335,27 @@ export function TaskView({ taskId }: { taskId: string }) {
                         />
                       </div>
                     )}
-                    {m.info.error?.data?.message && (
-                      <p className="break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
-                        {m.info.error.data.message}
-                      </p>
-                    )}
+                    {m.info.error?.data?.message &&
+                      (showAbortedResume && abortedResume?.messageId === m.info.id ? (
+                        <MessageErrorBanner
+                          testId="aborted-resume"
+                          message={m.info.error.data.message}
+                          action={abortedResumeAction}
+                          actionError={resumeAbortError}
+                        />
+                      ) : (
+                        <MessageErrorBanner message={m.info.error.data.message} />
+                      ))}
                   </div>
                 );
                 })}
-                {showAbortedResume && abortedResume && (
-                  <div
-                    data-testid="aborted-resume"
-                    className="flex flex-col items-start gap-1.5"
-                  >
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      aria-label="中断したターンを再開"
-                      title="中断されたプロンプトを同じ内容で再送します"
-                      busy={resumingAbort}
-                      disabled={resumingAbort}
-                      onClick={() => void resumeAbortedTurn(abortedResume)}
-                    >
-                      {!resumingAbort && (
-                        <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
-                      )}
-                      {resumingAbort ? "再開中…" : "再開"}
-                    </Button>
-                    {resumeAbortError && (
-                      <p
-                        role="alert"
-                        className="break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
-                      >
-                        {resumeAbortError}
-                      </p>
-                    )}
-                  </div>
+                {showAbortedResume && !abortedResumeInTimeline && (
+                  <MessageErrorBanner
+                    testId="aborted-resume"
+                    message={abortedResumeErrorText}
+                    action={abortedResumeAction}
+                    actionError={resumeAbortError}
+                  />
                 )}
                 {stream.permissions
                   .filter(
