@@ -87,24 +87,27 @@ type ProviderResponse = {
  * per-model disabled state (which is recomputed from disk on every call).
  */
 const PROVIDER_RESPONSE_CACHE_TTL_MS = 5_000;
-let providerResponseCache: { at: number; data: ProviderResponse } | null =
-  null;
+type ProviderResponseCache = { at: number; data: ProviderResponse };
+type ProviderModelsGlobal = typeof globalThis & {
+  __opencodeWebuiProviderResponseCache?: ProviderResponseCache | null;
+};
+const providerModelsGlobal = globalThis as ProviderModelsGlobal;
 
-/** Test-only: drop the in-memory `/provider` cache between tests. */
+/** Test-only: drop the shared `/provider` cache between tests. */
 export function __clearProviderResponseCacheForTest(): void {
-  providerResponseCache = null;
+  providerModelsGlobal.__opencodeWebuiProviderResponseCache = null;
 }
 
 async function fetchProviderResponse(): Promise<ProviderResponse> {
   const now = Date.now();
-  const cached = providerResponseCache;
+  const cached = providerModelsGlobal.__opencodeWebuiProviderResponseCache;
   if (cached && now - cached.at < PROVIDER_RESPONSE_CACHE_TTL_MS) {
     return cached.data;
   }
   const data = await ocServer<ProviderResponse>(null, "/provider", {
     timeoutMs: 3000,
   });
-  providerResponseCache = {
+  providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
     at: now,
     data,
   };
