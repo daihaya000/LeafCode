@@ -1,3 +1,22 @@
+# 作業ログ: スキル名の青文字表示とホバー概要
+
+## 日付
+
+2026-08-11
+
+## 内容
+
+- スラッシュ候補で `source === "skill"` のスキル名を `text-accent`（青）にし、説明文を `title` でホバー表示する。
+- 設定のスキル一覧（Extensions / Project）でもスキル名を青文字にし、説明がある場合はホバーで概要を見られるようにした。
+- 通常コマンド名は従来どおり本文色のまま区別する。
+
+## 検証
+
+- `npm.cmd test -- --run src/components/SlashSuggestMenu.test.tsx` ... 3 tests 成功
+- 変更対象 ESLint ... 成功
+
+---
+
 # 作業ログ: 中断ターンの「再開」ボタン追加
 
 ## 作業ログ: PC向けタスク左右分割表示
@@ -5588,4 +5607,13 @@ UI 上のスキル名を青文字で表示し、ホバーでスキル概要を�
 
 - `npm.cmd test -- --run src/components/SlashSuggestMenu.test.tsx` ... 3 tests passed
 - 本番ビルド・dev 起動は指示により未実行
+
+
+## 追記: Composer 入力内ハイライト
+
+- `slash-command.ts` に `findSkillTokens` / `segmentSkillHighlights` / `skillDescriptionAt` を追加。
+- Composer で既知スキルの `/name` を mirror レイヤで青文字表示、`title` で概要。
+- HomeView / TaskView から `commands={slashCommands}` を渡す。
+- frontmatter パーサを client-safe な `skill-frontmatter.ts` へ分離。
+- 検証: slash-command 18 / Composer 7 / ExtensionsSettings 24 tests passed。
 

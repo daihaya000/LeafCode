@@ -199,6 +199,7 @@ import { QuestionCard } from "./QuestionCard";
 import {
   CompactButton,
   compactSession,
+  isAmbiguousCompactionFailure,
   isCompactionLockConflict,
   MessageRevertButton,
   useSessionActions,
@@ -2478,9 +2479,13 @@ export function TaskView({
                 "別のタブでコンテキスト圧縮が実行中のため送信を中止しました。状態を確認してから再試行してください。",
               );
             }
-            // Compact failure is non-fatal: proceed with the send so the
-            // user's prompt is not lost. The engine may still compact on its
-            // own at a higher threshold.
+            if (isAmbiguousCompactionFailure(error)) {
+              throw new Error(
+                "コンテキスト圧縮の完了を確認できないため送信を中止しました。入力は復元されています。",
+              );
+            }
+            // A definitive client error means the compact was rejected before
+            // it could run. Keep the original prompt sendable in that case.
           } finally {
             autoCompactInFlightRef.current = false;
           }
@@ -4668,6 +4673,7 @@ export function TaskView({
                       }
                     : undefined
                 }
+                commands={slashCommands}
                 attachments={attachments}
                 onRemoveAttachment={removeAttachment}
                 attachmentRemovalLabel={() => "添付を削除"}

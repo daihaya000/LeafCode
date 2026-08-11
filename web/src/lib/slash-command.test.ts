@@ -5,6 +5,8 @@ import {
   normalizeCommands,
   parseCommandSubmit,
   parseSlashQuery,
+  segmentSkillHighlights,
+  skillDescriptionAt,
   type SlashCommand,
 } from "./slash-command";
 
@@ -129,5 +131,77 @@ describe("normalizeCommands", () => {
       { name: "loop", description: "d", source: "skill" },
       { name: "init" },
     ]);
+  });
+});
+
+describe("skill highlighting", () => {
+  it("detects only source=skill tokens", () => {
+    expect(isSkillCommand(COMMANDS[0]!)).toBe(true);
+    expect(isSkillCommand(COMMANDS[2]!)).toBe(false);
+    expect(findSkillTokens("/loop /init /babysit", COMMANDS)).toEqual([
+      {
+        start: 0,
+        end: 5,
+        name: "loop",
+        description: "Run on an interval",
+      },
+      {
+        start: 12,
+        end: 20,
+        name: "babysit",
+        description: "Watch a PR",
+      },
+    ]);
+  });
+
+  it("segments text so skills stay blue in the composer overlay", () => {
+    expect(segmentSkillHighlights("/loop now", COMMANDS)).toEqual([
+      {
+        kind: "skill",
+        text: "/loop",
+        name: "loop",
+        description: "Run on an interval",
+      },
+      { kind: "text", text: " now" },
+    ]);
+    expect(skillDescriptionAt("/loop now", COMMANDS)).toBe(
+      "Run on an interval",
+    );
+  });
+});
+
+describe("skill token highlights", () => {
+  it("detects only source=skill slash tokens", () => {
+    expect(isSkillCommand(COMMANDS[0]!)).toBe(true);
+    expect(isSkillCommand(COMMANDS[2]!)).toBe(false);
+    expect(findSkillTokens("/loop and /init", COMMANDS)).toEqual([
+      {
+        start: 0,
+        end: 5,
+        name: "loop",
+        description: "Run on an interval",
+      },
+    ]);
+  });
+
+  it("segments skill tokens for blue rendering and hover descriptions", () => {
+    expect(segmentSkillHighlights("Please /loop now", COMMANDS)).toEqual([
+      { kind: "text", text: "Please " },
+      {
+        kind: "skill",
+        text: "/loop",
+        name: "loop",
+        description: "Run on an interval",
+      },
+      { kind: "text", text: " now" },
+    ]);
+    expect(segmentSkillHighlights("/init", COMMANDS)).toEqual([
+      { kind: "text", text: "/init" },
+    ]);
+    expect(skillDescriptionAt("/babysit please", COMMANDS)).toBe("Watch a PR");
+    expect(skillDescriptionAt("/loop and later", COMMANDS, 1)).toBe(
+      "Run on an interval",
+    );
+    expect(skillDescriptionAt("/init", COMMANDS)).toBeUndefined();
   });
 });

@@ -12,8 +12,8 @@ import type {
   ProjectSettingFileKey,
 } from "@/lib/project-settings";
 import type { ProjectAgentDto } from "@/lib/project-agents";
-import { parseFrontmatterFields } from "@/lib/opencode-extensions/skills";
 import type { ProjectSkillDto } from "@/lib/project-skills";
+import { parseFrontmatterFields } from "@/lib/skill-frontmatter";
 
 type ProjectSettingsResponse = {
   project: { id: string; name: string; rootPath: string };
@@ -603,45 +603,45 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                 </div>
                 {skills.map((skill) => {
                   const fields = parseFrontmatterFields(skill.content);
-                  const skillTitle =
-                    fields.description_ja || fields.description || skill.name;
+                  const overview =
+                    fields.description_ja || fields.description || undefined;
                   return (
-                    <div
-                      key={skill.name}
-                      className={cx(
-                        "flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors",
-                        activeSkill === skill.name
-                          ? "border-primary bg-primary/10"
-                          : "border-transparent hover:bg-surface-2",
-                      )}
+                  <div
+                    key={skill.name}
+                    className={cx(
+                      "flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors",
+                      activeSkill === skill.name
+                        ? "border-primary bg-primary/10"
+                        : "border-transparent hover:bg-surface-2",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectSkill(skill.name)}
+                      title={overview}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
                     >
-                      <button
-                        type="button"
-                        onClick={() => selectSkill(skill.name)}
-                        title={skillTitle}
-                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
-                      >
-                        <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium text-accent">
-                            {skill.name}
-                          </span>
-                          <span className="block truncate font-mono text-[10px] text-faint">
-                            {skill.relativePath}
-                          </span>
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-accent">
+                          {skill.name}
                         </span>
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`スキル「${skill.name}」を削除`}
-                        title="削除"
-                        disabled={saving}
-                        onClick={() => void removeSkill(skill.name)}
-                        className="shrink-0 rounded-lg p-1.5 text-faint hover:bg-danger-bg hover:text-danger disabled:opacity-40"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                        <span className="block truncate font-mono text-[10px] text-faint">
+                          {skill.relativePath}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`スキル「${skill.name}」を削除`}
+                      title="削除"
+                      disabled={saving}
+                      onClick={() => void removeSkill(skill.name)}
+                      className="shrink-0 rounded-lg p-1.5 text-faint hover:bg-danger-bg hover:text-danger disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   );
                 })}
                 {skills.length === 0 && (

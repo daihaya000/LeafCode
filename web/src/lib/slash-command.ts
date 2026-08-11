@@ -118,3 +118,101 @@ export function normalizeCommands(raw: unknown): SlashCommand[] {
   }
   return out;
 }
+
+/** Skills are slash commands with source "skill". */
+export function isSkillCommand(command: SlashCommand): boolean {
+  return command.source === "skill";
+}
+
+export type SkillTokenRange = {
+  start: number;
+  end: number;
+  name: string;
+  description?: string;
+};
+
+/** Locate whole `/skill-name` tokens that match known skills. */
+export function findSkillTokens(
+  text: string,
+  commands: SlashCommand[],
+): SkillTokenRange[] {
+  const byName = new Map<string, SlashCommand>();
+  for (const command of commands) {
+    if (!isSkillCommand(command) || !command.name) continue;
+    byName.set(command.name.toLowerCase(), command);
+  }
+  if (byName.size === 0 || !text) return [];
+
+  const tokens: SkillTokenRange[] = [];
+  const re = /(^|[\s])\/([^\s/]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const prefix = match[1] ?? "";
+    const name = match[2] ?? "";
+    const slashIndex = match.index + prefix.length;
+    const command = byName.get(name.toLowerCase());
+    if (!command) continue;
+    tokens.push({
+      start: slashIndex,
+      end: slashIndex + 1 + name.length,
+      name: command.name,
+      ...(command.description ? { description: command.description } : {}),
+    });
+  }
+  return tokens;
+}
+
+export type HighlightSegment =
+  | { kind: "text"; text: string }
+  | {
+      kind: "skill";
+      text: string;
+      name: string;
+      description?: string;
+    };
+
+/** Split text into plain / skill segments for composer highlighting. */
+export function segmentSkillHighlights(
+  text: string,
+  commands: SlashCommand[],
+): HighlightSegment[] {
+  const tokens = findSkillTokens(text, commands);
+  if (tokens.length === 0) {
+    return text ? [{ kind: "text", text }] : [];
+  }
+  const segments: HighlightSegment[] = [];
+  let cursor = 0;
+  for (const token of tokens) {
+    if (token.start > cursor) {
+      segments.push({ kind: "text", text: text.slice(cursor, token.start) });
+    }
+    segments.push({
+      kind: "skill",
+      text: text.slice(token.start, token.end),
+      name: token.name,
+      ...(token.description ? { description: token.description } : {}),
+    });
+    cursor = token.end;
+  }
+  if (cursor < text.length) {
+    segments.push({ kind: "text", text: text.slice(cursor) });
+  }
+  return segments;
+}
+
+/** Skill overview for the token under `cursor`, or undefined. */
+export function skillDescriptionAt(
+  text: string,
+  commands: SlashCommand[],
+  cursor?: number,
+): string | undefined {
+  const tokens = findSkillTokens(text, commands);
+  if (tokens.length === 0) return undefined;
+  if (cursor === undefined) {
+    return tokens[0]?.description;
+  }
+  const hit = tokens.find(
+    (token) => cursor >= token.start && cursor <= token.end,
+  );
+  return hit?.description;
+}

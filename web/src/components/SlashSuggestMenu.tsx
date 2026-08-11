@@ -38,7 +38,7 @@ export function SlashSuggestMenu({
     >
       {items.map((item, index) => {
         const active = index === activeIndex;
-        const isSkill = item.source === "skill";
+        const isSkill = isSkillCommand(item);
         return (
           <button
             key={item.name}

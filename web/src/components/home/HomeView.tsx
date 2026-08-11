@@ -1189,6 +1189,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   }
                 : undefined
             }
+            commands={slashCommands}
             attachments={attachments}
             onRemoveAttachment={removeAttachment}
             attachmentRemovalDisabled={submitting}

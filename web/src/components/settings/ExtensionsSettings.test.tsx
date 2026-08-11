@@ -174,6 +174,12 @@ describe("ExtensionsSettings", () => {
     expect(alphaSwitch.className).toContain("focus-visible:outline-primary");
     const betaSwitch = screen.getByRole("switch", { name: "beta を有効化" });
     expect(betaSwitch.getAttribute("aria-checked")).toBe("false");
+
+    const alphaName = screen.getByText("alpha");
+    expect(alphaName.className).toContain("text-accent");
+    expect(alphaName.closest("[title]")?.getAttribute("title")).toBe(
+      "Alpha skill",
+    );
   });
 
   it("shows Japanese display labels for known skills while keeping the original id", async () => {
@@ -560,10 +566,9 @@ describe("ExtensionsSettings", () => {
     const subSkillText = screen.getByText("screenshot");
     expect(parentLi!.contains(subSkillText)).toBe(true);
 
-    // Sub-skill title exposes the full id for discovery.
-    const titledEl = parentLi!.querySelector(
-      "[title='playwright-cli/screenshot']",
-    );
+    // Sub-skill name is accent blue; title carries the overview for hover.
+    expect(subSkillText.className).toContain("text-accent");
+    const titledEl = parentLi!.querySelector("[title='Take screenshots']");
     expect(titledEl).not.toBeNull();
 
     // Sub-skills are not independently toggleable, even after expanding.

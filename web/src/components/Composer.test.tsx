@@ -124,4 +124,42 @@ describe("Composer", () => {
     expect(onDragOver).toHaveBeenCalledTimes(1);
     expect(onDrop).toHaveBeenCalledTimes(1);
   });
+
+  it("highlights skill tokens in accent blue with description tooltip", () => {
+    renderComposer({
+      commands: [
+        {
+          name: "customize-opencode",
+          description: "opencode 設定を編集する",
+          source: "skill",
+        },
+        { name: "init", description: "Initialize", source: "command" },
+      ],
+      slash: undefined,
+      textarea: {
+        ref: createRef<HTMLTextAreaElement>(),
+        value: "/customize-opencode please",
+        rows: 1,
+        ariaLabel: "プロンプト",
+        placeholder: "入力",
+        className: "textarea",
+        onChange: vi.fn(),
+        onClick: vi.fn(),
+        onKeyUp: vi.fn(),
+        onSelect: vi.fn(),
+        onPaste: vi.fn(),
+        onCompositionStart: vi.fn(),
+        onCompositionEnd: vi.fn(),
+        onKeyDown: vi.fn(),
+      },
+    });
+
+    const skill = screen.getByText("/customize-opencode");
+    expect(skill.className).toContain("text-accent");
+    expect(skill.getAttribute("title")).toBe("opencode 設定を編集する");
+    expect(
+      screen.getByRole("combobox", { name: "プロンプト" }).getAttribute("title"),
+    ).toBe("opencode 設定を編集する");
+    expect(screen.queryByText("/init")).toBeNull();
+  });
 });

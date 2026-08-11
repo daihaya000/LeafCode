@@ -1,3 +1,5 @@
+"use client";
+
 import type {
   ChangeEventHandler,
   ClipboardEventHandler,
@@ -10,10 +12,16 @@ import type {
   RefObject,
   ReactEventHandler,
   ReactNode,
+  UIEvent,
 } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, X } from "lucide-react";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
-import type { SlashCommand } from "@/lib/slash-command";
+import {
+  segmentSkillHighlights,
+  skillDescriptionAt,
+  type SlashCommand,
+} from "@/lib/slash-command";
 
 export type ComposerAttachment = {
   uri: string;
@@ -36,6 +44,8 @@ type ComposerProps = {
     onHover: (index: number) => void;
     onSelect: (command: SlashCommand) => void;
   };
+  /** Known slash commands; skills (source=skill) render blue with hover titles. */
+  commands?: SlashCommand[];
   attachments: ComposerAttachment[];
   onRemoveAttachment: (index: number) => void;
   attachmentRemovalDisabled?: boolean;
@@ -86,6 +96,7 @@ export function Composer({
   onDrop,
   onDragOver,
   slash,
+  commands = [],
   attachments,
   onRemoveAttachment,
   attachmentRemovalDisabled,
@@ -97,6 +108,37 @@ export function Composer({
   action,
 }: ComposerProps) {
   const slashOpen = Boolean(slash && slash.items.length > 0);
+  const highlightRef = useRef<HTMLDivElement>(null);
+  const [caret, setCaret] = useState(0);
+  const highlightSegments = useMemo(
+    () => segmentSkillHighlights(textarea.value, commands),
+    [textarea.value, commands],
+  );
+  const hasSkillHighlight = highlightSegments.some((s) => s.kind === "skill");
+  const skillTitle = useMemo(
+    () => skillDescriptionAt(textarea.value, commands, caret),
+    [textarea.value, commands, caret],
+  );
+
+  useEffect(() => {
+    const el = textarea.ref.current;
+    const mirror = highlightRef.current;
+    if (!el || !mirror) return;
+    mirror.scrollTop = el.scrollTop;
+    mirror.scrollLeft = el.scrollLeft;
+  }, [textarea.value, textarea.ref]);
+
+  const syncHighlightScroll = (event: UIEvent<HTMLTextAreaElement>) => {
+    const mirror = highlightRef.current;
+    if (!mirror) return;
+    mirror.scrollTop = event.currentTarget.scrollTop;
+    mirror.scrollLeft = event.currentTarget.scrollLeft;
+  };
+
+  const trackCaret = (el: HTMLTextAreaElement) => {
+    setCaret(el.selectionStart ?? 0);
+  };
+
   const content = (
     <>
       {slashOpen && slash && (
@@ -139,35 +181,81 @@ export function Composer({
           ))}
         </div>
       )}
-      <textarea
-        ref={textarea.ref}
-        value={textarea.value}
-        rows={textarea.rows}
-        style={textarea.style}
-        aria-label={textarea.ariaLabel}
-        role="combobox"
-        aria-busy={textarea.busy || undefined}
-        aria-autocomplete="list"
-        aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
-        aria-expanded={slashOpen}
-        aria-activedescendant={
-          slashOpen && slash?.items[slash.activeIndex]
-            ? `slash-cmd-${slash.items[slash.activeIndex].name}`
-            : undefined
-        }
-        disabled={textarea.disabled}
-        readOnly={textarea.readOnly}
-        onChange={textarea.onChange}
-        onClick={textarea.onClick}
-        onKeyUp={textarea.onKeyUp}
-        onSelect={textarea.onSelect}
-        onPaste={textarea.onPaste}
-        onCompositionStart={textarea.onCompositionStart}
-        onCompositionEnd={textarea.onCompositionEnd}
-        onKeyDown={textarea.onKeyDown}
-        placeholder={textarea.placeholder}
-        className={textarea.className}
-      />
+      <div className="relative">
+        {hasSkillHighlight && (
+          <div
+            ref={highlightRef}
+            aria-hidden="true"
+            className={`${textarea.className} pointer-events-none absolute inset-0 overflow-auto whitespace-pre-wrap break-words text-text caret-transparent`}
+            style={{
+              ...textarea.style,
+              color: "inherit",
+            }}
+          >
+            {highlightSegments.map((segment, index) =>
+              segment.kind === "skill" ? (
+                <span
+                  key={`skill-${index}-${segment.name}`}
+                  className="font-medium text-accent"
+                  title={segment.description}
+                >
+                  {segment.text}
+                </span>
+              ) : (
+                <span key={`text-${index}`}>{segment.text}</span>
+              ),
+            )}
+            {"\n"}
+          </div>
+        )}
+        <textarea
+          ref={textarea.ref}
+          value={textarea.value}
+          rows={textarea.rows}
+          style={textarea.style}
+          aria-label={textarea.ariaLabel}
+          role="combobox"
+          aria-busy={textarea.busy || undefined}
+          aria-autocomplete="list"
+          aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
+          aria-expanded={slashOpen}
+          aria-activedescendant={
+            slashOpen && slash?.items[slash.activeIndex]
+              ? `slash-cmd-${slash.items[slash.activeIndex].name}`
+              : undefined
+          }
+          title={skillTitle}
+          disabled={textarea.disabled}
+          readOnly={textarea.readOnly}
+          onChange={(event) => {
+            trackCaret(event.currentTarget);
+            textarea.onChange(event);
+          }}
+          onClick={(event) => {
+            trackCaret(event.currentTarget);
+            textarea.onClick(event);
+          }}
+          onKeyUp={(event) => {
+            trackCaret(event.currentTarget);
+            textarea.onKeyUp(event);
+          }}
+          onSelect={(event) => {
+            trackCaret(event.currentTarget);
+            textarea.onSelect(event);
+          }}
+          onPaste={textarea.onPaste}
+          onCompositionStart={textarea.onCompositionStart}
+          onCompositionEnd={textarea.onCompositionEnd}
+          onKeyDown={textarea.onKeyDown}
+          onScroll={syncHighlightScroll}
+          placeholder={textarea.placeholder}
+          className={
+            hasSkillHighlight
+              ? `${textarea.className} relative z-10 text-transparent caret-[var(--text)] selection:bg-accent/25`
+              : textarea.className
+          }
+        />
+      </div>
       {afterTextarea}
       <div className="flex items-center gap-2 pt-1">
         <div className="relative min-w-0 flex-1 overflow-x-auto">
