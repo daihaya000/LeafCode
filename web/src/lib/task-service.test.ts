@@ -432,9 +432,10 @@ describe("listTasks archived filter", () => {
       { ...WS, id: "ws2", status: "archived" },
     ];
     h.bindings = new Map();
-    const { tasks } = await listTasks();
+    const { tasks, archivedCount } = await listTasks();
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe("ws1");
+    expect(archivedCount).toBe(1);
   });
 });
 

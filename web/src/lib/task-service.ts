@@ -332,9 +332,14 @@ function restoreFromManifestsOnce(): void {
 export async function listTasks(): Promise<{
   tasks: TaskSummary[];
   engineOk: boolean;
+  archivedCount: number;
 }> {
   restoreFromManifestsOnce();
-  const workspaces = listWorkspacesJoined().filter(
+  const allWorkspaces = listWorkspacesJoined();
+  const archivedCount = allWorkspaces.filter(
+    (w) => w.status === "archived",
+  ).length;
+  const workspaces = allWorkspaces.filter(
     (w) => w.status !== "archived",
   );
   const bindings = primaryBindings();
@@ -345,7 +350,7 @@ export async function listTasks(): Promise<{
   // engine) and only confirm the engine is reachable. Cuts the Home boot API
   // call from ~340ms to a single /global/health check when no workspaces exist.
   if (dirs.length === 0) {
-    return { tasks: [], engineOk: await globalEngineOk() };
+    return { tasks: [], engineOk: await globalEngineOk(), archivedCount };
   }
 
   const [{ engineOk, statuses }, stats, metas] = await Promise.all([
@@ -371,7 +376,7 @@ export async function listTasks(): Promise<{
   });
 
   tasks.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-  return { tasks, engineOk };
+  return { tasks, engineOk, archivedCount };
 }
 
 export async function listArchivedTasks(): Promise<TaskSummary[]> {

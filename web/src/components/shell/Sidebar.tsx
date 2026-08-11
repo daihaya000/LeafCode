@@ -221,7 +221,9 @@ export function Sidebar({
   );
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [archivedTasks, setArchivedTasks] = useState<TaskSummary[]>([]);
+  const [archivedTaskCount, setArchivedTaskCount] = useState(0);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const archivedExpandedRef = useRef(false);
   const [engineOk, setEngineOk] = useState(true);
   const [engineUnavailableCount, setEngineUnavailableCount] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -373,11 +375,18 @@ export function Sidebar({
     refreshBusyRef.current = true;
     const requestId = ++refreshRequestRef.current;
     try {
+      const archivedTasksPromise = archivedExpandedRef.current
+        ? getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived")
+        : Promise.resolve(null);
       const [projectsResult, tasksResult, archivedResult, archivedProjectsResult] =
         await Promise.allSettled([
           getJson<{ projects: ProjectDto[] }>("/api/projects"),
-          getJson<{ tasks: TaskSummary[]; engineOk: boolean }>("/api/tasks"),
-          getJson<{ tasks: TaskSummary[] }>("/api/tasks/archived"),
+          getJson<{
+            tasks: TaskSummary[];
+            engineOk: boolean;
+            archivedCount?: number;
+          }>("/api/tasks"),
+          archivedTasksPromise,
           getJson<{ projects: ProjectDto[] }>("/api/projects/archived"),
         ]);
       if (!mountedRef.current || requestId !== refreshRequestRef.current) return;
@@ -391,9 +400,18 @@ export function Sidebar({
       if (tasksResult.status === "fulfilled") {
         setTasks(tasksResult.value.tasks ?? []);
         updateEngineHealth(tasksResult.value.engineOk);
+        if (typeof tasksResult.value.archivedCount === "number") {
+          setArchivedTaskCount(tasksResult.value.archivedCount);
+        }
       }
-      if (archivedResult.status === "fulfilled") {
+      if (archivedResult.status === "fulfilled" && archivedResult.value) {
         setArchivedTasks(archivedResult.value.tasks ?? []);
+        if (
+          tasksResult.status !== "fulfilled" ||
+          typeof tasksResult.value.archivedCount !== "number"
+        ) {
+          setArchivedTaskCount(archivedResult.value.tasks?.length ?? 0);
+        }
       }
       if (archivedProjectsResult.status === "fulfilled") {
         setArchivedProjects(archivedProjectsResult.value.projects ?? []);
@@ -459,6 +477,7 @@ export function Sidebar({
     const localArchivedExpanded = loadArchivedExpanded();
     setExpanded(localExpanded);
     setWidth(localWidth);
+    archivedExpandedRef.current = localArchivedExpanded;
     setArchivedExpanded(localArchivedExpanded);
     void refresh();
 
@@ -489,6 +508,7 @@ export function Sidebar({
         remote.archivedExpanded !== null
           ? remote.archivedExpanded
           : localArchivedExpanded;
+      archivedExpandedRef.current = nextArchivedExpanded;
       setExpanded(nextExpanded);
       setWidth(nextWidth);
       setArchivedExpanded(nextArchivedExpanded);
@@ -497,6 +517,7 @@ export function Sidebar({
       saveExpanded(nextExpanded);
       saveWidth(nextWidth);
       saveArchivedExpanded(nextArchivedExpanded);
+      if (nextArchivedExpanded && !localArchivedExpanded) void refresh();
       canPersistRef.current = true;
       setHydrated(true);
     })();
@@ -719,12 +740,12 @@ export function Sidebar({
   };
 
   const toggleArchived = () => {
-    setArchivedExpanded((prev) => {
-      const next = !prev;
-      saveArchivedExpanded(next);
-      persistSidebar(expanded, width, next);
-      return next;
-    });
+    const next = !archivedExpandedRef.current;
+    archivedExpandedRef.current = next;
+    setArchivedExpanded(next);
+    saveArchivedExpanded(next);
+    persistSidebar(expanded, width, next);
+    if (next) void refresh();
   };
 
   const restoreArchivedTask = async (
@@ -1387,7 +1408,7 @@ export function Sidebar({
             <Archive className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">アーカイブ</span>
             <span className="tabular-nums text-[10px] text-muted">
-              {archivedTasks.length}
+              {archivedTaskCount}
             </span>
             <ChevronRight
               className={cx(

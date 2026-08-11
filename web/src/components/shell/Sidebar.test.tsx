@@ -1409,6 +1409,12 @@ describe("Sidebar archived section", () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
 
     // アーカイブセクションは初期状態で折りたたまれているため、展開する
+    await waitFor(() => {
+      expect(getJson).toHaveBeenCalledWith("/api/tasks");
+    });
+    expect(
+      getJson.mock.calls.some(([path]) => path === "/api/tasks/archived"),
+    ).toBe(false);
     const archiveHeading = await screen.findByRole("button", {
       name: "アーカイブを展開",
     });

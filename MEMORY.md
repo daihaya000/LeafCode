@@ -248,6 +248,25 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 
 ## 作業ログ: アーカイブタスク一覧のengine fan-out削減
 
+## 作業ログ: Sidebarアーカイブ詳細取得の遅延
+
+## 日付
+
+2026-08-11
+
+## 修正内容
+
+- `/api/tasks` にDB由来の `archivedCount` を追加し、Sidebarの件数表示に利用するようにした。
+- Sidebar初期refreshでは、アーカイブを折りたたんでいる場合に `/api/tasks/archived` を取得しないようにした。
+- アーカイブを展開した時だけ詳細一覧を取得し、既存の復元・削除操作後のrefreshでも展開状態を維持する。
+
+## 検証結果
+
+- `task-service.test.ts`: 24 tests passed
+- `Sidebar.test.tsx`: 40 tests passed
+- `npm run typecheck`: 成功
+- 対象4ファイルのESLint: 成功
+
 ## 日付
 
 2026-08-11
