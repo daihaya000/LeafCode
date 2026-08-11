@@ -242,6 +242,39 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 - 対象ファイルの ESLint ... 成功
 
 # 作業ログ: スキル呼び出し候補の視認性改善
+# 作業ログ: provider-models設定キャッシュとtask-serviceセッション推定の高速化
+
+## 日付
+
+2026-08-11
+
+## 根本原因
+
+`listProviderModels()` はHome起動のたびにOpenCode `/provider` の結果だけでなく、`opencode.jsonc` の同期読み込み・JSONC parseも繰り返していた。`listTasks()` の `sessionMetaFor()` は、コスト0かつtokens/modelがある全セッションの `/message` をディレクトリ内で逐次awaitしており、OpenCodeWebUI 60件、Download 50件など最大119件の推定候補があった。
+
+## 修正
+
+- `provider-models.ts`: 設定ファイルをmtime+sizeで判定する parsed-root キャッシュを追加。設定変更時はmtime変化で再読込する。テスト用キャッシュクリアを追加。
+- `task-service.ts`: transcript-based cost estimate をディレクトリごとに4件ずつ並列取得し、OpenCodeへの無制限なリクエストバーストを避けながら逐次待ちを排除。
+- `task-service.test.ts`: 9セッションで最大同時 `/message` 数が4である回帰テストを追加。
+
+## 計測
+
+- `/api/tasks`: 修正前初回0.286s、修正後初回0.266s、ウォーム後0.075-0.087s。ただし既存のsession estimate cacheがウォーム済みで、並列化単独の効果は限定的な比較。
+- 実セッション調査: 4ディレクトリ、推定候補119件。`/message` 単体は約8-804ms。
+
+## 検証
+
+- 関連テスト: 3ファイル66テスト合格。
+- `npx tsc --noEmit`: 合格。
+- 変更ファイルeslint: 合格。
+- 全体テストでは変更対象外の `TaskView.test.tsx` が「コスト $0.2500」期待値で単体再現。`MessageMetaHeader.test.tsx` は単体8/8合格。
+
+## コミット
+
+`f85336b タスク一覧のセッション推定とプロバイダー設定読み込みを高速化`
+
+---
 
 ## 日付
 
