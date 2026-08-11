@@ -4,7 +4,7 @@
       "name": "Cursor",
       "npm": "@ai-sdk/openai-compatible",
       "options": {
-        "baseURL": "http://127.0.0.1:32124/v1"
+        "baseURL": "http://127.0.0.1:32125/v1"
       },
       "models": {
         "auto": {
@@ -13,6 +13,12 @@
             "context": 200000,
             "input": 200000,
             "output": 64000
+          },
+          "cost": {
+            "input": 1.25,
+            "output": 6,
+            "cache_read": 0.25,
+            "cache_write": 1.25
           },
           "attachment": true,
           "modalities": {

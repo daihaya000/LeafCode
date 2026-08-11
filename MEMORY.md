@@ -6,6 +6,16 @@
 
 ## 内容
 
+- Cursor CLI proxy の既定 `opencode.jsonc` を更新し、Cursor provider の接続先を `http://127.0.0.1:32125/v1`、Auto モデルのコンテキスト上限・料金・画像入力対応を指定値で登録した。
+
+## 検証
+
+- `git diff --check` ... 成功
+
+---
+
+## 内容
+
 - Composer入力の `/skill-name` を `text-accent`（青）でハイライトし、キャレット位置のスキル概要を `title` でホバー表示する。
 - `slash-command.ts` に `isSkillCommand` / `findSkillTokens` / `segmentSkillHighlights` / `skillDescriptionAt` を追加。
 - HomeView / TaskView の Composer に `commands={slashCommands}` を配線。
