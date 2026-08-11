@@ -5628,3 +5628,44 @@ UI 上のスキル名を青文字で表示し、ホバーでスキル概要を�
 - frontmatter パーサを client-safe な `skill-frontmatter.ts` へ分離。
 - 検証: slash-command 18 / Composer 7 / ExtensionsSettings 24 tests passed。
 
+---
+
+# 作業ログ: 本日実装のバグハント最終検証
+
+## 日付
+
+2026-08-11
+
+## 根本原因
+
+- provider の生レスポンスをディスクキャッシュへ保存していたため、provider/model の `apiKey` など upstream 応答に含まれる秘密値が `provider-response-cache.json` へ永続化され得た。
+- Goal Loop の自動コンパクション完了後に、協調コンテキストの compact 済み状態記録とメモリ再注入が不足し、圧縮前の文脈を前提に次ターンが進む可能性があった。
+- クライアントの compact 要求は、timeout・network・429・5xx ではサーバー側で受理済みの可能性があるのに、失敗を確定拒否として扱うと入力を復元できないまま送信を継続し得た。
+
+## 修正
+
+- `provider-models.ts` でキャッシュ前に provider 応答を UI に必要な name/capabilities/input/variants/connected/default だけへ正規化し、秘密値をディスクへ書かないようにした。
+- `goal-loop.ts` で compact 完了確認後に `markCollaborationSnapshotCompacted()` を記録し、ロックTTLを120秒へ延長した。compact後は最新メモリと協調コンテキストを再注入する。
+- `SessionActions.tsx` の `isAmbiguousCompactionFailure()` と `TaskView.tsx` の送信経路で、結果不明のcompact失敗時は送信を中止し、入力を復元可能な状態にした。確定的な4xx拒否は従来の送信経路を維持した。
+
+## 回帰テスト
+
+- `provider-models.test.ts` に provider/model の秘密値が `provider-response-cache.json` に残らないテストを追加。
+- `goal-loop.integration.test.ts` に直接compact後の協調スナップショット記録・メモリ再注入テストを追加。
+- `SessionActions.test.tsx` に network/timeout/429/5xx と確定的4xxの判定テストを追加。
+
+## 検証
+
+- Web全体Vitest: 272ファイル / 3275成功 / 1スキップ。
+- `npm.cmd run typecheck`（`web`）: 成功。
+- `npm.cmd run lint`（`web`）: 成功。
+- host: 381テスト成功。
+- browser-bridge: 89テスト成功。
+- `npm.cmd run test:encoding`: 7テスト成功。
+- `git diff --check`: 成功。
+- 本番ビルド・常駐WebUI起動はプロジェクト指示により未実行。
+
+## 残存リスク
+
+- ルートディレクトリからのESLint実行は依存構成上の互換エラーになるため、Webディレクトリ内の公式スクリプトで検証した。
+
