@@ -1611,6 +1611,34 @@ describe("HomeView goal loop toggle", () => {
       goal: "バグを直す",
       acceptance: ["テストが通る", "lint が通る"],
       maxTurns: 4,
+      forceFullRun: false,
+    });
+  });
+
+  it("starts a goal loop with force full-run when checked", async () => {
+    render(<HomeView />);
+
+    const toggle = await screen.findByRole("button", {
+      name: "ループで継続実行",
+    });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByLabelText("完走モード"));
+    fireEvent.change(screen.getByLabelText("タスクの説明"), {
+      target: { value: "徹底作業" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
+
+    await waitFor(() =>
+      expect(
+        sendJson.mock.calls.some(([, p]) => p === "/api/tasks/task-1/goal-loop"),
+      ).toBe(true),
+    );
+    const call = sendJson.mock.calls.find(
+      ([, p]) => p === "/api/tasks/task-1/goal-loop",
+    );
+    expect(call?.[2]).toMatchObject({
+      goal: "徹底作業",
+      forceFullRun: true,
     });
   });
 

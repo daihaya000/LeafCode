@@ -169,6 +169,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
   const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
   const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
+  const [goalLoopForceFullRun, setGoalLoopForceFullRun] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>(
     () => readHomeComposerDraft()?.attachments ?? [],
   );
@@ -913,6 +914,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             .map((line) => line.trim())
             .filter(Boolean),
           maxTurns: goalLoopMaxTurns,
+          forceFullRun: goalLoopForceFullRun,
           ...(loopModel ? { model: loopModel } : {}),
           ...(agent ? { agent } : {}),
           ...(loopVariant ? { variant: loopVariant } : {}),
@@ -972,6 +974,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     goalLoopEnabled,
     goalLoopAcceptance,
     goalLoopMaxTurns,
+    goalLoopForceFullRun,
     startMode,
     subagentPermission,
     skillPermission,
@@ -1338,9 +1341,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 <GoalLoopOptions
                   acceptance={goalLoopAcceptance}
                   maxTurns={goalLoopMaxTurns}
+                  forceFullRun={goalLoopForceFullRun}
                   disabled={submitting}
                   onAcceptanceChange={setGoalLoopAcceptance}
                   onMaxTurnsChange={setGoalLoopMaxTurns}
+                  onForceFullRunChange={setGoalLoopForceFullRun}
                 />
               ) : undefined
             }

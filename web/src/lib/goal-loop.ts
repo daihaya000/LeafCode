@@ -128,6 +128,11 @@ export type GoalLoopDto = {
   pauseReason: GoalLoopPauseReason;
   rejectedClaims: number;
   pauseRequested: boolean;
+  /**
+   * 完走モード: 完了宣言・検証ターンを使わず、指定の maxTurns まで goal ターンを
+   * 必ず回す。作成時のみ設定。既定 false。
+   */
+  forceFullRun: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -157,6 +162,7 @@ type GoalLoopRow = {
   pause_reason: string;
   rejected_claims: number;
   pause_requested: number;
+  force_full_run: number;
   created_at: string;
   updated_at: string;
 };
@@ -408,6 +414,7 @@ function toDto(row: GoalLoopRow): GoalLoopDto {
     pauseReason: toPauseReason(row.pause_reason),
     rejectedClaims: row.rejected_claims ?? 0,
     pauseRequested: row.pause_requested === 1,
+    forceFullRun: (row.force_full_run ?? 0) === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -526,12 +533,18 @@ export function listRunnableGoalLoops(): GoalLoopDto[] {
   return rows.map(toDto);
 }
 
+function normalizeForceFullRun(value: unknown): boolean {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 export async function createGoalLoop(input: {
   workspaceId: string;
   sessionId: string;
   goal: string;
   acceptance?: unknown;
   maxTurns?: unknown;
+  /** 完走モード。省略時 false（既定 OFF）。 */
+  forceFullRun?: unknown;
   agent?: unknown;
   model?: unknown;
   variant?: unknown;
@@ -560,6 +573,7 @@ export async function createGoalLoop(input: {
   const maxTurns = Number.isFinite(maxTurnsRaw)
     ? Math.min(Math.max(Math.trunc(maxTurnsRaw), 1), 100)
     : 10;
+  const forceFullRun = normalizeForceFullRun(input.forceFullRun);
   const agent = typeof input.agent === "string" && input.agent.trim() ? input.agent.trim() : null;
   const model =
     input.model && typeof input.model === "object" && !Array.isArray(input.model)
@@ -597,8 +611,8 @@ export async function createGoalLoop(input: {
         `INSERT INTO goal_loops
           (id, workspace_id, opencode_session_id, status, goal, acceptance, max_turns,
            last_message_id, agent, provider_id, model_id, variant, error, pause_reason,
-           created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           force_full_run, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -617,6 +631,7 @@ export async function createGoalLoop(input: {
           ? ""
           : "会話履歴を読めないため、重複送信を防止して一時停止しました。再開してください。",
         transcriptReadable ? "" : "transcript_unreadable",
+        forceFullRun ? 1 : 0,
         now,
         now,
       );
@@ -887,6 +902,37 @@ function buildGoalPrompt(loop: GoalLoopDto, turnNumber: number, maxTurns: number
         .map((p) => `- ${p.time}: ${p.summary}${p.next ? ` / next: ${p.next}` : ""}`)
         .join("\n")}`
     : "";
+  if (loop.forceFullRun) {
+    return `<!-- webui-goal-loop-prompt -->
+
+You are running a WebUI native persistent goal loop in full-run mode. The WebUI will always run exactly ${maxTurns} goal turns — do not declare the goal complete early.
+
+This is turn ${turnNumber} of exactly ${maxTurns}. ${turnNumber - 1} loop turn(s) completed before this one. The WebUI sends the next prompt automatically after this turn ends.
+
+Rules:
+- One turn = one iteration. Do the smallest useful increment, then end this turn and let the WebUI prompt you again. Do not chain the remaining steps to finish the whole goal in a single turn.
+- Report only work you actually performed in this turn. Never simulate, narrate, or count future turns as if they already happened.
+- Write a brief human-readable summary before the JSON block. Do not make the JSON block your only output; the WebUI hides that internal block in the chat.
+- Continue until all ${maxTurns} turns have been executed, or you are blocked / paused / stopped by the WebUI. Never claim the goal is complete; early completion claims are ignored.
+- Do not ask the user questions unless truly blocked.
+- Keep changes incremental and reviewable.
+- Follow repository safety instructions and avoid destructive operations.
+
+Goal:
+${loop.goal}${acceptance}${recent}
+
+The very last thing you output this turn must be a single fenced JSON block:
+
+\`\`\`json
+{"status":"progress","summary":"what changed this turn","next":"the next step","evidence":"commands run, files touched, results"}
+\`\`\`
+
+- status must be exactly one of: progress, blocked.
+- progress: work performed this turn (always use this unless blocked).
+- blocked: user input or manual intervention is required (put the reason in blockedReason).
+- Do not use status "completed". The loop ignores completion claims and keeps running until turn ${maxTurns}.
+- summary is required. Write nothing after the closing fence.`;
+  }
   return `<!-- webui-goal-loop-prompt -->
 
 You are running a WebUI native persistent goal loop. Work on the next smallest useful step toward the goal. Prefer code changes, tests, typechecks, builds, and concrete evidence over discussion.
@@ -945,6 +991,24 @@ function buildGoalContinuationPrompt(
         )
         .join("\n")}`
     : "";
+  if (loop.forceFullRun) {
+    return `<!-- webui-goal-loop-prompt -->
+
+Continue the WebUI native persistent goal loop in full-run mode. Work on exactly one smallest useful step, then end this turn. The WebUI will run exactly ${maxTurns} turns — never declare the goal complete.
+
+This is turn ${turnNumber} of exactly ${maxTurns}. Report only work actually performed in this turn. Do not simulate future work. Do not claim completion.
+
+Goal:
+${loop.goal}${acceptance}${recent}
+
+The very last thing you output this turn must be a single fenced JSON block:
+
+\`\`\`json
+{"status":"progress","summary":"what changed this turn","next":"the next step","evidence":"commands run, files touched, results"}
+\`\`\`
+
+Use exactly one status: progress or blocked. Do not use status "completed". summary is required. Put a blocked reason in blockedReason when status is blocked. Write nothing after the closing fence.`;
+  }
   return `<!-- webui-goal-loop-prompt -->
 
 Continue the WebUI native persistent goal loop. Work on exactly one smallest useful step toward the goal, then end this turn for the WebUI to continue.
@@ -1159,7 +1223,6 @@ function applyAssistantResult(
       );
     return;
   }
-  const progress = [...loop.progress, result].slice(-50);
 
   // Whether this reply answers the verification prompt is recorded on the row
   // when the prompt is claimed (`turn_kind`). It must not be inferred from the
@@ -1168,24 +1231,31 @@ function applyAssistantResult(
   // was misread as a verification reply and a genuine completion claim could
   // never reach `completed`. See docs/specs/goal-loop.md invariant I6.
   const isVerificationReply = loop.status === "running" && loop.turnKind === "verification";
+  // 完走モード: エージェントが completed を返しても進捗扱いに落とす（検証へ進まない）。
+  const effectiveResult: GoalLoopProgress =
+    loop.forceFullRun && !isVerificationReply && result.status === "completed"
+      ? { ...result, status: "progress" }
+      : result;
+  const progress = [...loop.progress, effectiveResult].slice(-50);
+
   // Running count of rejected completion claims. A counter column is used
   // instead of pairing entries at the tail of `progress`: any real work turn
   // between two rejections broke the pairing, so the cap never fired in the
   // case it exists for. See docs/specs/goal-loop.md 是正 E.
   const verificationRejected =
     isVerificationReply &&
-    result.status !== "verified_completed" &&
-    result.status !== "blocked";
+    effectiveResult.status !== "verified_completed" &&
+    effectiveResult.status !== "blocked";
   const rejectedClaims = verificationRejected
     ? loop.rejectedClaims + 1
-    : isVerificationReply && result.status === "verified_completed"
+    : isVerificationReply && effectiveResult.status === "verified_completed"
     ? 0
     : loop.rejectedClaims;
   let nextStatus: GoalLoopStatus;
   if (isVerificationReply) {
-    if (result.status === "verified_completed") {
+    if (effectiveResult.status === "verified_completed") {
       nextStatus = "completed";
-    } else if (result.status === "blocked") {
+    } else if (effectiveResult.status === "blocked") {
       nextStatus = "blocked";
     } else {
       // Verification rejected the claim. Go back to queued so the loop can do
@@ -1194,10 +1264,10 @@ function applyAssistantResult(
       nextStatus = rejectedClaims >= MAX_REJECTED_CLAIMS ? "paused" : "queued";
     }
   } else {
-    if (result.status === "completed") {
+    if (effectiveResult.status === "completed") {
       // A completion claim must pass an independent verification turn.
       nextStatus = "verifying_completed";
-    } else if (result.status === "blocked") {
+    } else if (effectiveResult.status === "blocked") {
       nextStatus = "blocked";
     } else {
       nextStatus = "queued";
@@ -1230,9 +1300,9 @@ function applyAssistantResult(
       rejectedClaims,
       assistant.info.id,
       JSON.stringify(progress),
-      result.summary,
-      result.evidence ?? "",
-      result.status === "blocked" ? result.evidence ?? result.summary : "",
+      effectiveResult.summary,
+      effectiveResult.evidence ?? "",
+      effectiveResult.status === "blocked" ? effectiveResult.evidence ?? effectiveResult.summary : "",
       reachedTurnLimit
         ? "最大ターン数に到達したため一時停止しました。"
         : verificationRejectedPause

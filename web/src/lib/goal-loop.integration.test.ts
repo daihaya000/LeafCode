@@ -191,6 +191,7 @@ function makeDb(): Database.Database {
       pause_reason TEXT NOT NULL DEFAULT '',
       rejected_claims INTEGER NOT NULL DEFAULT 0,
       pause_requested INTEGER NOT NULL DEFAULT 0,
+      force_full_run INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -507,6 +508,58 @@ describe("goal loop verification turn", () => {
     expect(loop.status).toBe("completed");
     expect(loop.turnCount).toBe(1);
     expect(loop.progress.some((p) => p.status === "verified_completed")).toBe(true);
+  });
+
+  it("force full-run ignores completed claims and never enters verification", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    const created = await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 3,
+      forceFullRun: true,
+    });
+    expect(created.forceFullRun).toBe(true);
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const promptBody = JSON.stringify(
+      h.ocCalls.find(
+        (c) =>
+          c.body &&
+          typeof c.body === "object" &&
+          Array.isArray((c.body as { parts?: unknown[] }).parts),
+      )?.body ?? {},
+    );
+    expect(promptBody).toContain("full-run mode");
+    expect(promptBody).not.toContain("progress, completed, blocked");
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", {
+        status: "completed",
+        summary: "done early",
+        evidence: "tsc ok",
+      }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("queued");
+    expect(loop.forceFullRun).toBe(true);
+    expect(loop.progress.at(-1)?.status).toBe("progress");
+    expect(loop.progress.at(-1)?.summary).toBe("done early");
+    expect(loop.turnCount).toBe(1);
+  });
+
+  it("force full-run defaults OFF so normal completion verification still works", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    const created = await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 5,
+    });
+    expect(created.forceFullRun).toBe(false);
   });
 
   it("rejects a completed claim and returns to queued when verification says progress", async () => {

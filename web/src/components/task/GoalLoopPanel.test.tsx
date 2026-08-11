@@ -29,6 +29,7 @@ function baseLoop(overrides: Partial<GoalLoopDto> = {}): GoalLoopDto {
     pauseReason: "",
     rejectedClaims: 0,
     pauseRequested: false,
+    forceFullRun: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -136,6 +137,21 @@ describe("GoalLoopPanel", () => {
       "span[aria-label]",
     );
     expect(badge?.textContent).toContain(label);
+  });
+
+  it("shows a 完走 badge when force full-run is enabled", () => {
+    render(
+      <GoalLoopPanel
+        loop={baseLoop({ forceFullRun: true })}
+        busy={false}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("完走")).toBeTruthy();
+    const badge = screen.getByRole("region", { name: "ループ" }).querySelector(
+      "span[aria-label]",
+    );
+    expect(badge?.getAttribute("aria-label")).toContain("完走モード");
   });
 
   it("shows pause button while running and calls onAction", () => {

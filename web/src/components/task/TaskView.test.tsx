@@ -1842,6 +1842,7 @@ describe("TaskView", () => {
           goal: "ship the loop UI",
           acceptance: ["tests pass", "lint clean"],
           maxTurns: 10,
+          forceFullRun: false,
         }),
       );
       expect(streamMock.sendPrompt).not.toHaveBeenCalled();
@@ -2738,6 +2739,7 @@ describe("TaskView", () => {
           progress: [],
           turnCount: 0,
           maxTurns: 10,
+          forceFullRun: false,
         },
       });
       render(<TaskView taskId="ws1" />);
@@ -2776,6 +2778,7 @@ describe("TaskView", () => {
           progress: [],
           turnCount: 1,
           maxTurns: 10,
+          forceFullRun: false,
         },
       });
       render(<TaskView taskId="ws1" />);
@@ -2847,6 +2850,7 @@ describe("TaskView", () => {
           progress: [],
           turnCount: 0,
           maxTurns: 10,
+          forceFullRun: false,
         },
       });
       vi.stubGlobal(

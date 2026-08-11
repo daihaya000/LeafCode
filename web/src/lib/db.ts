@@ -185,6 +185,7 @@ export function getDb(): Database.Database {
       pause_reason TEXT NOT NULL DEFAULT '',
       rejected_claims INTEGER NOT NULL DEFAULT 0,
       pause_requested INTEGER NOT NULL DEFAULT 0,
+      force_full_run INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -512,6 +513,10 @@ export function getDb(): Database.Database {
   }
   if (!hasGoalLoopColumn("pause_requested")) {
     db.exec("ALTER TABLE goal_loops ADD COLUMN pause_requested INTEGER NOT NULL DEFAULT 0");
+  }
+  // 完走モード: 完了宣言・検証を使わず max_turns まで必ず goal ターンを回す（既定 OFF）
+  if (!hasGoalLoopColumn("force_full_run")) {
+    db.exec("ALTER TABLE goal_loops ADD COLUMN force_full_run INTEGER NOT NULL DEFAULT 0");
   }
   const sessionBindingColumns = db
     .prepare("PRAGMA table_info(session_bindings)")

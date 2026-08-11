@@ -1,3 +1,27 @@
+# 作業ログ: ループ完走モード（完了宣言なし・指定ターン数必ず実行）
+
+## 日付
+2026-08-12
+
+## 機能
+- Goal Loop に `forceFullRun`（UI: 完走モード）を追加。**既定 OFF**。
+- ON 時:
+  - プロンプトは `progress` / `blocked` のみ（`completed` 禁止）
+  - エージェントが `completed` を返してもサーバー側で `progress` に降格し、検証ターンへ進まない
+  - `maxTurns` まで goal ターンを回し、到達時は従来どおり `turn_limit` で一時停止
+- 作成時のみ設定（DB 列 `force_full_run`、マイグレーション冪等）
+
+## 変更箇所
+- `web/src/lib/db.ts` / `goal-loop.ts` / API route
+- `GoalLoopComposer` / `HomeView` / `TaskView` / `GoalLoopPanel`
+- 単体・統合・UI テスト
+
+## 検証
+- vitest goal-loop 関連 5 ファイル 135 PASS
+- HomeView goal-loop / TaskView starts-the-loop 系 PASS
+- `tsc --noEmit` 成功
+
+---
 # 作業ログ: Cursor proxy修正の再レビュー
 
 ## 日付

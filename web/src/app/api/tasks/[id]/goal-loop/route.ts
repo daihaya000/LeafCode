@@ -38,6 +38,7 @@ export async function POST(req: NextRequest, context: Ctx) {
     goal?: unknown;
     acceptance?: unknown;
     maxTurns?: unknown;
+    forceFullRun?: unknown;
     agent?: unknown;
     model?: unknown;
     variant?: unknown;
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest, context: Ctx) {
       goal,
       acceptance: body?.acceptance,
       maxTurns: body?.maxTurns,
+      forceFullRun: body?.forceFullRun,
       agent: body?.agent,
       model: body?.model,
       variant: body?.variant,

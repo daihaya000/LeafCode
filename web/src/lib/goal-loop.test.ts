@@ -231,6 +231,37 @@ describe("goalLoopTestSeams", () => {
       expect(prompt).toContain("independently verified");
     });
 
+    it("full-run mode forbids completion claims and uses only progress/blocked", () => {
+      const prompt = goalLoopTestSeams.buildGoalPrompt(
+        {
+          goal: "ship it",
+          acceptance: [],
+          progress: [],
+          forceFullRun: true,
+        } as never,
+        1,
+        10,
+      );
+      expect(prompt).toContain("full-run mode");
+      expect(prompt).toContain("of exactly 10");
+      expect(prompt).toContain("progress, blocked");
+      expect(prompt).not.toContain("progress, completed, blocked");
+      expect(prompt).toContain('Do not use status "completed"');
+      const cont = goalLoopTestSeams.buildGoalContinuationPrompt(
+        {
+          goal: "ship it",
+          acceptance: [],
+          progress: [],
+          forceFullRun: true,
+        } as never,
+        3,
+        10,
+      );
+      expect(cont).toContain("full-run mode");
+      expect(cont).toContain("progress or blocked");
+      expect(cont).not.toContain("progress, completed, or blocked");
+    });
+
     it("states the current turn number so the agent runs one iteration only", () => {
       const prompt = goalLoopTestSeams.buildGoalPrompt(
         {

@@ -564,6 +564,7 @@ export function TaskView({
   const [goalLoopEnabled, setGoalLoopEnabled] = useState(false);
   const [goalLoopAcceptance, setGoalLoopAcceptance] = useState("");
   const [goalLoopMaxTurns, setGoalLoopMaxTurns] = useState(10);
+  const [goalLoopForceFullRun, setGoalLoopForceFullRun] = useState(false);
   const [goalLoopBusy, setGoalLoopBusy] = useState(false);
   const [goalLoopError, setGoalLoopError] = useState<string | null>(null);
   const goalLoopBusyRef = useRef(false);
@@ -1877,6 +1878,7 @@ export function TaskView({
               .map((line) => line.trim())
               .filter(Boolean),
             maxTurns: goalLoopMaxTurns,
+            forceFullRun: goalLoopForceFullRun,
             ...(agent ? { agent } : {}),
             ...(loopModel ? { model: loopModel } : {}),
             ...(loopVariant ? { variant: loopVariant } : {}),
@@ -1885,6 +1887,7 @@ export function TaskView({
         if (decision) setAutoFollowUpNotice(formatAutoDecisionNotice(decision));
         setGoalLoop(data.loop);
         setGoalLoopAcceptance("");
+        setGoalLoopForceFullRun(false);
         setGoalLoopEnabled(false);
         notifyTasksChanged();
         return true;
@@ -1904,6 +1907,7 @@ export function TaskView({
       autoInputs,
       goalLoopAcceptance,
       goalLoopMaxTurns,
+      goalLoopForceFullRun,
       intelligence,
       model,
       resolveAutoSelection,
@@ -1917,6 +1921,7 @@ export function TaskView({
       setInput(goalLoop.goal);
       setGoalLoopAcceptance((goalLoop.acceptance ?? []).join("\n"));
       setGoalLoopMaxTurns(goalLoop.maxTurns);
+      setGoalLoopForceFullRun(!!goalLoop.forceFullRun);
       setAgent(goalLoop.agent ?? "");
       setIntelligence(goalLoop.variant ?? "");
       setModel(
@@ -4881,9 +4886,11 @@ export function TaskView({
                     <GoalLoopOptions
                       acceptance={goalLoopAcceptance}
                       maxTurns={goalLoopMaxTurns}
+                      forceFullRun={goalLoopForceFullRun}
                       disabled={goalLoopBusy}
                       onAcceptanceChange={setGoalLoopAcceptance}
                       onMaxTurnsChange={setGoalLoopMaxTurns}
+                      onForceFullRunChange={setGoalLoopForceFullRun}
                     />
                   ) : undefined
                 }

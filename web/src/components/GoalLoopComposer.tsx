@@ -14,6 +14,9 @@ import { cx } from "@/components/ui";
  */
 
 export const GOAL_LOOP_TOGGLE_LABEL = "ループで継続実行";
+export const GOAL_LOOP_FORCE_FULL_RUN_LABEL = "完走モード";
+export const GOAL_LOOP_FORCE_FULL_RUN_HINT =
+  "完了宣言を使わず、指定の最大ターン数まで必ず実行します";
 
 export function GoalLoopToggle({
   enabled,
@@ -51,44 +54,70 @@ export function GoalLoopToggle({
 export function GoalLoopOptions({
   acceptance,
   maxTurns,
+  forceFullRun = false,
   disabled,
   onAcceptanceChange,
   onMaxTurnsChange,
+  onForceFullRunChange,
 }: {
   acceptance: string;
   maxTurns: number;
+  /** 完走モード。既定 OFF。 */
+  forceFullRun?: boolean;
   disabled?: boolean;
   onAcceptanceChange: (value: string) => void;
   onMaxTurnsChange: (value: number) => void;
+  onForceFullRunChange?: (value: boolean) => void;
 }) {
   return (
-    <div className="mt-1 flex flex-wrap items-start gap-2">
-      <textarea
-        value={acceptance}
-        disabled={disabled}
-        onChange={(e) => onAcceptanceChange(e.target.value)}
-        rows={2}
-        placeholder="承認条件（任意・1行に1つ）"
-        aria-label="承認条件"
-        className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-1.5 text-sm outline-none focus:border-primary"
-      />
-      <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
-        最大ターン
-        <input
-          type="number"
-          min={1}
-          max={100}
-          value={maxTurns}
+    <div className="mt-1 flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-start gap-2">
+        <textarea
+          value={acceptance}
           disabled={disabled}
-          aria-label="最大ターン数"
-          onChange={(e) =>
-            onMaxTurnsChange(
-              Math.min(100, Math.max(1, Number(e.target.value) || 1)),
-            )
-          }
-          className="h-8 w-16 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
+          onChange={(e) => onAcceptanceChange(e.target.value)}
+          rows={2}
+          placeholder="承認条件（任意・1行に1つ）"
+          aria-label="承認条件"
+          className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-1.5 text-sm outline-none focus:border-primary"
         />
-      </label>
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+          最大ターン
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={maxTurns}
+            disabled={disabled}
+            aria-label="最大ターン数"
+            onChange={(e) =>
+              onMaxTurnsChange(
+                Math.min(100, Math.max(1, Number(e.target.value) || 1)),
+              )
+            }
+            className="h-8 w-16 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
+          />
+        </label>
+      </div>
+      {onForceFullRunChange ? (
+        <label
+          className="flex cursor-pointer items-center gap-2 text-xs text-muted"
+          title={GOAL_LOOP_FORCE_FULL_RUN_HINT}
+        >
+          <input
+            type="checkbox"
+            checked={forceFullRun}
+            disabled={disabled}
+            aria-label={GOAL_LOOP_FORCE_FULL_RUN_LABEL}
+            onChange={(e) => onForceFullRunChange(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-border accent-primary"
+          />
+          <span>
+            {GOAL_LOOP_FORCE_FULL_RUN_LABEL}
+            <span className="ml-1 text-faint">（完了宣言なし・指定ターン数を必ず実行）</span>
+          </span>
+        </label>
+      ) : null}
     </div>
   );
 }

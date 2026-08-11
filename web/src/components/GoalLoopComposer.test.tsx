@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
+  GOAL_LOOP_FORCE_FULL_RUN_LABEL,
   GOAL_LOOP_TOGGLE_LABEL,
   GoalLoopOptions,
   GoalLoopToggle,
@@ -48,22 +49,26 @@ describe("GoalLoopOptions", () => {
   function setup(overrides: Partial<Parameters<typeof GoalLoopOptions>[0]> = {}) {
     const onAcceptanceChange = vi.fn();
     const onMaxTurnsChange = vi.fn();
+    const onForceFullRunChange = vi.fn();
     render(
       <GoalLoopOptions
         acceptance=""
         maxTurns={10}
+        forceFullRun={false}
         onAcceptanceChange={onAcceptanceChange}
         onMaxTurnsChange={onMaxTurnsChange}
+        onForceFullRunChange={onForceFullRunChange}
         {...overrides}
       />,
     );
-    return { onAcceptanceChange, onMaxTurnsChange };
+    return { onAcceptanceChange, onMaxTurnsChange, onForceFullRunChange };
   }
 
   it("labels both fields", () => {
     setup();
     expect(screen.getByLabelText("承認条件")).toBeTruthy();
     expect(screen.getByLabelText("最大ターン数")).toBeTruthy();
+    expect(screen.getByLabelText(GOAL_LOOP_FORCE_FULL_RUN_LABEL)).toBeTruthy();
   });
 
   it("reports acceptance edits verbatim", () => {
@@ -85,6 +90,19 @@ describe("GoalLoopOptions", () => {
     expect(onMaxTurnsChange).toHaveBeenLastCalledWith(1);
   });
 
+  it("defaults force full-run OFF and reports toggles", () => {
+    const { onForceFullRunChange } = setup();
+    const checkbox = screen.getByLabelText(GOAL_LOOP_FORCE_FULL_RUN_LABEL) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(checkbox);
+    expect(onForceFullRunChange).toHaveBeenCalledWith(true);
+  });
+
+  it("hides the force full-run control when the callback is omitted", () => {
+    setup({ onForceFullRunChange: undefined });
+    expect(screen.queryByLabelText(GOAL_LOOP_FORCE_FULL_RUN_LABEL)).toBeNull();
+  });
+
   it("disables both fields while the start request is in flight", () => {
     setup({ disabled: true });
     expect((screen.getByLabelText("承認条件") as HTMLTextAreaElement).disabled).toBe(
@@ -93,5 +111,8 @@ describe("GoalLoopOptions", () => {
     expect((screen.getByLabelText("最大ターン数") as HTMLInputElement).disabled).toBe(
       true,
     );
+    expect(
+      (screen.getByLabelText(GOAL_LOOP_FORCE_FULL_RUN_LABEL) as HTMLInputElement).disabled,
+    ).toBe(true);
   });
 });

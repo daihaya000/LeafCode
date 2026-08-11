@@ -162,7 +162,10 @@ export function GoalLoopPanel({
   const badgeText = `${STATUS_LABEL[loop.status]} ${loop.turnCount}/${loop.maxTurns}`;
   // `turnCount` counts goal turns only; completion-verification turns are not
   // charged to the budget, so say so rather than letting the ratio look stuck.
-  const badgeAria = `ループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${loop.turnCount} / ${loop.maxTurns}（完了検証ターンは含みません）`;
+  // 完走モードでは検証ターン自体が存在しない。
+  const badgeAria = loop.forceFullRun
+    ? `ループ状態: ${STATUS_LABEL[loop.status]}、完走モード、Goalターン ${loop.turnCount} / ${loop.maxTurns}`
+    : `ループ状態: ${STATUS_LABEL[loop.status]}、Goalターン ${loop.turnCount} / ${loop.maxTurns}（完了検証ターンは含みません）`;
   const pauseHint =
     loop.status === "paused" && loop.pauseReason !== ""
       ? PAUSE_REASON_HINT[loop.pauseReason]
@@ -209,6 +212,14 @@ export function GoalLoopPanel({
             >
               {badgeText}
             </span>
+            {loop.forceFullRun ? (
+              <span
+                className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted"
+                title="完了宣言を使わず、指定ターン数まで必ず実行します"
+              >
+                完走
+              </span>
+            ) : null}
           </div>
           <p className="min-w-0 flex-1 truncate text-xs text-muted" title={loop.goal}>
             {loop.goal}
