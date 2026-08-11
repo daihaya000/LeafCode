@@ -5177,3 +5177,9 @@ TaskView ヘッダーの `累計コスト`、`累計トークン`、`累計思�
 ## 判断
 
 これは実装上の偶発的な不具合ではなく、`docs/specs/memory-layer.md` が定めた承認先行設計による挙動。自動承認へ変更する場合は、候補を即時利用できる代わりに、モデル出力によるメモリ汚染を人間が止める機会を失うため、設定として選べる形が望ましい。
+
+## Hermes Agent との比較
+
+NousResearch の Hermes Agent 公式ドキュメント（2026-08-11確認）では、`memory.write_approval: false` がデフォルトで、通常ターンとバックグラウンドレビューのメモリ書き込みを自動で確定する。`true` にした場合だけ承認待ちへステージされる。したがって、現WebUIの「常に候補を作り、承認済みだけ注入」はHermesのデフォルトとは逆で、より安全側の設計である。
+
+- https://hermes-agent.nousresearch.com/docs/user-guide/features/memory
