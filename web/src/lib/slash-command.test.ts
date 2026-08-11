@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   applySlashCompletion,
   filterCommands,
@@ -140,17 +140,32 @@ describe("skill token highlights", () => {
   it("detects only source=skill slash tokens", () => {
     expect(isSkillCommand(COMMANDS[0]!)).toBe(true);
     expect(isSkillCommand(COMMANDS[2]!)).toBe(false);
-    expect(findSkillTokens("/loop and /init", COMMANDS)).toEqual([
+    expect(findSkillTokens("/loop /init /babysit", COMMANDS)).toEqual([
       {
         start: 0,
         end: 5,
         name: "loop",
         description: "Run on an interval",
       },
+      {
+        start: 12,
+        end: 20,
+        name: "babysit",
+        description: "Watch a PR",
+      },
     ]);
   });
 
   it("segments skill tokens for blue rendering and hover descriptions", () => {
+    expect(segmentSkillHighlights("/loop now", COMMANDS)).toEqual([
+      {
+        kind: "skill",
+        text: "/loop",
+        name: "loop",
+        description: "Run on an interval",
+      },
+      { kind: "text", text: " now" },
+    ]);
     expect(segmentSkillHighlights("Please /loop now", COMMANDS)).toEqual([
       { kind: "text", text: "Please " },
       {
