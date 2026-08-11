@@ -269,6 +269,14 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 - `npm run typecheck`: 成功
 - 対象2ファイルのESLint: 成功
 
+## runtime計測（mirror更新後 2026-08-11）
+
+- `/api/tasks`: 初回148.203ms（archivedCount=180反映済み）、2回目94.399ms
+- `/api/tasks/archived`: 初回227.041ms（engine fan-out削減済み）、2回目6.389ms
+- `/api/extensions/provider-models`: 初回917.599ms、2回目10.157ms（TTLキャッシュヒット）
+- 同時2本GET: provider-modelsは両者599ms台で同時完了し、in-flight共有でOpenCode /providerが1回だけ取得されることを確認
+- 修正前mirror同時GET基準値: request1=715.486ms、request2=1042.483ms（2本それぞれが重い処理を実行）
+
 ## 作業ログ: Sidebarアーカイブ詳細取得の遅延
 
 ## 日付
