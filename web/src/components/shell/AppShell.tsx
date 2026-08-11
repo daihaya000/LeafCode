@@ -38,6 +38,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const { mobileNavOpen, closeMobileNav } = useShellMobileNav();
   const {
     desktopSplitEnabled,
+    splitHostEnabled,
     primaryTaskId,
     secondaryTaskId,
     activeTaskId,
@@ -45,17 +46,16 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     openSplit,
     openSplitLeft,
     closeSplit,
+    activatePrimary,
     activateTask,
   } = useTaskSplit();
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-  const showLeftDropZone = Boolean(
+  const showDropTargets = Boolean(
     desktopSplitEnabled &&
-      primaryTaskId &&
+      splitHostEnabled &&
       draggingTaskId &&
-      draggingTaskId !== primaryTaskId,
-  );
-  const showRightDropZone = Boolean(
-    showLeftDropZone && draggingTaskId !== secondaryTaskId,
+      draggingTaskId !== primaryTaskId &&
+      draggingTaskId !== secondaryTaskId,
   );
 
   return (
@@ -76,17 +76,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
           <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <section
-              aria-label={splitActive ? "左のタスクペイン" : "メインコンテンツ"}
+              aria-label={splitActive ? "左ペイン" : "メインコンテンツ"}
               data-active={
                 splitActive && activeTaskId === primaryTaskId ? "true" : undefined
               }
               className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-              onPointerDown={() => {
-                if (primaryTaskId) activateTask(primaryTaskId);
-              }}
-              onFocusCapture={() => {
-                if (primaryTaskId) activateTask(primaryTaskId);
-              }}
+              onPointerDown={activatePrimary}
+              onFocusCapture={activatePrimary}
             >
               {splitActive && activeTaskId === primaryTaskId && (
                 <span
@@ -99,7 +95,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
             {splitActive && secondaryTaskId && (
               <section
-                aria-label="右のタスクペイン"
+                aria-label="右ペイン"
                 data-active={activeTaskId === secondaryTaskId ? "true" : "false"}
                 className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-l-2 border-border-strong"
                 onPointerDown={() => activateTask(secondaryTaskId)}
@@ -119,7 +115,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               </section>
             )}
 
-            {showLeftDropZone && (
+            {showDropTargets && (
               <div
                 role="region"
                 aria-label="タスクを左ペインに表示"
@@ -145,13 +141,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     ここにドロップして左に表示
                   </span>
                   <span className="text-xs text-muted">
-                    現在の左タスクは右へ移動します
+                    左ペインだけを差し替えます
                   </span>
                 </div>
               </div>
             )}
 
-            {showRightDropZone && (
+            {showDropTargets && (
               <div
                 role="region"
                 aria-label="タスクを右ペインに表示"
@@ -177,7 +173,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     ここにドロップして右に分割
                   </span>
                   <span className="text-xs text-muted">
-                    現在のタスクは左に残ります
+                    右ペインだけを差し替えます
                   </span>
                 </div>
               </div>

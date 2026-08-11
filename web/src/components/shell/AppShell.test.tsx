@@ -44,6 +44,18 @@ vi.mock("./Sidebar", () => ({
       >
         右タスクをドラッグ
       </button>
+      <button
+        type="button"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(
+            "application/x-opencode-task",
+            "replacement-task",
+          );
+        }}
+      >
+        差し替えタスクをドラッグ
+      </button>
     </aside>
   ),
 }));
@@ -81,6 +93,35 @@ vi.mock("./AttentionQueueModal", () => ({
 vi.mock("@/components/CommandPalette", () => ({
   CommandPalette: () => <div data-testid="command-palette" />,
 }));
+
+function stubDesktopViewport(matches = true) {
+  vi.stubGlobal("matchMedia", vi.fn(() => ({
+    matches,
+    media: "(min-width: 1024px)",
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })));
+}
+
+function createDataTransfer() {
+  const values = new Map<string, string>();
+  return {
+    effectAllowed: "none",
+    dropEffect: "none",
+    types: [] as string[],
+    setData(type: string, value: string) {
+      values.set(type, value);
+      if (!this.types.includes(type)) this.types.push(type);
+    },
+    getData(type: string) {
+      return values.get(type) ?? "";
+    },
+  };
+}
 
 describe("AppShell", () => {
   beforeEach(() => {
@@ -164,29 +205,8 @@ describe("AppShell", () => {
 
   it("opens a desktop-only right task pane by drag and drop", async () => {
     usePathname.mockReturnValue("/task/left-task");
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      matches: true,
-      media: "(min-width: 1024px)",
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })));
-    const values = new Map<string, string>();
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      types: [] as string[],
-      setData(type: string, value: string) {
-        values.set(type, value);
-        if (!this.types.includes(type)) this.types.push(type);
-      },
-      getData(type: string) {
-        return values.get(type) ?? "";
-      },
-    };
+    stubDesktopViewport();
+    const dataTransfer = createDataTransfer();
 
     render(
       <AppShell>
@@ -208,12 +228,12 @@ describe("AppShell", () => {
     fireEvent.drop(dropZone, { dataTransfer });
 
     expect(await screen.findByTestId("task-view-right-task")).toBeTruthy();
-    expect(screen.getByRole("region", { name: "左のタスクペイン" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "右のタスクペイン" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "左ペイン" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "右ペイン" })).toBeTruthy();
 
     const dragButton = screen.getByRole("button", { name: "右タスクをドラッグ" });
     fireEvent.dragStart(dragButton, { dataTransfer });
-    expect(await screen.findByTestId("task-split-drop-zone-left")).toBeTruthy();
+    expect(screen.queryByTestId("task-split-drop-zone-left")).toBeNull();
     expect(screen.queryByTestId("task-split-drop-zone-right")).toBeNull();
     fireEvent.dragEnd(dragButton, { dataTransfer });
 
@@ -224,89 +244,80 @@ describe("AppShell", () => {
     expect(screen.getByRole("region", { name: "メインコンテンツ" })).toBeTruthy();
   });
 
-  it("moves the previous left task to the right when dropped on the left", async () => {
+  it("replaces only the left pane and preserves the right pane", async () => {
     usePathname.mockReturnValue("/task/left-task");
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      matches: true,
-      media: "(min-width: 1024px)",
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })));
-    const values = new Map<string, string>();
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      types: [] as string[],
-      setData(type: string, value: string) {
-        values.set(type, value);
-        if (!this.types.includes(type)) this.types.push(type);
-      },
-      getData(type: string) {
-        return values.get(type) ?? "";
-      },
-    };
+    stubDesktopViewport();
     const view = render(
       <AppShell>
         <div>left task</div>
       </AppShell>,
     );
 
+    const rightDataTransfer = createDataTransfer();
     fireEvent.dragStart(
       screen.getByRole("button", { name: "右タスクをドラッグ" }),
-      { dataTransfer },
+      { dataTransfer: rightDataTransfer },
+    );
+    const rightDropZone = await screen.findByTestId("task-split-drop-zone-right");
+    fireEvent.drop(rightDropZone, { dataTransfer: rightDataTransfer });
+    expect(await screen.findByTestId("task-view-right-task")).toBeTruthy();
+
+    const replacementDataTransfer = createDataTransfer();
+    fireEvent.dragStart(
+      screen.getByRole("button", { name: "差し替えタスクをドラッグ" }),
+      { dataTransfer: replacementDataTransfer },
     );
     const leftDropZone = await screen.findByTestId("task-split-drop-zone-left");
-    fireEvent.dragOver(leftDropZone, { dataTransfer });
-    expect(dataTransfer.dropEffect).toBe("copy");
-    fireEvent.drop(leftDropZone, { dataTransfer });
+    fireEvent.dragOver(leftDropZone, { dataTransfer: replacementDataTransfer });
+    expect(replacementDataTransfer.dropEffect).toBe("copy");
+    fireEvent.drop(leftDropZone, { dataTransfer: replacementDataTransfer });
 
-    expect(routerPush).toHaveBeenCalledWith("/task/right-task");
-    expect(screen.queryByRole("region", { name: "右のタスクペイン" })).toBeNull();
-    usePathname.mockReturnValue("/task/right-task");
+    expect(routerPush).toHaveBeenCalledWith("/task/replacement-task");
+    expect(screen.getByTestId("task-view-right-task")).toBeTruthy();
+    usePathname.mockReturnValue("/task/replacement-task");
     view.rerender(
       <AppShell>
-        <div>right task</div>
+        <div>replacement task</div>
       </AppShell>,
     );
 
     const rightPane = await screen.findByRole("region", {
-      name: "右のタスクペイン",
+      name: "右ペイン",
     });
-    expect(rightPane.querySelector('[data-testid="task-view-left-task"]')).toBeTruthy();
+    expect(rightPane.querySelector('[data-testid="task-view-right-task"]')).toBeTruthy();
     expect(
-      screen.getByRole("region", { name: "左のタスクペイン" }).textContent,
-    ).toContain("right task");
+      screen.getByRole("region", { name: "左ペイン" }).textContent,
+    ).toContain("replacement task");
+  });
+
+  it("keeps HomeView on the left when a task is dropped on the right", async () => {
+    usePathname.mockReturnValue("/");
+    stubDesktopViewport();
+    const dataTransfer = createDataTransfer();
+
+    render(
+      <AppShell>
+        <div>home view</div>
+      </AppShell>,
+    );
+    fireEvent.dragStart(
+      screen.getByRole("button", { name: "右タスクをドラッグ" }),
+      { dataTransfer },
+    );
+    const rightDropZone = await screen.findByTestId("task-split-drop-zone-right");
+    fireEvent.drop(rightDropZone, { dataTransfer });
+
+    expect(screen.getByRole("region", { name: "左ペイン" }).textContent).toContain(
+      "home view",
+    );
+    expect(await screen.findByTestId("task-view-right-task")).toBeTruthy();
+    expect(routerPush).not.toHaveBeenCalled();
   });
 
   it("does not offer split drop on a non-desktop viewport", async () => {
     usePathname.mockReturnValue("/task/left-task");
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      matches: false,
-      media: "(min-width: 1024px)",
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })));
-    const values = new Map<string, string>();
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      types: [] as string[],
-      setData(type: string, value: string) {
-        values.set(type, value);
-        if (!this.types.includes(type)) this.types.push(type);
-      },
-      getData(type: string) {
-        return values.get(type) ?? "";
-      },
-    };
+    stubDesktopViewport(false);
+    const dataTransfer = createDataTransfer();
 
     render(<AppShell><div>left task</div></AppShell>);
     fireEvent.dragStart(

@@ -14,6 +14,7 @@ const DESKTOP_SPLIT_QUERY = "(min-width: 1024px)";
 
 type TaskSplitContextValue = {
   desktopSplitEnabled: boolean;
+  splitHostEnabled: boolean;
   primaryTaskId: string | null;
   secondaryTaskId: string | null;
   activeTaskId: string | null;
@@ -21,11 +22,13 @@ type TaskSplitContextValue = {
   openSplit: (taskId: string) => void;
   openSplitLeft: (taskId: string) => void;
   closeSplit: () => void;
+  activatePrimary: () => void;
   activateTask: (taskId: string) => void;
 };
 
 const EMPTY_TASK_SPLIT: TaskSplitContextValue = {
   desktopSplitEnabled: false,
+  splitHostEnabled: false,
   primaryTaskId: null,
   secondaryTaskId: null,
   activeTaskId: null,
@@ -33,6 +36,7 @@ const EMPTY_TASK_SPLIT: TaskSplitContextValue = {
   openSplit: () => undefined,
   openSplitLeft: () => undefined,
   closeSplit: () => undefined,
+  activatePrimary: () => undefined,
   activateTask: () => undefined,
 };
 
@@ -53,20 +57,22 @@ export function TaskSplitProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const primaryTaskId = taskIdFromPathname(pathname);
+  const splitHostEnabled = pathname === "/" || pathname.startsWith("/task/");
   const [desktopSplitEnabled, setDesktopSplitEnabled] = useState(false);
   const [secondaryTaskId, setSecondaryTaskId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(primaryTaskId);
-  const [pendingPrimaryTaskId, setPendingPrimaryTaskId] = useState<string | null>(
-    null,
-  );
 
   useEffect(() => {
-    setPendingPrimaryTaskId(null);
+    if (!splitHostEnabled) {
+      setSecondaryTaskId(null);
+      setActiveTaskId(null);
+      return;
+    }
     setSecondaryTaskId((current) =>
-      !primaryTaskId || current === primaryTaskId ? null : current,
+      primaryTaskId && current === primaryTaskId ? null : current,
     );
     setActiveTaskId(primaryTaskId);
-  }, [primaryTaskId]);
+  }, [primaryTaskId, splitHostEnabled]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -74,7 +80,6 @@ export function TaskSplitProvider({ children }: { children: React.ReactNode }) {
     const apply = () => {
       setDesktopSplitEnabled(media.matches);
       if (!media.matches) {
-        setPendingPrimaryTaskId(null);
         setSecondaryTaskId(null);
         setActiveTaskId(primaryTaskId);
       }
@@ -88,42 +93,50 @@ export function TaskSplitProvider({ children }: { children: React.ReactNode }) {
     (taskId: string) => {
       if (
         !desktopSplitEnabled ||
-        !primaryTaskId ||
+        !splitHostEnabled ||
         !taskId ||
-        taskId === primaryTaskId
+        taskId === primaryTaskId ||
+        taskId === secondaryTaskId
       ) {
         return;
       }
-      setPendingPrimaryTaskId(null);
       setSecondaryTaskId(taskId);
       setActiveTaskId(taskId);
     },
-    [desktopSplitEnabled, primaryTaskId],
+    [desktopSplitEnabled, primaryTaskId, secondaryTaskId, splitHostEnabled],
   );
 
   const openSplitLeft = useCallback(
     (taskId: string) => {
       if (
         !desktopSplitEnabled ||
-        !primaryTaskId ||
+        !splitHostEnabled ||
         !taskId ||
-        taskId === primaryTaskId
+        taskId === primaryTaskId ||
+        taskId === secondaryTaskId
       ) {
         return;
       }
-      setPendingPrimaryTaskId(taskId);
-      setSecondaryTaskId(primaryTaskId);
       setActiveTaskId(taskId);
       router.push(`/task/${encodeURIComponent(taskId)}`);
     },
-    [desktopSplitEnabled, primaryTaskId, router],
+    [
+      desktopSplitEnabled,
+      primaryTaskId,
+      router,
+      secondaryTaskId,
+      splitHostEnabled,
+    ],
   );
 
   const closeSplit = useCallback(() => {
-    setPendingPrimaryTaskId(null);
     setSecondaryTaskId(null);
     setActiveTaskId(primaryTaskId);
   }, [primaryTaskId]);
+
+  const activatePrimary = useCallback(() => {
+    if (splitHostEnabled) setActiveTaskId(primaryTaskId);
+  }, [primaryTaskId, splitHostEnabled]);
 
   const activateTask = useCallback(
     (taskId: string) => {
@@ -136,13 +149,13 @@ export function TaskSplitProvider({ children }: { children: React.ReactNode }) {
 
   const splitActive = Boolean(
     desktopSplitEnabled &&
-      primaryTaskId &&
-      secondaryTaskId &&
-      (!pendingPrimaryTaskId || pendingPrimaryTaskId === primaryTaskId),
+      splitHostEnabled &&
+      secondaryTaskId,
   );
   const value = useMemo(
     () => ({
       desktopSplitEnabled,
+      splitHostEnabled,
       primaryTaskId,
       secondaryTaskId,
       activeTaskId,
@@ -150,10 +163,12 @@ export function TaskSplitProvider({ children }: { children: React.ReactNode }) {
       openSplit,
       openSplitLeft,
       closeSplit,
+      activatePrimary,
       activateTask,
     }),
     [
       desktopSplitEnabled,
+      splitHostEnabled,
       primaryTaskId,
       secondaryTaskId,
       activeTaskId,
@@ -161,6 +176,7 @@ export function TaskSplitProvider({ children }: { children: React.ReactNode }) {
       openSplit,
       openSplitLeft,
       closeSplit,
+      activatePrimary,
       activateTask,
     ],
   );
