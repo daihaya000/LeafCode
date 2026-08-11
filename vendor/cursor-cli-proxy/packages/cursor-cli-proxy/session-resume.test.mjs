@@ -4,7 +4,7 @@ import { test } from "node:test";
 // Unit tests must not hang agent shells forever (default node:test timeout is Infinity).
 const TEST_TIMEOUT_MS = 10_000;
 
-const { recordResumeChatId, resolvePromptForBackend } = await import("./index.js");
+const { buildOpenCodeResumeHeaders, recordResumeChatId, resolvePromptForBackend } = await import("./index.js");
 
 const baseInput = {
   backend: "cursor-agent",
@@ -90,6 +90,56 @@ test("isolates Cursor chat ids by OpenCode session id", { timeout: TEST_TIMEOUT_
   assert.notEqual(otherSession.sessionKey, first.sessionKey);
   assert.equal(otherSession.resumeChatId, undefined);
   assert.equal(otherSession.usedIncremental, false);
+});
+
+test("isolates concurrent title and primary agent resume state", { timeout: TEST_TIMEOUT_MS }, () => {
+  const messages = [{ role: "user", content: "Implement the feature" }];
+  const titleHeaders = buildOpenCodeResumeHeaders(baseInput.sessionId, "title");
+  const primaryHeaders = buildOpenCodeResumeHeaders(baseInput.sessionId, "build");
+  const title = resolvePromptForBackend({
+    ...baseInput,
+    agentFingerprint: titleHeaders["x-opencode-agent-fingerprint"],
+    messages,
+  });
+  const primary = resolvePromptForBackend({
+    ...baseInput,
+    agentFingerprint: primaryHeaders["x-opencode-agent-fingerprint"],
+    messages,
+  });
+
+  recordResumeChatId(
+    primary.sessionKey,
+    "cursor-chat-primary",
+    primary.recordContentPrefix,
+    primary.toolFingerprint,
+    primary.subagentFingerprint,
+  );
+  // Title generation starts in parallel and can finish after the primary
+  // request, so its late result must not overwrite the primary resume state.
+  recordResumeChatId(
+    title.sessionKey,
+    "cursor-chat-title",
+    title.recordContentPrefix,
+    title.toolFingerprint,
+    title.subagentFingerprint,
+  );
+
+  const nextPrimary = resolvePromptForBackend({
+    ...baseInput,
+    agentFingerprint: primaryHeaders["x-opencode-agent-fingerprint"],
+    messages: [
+      ...messages,
+      { role: "assistant", content: "The feature is ready." },
+      { role: "user", content: "Now run the tests" },
+    ],
+  });
+
+  assert.equal(primaryHeaders["x-opencode-session-id"], baseInput.sessionId);
+  assert.match(primaryHeaders["x-opencode-agent-fingerprint"], /^[a-f0-9]{32}$/);
+  assert.notEqual(titleHeaders["x-opencode-agent-fingerprint"], primaryHeaders["x-opencode-agent-fingerprint"]);
+  assert.notEqual(title.sessionKey, primary.sessionKey);
+  assert.equal(nextPrimary.resumeChatId, "cursor-chat-primary");
+  assert.equal(nextPrimary.usedIncremental, true);
 });
 
 test("starts a fresh chat when an image turn cannot be reduced to an incremental prompt", { timeout: TEST_TIMEOUT_MS }, () => {

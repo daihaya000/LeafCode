@@ -14,4 +14,5 @@
 APIキーはリポジトリに含めず、WebUIまたはOpenCodeの認証ストアから設定してください。
 
 会話履歴の再送信を抑えて入力トークンを削減するため、セッション再開は既定で有効です。
+同じOpenCodeセッション内で並行するtitle生成・compaction・通常エージェントは、エージェントfingerprintごとに別のCursor chatとして管理します。
 問題がある場合は `CURSOR_ACP_SESSION_RESUME=false` で無効化できます。

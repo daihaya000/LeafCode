@@ -19790,12 +19790,24 @@ function canonicalizeContentForAnchor(content) {
   }).join(`
 `);
 }
-function buildSessionKey(workspace, model, sessionId, anchor) {
-  return `${workspace}\0${model}\0${sessionId}\0${anchor}`;
+function buildSessionKey(workspace, model, sessionId, agentFingerprint, anchor) {
+  return `${workspace}\0${model}\0${sessionId}\0${agentFingerprint}\0${anchor}`;
 }
 function normalizeSessionHeader(value) {
   const raw = Array.isArray(value) ? value[0] : value;
   return typeof raw === "string" ? raw.trim() : "";
+}
+function buildOpenCodeResumeHeaders(sessionId, agent) {
+  const headers = {};
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  const normalizedAgent = typeof agent === "string" ? agent.trim() : "";
+  if (normalizedSessionId) {
+    headers["x-opencode-session-id"] = normalizedSessionId;
+  }
+  if (normalizedAgent) {
+    headers["x-opencode-agent-fingerprint"] = simpleHash(normalizedAgent);
+  }
+  return headers;
 }
 function isSessionResumeEnabled() {
   const value = process.env.CURSOR_ACP_SESSION_RESUME?.trim().toLowerCase();
@@ -35724,6 +35736,7 @@ __export2(exports_plugin, {
   captureResumeChatIdFromOutput: () => captureResumeChatIdFromOutput,
   captureResumeChatIdFromEvent: () => captureResumeChatIdFromEvent,
   buildCursorAgentCommand: () => buildCursorAgentCommand,
+  buildOpenCodeResumeHeaders: () => buildOpenCodeResumeHeaders,
   buildAvailableToolsSystemMessage: () => buildAvailableToolsSystemMessage,
   applyCursorWriteToolContract: () => applyCursorWriteToolContract,
   createBunChildWithResumeFallback: () => createBunChildWithResumeFallback,
@@ -35884,7 +35897,8 @@ function resolvePromptForBackend(input) {
   const resumePrefixes = deriveConversationResumePrefixes(input.messages);
   const contentPrefix = resumePrefixes?.lookupContentPrefix ?? anchorContentPrefix;
   const recordContentPrefix = resumePrefixes?.recordContentPrefix ?? contentPrefix;
-  const sessionKey = buildSessionKey(input.workspaceDirectory, input.model, sessionId, anchor);
+  const agentFingerprint = typeof input.agentFingerprint === "string" ? input.agentFingerprint.trim() : "";
+  const sessionKey = buildSessionKey(input.workspaceDirectory, input.model, sessionId, agentFingerprint, anchor);
   const sessionKeyHash = sanitizeSessionKey(sessionKey);
   const toolFingerprint = buildToolFingerprint(input.tools);
   const subagentFingerprint = input.subagentNames.slice().sort().join(",");
@@ -36691,6 +36705,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
       const stream = body?.stream === true;
       const tools = Array.isArray(body?.tools) ? body.tools : [];
       const opencodeSessionId = normalizeSessionHeader(req.headers.get("x-opencode-session-id"));
+      const opencodeAgentFingerprint = normalizeSessionHeader(req.headers.get("x-opencode-agent-fingerprint"));
       log23.debug("raw request body", {
         model: body?.model,
         cursorModel: body?.cursorModel,
@@ -36720,7 +36735,8 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         subagentNames,
         model,
         workspaceDirectory,
-        sessionId: opencodeSessionId
+        sessionId: opencodeSessionId,
+        agentFingerprint: opencodeAgentFingerprint
       });
       const prompt = applyBridgeJsonPrompt(resolvedPrompt.prompt, { allowedToolNames });
       const {
@@ -37244,6 +37260,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
       const stream = bodyData?.stream === true;
       const tools = Array.isArray(bodyData?.tools) ? bodyData.tools : [];
       const opencodeSessionId = normalizeSessionHeader(req.headers["x-opencode-session-id"]);
+      const opencodeAgentFingerprint = normalizeSessionHeader(req.headers["x-opencode-agent-fingerprint"]);
       const allowedToolNames = extractAllowedToolNames(tools);
       const bridgeJsonEnabled = isBridgeJsonEnabled();
       const toolSchemaMap = buildToolSchemaMap(tools);
@@ -37262,7 +37279,8 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         subagentNames,
         model,
         workspaceDirectory,
-        sessionId: opencodeSessionId
+        sessionId: opencodeSessionId,
+        agentFingerprint: opencodeAgentFingerprint
       });
       const prompt = applyBridgeJsonPrompt(resolvedPrompt.prompt, { allowedToolNames });
       const {
@@ -38143,10 +38161,7 @@ var log23, CURSOR_PROVIDER_ID2 = "cursor", CURSOR_PROVIDER_PREFIX, CURSOR_PROXY_
       if (!providerMatch) {
         return;
       }
-      const sessionId = typeof input.sessionID === "string" ? input.sessionID.trim() : "";
-      if (sessionId) {
-        output.headers["x-opencode-session-id"] = sessionId;
-      }
+      Object.assign(output.headers, buildOpenCodeResumeHeaders(input.sessionID, input.agent));
     },
     async "chat.params"(input, output) {
       const boundaryContext = createBoundaryRuntimeContext("chat.params");
@@ -38292,6 +38307,7 @@ var CursorPluginEntry = async (input) => {
 var plugin_entry_default = CursorPluginEntry;
 export {
   plugin_entry_default as default,
+  buildOpenCodeResumeHeaders,
   createBunChildWithResumeFallback,
   createNodeChildWithResumeFallback,
   createToolLoopTermination,
