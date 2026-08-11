@@ -92,7 +92,14 @@ import {
   filterCommands,
   parseSlashQuery,
 } from "@/lib/slash-command";
+import {
+  applyAgentCompletion,
+  filterAgents as filterAgentMentions,
+  parseAtQuery,
+  type AgentMention,
+} from "@/lib/agent-mention";
 import { useSlashCommands } from "@/lib/useSlashCommands";
+import { useAgents } from "@/lib/useAgents";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import type { ProviderModelsDto } from "@/lib/extensions";
@@ -220,8 +227,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [cursor, setCursor] = useState(0);
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
   const voice = useVoiceInput({ disabled: submitting });
   const slashCommands = useSlashCommands();
+  const agentMentions = useAgents();
   const slashQuery = useMemo(
     () => parseSlashQuery(prompt, cursor),
     [prompt, cursor],
@@ -232,6 +242,16 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     [slashCommands, slashQuery],
   );
   const slashOpen = !slashDismissed && slashItems.length > 0;
+  const atQuery = useMemo(
+    () => (slashOpen ? null : parseAtQuery(prompt, cursor)),
+    [prompt, cursor, slashOpen],
+  );
+  const mentionItems = useMemo(
+    () => (atQuery ? filterAgentMentions(agentMentions, atQuery.query) : []),
+    [agentMentions, atQuery],
+  );
+  const mentionOpen =
+    !mentionDismissed && mentionItems.length > 0 && !slashOpen;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -252,6 +272,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     setSlashIndex(0);
     setSlashDismissed(false);
   }, [slashQuery?.query, slashQuery?.start]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+    setMentionDismissed(false);
+  }, [atQuery?.query, atQuery?.start]);
 
   useEffect(() => {
     setAccessMode(readAccessMode());
@@ -703,6 +728,24 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     [prompt, cursor, autoResize],
   );
 
+  const applyAgentMention = useCallback(
+    (agent: AgentMention) => {
+      const query = parseAtQuery(prompt, cursor);
+      if (!query) return;
+      const next = applyAgentCompletion(prompt, query, agent.name);
+      setPrompt(next.text);
+      setCursor(next.cursor);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(next.cursor, next.cursor);
+        autoResize();
+      });
+    },
+    [prompt, cursor, autoResize],
+  );
+
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
   const selectedModelSupportsImage = model
@@ -1069,7 +1112,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       <main
         className={cx(
           "mx-auto flex min-h-full max-w-5xl flex-col justify-center px-4 py-12 pb-[max(6rem,env(safe-area-inset-bottom))]",
-          slashOpen && "pt-64",
+          (slashOpen || mentionOpen) && "pt-64",
         )}
       >
         <section>
@@ -1190,6 +1233,17 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 : undefined
             }
             commands={slashCommands}
+            agents={agentMentions}
+            mention={
+              mentionOpen
+                ? {
+                    items: mentionItems,
+                    activeIndex: mentionIndex,
+                    onHover: setMentionIndex,
+                    onSelect: (agent) => applyAgentMention(agent),
+                  }
+                : undefined
+            }
             attachments={attachments}
             onRemoveAttachment={removeAttachment}
             attachmentRemovalDisabled={submitting}
@@ -1236,6 +1290,29 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   if (event.key === "Escape") {
                     event.preventDefault();
                     setSlashDismissed(true);
+                    return;
+                  }
+                }
+                if (mentionOpen && !composingRef.current) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setMentionIndex((i) => (i + 1) % mentionItems.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setMentionIndex((i) => (i - 1 + mentionItems.length) % mentionItems.length);
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === "Tab") {
+                    event.preventDefault();
+                    const item = mentionItems[mentionIndex];
+                    if (item) applyAgentMention(item);
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setMentionDismissed(true);
                     return;
                   }
                 }

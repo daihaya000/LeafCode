@@ -175,10 +175,17 @@ import {
   parseSlashQuery,
 } from "@/lib/slash-command";
 import {
+  applyAgentCompletion,
+  filterAgents as filterAgentMentions,
+  parseAtQuery,
+  type AgentMention,
+} from "@/lib/agent-mention";
+import {
   formatElapsed,
   useSessionStream,
 } from "@/lib/useSessionStream";
 import { useSlashCommands } from "@/lib/useSlashCommands";
+import { useAgents } from "@/lib/useAgents";
 import { useVoiceInput } from "@/lib/use-voice-input";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import type { GoalLoopDto } from "@/lib/goal-loop";
@@ -726,7 +733,10 @@ export function TaskView({
   const [cursor, setCursor] = useState(0);
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
   const slashCommands = useSlashCommands(task?.directory ?? null);
+  const agentMentions = useAgents(task?.directory ?? null);
   const slashQuery = useMemo(
     () => parseSlashQuery(input, cursor),
     [input, cursor],
@@ -737,11 +747,26 @@ export function TaskView({
     [slashCommands, slashQuery],
   );
   const slashOpen = !slashDismissed && slashItems.length > 0;
+  const atQuery = useMemo(
+    () => (slashOpen ? null : parseAtQuery(input, cursor)),
+    [input, cursor, slashOpen],
+  );
+  const mentionItems = useMemo(
+    () => (atQuery ? filterAgentMentions(agentMentions, atQuery.query) : []),
+    [agentMentions, atQuery],
+  );
+  const mentionOpen =
+    !mentionDismissed && mentionItems.length > 0 && !slashOpen;
 
   useEffect(() => {
     setSlashIndex(0);
     setSlashDismissed(false);
   }, [slashQuery?.query, slashQuery?.start]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+    setMentionDismissed(false);
+  }, [atQuery?.query, atQuery?.start]);
 
   const stream = useSessionStream(
     task?.directory ?? null,
@@ -2612,6 +2637,25 @@ export function TaskView({
       const query = parseSlashQuery(input, cursor);
       if (!query) return;
       const next = applySlashCompletion(input, query, name);
+      setInput(next.text);
+      setCursor(next.cursor);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(next.cursor, next.cursor);
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      });
+    },
+    [input, cursor],
+  );
+
+  const applyAgentMention = useCallback(
+    (agent: AgentMention) => {
+      const query = parseAtQuery(input, cursor);
+      if (!query) return;
+      const next = applyAgentCompletion(input, query, agent.name);
       setInput(next.text);
       setCursor(next.cursor);
       requestAnimationFrame(() => {
@@ -4674,6 +4718,17 @@ export function TaskView({
                     : undefined
                 }
                 commands={slashCommands}
+                agents={agentMentions}
+                mention={
+                  mentionOpen
+                    ? {
+                        items: mentionItems,
+                        activeIndex: mentionIndex,
+                        onHover: setMentionIndex,
+                        onSelect: (agent) => applyAgentMention(agent),
+                      }
+                    : undefined
+                }
                 attachments={attachments}
                 onRemoveAttachment={removeAttachment}
                 attachmentRemovalLabel={() => "添付を削除"}
@@ -4720,6 +4775,29 @@ export function TaskView({
                       if (event.key === "Escape") {
                         event.preventDefault();
                         setSlashDismissed(true);
+                        return;
+                      }
+                    }
+                    if (mentionOpen && !composingRef.current) {
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setMentionIndex((i) => (i + 1) % mentionItems.length);
+                        return;
+                      }
+                      if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setMentionIndex((i) => (i - 1 + mentionItems.length) % mentionItems.length);
+                        return;
+                      }
+                      if (event.key === "Enter" || event.key === "Tab") {
+                        event.preventDefault();
+                        const item = mentionItems[mentionIndex];
+                        if (item) applyAgentMention(item);
+                        return;
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setMentionDismissed(true);
                         return;
                       }
                     }

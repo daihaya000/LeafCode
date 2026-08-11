@@ -1,3 +1,27 @@
+# 作業ログ: @エージェントメンションの青文字ハイライトとホバー概要
+
+## 日付
+2026-08-11
+
+## 内容
+
+スキル青文字表示と同じ仕組みで `@agent-name` 呼び出しに対応した。
+
+- `lib/agent-mention.ts`: `parseAtQuery` / `filterAgents` / `applyAgentCompletion` / `findAgentTokens` / `segmentAgentHighlights` / `segmentHighlights`（skill+agent統合ハイライト）/ `agentDescriptionAt` を追加。
+- `lib/useAgents.ts`: `/api/extensions/agents` から `AgentMention[]` を取得するフック。
+- `components/AgentSuggestMenu.tsx`: `@` 補完メニュー。エージェント名を `text-accent`（青）表示、`title` に description を設定してホバーで概要表示。
+- `components/Composer.tsx`: `agents` / `mention` props を追加。`@agent` トークンを青字ハイライト＋ホバー概要。skill と agent の両ハイライトを単一 mirror レイヤで統合表示。
+- `HomeView` / `TaskView`: `useAgents` でエージェント一覧を取得し、`@` 補完（矢印/Enter/Tab/Escape）と `applyAgentCompletion` を実装。
+
+## 検証
+
+- `npm run typecheck`: 成功
+- `npm run lint`（関連ファイル）: 成功
+- `vitest run`: agent-mention 13 / AgentSuggestMenu 2 / Composer 8 / SlashSuggestMenu 3 / slash-command 17 / HomeView+TaskView 187 tests passed
+- 本番ビルドは未検証（WebUI稼働中のためユーザー指示時のみ）
+
+---
+
 # 作業ログ: スキル青文字表示とホバー概要
 
 ## 日付

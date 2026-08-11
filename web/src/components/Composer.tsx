@@ -17,11 +17,17 @@ import type {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, X } from "lucide-react";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
+import { AgentSuggestMenu } from "@/components/AgentSuggestMenu";
 import {
-  segmentSkillHighlights,
+  findSkillTokens,
   skillDescriptionAt,
   type SlashCommand,
 } from "@/lib/slash-command";
+import {
+  agentDescriptionAt,
+  segmentHighlights,
+  type AgentMention,
+} from "@/lib/agent-mention";
 
 export type ComposerAttachment = {
   uri: string;
@@ -46,6 +52,14 @@ type ComposerProps = {
   };
   /** Known slash commands; skills (source=skill) render blue with hover titles. */
   commands?: SlashCommand[];
+  /** Known agents for `@agent` autocomplete + blue highlight. */
+  agents?: AgentMention[];
+  mention?: {
+    items: AgentMention[];
+    activeIndex: number;
+    onHover: (index: number) => void;
+    onSelect: (agent: AgentMention) => void;
+  };
   attachments: ComposerAttachment[];
   onRemoveAttachment: (index: number) => void;
   attachmentRemovalDisabled?: boolean;
@@ -97,6 +111,8 @@ export function Composer({
   onDragOver,
   slash,
   commands = [],
+  agents = [],
+  mention,
   attachments,
   onRemoveAttachment,
   attachmentRemovalDisabled,
@@ -108,16 +124,27 @@ export function Composer({
   action,
 }: ComposerProps) {
   const slashOpen = Boolean(slash && slash.items.length > 0);
+  const mentionOpen = Boolean(mention && mention.items.length > 0);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [caret, setCaret] = useState(0);
-  const highlightSegments = useMemo(
-    () => segmentSkillHighlights(textarea.value, commands),
+  const skillRanges = useMemo(
+    () => findSkillTokens(textarea.value, commands),
     [textarea.value, commands],
   );
-  const hasSkillHighlight = highlightSegments.some((s) => s.kind === "skill");
-  const skillTitle = useMemo(
-    () => skillDescriptionAt(textarea.value, commands, caret),
-    [textarea.value, commands, caret],
+  const highlightSegments = useMemo(
+    () => segmentHighlights(textarea.value, skillRanges, agents),
+    [textarea.value, skillRanges, agents],
+  );
+  const hasHighlight = highlightSegments.some(
+    (s) => s.kind === "skill" || s.kind === "agent",
+  );
+  const hoverTitle = useMemo(
+    () => {
+      const skill = skillDescriptionAt(textarea.value, commands, caret);
+      if (skill) return skill;
+      return agentDescriptionAt(textarea.value, agents, caret);
+    },
+    [textarea.value, commands, agents, caret],
   );
 
   useEffect(() => {
@@ -147,6 +174,14 @@ export function Composer({
           activeIndex={slash.activeIndex}
           onHover={slash.onHover}
           onSelect={slash.onSelect}
+        />
+      )}
+      {mentionOpen && mention && !slashOpen && (
+        <AgentSuggestMenu
+          items={mention.items}
+          activeIndex={mention.activeIndex}
+          onHover={mention.onHover}
+          onSelect={mention.onSelect}
         />
       )}
       {attachments.length > 0 && (
@@ -182,7 +217,7 @@ export function Composer({
         </div>
       )}
       <div className="relative">
-        {hasSkillHighlight && (
+        {hasHighlight && (
           <div
             ref={highlightRef}
             aria-hidden="true"
@@ -193,6 +228,14 @@ export function Composer({
               segment.kind === "skill" ? (
                 <span
                   key={`skill-${index}-${segment.name}`}
+                  className="font-medium text-accent"
+                  title={segment.description}
+                >
+                  {segment.text}
+                </span>
+              ) : segment.kind === "agent" ? (
+                <span
+                  key={`agent-${index}-${segment.name}`}
                   className="font-medium text-accent"
                   title={segment.description}
                 >
@@ -214,14 +257,22 @@ export function Composer({
           role="combobox"
           aria-busy={textarea.busy || undefined}
           aria-autocomplete="list"
-          aria-controls={slashOpen ? "slash-suggest-listbox" : undefined}
-          aria-expanded={slashOpen}
+          aria-controls={
+            slashOpen
+              ? "slash-suggest-listbox"
+              : mentionOpen
+                ? "agent-suggest-listbox"
+                : undefined
+          }
+          aria-expanded={slashOpen || mentionOpen}
           aria-activedescendant={
             slashOpen && slash?.items[slash.activeIndex]
               ? `slash-cmd-${slash.items[slash.activeIndex].name}`
-              : undefined
+              : mentionOpen && mention?.items[mention.activeIndex]
+                ? `agent-cmd-${mention.items[mention.activeIndex].name}`
+                : undefined
           }
-          title={skillTitle}
+          title={hoverTitle}
           disabled={textarea.disabled}
           readOnly={textarea.readOnly}
           onChange={(event) => {
@@ -247,7 +298,7 @@ export function Composer({
           onScroll={syncHighlightScroll}
           placeholder={textarea.placeholder}
           className={
-            hasSkillHighlight
+            hasHighlight
               ? `${textarea.className} relative z-10 text-transparent caret-[var(--text)] selection:bg-accent/25`
               : textarea.className
           }

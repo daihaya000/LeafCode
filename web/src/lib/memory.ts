@@ -642,7 +642,10 @@ export type MemoryAuditAction =
   | "reject"
   | "extract";
 
-/** Single-line JSON audit to stdout, captured by the host tee (mirrors pty-audit). */
+/**
+ * Persist an audit event. Stdout output is opt-in because automatic extraction
+ * can emit one event for every completed assistant message.
+ */
 export function logMemoryAudit(
   action: MemoryAuditAction,
   fields: {
@@ -671,5 +674,7 @@ export function logMemoryAudit(
       fields.detail ?? null,
       Date.now(),
     );
-  console.log(`memory-audit ${JSON.stringify(entry)}`);
+  if (process.env.MEMORY_AUDIT_STDOUT === "1") {
+    console.log(`memory-audit ${JSON.stringify(entry)}`);
+  }
 }

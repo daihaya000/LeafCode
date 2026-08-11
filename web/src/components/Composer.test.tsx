@@ -162,4 +162,66 @@ describe("Composer", () => {
     ).toBe("opencode 設定を編集する");
     expect(screen.queryByText("/init")).toBeNull();
   });
+
+  it("highlights @agent tokens in accent blue with description tooltip", () => {
+    renderComposer({
+      agents: [
+        { name: "build", label: "build", description: "Default primary agent" },
+      ],
+      slash: undefined,
+      textarea: {
+        ref: createRef<HTMLTextAreaElement>(),
+        value: "please @build review",
+        rows: 1,
+        ariaLabel: "プロンプト",
+        placeholder: "入力",
+        className: "textarea",
+        onChange: vi.fn(),
+        onClick: vi.fn(),
+        onKeyUp: vi.fn(),
+        onSelect: vi.fn(),
+        onPaste: vi.fn(),
+        onCompositionStart: vi.fn(),
+        onCompositionEnd: vi.fn(),
+        onKeyDown: vi.fn(),
+      },
+    });
+
+    const agent = screen.getByText("@build");
+    expect(agent.className).toContain("text-accent");
+    expect(agent.getAttribute("title")).toBe("Default primary agent");
+  });
+
+  it("renders the AgentSuggestMenu when a mention is active", () => {
+    renderComposer({
+      agents: [{ name: "build", label: "build", description: "Default" }],
+      slash: undefined,
+      mention: {
+        items: [{ name: "build", label: "build", description: "Default" }],
+        activeIndex: 0,
+        onHover: vi.fn(),
+        onSelect: vi.fn(),
+      },
+      textarea: {
+        ref: createRef<HTMLTextAreaElement>(),
+        value: "@bu",
+        rows: 1,
+        ariaLabel: "プロンプト",
+        placeholder: "入力",
+        className: "textarea",
+        onChange: vi.fn(),
+        onClick: vi.fn(),
+        onKeyUp: vi.fn(),
+        onSelect: vi.fn(),
+        onPaste: vi.fn(),
+        onCompositionStart: vi.fn(),
+        onCompositionEnd: vi.fn(),
+        onKeyDown: vi.fn(),
+      },
+    });
+
+    const listbox = screen.getByRole("listbox", { name: "エージェント" });
+    expect(listbox).toBeTruthy();
+    expect(screen.getByRole("option", { name: /build/ })).toBeTruthy();
+  });
 });

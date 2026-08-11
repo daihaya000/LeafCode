@@ -18,6 +18,7 @@ const {
   deleteMemory,
   findExactDuplicateMemory,
   insertExtractedMemories,
+  logMemoryAudit,
   listMemories,
   memoryContentError,
   memoryInjectionFor,
@@ -41,6 +42,27 @@ afterAll(() => {
 });
 
 describe("memory CRUD + injection", () => {
+  it("persists audit events without flooding stdout by default", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const previous = process.env.MEMORY_AUDIT_STDOUT;
+    delete process.env.MEMORY_AUDIT_STDOUT;
+    try {
+      logMemoryAudit("extract", { workspaceId: "ws-log", sessionId: "ses-log" });
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(
+        getDb()
+          .prepare(
+            "SELECT action, workspace_id, session_id FROM memory_audit_log WHERE workspace_id = ? ORDER BY id DESC LIMIT 1",
+          )
+          .get("ws-log"),
+      ).toEqual({ action: "extract", workspace_id: "ws-log", session_id: "ses-log" });
+    } finally {
+      if (previous === undefined) delete process.env.MEMORY_AUDIT_STDOUT;
+      else process.env.MEMORY_AUDIT_STDOUT = previous;
+      logSpy.mockRestore();
+    }
+  });
+
   it("inserts and reads a memory with TEXT id", () => {
     const created = createMemory({
       workspaceId: "ws-1",
