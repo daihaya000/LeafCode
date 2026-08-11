@@ -1,23 +1,3 @@
-# 作業ログ: 入力欄のスキル青文字ハイライト
-
-## 日付
-
-2026-08-11
-
-## 内容
-
-- Composer 入力中の /skill-name を青文字（	ext-accent）でハイライトし、キャレット位置のスキル概要を 	itle でホバー表示する。
-- slash-command.ts に isSkillCommand / indSkillTokens / segmentSkillHighlights / skillDescriptionAt を追加。
-- HomeView / TaskView の Composer に commands={slashCommands} を渡す。
-- スラッシュ候補・設定スキル一覧の青文字表示とホバー概要は継続。
-
-## 検証
-
-- 
-pm.cmd test -- --run : SlashSuggestMenu / slash-command / Composer / ExtensionsSettings / SessionActions / goal-loop.integration / provider-models … 151 tests 成功
-
----
-
 # 作業ログ: スキル名の青文字表示とホバー概要
 
 ## 日付
@@ -27,15 +7,15 @@ pm.cmd test -- --run : SlashSuggestMenu / slash-command / Composer / ExtensionsS
 ## 内容
 
 - スラッシュ候補で `source === "skill"` のスキル名を `text-accent`（青）にし、説明文を `title` でホバー表示する。
-- 入力欄の `/skill-name` トークンを青文字ハイライトし、カレット位置に応じた概要を `title` でホバー表示する（`Composer` + `segmentSkillHighlights`）。
+- Composer 入力中の `/skill-name` トークンを青文字ハイライトし、キャレット位置のスキル概要を `title` でホバー表示する（`segmentSkillHighlights` / `skillDescriptionAt`）。
 - 設定のスキル一覧（Extensions / Project）でもスキル名を青文字にし、説明がある場合はホバーで概要を見られるようにした。
+- HomeView / TaskView の Composer に `commands={slashCommands}` を渡す。
 - フロントマター解析をクライアント安全な `skill-frontmatter.ts` に分離した。
 - 通常コマンド名は従来どおり本文色のまま区別する。
 
 ## 検証
 
-- `npm.cmd test -- --run src/components/SlashSuggestMenu.test.tsx src/components/Composer.test.tsx src/lib/slash-command.test.ts src/components/settings/ExtensionsSettings.test.tsx src/components/settings/ProjectSettingsView.test.tsx` ... 成功
-- 変更対象 ESLint ... 成功
+- `npm.cmd test -- --run src/components/SlashSuggestMenu.test.tsx src/components/Composer.test.tsx src/lib/slash-command.test.ts src/components/settings/ExtensionsSettings.test.tsx` … 50 tests 成功
 
 ---
 
