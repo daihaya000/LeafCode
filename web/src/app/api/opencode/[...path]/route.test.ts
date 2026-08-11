@@ -1365,6 +1365,7 @@ describe("arms the server-side hang watchdog (docs/specs/hang-watchdog-server-si
     expect(hangWatch.armed).toHaveLength(1);
     expect(hangWatch.armed[0].requestPath).toBe("/session/session-1/command");
     expect(hangWatch.armed[0].timeoutMs).toBe(290_000);
+    expect(hangWatch.disarmed).toEqual(["session-1"]);
     fetchMock.mockRestore();
   });
 

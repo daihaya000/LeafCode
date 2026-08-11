@@ -1,5 +1,39 @@
 # 作業ログ: 透過プロキシ /provider GET レスポンスキャッシュ追加
 
+# タスク完了後のハングwatchdog再開誤判定を修正
+
+## 日付
+
+2026-08-11
+
+## 根本原因
+
+- `session_hang_watches` は通常の `prompt_async` 送信後も監視を続けるが、`/session/status` が完了後も `busy` のまま残る場合、履歴に完了済みassistant応答があってもbusy状態を優先してabort・同一要求の再送へ進んでいた。
+- idleかつ本文を認識できないターンは、設定値（実環境では10分）を待たず `SILENT_RESPONSE_GRACE_MS` の30秒後に再送されていた。中間ステップや無言・ツール専用完了を誤って再開し得た。
+- 同期型の`command`/`prompt`は成功レスポンス自体がターン完了を示すのに、成功後もwatchを残していた。
+- Goal Loopは対象タスクに存在せず、`goal_loops`のRunnable状態にも該当しなかったため、今回の再開経路ではなかった。
+
+## 修正
+
+- ハング閾値超過時に履歴の完了済みassistant応答（active toolなし）を検出したら、残留busy状態より履歴を優先してwatchを解除する。
+- idle無応答は設定された無活動閾値を超えてから短い確認graceへ進める。30秒だけで再送しない。
+- BFF経由および新規タスク初回の同期`command`完了時にwatchを解除する。
+
+## 回帰テスト
+
+- stale busy + 完了済みassistant応答ではabort/replayしない。
+- idle無応答は30秒では再送せず、閾値超過後の確認graceを経て初めて再送する。
+- 同期command成功後にwatchを解除する。
+
+## 検証
+
+- `npx vitest run`: 267 files / 3190 passed / 1 skipped
+- `npx tsc --noEmit`: 成功
+- 対象6ファイルのESLint: 成功
+- Goal Loop / Workflow / Session Stream関連79テスト: 成功
+
+---
+
 # 作業ログ: 保存済みモデル価格の設定画面表示
 
 ## 日付

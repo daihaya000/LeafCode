@@ -46,10 +46,9 @@ export const MAX_WATCH_BODY_BYTES = 2_000_000;
 export const HANG_CONFIRM_GRACE_MS = 30_000;
 
 /**
- * Idle can be reported briefly between assistant steps. Before treating a
- * turn with no user-visible response as silent, require its transcript to be
- * unchanged for this long. This is deliberately much shorter than the hang
- * timeout but long enough to cover a normal step transition.
+ * Extra confirmation grace for a turn that has no user-visible response after
+ * the configured hang threshold. This is deliberately much shorter than the
+ * hang timeout but long enough to cover a normal step transition.
  */
 export const SILENT_RESPONSE_GRACE_MS = 30_000;
 
@@ -288,29 +287,6 @@ function hasAssistantResponse(messages: MessageWithParts[], startedAt: number): 
   });
 }
 
-/**
- * Avoid retrying an idle gap between assistant steps. The first observation
- * and every transcript change start a fresh quiet window; only an unchanged
- * no-response transcript is eligible for the silent-turn retry afterwards.
- */
-function waitForSilentResponseGrace(
-  row: SessionHangWatchRow,
-  messages: MessageWithParts[],
-): boolean {
-  const now = Date.now();
-  const fingerprint = progressFingerprint(messages);
-  if (row.progress_fingerprint !== fingerprint) {
-    recordProgress(row.session_id, now, fingerprint);
-    return true;
-  }
-  const activityAt = Math.max(
-    row.started_at,
-    row.last_progress_at,
-    latestActivityAt(messages),
-  );
-  return now - activityAt < SILENT_RESPONSE_GRACE_MS;
-}
-
 type PendingRow = { id?: unknown; sessionID?: unknown };
 
 /** OpenCode REST often wraps lists as `{ data: T[] }` instead of a bare array. */
@@ -525,12 +501,10 @@ async function evaluateWatch(
       return;
     }
 
-    if (!hasActiveTool(messages, row.started_at)) {
-      if (!hasAssistantResponse(messages, row.started_at)) {
-        if (waitForSilentResponseGrace(row, messages)) return;
-        await resolveHang(row);
-        return;
-      }
+    // An idle snapshot is not enough to call a turn hung. In particular, a
+    // normal silent/tool-only completion must not be replayed 30 seconds after
+    // it ended; the regular inactivity threshold below still owns recovery.
+    if (!hasActiveTool(messages, row.started_at) && hasAssistantResponse(messages, row.started_at)) {
       disarmHangWatch(row.session_id);
       return;
     }
@@ -553,6 +527,17 @@ async function evaluateWatch(
   }
   if (!Array.isArray(messages)) return;
 
+  // `/session/status` can remain busy after the final assistant message is
+  // already complete. At the inactivity threshold, the transcript is the
+  // stronger terminal signal; otherwise a stale busy entry would abort and
+  // replay a task that has already finished.
+  const activeTool = hasActiveTool(messages, row.started_at);
+  const assistantResponse = hasAssistantResponse(messages, row.started_at);
+  if (!activeTool && assistantResponse) {
+    disarmHangWatch(row.session_id);
+    return;
+  }
+
   const fingerprint = progressFingerprint(messages);
   const activityAt = Math.max(latestActivityAt(messages), row.started_at);
   const fingerprintChanged =
@@ -566,7 +551,9 @@ async function evaluateWatch(
   if (row.progress_fingerprint === "") {
     // First over-threshold look: remember the shape of the transcript and check
     // again shortly, so a purely streaming turn is not mistaken for a hang.
-    recordProgress(row.session_id, now - timeoutMs + HANG_CONFIRM_GRACE_MS, fingerprint);
+    const confirmationGraceMs =
+      !activeTool && !assistantResponse ? SILENT_RESPONSE_GRACE_MS : HANG_CONFIRM_GRACE_MS;
+    recordProgress(row.session_id, now - timeoutMs + confirmationGraceMs, fingerprint);
     return;
   }
 

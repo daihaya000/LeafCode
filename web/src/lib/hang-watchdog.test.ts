@@ -224,6 +224,20 @@ describe("runHangWatchdogTick", () => {
     expect(getHangWatch(SESSION)).toBeNull();
   });
 
+  it("drops a stale busy watch when the transcript already has a completed response", async () => {
+    arm();
+    const startedAt = getHangWatch(SESSION)!.started_at;
+    ageWatch(TIMEOUT_MS + 1_000);
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) =>
+      requestPath.endsWith("/message") ? completedTranscript(startedAt) : busyStatus(),
+    );
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).toBeNull();
+  });
+
   it("keeps watching an active tool across a transient idle status", async () => {
     arm();
     ageWatch(TIMEOUT_MS + 1_000);
@@ -281,13 +295,22 @@ describe("runHangWatchdogTick", () => {
 
     ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
     await runHangWatchdogTick();
+    expect(callsTo("/abort")).toHaveLength(0);
+
+    ageWatch(TIMEOUT_MS + 1_000);
+    // The first over-threshold check only arms the short confirmation grace.
+    await runHangWatchdogTick();
+    expect(callsTo("/abort")).toHaveLength(0);
+
+    ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
+    await runHangWatchdogTick();
 
     expect(callsTo("/abort")).toHaveLength(1);
     expect(callsTo("/prompt_async")).toHaveLength(1);
     expect(getHangWatch(SESSION)!.retry_used).toBe(1);
   });
 
-  it("extends the silent grace window when reasoning is still changing", async () => {
+  it("does not resume while reasoning continues to change", async () => {
     arm();
     let reasoning = "first";
     let busy = false;
@@ -325,12 +348,12 @@ describe("runHangWatchdogTick", () => {
     await runHangWatchdogTick();
     expect(callsTo("/abort")).toHaveLength(0);
 
-    ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
+    ageWatch(TIMEOUT_MS + 1_000);
     reasoning = "second";
     await runHangWatchdogTick();
     expect(callsTo("/abort")).toHaveLength(0);
 
-    ageWatch(SILENT_RESPONSE_GRACE_MS + 1_000);
+    ageWatch(TIMEOUT_MS + 1_000);
     await runHangWatchdogTick();
     expect(callsTo("/abort")).toHaveLength(1);
     expect(callsTo("/prompt_async")).toHaveLength(1);

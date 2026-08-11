@@ -192,6 +192,7 @@ describe("POST /api/tasks arms the hang watchdog", () => {
     expect(res.status).toBe(200);
     expect(hangWatch.armed).toHaveLength(1);
     expect(hangWatch.armed[0].requestPath).toBe("/session/session-1/command");
+    expect(hangWatch.disarmed).toEqual(["session-1"]);
 
     mocked.mockImplementation(async (_dir: string | null, path: string) => {
       if (path === "/session") return { id: "session-1" };

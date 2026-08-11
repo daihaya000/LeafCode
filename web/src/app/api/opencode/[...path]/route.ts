@@ -878,6 +878,12 @@ async function proxy(
   if (armedWatchSessionId && !upstream.ok) {
     disarmHangWatch(armedWatchSessionId);
   }
+  if (armedWatchSessionId && upstream.ok && isLongRunningSyncMutation(req.method, pathname)) {
+    // Synchronous command/prompt/message responses are returned only after the
+    // engine finishes the turn. There is no remaining turn for the watchdog to
+    // recover, even if the transcript is tool-only or otherwise textless.
+    disarmHangWatch(armedWatchSessionId);
+  }
 
   // A successful compact can discard the original workspace-memory and
   // collaboration blocks from the active context. Allow both injections on

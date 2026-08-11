@@ -593,6 +593,10 @@ export async function POST(req: NextRequest) {
         `/session/${session.id}/command`,
         { method: "POST", body: commandBody },
       );
+      // The synchronous command endpoint returns only after the turn finishes.
+      // Do not leave a completed, possibly textless command under the hang
+      // watchdog.
+      disarmHangWatch(session.id);
     } else {
       const promptBody: Record<string, unknown> = {
         parts: [
