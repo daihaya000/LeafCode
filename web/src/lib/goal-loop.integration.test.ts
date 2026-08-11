@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   promptAsyncFailureStatus: 408,
   statusFailuresRemaining: 0,
   messageFailuresRemaining: 0,
+  providerFailuresRemaining: 0,
   tokenSavingMode: null as string | null,
   tokenSavingThreshold: null as string | null,
   providerResponse: { all: [] } as unknown,
@@ -39,6 +40,12 @@ vi.mock("./oc-server", () => ({
       return h.statusResponse;
     }
     if (path === "/provider") {
+      if (h.providerFailuresRemaining > 0) {
+        h.providerFailuresRemaining -= 1;
+        const err = new Error("OpenCode provider temporarily unavailable") as Error & { status: number };
+        err.status = 503;
+        throw err;
+      }
       return h.providerResponse;
     }
     if (path.endsWith("/compact")) {
@@ -287,6 +294,7 @@ beforeEach(() => {
   h.promptAsyncFailureStatus = 408;
   h.statusFailuresRemaining = 0;
   h.messageFailuresRemaining = 0;
+  h.providerFailuresRemaining = 0;
   h.tokenSavingMode = null;
   h.tokenSavingThreshold = null;
   h.providerResponse = { all: [] };
@@ -602,6 +610,65 @@ describe("goal loop failure recovery", () => {
 
     expect(h.ocCalls.filter((call) => call.path === "/session/status")).toHaveLength(2);
     expect(getGoalLoop("ws-1")?.status).toBe("running");
+  });
+
+  it("keeps the loop queued through a temporary status outage and retries on the next tick", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.ocCalls.length = 0;
+    h.promptAsyncCount = 0;
+    h.statusFailuresRemaining = 3;
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+    resetSchedulerTickingForTest();
+
+    await runGoalLoopSchedulerTick();
+
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("");
+    expect(h.promptAsyncCount).toBe(0);
+
+    await runGoalLoopSchedulerTick();
+
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(h.promptAsyncCount).toBe(1);
+  });
+
+  it("keeps the loop queued when auto-compact provider metadata is temporarily unavailable", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.ocCalls.length = 0;
+    h.promptAsyncCount = 0;
+    h.tokenSavingMode = "auto";
+    h.providerFailuresRemaining = 3;
+    testDb
+      .prepare(`UPDATE goal_loops SET status = 'queued', turn_count = 0 WHERE id = ?`)
+      .run(getGoalLoop("ws-1")!.id);
+    resetSchedulerTickingForTest();
+
+    await runGoalLoopSchedulerTick();
+
+    expect(getGoalLoop("ws-1")?.status).toBe("queued");
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("");
+    expect(h.promptAsyncCount).toBe(0);
+
+    await runGoalLoopSchedulerTick();
+
+    expect(getGoalLoop("ws-1")?.status).toBe("running");
+    expect(h.promptAsyncCount).toBe(1);
   });
 
   it("does not retry an ambiguously failed prompt_async and pauses the claimed turn", async () => {

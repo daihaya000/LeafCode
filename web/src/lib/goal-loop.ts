@@ -301,7 +301,7 @@ function providerModelsMap(response: ProviderResponse): Record<string, ProviderM
   return result;
 }
 
-type GoalLoopCompactionResult = "not_needed" | "compacted" | "conflict";
+type GoalLoopCompactionResult = "not_needed" | "compacted" | "conflict" | "retry";
 
 async function autoCompactGoalLoop(
   loop: GoalLoopDto,
@@ -311,9 +311,18 @@ async function autoCompactGoalLoop(
   const mode = getSetting("token-saving");
   if (!isTokenSavingMode(mode) || mode !== "auto") return "not_needed";
 
-  const providers = await retryTransientOpenCode(() =>
-    ocServer<ProviderResponse>(directory, "/provider", { timeoutMs: STATUS_TIMEOUT_MS }),
-  );
+  let providers: ProviderResponse;
+  try {
+    providers = await retryTransientOpenCode(() =>
+      ocServer<ProviderResponse>(directory, "/provider", { timeoutMs: STATUS_TIMEOUT_MS }),
+    );
+  } catch (err) {
+    // Provider metadata is only a preflight read for optional auto-compact.
+    // A temporary engine/network outage must not turn a queued loop into a
+    // permanent pause before its first prompt; the next scheduler tick retries.
+    if (isTransientOpenCodeError(err)) return "retry";
+    throw err;
+  }
   const usage = computeContextUsage(messages, providerModelsMap(providers));
   const threshold = clampThreshold(
     Number(getSetting("token-saving-threshold") ?? DEFAULT_TOKEN_SAVING_THRESHOLD),
@@ -1369,11 +1378,20 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // Check before the busy-status early return. An engine that stays "busy"
   // forever must not prevent the running-turn timeout from taking effect.
   if (loop.status === "running") expireStalledTurn(loop);
-  const statuses = await retryTransientOpenCode(() =>
-    ocServer<StatusMap>(ws.absolute_path, SESSION_STATUS_PATH, {
-      timeoutMs: STATUS_TIMEOUT_MS,
-    }),
-  );
+  let statuses: StatusMap;
+  try {
+    statuses = await retryTransientOpenCode(() =>
+      ocServer<StatusMap>(ws.absolute_path, SESSION_STATUS_PATH, {
+        timeoutMs: STATUS_TIMEOUT_MS,
+      }),
+    );
+  } catch (err) {
+    // Status is a read-only scheduling hint. Keep the loop in its current
+    // state when OpenCode is temporarily unreachable and let the next tick
+    // retry instead of converting the outage into scheduler_error.
+    if (isTransientOpenCodeError(err)) return;
+    throw err;
+  }
   const status = statuses[loop.sessionId];
   // A missing entry means "not tracked / not running" (same convention as
   // task-service), not "unknown". Requiring an explicit idle entry stalled
@@ -1421,7 +1439,8 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
 
   if (loop.status === "verifying_completed") {
     if (!transcriptIdleFor(messages, TURN_QUIET_MS)) return;
-    if ((await autoCompactGoalLoop(loop, ws.absolute_path, messages)) === "conflict") {
+    const compactResult = await autoCompactGoalLoop(loop, ws.absolute_path, messages);
+    if (compactResult === "conflict" || compactResult === "retry") {
       return;
     }
     const anchor = latestMessageId(messages);
@@ -1531,9 +1550,10 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     return;
   }
 
-  if ((await autoCompactGoalLoop(loop, ws.absolute_path, messages)) === "conflict") {
+  const compactResult = await autoCompactGoalLoop(loop, ws.absolute_path, messages);
+  if (compactResult === "conflict" || compactResult === "retry") {
     // Keep the loop queued. The next scheduler tick retries after the other
-    // tab/process releases the session compaction lock.
+    // tab/process releases the session compaction lock or the engine recovers.
     return;
   }
 

@@ -5478,3 +5478,36 @@ Hermes Agent と同様に「自動確定を既定、必要なら承認制」を�
 - `npm --prefix web run typecheck` ... 成功
 - 対象ファイルの `npx eslint` ... 成功
 - 本番ビルドはプロジェクト指示により実行しない
+## Goal Loop: 一時的なOpenCode通信障害で停止する不具合を修正
+
+### 日付
+
+2026-08-11
+
+### 根本原因
+
+- `goal-loop.ts` の `processLoop()` は `/session/status` の読み取りを短時間リトライした後、`fetch failed`・5xx・タイムアウトを例外としてスケジューラへ返していた。
+- `runGoalLoopSchedulerTick()` の catch-all がその一時障害を `scheduler_error` + `paused` に確定していたため、最初のプロンプトを送る前でもループが `0/100` で停止した。
+- `token-saving=auto` ではターン送信前の `/provider` メタデータ取得も同じ影響を受けていた。
+- 実環境のループ行は `turn_count=0`、`pause_reason=scheduler_error`、`error=fetch failed` で、直前のhostログにも対象セッションのstatus timeoutと`fetch failed`が記録されていた。
+
+### 修正
+
+- 読み取り専用の `/session/status` が一時的に失敗した場合は状態を変更せず、次のスケジューラtickで再試行するようにした。
+- 自動コンパクション用 `/provider` メタデータ取得の一時障害も `retry` としてキュー状態を維持するようにした。
+- `prompt_async` の送達不明やコンパクション自体・完了確認の失敗は、重複送信防止のため従来どおり停止経路に残した。
+
+### 回帰テスト
+
+- statusの一時障害3回後も`queued`を維持し、次tickでpromptを1回だけ送信する統合テストを追加。
+- auto-compactのproviderメタデータ一時障害3回後も`queued`を維持し、復旧後の次tickでpromptを送信する統合テストを追加。
+
+### 検証
+
+- Goal Loop関連: 3ファイル / 118 tests passed
+- Web全体: 271 files / 3263 tests passed / 1 skipped
+- `npm run typecheck`: 成功
+- `npm run lint -- src/lib/goal-loop.ts src/lib/goal-loop.integration.test.ts`: 成功
+- 本番ビルドは常駐WebUIを停止させるため実行していない。
+
+---
