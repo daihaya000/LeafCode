@@ -318,6 +318,29 @@ Home 初回バーストの `/api/opencode/provider` と `/api/extensions/provide
 
 - `npx tsc --noEmit`: 合格
 - `npx eslint <変更ファイル>`: 合格
+
+---
+
+# 手動停止後のタスクセッション自動再開を修正
+
+## 日付
+
+2026-08-11
+
+## 根本原因
+
+`POST /session/{id}/abort` が `session_hang_watches` の監視を解除していなかったため、手動停止後も保存済みプロンプトが監視対象として残り、無言終了のハング判定で自動再送され得た。
+
+## 修正
+
+- abort リクエストを検出した時点で対象セッションのハング監視を解除する。
+- `route.test.ts` に手動停止時の監視解除を固定する回帰テストを追加した。
+
+## 検証
+
+- `npx vitest run src/app/api/opencode/[...path]/route.test.ts src/lib/hang-watchdog.test.ts`: 80件成功
+- `npm run typecheck`: 成功
+- `npx eslint src/app/api/opencode/[...path]/route.ts src/app/api/opencode/[...path]/route.test.ts`: 成功
 - `npx vitest run`: 267 ファイル 3170 passed / 1 skipped（2回連続合格）
 
 ## 残存リスク・制約

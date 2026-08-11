@@ -75,6 +75,13 @@ function hangWatchSessionId(method: string, pathname: string): string | null {
   return match ? match[1] : null;
 }
 
+/** An explicit user abort must cancel recovery for the stopped turn. */
+function abortedSessionId(method: string, pathname: string): string | null {
+  if (method !== "POST") return null;
+  const match = /^(?:\/api)?\/session\/([^/]+)\/abort$/.exec(pathname);
+  return match ? match[1] : null;
+}
+
 /** Match the synchronous, completion-blocking mutation endpoints. */
 function isLongRunningSyncMutation(method: string, pathname: string): boolean {
   if (method !== "POST") return false;
@@ -676,6 +683,12 @@ async function proxy(
         } catch {
           // Preserve the existing behavior for non-JSON or malformed bodies.
         }
+      }
+      const explicitlyAbortedSessionId =
+        abortedSessionId(req.method, pathname) ??
+        abortedSessionId(req.method, resolvedPathname);
+      if (explicitlyAbortedSessionId) {
+        disarmHangWatch(explicitlyAbortedSessionId);
       }
       // Pause any live goal loop on this session before letting a manual send
       // through, so the send cannot interleave with a loop turn. The TaskView

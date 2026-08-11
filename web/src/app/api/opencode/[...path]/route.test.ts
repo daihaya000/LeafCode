@@ -135,7 +135,7 @@ function post(body: string, contentType = "application/json") {
 }
 
 function sessionPost(
-  operation: "prompt_async" | "command" | "compact",
+  operation: "prompt_async" | "command" | "compact" | "abort",
   body: Record<string, unknown>,
   contentType = "application/json",
   // Matches the literal "C%3A%5C%5Crepo" (two backslashes) used by the other
@@ -1367,6 +1367,15 @@ describe("arms the server-side hang watchdog (docs/specs/hang-watchdog-server-si
     expect(hangWatch.armed[0].timeoutMs).toBe(290_000);
     expect(hangWatch.disarmed).toEqual(["session-1"]);
     fetchMock.mockRestore();
+  });
+
+  it("disarms the watch when the user explicitly aborts a session", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
+
+    await sessionPost("abort", {});
+
+    expect(hangWatch.armed).toEqual([]);
+    expect(hangWatch.disarmed).toEqual(["session-1"]);
   });
 
   it("disarms the watch when the engine rejects the send", async () => {
