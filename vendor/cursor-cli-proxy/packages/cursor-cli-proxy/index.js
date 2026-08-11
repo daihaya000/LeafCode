@@ -34947,7 +34947,7 @@ function containsAny(text, patterns) {
 function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-var UNKNOWN_AS_SUCCESS_TOOLS, EXPLORATION_TOOLS, COARSE_LIMIT_MULTIPLIER = 3, EXPLORATION_LIMIT_MULTIPLIER = 5;
+var UNKNOWN_AS_SUCCESS_TOOLS, EXPLORATION_TOOLS, COARSE_LIMIT_MULTIPLIER = 3, EXPLORATION_LIMIT_MULTIPLIER = 1;
 var init_tool_loop_guard = __esm(() => {
   UNKNOWN_AS_SUCCESS_TOOLS = /* @__PURE__ */ new Set([
     "bash",
@@ -35652,6 +35652,7 @@ __export2(exports_plugin, {
   buildCursorAgentCommand: () => buildCursorAgentCommand,
   buildAvailableToolsSystemMessage: () => buildAvailableToolsSystemMessage,
   applyCursorWriteToolContract: () => applyCursorWriteToolContract,
+  createToolLoopGuard: () => createToolLoopGuard,
   CursorPlugin: () => CursorPlugin
 });
 import { spawn as spawn4, spawnSync } from "child_process";
@@ -37983,6 +37984,7 @@ var init_plugin = __esm(() => {
   OPENCODE_NATIVE_TOOL_HOOK_EXCLUSIONS = /* @__PURE__ */ new Set(["edit", "write"]);
   plugin_default = CursorPlugin;
 });
+init_tool_loop_guard();
 init_plugin_toggle();
 init_logger();
 var log24 = createLogger("plugin-entry");
@@ -38000,5 +38002,6 @@ var CursorPluginEntry = async (input) => {
 };
 var plugin_entry_default = CursorPluginEntry;
 export {
-  plugin_entry_default as default
+  plugin_entry_default as default,
+  createToolLoopGuard
 };

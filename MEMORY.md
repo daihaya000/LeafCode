@@ -6,6 +6,18 @@
 
 ## 内容
 
+- Cursor CLI proxy の探索ツール反復倍率を `5` から `1` に下げ、同じ成功した `bash` / `read` 等の呼び出しを既定3回目で停止するよう最適化した。`tool-loop-guard.test.mjs` に同一 `git status` 呼び出しの回帰テストを追加した。
+
+## 検証
+
+- `node --test vendor/cursor-cli-proxy/packages/cursor-cli-proxy/image-attachments.test.mjs vendor/cursor-cli-proxy/packages/cursor-cli-proxy/proxy-health-gate.test.mjs vendor/cursor-cli-proxy/packages/cursor-cli-proxy/tool-loop-guard.test.mjs` ... 10 tests 成功
+- `npm.cmd --prefix web run typecheck` ... 成功
+- `node --check vendor/cursor-cli-proxy/packages/cursor-cli-proxy/index.js` ... 成功
+
+---
+
+## 内容
+
 - Cursor CLI proxy の既定 `opencode.jsonc` を更新し、Cursor provider の接続先を `http://127.0.0.1:32125/v1`、Auto モデルのコンテキスト上限・料金・画像入力対応を指定値で登録した。
 
 ## 検証
