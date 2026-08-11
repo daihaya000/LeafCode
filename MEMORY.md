@@ -248,6 +248,25 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 
 ## 作業ログ: アーカイブタスク一覧のengine fan-out削減
 
+## 作業ログ: provider-modelsの同時provider取得削減
+
+## 日付
+
+2026-08-11
+
+## 修正内容
+
+- provider responseのTTLキャッシュにcache miss中のin-flight Promise共有を追加した。
+- 同時に複数の `/api/extensions/provider-models` GET が発生しても、OpenCode `/provider` は1回だけ取得する。
+- 成功時のみTTLキャッシュへ保存し、失敗時や完了後はpending状態を残さない。
+
+## 検証結果
+
+- `provider-models.test.ts`: 41 tests passed
+- concurrent cache missで `ocServer` が1回だけ呼ばれる回帰テストを追加した。
+- `npm run typecheck`: 成功
+- 対象2ファイルのESLint: 成功
+
 ## 作業ログ: Sidebarアーカイブ詳細取得の遅延
 
 ## 日付

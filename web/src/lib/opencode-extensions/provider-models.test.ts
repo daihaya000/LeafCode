@@ -176,6 +176,23 @@ describe("listProviderModels", () => {
     expect(h.ocServer).toHaveBeenCalledTimes(1);
   });
 
+  it("shares concurrent provider fetches on a cache miss", async () => {
+    let release!: (value: typeof MOCK_PROVIDER_RESPONSE) => void;
+    h.ocServer.mockImplementation(
+      () => new Promise<typeof MOCK_PROVIDER_RESPONSE>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const first = listProviderModels();
+    const second = listProviderModels();
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+
+    release(MOCK_PROVIDER_RESPONSE);
+    await Promise.all([first, second]);
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+  });
+
   it("filters to connected providers when connected is non-empty", async () => {
     h.ocServer.mockResolvedValue({
       ...MOCK_PROVIDER_RESPONSE,

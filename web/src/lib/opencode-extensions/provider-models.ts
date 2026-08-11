@@ -90,12 +90,14 @@ const PROVIDER_RESPONSE_CACHE_TTL_MS = 5_000;
 type ProviderResponseCache = { at: number; data: ProviderResponse };
 type ProviderModelsGlobal = typeof globalThis & {
   __opencodeWebuiProviderResponseCache?: ProviderResponseCache | null;
+  __opencodeWebuiProviderResponsePending?: Promise<ProviderResponse> | null;
 };
 const providerModelsGlobal = globalThis as ProviderModelsGlobal;
 
 /** Test-only: drop the shared `/provider` cache between tests. */
 export function __clearProviderResponseCacheForTest(): void {
   providerModelsGlobal.__opencodeWebuiProviderResponseCache = null;
+  providerModelsGlobal.__opencodeWebuiProviderResponsePending = null;
 }
 
 async function fetchProviderResponse(): Promise<ProviderResponse> {
@@ -104,14 +106,26 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
   if (cached && now - cached.at < PROVIDER_RESPONSE_CACHE_TTL_MS) {
     return cached.data;
   }
-  const data = await ocServer<ProviderResponse>(null, "/provider", {
+  const pending = providerModelsGlobal.__opencodeWebuiProviderResponsePending;
+  if (pending) return pending;
+
+  const request = ocServer<ProviderResponse>(null, "/provider", {
     timeoutMs: 3000,
+  }).then((data) => {
+    providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+      at: Date.now(),
+      data,
+    };
+    return data;
   });
-  providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
-    at: now,
-    data,
-  };
-  return data;
+  providerModelsGlobal.__opencodeWebuiProviderResponsePending = request;
+  try {
+    return await request;
+  } finally {
+    if (providerModelsGlobal.__opencodeWebuiProviderResponsePending === request) {
+      providerModelsGlobal.__opencodeWebuiProviderResponsePending = null;
+    }
+  }
 }
 
 /**
