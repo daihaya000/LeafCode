@@ -34,7 +34,11 @@ type StateFile = {
    * usage cost in the UI and task list.
    */
   modelPricing: Record<string, ModelPricing>;
+  /** Version of the built-in model pricing defaults applied to this state. */
+  modelPricingDefaultsVersion: number;
 };
+
+const MODEL_PRICING_DEFAULTS_VERSION = 1;
 
 /**
  * Defaults used when a profile has no WebUI provider/model state yet.
@@ -58,6 +62,7 @@ const DEFAULT_STATE: StateFile = {
   },
   providerIcons: {},
   knownModelKeys: [],
+  modelPricingDefaultsVersion: MODEL_PRICING_DEFAULTS_VERSION,
   // Default manual pricing for models whose cost is not reported by OpenCode.
   // Ollama Cloud does not publish per-token prices, so values below are
   // representative vendor-equivalent prices (mostly from OpenRouter / vendor
@@ -112,7 +117,13 @@ function emptyState(): StateFile {
     // Brand-new profiles have nothing to grandfather, so the auto
     // fast/old-generation default rule applies from the very first list.
     knownModelKeys: [],
-    modelPricing: {},
+    modelPricing: Object.fromEntries(
+      Object.entries(DEFAULT_STATE.modelPricing).map(([key, pricing]) => [
+        key,
+        { ...pricing },
+      ]),
+    ),
+    modelPricingDefaultsVersion: MODEL_PRICING_DEFAULTS_VERSION,
   };
 }
 
@@ -233,7 +244,25 @@ export function readProviderModelState(): StateFile {
           };
         }
       }
-      return { disabled, providerOrder, modelOrder, providerIcons, knownModelKeys, modelPricing };
+      const storedPricingDefaultsVersion =
+        typeof parsed.modelPricingDefaultsVersion === "number" &&
+        Number.isInteger(parsed.modelPricingDefaultsVersion)
+          ? parsed.modelPricingDefaultsVersion
+          : 0;
+      if (storedPricingDefaultsVersion < MODEL_PRICING_DEFAULTS_VERSION) {
+        for (const [key, pricing] of Object.entries(DEFAULT_STATE.modelPricing)) {
+          if (!modelPricing[key]) modelPricing[key] = { ...pricing };
+        }
+      }
+      return {
+        disabled,
+        providerOrder,
+        modelOrder,
+        providerIcons,
+        knownModelKeys,
+        modelPricing,
+        modelPricingDefaultsVersion: MODEL_PRICING_DEFAULTS_VERSION,
+      };
     }
     console.warn(
       "[provider-model] 状態ファイルの形式が不正なため無視します",

@@ -226,7 +226,7 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
     expect((await res.json())).toEqual({ ok: true });
 
     const state = readState() as { modelPricing?: Record<string, unknown> };
-    expect(state.modelPricing).toEqual({
+    expect(state.modelPricing).toMatchObject({
       "openai::gpt-5": { input: 2, output: 8, cachedInput: 0.5 },
     });
   });
@@ -245,7 +245,7 @@ describe("PATCH /api/extensions/provider-models/[key]", () => {
     expect(res.status).toBe(200);
 
     const state = readState() as { modelPricing?: Record<string, unknown> };
-    expect(state.modelPricing).toEqual({});
+    expect(state.modelPricing?.["openai::gpt-5"]).toBeUndefined();
   });
 
   it("returns 400 for invalid pricing values", async () => {

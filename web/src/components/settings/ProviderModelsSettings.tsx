@@ -140,6 +140,17 @@ function ProviderIcon({ provider }: { provider: ProviderDto }) {  const src = pr
   );
 }
 
+function pricingFieldValues(pricing: ModelDto["pricing"] | undefined) {
+  return {
+    input: pricing ? String(pricing.input) : "",
+    output: pricing ? String(pricing.output) : "",
+    cachedInput:
+      pricing?.cachedInput !== undefined ? String(pricing.cachedInput) : "",
+    cacheWrite:
+      pricing?.cacheWrite !== undefined ? String(pricing.cacheWrite) : "",
+  };
+}
+
 /**
  * Inline editor for a model's manual token pricing (USD per 1M tokens).
  * Used for models whose cost OpenCode does not report. `null` clears the
@@ -153,27 +164,24 @@ function ModelPricingEditor({
   onSave: (pricing: ModelDto["pricing"] | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [input, setInput] = useState(() =>
-    model.pricing
-      ? String(model.pricing.input)
-      : "",
-  );
-  const [output, setOutput] = useState(() =>
-    model.pricing
-      ? String(model.pricing.output)
-      : "",
-  );
-  const [cachedInput, setCachedInput] = useState(() =>
-    model.pricing?.cachedInput !== undefined
-      ? String(model.pricing.cachedInput)
-      : "",
-  );
-  const [cacheWrite, setCacheWrite] = useState(() =>
-    model.pricing?.cacheWrite !== undefined
-      ? String(model.pricing.cacheWrite)
-      : "",
-  );
+  const initialFields = pricingFieldValues(model.pricing);
+  const [input, setInput] = useState(initialFields.input);
+  const [output, setOutput] = useState(initialFields.output);
+  const [cachedInput, setCachedInput] = useState(initialFields.cachedInput);
+  const [cacheWrite, setCacheWrite] = useState(initialFields.cacheWrite);
   const [error, setError] = useState<string | null>(null);
+
+  // The provider list can be refreshed while this row stays mounted. Keep
+  // closed editors aligned with the latest server-side pricing, then refresh
+  // once more when the user opens the editor to discard stale draft values.
+  useEffect(() => {
+    if (open) return;
+    const fields = pricingFieldValues(model.pricing);
+    setInput(fields.input);
+    setOutput(fields.output);
+    setCachedInput(fields.cachedInput);
+    setCacheWrite(fields.cacheWrite);
+  }, [model.pricing, open]);
 
   const parse = (): ModelDto["pricing"] | null => {
     const toNum = (raw: string): number | undefined => {
@@ -229,7 +237,17 @@ function ModelPricingEditor({
         size="sm"
         aria-label={`${model.name} の価格設定`}
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!open) {
+            const fields = pricingFieldValues(model.pricing);
+            setInput(fields.input);
+            setOutput(fields.output);
+            setCachedInput(fields.cachedInput);
+            setCacheWrite(fields.cacheWrite);
+            setError(null);
+          }
+          setOpen((v) => !v);
+        }}
       >
         {model.pricing ? "価格設定済み" : "価格設定"}
       </Button>

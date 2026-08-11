@@ -22,7 +22,26 @@ vi.mock("@addons/codexbar", () => ({
   providerIconSrcForOpencodeId: vi.fn(() => "/icons/codex.png"),
 }));
 
-const PROVIDERS = [
+type TestPricing = {
+  input: number;
+  cachedInput?: number;
+  cacheWrite?: number;
+  output: number;
+};
+
+type TestProvider = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  models: {
+    id: string;
+    name: string;
+    enabled: boolean;
+    pricing?: TestPricing;
+  }[];
+};
+
+const PROVIDERS: TestProvider[] = [
   {
     id: "openai",
     name: "OpenAI",
@@ -48,6 +67,7 @@ function mockGetJson(overrides?: {
   defaultModel?: string | null;
   autoOptimize?: string | null;
   autoShowModel?: string | null;
+  providers?: typeof PROVIDERS;
 }) {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/settings/default-model") {
@@ -66,7 +86,7 @@ function mockGetJson(overrides?: {
       if (overrides?.empty) {
         return Promise.resolve({ providers: [] });
       }
-      return Promise.resolve({ providers: PROVIDERS });
+      return Promise.resolve({ providers: overrides?.providers ?? PROVIDERS });
     }
     return Promise.reject(new Error(`Unexpected getJson: ${path}`));
   });
@@ -426,6 +446,42 @@ describe("ProviderModelsSettings", () => {
       name: "GPT-4o を有効化",
     });
     expect(gpt4oSwitch.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("shows saved pricing values when the model pricing editor opens", async () => {
+    mockGetJson({
+      providers: [
+        {
+          ...PROVIDERS[0],
+          models: [
+            {
+              ...PROVIDERS[0].models[0],
+              pricing: {
+                input: 0.5026,
+                cachedInput: 0.1,
+                cacheWrite: 0.7,
+                output: 1.5796,
+              },
+            },
+            PROVIDERS[0].models[1],
+          ],
+        },
+        PROVIDERS[1],
+      ],
+    });
+    render(<ProviderModelsSettings />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /OpenAI のモデルを展開/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "GPT-5 の価格設定" }),
+    );
+
+    expect(screen.getByDisplayValue("0.5026")).toBeTruthy();
+    expect(screen.getByDisplayValue("1.5796")).toBeTruthy();
+    expect(screen.getByDisplayValue("0.1")).toBeTruthy();
+    expect(screen.getByDisplayValue("0.7")).toBeTruthy();
   });
 
   it("toggles a provider via PATCH", async () => {

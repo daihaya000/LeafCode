@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readProviderModelState,
   setProviderIcon,
+  setModelPricing,
   setProviderModelDisabled,
   setProviderModelOrder,
 } from "./provider-model-state";
@@ -25,7 +26,8 @@ describe("readProviderModelState defaults", () => {
   });
 
   it("uses the requested provider and model defaults when state is absent", () => {
-    expect(readProviderModelState()).toEqual({
+    const state = readProviderModelState();
+    expect(state).toMatchObject({
       disabled: { "anthropic::claude-fable-5": true },
       providerOrder: ["openai", "anthropic"],
       modelOrder: {
@@ -39,8 +41,46 @@ describe("readProviderModelState defaults", () => {
       },
       providerIcons: {},
       knownModelKeys: [],
-      modelPricing: {},
+      modelPricingDefaultsVersion: 1,
     });
+    expect(state.modelPricing["ollama-cloud::glm-5.2"]).toEqual({
+      input: 0.5026,
+      output: 1.5796,
+    });
+  });
+
+  it("migrates legacy state while preserving explicit pricing", () => {
+    const statePath = path.join(appData, "opencode-webui", "provider-model-state.json");
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        disabled: {},
+        providerOrder: [],
+        modelOrder: {},
+        providerIcons: {},
+        modelPricing: { "ollama-cloud::glm-5.2": { input: 1, output: 2 } },
+      }),
+      "utf8",
+    );
+
+    const state = readProviderModelState();
+    expect(state.modelPricing["ollama-cloud::glm-5.2"]).toEqual({
+      input: 1,
+      output: 2,
+    });
+    expect(state.modelPricing["ollama-cloud::kimi-k2.7-code"]).toEqual({
+      input: 0.7,
+      output: 3.5,
+    });
+    expect(state.modelPricingDefaultsVersion).toBe(1);
+  });
+
+  it("keeps a cleared default price cleared after migration", async () => {
+    await setModelPricing("ollama-cloud::glm-5.2", undefined);
+
+    expect(readProviderModelState().modelPricing["ollama-cloud::glm-5.2"]).toBeUndefined();
+    expect(readProviderModelState().modelPricingDefaultsVersion).toBe(1);
   });
 
   it("also falls back to the defaults for malformed state", () => {
