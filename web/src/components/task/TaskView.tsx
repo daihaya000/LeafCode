@@ -3633,7 +3633,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <>
                 <span className="mx-1">·</span>
                 <span className="shrink-0" title="このセッションの累計トークン数">
-                  {formatTokens(cumulativeTokens).replace("k", "K")}tk
+                  {formatTokens(cumulativeTokens).replace("k", "K")}
                 </span>
               </>
             )}
