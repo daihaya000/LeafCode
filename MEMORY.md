@@ -63,6 +63,30 @@
 - `tsc --noEmit` 成功
 
 ---
+# 作業ログ: vendor再適用が効かない原因の修正
+
+## 日付
+2026-08-12
+
+## 原因
+
+- 再適用しても profile の `packages/cursor-cli-proxy/index.js` は 08-04 の旧bundleのままで、新コードの文字列がいずれも存在しなかった。
+- `copyVendorFiles` はコピー元を `[activeDir, bundledDir]` の順で走査し、同一ディレクトリ判定を文字列比較で行っていた。`~/.config/opencode` は profile 実体へのジャンクションなので、activeDir と target が同一物理ディレクトリでも別扱いになり、「自分自身を自分自身から更新」してハッシュ一致で `break` していた。結果、稼働中プロファイルへは新bundleが永久に届かない。
+- ビルド済みスナップショット側（`AppData\Local\opencode-webui\build\opencodewebui-e8e90cd9\vendor`）の bundle は最新（repo と同ハッシュ）だったため、配布物ではなく配布ロジックの不具合と確定した。
+
+## 修正
+
+- `canonicalPath` / `isSameDirectory` を追加し、`realpathSync.native` でリンクを解決してから同一判定する。コピー元とコピー先が実体として同じ場合もスキップする。
+- ランタイムコードのコピー元順序を `[bundledDir, activeDir]` に変更し、同梱bundleを優先する（provider設定の継承順序は変更しない）。
+- 回帰テスト「updates the bundle when the active profile is the target reached through a link」を追加。修正前は `expected [] to include 'packages/cursor-cli-proxy'` で落ちることを確認済み。
+
+## 検証
+
+- `vitest run src/lib/profiles/` 113件成功、`npm run typecheck`、`eslint` いずれもクリーン。
+- 稼働プロファイル `profiles/main` へ新bundleを手動配置し、marker のハッシュも更新した（newcode=True を確認）。反映には OpenCode の再起動が必要。
+
+---
+
 # 作業ログ: Cursor proxy修正の再レビュー
 
 ## 日付
