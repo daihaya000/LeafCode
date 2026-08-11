@@ -500,6 +500,37 @@ describe("listProviderModels", () => {
     });
   });
 
+  it("preserves live variants when a configured provider is missing from the live list", async () => {
+    h.ocServer.mockResolvedValue({
+      all: [
+        {
+          id: "live-provider",
+          name: "Live Provider",
+          models: {
+            "openai/gpt-5.6-luna": { variants: { low: {}, high: {} } },
+          },
+        },
+      ],
+      connected: ["live-provider"],
+      default: {},
+    });
+    fs.writeFileSync(
+      path.join(data, "opencode.jsonc"),
+      JSON.stringify({
+        provider: {
+          custom: {
+            name: "Custom AI",
+            models: { "gpt-5.6-luna": { name: "GPT-5.6 Luna" } },
+          },
+        },
+      }),
+    );
+
+    const providers = await listProviderModels();
+    expect(providers.find((provider) => provider.id === "custom")?.models[0].variants)
+      .toMatchObject({ low: undefined, high: undefined });
+  });
+
   it("handles malformed state file gracefully", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

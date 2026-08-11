@@ -617,6 +617,18 @@ function mergeConfiguredProviders(
   configured: ProviderModelsDto[],
 ): ProviderModelsDto[] {
   const configuredById = new Map(configured.map((provider) => [provider.id, provider]));
+  const liveModels = providers.flatMap((provider) => provider.models);
+  const enrichModels = (models: ProviderModelsDto["models"]) =>
+    models.map((model) => {
+      if (model.variants && Object.keys(model.variants).length > 0) return model;
+      const live = liveModels.find(
+        (candidate) =>
+          modelIdsMatch(candidate.id, model.id) &&
+          candidate.variants &&
+          Object.keys(candidate.variants).length > 0,
+      );
+      return live ? { ...model, variants: live.variants } : model;
+    });
   const merged = providers.map((provider) => {
     const config = configuredById.get(provider.id);
     if (!config) return provider;
@@ -627,10 +639,16 @@ function mergeConfiguredProviders(
       baseURL: config.baseURL,
       apiKeyEnv: config.apiKeyEnv,
       npm: config.npm,
+      models: enrichModels(provider.models),
     };
   });
   const existing = new Set(merged.map((provider) => provider.id));
-  const missing = configured.filter((provider) => !existing.has(provider.id));
+  const missing = configured
+    .filter((provider) => !existing.has(provider.id))
+    .map((provider) => ({
+      ...provider,
+      models: enrichModels(provider.models),
+    }));
   return missing.length === 0 ? merged : [...merged, ...missing];
 }
 
