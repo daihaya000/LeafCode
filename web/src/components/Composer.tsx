@@ -186,11 +186,8 @@ export function Composer({
           <div
             ref={highlightRef}
             aria-hidden="true"
-            className={`${textarea.className} pointer-events-none absolute inset-0 overflow-auto whitespace-pre-wrap break-words text-text caret-transparent`}
-            style={{
-              ...textarea.style,
-              color: "inherit",
-            }}
+            className={`${textarea.className} pointer-events-none absolute inset-0 overflow-auto whitespace-pre-wrap break-words text-text`}
+            style={textarea.style}
           >
             {highlightSegments.map((segment, index) =>
               segment.kind === "skill" ? (
