@@ -74,13 +74,32 @@ function copyEntry(source: string, target: string): void {
   fs.copyFileSync(source, target);
 }
 
+/**
+ * Canonical form of a path for identity comparison.  Profile dirs are reached
+ * through junctions/symlinks (`~/.config/opencode` → the active profile), so a
+ * plain string compare would treat the same physical dir as two different ones.
+ */
+function canonicalPath(target: string): string {
+  const resolved = path.resolve(target);
+  try {
+    return fs.realpathSync.native(resolved).toLowerCase();
+  } catch {
+    return resolved.toLowerCase();
+  }
+}
+
+function isSameDirectory(a: string, b: string): boolean {
+  return canonicalPath(a) === canonicalPath(b);
+}
+
 /** Copy a CLI-proxy plugin's runtime files into a profile dir from the first matching source dir. */
 function copyVendorFiles(targetDir: string, sourceDirs: string[], relatives: string[]): string[] {
   const copied: string[] = [];
   for (const relative of relatives) {
     const target = path.join(targetDir, relative);
     for (const sourceDir of sourceDirs) {
-      if (path.resolve(targetDir).toLowerCase() === path.resolve(sourceDir).toLowerCase()) continue;
+      if (isSameDirectory(targetDir, sourceDir)) continue;
+      if (isSameDirectory(path.join(sourceDir, relative), target)) continue;
       const source = path.join(sourceDir, relative);
       if (!fs.existsSync(source)) continue;
       // Overwrite when the bundled hash differs from the installed marker.
@@ -315,7 +334,12 @@ export function installWebUiDependencies(
   installed.push(...migrateProviderIds(profileDir));
   let content = fs.readFileSync(targetConfigPath, "utf8");
   if (options.cursorAcp !== false) {
-    installed.push(...copyVendorFiles(profileDir, sourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
+    // Runtime code comes from the shipped bundle first; the active profile is
+    // only a fallback for installs that predate the bundled copy.
+    const codeSourceDirs = [bundledDir, activeDir].filter(
+      (dir, index, all): dir is string => Boolean(dir) && all.indexOf(dir) === index,
+    );
+    installed.push(...copyVendorFiles(profileDir, codeSourceDirs, ["plugin/cursor-cli-proxy.js", "packages/cursor-cli-proxy"]));
   }
   if (options.claudeAuth !== false && bundledClaudeAuth) {
     installed.push(...copyVendorFiles(profileDir, [bundledClaudeAuth], ["plugin/claude-cli-proxy.js", "packages/claude-cli-proxy"]));

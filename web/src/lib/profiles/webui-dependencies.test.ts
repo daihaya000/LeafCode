@@ -108,6 +108,32 @@ describe("installWebUiDependencies", () => {
     expect(fs.readFileSync(path.join(target, "plugin", "cursor-cli-proxy.js"), "utf8")).toContain("export default");
   });
 
+  it("updates the bundle when the active profile is the target reached through a link", () => {
+    const bundle = process.env.OPENCODE_WEBUI_CURSOR_CLI_PROXY_DIR!;
+    const bundlePackage = path.join(bundle, "packages", "cursor-cli-proxy", "index.js");
+    fs.mkdirSync(path.join(bundle, "plugin"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "packages", "cursor-cli-proxy"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "plugin", "cursor-cli-proxy.js"), "export default {};\n");
+    fs.writeFileSync(bundlePackage, "export const version = 'old';\n");
+
+    const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
+    dirs.push(target);
+    installWebUiDependencies(target, { commandcodeAuth: false });
+
+    // Ship a newer bundle, then point the active profile dir at the target
+    // through a link, the way `~/.config/opencode` refers to a profile.
+    fs.writeFileSync(bundlePackage, "export const version = 'new';\n");
+    const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-link-")), "active");
+    dirs.push(path.dirname(link));
+    fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+    process.env.OPENCODE_CONFIG_DIR = link;
+
+    const installed = installWebUiDependencies(target, { commandcodeAuth: false });
+
+    expect(installed).toContain("packages/cursor-cli-proxy");
+    expect(fs.readFileSync(path.join(target, "packages", "cursor-cli-proxy", "index.js"), "utf8")).toContain("'new'");
+  });
+
   it("skips optional dependencies when disabled", () => {
     const target = fs.mkdtempSync(path.join(os.tmpdir(), "profile-deps-target-"));
     dirs.push(target);
