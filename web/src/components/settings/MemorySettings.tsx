@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Badge, cx } from "@/components/ui";
 import { ApiError, getJson, sendJson } from "@/lib/client";
+import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "@/lib/memory-settings";
 
 type MemoryDto = {
   id: string;
@@ -68,6 +69,9 @@ export function MemorySettings() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editKind, setEditKind] = useState<MemoryDto["kind"]>("fact");
+  const [writeApproval, setWriteApproval] = useState(false);
+  const [writeApprovalLoaded, setWriteApprovalLoaded] = useState(false);
+  const [writeApprovalBusy, setWriteApprovalBusy] = useState(false);
 
   const candidates = memories.filter((m) => !m.approved);
   const approved = memories.filter((m) => m.approved);
@@ -118,6 +122,14 @@ export function MemorySettings() {
   useEffect(() => {
     mountedRef.current = true;
     void loadWorkspaces();
+    void getJson<{ value: string | null }>(
+      `/api/settings/${MEMORY_WRITE_APPROVAL_SETTING_KEY}`,
+    )
+      .then((data) => setWriteApproval(data.value === "1"))
+      .catch(() => {
+        // The safe default is automatic writes when the setting is unavailable.
+      })
+      .finally(() => setWriteApprovalLoaded(true));
     return () => {
       mountedRef.current = false;
     };
@@ -138,6 +150,21 @@ export function MemorySettings() {
 
   const hint = (message: string) => setNotice(message);
   const alert = (message: string) => setLoadError(message);
+
+  const toggleWriteApproval = async (enabled: boolean) => {
+    setWriteApprovalBusy(true);
+    try {
+      await sendJson("PUT", `/api/settings/${MEMORY_WRITE_APPROVAL_SETTING_KEY}`, {
+        value: enabled ? "1" : "",
+      });
+      setWriteApproval(enabled);
+      hint(enabled ? "保存前の確認を有効にしました" : "自動保存を有効にしました");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "メモリ保存設定の更新に失敗しました");
+    } finally {
+      setWriteApprovalBusy(false);
+    }
+  };
   const handleMutationError = (err: unknown, fallback: string) => {
     if (err instanceof ApiError && err.status === 409) {
       setEditingId(null);
@@ -243,7 +270,7 @@ export function MemorySettings() {
         alert(data.error);
       } else {
         hint(
-          `抽出完了: ${data.result?.created ?? 0}件作成 / ${data.result?.skipped ?? 0}件重複スキップ`,
+          `${writeApproval ? "候補抽出" : "自動保存"}完了: ${data.result?.created ?? 0}件作成 / ${data.result?.skipped ?? 0}件重複スキップ`,
         );
         void loadMemories(selectedWorkspace);
       }
@@ -267,7 +294,41 @@ export function MemorySettings() {
           このワークスペースで繰り返し使う事実・好み・教訓を、セッションをまたいで保持します。
         </p>
         <p className="mt-1 text-faint">
-          会話から抽出した内容はまず「候補」になります。内容を確認して承認すると、今後の会話でエージェントが参照できるようになります。
+          {writeApproval
+            ? "保存前の確認が有効です。会話から抽出した内容は「候補」になり、承認すると今後の会話で参照されます。"
+            : "自動保存が有効です。会話から抽出した内容は脅威検査後、承認なしで今後の会話から参照されます。"
+          }
+        </p>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
+        <label
+          className="flex cursor-pointer items-start gap-3"
+          htmlFor="memory-write-approval"
+        >
+          <input
+            id="memory-write-approval"
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+            checked={writeApproval}
+            disabled={!writeApprovalLoaded || writeApprovalBusy}
+            onChange={(event) => void toggleWriteApproval(event.target.checked)}
+            aria-label="メモリの保存前確認"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-text">
+              保存前に確認する
+            </span>
+            <span className="block text-xs leading-5 text-muted">
+              {writeApproval
+                ? "新しいメモリは候補として保存され、承認するまで注入されません。"
+                : "OFF（推奨）では、検査を通過したメモリを自動で使用します。"
+              }
+            </span>
+          </span>
+        </label>
+        <p className="mt-2 pl-7 text-[11px] leading-5 text-faint">
+          自動保存でも、不可視文字・メモリ境界タグ・明白なプロンプト注入・資格情報やSSH鍵の持ち出しは保存前に拒否されます。
         </p>
       </div>
 
@@ -310,11 +371,12 @@ export function MemorySettings() {
               disabled={busy || !selectedWorkspace || !selectedSession}
               onClick={() => void runExtract()}
             >
-              候補を抽出
+              {writeApproval ? "候補を抽出" : "メモリを抽出"}
             </Button>
           </div>
           <span className="text-[11px] text-faint">
-            選んだ会話の末尾をAIが読み、長く役立つ内容だけを候補として作成します。抽出にはモデル利用料がかかる場合があります。
+            選んだ会話の末尾をAIが読み、長く役立つ内容だけを
+            {writeApproval ? "候補" : "メモリ"}として作成します。抽出にはモデル利用料がかかる場合があります。
           </span>
         </label>
 
@@ -362,7 +424,9 @@ export function MemorySettings() {
       {rows.length === 0 ? (
         <p className="rounded-xl border border-border bg-surface px-4 py-3 text-[11px] text-faint">
           {tab === "approved"
-            ? "使用中のメモリはありません。候補を承認すると、今後の会話で利用されます。"
+            ? writeApproval
+              ? "使用中のメモリはありません。候補を承認すると、今後の会話で利用されます。"
+              : "使用中のメモリはありません。会話から抽出すると、検査後に自動で利用されます。"
             : "確認待ちの候補はありません。上の「候補を抽出」から作成できます。"}
         </p>
       ) : (

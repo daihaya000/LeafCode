@@ -88,6 +88,19 @@ function openMemoryDb(dbPathValue) {
   return db;
 }
 
+function readWriteApprovalSetting(db, fallback) {
+  try {
+    const row = db
+      .prepare('SELECT value FROM settings WHERE key = ?')
+      .get('memory.write_approval');
+    return row ? row.value === '1' : fallback;
+  } catch {
+    // Older/test databases may not have the settings table yet. Preserve the
+    // launch-time fallback until WebUI initializes the shared schema.
+    return fallback;
+  }
+}
+
 function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
   if (!workspaceId) {
     throw new Error('memory-mcp requires a workspace (--workspace=<id> or OPENCODE_WEBUI_MEMORY_WORKSPACE)');
@@ -118,7 +131,7 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
        created_at, updated_at, last_used_at, use_count)
     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, 0)
   `);
-  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), updated_at = ?, revision = revision + 1 WHERE id = ? AND workspace_id = ? AND revision = ?');
+  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), approved = CASE WHEN ? = 1 THEN 0 ELSE approved END, updated_at = ?, revision = revision + 1 WHERE id = ? AND workspace_id = ? AND revision = ?');
   const remove = db.prepare('DELETE FROM memories WHERE id = ? AND workspace_id = ? AND revision = ?');
   const audit = db.prepare(`
     INSERT INTO memory_audit_log
@@ -165,13 +178,14 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
       }
       const violation = inspectMemoryContent(content);
       if (violation) {
+        audit.run('reject', workspaceId, null, `threat=${violation.code}`, Date.now());
         const error = new Error(violation.message);
         error.code = 'INVALID_REQUEST';
         throw error;
       }
       const id = randomUUID();
       const now = Date.now();
-      const approved = writeApproval ? 0 : 1;
+      const approved = readWriteApprovalSetting(db, writeApproval) ? 0 : 1;
       insert.run(id, workspaceId, kind, content.trim(), 'agent', approved, now, now);
       audit.run('create', workspaceId, id, `provenance=agent approved=${approved}`, now);
       return toMemoryDto(selectById.get(id, workspaceId));
@@ -185,15 +199,18 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
       if (content !== undefined) {
         const violation = inspectMemoryContent(content);
         if (violation) {
+          audit.run('reject', workspaceId, id, `threat=${violation.code}`, Date.now());
           const error = new Error(violation.message);
           error.code = 'INVALID_REQUEST';
           throw error;
         }
       }
       const now = Date.now();
+      const writeApprovalNow = readWriteApprovalSetting(db, writeApproval) ? 1 : 0;
       const changed = update.run(
         content !== undefined ? content.trim() : null,
         kind !== undefined ? kind : null,
+        writeApprovalNow,
         now,
         id,
         workspaceId,

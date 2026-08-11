@@ -19,14 +19,21 @@ function apiHandler({
   memories,
   workspaces,
   sessions,
+  writeApproval = false,
 }: {
   memories: unknown[];
   workspaces: unknown[];
   sessions: unknown[];
+  writeApproval?: boolean;
 }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
+    if (url.includes("/api/settings/memory.write_approval")) {
+      return method === "PUT"
+        ? jsonResponse({ ok: true })
+        : jsonResponse({ value: writeApproval ? "1" : null });
+    }
     if (url.includes("/api/workspaces/") && url.includes("/sessions")) {
       return jsonResponse({ sessions });
     }
@@ -88,11 +95,8 @@ describe("MemorySettings", () => {
     render(<MemorySettings />);
 
     expect(screen.getByText(/セッションをまたいで保持します/)).toBeTruthy();
-    expect(
-      screen.getByText(
-        "会話から抽出した内容はまず「候補」になります。内容を確認して承認すると、今後の会話でエージェントが参照できるようになります。",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText(/自動保存が有効です/)).toBeTruthy();
+    expect(screen.getByLabelText("メモリの保存前確認")).toBeTruthy();
 
     // Approved tab shows the approved memory.
     await waitFor(() => expect(screen.getByText("Use pnpm.")).toBeTruthy());
@@ -158,7 +162,7 @@ describe("MemorySettings", () => {
       target: { value: "session-9" },
     });
     const extractButton = await waitFor(() => {
-      const b = screen.getByRole("button", { name: "候補を抽出" }) as HTMLButtonElement;
+      const b = screen.getByRole("button", { name: "メモリを抽出" }) as HTMLButtonElement;
       expect(b.disabled).toBe(false);
       return b;
     });
@@ -175,6 +179,47 @@ describe("MemorySettings", () => {
       workspaceId: "ws-1",
       sessionId: "session-9",
     });
-    await screen.findByText(/抽出完了/);
+    await screen.findByText(/自動保存完了/);
+  });
+
+  it("toggles the shared write approval setting", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    const checkbox = await screen.findByLabelText("メモリの保存前確認");
+    await waitFor(() => expect((checkbox as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(checkbox);
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).includes("/api/settings/memory.write_approval") &&
+          init?.method === "PUT",
+      );
+      expect(call).toBeTruthy();
+      return call;
+    });
+    expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({ value: "1" });
+    expect(await screen.findByText(/保存前の確認が有効/)).toBeTruthy();
+  });
+
+  it("loads review mode from the server setting", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [],
+      writeApproval: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    const checkbox = await screen.findByLabelText("メモリの保存前確認");
+    await waitFor(() => expect((checkbox as HTMLInputElement).checked).toBe(true));
+    expect(screen.getByText(/保存前の確認が有効です/)).toBeTruthy();
   });
 });

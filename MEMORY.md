@@ -5282,3 +5282,40 @@ Hermes Agent と同様に「自動確定を既定、必要なら承認制」を�
 - 共有スキーマ版と Web 版は同じパターン・同一メッセージ。パターン追加時は両方へ反映すること。
 - 承認ゲートは書き込み時点で解決するため、トグル直後の抽出から即時反映される。
 - 既存の未承認候補は自動昇格させず、ユーザーが一括承認で移行する（計画第6項）。
+
+---
+
+# 作業ログ: メモリ保存設定UIとDB共通承認ゲート（第2段階）
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+改善計画の第2段階として、`memory.write_approval` を設定API・メモリ画面・Web/MCPの書き込み経路へ接続した。
+
+- `web/src/lib/memory-settings.ts` に設定キーを切り出し、サーバー/クライアントで共有。
+- `web/src/lib/memory-write-gate.ts` にDBから設定を読む共通関数を追加。抽出ドライバからgoal hookを逆参照する循環importを解消。
+- `web/src/app/api/settings/[key]/route.ts` の許可リスト・boolean設定へ `memory.write_approval` を追加。`"1"` または空文字だけを受け付ける。
+- `MemorySettings` に「保存前に確認する」トグルを追加。既定OFFは脅威検査通過後に自動保存、ONは候補として保存する。抽出ボタン、説明、完了通知、空状態もモードに応じて表示を変更。
+- `createMemory` が設定を直接参照し、承認済み指定をゲートで上書き。`updateMemory` も承認制有効時は更新行を `approved=0` に戻す。
+- MCPサーバーは環境変数を暫定フォールバックにしつつ、通常は共有DBの `settings` テーブルから `memory.write_approval` を毎回読む。MCP更新も承認制時に候補へ戻す。
+- 脅威検査によるWeb/MCPの拒否理由を `memory_audit_log` の `reject` として記録。
+- `docs/specs/memory-layer.md` の自動保存・設定可能な承認制・保存前脅威検査の記述を実装へ同期。
+
+## 回帰テスト
+
+- Web設定API: 設定のGET、`1`/空文字の保存、無効値拒否。
+- MemorySettings: 自動保存モード表示、トグル保存、承認モード表示。
+- Webメモリ: create/updateの共通ゲート、拒否監査ログ。
+- MCP: DB設定による候補化、検索非表示、承認後検索可能。
+
+## 検証
+
+- `npm --prefix web test -- --run src/lib/memory.test.ts src/lib/goal-memory-hook.test.ts src/components/settings/MemorySettings.test.tsx src/app/api/settings/[key]/route.test.ts src/app/api/memory/route.test.ts` ... 5 files / 105 tests 成功
+- `cd browser-bridge && node --test test/memory-mcp-stdio.test.mjs` ... 5 tests 成功
+- `npm --prefix web run typecheck` ... 成功
+- 対象ファイルの `npx eslint` ... 成功
+- `git diff --check` ... 成功
+- 本番ビルドはプロジェクト指示により実行しない

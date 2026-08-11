@@ -9,6 +9,7 @@ import {
 import { getSetting, setSetting } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
 import { WORKFLOW_MODE_SETTING_KEY } from "@/lib/workflow-feature";
+import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "@/lib/memory-settings";
 import {
   isTokenSavingMode,
   TOKEN_SAVING_SETTING_KEY,
@@ -35,6 +36,7 @@ const ALLOWED_KEYS = new Set<string>([
   "sidepanel-width",
   "hang-timeout",
   WORKFLOW_MODE_SETTING_KEY,
+  MEMORY_WRITE_APPROVAL_SETTING_KEY,
   COMMIT_AUTHOR_NAME_KEY,
   COMMIT_AUTHOR_EMAIL_KEY,
   TOKEN_SAVING_SETTING_KEY,
@@ -45,6 +47,7 @@ const ALLOWED_KEYS = new Set<string>([
 const BOOLEAN_SETTING_KEYS = new Set<string>([
   "auto-show-model",
   WORKFLOW_MODE_SETTING_KEY,
+  MEMORY_WRITE_APPROVAL_SETTING_KEY,
 ]);
 
 const MAX_SETTING_VALUE_CHARS = 32_768;

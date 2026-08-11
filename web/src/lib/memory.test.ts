@@ -29,7 +29,8 @@ const {
   toFtsPhrase,
   updateMemory,
 } = await import("./memory");
-const { getDb } = await import("./db");
+const { getDb, setSetting } = await import("./db");
+const { MEMORY_WRITE_APPROVAL_SETTING_KEY } = await import("./memory-settings");
 
 afterAll(() => {
   getDb().close();
@@ -96,6 +97,16 @@ describe("memory CRUD + injection", () => {
       m.content.includes("Ignore all previous"),
     );
     expect(rows).toHaveLength(0);
+    const audit = getDb()
+      .prepare(
+        "SELECT action, workspace_id, detail FROM memory_audit_log WHERE workspace_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get("ws-1") as { action: string; workspace_id: string; detail: string };
+    expect(audit).toEqual({
+      action: "reject",
+      workspace_id: "ws-1",
+      detail: "threat=prompt_injection",
+    });
   });
 
   it("updateMemory rejects threat content as RangeError", () => {
@@ -112,6 +123,33 @@ describe("memory CRUD + injection", () => {
     ).toThrow(RangeError);
     const reloaded = listMemories({ workspaceId: "ws-1" }).find((r) => r.id === m.id);
     expect(reloaded?.content).toBe("safe content");
+  });
+
+  it("applies write approval to create and update operations", () => {
+    setSetting(MEMORY_WRITE_APPROVAL_SETTING_KEY, "1");
+    const gated = createMemory({
+      workspaceId: "ws-gated",
+      kind: "fact",
+      content: "gated create",
+      provenance: "agent",
+      approved: true,
+    });
+    expect(gated.approved).toBe(false);
+
+    const updated = updateMemory(gated.id, "ws-gated", gated.revision, {
+      content: "gated update",
+    });
+    expect(updated?.approved).toBe(false);
+
+    setSetting(MEMORY_WRITE_APPROVAL_SETTING_KEY, "");
+    const automatic = createMemory({
+      workspaceId: "ws-gated",
+      kind: "fact",
+      content: "automatic create",
+      provenance: "agent",
+      approved: true,
+    });
+    expect(automatic.approved).toBe(true);
   });
 
   it("insertExtractedMemories skips threat content and counts it as an error", () => {

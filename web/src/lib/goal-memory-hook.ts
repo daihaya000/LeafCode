@@ -9,7 +9,11 @@
 
 import { getSetting } from "./db";
 import { runMemoryExtraction } from "./memory-extract";
+import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "./memory-settings";
 import type { GoalLoopDto } from "./goal-loop";
+
+export { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "./memory-settings";
+export { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
 
 export const AUTO_EXTRACT_SETTING_KEY = "memory.auto_extract";
 
@@ -20,7 +24,7 @@ export const AUTO_EXTRACT_SETTING_KEY = "memory.auto_extract";
  * immediately and become eligible for injection. The gate is read at write
  * time so toggling it takes effect on the next extraction without a restart.
  */
-export const WRITE_APPROVAL_SETTING_KEY = "memory.write_approval";
+export const WRITE_APPROVAL_SETTING_KEY = MEMORY_WRITE_APPROVAL_SETTING_KEY;
 
 export function isAutoExtractEnabled(): boolean {
   try {
@@ -28,15 +32,6 @@ export function isAutoExtractEnabled(): boolean {
   } catch {
     // No usable settings layer (e.g. db mocked out in tests): default enabled.
     return true;
-  }
-}
-
-/** Resolve the shared approval gate. `false` (auto-commit) is the default. */
-export function isMemoryWriteApprovalEnabled(): boolean {
-  try {
-    return getSetting(WRITE_APPROVAL_SETTING_KEY) === "1";
-  } catch {
-    return false;
   }
 }
 

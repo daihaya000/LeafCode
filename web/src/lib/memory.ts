@@ -8,6 +8,7 @@
 
 import { getDb } from "./db";
 import { inspectMemoryContent } from "./memory-safety";
+import { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
 
 export { inspectMemoryContent } from "./memory-safety";
 export type { MemorySafetyViolation } from "./memory-safety";
@@ -108,9 +109,8 @@ export function toMemoryDto(row: MemoryRow): MemoryDto {
 }
 
 /**
- * Insert a single memory. `approved` is 1 only for `agent` provenance (MCP
- * `memory_add`) and for retrospective-acked rows; auto-extract rows must pass
- * `approved: false` so they surface as candidates.
+ * Insert a single memory. The shared `memory.write_approval` gate overrides
+ * the requested approval and forces new rows to candidates when enabled.
  * Throws `RangeError` on invalid kind / content.
  */
 export function createMemory(input: {
@@ -124,9 +124,16 @@ export function createMemory(input: {
   if (!isMemoryKind(input.kind)) throw new RangeError("invalid memory kind");
   const contentError = memoryContentError(input.content);
   if (contentError) throw new RangeError(contentError);
-  const safetyError = memorySafetyError(input.content);
-  if (safetyError) throw new RangeError(safetyError);
+  const safetyViolation = inspectMemoryContent(input.content);
+  if (safetyViolation) {
+    logMemoryAudit("reject", {
+      workspaceId: input.workspaceId,
+      detail: `threat=${safetyViolation.code}`,
+    });
+    throw new RangeError(safetyViolation.message);
+  }
   const now = Date.now();
+  const approved = isMemoryWriteApprovalEnabled() ? false : input.approved === true;
   const id = crypto.randomUUID();
   getDb()
     .prepare(
@@ -142,7 +149,7 @@ export function createMemory(input: {
       input.content.trim(),
       input.sourceSessionId ?? null,
       input.provenance,
-      input.approved ? 1 : 0,
+      approved ? 1 : 0,
       now,
       now,
     );
@@ -213,8 +220,15 @@ export function updateMemory(
   if (patch.content !== undefined) {
     const contentError = memoryContentError(patch.content);
     if (contentError) throw new RangeError(contentError);
-    const safetyError = memorySafetyError(patch.content);
-    if (safetyError) throw new RangeError(safetyError);
+    const safetyViolation = inspectMemoryContent(patch.content);
+    if (safetyViolation) {
+      logMemoryAudit("reject", {
+        workspaceId,
+        memoryId: id,
+        detail: `threat=${safetyViolation.code}`,
+      });
+      throw new RangeError(safetyViolation.message);
+    }
   }
   const assignments: string[] = [];
   const params: unknown[] = [];
@@ -229,6 +243,9 @@ export function updateMemory(
   if (assignments.length === 0) {
     const current = getMemoryById(id, workspaceId);
     return current?.revision === expectedRevision ? current : undefined;
+  }
+  if (isMemoryWriteApprovalEnabled()) {
+    assignments.push("approved = 0");
   }
   assignments.push("updated_at = ?");
   assignments.push("revision = revision + 1");
@@ -570,9 +587,14 @@ export function insertExtractedMemories(input: {
         errors.push(contentError);
         continue;
       }
-      const safetyError = memorySafetyError(item.content);
-      if (safetyError) {
-        errors.push(safetyError);
+      const safetyViolation = inspectMemoryContent(item.content);
+      if (safetyViolation) {
+        errors.push(safetyViolation.message);
+        logMemoryAudit("reject", {
+          workspaceId: input.workspaceId,
+          sessionId: input.sourceSessionId,
+          detail: `threat=${safetyViolation.code}`,
+        });
         continue;
       }
       if (findExactDuplicateMemory(input.workspaceId, item.content)) {

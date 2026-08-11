@@ -35,6 +35,10 @@ function createMemorySchema(db) {
       detail TEXT,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
     CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
     CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
       INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);
@@ -250,13 +254,11 @@ test('memory MCP: write approval gate stages agent writes as candidates', async 
   const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
   const db = new Database(path.join(dir, 'webui.db'));
   createMemorySchema(db);
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('memory.write_approval', '1');
   db.pragma('journal_mode = WAL');
   db.close();
 
-  const launch = {
-    ...mkLaunch(dir),
-    env: { ...mkLaunch(dir).env, OPENCODE_WEBUI_MEMORY_WRITE_APPROVAL: '1' },
-  };
+  const launch = mkLaunch(dir);
   const transport = new StdioClientTransport(launch);
   const client = await connectClient(transport);
   t.after(() => client.close());

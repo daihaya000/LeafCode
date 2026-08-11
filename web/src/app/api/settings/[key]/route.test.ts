@@ -8,6 +8,7 @@ const { getSetting, setSetting } = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ getSetting, setSetting }));
 
 import { GET, PUT } from "./route";
+import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "@/lib/memory-settings";
 
 function putReq(body: unknown, key = "default-model"): Request {
   return new Request(`http://localhost/api/settings/${key}`, {
@@ -70,6 +71,18 @@ describe("/api/settings/[key]", () => {
       const res = await GET(new Request("http://localhost/api/settings/sidepanel-width", { headers: { host: "127.0.0.1:3000" } }) as never, ctx("sidepanel-width"));
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ value: "520" });
+    });
+
+    it("returns the memory write approval setting", async () => {
+      getSetting.mockReturnValue("1");
+      const res = await GET(
+        new Request(`http://localhost/api/settings/${MEMORY_WRITE_APPROVAL_SETTING_KEY}`, {
+          headers: { host: "127.0.0.1:3000" },
+        }) as never,
+        ctx(MEMORY_WRITE_APPROVAL_SETTING_KEY),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ value: "1" });
     });
 
     it("rejects an unknown key with 400", async () => {
@@ -162,6 +175,31 @@ describe("/api/settings/[key]", () => {
       const res = await PUT(putReq({ value: "520" }, "sidepanel-width") as never, ctx("sidepanel-width"));
       expect(res.status).toBe(200);
       expect(setSetting).toHaveBeenCalledWith("sidepanel-width", "520");
+    });
+
+    it("stores and clears the memory write approval setting", async () => {
+      const enabled = await PUT(
+        putReq({ value: "1" }, MEMORY_WRITE_APPROVAL_SETTING_KEY) as never,
+        ctx(MEMORY_WRITE_APPROVAL_SETTING_KEY),
+      );
+      expect(enabled.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(MEMORY_WRITE_APPROVAL_SETTING_KEY, "1");
+
+      const cleared = await PUT(
+        putReq({ value: "" }, MEMORY_WRITE_APPROVAL_SETTING_KEY) as never,
+        ctx(MEMORY_WRITE_APPROVAL_SETTING_KEY),
+      );
+      expect(cleared.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(MEMORY_WRITE_APPROVAL_SETTING_KEY, "");
+    });
+
+    it("rejects a memory write approval value other than 1 or empty", async () => {
+      const res = await PUT(
+        putReq({ value: "true" }, MEMORY_WRITE_APPROVAL_SETTING_KEY) as never,
+        ctx(MEMORY_WRITE_APPROVAL_SETTING_KEY),
+      );
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
     });
 
     it("clamps an oversized sidepanel-width", async () => {
