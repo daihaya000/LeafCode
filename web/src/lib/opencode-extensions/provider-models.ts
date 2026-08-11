@@ -80,6 +80,73 @@ type ProviderResponse = {
   default: Record<string, string>;
 };
 
+/** Keep only model metadata needed by the UI before caching the upstream reply. */
+function normalizeProviderResponse(value: unknown): ProviderResponse {
+  const root = isRecord(value) ? value : {};
+  const all = Array.isArray(root.all)
+    ? root.all.flatMap((rawProvider) => {
+        if (!isRecord(rawProvider) || typeof rawProvider.id !== "string") return [];
+        const models = isRecord(rawProvider.models)
+          ? Object.fromEntries(
+              Object.entries(rawProvider.models).map(([modelId, rawModel]) => {
+                const source = isRecord(rawModel) ? rawModel : {};
+                const model: ProviderResponse["all"][number]["models"][string] = {};
+                if (typeof source.name === "string") model.name = source.name;
+
+                if (isRecord(source.capabilities)) {
+                  const rawInput = isRecord(source.capabilities.input)
+                    ? source.capabilities.input
+                    : undefined;
+                  const input = rawInput
+                    ? Object.fromEntries(
+                        ["text", "audio", "image", "video", "pdf"]
+                          .filter((key) => typeof rawInput[key] === "boolean")
+                          .map((key) => [key, rawInput[key]]),
+                      )
+                    : undefined;
+                  model.capabilities = {
+                    ...(typeof source.capabilities.attachment === "boolean"
+                      ? { attachment: source.capabilities.attachment }
+                      : {}),
+                    ...(input ? { input } : {}),
+                  };
+                }
+
+                if (isRecord(source.variants)) {
+                  model.variants = Object.fromEntries(
+                    Object.entries(source.variants).map(([variant, rawVariant]) => [
+                      variant,
+                      isRecord(rawVariant) && typeof rawVariant.disabled === "boolean"
+                        ? { disabled: rawVariant.disabled }
+                        : undefined,
+                    ]),
+                  );
+                }
+                return [modelId, model];
+              }),
+            )
+          : {};
+        return [
+          {
+            id: rawProvider.id,
+            name: typeof rawProvider.name === "string" ? rawProvider.name : rawProvider.id,
+            models,
+          },
+        ];
+      })
+    : [];
+  const connected = Array.isArray(root.connected)
+    ? root.connected.filter((id): id is string => typeof id === "string")
+    : [];
+  const defaultModels = isRecord(root.default) ? root.default : {};
+  const defaults = Object.fromEntries(
+    Object.entries(defaultModels).filter((entry): entry is [string, string] =>
+      typeof entry[1] === "string",
+    ),
+  );
+  return { all, connected, default: defaults };
+}
+
 /**
  * OpenCode's `/provider` response is stable for seconds at a time, and Home
  * fetches both `/api/opencode/provider` (the transparent proxy) and this
@@ -121,7 +188,7 @@ function readDiskCache(): DiskCacheEntry | null {
       Array.isArray(parsed.data.all) &&
       Array.isArray(parsed.data.connected)
     ) {
-      return parsed;
+      return { at: parsed.at, data: normalizeProviderResponse(parsed.data) };
     }
   } catch {
     /* ENOENT or malformed — treat as no cache */
@@ -198,7 +265,8 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
   // Cold start with no usable cache — fetch from the network.
   const request = ocServer<ProviderResponse>(null, "/provider", {
     timeoutMs: 3000,
-  }).then((data) => {
+  }).then((response) => {
+    const data = normalizeProviderResponse(response);
     providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
       at: Date.now(),
       data,
@@ -226,9 +294,10 @@ async function revalidateProviderResponse(): Promise<void> {
   if (providerModelsGlobal.__opencodeWebuiProviderRevalidating) return;
   providerModelsGlobal.__opencodeWebuiProviderRevalidating = true;
   try {
-    const data = await ocServer<ProviderResponse>(null, "/provider", {
+    const response = await ocServer<ProviderResponse>(null, "/provider", {
       timeoutMs: 3000,
     });
+    const data = normalizeProviderResponse(response);
     providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
       at: Date.now(),
       data,

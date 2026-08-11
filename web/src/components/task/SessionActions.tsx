@@ -43,6 +43,20 @@ export function isCompactionLockConflict(error: unknown): boolean {
   return status === 409 && message.includes("session compaction already in progress");
 }
 
+/** A failed compact may have been accepted before its response was lost. */
+export function isAmbiguousCompactionFailure(error: unknown): boolean {
+  const status =
+    error && typeof error === "object" && "status" in error
+      ? (error as { status?: unknown }).status
+      : undefined;
+  return (
+    status === undefined ||
+    status === 408 ||
+    status === 429 ||
+    (typeof status === "number" && status >= 500 && status <= 599)
+  );
+}
+
 export async function compactSession(
   directory: string,
   sessionId: string,

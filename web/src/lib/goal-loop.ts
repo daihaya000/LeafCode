@@ -3,6 +3,7 @@ import {
   getSetting,
   getWorkspace,
   listSessionBindings,
+  markCollaborationSnapshotCompacted,
   releaseSessionCompactionLock,
   touchSessionActivity,
   tryAcquireSessionCompactionLock,
@@ -176,7 +177,7 @@ const STATUS_TIMEOUT_MS = 5_000;
 const MESSAGE_TIMEOUT_MS = 10_000;
 const COMPACT_TIMEOUT_MS = 30_000;
 const COMPACT_POLL_MS = 250;
-const COMPACT_LOCK_TTL_MS = 60_000;
+const COMPACT_LOCK_TTL_MS = 120_000;
 /**
  * Aborting is a best-effort courtesy on the stop path. It must not inherit
  * PROMPT_TIMEOUT_MS: a wedged engine would then hold the stop request for two
@@ -358,6 +359,11 @@ async function autoCompactGoalLoop(
         currentUsage === null ||
         currentUsage.used < usage.used
       ) {
+        try {
+          markCollaborationSnapshotCompacted(loop.workspaceId, loop.sessionId);
+        } catch {
+          // Context recovery remains best-effort if the local DB is unavailable.
+        }
         return "compacted";
       }
     }
@@ -854,12 +860,13 @@ function buildGoalPromptWithMemory(
   loop: GoalLoopDto,
   turnNumber: number,
   maxTurns: number,
+  forceMemory = false,
 ): string {
   const prompt =
     turnNumber === 1
       ? buildGoalPrompt(loop, turnNumber, maxTurns)
       : buildGoalContinuationPrompt(loop, turnNumber, maxTurns);
-  if (turnNumber !== 1) return prompt;
+  if (turnNumber !== 1 && !forceMemory) return prompt;
   const memory = memoryInjectionFor(loop.workspaceId);
   return memory ? `${memory}\n${prompt}` : prompt;
 }
@@ -1459,15 +1466,17 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
     const verifyCounts = getDb()
       .prepare("SELECT turn_count, max_turns FROM goal_loops WHERE id = ?")
       .get(loop.id) as { turn_count: number; max_turns: number } | undefined;
+    const verificationPrompt = buildVerificationPrompt(
+      loop,
+      verifyCounts?.turn_count ?? loop.turnCount,
+      verifyCounts?.max_turns ?? loop.maxTurns,
+    );
+    const memory = compactResult === "compacted" ? memoryInjectionFor(loop.workspaceId) : "";
     const body: Record<string, unknown> = {
       parts: [
         {
           type: "text",
-          text: buildVerificationPrompt(
-            loop,
-            verifyCounts?.turn_count ?? loop.turnCount,
-            verifyCounts?.max_turns ?? loop.maxTurns,
-          ),
+          text: memory ? `${memory}\n${verificationPrompt}` : verificationPrompt,
         },
       ],
     };
@@ -1579,7 +1588,12 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
   // bricks the transcript. The prompt asks for a fenced JSON block instead.
   // `loop` is the pre-increment snapshot; the UPDATE above claimed turn
   // `turnCount + 1`, which is the turn this prompt actually runs.
-  const promptText = buildGoalPromptWithMemory(loop, turnCount + 1, maxTurns);
+  const promptText = buildGoalPromptWithMemory(
+    loop,
+    turnCount + 1,
+    maxTurns,
+    compactResult === "compacted",
+  );
   const body: Record<string, unknown> = {
     parts: [{ type: "text", text: promptText }],
   };

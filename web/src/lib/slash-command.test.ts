@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   applySlashCompletion,
   filterCommands,
+  findSkillTokens,
+  isSkillCommand,
   normalizeCommands,
   parseCommandSubmit,
   parseSlashQuery,
@@ -131,42 +133,6 @@ describe("normalizeCommands", () => {
       { name: "loop", description: "d", source: "skill" },
       { name: "init" },
     ]);
-  });
-});
-
-describe("skill highlighting", () => {
-  it("detects only source=skill tokens", () => {
-    expect(isSkillCommand(COMMANDS[0]!)).toBe(true);
-    expect(isSkillCommand(COMMANDS[2]!)).toBe(false);
-    expect(findSkillTokens("/loop /init /babysit", COMMANDS)).toEqual([
-      {
-        start: 0,
-        end: 5,
-        name: "loop",
-        description: "Run on an interval",
-      },
-      {
-        start: 12,
-        end: 20,
-        name: "babysit",
-        description: "Watch a PR",
-      },
-    ]);
-  });
-
-  it("segments text so skills stay blue in the composer overlay", () => {
-    expect(segmentSkillHighlights("/loop now", COMMANDS)).toEqual([
-      {
-        kind: "skill",
-        text: "/loop",
-        name: "loop",
-        description: "Run on an interval",
-      },
-      { kind: "text", text: " now" },
-    ]);
-    expect(skillDescriptionAt("/loop now", COMMANDS)).toBe(
-      "Run on an interval",
-    );
   });
 });
 

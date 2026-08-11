@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@t
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   compactSession,
+  isAmbiguousCompactionFailure,
   isCompactionLockConflict,
   MessageRevertButton,
   useSessionActions,
@@ -249,5 +250,12 @@ describe("compactSession lock handling", () => {
         Object.assign(new Error("session is busy"), { status: 409 }),
       ),
     ).toBe(false);
+  });
+
+  it("classifies timeouts, network errors, and server failures as ambiguous", () => {
+    expect(isAmbiguousCompactionFailure(new Error("network error"))).toBe(true);
+    expect(isAmbiguousCompactionFailure(Object.assign(new Error("timeout"), { status: 408 }))).toBe(true);
+    expect(isAmbiguousCompactionFailure(Object.assign(new Error("server"), { status: 503 }))).toBe(true);
+    expect(isAmbiguousCompactionFailure(Object.assign(new Error("not found"), { status: 404 }))).toBe(false);
   });
 });

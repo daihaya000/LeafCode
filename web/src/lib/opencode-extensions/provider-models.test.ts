@@ -268,6 +268,33 @@ describe("listProviderModels", () => {
     // (vi.mock persists across resetModules, so the counter is shared.)
   });
 
+  it("does not persist provider secrets in the disk cache", async () => {
+    h.ocServer.mockResolvedValue({
+      ...MOCK_PROVIDER_RESPONSE,
+      all: [
+        {
+          ...MOCK_PROVIDER_RESPONSE.all[0],
+          options: { apiKey: "super-secret-provider-key" },
+          models: {
+            "gpt-5": {
+              name: "GPT-5",
+              options: { apiKey: "super-secret-model-key" },
+            },
+          },
+        },
+      ],
+    });
+
+    await listProviderModels();
+
+    const cached = fs.readFileSync(
+      path.join(data, "provider-response-cache.json"),
+      "utf8",
+    );
+    expect(cached).not.toContain("super-secret-provider-key");
+    expect(cached).not.toContain("super-secret-model-key");
+  });
+
   it("returns stale disk cache immediately and revalidates in background", async () => {
     // Clear in-memory cache first (this also removes any disk cache).
     __clearProviderResponseCacheForTest();

@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   providerResponse: { all: [] } as unknown,
   compactedMessageResponse: null as MessageWithParts[] | null,
   compactFailureError: null as (Error & { status?: number }) | null,
+  compactionMarks: [] as { workspaceId: string; sessionId: string }[],
 }));
 
 vi.mock("./oc-server", () => ({
@@ -120,6 +121,9 @@ vi.mock("./db", () => ({
     testDb
       .prepare("DELETE FROM session_compaction_locks WHERE session_id = ? AND owner_id = ?")
       .run(sessionId, ownerId).changes === 1,
+  markCollaborationSnapshotCompacted: (workspaceId: string, sessionId: string) => {
+    h.compactionMarks.push({ workspaceId, sessionId });
+  },
 }));
 
 // Must come after mocks.
@@ -300,6 +304,7 @@ beforeEach(() => {
   h.providerResponse = { all: [] };
   h.compactedMessageResponse = null;
   h.compactFailureError = null;
+  h.compactionMarks.length = 0;
 });
 
 afterEach(() => {
@@ -1262,6 +1267,41 @@ describe("goal loop server-side auto compact", () => {
     await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
     expect(h.ocCalls.some((call) => call.path.endsWith("/compact"))).toBe(true);
     expect(h.promptAsyncCount).toBe(1);
+  });
+
+  it("restores durable context after a direct server-side compact", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    testDb
+      .prepare(
+        `INSERT INTO memories
+          (id, workspace_id, kind, content, provenance, approved, created_at, updated_at)
+         VALUES ('mem-compact', 'ws-1', 'fact', 'remember after compact', 'manual', 1, ?, ?)`,
+      )
+      .run(Date.now(), Date.now());
+
+    await createGoalLoop({ workspaceId: "ws-1", sessionId: "sess-1", goal: "test" });
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      tokenMsg("a1", 90, { status: "progress", summary: "still working" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    h.tokenSavingMode = "auto";
+    h.tokenSavingThreshold = "80";
+    h.providerResponse = {
+      all: [{ id: "provider-1", models: { "model-1": { limit: { context: 100 } } } }],
+    };
+    h.compactedMessageResponse = [msg("m0", "assistant"), tokenMsg("a1", 20)];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    const prompts = h.ocCalls
+      .filter((call) => call.path.endsWith("/prompt_async"))
+      .map((call) => (call.body as { parts?: { text?: string }[] }).parts?.[0]?.text ?? "");
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain("remember after compact");
+    expect(prompts[1]).toContain("remember after compact");
+    expect(h.compactionMarks).toEqual([{ workspaceId: "ws-1", sessionId: "sess-1" }]);
   });
 
   /**
