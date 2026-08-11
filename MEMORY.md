@@ -250,6 +250,29 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 
 ## 作業ログ: provider-modelsの同時provider取得削減
 
+## 作業ログ: provider-models ディスクキャッシュ（stale-while-revalidate）
+
+## 日付
+
+2026-08-11
+
+## 修正内容
+
+- `fetchProviderResponse` に `dataDir` 配下 `provider-response-cache.json` への読み書きを追加した。
+- プロセス再起動後もディスクから即座に返し、バックグラウンドで再検証する stale-while-revalidate パターンを実装した。
+- TTL: 5秒（fresh）、stale window: 5分（stale but usable）、超過時はネットワーク取得。
+- バックグラウンド再検証は `__opencodeWebuiProviderRevalidating` フラグで重複防止。失敗時はstaleデータを維持。
+- ディスク書き込みはatomic（temp+rename）。
+
+## 検証結果
+
+- `provider-models.test.ts`: 46 tests passed
+- ディスクキャッシュ永続化・stale返却+バックグラウンド再検証・stale window超過時のネットワークフォールバックの回帰テストを追加した。
+- `npm run typecheck`: 成功
+- 対象2ファイルのESLint: 成功
+
+## 作業ログ: provider-modelsの同時provider取得削減
+
 ## 日付
 
 2026-08-11

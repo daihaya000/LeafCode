@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ocServer } from "../oc-server";
 import type { ProviderModelsDto } from "../extensions";
+import { dataDir, ensureDataDir } from "../paths";
 import {
   formatModelLabel,
   shouldDefaultDisableModel,
@@ -91,13 +92,64 @@ type ProviderResponseCache = { at: number; data: ProviderResponse };
 type ProviderModelsGlobal = typeof globalThis & {
   __opencodeWebuiProviderResponseCache?: ProviderResponseCache | null;
   __opencodeWebuiProviderResponsePending?: Promise<ProviderResponse> | null;
+  __opencodeWebuiProviderRevalidating?: boolean;
 };
 const providerModelsGlobal = globalThis as ProviderModelsGlobal;
+
+/**
+ * Disk-backed stale-while-revalidate cache for the OpenCode `/provider`
+ * response. The upstream payload is ~4.6MB (187 providers, 6174 models) and
+ * takes ~1s to fetch, but only 9 connected providers are needed. On a cold
+ * process start, reading the previous response from disk lets the first
+ * `/api/extensions/provider-models` call return in ~10ms while a background
+ * revalidation refreshes the cache for subsequent calls.
+ */
+const DISK_CACHE_FILE = () => path.join(dataDir(), "provider-response-cache.json");
+const DISK_CACHE_STALE_MS = 300_000;
+
+type DiskCacheEntry = { at: number; data: ProviderResponse };
+
+function readDiskCache(): DiskCacheEntry | null {
+  try {
+    const raw = fs.readFileSync(DISK_CACHE_FILE(), "utf8");
+    const parsed = JSON.parse(raw) as DiskCacheEntry;
+    if (
+      parsed &&
+      typeof parsed.at === "number" &&
+      parsed.data &&
+      Array.isArray(parsed.data.all) &&
+      Array.isArray(parsed.data.connected)
+    ) {
+      return parsed;
+    }
+  } catch {
+    /* ENOENT or malformed — treat as no cache */
+  }
+  return null;
+}
+
+function writeDiskCache(data: ProviderResponse): void {
+  try {
+    ensureDataDir();
+    const entry: DiskCacheEntry = { at: Date.now(), data };
+    const tmp = `${DISK_CACHE_FILE()}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(entry), "utf8");
+    fs.renameSync(tmp, DISK_CACHE_FILE());
+  } catch {
+    /* best-effort; never block task listing */
+  }
+}
 
 /** Test-only: drop the shared `/provider` cache between tests. */
 export function __clearProviderResponseCacheForTest(): void {
   providerModelsGlobal.__opencodeWebuiProviderResponseCache = null;
   providerModelsGlobal.__opencodeWebuiProviderResponsePending = null;
+  providerModelsGlobal.__opencodeWebuiProviderRevalidating = false;
+  try {
+    fs.rmSync(DISK_CACHE_FILE(), { force: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 async function fetchProviderResponse(): Promise<ProviderResponse> {
@@ -109,6 +161,40 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
   const pending = providerModelsGlobal.__opencodeWebuiProviderResponsePending;
   if (pending) return pending;
 
+  // Stale-while-revalidate: if we have a disk cache that is older than the
+  // in-memory TTL but still within the stale window, return it immediately
+  // and trigger a background refresh.
+  if (cached && now - cached.at < DISK_CACHE_STALE_MS) {
+    void revalidateProviderResponse();
+    return cached.data;
+  }
+
+  // No fresh in-memory cache — check disk before hitting the network.
+  if (!cached) {
+    const disk = readDiskCache();
+    if (disk) {
+      const age = now - disk.at;
+      if (age < PROVIDER_RESPONSE_CACHE_TTL_MS) {
+        // Disk cache is still fresh — promote to in-memory and return.
+        providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+          at: disk.at,
+          data: disk.data,
+        };
+        return disk.data;
+      }
+      if (age < DISK_CACHE_STALE_MS) {
+        // Disk cache is stale but usable — return immediately and refresh.
+        providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+          at: disk.at,
+          data: disk.data,
+        };
+        void revalidateProviderResponse();
+        return disk.data;
+      }
+    }
+  }
+
+  // Cold start with no usable cache — fetch from the network.
   const request = ocServer<ProviderResponse>(null, "/provider", {
     timeoutMs: 3000,
   }).then((data) => {
@@ -116,6 +202,7 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
       at: Date.now(),
       data,
     };
+    writeDiskCache(data);
     return data;
   });
   providerModelsGlobal.__opencodeWebuiProviderResponsePending = request;
@@ -125,6 +212,31 @@ async function fetchProviderResponse(): Promise<ProviderResponse> {
     if (providerModelsGlobal.__opencodeWebuiProviderResponsePending === request) {
       providerModelsGlobal.__opencodeWebuiProviderResponsePending = null;
     }
+  }
+}
+
+/**
+ * Background revalidation: fetch a fresh `/provider` response and update
+ * both in-memory and disk caches. Failures are silently swallowed so the
+ * stale data remains usable. Deduplicated via the `__opencodeWebuiProviderRevalidating`
+ * flag to prevent overlapping background fetches.
+ */
+async function revalidateProviderResponse(): Promise<void> {
+  if (providerModelsGlobal.__opencodeWebuiProviderRevalidating) return;
+  providerModelsGlobal.__opencodeWebuiProviderRevalidating = true;
+  try {
+    const data = await ocServer<ProviderResponse>(null, "/provider", {
+      timeoutMs: 3000,
+    });
+    providerModelsGlobal.__opencodeWebuiProviderResponseCache = {
+      at: Date.now(),
+      data,
+    };
+    writeDiskCache(data);
+  } catch {
+    /* keep stale data on failure */
+  } finally {
+    providerModelsGlobal.__opencodeWebuiProviderRevalidating = false;
   }
 }
 

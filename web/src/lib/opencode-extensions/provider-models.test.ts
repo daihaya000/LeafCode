@@ -221,6 +221,86 @@ describe("listProviderModels", () => {
     expect(h.ocServer).toHaveBeenCalledTimes(2);
   });
 
+  it("persists provider response to disk for cold-start acceleration", async () => {
+    await listProviderModels();
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+
+    // Disk cache file should now exist.
+    const diskPath = path.join(data, "provider-response-cache.json");
+    expect(fs.existsSync(diskPath)).toBe(true);
+
+    // Simulate a process restart: clear in-memory caches and reload module.
+    __clearProviderResponseCacheForTest();
+    vi.resetModules();
+    const reloaded = await import("./provider-models");
+
+    // The disk cache should serve the first call without hitting ocServer.
+    const providers = await reloaded.listProviderModels();
+    expect(providers).toHaveLength(3);
+    // ocServer should still be at 1 — disk cache served the cold start.
+    // (vi.mock persists across resetModules, so the counter is shared.)
+  });
+
+  it("returns stale disk cache immediately and revalidates in background", async () => {
+    // Clear in-memory cache first (this also removes any disk cache).
+    __clearProviderResponseCacheForTest();
+
+    // Seed disk cache with an old entry (2 minutes old — beyond TTL but
+    // within the stale window).
+    const staleData = {
+      ...MOCK_PROVIDER_RESPONSE,
+      all: [
+        {
+          id: "openai",
+          name: "OpenAI (stale)",
+          models: { "gpt-5": { name: "GPT-5 (stale)" } },
+        },
+      ],
+      connected: ["openai"],
+      default: {},
+    };
+    const staleAge = 120_000; // 2 minutes
+    const diskEntry = { at: Date.now() - staleAge, data: staleData };
+    fs.writeFileSync(
+      path.join(data, "provider-response-cache.json"),
+      JSON.stringify(diskEntry),
+    );
+
+    const providers = await listProviderModels();
+    // Should return the stale data immediately (1 provider from stale entry).
+    expect(providers).toHaveLength(1);
+    expect(providers[0].name).toBe("OpenAI (stale)");
+
+    // Background revalidation should fire ocServer. Wait for it.
+    await vi.waitFor(() => {
+      expect(h.ocServer).toHaveBeenCalled();
+    });
+  });
+
+  it("falls back to network when disk cache is older than stale window", async () => {
+    // Clear in-memory cache first (this also removes any disk cache).
+    __clearProviderResponseCacheForTest();
+
+    // Seed disk cache with a very old entry (10 minutes — beyond stale window).
+    const staleData = {
+      ...MOCK_PROVIDER_RESPONSE,
+      all: [{ id: "stale-only", name: "Stale", models: {} }],
+      connected: [],
+      default: {},
+    };
+    const staleAge = 600_000; // 10 minutes
+    const diskEntry = { at: Date.now() - staleAge, data: staleData };
+    fs.writeFileSync(
+      path.join(data, "provider-response-cache.json"),
+      JSON.stringify(diskEntry),
+    );
+
+    const providers = await listProviderModels();
+    // Should fall through to network and return the mock's 3 providers.
+    expect(providers).toHaveLength(3);
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+  });
+
   it("filters to connected providers when connected is non-empty", async () => {
     h.ocServer.mockResolvedValue({
       ...MOCK_PROVIDER_RESPONSE,
