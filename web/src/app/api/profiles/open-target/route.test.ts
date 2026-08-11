@@ -11,6 +11,7 @@ const syncEngineMock = vi.hoisted(() => ({
     opencode: "C:/profile/opencode.jsonc",
     codex: "C:/home/.codex/config.toml",
     claude: "C:/home/.claude/settings.json",
+    cursor: "C:/home/.cursor/mcp.json",
   })),
 }));
 const agentsSyncEngineMock = vi.hoisted(() => ({
@@ -22,6 +23,8 @@ const agentsSyncEngineMock = vi.hoisted(() => ({
     claudeSkills: "C:/home/.claude/skills",
     codexSkills: "C:/home/.codex/skills",
     agentsSkills: "C:/home/.agents/skills",
+    cursorMd: "C:/home/.cursor/AGENTS.md",
+    cursorSkills: "C:/home/.cursor/skills",
   })),
 }));
 

@@ -12,6 +12,7 @@ type AgentsSyncStatus = {
     master: { path: string; exists: boolean };
     claude: { path: string; status: ItemStatus };
     codex: { path: string; status: ItemStatus };
+    cursor: { path: string; status: ItemStatus };
   };
   skills: {
     opencodeRoot: { path: string; exists: boolean; count: number };
@@ -147,6 +148,7 @@ export function ProfileAgentsSyncSettings() {
     ? [
         { key: "claude", label: "Claude", item: status.instructions.claude },
         { key: "codex", label: "Codex", item: status.instructions.codex },
+        { key: "cursor", label: "Cursor", item: status.instructions.cursor },
       ]
     : [];
   const allInSync =
@@ -155,11 +157,12 @@ export function ProfileAgentsSyncSettings() {
     instructionItems.every((i) => i.item.status.kind === "ok") &&
     Object.values(status.skills.mirrors).every((m) => m.status.kind === "ok");
 
-  const SIDE_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", agents: "agents" };
+  const SIDE_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", agents: "agents", cursor: "Cursor" };
   const SIDE_TARGET_KEYS: Record<string, string> = {
     claude: "skills-claude",
     codex: "skills-codex",
     agents: "skills-agents",
+    cursor: "skills-cursor",
   };
   const mirrorsBySide: Record<string, Array<{ name: string; path: string; status: ItemStatus }>> = {};
   if (status) {
@@ -178,7 +181,7 @@ export function ProfileAgentsSyncSettings() {
       <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <p className="text-xs text-faint">
           グローバル設定を一元管理します。マスターは <code className="font-mono">~/.config/opencode/AGENTS.md</code>
-          と <code className="font-mono">~/.config/opencode/skills/</code> で、Claude / Codex / agents
+          と <code className="font-mono">~/.config/opencode/skills/</code> で、Claude / Codex / Cursor / agents
           側へミラーします。instructions は内容コピー、skills は symlink で統合します。
         </p>
 

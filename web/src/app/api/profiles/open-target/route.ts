@@ -18,13 +18,16 @@ const TARGET_RESOLVERS: Record<string, () => string> = {
   "sync-master": () => profilePaths().opencode,
   "sync-codex": () => profilePaths().codex,
   "sync-claude": () => profilePaths().claude,
+  "sync-cursor": () => profilePaths().cursor,
   "agents-master": () => agentsSyncPaths().masterMd,
   "agents-claude": () => agentsSyncPaths().claudeMd,
   "agents-codex": () => agentsSyncPaths().codexMd,
+  "agents-cursor": () => agentsSyncPaths().cursorMd,
   "skills-opencode": () => agentsSyncPaths().opencodeSkills,
   "skills-claude": () => agentsSyncPaths().claudeSkills,
   "skills-codex": () => agentsSyncPaths().codexSkills,
   "skills-agents": () => agentsSyncPaths().agentsSkills,
+  "skills-cursor": () => agentsSyncPaths().cursorSkills,
 };
 
 export async function POST(req: Request) {

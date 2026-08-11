@@ -57,16 +57,18 @@ describe("agents-sync-engine filesystem operations", () => {
 
     expect(result).toEqual({
       ok: true,
-      instructions: { copied: 2, skipped: 0, errors: [] },
-      skills: { created: 3, skipped: 0, errors: [] },
+      instructions: { copied: 3, skipped: 0, errors: [] },
+      skills: { created: 4, skipped: 0, errors: [] },
     });
     expect(fs.readFileSync(paths.claudeMd, "utf8")).toBe("shared instructions\n");
     expect(fs.readFileSync(paths.codexMd, "utf8")).toBe("shared instructions\n");
+    expect(fs.readFileSync(paths.cursorMd, "utf8")).toBe("shared instructions\n");
 
     const status = engine.readAgentsSyncStatus();
     expect(status.skills.mirrors["claude:demo"]?.status.kind).toBe("ok");
     expect(status.skills.mirrors["codex:demo"]?.status.kind).toBe("ok");
     expect(status.skills.mirrors["agents:demo"]?.status.kind).toBe("ok");
+    expect(status.skills.mirrors["cursor:demo"]?.status.kind).toBe("ok");
   });
 
   it("does not delete a real mirror directory when a symlink is blocked", () => {

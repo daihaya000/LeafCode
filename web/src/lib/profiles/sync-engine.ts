@@ -29,6 +29,14 @@ type OpendcodeConfig = {
   mcp?: Record<string, McpDefinition>;
 };
 
+// Browser Bridge is bundled with WebUI and its absolute local path is not
+// valid in distributed Cursor/Claude/Codex profiles.
+const NON_DISTRIBUTABLE_MCP_SERVERS = new Set(["browser-bridge"]);
+
+export function isDistributableMcpServer(name: string): boolean {
+  return !NON_DISTRIBUTABLE_MCP_SERVERS.has(name);
+}
+
 type CodexTargetStatus = {
   exists: boolean;
   inSync: boolean;
@@ -51,6 +59,7 @@ export type SyncStatus = {
   };
   codex: { path: string; exists: boolean };
   claude: { path: string; exists: boolean };
+  cursor: { path: string; exists: boolean };
 };
 
 export type SyncPlan = {
@@ -73,6 +82,7 @@ export function profilePaths() {
     opencode: resolveActiveProfileConfigPath(),
     codex: path.join(HOME, ".codex", "config.toml"),
     claude: path.join(HOME, ".claude", "settings.json"),
+    cursor: path.join(HOME, ".cursor", "mcp.json"),
   };
 }
 
@@ -94,6 +104,11 @@ function resolveActiveProfileConfigPath(): string {
 function readJsonc(path: string): OpendcodeConfig {
   const raw = readFileSync(path, "utf8");
   return JSON.parse(stripJsonc(raw)) as OpendcodeConfig;
+}
+
+export function parseJsonSettings(text: string): { mcpServers?: unknown } {
+  if (text.trim() === "") return {};
+  return JSON.parse(text) as { mcpServers?: unknown };
 }
 
 function tomlString(v: string): string {
@@ -169,6 +184,8 @@ type ClaudeMcpEntry = {
   env?: EnvMap;
 };
 
+type CursorMcpEntry = Omit<ClaudeMcpEntry, "type">;
+
 function opencodeMcpToClaude(name: string, def: McpDefinition): ClaudeMcpEntry | null {
   if (def.enabled === false) return null;
   const entry: ClaudeMcpEntry = {};
@@ -194,6 +211,22 @@ function opencodeMcpToClaude(name: string, def: McpDefinition): ClaudeMcpEntry |
       entry.env[k] = envValueToClaude(v);
     }
   }
+  return entry;
+}
+
+function opencodeMcpToCursor(name: string, def: McpDefinition): CursorMcpEntry | null {
+  const entry: CursorMcpEntry = {};
+  if (def.type === "remote") {
+    if (def.url) entry.url = def.url;
+    const headers = filterEnv(def.headers);
+    if (Object.keys(headers).length) entry.headers = headers;
+    return entry;
+  }
+  const cmd = def.command || [];
+  if (cmd[0]) entry.command = cmd[0];
+  if (cmd.length > 1) entry.args = cmd.slice(1);
+  const env = filterEnv(def.environment);
+  if (Object.keys(env).length) entry.env = env;
   return entry;
 }
 
@@ -228,16 +261,20 @@ function replaceCodexMcpTables(tomlText: string, newBlocks: string[]): string {
 function buildTargets(mcp: Record<string, McpDefinition>) {
   const codexBlocks: string[] = [];
   const claudeServers: Record<string, ClaudeMcpEntry> = {};
+  const cursorServers: Record<string, CursorMcpEntry> = {};
   const names: string[] = [];
   for (const [name, def] of Object.entries(mcp)) {
+    if (!isDistributableMcpServer(name)) continue;
     if (def.enabled === false) continue;
     const c = opencodeMcpToCodex(name, def);
     if (c) codexBlocks.push(c);
     const cl = opencodeMcpToClaude(name, def);
     if (cl) claudeServers[name] = cl;
+    const cursor = opencodeMcpToCursor(name, def);
+    if (cursor) cursorServers[name] = cursor;
     names.push(name);
   }
-  return { codexBlocks, claudeServers, names };
+  return { codexBlocks, claudeServers, cursorServers, names };
 }
 
 /**
@@ -249,6 +286,7 @@ export function readSyncStatus(): SyncStatus {
   const masterExists = existsSync(paths.opencode);
   const codexExists = existsSync(paths.codex);
   const claudeExists = existsSync(paths.claude);
+  const cursorExists = existsSync(paths.cursor);
 
   let masterServers: string[] = [];
   let masterError: string | null = null;
@@ -257,7 +295,7 @@ export function readSyncStatus(): SyncStatus {
       const master = readJsonc(paths.opencode);
       const mcp = master.mcp || {};
       masterServers = Object.entries(mcp)
-        .filter(([, d]) => d.enabled !== false)
+        .filter(([name, d]) => isDistributableMcpServer(name) && d.enabled !== false)
         .map(([name]) => name);
     } catch (err) {
       masterError = err instanceof Error ? err.message : String(err);
@@ -273,6 +311,7 @@ export function readSyncStatus(): SyncStatus {
     },
     codex: { path: paths.codex, exists: codexExists },
     claude: { path: paths.claude, exists: claudeExists },
+    cursor: { path: paths.cursor, exists: cursorExists },
   };
 }
 
@@ -291,7 +330,7 @@ export function planSync(): SyncPlan {
   }
   const master = readJsonc(paths.opencode);
   const mcp = master.mcp || {};
-  const { codexBlocks, claudeServers, names } = buildTargets(mcp);
+  const { codexBlocks, claudeServers, cursorServers, names } = buildTargets(mcp);
 
   const targets: Record<string, CodexTargetStatus> = {};
 
@@ -318,7 +357,7 @@ export function planSync(): SyncPlan {
 
   if (existsSync(paths.claude)) {
     const original = readFileSync(paths.claude, "utf8");
-    const settings = JSON.parse(original) as { mcpServers?: unknown };
+    const settings = parseJsonSettings(original);
     const before = JSON.stringify(settings.mcpServers ?? null);
     settings.mcpServers = claudeServers;
     const after = JSON.stringify(settings.mcpServers);
@@ -337,6 +376,30 @@ export function planSync(): SyncPlan {
       inSync: false,
       wouldChange: false,
       message: `skip: ${paths.claude} not found`,
+    };
+  }
+
+  if (existsSync(paths.cursor)) {
+    const original = readFileSync(paths.cursor, "utf8");
+    const settings = parseJsonSettings(original);
+    const before = JSON.stringify(settings.mcpServers ?? null);
+    settings.mcpServers = cursorServers;
+    const after = JSON.stringify(settings.mcpServers);
+    const inSync = before === after;
+    targets.cursor = {
+      exists: true,
+      inSync,
+      wouldChange: !inSync,
+      message: inSync
+        ? `already in sync (${names.length} servers)`
+        : `would rewrite mcpServers (${names.length} servers)`,
+    };
+  } else {
+    targets.cursor = {
+      exists: false,
+      inSync: false,
+      wouldChange: false,
+      message: `skip: ${paths.cursor} not found`,
     };
   }
 
@@ -364,7 +427,7 @@ export function applySync(): SyncApplyResult {
   }
   const master = readJsonc(paths.opencode);
   const mcp = master.mcp || {};
-  const { codexBlocks, claudeServers, names } = buildTargets(mcp);
+  const { codexBlocks, claudeServers, cursorServers, names } = buildTargets(mcp);
 
   const targets: Record<string, CodexApplyResult> = {};
   let changed = 0;
@@ -397,7 +460,7 @@ export function applySync(): SyncApplyResult {
 
   if (existsSync(paths.claude)) {
     const original = readFileSync(paths.claude, "utf8");
-    const settings = JSON.parse(original) as { mcpServers?: unknown };
+    const settings = parseJsonSettings(original);
     const before = JSON.stringify(settings.mcpServers ?? null);
     settings.mcpServers = claudeServers;
     const after = JSON.stringify(settings.mcpServers);
@@ -421,6 +484,35 @@ export function applySync(): SyncApplyResult {
       exists: false,
       updated: false,
       message: `skip: ${paths.claude} not found`,
+    };
+  }
+
+  if (existsSync(paths.cursor)) {
+    const original = readFileSync(paths.cursor, "utf8");
+    const settings = parseJsonSettings(original);
+    const before = JSON.stringify(settings.mcpServers ?? null);
+    settings.mcpServers = cursorServers;
+    const after = JSON.stringify(settings.mcpServers);
+    if (before !== after) {
+      writeFileSync(paths.cursor, JSON.stringify(settings, null, 2) + "\n", "utf8");
+      changed++;
+      targets.cursor = {
+        exists: true,
+        updated: true,
+        message: `wrote ${names.length} mcpServers`,
+      };
+    } else {
+      targets.cursor = {
+        exists: true,
+        updated: false,
+        message: `already in sync (${names.length} servers)`,
+      };
+    }
+  } else {
+    targets.cursor = {
+      exists: false,
+      updated: false,
+      message: `skip: ${paths.cursor} not found`,
     };
   }
 

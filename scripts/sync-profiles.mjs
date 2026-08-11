@@ -90,7 +90,8 @@ function stripJsonc(text) {
     out += c;
     i++;
   }
-  return out;
+  // JSONC permits trailing commas, but JSON.parse does not.
+  return out.replace(/,(\s*[}\]])/g, "$1");
 }
 
 function readJsonc(path) {

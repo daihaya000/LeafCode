@@ -38,7 +38,8 @@ export function stripJsonc(text: string): string {
     out += c;
     i++;
   }
-  return out;
+  // JSONC permits trailing commas, but JSON.parse does not.
+  return out.replace(/,(\s*[}\]])/g, "$1");
 }
 
 export function readJsonc(path: string): Record<string, unknown> {

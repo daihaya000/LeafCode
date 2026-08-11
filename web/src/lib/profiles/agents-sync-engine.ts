@@ -1,5 +1,5 @@
 /**
- * agents-sync engine — global AGENTS.md/skills -> claude/codex/opencode.
+ * agents-sync engine — global AGENTS.md/skills -> claude/codex/cursor/opencode.
  *
  * Inspired by https://github.com/DevsProtein/agents-sync
  * Keeps one canonical copy in the global opencode config dir and mirrors it
@@ -12,9 +12,11 @@
  * Mirrors:
  *   - ~/.claude/CLAUDE.md              (copied from AGENTS.md)
  *   - ~/.codex/AGENTS.md              (copied from AGENTS.md)
+ *   - ~/.cursor/AGENTS.md             (copied from AGENTS.md)
  *   - ~/.claude/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
  *   - ~/.codex/skills/<name>/        -> symlink to ~/.config/opencode/skills/<name>
  *   - ~/.agents/skills/<name>/       -> symlink to ~/.config/opencode/skills/<name>
+ *   - ~/.cursor/skills/<name>/       -> symlink to ~/.config/opencode/skills/<name>
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +35,7 @@ export type AgentsSyncStatus = {
     master: { path: string; exists: boolean };
     claude: { path: string; status: AgentsSyncItemStatus };
     codex: { path: string; status: AgentsSyncItemStatus };
+    cursor: { path: string; status: AgentsSyncItemStatus };
   };
   skills: {
     opencodeRoot: { path: string; exists: boolean; count: number };
@@ -52,10 +55,12 @@ export function agentsSyncPaths() {
     masterMd: path.join(HOME, ".config", "opencode", "AGENTS.md"),
     claudeMd: path.join(HOME, ".claude", "CLAUDE.md"),
     codexMd: path.join(HOME, ".codex", "AGENTS.md"),
+    cursorMd: path.join(HOME, ".cursor", "AGENTS.md"),
     opencodeSkills: path.join(HOME, ".config", "opencode", "skills"),
     claudeSkills: path.join(HOME, ".claude", "skills"),
     codexSkills: path.join(HOME, ".codex", "skills"),
     agentsSkills: path.join(HOME, ".agents", "skills"),
+    cursorSkills: path.join(HOME, ".cursor", "skills"),
   };
 }
 
@@ -140,6 +145,7 @@ function instructionsStatus(): AgentsSyncStatus["instructions"] {
     master: { path: p.masterMd, exists: masterExists },
     claude: { path: p.claudeMd, status: compareStatus(p.masterMd, p.claudeMd) },
     codex: { path: p.codexMd, status: compareStatus(p.masterMd, p.codexMd) },
+    cursor: { path: p.cursorMd, status: compareStatus(p.masterMd, p.cursorMd) },
   };
 }
 
@@ -153,6 +159,7 @@ function skillsStatus(): AgentsSyncStatus["skills"] {
       claude: path.join(p.claudeSkills, name),
       codex: path.join(p.codexSkills, name),
       agents: path.join(p.agentsSkills, name),
+      cursor: path.join(p.cursorSkills, name),
     };
     for (const [side, linkPath] of Object.entries(targets)) {
       const key = `${side}:${name}`;
@@ -213,6 +220,7 @@ export function applyAgentsSync(): AgentsSyncResult {
   for (const [side, targetPath] of Object.entries({
     claude: p.claudeMd,
     codex: p.codexMd,
+    cursor: p.cursorMd,
   })) {
     try {
       mkdirp(path.dirname(targetPath));
@@ -239,6 +247,7 @@ export function applyAgentsSync(): AgentsSyncResult {
         ["claude", p.claudeSkills],
         ["codex", p.codexSkills],
         ["agents", p.agentsSkills],
+        ["cursor", p.cursorSkills],
       ];
       for (const [side, root] of linkRoots) {
         const linkPath = path.join(root, name);

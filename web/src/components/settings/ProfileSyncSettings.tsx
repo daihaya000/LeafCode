@@ -28,6 +28,7 @@ type SyncStatus = {
   };
   codex: { path: string; exists: boolean };
   claude: { path: string; exists: boolean };
+  cursor: { path: string; exists: boolean };
 };
 
 type SyncApplyResult = {
@@ -139,13 +140,13 @@ export function ProfileSyncSettings() {
   return (
     <section>
       <h2 className="mb-3 text-sm font-semibold text-muted">
-        プロファイル同期（opencode → codex / claude）
+        プロファイル同期（opencode → codex / claude / Cursor）
       </h2>
       <div className="space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <p className="text-xs text-faint">
           opencode.jsonc の <code className="font-mono">mcp</code> セクションをマスターにし、
           codex（<code className="font-mono">config.toml</code>）と claude
-          （<code className="font-mono">settings.json</code>）の MCP サーバー定義へ同期します。
+          （<code className="font-mono">settings.json</code>）と Cursor（<code className="font-mono">mcp.json</code>）の MCP サーバー定義へ同期します。
           製品固有の設定（codex の plugins/projects、claude の permissions/theme 等）は保持されます。
         </p>
 
@@ -195,6 +196,13 @@ export function ProfileSyncSettings() {
               target={plan?.targets?.claude}
               onOpen={status.claude.exists ? () => void openTarget("sync-claude") : undefined}
               opening={openBusy === "sync-claude"}
+            />
+            <TargetRow
+              label="Cursor"
+              path={status.cursor.path}
+              target={plan?.targets?.cursor}
+              onOpen={status.cursor.exists ? () => void openTarget("sync-cursor") : undefined}
+              opening={openBusy === "sync-cursor"}
             />
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
