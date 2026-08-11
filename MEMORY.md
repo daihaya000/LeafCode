@@ -1,5 +1,18 @@
 # 作業ログ: 送信メッセージ内のスキル/エージェント呼び出しを青文字表示
 
+## 日付
+2026-08-11
+
+## 内容
+
+- Cursor CLI proxy のセッション再開を既定で有効化した。初回応答後は `--resume` と差分プロンプトを使い、会話履歴全体の再送信を抑えて入力トークンを削減する。`CURSOR_ACP_SESSION_RESUME=false` で明示的に無効化できる。
+
+## 検証
+
+- Cursor proxy関連テスト13件成功
+- `npm.cmd --prefix web run typecheck` 成功
+- `node --check vendor/cursor-cli-proxy/packages/cursor-cli-proxy/index.js` 成功
+
 ---
 
 # 作業ログ: 自動メモリ抽出の呼び出し集約

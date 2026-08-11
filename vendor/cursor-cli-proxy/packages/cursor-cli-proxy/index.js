@@ -19787,7 +19787,10 @@ function buildSessionKey(workspace, model, anchor) {
   return `${workspace}\0${model}\0${anchor}`;
 }
 function isSessionResumeEnabled() {
-  const value = process.env.CURSOR_ACP_SESSION_RESUME?.toLowerCase();
+  const value = process.env.CURSOR_ACP_SESSION_RESUME?.trim().toLowerCase();
+  if (value == null || value === "") {
+    return true;
+  }
   return value === "1" || value === "true" || value === "on" || value === "yes";
 }
 function getResumeChatId(sessionKey, expectedPrefix, toolFingerprint, subagentFingerprint) {
@@ -35653,6 +35656,8 @@ __export2(exports_plugin, {
   buildAvailableToolsSystemMessage: () => buildAvailableToolsSystemMessage,
   applyCursorWriteToolContract: () => applyCursorWriteToolContract,
   createToolLoopGuard: () => createToolLoopGuard,
+  resolvePromptForBackend: () => resolvePromptForBackend,
+  recordResumeChatId: () => recordResumeChatId,
   CursorPlugin: () => CursorPlugin
 });
 import { spawn as spawn4, spawnSync } from "child_process";
@@ -37984,9 +37989,12 @@ var init_plugin = __esm(() => {
   OPENCODE_NATIVE_TOOL_HOOK_EXCLUSIONS = /* @__PURE__ */ new Set(["edit", "write"]);
   plugin_default = CursorPlugin;
 });
+init_session_resume();
 init_tool_loop_guard();
+init_prompt_builder();
 init_plugin_toggle();
 init_logger();
+log23 = createLogger("plugin");
 var log24 = createLogger("plugin-entry");
 var CursorPluginEntry = async (input) => {
   const state = shouldEnableCursorPlugin();
@@ -38003,5 +38011,7 @@ var CursorPluginEntry = async (input) => {
 var plugin_entry_default = CursorPluginEntry;
 export {
   plugin_entry_default as default,
-  createToolLoopGuard
+  createToolLoopGuard,
+  recordResumeChatId,
+  resolvePromptForBackend
 };
