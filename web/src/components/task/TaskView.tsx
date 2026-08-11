@@ -3625,7 +3625,7 @@ export function TaskView({ taskId }: { taskId: string }) {
                   className="shrink-0"
                   title="このセッションの累計コスト"
                 >
-                  累計コスト {formatCostValue(cumulativeCost, costPrefs)}
+                  {formatCostValue(cumulativeCost, costPrefs)}
                 </span>
               </>
             )}
@@ -3633,7 +3633,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <>
                 <span className="mx-1">·</span>
                 <span className="shrink-0" title="このセッションの累計トークン数">
-                  累計トークン {formatTokens(cumulativeTokens)}
+                  {formatTokens(cumulativeTokens).replace("k", "K")}tk
                 </span>
               </>
             )}
@@ -3641,7 +3641,7 @@ export function TaskView({ taskId }: { taskId: string }) {
               <>
                 <span className="mx-1">·</span>
                 <span className="shrink-0" title="このセッションの累計思考時間">
-                  累計思考時間 {formatElapsed(cumulativeThinkingSeconds)}
+                  {formatElapsed(cumulativeThinkingSeconds)}
                 </span>
               </>
             )}

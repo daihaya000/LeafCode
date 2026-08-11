@@ -4908,3 +4908,19 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `npm run lint -- src/components/ui.tsx src/components/task/MessageMetaHeader.test.tsx`: 合格
 
 ---
+## 累計メタデータの表示短縮
+
+### 日付
+
+2026-08-11
+
+### 修正
+
+TaskView ヘッダーの `累計コスト`、`累計トークン`、`累計思考時間` ラベルを削除し、値のみを表示するよう変更した。累計トークンには現在のメタデータ表示と同じ `tk` 単位を付与する。
+
+### 検証
+
+- `TaskView.test.tsx` の累計コスト表示期待値を更新
+- `npm run test -- --run src/components/task/TaskView.test.tsx`: 115 tests passed
+
+---

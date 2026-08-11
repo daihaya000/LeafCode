@@ -465,13 +465,13 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
 
     await flushTaskLoad();
-    expect(screen.getByText("累計コスト $0.1000")).toBeTruthy();
+    expect(screen.getByText("$0.1000")).toBeTruthy();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(screen.getByText("累計コスト $0.2000")).toBeTruthy();
+    expect(screen.getByText("$0.2000")).toBeTruthy();
     // 3 calls: 1 initial sidepanel-width (DB migration) + 1 task load + 1 poll.
     expect(getJson).toHaveBeenCalledTimes(3);
   });
@@ -501,13 +501,13 @@ describe("TaskView", () => {
       second.resolve({ cost: 0.3 });
       await second.promise;
     });
-    expect(screen.getByText("累計コスト $0.3000")).toBeTruthy();
+    expect(screen.getByText("$0.3000")).toBeTruthy();
 
     await act(async () => {
       first.resolve({ cost: 0.2 });
       await first.promise;
     });
-    expect(screen.getByText("累計コスト $0.3000")).toBeTruthy();
+    expect(screen.getByText("$0.3000")).toBeTruthy();
   });
 
   it("shows cumulative cost when the task does not report a cost", async () => {
@@ -529,7 +529,7 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
 
-    expect(screen.getByText("累計コスト $0.3200")).toBeTruthy();
+    expect(screen.getByText("$0.3200")).toBeTruthy();
     expect(screen.getByTitle("このセッションの累計コスト")).toBeTruthy();
   });
 
@@ -543,7 +543,7 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
 
     await flushTaskLoad();
-    expect(screen.getByText("累計コスト $0.1000")).toBeTruthy();
+    expect(screen.getByText("$0.1000")).toBeTruthy();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(9000);
     });
@@ -787,14 +787,14 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
 
     await flushTaskLoad();
-    expect(screen.getByText("累計コスト $0.1000")).toBeTruthy();
+    expect(screen.getByText("$0.1000")).toBeTruthy();
     setVisible(true);
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
       await Promise.resolve();
     });
 
-    expect(screen.getByText("累計コスト $0.2000")).toBeTruthy();
+    expect(screen.getByText("$0.2000")).toBeTruthy();
     // 3 calls: 1 sidepanel-width (DB migration) + 1 task load + 1 visibility refresh.
     expect(getJson).toHaveBeenCalledTimes(3);
   });
@@ -817,12 +817,12 @@ describe("TaskView", () => {
     render(<TaskView taskId="ws1" />);
 
     await flushTaskLoad();
-    expect(screen.getByText("累計コスト $0.1000")).toBeTruthy();
+    expect(screen.getByText("$0.1000")).toBeTruthy();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(screen.getByText("累計コスト $0.1000")).toBeTruthy();
+    expect(screen.getByText("$0.1000")).toBeTruthy();
     expect(screen.queryByText("offline")).toBeNull();
   });
 
@@ -1337,13 +1337,13 @@ describe("TaskView", () => {
     });
     view.rerender(<TaskView taskId="ws1" />);
 
-    expect(await screen.findByText("累計コスト $0.2000")).toBeTruthy();
+    expect(await screen.findByText("$0.2000")).toBeTruthy();
     await act(async () => {
       resolveInitial?.({ task: task(0.1) });
       await Promise.resolve();
     });
 
-    expect(screen.getByText("累計コスト $0.2000")).toBeTruthy();
+    expect(screen.getByText("$0.2000")).toBeTruthy();
   });
 
   it("consolidates assistant model and turn cost into the response header", async () => {
@@ -1401,9 +1401,9 @@ describe("TaskView", () => {
     // the model label also legitimately renders in the composer's model selector.
     const header = await screen.findByLabelText("応答メタデータ");
     await within(header).findByText("GPT-5.6 Sol");
-    expect(within(header).getByText("コスト $0.2500")).toBeTruthy();
+    expect(within(header).getByText("$0.2500")).toBeTruthy();
     expect(screen.queryByText("build")).toBeNull();
-    expect(screen.getAllByText("コスト $0.2500")).toHaveLength(1);
+    expect(screen.getAllByText("$0.2500")).toHaveLength(1);
   });
 
   it("shows no hang notice for an ordinary turn", async () => {
