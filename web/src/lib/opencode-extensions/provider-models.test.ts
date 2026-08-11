@@ -193,6 +193,16 @@ describe("listProviderModels", () => {
     expect(h.ocServer).toHaveBeenCalledTimes(1);
   });
 
+  it("clears a failed pending fetch so the next call retries", async () => {
+    h.ocServer
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockResolvedValueOnce(MOCK_PROVIDER_RESPONSE);
+
+    await expect(listProviderModels()).rejects.toThrow("provider unavailable");
+    await expect(listProviderModels()).resolves.toHaveLength(3);
+    expect(h.ocServer).toHaveBeenCalledTimes(2);
+  });
+
   it("filters to connected providers when connected is non-empty", async () => {
     h.ocServer.mockResolvedValue({
       ...MOCK_PROVIDER_RESPONSE,

@@ -262,8 +262,9 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 
 ## 検証結果
 
-- `provider-models.test.ts`: 41 tests passed
+- `provider-models.test.ts`: 42 tests passed
 - concurrent cache missで `ocServer` が1回だけ呼ばれる回帰テストを追加した。
+- 失敗したpending取得後に次回呼び出しが再試行する回帰テストを追加した。
 - `npm run typecheck`: 成功
 - 対象2ファイルのESLint: 成功
 
