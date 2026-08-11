@@ -6,18 +6,19 @@
 
 ## 内容
 
-- Composer 入力中の `/skill-name` を青文字（`text-accent`）でハイライトし、キャレット位置のスキル概要を `title` でホバー表示する。
-- `slash-command.ts` に `isSkillCommand` / `findSkillTokens` / `segmentSkillHighlights` / `skillDescriptionAt` を追加。
-- HomeView / TaskView の Composer に `commands={slashCommands}` を渡す。
+- Composer 入力中の /skill-name を青文字（	ext-accent）でハイライトし、キャレット位置のスキル概要を 	itle でホバー表示する。
+- slash-command.ts に isSkillCommand / indSkillTokens / segmentSkillHighlights / skillDescriptionAt を追加。
+- HomeView / TaskView の Composer に commands={slashCommands} を渡す。
 - スラッシュ候補・設定スキル一覧の青文字表示とホバー概要は継続。
 
 ## 検証
 
-- `vitest run` SlashSuggestMenu / slash-command / Composer / ExtensionsSettings 関連テスト
+- 
+pm.cmd test -- --run : SlashSuggestMenu / slash-command / Composer / ExtensionsSettings / SessionActions / goal-loop.integration / provider-models … 151 tests 成功
 
 ---
 
-﻿# 作業ログ: スキル名の青文字表示とホバー概要
+# 作業ログ: スキル名の青文字表示とホバー概要
 
 ## 日付
 
