@@ -47,6 +47,10 @@ import { SkillPermissionSelect } from "@/components/SkillPermissionSelect";
 import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect";
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
+import {
+  findAbortedResumeTarget,
+  type AbortedResumeTarget,
+} from "@/lib/aborted-resume";
 import { setActiveSessionAttention } from "@/lib/active-session-attention";
 import {
   useShellExtras,
@@ -1902,6 +1906,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     stream.permissions.length === 0 &&
     stream.questions.length === 0;
   const [sending, setSending] = useState(false);
+  /** POST in flight for the manual "再開" of an aborted turn. */
+  const [resumingAbort, setResumingAbort] = useState(false);
+  const [resumeAbortError, setResumeAbortError] = useState<string | null>(null);
   /** Scope that owns the in-flight send — other sessions must stay editable. */
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
   const sendingScopeRef = useRef<string | null>(null);
@@ -1912,6 +1919,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     // TaskView component instance. Reset them when the bound session changes.
     autoCompactInFlightRef.current = false;
     autoCompactCooldownRef.current = 0;
+    // 再開の失敗表示は中断したセッション固有なので、切り替え時に持ち越さない。
+    setResumingAbort(false);
+    setResumeAbortError(null);
   }, [task?.sessionId]);
   const composerLocked =
     (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
@@ -2682,6 +2692,41 @@ export function TaskView({ taskId }: { taskId: string }) {
     }
   }, [working, stream, touchActivity, refreshSessionTitle]);
 
+  /**
+   * 中断（`MessageAbortedError`）されたターンを、同じプロンプトの再送で再開する。
+   * agent とモデルは中断されたターン自身のものを引き継ぐので、Auto 解決や
+   * コンポーザーの選択状態には依存しない。
+   */
+  const resumeAbortedTurn = useCallback(
+    async (target: AbortedResumeTarget) => {
+      if (working || resumingAbort) return;
+      const sessionId = taskRef.current?.sessionId;
+      const activityTaskId = taskRef.current?.id;
+      if (!sessionId || !activityTaskId) return;
+      setResumeAbortError(null);
+      setResumingAbort(true);
+      stickRef.current = true;
+      try {
+        await touchActivity(sessionId, activityTaskId);
+        await stream.sendPrompt(target.text, {
+          ...(target.agent ? { agent: target.agent } : {}),
+          ...(target.model ? { model: target.model } : {}),
+          ...(target.files.length > 0 ? { files: target.files } : {}),
+          ...(intelligence ? { variant: intelligence } : {}),
+          sessionId,
+        });
+      } catch (err) {
+        setResumeAbortError(
+          err instanceof Error ? err.message : "再開に失敗しました",
+        );
+      } finally {
+        setResumingAbort(false);
+        notifyTasksChanged();
+      }
+    },
+    [working, resumingAbort, stream, touchActivity, intelligence],
+  );
+
   const intelligenceVariants = useMemo(() => {
     if (!effectiveModelKey) return [];
     const modelMeta = providerModelsMap[effectiveModelKey];
@@ -3417,6 +3462,18 @@ export function TaskView({ taskId }: { taskId: string }) {
       ),
     [stream.visibleMessages],
   );
+  /**
+   * 末尾が中断ターンのときだけ再開情報を持つ。`timeline` ではなく
+   * `visibleMessages` から求めるのは、出力前に中断された（描画対象パートが無い）
+   * assistant メッセージでも再開できるようにするため。
+   */
+  const abortedResume = useMemo(
+    () => findAbortedResumeTarget(stream.visibleMessages),
+    [stream.visibleMessages],
+  );
+  /** Goal Loop 稼働中の再開は GoalLoopPanel が担うので、こちらは出さない。 */
+  const showAbortedResume =
+    !!abortedResume && !!task?.sessionId && !working && !goalLoopLive;
   const currentGoalProgress = goalLoop?.progress.at(-1);
   const showInlineGoalProgress =
     Boolean(currentGoalProgress) &&
@@ -4225,6 +4282,35 @@ export function TaskView({ taskId }: { taskId: string }) {
                   </div>
                 );
                 })}
+                {showAbortedResume && abortedResume && (
+                  <div
+                    data-testid="aborted-resume"
+                    className="flex flex-col items-start gap-1.5"
+                  >
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      aria-label="中断したターンを再開"
+                      title="中断されたプロンプトを同じ内容で再送します"
+                      busy={resumingAbort}
+                      disabled={resumingAbort}
+                      onClick={() => void resumeAbortedTurn(abortedResume)}
+                    >
+                      {!resumingAbort && (
+                        <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                      )}
+                      {resumingAbort ? "再開中…" : "再開"}
+                    </Button>
+                    {resumeAbortError && (
+                      <p
+                        role="alert"
+                        className="break-all rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
+                      >
+                        {resumeAbortError}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {stream.permissions
                   .filter(
                     (p) =>

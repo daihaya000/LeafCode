@@ -3685,4 +3685,140 @@ describe("TaskView voice input", () => {
       expect(notificationCtor).not.toHaveBeenCalled();
     });
   });
+
+  describe("中断ターンの再開", () => {
+    // The voice-input suite leaves `taskSessionId` at whatever the previous
+    // test set; the resume button needs a real session to render.
+    beforeEach(() => {
+      taskSessionId = "sess1";
+    });
+
+    const userPrompt = {
+      info: { id: "user-1", role: "user", time: { created: 1 } },
+      parts: [{ id: "text-1", type: "text", text: "テストを直して" }],
+    };
+    const abortedAssistant = {
+      info: {
+        id: "assistant-1",
+        role: "assistant",
+        agent: "build",
+        providerID: "openai",
+        modelID: "gpt-5.6-sol",
+        error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+        time: { created: 2 },
+      },
+      parts: [{ id: "text-2", type: "text", text: "途中まで" }],
+    };
+
+    /**
+     * Install a stream mock for the given transcript. Built from an explicit
+     * literal instead of the hook's own return value so the helper stays a
+     * plain function (react-hooks/rules-of-hooks).
+     */
+    function mountStream(
+      messages: unknown[],
+      overrides: Record<string, unknown> = {},
+    ) {
+      const next = {
+        messages,
+        visibleMessages: messages,
+        status: { type: "idle" },
+        permissions: [],
+        questions: [],
+        todos: [],
+        revert: null,
+        connection: "live",
+        sessionError: null,
+        loaded: true,
+        abort: vi.fn(),
+        refreshTodos: vi.fn(),
+        rejectQuestion: vi.fn(),
+        replyPermission: vi.fn(),
+        replyQuestion: vi.fn(),
+        resync: vi.fn(),
+        sendPrompt: vi.fn(),
+        sendCommand: vi.fn(),
+        ...overrides,
+      };
+      useSessionStream.mockReturnValue(next);
+      return next;
+    }
+
+    function mountAborted(overrides: Record<string, unknown> = {}) {
+      taskStatus = "idle";
+      return mountStream([userPrompt, abortedAssistant], overrides);
+    }
+
+    it("re-sends the aborted prompt with the same agent and model", async () => {
+      const stream = mountAborted();
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "中断したターンを再開" }));
+      });
+
+      expect(stream.sendPrompt).toHaveBeenCalledWith("テストを直して", {
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-5.6-sol" },
+        sessionId: "sess1",
+      });
+    });
+
+    it("surfaces a failed resume instead of losing it silently", async () => {
+      mountAborted({
+        sendPrompt: vi.fn().mockRejectedValue(new Error("engine unreachable")),
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "中断したターンを再開" }));
+      });
+
+      expect(screen.getByRole("alert").textContent).toContain("engine unreachable");
+      // The button stays available so the user can retry after a transient failure.
+      expect(screen.getByRole("button", { name: "中断したターンを再開" })).toBeTruthy();
+    });
+
+    it("hides the resume button once the conversation moved past the abort", async () => {
+      taskStatus = "idle";
+      mountStream([
+        userPrompt,
+        abortedAssistant,
+        {
+          info: { id: "assistant-2", role: "assistant", time: { created: 3 } },
+          parts: [{ id: "text-3", type: "text", text: "完了" }],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByTestId("aborted-resume")).toBeNull();
+    });
+
+    it("hides the resume button while the session is busy again", async () => {
+      taskStatus = "working";
+      mountStream([userPrompt, abortedAssistant], { status: { type: "busy" } });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByTestId("aborted-resume")).toBeNull();
+    });
+
+    it("shows no resume button for an ordinary completed turn", async () => {
+      taskStatus = "idle";
+      mountStream([
+        userPrompt,
+        {
+          info: { id: "assistant-1", role: "assistant", time: { created: 2 } },
+          parts: [{ id: "text-2", type: "text", text: "完了" }],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByTestId("aborted-resume")).toBeNull();
+    });
+  });
 });

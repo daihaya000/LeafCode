@@ -1,3 +1,41 @@
+# 作業ログ: 中断ターンの「再開」ボタン追加
+
+## 日付
+
+2026-08-11
+
+## 背景
+
+- 手動停止（`POST /session/{id}/abort`）で中断したターンは、assistantメッセージに `MessageAbortedError` が付いて赤いエラー行が出るだけで、UIから復帰する手段がなかった。ユーザーはプロンプトを手で打ち直す必要があった。
+- Goal Loopには「再開」があり、サーバー側ハングwatchdogは「同じリクエストを1回だけ再送」して自動再開していたが、通常会話の手動中断にはどちらも効かない。
+
+## 仕様（ユーザー確定）
+
+- 再開の動作: 中断された**同じプロンプトを再送**する（watchdogと同じ考え方）。
+- 表示場所: 中断された assistant メッセージの直下。
+- 表示条件: 原因を問わず `MessageAbortedError` 全般（手動停止・watchdog停止のどちらでも出す）。
+
+## 実装
+
+- `web/src/lib/aborted-resume.ts` を追加。React/browser非依存の純関数で、
+  - `isAbortedAssistantMessage()`: `info.error.name === "MessageAbortedError"` の assistant 判定。
+  - `findAbortedResumeTarget()`: **会話末尾が中断ターンのときだけ**、直前のuserメッセージからプロンプト本文（synthetic除外、複数textは `\n\n` 連結）と添付file（`url`/`mime`/`filename` → `uri`/`mime`/`name`）を復元し、中断ターン自身の `agent` / `providerID`+`modelID` を引き継ぐ。
+  - 末尾限定にしたのは、過去の中断ターンから再送すると現在の文脈と噛み合わない作業を重複実行させるため。間に完了済みassistantが挟まる場合もnullを返す。
+- `web/src/components/task/TaskView.tsx`
+  - `abortedResume` は `timeline` ではなく `stream.visibleMessages` から算出。出力前に中断され描画パートを持たないassistantメッセージでも再開できるようにするため。
+  - 表示条件は `abortedResume && task.sessionId && !working && !goalLoopLive`。稼働中ループの再開はGoalLoopPanelの責務なので出さない。
+  - `resumeAbortedTurn()` は `touchActivity` 後に `stream.sendPrompt(text, { agent, model, files, variant, sessionId })` を実行。agent/モデルは中断ターン由来なのでAuto解決やコンポーザーの選択状態に依存しない。失敗時は `role="alert"` でインライン表示し、ボタンは押せるまま残す。
+  - 送信すると `working` になるので自動的に消え、ターン完了後は末尾が中断ターンでなくなるため再表示もされない（自己クリア）。セッション切替時は state をリセット。
+
+## 検証
+
+- `npx vitest run`: 270ファイル / 3237成功 / 1スキップ
+- `npx tsc --noEmit`: 成功
+- 変更/追加3ファイルのESLint: 成功
+- 追加テスト: `aborted-resume.test.ts` 14件、`TaskView.test.tsx` の「中断ターンの再開」5件（同一プロンプト+agent/model再送、失敗表示、会話が先に進んだ場合の非表示、busy中の非表示、通常完了ターンでの非表示）
+
+---
+
 # 作業ログ: 透過プロキシ /provider GET レスポンスキャッシュ追加
 
 # 作業ログ: 自動メモリ抽出の通知バッジと履歴
