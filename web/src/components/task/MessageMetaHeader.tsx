@@ -60,7 +60,7 @@ export function MessageMetaHeader({
     effortLabel ? { key: "effort", text: effortLabel } : null,
     time ? { key: "time", text: time } : null,
     cost ? { key: "cost", text: cost } : null,
-    tokens > 0 ? { key: "tokens", text: `${formatTokens(tokens)}tok` } : null,
+    tokens > 0 ? { key: "tokens", text: `${formatTokens(tokens).replace("k", "K")} tok` } : null,
     thinking != null
       ? { key: "thinking", text: formatElapsed(thinking) }
       : null,
