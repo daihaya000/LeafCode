@@ -5568,3 +5568,24 @@ Hermes Agent と同様に「自動確定を既定、必要なら承認制」を�
 - `npm run typecheck`: 成功
 - 関連ファイルのESLint: 成功
 - 本番ビルドはプロジェクト指示により実行しない
+# 作業ログ: スキル名の青文字表示とホバー概要
+
+## 日付
+
+2026-08-11
+
+## 要望
+
+UI 上のスキル名を青文字で表示し、ホバーでスキル概要を確認できるようにする。
+
+## 変更
+
+- `SlashSuggestMenu`: `source === "skill"` のコマンド名を `text-accent`（青）表示。候補全体の `title` に description を載せホバーで概要を表示。
+- `ExtensionsSettings`: スキル行・ツリーの表示名を青文字。description / description_ja を `title` に使用。
+- `ProjectSettingsView`: スキル一覧名を青文字。frontmatter の description_ja / description をホバー title に使用。
+
+## 検証
+
+- `npm.cmd test -- --run src/components/SlashSuggestMenu.test.tsx` ... 3 tests passed
+- 本番ビルド・dev 起動は指示により未実行
+

@@ -12,6 +12,7 @@ import type {
   ProjectSettingFileKey,
 } from "@/lib/project-settings";
 import type { ProjectAgentDto } from "@/lib/project-agents";
+import { parseFrontmatterFields } from "@/lib/opencode-extensions/skills";
 import type { ProjectSkillDto } from "@/lib/project-skills";
 
 type ProjectSettingsResponse = {
@@ -600,43 +601,49 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-                {skills.map((skill) => (
-                  <div
-                    key={skill.name}
-                    className={cx(
-                      "flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors",
-                      activeSkill === skill.name
-                        ? "border-primary bg-primary/10"
-                        : "border-transparent hover:bg-surface-2",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => selectSkill(skill.name)}
-                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                {skills.map((skill) => {
+                  const fields = parseFrontmatterFields(skill.content);
+                  const skillTitle =
+                    fields.description_ja || fields.description || skill.name;
+                  return (
+                    <div
+                      key={skill.name}
+                      className={cx(
+                        "flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors",
+                        activeSkill === skill.name
+                          ? "border-primary bg-primary/10"
+                          : "border-transparent hover:bg-surface-2",
+                      )}
                     >
-                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-text">
-                          {skill.name}
+                      <button
+                        type="button"
+                        onClick={() => selectSkill(skill.name)}
+                        title={skillTitle}
+                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-accent">
+                            {skill.name}
+                          </span>
+                          <span className="block truncate font-mono text-[10px] text-faint">
+                            {skill.relativePath}
+                          </span>
                         </span>
-                        <span className="block truncate font-mono text-[10px] text-faint">
-                          {skill.relativePath}
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`スキル「${skill.name}」を削除`}
-                      title="削除"
-                      disabled={saving}
-                      onClick={() => void removeSkill(skill.name)}
-                      className="shrink-0 rounded-lg p-1.5 text-faint hover:bg-danger-bg hover:text-danger disabled:opacity-40"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`スキル「${skill.name}」を削除`}
+                        title="削除"
+                        disabled={saving}
+                        onClick={() => void removeSkill(skill.name)}
+                        className="shrink-0 rounded-lg p-1.5 text-faint hover:bg-danger-bg hover:text-danger disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
                 {skills.length === 0 && (
                   <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-faint">
                     スキルがありません

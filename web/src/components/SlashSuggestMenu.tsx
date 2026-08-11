@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import { cx } from "@/components/ui";
-import type { SlashCommand } from "@/lib/slash-command";
+import { isSkillCommand, type SlashCommand } from "@/lib/slash-command";
 
 export function SlashSuggestMenu({
   items,
@@ -38,6 +38,7 @@ export function SlashSuggestMenu({
     >
       {items.map((item, index) => {
         const active = index === activeIndex;
+        const isSkill = item.source === "skill";
         return (
           <button
             key={item.name}
@@ -49,6 +50,7 @@ export function SlashSuggestMenu({
             role="option"
             id={`slash-cmd-${item.name}`}
             aria-selected={active}
+            title={item.description || undefined}
             onMouseEnter={() => onHover(index)}
             onMouseDown={(e) => {
               // Prevent textarea blur before click applies.
@@ -65,7 +67,7 @@ export function SlashSuggestMenu({
             <Sparkles
               className={cx(
                 "mt-0.5 h-3.5 w-3.5 shrink-0",
-                active ? "text-accent" : "text-muted",
+                isSkill || active ? "text-accent" : "text-muted",
               )}
               aria-hidden="true"
             />
@@ -73,7 +75,11 @@ export function SlashSuggestMenu({
               <span
                 className={cx(
                   "block truncate font-semibold",
-                  active ? "text-text" : "text-fg",
+                  isSkill
+                    ? "text-accent"
+                    : active
+                      ? "text-text"
+                      : "text-fg",
                 )}
               >
                 {item.name}

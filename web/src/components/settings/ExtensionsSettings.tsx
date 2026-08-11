@@ -101,7 +101,12 @@ function SkillRow({
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="min-w-0 truncate text-sm font-medium">{displayName}</p>
+          <p
+            className="min-w-0 truncate text-sm font-medium text-accent"
+            title={description || undefined}
+          >
+            {displayName}
+          </p>
           <Badge tone={item.enabled ? "success" : "neutral"}>
             {item.enabled ? "有効" : "無効"}
           </Badge>
@@ -184,7 +189,13 @@ function SkillSubtree({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="min-w-0 truncate text-sm font-medium">
+            <p
+              className={cx(
+                "min-w-0 truncate text-sm font-medium",
+                isGroup ? "text-text" : "text-accent",
+              )}
+              title={!isGroup ? description || undefined : undefined}
+            >
               {displayName}
             </p>
             {isGroup ? (
