@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bindSession, getDb, getWorkspace, setSessionFavorite } from "@/lib/db";
+import {
+  bindSession,
+  getDb,
+  getWorkspace,
+  setPrimarySession,
+  setSessionFavorite,
+} from "@/lib/db";
 import { assertSafeOpenCodeSessionId } from "@/lib/opencode-id";
 import { persistProjectSessions } from "@/lib/project-session-sync";
 import { requireAuthorized } from "@/lib/api-guard";
@@ -8,6 +14,26 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+/**
+ * Promote a bound session to primary so task.sessionId / stream / send
+ * follow the user's SessionSwitcher selection. Retry once on revision CAS
+ * conflict (e.g. concurrent bind that already assigned primary).
+ */
+function promotePrimarySession(
+  workspaceId: string,
+  opencodeSessionId: string,
+): boolean {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ws = getWorkspace(workspaceId);
+    if (!ws) return false;
+    if (ws.primary_session_id === opencodeSessionId) return true;
+    if (setPrimarySession(workspaceId, opencodeSessionId, ws.revision)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export async function GET(req: NextRequest, context: Ctx) {
   const denied = await requireAuthorized(req);
@@ -57,6 +83,7 @@ export async function POST(req: NextRequest, context: Ctx) {
     opencodeSessionId?: string;
     title?: string;
     favorite?: boolean;
+    setAsPrimary?: boolean;
   } | null;
 
   if (!body?.opencodeSessionId) {
@@ -85,6 +112,14 @@ export async function POST(req: NextRequest, context: Ctx) {
   }
 
   bindSession(id, body.opencodeSessionId, body.title?.trim() || "Session");
+  if (body.setAsPrimary) {
+    if (!promotePrimarySession(id, body.opencodeSessionId)) {
+      return NextResponse.json(
+        { error: "failed to set primary session" },
+        { status: 409 },
+      );
+    }
+  }
   persistProjectSessions(ws.project_id);
   return NextResponse.json({ ok: true });
 }

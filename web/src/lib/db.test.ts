@@ -13,6 +13,7 @@ const {
   createWorkspace,
   deleteProject,
   getDb,
+  getWorkspace,
   findWorkspaceIdsBySessionAndDirectory,
   createMemoryExtractionRun,
   completeMemoryExtractionRun,
@@ -27,6 +28,7 @@ const {
   listSessionBindings,
   primaryBindings,
   releaseSessionCompactionLock,
+  setPrimarySession,
   setSessionFavorite,
   touchSessionActivity,
   tryAcquireSessionCompactionLock,
@@ -261,6 +263,43 @@ test("the first binding becomes primary and later bindings do not replace it", (
     }).primary_session_id,
   ).toBe("ses-implement");
   expect(primaryBindings().get("ws-primary")?.opencode_session_id).toBe("ses-implement");
+});
+
+test("setPrimarySession promotes a later binding for SessionSwitcher", () => {
+  const project = upsertProject({
+    name: "PrimarySwitch",
+    rootPath: path.join(testDataDir, "primary-switch"),
+  });
+  createWorkspace({
+    id: "ws-primary-switch",
+    projectId: project.id,
+    displayName: "Primary Switch Workspace",
+    absolutePath: testDataDir,
+    isolation: "current_folder",
+  });
+
+  bindSession(
+    "ws-primary-switch",
+    "ses-a",
+    "A",
+    "2026-07-22T10:00:00.000Z",
+  );
+  bindSession(
+    "ws-primary-switch",
+    "ses-b",
+    "B",
+    "2026-07-22T11:00:00.000Z",
+  );
+
+  const before = getWorkspace("ws-primary-switch");
+  expect(before?.primary_session_id).toBe("ses-a");
+  expect(
+    setPrimarySession("ws-primary-switch", "ses-b", before!.revision),
+  ).toBe(true);
+  expect(getWorkspace("ws-primary-switch")?.primary_session_id).toBe("ses-b");
+  expect(primaryBindings().get("ws-primary-switch")?.opencode_session_id).toBe(
+    "ses-b",
+  );
 });
 
 test("foreign_keys pragma is ON so ON DELETE CASCADE fires", () => {

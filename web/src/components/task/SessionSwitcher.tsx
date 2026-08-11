@@ -108,15 +108,19 @@ export function SessionSwitcher({
     };
   }, [workspaceId, refresh]);
 
-  // Rebind only bumps updated_at server-side; the visible list stays valid.
-  // Avoid a full refresh on every select change to prevent dropdown flicker.
-  const updateSessionOrder = useCallback(
-    async (id: string) => {
-      const title =
-        sessions.find((s) => s.opencodeSessionId === id)?.title ?? "Session";
+  // Rebind bumps updated_at and promotes primary so task.sessionId / stream
+  // follow the selection. Avoid a full list refresh on every select change
+  // to prevent dropdown flicker.
+  const focusSession = useCallback(
+    async (id: string, title?: string) => {
+      const resolvedTitle =
+        title ??
+        sessions.find((s) => s.opencodeSessionId === id)?.title ??
+        "Session";
       await sendJson("POST", `/api/workspaces/${workspaceId}/sessions`, {
         opencodeSessionId: id,
-        title,
+        title: resolvedTitle,
+        setAsPrimary: true,
       });
     },
     [sessions, workspaceId],
@@ -133,10 +137,7 @@ export function SessionSwitcher({
         method: "POST",
         body: { title: `Session ${sessions.length + 1}` },
       });
-      await sendJson("POST", `/api/workspaces/${workspaceId}/sessions`, {
-        opencodeSessionId: session.id,
-        title: `Session ${sessions.length + 1}`,
-      });
+      await focusSession(session.id, `Session ${sessions.length + 1}`);
       await refresh();
       if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
       onSwitch();
@@ -226,7 +227,7 @@ export function SessionSwitcher({
           setSwitchError(null);
           setBusy(true);
           try {
-            await updateSessionOrder(id);
+            await focusSession(id);
             if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
             onSwitch();
           } catch (err) {

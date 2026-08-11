@@ -9,6 +9,7 @@ const baseInput = {
   tools: [],
   subagentNames: [],
   workspaceDirectory: "C:/cursor-proxy-session-resume-test",
+  sessionId: "opencode-session-main",
 };
 
 test("enables session resume by default", () => {
@@ -62,6 +63,74 @@ test("uses an incremental prompt after a captured session id", () => {
     if (previous === undefined) delete process.env.CURSOR_ACP_SESSION_RESUME;
     else process.env.CURSOR_ACP_SESSION_RESUME = previous;
   }
+});
+
+test("isolates Cursor chat ids by OpenCode session id", () => {
+  const first = resolvePromptForBackend({
+    ...baseInput,
+    sessionId: "opencode-session-a",
+    messages: [{ role: "user", content: "Review this workspace" }],
+  });
+  recordResumeChatId(
+    first.sessionKey,
+    "cursor-chat-a",
+    first.recordContentPrefix,
+    first.toolFingerprint,
+    first.subagentFingerprint,
+  );
+
+  const otherSession = resolvePromptForBackend({
+    ...baseInput,
+    sessionId: "opencode-session-b",
+    messages: [{ role: "user", content: "Review this workspace" }],
+  });
+  assert.notEqual(otherSession.sessionKey, first.sessionKey);
+  assert.equal(otherSession.resumeChatId, undefined);
+  assert.equal(otherSession.usedIncremental, false);
+});
+
+test("starts a fresh chat when an image turn cannot be reduced to an incremental prompt", () => {
+  const first = resolvePromptForBackend({
+    ...baseInput,
+    sessionId: "opencode-session-image",
+    messages: [{ role: "user", content: "Inspect the image" }],
+  });
+  recordResumeChatId(
+    first.sessionKey,
+    "cursor-chat-image",
+    first.recordContentPrefix,
+    first.toolFingerprint,
+    first.subagentFingerprint,
+  );
+
+  const next = resolvePromptForBackend({
+    ...baseInput,
+    sessionId: "opencode-session-image",
+    messages: [
+      { role: "user", content: "Inspect the image" },
+      { role: "assistant", content: "Send the next image." },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Here it is" },
+          { type: "image_url", image_url: { url: "https://example.test/image.png" } },
+        ],
+      },
+    ],
+  });
+  assert.equal(next.resumeChatId, undefined);
+  assert.equal(next.usedIncremental, false);
+  assert.match(next.prompt, /ASSISTANT: Send the next image\./);
+});
+
+test("does not cache resume state without an OpenCode session id", () => {
+  const result = resolvePromptForBackend({
+    ...baseInput,
+    sessionId: "",
+    messages: [{ role: "user", content: "No session identity" }],
+  });
+  assert.equal(result.sessionKey, undefined);
+  assert.equal(result.resumeChatId, undefined);
 });
 
 test("allows explicit opt-out of session resume", () => {

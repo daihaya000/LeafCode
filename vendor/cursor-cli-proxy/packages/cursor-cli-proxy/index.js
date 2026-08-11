@@ -18622,6 +18622,9 @@ function isTransientContinuation(tail) {
   return TRANSIENT_CONTINUATION_PATTERN.test(tail);
 }
 function isResumeSpecificFailure(stderr) {
+  // resume-fallback and other direct imports may run before plugin boot;
+  // patterns live behind init_errors and must be initialized first.
+  init_errors();
   const text = typeof stderr === "string" ? stderr : String(stderr ?? "");
   const clean = stripAnsi(text);
   for (const pattern of RESUME_FAILURE_PATTERNS) {
@@ -19783,8 +19786,12 @@ function canonicalizeContentForAnchor(content) {
   }).join(`
 `);
 }
-function buildSessionKey(workspace, model, anchor) {
-  return `${workspace}\0${model}\0${anchor}`;
+function buildSessionKey(workspace, model, sessionId, anchor) {
+  return `${workspace}\0${model}\0${sessionId}\0${anchor}`;
+}
+function normalizeSessionHeader(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === "string" ? raw.trim() : "";
 }
 function isSessionResumeEnabled() {
   const value = process.env.CURSOR_ACP_SESSION_RESUME?.trim().toLowerCase();
@@ -35655,6 +35662,8 @@ __export2(exports_plugin, {
   buildCursorAgentCommand: () => buildCursorAgentCommand,
   buildAvailableToolsSystemMessage: () => buildAvailableToolsSystemMessage,
   applyCursorWriteToolContract: () => applyCursorWriteToolContract,
+  createBunChildWithResumeFallback: () => createBunChildWithResumeFallback,
+  createNodeChildWithResumeFallback: () => createNodeChildWithResumeFallback,
   createToolLoopGuard: () => createToolLoopGuard,
   resolvePromptForBackend: () => resolvePromptForBackend,
   recordResumeChatId: () => recordResumeChatId,
@@ -35790,6 +35799,14 @@ function resolvePromptForBackend(input) {
   if (input.backend !== "cursor-agent" || !isSessionResumeEnabled()) {
     return { prompt: getFullPrompt(), usedIncremental: false };
   }
+  const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+  if (!sessionId) {
+    log23.warn("Session resume enabled but OpenCode session ID is unavailable; skipping resume", {
+      model: input.model,
+      workspaceDirectoryHash: sanitizeSessionKey(input.workspaceDirectory)
+    });
+    return { prompt: getFullPrompt(), usedIncremental: false };
+  }
   const anchorResult = deriveConversationAnchor(input.messages);
   if (!anchorResult) {
     log23.warn("Session resume enabled but no usable conversation anchor; skipping resume", {
@@ -35802,7 +35819,7 @@ function resolvePromptForBackend(input) {
   const resumePrefixes = deriveConversationResumePrefixes(input.messages);
   const contentPrefix = resumePrefixes?.lookupContentPrefix ?? anchorContentPrefix;
   const recordContentPrefix = resumePrefixes?.recordContentPrefix ?? contentPrefix;
-  const sessionKey = buildSessionKey(input.workspaceDirectory, input.model, anchor);
+  const sessionKey = buildSessionKey(input.workspaceDirectory, input.model, sessionId, anchor);
   const sessionKeyHash = sanitizeSessionKey(sessionKey);
   const toolFingerprint = buildToolFingerprint(input.tools);
   const subagentFingerprint = input.subagentNames.slice().sort().join(",");
@@ -35827,13 +35844,14 @@ function resolvePromptForBackend(input) {
         fullPromptChars: getFullPrompt().length
       });
     }
-    return { prompt: incremental, resumeChatId, sessionKey, usedIncremental: true, contentPrefix, recordContentPrefix, toolFingerprint, subagentFingerprint };
+    return { prompt: incremental, fallbackPrompt: getFullPrompt(), resumeChatId, sessionKey, usedIncremental: true, contentPrefix, recordContentPrefix, toolFingerprint, subagentFingerprint };
   }
-  log23.info("Session resume active but incremental prompt unavailable; using full prompt", {
+  clearResumeChatId(sessionKey);
+  log23.info("Session resume active but incremental prompt unavailable; starting a fresh chat with full prompt", {
     sessionKeyHash,
     resumeChatIdHash
   });
-  return { prompt: getFullPrompt(), resumeChatId, sessionKey, usedIncremental: false, contentPrefix, recordContentPrefix, toolFingerprint, subagentFingerprint };
+  return { prompt: getFullPrompt(), sessionKey, usedIncremental: false, contentPrefix, recordContentPrefix, toolFingerprint, subagentFingerprint };
 }
 function captureResumeChatIdFromEvent(event, sessionKey, model, workspaceDirectory, contentPrefix, toolFingerprint, subagentFingerprint) {
   if (!sessionKey || !isSessionResumeEnabled())
@@ -35960,6 +35978,151 @@ function createNodeChildForBackend(input) {
     });
   }
   return createCursorAgentNodeChild(input.model, input.prompt, input.workspaceDirectory, input.resumeChatId);
+}
+function shouldRetryResumeChild(canRetry, sawStdout, code, stderr) {
+  return canRetry && !sawStdout && code !== 0 && isResumeSpecificFailure(stderr);
+}
+function createNodeChildWithResumeFallback(input, deps = {}) {
+  const createChild = deps.createChild ?? createNodeChildForBackend;
+  const { retryPrompt, onResumeRetry, ...baseInput } = input;
+  let activeChild = createChild(baseInput);
+  if (!baseInput.resumeChatId || !retryPrompt) {
+    return activeChild;
+  }
+  const stdout = new PassThrough3();
+  const stderr = new PassThrough3();
+  const events = new EventEmitter2();
+  let killed = false;
+  const attach = (child, canRetry) => {
+    let sawStdout = false;
+    const stderrChunks = [];
+    child.stdout.on("data", (chunk) => {
+      sawStdout = true;
+      stdout.write(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      if (canRetry) {
+        stderrChunks.push(Buffer.from(chunk));
+      } else {
+        stderr.write(chunk);
+      }
+    });
+    child.on("error", (error45) => events.emit("error", error45));
+    child.on("close", (code) => {
+      const bufferedStderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (shouldRetryResumeChild(canRetry, sawStdout, code, bufferedStderr)) {
+        onResumeRetry?.(bufferedStderr);
+        activeChild = createChild({
+          ...baseInput,
+          prompt: retryPrompt,
+          resumeChatId: void 0
+        });
+        if (killed) {
+          activeChild.kill();
+        }
+        attach(activeChild, false);
+        return;
+      }
+      if (bufferedStderr) {
+        stderr.write(bufferedStderr);
+      }
+      stdout.end();
+      stderr.end();
+      events.emit("close", code);
+    });
+  };
+  attach(activeChild, true);
+  return {
+    stdout,
+    stderr,
+    on: events.on.bind(events),
+    once: events.once.bind(events),
+    kill() {
+      killed = true;
+      return activeChild.kill();
+    }
+  };
+}
+function createBunChildWithResumeFallback(input, deps = {}) {
+  const createChild = deps.createChild ?? createBunChildForBackend;
+  const { retryPrompt, onResumeRetry, ...baseInput } = input;
+  let activeChild = createChild(baseInput);
+  if (!baseInput.resumeChatId || !retryPrompt) {
+    return activeChild;
+  }
+  let killed = false;
+  let finalStderr = "";
+  let resolveExited;
+  let rejectExited;
+  const exited = new Promise((resolve5, reject) => {
+    resolveExited = resolve5;
+    rejectExited = reject;
+  });
+  const stdout = new ReadableStream({
+    start(controller) {
+      void (async () => {
+        let canRetry = true;
+        while (true) {
+          const child = activeChild;
+          const stderrPromise = new Response(child.stderr).text();
+          const reader = child.stdout.getReader();
+          let sawStdout = false;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done)
+              break;
+            if (!value || value.length === 0)
+              continue;
+            sawStdout = true;
+            controller.enqueue(value);
+          }
+          const [code, stderrText] = await Promise.all([child.exited, stderrPromise]);
+          if (shouldRetryResumeChild(canRetry, sawStdout, code, stderrText)) {
+            onResumeRetry?.(stderrText);
+            activeChild = createChild({
+              ...baseInput,
+              prompt: retryPrompt,
+              resumeChatId: void 0
+            });
+            if (killed) {
+              activeChild.kill();
+            }
+            canRetry = false;
+            continue;
+          }
+          finalStderr = stderrText;
+          resolveExited(code);
+          controller.close();
+          return;
+        }
+      })().catch((error45) => {
+        rejectExited(error45);
+        controller.error(error45);
+      });
+    }
+  });
+  const stderr = new ReadableStream({
+    async start(controller) {
+      try {
+        await exited;
+        if (finalStderr) {
+          controller.enqueue(new TextEncoder().encode(finalStderr));
+        }
+        controller.close();
+      } catch (error45) {
+        controller.error(error45);
+      }
+    }
+  });
+  return {
+    stdout,
+    stderr,
+    exited,
+    kill() {
+      killed = true;
+      return activeChild.kill();
+    }
+  };
 }
 function getOpenCodeConfigPrefix() {
   const configHome = process.env.XDG_CONFIG_HOME ? resolve4(process.env.XDG_CONFIG_HOME) : join5(homedir4(), ".config");
@@ -36446,6 +36609,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
       const messages = Array.isArray(body?.messages) ? body.messages : [];
       const stream = body?.stream === true;
       const tools = Array.isArray(body?.tools) ? body.tools : [];
+      const opencodeSessionId = normalizeSessionHeader(req.headers.get("x-opencode-session-id"));
       log23.debug("raw request body", {
         model: body?.model,
         cursorModel: body?.cursorModel,
@@ -36474,7 +36638,8 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         tools,
         subagentNames,
         model,
-        workspaceDirectory
+        workspaceDirectory,
+        sessionId: opencodeSessionId
       });
       const prompt = applyBridgeJsonPrompt(resolvedPrompt.prompt, { allowedToolNames });
       const {
@@ -36486,6 +36651,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         toolFingerprint: sessionResumeToolFingerprint,
         subagentFingerprint: sessionResumeSubagentFingerprint
       } = resolvedPrompt;
+      const fallbackPrompt = resolvedPrompt.fallbackPrompt ? applyBridgeJsonPrompt(resolvedPrompt.fallbackPrompt, { allowedToolNames }) : void 0;
       reqPerf.mark("prompt-built");
       const sessionResumeKeyHash = sessionResumeKey ? sanitizeSessionKey(sessionResumeKey) : void 0;
       const resumeChatIdHash = resumeChatId ? sanitizeSessionKey(resumeChatId) : void 0;
@@ -36508,13 +36674,23 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         return new Response(JSON.stringify({ error: "Cursor SDK backend requires a real Cursor API key. Set CURSOR_API_KEY or run `opencode auth login`; the legacy `cursor-agent` placeholder is not valid SDK auth." }), { status: 401, headers: { "Content-Type": "application/json" } });
       }
       reqPerf.mark("child-create-start");
-      const child = createBunChildForBackend({
+      const child = createBunChildWithResumeFallback({
         backend,
         sdkApiKey,
         model,
         prompt,
+        retryPrompt: fallbackPrompt,
         workspaceDirectory,
-        resumeChatId
+        resumeChatId,
+        onResumeRetry: (errSource) => {
+          maybeEvictResumeChatId(errSource, resumeChatId, sessionResumeKey, {
+            failureTextHash: hashForLog(errSource)
+          });
+          log23.warn("Retrying cursor-agent without resume after a resume-specific failure", {
+            sessionKeyHash: sessionResumeKeyHash,
+            resumeChatIdHash
+          });
+        }
       });
       reqPerf.mark("child-created");
       if (!stream) {
@@ -36986,6 +37162,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
       const messages = Array.isArray(bodyData?.messages) ? bodyData.messages : [];
       const stream = bodyData?.stream === true;
       const tools = Array.isArray(bodyData?.tools) ? bodyData.tools : [];
+      const opencodeSessionId = normalizeSessionHeader(req.headers["x-opencode-session-id"]);
       const allowedToolNames = extractAllowedToolNames(tools);
       const bridgeJsonEnabled = isBridgeJsonEnabled();
       const toolSchemaMap = buildToolSchemaMap(tools);
@@ -37003,7 +37180,8 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         tools,
         subagentNames,
         model,
-        workspaceDirectory
+        workspaceDirectory,
+        sessionId: opencodeSessionId
       });
       const prompt = applyBridgeJsonPrompt(resolvedPrompt.prompt, { allowedToolNames });
       const {
@@ -37015,6 +37193,7 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         toolFingerprint: sessionResumeToolFingerprint,
         subagentFingerprint: sessionResumeSubagentFingerprint
       } = resolvedPrompt;
+      const fallbackPrompt = resolvedPrompt.fallbackPrompt ? applyBridgeJsonPrompt(resolvedPrompt.fallbackPrompt, { allowedToolNames }) : void 0;
       reqPerf.mark("prompt-built");
       const sessionResumeKeyHashNode = sessionResumeKey ? sanitizeSessionKey(sessionResumeKey) : void 0;
       const resumeChatIdHashNode = resumeChatId ? sanitizeSessionKey(resumeChatId) : void 0;
@@ -37041,13 +37220,23 @@ async function ensureCursorProxyServer(workspaceDirectory, toolRouter) {
         return;
       }
       reqPerf.mark("child-create-start");
-      const child = createNodeChildForBackend({
+      const child = createNodeChildWithResumeFallback({
         backend,
         sdkApiKey: sdkApiKeyNode,
         model,
         prompt,
+        retryPrompt: fallbackPrompt,
         workspaceDirectory,
-        resumeChatId
+        resumeChatId,
+        onResumeRetry: (errSource) => {
+          maybeEvictResumeChatId(errSource, resumeChatId, sessionResumeKey, {
+            failureTextHash: hashForLog(errSource)
+          });
+          log23.warn("Retrying cursor-agent without resume after a resume-specific failure", {
+            sessionKeyHash: sessionResumeKeyHashNode,
+            resumeChatIdHash: resumeChatIdHashNode
+          });
+        }
       });
       reqPerf.mark("child-created");
       if (!stream) {
@@ -37867,6 +38056,17 @@ var log23, CURSOR_PROVIDER_ID2 = "cursor", CURSOR_PROVIDER_PREFIX, CURSOR_PROXY_
         }
       ]
     },
+    async "chat.headers"(input, output) {
+      const boundaryContext = createBoundaryRuntimeContext("chat.headers");
+      const providerMatch = boundaryContext.run("matchesProvider", (boundary) => boundary.matchesProvider(input.model));
+      if (!providerMatch) {
+        return;
+      }
+      const sessionId = typeof input.sessionID === "string" ? input.sessionID.trim() : "";
+      if (sessionId) {
+        output.headers["x-opencode-session-id"] = sessionId;
+      }
+    },
     async "chat.params"(input, output) {
       const boundaryContext = createBoundaryRuntimeContext("chat.params");
       const providerMatch = boundaryContext.run("matchesProvider", (boundary) => boundary.matchesProvider(input.model));
@@ -38011,6 +38211,8 @@ var CursorPluginEntry = async (input) => {
 var plugin_entry_default = CursorPluginEntry;
 export {
   plugin_entry_default as default,
+  createBunChildWithResumeFallback,
+  createNodeChildWithResumeFallback,
   createToolLoopGuard,
   recordResumeChatId,
   resolvePromptForBackend

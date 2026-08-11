@@ -1,3 +1,43 @@
+# 作業ログ: 徹底バグハント（影響度優先）/loop 3m
+
+## 日付
+2026-08-11
+
+## ループ
+- 間隔: 3分固定 (`AGENT_LOOP_TICK_bughunt`)
+- PID: 42624（旧 2分同名ループは停止）
+- 初回実行済み。次回 tick は起動から約 3 分後
+
+## 発見と対応
+
+### P0 修正: セッション切替が primary を更新しない
+- **影響**: UI で別セッションを選んでも `task.sessionId` / SSE / 送信先が旧 primary のまま。表示と会話が乖離
+- **原因**: `bindSession` は primary が NULL のときだけ設定。`setPrimarySession` は未配線。`SessionSwitcher` は rebind + `refreshTask` のみ
+- **修正**: POST `/api/workspaces/[id]/sessions` に `setAsPrimary`。切替・新規作成で `setPrimarySession`（revision CAS・1 回リトライ）。`SessionSwitcher` が常に `setAsPrimary: true`
+- **検証**: `db.test` 13 PASS / `SessionSwitcher.test` 8 PASS
+
+### P0 修正（WIP コミット対象）: Cursor resume 混線・二重送信
+- **sessionKey に OpenCode sessionId**（ヘッダ `x-opencode-session-id`）。ID 無しは resume 無効
+- 画像等で incremental 不可時は resume を捨て **フルプロンプトで新 chat**
+- resume 失敗時の fallback 再試行実装に加え、`isResumeSpecificFailure` で `init_errors()` を保証（直接 import 時の `not iterable` 修正）
+- **検証**: session-resume + resume-fallback **8/8 PASS**
+
+### P1 未対応
+- Loop guard は引数完全一致のみ（同義コマンド止められない / 正当な 3 回目打ち切り）
+- resume fallback の `!sawStdout` 前提（stdout 一部後の resume 失敗は再試行しない）
+- 画像 turn 後は Cursor chat リセット trade-off（混線回避のため）
+
+### P2 所見のみ
+- browse dirs は allowlist 無しで home 列挙（要認証。リモート露出時注意）
+- useSessionStream 関連 88 PASS（継続ストリーム自体は堅牢、誤 primary が主因）
+
+## 次 tick 方針
+1. host/proxy 再起動後の resume 実機確認
+2. Loop guard の探索ツール coarse fingerprint / 上限調整
+3. shouldRetryResumeChild の !sawStdout 緩和
+
+---
+
 # 作業ログ: Cursor proxy最適化レビュー
 
 ## 日付
