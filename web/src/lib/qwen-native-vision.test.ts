@@ -18,6 +18,7 @@ vi.mock("./profiles/settings", () => ({
 vi.mock("./oc-server", () => ({ ocServer: h.ocServer }));
 
 import {
+  __resetQwenNativeVisionCachesForTest,
   analyzeNativeImages,
   isQwenNativeVisionAvailable,
   nativeImageContext,
@@ -28,6 +29,7 @@ const previousEnabled = process.env.OPENCODE_WEBUI_QWEN_NATIVE;
 const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
 
 beforeEach(() => {
+  __resetQwenNativeVisionCachesForTest();
   h.settings = { enabled: false, opencodeModel: "", timeoutMs: 120_000 };
   h.ocServer.mockReset().mockImplementation(async (_dir: string | null, path: string) => {
     if (path === "/session") return { id: "session-1" };
@@ -87,14 +89,41 @@ it("analyzes images with the selected OpenCode model in a throwaway session", as
       tools: { bash: false, read: false },
     },
   });
-  // The temporary session is deleted afterwards.
-  expect(
-    h.ocServer.mock.calls.some(
-      ([, path, init]) =>
-        String(path) === "/session/session-1" &&
-        (init as { method?: string } | undefined)?.method === "DELETE",
-    ),
-  ).toBe(true);
+  const messageParts = (
+    messageCall?.[2] as {
+      body: { parts: { type: string }[] };
+    }
+  ).body.parts;
+  expect(messageParts[0]?.type).toBe("text");
+  expect(messageParts[1]?.type).toBe("file");
+  // The temporary session is deleted afterwards (teardown is fire-and-forget).
+  await vi.waitFor(() => {
+    expect(
+      h.ocServer.mock.calls.some(
+        ([, path, init]) =>
+          String(path) === "/session/session-1" &&
+          (init as { method?: string } | undefined)?.method === "DELETE",
+      ),
+    ).toBe(true);
+  });
+});
+
+it("caches tool id lookups across consecutive analyses", async () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 60_000,
+  };
+  await analyzeNativeImages("a", [
+    { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+  ]);
+  await analyzeNativeImages("b", [
+    { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+  ]);
+  const toolCalls = h.ocServer.mock.calls.filter(
+    ([, path]) => path === "/experimental/tool/ids",
+  );
+  expect(toolCalls).toHaveLength(1);
 });
 
 it("prefers OPENCODE_WEBUI_QWEN_MODEL over the saved model", async () => {

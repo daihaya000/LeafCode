@@ -76,6 +76,36 @@ export function nativeImageContext(prompt: string, analysis: string): string {
   ].join("\n");
 }
 
+let toolDisableCache:
+  | { at: number; directory: string | null; tools: Record<string, false> }
+  | null = null;
+const TOOL_DISABLE_CACHE_TTL_MS = 5 * 60_000;
+
+async function loadToolDisableMap(
+  directory: string | null,
+): Promise<Record<string, false>> {
+  const now = Date.now();
+  if (
+    toolDisableCache &&
+    toolDisableCache.directory === directory &&
+    now - toolDisableCache.at < TOOL_DISABLE_CACHE_TTL_MS
+  ) {
+    return toolDisableCache.tools;
+  }
+  const toolIds = await ocServer<unknown>(directory, "/experimental/tool/ids");
+  if (!Array.isArray(toolIds)) throw new Error("failed to read tool IDs");
+  const tools = Object.fromEntries(
+    toolIds.map((id) => [String(id), false as const]),
+  ) as Record<string, false>;
+  toolDisableCache = { at: now, directory, tools };
+  return tools;
+}
+
+/** Test helper — drops the process-local tool-id cache. */
+export function __resetQwenNativeVisionCachesForTest(): void {
+  toolDisableCache = null;
+}
+
 export async function analyzeNativeImages(
   prompt: string,
   images: readonly NativeVisionImage[],
@@ -119,14 +149,16 @@ async function analyzeWithOpenCode(
   };
   let sessionId: string | undefined;
   try {
-    const session = await ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
-      method: "POST",
-      body: { title: "image-analysis" },
-    });
+    // Session create and tool-id lookup are independent; run them together so
+    // setup overhead is not stacked on every image send.
+    const [session, tools] = await Promise.all([
+      ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
+        method: "POST",
+        body: { title: "image-analysis" },
+      }),
+      loadToolDisableMap(directory),
+    ]);
     sessionId = session.id;
-    const toolIds = await ocServer<unknown>(directory, "/experimental/tool/ids");
-    if (!Array.isArray(toolIds)) throw new Error("failed to read tool IDs");
-    const tools = Object.fromEntries(toolIds.map((id) => [String(id), false]));
     const response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
       directory,
       sessionMessagePath(sessionId),
@@ -136,13 +168,15 @@ async function analyzeWithOpenCode(
         body: {
           model,
           tools,
+          // Text first: some providers start decoding vision tokens sooner when
+          // the instruction is already in context before large media parts.
           parts: [
+            { type: "text", text: analysisPrompt(prompt) },
             ...images.map((image) => ({
               type: "file",
               mime: image.mime,
               url: image.dataUrl,
             })),
-            { type: "text", text: analysisPrompt(prompt) },
           ],
         },
       },
@@ -160,7 +194,8 @@ async function analyzeWithOpenCode(
     );
   } finally {
     if (sessionId) {
-      await ocServer(directory, sessionPath(sessionId), { method: "DELETE" }).catch(
+      // Do not wait for teardown — it only extends "until send completes".
+      void ocServer(directory, sessionPath(sessionId), { method: "DELETE" }).catch(
         () => undefined,
       );
     }

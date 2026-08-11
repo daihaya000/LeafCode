@@ -1,3 +1,31 @@
+# 作業ログ: 画像解析の送信遅延改善
+
+## 日付
+2026-08-11
+
+## 問題
+画像付き送信（特に「画像解析」= 事前解析フォールバック）で、送信完了までが極端に遅かった。
+
+## 原因
+1. 事前解析が `prompt_async` の前に同期でフル VL ターンする（セッション作成 → tool/ids → メッセージ → DELETE）
+2. スマホ写真などを無圧縮 data URL のまま JSON で送っており、アップロードと VL 入力が重い
+3. クライアント既定タイムアウトが 30s〜60s で、解析（既定 120s）より短く、途中切断/再試行感が出る
+
+## 対応
+- 添付時に max edge 1536 + JPEG 再圧縮（`prepare-attached-image.ts`）
+- 解析セッション: tool/ids キャッシュ、セッション作成と並列、DELETE を fire-and-forget、parts を text→image 順
+- 画像付き送信のクライアント待機を 180s に延長（Home 新規タスク / フォローアップ `sendPrompt`）
+
+## 検証
+- `vitest`: prepare-attached-image / qwen-native-vision / useSessionStream → 75 PASS
+- `tsc --noEmit` 成功
+
+## 残トレードオフ
+- 事前解析オン + 画像非対応モデルでは、VL 本体の推論時間は依然として送信ブロックする（構造上の待ち）
+- 高解像度スクショは JPEG 化で細部 OCR がわずかに劣化しうる
+
+---
+
 ﻿# 作業ログ: node --test ハング調査と再発防止
 
 ## 日付
@@ -29,6 +57,27 @@
 - 長時間スピナーの node --test は親がいなくても kill してよい（host の `next start` / tray は触らない）
 
 ---
+# 作業ログ: 徹底バグハント tick3（/loop 3m）
+
+## 日付
+2026-08-11
+
+## 修正
+
+### P0 フォローアップキューが別セッションへ誤送信
+- **原因**: `queuedFollowUps` が task 単位の配列のみで session 未紐づけ。切替後 idle ドレインが現在 primary へ auto-send
+- **修正**: 各キュー項目に `scopeKey`。ドレイン・表示はそのセッションのみ。切替中の auto-send は中止
+- **場所**: `TaskView.tsx`
+
+### P1 送信中切替で UI ロック / stream 楽観状態のスコープ漏れ
+- `send()` finally: 所有スコープのみ `sending` / `sendingScopeKey` 解除
+- `sendPrompt` / `sendCommand`: live scope 以外では busy/pending/resync/safety-net を付けない
+
+## 検証
+- useSessionStream 69 + SessionSwitcher 8 + useAttentionQueue 24 PASS
+
+---
+
 # 作業ログ: 徹底バグハント tick2（/loop 3m）
 
 ## 日付

@@ -45,7 +45,8 @@ import {
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
-import { getJson, sendJson, timedFetch } from "@/lib/client";
+import { getJson, sendJson, timedFetch, IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "@/lib/client";
+import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import {
   AUTO_MODEL_OPTION,
@@ -820,51 +821,64 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       // the `model` field below is omitted for Auto without a special case.
       const [providerID, modelID] = model ? model.split("::") : [];
       const isAuto = model === AUTO_MODEL_VALUE;
+      // Default sendJson timeout (30s) aborts during VL pre-analysis / large
+      // base64 upload long before the analysis model finishes (default 120s).
       const data = await sendJson<{
         taskId: string;
         sessionId: string;
         autoDecision?: AutoDecision;
-      }>("POST", "/api/tasks", {
-        projectId,
-        prompt: text,
-        isolation,
-        ...(attachments.length > 0
-          ? {
-              files: attachments.map(({ uri, mime, name }) => ({
-                uri,
-                mime,
-                ...(name ? { name } : {}),
-              })),
-            }
-          : {}),
-        ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
-        ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
-        ...(isAuto
-          ? {
-              auto: true,
-              autoOptimize,
-              ...(codexBarUsage ? { codexBarUsage } : {}),
-              ...(!isRouteOverridesEmpty(routeOverrides)
-                ? { autoRouteOverrides: routeOverrides }
-                : {}),
-            }
-          : {}),
-        // subagentPermission must be sent even when no agent is selected:
-        // enforcement is session-scoped (not agent-scoped), so omitting it
-        // whenever `agent` is empty left "禁止" without effect on the new
-        // session's first prompt.
-        subagentPermission,
-        skillPermission,
-        // 確認する is not self-enforcing: OpenCode allows `edit` by default, so
-        // the mode has to be pushed to the new session as an `edit` ruleset or
-        // the first prompt writes files with no approval card.
-        accessMode,
-        ...(agent ? { agent } : {}),
-        // Auto decides the effort server-side and the API rejects both being
-        // set. `intelligence` is normally "" for Auto, but an agent-scoped
-        // variant can survive, so drop it explicitly.
-        ...(intelligence && !isAuto ? { variant: intelligence } : {}),
-      });
+      }>(
+        "POST",
+        "/api/tasks",
+        {
+          projectId,
+          prompt: text,
+          isolation,
+          ...(attachments.length > 0
+            ? {
+                files: attachments.map(({ uri, mime, name }) => ({
+                  uri,
+                  mime,
+                  ...(name ? { name } : {}),
+                })),
+              }
+            : {}),
+          ...(requestBaseBranch ? { baseBranch: requestBaseBranch } : {}),
+          ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+          ...(isAuto
+            ? {
+                auto: true,
+                autoOptimize,
+                ...(codexBarUsage ? { codexBarUsage } : {}),
+                ...(!isRouteOverridesEmpty(routeOverrides)
+                  ? { autoRouteOverrides: routeOverrides }
+                  : {}),
+              }
+            : {}),
+          // subagentPermission must be sent even when no agent is selected:
+          // enforcement is session-scoped (not agent-scoped), so omitting it
+          // whenever `agent` is empty left "禁止" without effect on the new
+          // session's first prompt.
+          subagentPermission,
+          skillPermission,
+          // 確認する is not self-enforcing: OpenCode allows `edit` by default, so
+          // the mode has to be pushed to the new session as an `edit` ruleset or
+          // the first prompt writes files with no approval card.
+          accessMode,
+          ...(agent ? { agent } : {}),
+          // Auto decides the effort server-side and the API rejects both being
+          // set. `intelligence` is normally "" for Auto, but an agent-scoped
+          // variant can survive, so drop it explicitly.
+          ...(intelligence && !isAuto ? { variant: intelligence } : {}),
+        },
+        undefined,
+        {
+          timeoutMs:
+            attachments.length > 0
+              ? IMAGE_ANALYSIS_SEND_TIMEOUT_MS
+              : undefined,
+        },
+      );
       createdTaskId = data.taskId;
       if (startMode === "workflow" && workflowModeEnabled) {
         const current = await getJson<{ workflow: { workspaceRevision: number } }>(
@@ -1000,17 +1014,12 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         continue;
       }
       try {
-        const uri = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result ?? ""));
-          reader.onerror = () => reject(reader.error ?? new Error("read failed"));
-          reader.readAsDataURL(file);
-        });
-        if (estimateDataUrlBytes(uri) > MAX_IMAGE_SIZE_BYTES) {
+        const prepared = await prepareAttachedImage(file);
+        if (estimateDataUrlBytes(prepared.uri) > MAX_IMAGE_SIZE_BYTES) {
           rejected += 1;
           continue;
         }
-        candidates.push({ uri, mime: file.type, name: file.name, preview: uri });
+        candidates.push(prepared);
       } catch {
         rejected += 1;
       }

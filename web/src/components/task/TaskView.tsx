@@ -109,6 +109,7 @@ import {
   type SidePanelKind,
 } from "@/lib/side-panel-state";
 import { getJson, ocJson, sendJson, timedFetch } from "@/lib/client";
+import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import {
   AUTO_MODEL_OPTION,
   AUTO_MODEL_VALUE,
@@ -266,7 +267,13 @@ type AgentResponse = {
 
 type Attachment = ComposerAttachment;
 type DeliveryMode = "steer" | "queue";
-type QueuedFollowUp = { id: number; text: string; attachments: Attachment[] };
+type QueuedFollowUp = {
+  id: number;
+  text: string;
+  attachments: Attachment[];
+  /** Composer scope that enqueued this item — never drain on another session. */
+  scopeKey: string;
+};
 
 type ComposerDraft = { input: string; attachments: Attachment[] };
 
@@ -2336,7 +2343,12 @@ export function TaskView({
     // Queue mode never touches a busy session. Store the complete draft and
     // let the idle transition below submit it as a normal follow-up.
     if (working && deliveryMode === "queue") {
-      const queued = { id: nextQueueIdRef.current++, text, attachments };
+      const queued: QueuedFollowUp = {
+        id: nextQueueIdRef.current++,
+        text,
+        attachments,
+        scopeKey: sendScopeKey,
+      };
       setQueuedFollowUps((items) => [...items, queued]);
       rememberComposerDraft(sendScopeKey, { input: "", attachments: [] });
       setInput("");
@@ -2600,9 +2612,14 @@ export function TaskView({
         setAttachments(snapshotAttachments);
       }
     } finally {
-      if (sendingScopeRef.current === sendScopeKey) sendingScopeRef.current = null;
-      setSending(false);
-      setSendingScopeKey(null);
+      // Mid-flight SessionSwitcher may start another scope's send. Only the
+      // owner of the UI lock may release it (otherwise concurrent sends unlock
+      // each other and allow silent double-posts via the ref/guard mismatch).
+      if (sendingScopeRef.current === sendScopeKey) {
+        sendingScopeRef.current = null;
+        setSending(false);
+        setSendingScopeKey(null);
+      }
       notifyTasksChanged();
     }
   }, [
@@ -2632,27 +2649,52 @@ export function TaskView({
     task?.directory,
   ]);
 
-  // Drain the local queue only after the engine reports idle. This avoids
-  // racing the current turn while keeping the queued message visible until
-  // it is actually handed to OpenCode.
+  // Drain only follow-ups that belong to the currently viewed session. Queue
+  // items keep their scopeKey so switching sessions cannot auto-send another
+  // conversation's pending text.
+  const scopedQueuedFollowUps = composerScopeKey
+    ? queuedFollowUps.filter((item) => item.scopeKey === composerScopeKey)
+    : [];
+
   useEffect(() => {
-    if (working || sending || goalLoopLive || queuedAutoSend || queuedFollowUps.length === 0) {
+    if (working || sending || goalLoopLive || queuedAutoSend || !composerScopeKey) {
       return;
     }
-    const [next, ...rest] = queuedFollowUps;
+    const next = queuedFollowUps.find((item) => item.scopeKey === composerScopeKey);
     if (!next) return;
-    setQueuedFollowUps(rest);
+    setQueuedFollowUps((items) => items.filter((item) => item.id !== next.id));
     setInput(next.text);
     setAttachments(next.attachments);
     setQueuedAutoSend(true);
-  }, [goalLoopLive, queuedAutoSend, queuedFollowUps, sending, working]);
+  }, [
+    composerScopeKey,
+    goalLoopLive,
+    queuedAutoSend,
+    queuedFollowUps,
+    sending,
+    working,
+  ]);
 
   useEffect(() => {
     if (!queuedAutoSend || working || sending || goalLoopLive) return;
     if (!input.trim() && attachments.length === 0) return;
+    // Abort auto-send if the user switched away before submit fired.
+    if (composerScopeRef.current !== composerScopeKey) {
+      setQueuedAutoSend(false);
+      return;
+    }
     setQueuedAutoSend(false);
     void send();
-  }, [attachments.length, goalLoopLive, input, queuedAutoSend, send, sending, working]);
+  }, [
+    attachments.length,
+    composerScopeKey,
+    goalLoopLive,
+    input,
+    queuedAutoSend,
+    send,
+    sending,
+    working,
+  ]);
 
   const syncCursor = useCallback(() => {
     const el = textareaRef.current;
@@ -2721,14 +2763,6 @@ export function TaskView({
   const hasImageAttachment = attachments.some((a) => IMAGE_MIME_RE.test(a.mime));
   const showImageWarning = hasImageAttachment && !imageSupported && !qwenNativeAvailable;
 
-  const readFileAsDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ``));
-      reader.onerror = () => reject(reader.error ?? new Error(`read failed`));
-      reader.readAsDataURL(file);
-    });
-
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
     if (!imageInputAvailable) {
       setSendError(
@@ -2747,12 +2781,14 @@ export function TaskView({
         continue;
       }
       try {
-        const uri = await readFileAsDataUrl(f);
-        if (estimateDataUrlBytes(uri) > MAX_IMAGE_SIZE_BYTES) {
+        // Downscale/JPEG before attach so send + optional pre-analysis are not
+        // waiting on multi-MB phone photos as base64 JSON.
+        const prepared = await prepareAttachedImage(f);
+        if (estimateDataUrlBytes(prepared.uri) > MAX_IMAGE_SIZE_BYTES) {
           rejected += 1;
           continue;
         }
-        candidates.push({ uri, mime: f.type, name: f.name, preview: uri });
+        candidates.push(prepared);
       } catch {
         rejected += 1;
       }
@@ -4676,14 +4712,14 @@ export function TaskView({
                   isMd={isMd}
                 />
               )}
-              {queuedFollowUps.length > 0 && (
+              {scopedQueuedFollowUps.length > 0 && (
                 <div
                   className="mt-2 flex flex-wrap items-center gap-1.5"
                   aria-live="polite"
-                  aria-label={`キュー待ち ${queuedFollowUps.length} 件`}
+                  aria-label={`キュー待ち ${scopedQueuedFollowUps.length} 件`}
                 >
                   <span className="text-xs font-medium text-muted">キュー待ち:</span>
-                  {queuedFollowUps.map((item, index) => (
+                  {scopedQueuedFollowUps.map((item, index) => (
                     <button
                       key={item.id}
                       type="button"

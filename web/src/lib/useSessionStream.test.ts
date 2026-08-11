@@ -16,6 +16,7 @@ import {
   SESSION_HANG_TIMEOUT_MS,
   SESSION_MUTATION_TIMEOUT_MS,
   markHangRetryBody,
+  mutationTimeoutForSend,
   shouldTrustSseForMessages,
   stripGoalLoopJsonBlock,
   STUCK_BUSY_IDLE_STREAK,
@@ -47,6 +48,12 @@ describe("SESSION_COMMAND_TIMEOUT_MS", () => {
 
   it("is longer than the default prompt/abort mutation timeout", () => {
     expect(SESSION_COMMAND_TIMEOUT_MS).toBeGreaterThan(SESSION_MUTATION_TIMEOUT_MS);
+  });
+
+  it("extends the mutation budget when attachments may trigger pre-analysis", () => {
+    expect(mutationTimeoutForSend(false)).toBe(SESSION_MUTATION_TIMEOUT_MS);
+    expect(mutationTimeoutForSend(true)).toBeGreaterThan(SESSION_MUTATION_TIMEOUT_MS);
+    expect(mutationTimeoutForSend(true)).toBeGreaterThanOrEqual(180_000);
   });
 });
 

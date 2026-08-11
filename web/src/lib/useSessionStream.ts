@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { apiUrl, ApiError, ocJson } from "./client";
+import { apiUrl, ApiError, ocJson, IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "./client";
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import {
@@ -109,6 +109,17 @@ export { HANG_RETRY_METADATA_KEY, markHangRetryBody } from "./hang-retry";
  * above the BFF's 290s timeout and within the route's 300s `maxDuration`.
  */
 export const SESSION_COMMAND_TIMEOUT_MS = 295_000;
+
+/**
+ * When the send carries images, the BFF may run a full VL pre-analysis turn
+ * (up to ~120s) before proxying `prompt_async`. The default mutation budget
+ * aborts mid-analysis and makes the UI look stuck/failed.
+ */
+export function mutationTimeoutForSend(hasFiles: boolean): number {
+  return hasFiles
+    ? Math.max(SESSION_MUTATION_TIMEOUT_MS, IMAGE_ANALYSIS_SEND_TIMEOUT_MS)
+    : SESSION_MUTATION_TIMEOUT_MS;
+}
 
 /**
  * While a visible session is busy, periodically reconcile from REST. Some
@@ -1836,18 +1847,24 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     ) => {
       const sid = opts?.sessionId ?? sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
-      // Guard resync init for the whole POST window, not only after success.
-      pendingMutationRef.current = true;
-      sessionIdleEventReceivedRef.current = false;
-      // Start the stuck-busy recovery window at the send, not at the last event
-      // of the previous turn.
-      sessionActivityAtRef.current = Date.now();
-      idleStreakRef.current = 0;
-      dispatch({ kind: "sessionError", message: null });
-      dispatch({ kind: "status", status: { type: "busy" } });
-      statusRef.current = { type: "busy" };
+      // Optimistic busy/pendingMutation only for the live-viewed session.
+      // A POST pinned to A while the stream has switched to B must not lock B.
+      const mutationScope = `${directory}\u0000${sid}`;
+      const markLiveScope = () => scopeRef.current === mutationScope;
+      if (markLiveScope()) {
+        // Guard resync init for the whole POST window, not only after success.
+        pendingMutationRef.current = true;
+        sessionIdleEventReceivedRef.current = false;
+        // Start the stuck-busy recovery window at the send, not at the last event
+        // of the previous turn.
+        sessionActivityAtRef.current = Date.now();
+        idleStreakRef.current = 0;
+        dispatch({ kind: "sessionError", message: null });
+        dispatch({ kind: "status", status: { type: "busy" } });
+        statusRef.current = { type: "busy" };
+        mutationStartedAtRef.current = Date.now();
+      }
       const startedAt = Date.now();
-      mutationStartedAtRef.current = startedAt;
       const parts: Record<string, unknown>[] = [{ type: "text", text }];
       if (opts?.files && opts.files.length > 0) {
         for (const f of opts.files) {
@@ -1868,28 +1885,34 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         body.variant = opts.variant;
       }
       // The BFF proxy arms the server-side hang watchdog for this send.
-      const stopMutationElapsed = startMutationElapsed(startedAt);
+      const stopMutationElapsed = markLiveScope()
+        ? startMutationElapsed(startedAt)
+        : () => {};
       try {
         await ocJson(sessionPromptAsyncPath(sid), directory, {
           method: "POST",
           body,
-          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
+          timeoutMs: mutationTimeoutForSend(Boolean(opts?.files?.length)),
         });
       } catch (err) {
-        pendingMutationRef.current = false;
-        // Do not flip to idle: the engine may still be busy after a client
-        // timeout. Prefer REST and resync so status/composer stay truthful.
-        preferRestStatusRef.current = true;
-        void resync();
+        if (markLiveScope()) {
+          pendingMutationRef.current = false;
+          // Do not flip to idle: the engine may still be busy after a client
+          // timeout. Prefer REST and resync so status/composer stay truthful.
+          preferRestStatusRef.current = true;
+          void resync();
+        }
         throw err;
       } finally {
         stopMutationElapsed();
         // safety net: events normally arrive first, resync fills any gap
-        if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
-        safetyNetTimerRef.current = setTimeout(() => {
-          safetyNetTimerRef.current = null;
-          void resync();
-        }, 800);
+        if (markLiveScope()) {
+          if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
+          safetyNetTimerRef.current = setTimeout(() => {
+            safetyNetTimerRef.current = null;
+            if (scopeRef.current === mutationScope) void resync();
+          }, 800);
+        }
       }
     },
     [directory, resync, startMutationElapsed],
@@ -1909,17 +1932,21 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     ) => {
       const sid = opts?.sessionId ?? sessionRef.current;
       if (!directory || !sid) throw new Error("session not ready");
-      pendingMutationRef.current = true;
-      sessionIdleEventReceivedRef.current = false;
-      // Start the stuck-busy recovery window at the send, not at the last event
-      // of the previous turn.
-      sessionActivityAtRef.current = Date.now();
-      idleStreakRef.current = 0;
-      dispatch({ kind: "sessionError", message: null });
-      dispatch({ kind: "status", status: { type: "busy" } });
-      statusRef.current = { type: "busy" };
+      const mutationScope = `${directory}\u0000${sid}`;
+      const markLiveScope = () => scopeRef.current === mutationScope;
+      if (markLiveScope()) {
+        pendingMutationRef.current = true;
+        sessionIdleEventReceivedRef.current = false;
+        // Start the stuck-busy recovery window at the send, not at the last event
+        // of the previous turn.
+        sessionActivityAtRef.current = Date.now();
+        idleStreakRef.current = 0;
+        dispatch({ kind: "sessionError", message: null });
+        dispatch({ kind: "status", status: { type: "busy" } });
+        statusRef.current = { type: "busy" };
+        mutationStartedAtRef.current = Date.now();
+      }
       const startedAt = Date.now();
-      mutationStartedAtRef.current = startedAt;
       const body: Record<string, unknown> = {
         command,
         arguments: args,
@@ -1939,26 +1966,37 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }));
       }
       // The BFF proxy arms the server-side hang watchdog for this send.
-      const stopMutationElapsed = startMutationElapsed(startedAt);
+      const stopMutationElapsed = markLiveScope()
+        ? startMutationElapsed(startedAt)
+        : () => {};
       try {
         await ocJson(sessionCommandPath(sid), directory, {
           method: "POST",
           body,
-          timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
+          // Commands already wait up to ~295s; keep that floor, and when
+          // attachments are present ensure VL pre-analysis cannot preempt it.
+          timeoutMs: Math.max(
+            SESSION_COMMAND_TIMEOUT_MS,
+            mutationTimeoutForSend(Boolean(opts?.files?.length)),
+          ),
         });
       } catch (err) {
-        pendingMutationRef.current = false;
-        preferRestStatusRef.current = true;
-        void resync();
+        if (markLiveScope()) {
+          pendingMutationRef.current = false;
+          preferRestStatusRef.current = true;
+          void resync();
+        }
         throw err;
       } finally {
         stopMutationElapsed();
         // safety net: events normally arrive first, resync fills any gap
-        if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
-        safetyNetTimerRef.current = setTimeout(() => {
-          safetyNetTimerRef.current = null;
-          void resync();
-        }, 800);
+        if (markLiveScope()) {
+          if (safetyNetTimerRef.current) clearTimeout(safetyNetTimerRef.current);
+          safetyNetTimerRef.current = setTimeout(() => {
+            safetyNetTimerRef.current = null;
+            if (scopeRef.current === mutationScope) void resync();
+          }, 800);
+        }
       }
     },
     [directory, resync, startMutationElapsed],
