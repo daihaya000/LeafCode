@@ -193,6 +193,24 @@ describe("listProviderModels", () => {
     expect(h.ocServer).toHaveBeenCalledTimes(1);
   });
 
+  it("shares an in-flight fetch across a module reload", async () => {
+    let release!: (value: typeof MOCK_PROVIDER_RESPONSE) => void;
+    h.ocServer.mockImplementation(
+      () => new Promise<typeof MOCK_PROVIDER_RESPONSE>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const first = listProviderModels();
+    vi.resetModules();
+    const reloaded = await import("./provider-models");
+    const second = reloaded.listProviderModels();
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+
+    release(MOCK_PROVIDER_RESPONSE);
+    await Promise.all([first, second]);
+  });
+
   it("clears a failed pending fetch so the next call retries", async () => {
     h.ocServer
       .mockRejectedValueOnce(new Error("provider unavailable"))
