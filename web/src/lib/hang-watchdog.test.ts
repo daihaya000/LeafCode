@@ -238,6 +238,90 @@ describe("runHangWatchdogTick", () => {
     expect(getHangWatch(SESSION)).toBeNull();
   });
 
+  it("does not resume a finished turn that ended with finish:stop (even without text)", async () => {
+    // Regression: ses_00f12ff3… finished with finish:stop then hang-watchdog
+    // re-POSTed the same prompt ~10 min later.
+    arm();
+    const startedAt = getHangWatch(SESSION)!.started_at;
+    ageWatch(TIMEOUT_MS + 1_000);
+    const finished: MessageWithParts[] = [
+      {
+        info: { id: "user_1", role: "user", time: { created: startedAt } },
+        parts: [{ id: "user_part", messageID: "user_1", type: "text", text: "go" }],
+      },
+      {
+        info: {
+          id: "assistant_1",
+          role: "assistant",
+          time: { created: startedAt + 1, completed: startedAt + 2 },
+          finish: "stop",
+        },
+        parts: [
+          { id: "step", messageID: "assistant_1", type: "step-start" },
+          { id: "done", messageID: "assistant_1", type: "step-finish" },
+        ],
+      },
+    ];
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) =>
+      requestPath.endsWith("/message") ? finished : {},
+    );
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(callsTo("/prompt_async")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).toBeNull();
+  });
+
+  it("does not resume an idle tool-only completion (assistant steps without final text)", async () => {
+    arm();
+    const startedAt = getHangWatch(SESSION)!.started_at;
+    ageWatch(TIMEOUT_MS + 1_000);
+    const toolOnly: MessageWithParts[] = [
+      {
+        info: { id: "user_1", role: "user", time: { created: startedAt } },
+        parts: [{ id: "user_part", messageID: "user_1", type: "text", text: "go" }],
+      },
+      {
+        info: {
+          id: "assistant_1",
+          role: "assistant",
+          time: { created: startedAt + 1, completed: startedAt + 2 },
+        },
+        parts: [
+          {
+            id: "tool_1",
+            messageID: "assistant_1",
+            type: "tool",
+            tool: "bash",
+            state: { status: "completed", time: { start: startedAt + 1, end: startedAt + 2 } },
+          },
+        ],
+      },
+    ];
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) =>
+      requestPath.endsWith("/message") ? toolOnly : {},
+    );
+
+    await runHangWatchdogTick();
+
+    expect(callsTo("/abort")).toHaveLength(0);
+    expect(callsTo("/prompt_async")).toHaveLength(0);
+    expect(getHangWatch(SESSION)).toBeNull();
+  });
+
+  it("accepts messages wrapped as { data: [...] }", async () => {
+    arm();
+    const startedAt = getHangWatch(SESSION)!.started_at;
+    ocServer.mockImplementation(async (_dir: string, requestPath: string) =>
+      requestPath.endsWith("/message")
+        ? { data: completedTranscript(startedAt) }
+        : {},
+    );
+    await runHangWatchdogTick();
+    expect(getHangWatch(SESSION)).toBeNull();
+  });
+
   it("keeps watching an active tool across a transient idle status", async () => {
     arm();
     ageWatch(TIMEOUT_MS + 1_000);
@@ -310,10 +394,12 @@ describe("runHangWatchdogTick", () => {
     expect(getHangWatch(SESSION)!.retry_used).toBe(1);
   });
 
-  it("does not resume while reasoning continues to change", async () => {
+  it("drops a stagnant reasoning-only turn without replaying the prompt", async () => {
+    // An assistant row that only produced reasoning is still "activity" for this
+    // turn. Replaying the original prompt would restart work that already
+    // started; prefer dropping the watch over a silent auto-resume.
     arm();
     let reasoning = "first";
-    let busy = false;
     ocServer.mockImplementation(async (_dir: string, requestPath: string) => {
       if (requestPath.endsWith("/message")) {
         const startedAt = getHangWatch(SESSION)!.started_at;
@@ -337,26 +423,15 @@ describe("runHangWatchdogTick", () => {
           },
         ];
       }
-      if (requestPath.endsWith("/abort")) {
-        busy = false;
-        return {};
-      }
-      if (requestPath.endsWith("/prompt_async")) return {};
-      return busy ? busyStatus() : {};
+      return busyStatus();
     });
-
-    await runHangWatchdogTick();
-    expect(callsTo("/abort")).toHaveLength(0);
 
     ageWatch(TIMEOUT_MS + 1_000);
     reasoning = "second";
     await runHangWatchdogTick();
     expect(callsTo("/abort")).toHaveLength(0);
-
-    ageWatch(TIMEOUT_MS + 1_000);
-    await runHangWatchdogTick();
-    expect(callsTo("/abort")).toHaveLength(1);
-    expect(callsTo("/prompt_async")).toHaveLength(1);
+    expect(getHangWatch(SESSION)).toBeNull();
+    expect(callsTo("/prompt_async")).toHaveLength(0);
   });
 
   it("leaves the watch alone when /session/status is unreachable", async () => {

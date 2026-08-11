@@ -239,24 +239,56 @@ function isBusy(status: SessionStatus | undefined): boolean {
 }
 
 /**
+ * Clock skew allowance when matching `started_at` to the user message stamp.
+ * The watch is armed a few moments before the engine records the user row.
+ */
+const WATCHED_USER_SKEW_MS = 5_000;
+
+/**
+ * Index of the user message that owns this watch: newest user at or after
+ * `startedAt - skew`. The skew covers the engine stamping the user a few ms
+ * before arm completed. If no matching user exists yet (transcript lag right
+ * after send), returns -1 so early ticks do not bind to a previous turn.
+ */
+function watchedUserIndex(messages: MessageWithParts[], startedAt: number): number {
+  const threshold = startedAt - WATCHED_USER_SKEW_MS;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.info.role !== "user") continue;
+    const created = message.info.time?.created;
+    if (typeof created !== "number" || created >= threshold) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * OpenCode finish reasons that end the user-visible turn. Intermediate agent
+ * steps use `tool-calls` / similar and must not disband the watch alone.
+ */
+function isTerminalFinish(finish: unknown): boolean {
+  return (
+    finish === "stop" ||
+    finish === "end-turn" ||
+    finish === "length" ||
+    finish === "content-filter"
+  );
+}
+
+/**
  * The engine can briefly report `idle` between agent steps while a tool part
  * is still running. Do not discard a watch in that gap: the transcript is the
  * more reliable source for an in-flight command.
  */
 function hasActiveTool(messages: MessageWithParts[], startedAt: number): boolean {
-  let latestUserIndex = -1;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.info.role !== "user") continue;
-    const created = message.info.time?.created;
-    if (typeof created !== "number" || created >= startedAt) {
-      latestUserIndex = index;
-      break;
-    }
-  }
+  const latestUserIndex = watchedUserIndex(messages, startedAt);
+  // When the user row is not visible yet, still scan the full transcript so a
+  // laggy message list cannot hide a running tool.
+  const from = latestUserIndex < 0 ? 0 : latestUserIndex + 1;
 
-  return messages.slice(latestUserIndex + 1).some((message) =>
-    message.parts.some(
+  return messages.slice(from).some((message) =>
+    (message.parts ?? []).some(
       (part) =>
         part.type === "tool" &&
         (part.state?.status === "running" || part.state?.status === "pending"),
@@ -264,27 +296,48 @@ function hasActiveTool(messages: MessageWithParts[], startedAt: number): boolean
   );
 }
 
-/** Whether the watched turn produced an actual assistant response. */
+/**
+ * Whether the watched turn produced an actual assistant response — including a
+ * terminal `finish` without user-visible text (tool loops ending on stop).
+ */
 function hasAssistantResponse(messages: MessageWithParts[], startedAt: number): boolean {
-  let latestUserIndex = -1;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.info.role !== "user") continue;
-    const created = message.info.time?.created;
-    if (typeof created !== "number" || created >= startedAt) {
-      latestUserIndex = index;
-      break;
-    }
-  }
+  const latestUserIndex = watchedUserIndex(messages, startedAt);
   if (latestUserIndex < 0) return false;
 
   return messages.slice(latestUserIndex + 1).some((message) => {
     if (message.info.role !== "assistant") return false;
     if (message.info.error || message.info.structured !== undefined) return true;
-    return message.parts.some(
+    if (isTerminalFinish(message.info.finish)) return true;
+    return (message.parts ?? []).some(
       (part) => part.type === "text" && typeof part.text === "string" && part.text.trim() !== "",
     );
   });
+}
+
+/**
+ * Engine went idle and the transcript already has any assistant step for this
+ * turn (text, tools, reasoning, step markers). Replaying the prompt would
+ * restart finished work — including multi-step turns that completed without a
+ * final text part, and turns whose status map stayed busy after finish.
+ */
+function hasWatchedTurnAssistantActivity(
+  messages: MessageWithParts[],
+  startedAt: number,
+): boolean {
+  const latestUserIndex = watchedUserIndex(messages, startedAt);
+  if (latestUserIndex < 0) return false;
+  return messages
+    .slice(latestUserIndex + 1)
+    .some((message) => message.info.role === "assistant");
+}
+
+/** OpenCode REST may wrap lists as `{ data: T[] }`. */
+function normalizeMessageList(raw: unknown): MessageWithParts[] | null {
+  if (Array.isArray(raw)) return raw as MessageWithParts[];
+  if (raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data)) {
+    return (raw as { data: MessageWithParts[] }).data;
+  }
+  return null;
 }
 
 type PendingRow = { id?: unknown; sessionID?: unknown };
@@ -489,24 +542,28 @@ async function evaluateWatch(
     // briefly report idle between agent steps while a tool is still running.
     // Check the transcript before dropping the saved request in either case.
     try {
-      const transcript = await ocServer<MessageWithParts[]>(
-        row.directory,
-        sessionMessagePath(row.session_id),
-        { timeoutMs: MESSAGES_TIMEOUT_MS },
-      );
-      if (!Array.isArray(transcript)) return;
-      messages = transcript;
+      const raw = await ocServer<unknown>(row.directory, sessionMessagePath(row.session_id), {
+        timeoutMs: MESSAGES_TIMEOUT_MS,
+      });
+      messages = normalizeMessageList(raw);
+      if (messages === null) return;
     } catch (error) {
       logWatchdog("could not confirm a completed response — leaving the watch armed", row, error);
       return;
     }
 
-    // An idle snapshot is not enough to call a turn hung. In particular, a
-    // normal silent/tool-only completion must not be replayed 30 seconds after
-    // it ended; the regular inactivity threshold below still owns recovery.
-    if (!hasActiveTool(messages, row.started_at) && hasAssistantResponse(messages, row.started_at)) {
-      disarmHangWatch(row.session_id);
-      return;
+    // Idle + no running tool means the engine has left the turn. Any assistant
+    // step (including tool-only / finish:stop) is finished work — never
+    // re-POST the prompt. Pure silence (no assistant yet) still falls through
+    // to the inactivity threshold for the single automatic resume.
+    if (!hasActiveTool(messages, row.started_at)) {
+      if (
+        hasWatchedTurnAssistantActivity(messages, row.started_at) ||
+        hasAssistantResponse(messages, row.started_at)
+      ) {
+        disarmHangWatch(row.session_id);
+        return;
+      }
     }
   }
 
@@ -515,17 +572,16 @@ async function evaluateWatch(
 
   if (messages === null) {
     try {
-      messages = await ocServer<MessageWithParts[]>(
-        row.directory,
-        sessionMessagePath(row.session_id),
-        { timeoutMs: MESSAGES_TIMEOUT_MS },
-      );
+      const raw = await ocServer<unknown>(row.directory, sessionMessagePath(row.session_id), {
+        timeoutMs: MESSAGES_TIMEOUT_MS,
+      });
+      messages = normalizeMessageList(raw);
     } catch (error) {
       logWatchdog("could not confirm activity — leaving the watch armed", row, error);
       return;
     }
   }
-  if (!Array.isArray(messages)) return;
+  if (messages === null) return;
 
   // `/session/status` can remain busy after the final assistant message is
   // already complete. At the inactivity threshold, the transcript is the
@@ -533,7 +589,8 @@ async function evaluateWatch(
   // replay a task that has already finished.
   const activeTool = hasActiveTool(messages, row.started_at);
   const assistantResponse = hasAssistantResponse(messages, row.started_at);
-  if (!activeTool && assistantResponse) {
+  const turnActivity = hasWatchedTurnAssistantActivity(messages, row.started_at);
+  if (!activeTool && (assistantResponse || turnActivity)) {
     disarmHangWatch(row.session_id);
     return;
   }

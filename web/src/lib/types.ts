@@ -63,6 +63,8 @@ export type MessageInfo = {
   structured?: unknown;
   modelID?: string;
   providerID?: string;
+  /** OpenCode finish reason when the assistant step ended (`stop`, `tool-calls`, …). */
+  finish?: string;
 };
 
 export type MessageWithParts = {

@@ -1,7 +1,48 @@
-# 作業ログ: ループ完走モード（完了宣言なし・指定ターン数必ず実行）
+# 終了済みセッションの hang-watchdog 誤再開を修正
 
 ## 日付
 2026-08-12
+
+## 対象
+- セッション `ses_00f12ff3bffeUQ0hpqgoSV31n8`（HomeViewでeffort欄再消失）
+
+## 証拠
+- 15:11:47 に `finish: "stop"` と完了本文でターン終了
+- 15:21:53 に `[hang-watchdog] hang detected` → 15:21:54 に `resumed the same request once`
+- タイムアウト設定は `hang-timeout=600000`（10分）。完了から約10分後に同一プロンプトを再送
+- 同日ホストログに同様の誤再開が多数（多数セッションで `resumed the same request once`）
+
+## 根本原因
+- サーバー側 `hang-watchdog` が「無応答ハング」として同一リクエストを1回再送する設計
+- 完了判定が非空 text / error / structured に偏り、`finish: "stop"` や tool-only 完了、アシスタント行があるだけの完了を見逃し得た
+- idle + 履歴にアシスタントがあるのに監視を残し、無活動閾値後に再送していた
+
+## 修正
+- `finish: stop|end-turn|length|content-filter` を終端応答とみなす
+- idle かつ active tool なしで、当該ターンにアシスタント行がある場合は監視解除（再送しない）
+- stale busy でも assistant 活動があれば解除
+- メッセージ API の `{ data: [...] }` ラップを正規化
+- ユーザ紐付けに 5 秒の skew 許容
+
+## 回帰テスト
+- finish:stop（本文なし）で再送しない
+- tool-only idle 完了で再送しない
+- `{ data: [...] }` ラップでも解除する
+- `hang-watchdog.test.ts` 29 件成功
+
+## 反映
+- 本番は host の production ビルド経由のため、再起動／リビルド後に有効
+- ソース: `web/src/lib/hang-watchdog.ts` / `.test.ts` / `types.ts`
+
+---
+
+## 日付
+2026-08-12
+
+## 起動時のモデル/Effort表示
+- `HomeView` はプロバイダーカタログ取得前にモデル/Effort selectorを非表示にしていた。
+- エージェント応答の設定モデルとvariantを暫定メタデータとして表示し、カタログ到着後に通常データへ置換する回帰テストを追加。
+- `HomeView.test.tsx` の対象テスト、`npm run typecheck`、対象eslintが成功。
 
 ## 機能
 - Goal Loop に `forceFullRun`（UI: 完走モード）を追加。**既定 OFF**。
