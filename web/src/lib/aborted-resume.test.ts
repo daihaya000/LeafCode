@@ -111,14 +111,35 @@ describe("findAbortedResumeTarget", () => {
     ).toBeNull();
   });
 
-  it("returns null when a completed assistant turn sits between the prompt and the abort", () => {
-    const completed: MessageWithParts = {
+  it("walks past the earlier assistant messages of the same turn", () => {
+    // OpenCode splits one turn into several assistant messages (per step, on
+    // agent switch, after a compaction), so the message right before an abort
+    // is usually another assistant message — not the prompt.
+    const step: MessageWithParts = {
+      info: { id: "a1", role: "assistant" },
+      parts: [textPart("a1-t", "a1", "調査中")],
+    };
+    const target = findAbortedResumeTarget([
+      userMessage("u1"),
+      step,
+      abortedAssistant("a2"),
+    ]);
+    expect(target).toEqual({ messageId: "a2", text: "元のプロンプト", files: [] });
+  });
+
+  it("uses the latest user prompt when earlier turns exist", () => {
+    const oldPrompt = userMessage("u1", [textPart("p1", "u1", "古い依頼")]);
+    const oldReply: MessageWithParts = {
       info: { id: "a1", role: "assistant" },
       parts: [textPart("a1-t", "a1", "完了")],
     };
-    expect(
-      findAbortedResumeTarget([userMessage("u1"), completed, abortedAssistant("a2")]),
-    ).toBeNull();
+    const target = findAbortedResumeTarget([
+      oldPrompt,
+      oldReply,
+      userMessage("u2", [textPart("p2", "u2", "新しい依頼")]),
+      abortedAssistant("a2"),
+    ]);
+    expect(target?.text).toBe("新しい依頼");
   });
 
   it("returns null when the original prompt has no text to resend", () => {
@@ -134,5 +155,44 @@ describe("findAbortedResumeTarget", () => {
 
   it("returns null for an empty transcript", () => {
     expect(findAbortedResumeTarget([])).toBeNull();
+  });
+
+  it("looks past trailing empty assistant placeholders", () => {
+    // The engine leaves content-less assistant messages behind; they must not
+    // hide the abort that precedes them.
+    const placeholder: MessageWithParts = {
+      info: { id: "a2", role: "assistant" },
+      parts: [],
+    };
+    const target = findAbortedResumeTarget([
+      userMessage("u1"),
+      abortedAssistant("a1"),
+      placeholder,
+    ]);
+    expect(target?.messageId).toBe("a1");
+  });
+
+  it("still ignores a trailing assistant message that produced output", () => {
+    const completed: MessageWithParts = {
+      info: { id: "a2", role: "assistant" },
+      parts: [textPart("a2-t", "a2", "完了")],
+    };
+    expect(
+      findAbortedResumeTarget([userMessage("u1"), abortedAssistant("a1"), completed]),
+    ).toBeNull();
+  });
+
+  it("resumes an abort that produced no parts at all", () => {
+    // A stop pressed immediately after send leaves an empty assistant message
+    // carrying only the error — nothing renders for it in the transcript.
+    const empty: MessageWithParts = {
+      info: {
+        id: "a1",
+        role: "assistant",
+        error: { name: MESSAGE_ABORTED_ERROR, data: { message: "Aborted" } },
+      },
+      parts: [],
+    };
+    expect(findAbortedResumeTarget([userMessage("u1"), empty])?.messageId).toBe("a1");
   });
 });

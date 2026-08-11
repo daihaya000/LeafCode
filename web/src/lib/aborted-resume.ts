@@ -63,21 +63,39 @@ function promptFilesOf(
  * 会話の最後が「中断された assistant ターン」なら、その再開に必要な情報を返す。
  *
  * 末尾に限定しているのは、過去の中断ターンから再送すると現在の文脈と噛み合わない
- * 作業を重複実行させてしまうため。会話が先へ進んだ（新しい user 送信や完了した
- * assistant 応答がある）中断ターンには再開ボタンを出さない。
+ * 作業を重複実行させてしまうため。末尾より後に user 送信があるなら、ユーザーは
+ * 既に先へ進んでいるので再開ボタンは出さない。
  */
 export function findAbortedResumeTarget(
   messages: MessageWithParts[],
 ): AbortedResumeTarget | null {
-  const last = messages.at(-1);
+  // 中身も error も持たない末尾の assistant メッセージは engine が作るだけの
+  // 器（実測データに多数存在）なので、中断判定では読み飛ばす。
+  let end = messages.length - 1;
+  while (end >= 0) {
+    const candidate = messages[end];
+    if (
+      candidate &&
+      candidate.info.role === "assistant" &&
+      !candidate.info.error &&
+      candidate.parts.length === 0
+    ) {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  const last = messages[end];
   if (!last || !isAbortedAssistantMessage(last)) return null;
 
-  for (let i = messages.length - 2; i >= 0; i -= 1) {
+  for (let i = end - 1; i >= 0; i -= 1) {
     const candidate = messages[i];
     if (!candidate) continue;
-    // 中断ターンの直前にある user メッセージが再送対象。間に別の assistant
-    // メッセージが挟まる場合、その assistant は完了済みなので再開対象外。
-    if (candidate.info.role === "assistant") return null;
+    // 1 ターンは複数の assistant メッセージに分かれる（step ごと・agent 切替・
+    // 圧縮後など）。実測でも中断メッセージの直前が assistant であるケースが多数
+    // なので、間の assistant は読み飛ばして「そのターンを開始した user
+    // プロンプト」まで遡る。user メッセージ以降の assistant は全て同じターンに
+    // 属するため、これが中断されたターンの入力そのものになる。
     if (candidate.info.role !== "user") continue;
     const text = promptTextOf(candidate);
     // text の無いプロンプト（添付のみ等）は再送内容を復元できないので諦める。

@@ -3765,6 +3765,55 @@ describe("TaskView voice input", () => {
       });
     });
 
+    it("resumes when earlier assistant steps of the same turn sit in between", async () => {
+      // Real transcripts split one turn across several assistant messages, so
+      // the message before an abort is usually another assistant message.
+      taskStatus = "idle";
+      const stream = mountStream([
+        userPrompt,
+        {
+          info: { id: "assistant-step", role: "assistant", time: { created: 2 } },
+          parts: [{ id: "tool-1", type: "tool", tool: "bash" }],
+        },
+        abortedAssistant,
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "中断したターンを再開" }));
+      });
+
+      expect(stream.sendPrompt).toHaveBeenCalledWith(
+        "テストを直して",
+        expect.objectContaining({ sessionId: "sess1" }),
+      );
+    });
+
+    it("resumes an abort that rendered nothing in the transcript", async () => {
+      taskStatus = "idle";
+      const stream = mountStream([
+        userPrompt,
+        {
+          info: {
+            id: "assistant-empty",
+            role: "assistant",
+            error: { name: "MessageAbortedError", data: { message: "Aborted" } },
+            time: { created: 2 },
+          },
+          parts: [],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "中断したターンを再開" }));
+      });
+
+      expect(stream.sendPrompt).toHaveBeenCalledTimes(1);
+    });
+
     it("surfaces a failed resume instead of losing it silently", async () => {
       mountAborted({
         sendPrompt: vi.fn().mockRejectedValue(new Error("engine unreachable")),

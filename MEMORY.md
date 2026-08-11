@@ -27,12 +27,25 @@
   - `resumeAbortedTurn()` は `touchActivity` 後に `stream.sendPrompt(text, { agent, model, files, variant, sessionId })` を実行。agent/モデルは中断ターン由来なのでAuto解決やコンポーザーの選択状態に依存しない。失敗時は `role="alert"` でインライン表示し、ボタンは押せるまま残す。
   - 送信すると `working` になるので自動的に消え、ターン完了後は末尾が中断ターンでなくなるため再表示もされない（自己クリア）。セッション切替時は state をリセット。
 
+## 実測データによる判定ロジック修正（初回実装が表示されなかった原因）
+
+稼働中エンジン（`http://127.0.0.1:4096`）の直近30セッションから `MessageAbortedError` を持つメッセージを抽出して構造を確認した。
+
+- `error` は `{"name":"MessageAbortedError","data":{"message":"Aborted"}}` で確定。検出条件自体は正しかった。
+- **1ターンが複数の assistant メッセージに分割される**（`step-start,reasoning,tool,step-finish` 単位で別メッセージ）。実測5件のうち4件は中断メッセージの直前が assistant だった。初回実装は「直前が assistant なら再開対象外」と判定して `null` を返していたため、実運用でほぼ常に非表示になっていた。→ 間の assistant を読み飛ばし、そのターンを開始した直近 user プロンプトまで遡るよう修正。
+- 中断メッセージは **parts が空**のケースが多い（送信直後の停止など）。`timeline` から算出していたら検出できないため、`visibleMessages` 基準かつボタンをメッセージ配列の外（末尾直後）に描画する設計が必要だった。
+- 末尾に「parts も error も無い assistant メッセージ」が残ることがあるため、中断判定時はこれを読み飛ばす。中身のある assistant が後続する場合は従来どおり非表示。
+
 ## 検証
 
-- `npx vitest run`: 270ファイル / 3237成功 / 1スキップ
+- `npx vitest run`: 270ファイル / 3243成功 / 1スキップ
 - `npx tsc --noEmit`: 成功
-- 変更/追加3ファイルのESLint: 成功
-- 追加テスト: `aborted-resume.test.ts` 14件、`TaskView.test.tsx` の「中断ターンの再開」5件（同一プロンプト+agent/model再送、失敗表示、会話が先に進んだ場合の非表示、busy中の非表示、通常完了ターンでの非表示）
+- 変更/追加4ファイルのESLint: 成功
+- 追加テスト: `aborted-resume.test.ts` 18件、`TaskView.test.tsx` の「中断ターンの再開」7件（同一プロンプト+agent/model再送、ターン内に assistant ステップが挟まる場合、parts が無い中断、失敗表示、会話が先に進んだ場合の非表示、busy中の非表示、通常完了ターンでの非表示）
+
+## 注意
+
+- 反映には WebUI の本番ビルドが必要（`build.bat`）。エージェント側からはビルドしない運用。
 
 ---
 
