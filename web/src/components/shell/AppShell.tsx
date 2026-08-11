@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PanelRight } from "lucide-react";
+import { PanelLeft, PanelRight } from "lucide-react";
 import dynamic from "next/dynamic";
 import { CommandPalette } from "@/components/CommandPalette";
 import { TASK_DRAG_MIME } from "@/lib/task-drag";
@@ -43,16 +43,19 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     activeTaskId,
     splitActive,
     openSplit,
+    openSplitLeft,
     closeSplit,
     activateTask,
   } = useTaskSplit();
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-  const showDropZone = Boolean(
+  const showLeftDropZone = Boolean(
     desktopSplitEnabled &&
       primaryTaskId &&
       draggingTaskId &&
-      draggingTaskId !== primaryTaskId &&
-      draggingTaskId !== secondaryTaskId,
+      draggingTaskId !== primaryTaskId,
+  );
+  const showRightDropZone = Boolean(
+    showLeftDropZone && draggingTaskId !== secondaryTaskId,
   );
 
   return (
@@ -116,12 +119,44 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               </section>
             )}
 
-            {showDropZone && (
+            {showLeftDropZone && (
+              <div
+                role="region"
+                aria-label="タスクを左ペインに表示"
+                data-testid="task-split-drop-zone-left"
+                className="absolute inset-y-3 right-1/2 left-3 z-[90] mr-1.5 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-bg/90 p-6 text-accent shadow-xl backdrop-blur-sm"
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const taskId =
+                    event.dataTransfer.getData(TASK_DRAG_MIME) || draggingTaskId;
+                  if (taskId) openSplitLeft(taskId);
+                  setDraggingTaskId(null);
+                }}
+              >
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
+                    <PanelLeft className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                  <span className="text-sm font-semibold">
+                    ここにドロップして左に表示
+                  </span>
+                  <span className="text-xs text-muted">
+                    現在の左タスクは右へ移動します
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {showRightDropZone && (
               <div
                 role="region"
                 aria-label="タスクを右ペインに表示"
-                data-testid="task-split-drop-zone"
-                className="absolute inset-y-3 right-3 left-1/2 z-[90] flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-bg/90 p-6 text-accent shadow-xl backdrop-blur-sm"
+                data-testid="task-split-drop-zone-right"
+                className="absolute inset-y-3 right-3 left-1/2 z-[90] ml-1.5 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-bg/90 p-6 text-accent shadow-xl backdrop-blur-sm"
                 onDragOver={(event) => {
                   event.preventDefault();
                   event.dataTransfer.dropEffect = "copy";

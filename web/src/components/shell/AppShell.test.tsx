@@ -2,8 +2,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppShell } from "./AppShell";
 
-const { usePathname } = vi.hoisted(() => ({
+const { usePathname, routerPush } = vi.hoisted(() => ({
   usePathname: vi.fn(() => "/"),
+  routerPush: vi.fn(),
 }));
 
 vi.mock("@/lib/client", () => ({
@@ -20,7 +21,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("next/navigation", () => ({
   usePathname,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ push: routerPush, replace: vi.fn(), prefetch: vi.fn() }),
 }));
 
 vi.mock("next-themes", () => ({
@@ -84,6 +85,7 @@ vi.mock("@/components/CommandPalette", () => ({
 describe("AppShell", () => {
   beforeEach(() => {
     usePathname.mockReturnValue("/");
+    routerPush.mockReset();
     vi.stubGlobal("EventSource", class {
       onmessage: ((ev: MessageEvent) => void) | null = null;
       onopen: (() => void) | null = null;
@@ -199,7 +201,8 @@ describe("AppShell", () => {
       screen.getByRole("button", { name: "右タスクをドラッグ" }),
       { dataTransfer },
     );
-    const dropZone = await screen.findByTestId("task-split-drop-zone");
+    expect(await screen.findByTestId("task-split-drop-zone-left")).toBeTruthy();
+    const dropZone = screen.getByTestId("task-split-drop-zone-right");
     fireEvent.dragOver(dropZone, { dataTransfer });
     expect(dataTransfer.dropEffect).toBe("copy");
     fireEvent.drop(dropZone, { dataTransfer });
@@ -208,11 +211,75 @@ describe("AppShell", () => {
     expect(screen.getByRole("region", { name: "左のタスクペイン" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "右のタスクペイン" })).toBeTruthy();
 
+    const dragButton = screen.getByRole("button", { name: "右タスクをドラッグ" });
+    fireEvent.dragStart(dragButton, { dataTransfer });
+    expect(await screen.findByTestId("task-split-drop-zone-left")).toBeTruthy();
+    expect(screen.queryByTestId("task-split-drop-zone-right")).toBeNull();
+    fireEvent.dragEnd(dragButton, { dataTransfer });
+
     fireEvent.click(screen.getByRole("button", { name: "分割表示を閉じる" }));
     await waitFor(() =>
       expect(screen.queryByTestId("task-view-right-task")).toBeNull(),
     );
     expect(screen.getByRole("region", { name: "メインコンテンツ" })).toBeTruthy();
+  });
+
+  it("moves the previous left task to the right when dropped on the left", async () => {
+    usePathname.mockReturnValue("/task/left-task");
+    vi.stubGlobal("matchMedia", vi.fn(() => ({
+      matches: true,
+      media: "(min-width: 1024px)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      types: [] as string[],
+      setData(type: string, value: string) {
+        values.set(type, value);
+        if (!this.types.includes(type)) this.types.push(type);
+      },
+      getData(type: string) {
+        return values.get(type) ?? "";
+      },
+    };
+    const view = render(
+      <AppShell>
+        <div>left task</div>
+      </AppShell>,
+    );
+
+    fireEvent.dragStart(
+      screen.getByRole("button", { name: "右タスクをドラッグ" }),
+      { dataTransfer },
+    );
+    const leftDropZone = await screen.findByTestId("task-split-drop-zone-left");
+    fireEvent.dragOver(leftDropZone, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("copy");
+    fireEvent.drop(leftDropZone, { dataTransfer });
+
+    expect(routerPush).toHaveBeenCalledWith("/task/right-task");
+    expect(screen.queryByRole("region", { name: "右のタスクペイン" })).toBeNull();
+    usePathname.mockReturnValue("/task/right-task");
+    view.rerender(
+      <AppShell>
+        <div>right task</div>
+      </AppShell>,
+    );
+
+    const rightPane = await screen.findByRole("region", {
+      name: "右のタスクペイン",
+    });
+    expect(rightPane.querySelector('[data-testid="task-view-left-task"]')).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "左のタスクペイン" }).textContent,
+    ).toContain("right task");
   });
 
   it("does not offer split drop on a non-desktop viewport", async () => {
@@ -247,6 +314,7 @@ describe("AppShell", () => {
       { dataTransfer },
     );
 
-    expect(screen.queryByTestId("task-split-drop-zone")).toBeNull();
+    expect(screen.queryByTestId("task-split-drop-zone-left")).toBeNull();
+    expect(screen.queryByTestId("task-split-drop-zone-right")).toBeNull();
   });
 });
