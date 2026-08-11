@@ -13,12 +13,30 @@ import type { GoalLoopDto } from "./goal-loop";
 
 export const AUTO_EXTRACT_SETTING_KEY = "memory.auto_extract";
 
+/**
+ * When `true`, all memory writes (auto-extract, MCP `memory_add`, manual API
+ * create) insert rows as `approved=0` candidates that surface for human
+ * review. When `false` (default, Hermes-compatible), writes are approved
+ * immediately and become eligible for injection. The gate is read at write
+ * time so toggling it takes effect on the next extraction without a restart.
+ */
+export const WRITE_APPROVAL_SETTING_KEY = "memory.write_approval";
+
 export function isAutoExtractEnabled(): boolean {
   try {
     return getSetting(AUTO_EXTRACT_SETTING_KEY) !== "0";
   } catch {
     // No usable settings layer (e.g. db mocked out in tests): default enabled.
     return true;
+  }
+}
+
+/** Resolve the shared approval gate. `false` (auto-commit) is the default. */
+export function isMemoryWriteApprovalEnabled(): boolean {
+  try {
+    return getSetting(WRITE_APPROVAL_SETTING_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 

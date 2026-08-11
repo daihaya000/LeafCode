@@ -18,7 +18,9 @@ const { runMemoryExtraction } = await import("@/lib/memory-extract");
 const {
   isAutoExtractEnabled,
   scheduleAutoExtractAfterGoalCompleted,
+  isMemoryWriteApprovalEnabled,
   AUTO_EXTRACT_SETTING_KEY,
+  WRITE_APPROVAL_SETTING_KEY,
 } = await import("@/lib/goal-memory-hook");
 
 const loop = {
@@ -70,5 +72,18 @@ describe("goal-memory-hook", () => {
   it("skips when the loop has no session binding", () => {
     scheduleAutoExtractAfterGoalCompleted({ workspaceId: "ws-1", sessionId: "" } as never);
     expect(vi.mocked(runMemoryExtraction)).not.toHaveBeenCalled();
+  });
+
+  describe("write approval gate", () => {
+    it("is disabled by default (auto-commit)", () => {
+      expect(isMemoryWriteApprovalEnabled()).toBe(false);
+    });
+
+    it("is enabled when the setting is '1'", () => {
+      setSetting(WRITE_APPROVAL_SETTING_KEY, "1");
+      expect(isMemoryWriteApprovalEnabled()).toBe(true);
+      setSetting(WRITE_APPROVAL_SETTING_KEY, "");
+      expect(isMemoryWriteApprovalEnabled()).toBe(false);
+    });
   });
 });

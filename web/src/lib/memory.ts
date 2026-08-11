@@ -7,6 +7,10 @@
  */
 
 import { getDb } from "./db";
+import { inspectMemoryContent } from "./memory-safety";
+
+export { inspectMemoryContent } from "./memory-safety";
+export type { MemorySafetyViolation } from "./memory-safety";
 
 export const MEMORY_KINDS = ["fact", "preference", "lesson", "reference"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
@@ -74,6 +78,18 @@ export function memoryContentError(content: unknown): string | null {
   return null;
 }
 
+/**
+ * Pre-save threat inspection. Returns a violation message when the content
+ * must be rejected before persistence, or `null` when it is safe. Shared by
+ * `createMemory` / `insertExtractedMemories` / `updateMemory` and the MCP
+ * server (`browser-bridge/shared/memory-schema.mjs`).
+ */
+export function memorySafetyError(content: unknown): string | null {
+  if (typeof content !== "string") return null;
+  const violation = inspectMemoryContent(content);
+  return violation ? violation.message : null;
+}
+
 export function toMemoryDto(row: MemoryRow): MemoryDto {
   return {
     id: row.id,
@@ -108,6 +124,8 @@ export function createMemory(input: {
   if (!isMemoryKind(input.kind)) throw new RangeError("invalid memory kind");
   const contentError = memoryContentError(input.content);
   if (contentError) throw new RangeError(contentError);
+  const safetyError = memorySafetyError(input.content);
+  if (safetyError) throw new RangeError(safetyError);
   const now = Date.now();
   const id = crypto.randomUUID();
   getDb()
@@ -195,6 +213,8 @@ export function updateMemory(
   if (patch.content !== undefined) {
     const contentError = memoryContentError(patch.content);
     if (contentError) throw new RangeError(contentError);
+    const safetyError = memorySafetyError(patch.content);
+    if (safetyError) throw new RangeError(safetyError);
   }
   const assignments: string[] = [];
   const params: unknown[] = [];
@@ -548,6 +568,11 @@ export function insertExtractedMemories(input: {
       const contentError = memoryContentError(item.content);
       if (contentError) {
         errors.push(contentError);
+        continue;
+      }
+      const safetyError = memorySafetyError(item.content);
+      if (safetyError) {
+        errors.push(safetyError);
         continue;
       }
       if (findExactDuplicateMemory(input.workspaceId, item.content)) {

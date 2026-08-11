@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
   MEMORY_KINDS,
+  inspectMemoryContent,
   isMemoryKind,
   memoryContentError,
   memoryValidate,
@@ -87,7 +88,7 @@ function openMemoryDb(dbPathValue) {
   return db;
 }
 
-function createMemoryStore(db, workspaceId) {
+function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
   if (!workspaceId) {
     throw new Error('memory-mcp requires a workspace (--workspace=<id> or OPENCODE_WEBUI_MEMORY_WORKSPACE)');
   }
@@ -115,7 +116,7 @@ function createMemoryStore(db, workspaceId) {
     INSERT INTO memories
       (id, workspace_id, kind, content, source_session_id, provenance, approved,
        created_at, updated_at, last_used_at, use_count)
-    VALUES (?, ?, ?, ?, NULL, ?, 1, ?, ?, NULL, 0)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, 0)
   `);
   const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), updated_at = ?, revision = revision + 1 WHERE id = ? AND workspace_id = ? AND revision = ?');
   const remove = db.prepare('DELETE FROM memories WHERE id = ? AND workspace_id = ? AND revision = ?');
@@ -162,10 +163,17 @@ function createMemoryStore(db, workspaceId) {
         error.code = 'INVALID_REQUEST';
         throw error;
       }
+      const violation = inspectMemoryContent(content);
+      if (violation) {
+        const error = new Error(violation.message);
+        error.code = 'INVALID_REQUEST';
+        throw error;
+      }
       const id = randomUUID();
       const now = Date.now();
-      insert.run(id, workspaceId, kind, content.trim(), 'agent', now, now);
-      audit.run('create', workspaceId, id, 'provenance=agent', now);
+      const approved = writeApproval ? 0 : 1;
+      insert.run(id, workspaceId, kind, content.trim(), 'agent', approved, now, now);
+      audit.run('create', workspaceId, id, `provenance=agent approved=${approved}`, now);
       return toMemoryDto(selectById.get(id, workspaceId));
     },
     update({ id, content, kind, expectedRevision }) {
@@ -173,6 +181,14 @@ function createMemoryStore(db, workspaceId) {
         const error = new Error(memoryContentError(content));
         error.code = 'INVALID_REQUEST';
         throw error;
+      }
+      if (content !== undefined) {
+        const violation = inspectMemoryContent(content);
+        if (violation) {
+          const error = new Error(violation.message);
+          error.code = 'INVALID_REQUEST';
+          throw error;
+        }
       }
       const now = Date.now();
       const changed = update.run(
@@ -255,9 +271,9 @@ function buildTools(server, store) {
   }, async (args) => textResult(store.delete(memoryValidate.delete(args))));
 }
 
-export function createMemoryMcpServer({ dbPath: dbPathValue, workspaceId }) {
+export function createMemoryMcpServer({ dbPath: dbPathValue, workspaceId, writeApproval = false }) {
   const db = openMemoryDb(dbPathValue);
-  const store = createMemoryStore(db, workspaceId);
+  const store = createMemoryStore(db, workspaceId, { writeApproval });
   const server = new McpServer({ name: 'opencode-webui-memory', version: '0.1.0' });
   buildTools(server, store);
   return { server, db };
@@ -266,7 +282,8 @@ export function createMemoryMcpServer({ dbPath: dbPathValue, workspaceId }) {
 export async function runStdio({ env = process.env, argv = process.argv.slice(2), stdin = process.stdin, stdout = process.stdout } = {}) {
   const dataDir = resolveDataDir(env);
   const workspaceId = resolveWorkspace({ argv, env });
-  const { server, db } = createMemoryMcpServer({ dbPath: dbPath(dataDir), workspaceId });
+  const writeApproval = env.OPENCODE_WEBUI_MEMORY_WRITE_APPROVAL === '1';
+  const { server, db } = createMemoryMcpServer({ dbPath: dbPath(dataDir), workspaceId, writeApproval });
   const transport = new StdioServerTransport(stdin, stdout, { maxBufferSize: 1024 * 1024 });
   await server.connect(transport);
   return { server, db };

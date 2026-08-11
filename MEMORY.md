@@ -5197,3 +5197,88 @@ Hermes Agent と同様に「自動確定を既定、必要なら承認制」を�
 7. 回帰テストでは、設定の既定値、全書き込み経路のゲート統一、脅威検査、通常ターン後の一度だけ抽出、トリガー間重複排除、未承認非注入、承認済み注入、既存候補維持を検証する。関連Vitest、typecheck、ESLintを通し、本番ビルドはプロジェクト指示に従い実行しない。
 
 実装は「防御と共通ゲート」「設定/UIと自動確定」「ターン後レビュー」の3コミットに分け、各段階で独立してロールバック可能にする。
+
+---
+
+# 作業ログ: メモリ書き込み経路の脅威検査と共通承認ゲート（第1段階）
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+改善計画の第1段階として、全メモリ書き込み経路に保存前の脅威検査と共通承認ゲートを実装した。
+
+### 新規: `web/src/lib/memory-safety.ts`
+
+保存前脅威検査モジュール。フレームワーク非依存（`./db` を import しない）で、MCP サーバが共有スキーマから同ロジックを参照できる。
+
+- `inspectMemoryContent(content: string): MemorySafetyViolation | null`
+- 検査対象: 不可視Unicode文字、`<workspace-memory>` 境界タグ、プロンプト注入パターン（`ignore previous instructions` / `disregard the above rules` / `you are now a` / `system:` / `do not follow the system prompt` / `reveal the system prompt` / `print the system prompt` / `<system>` ロールタグ）、資格情報持ち出し（`api_key=` / AWS `AKIA...` / `-----BEGIN RSA PRIVATE KEY-----` / `sk-...` / `send the .env`）、SSHバックドア（`authorized_keys` / `ssh-rsa AAA...` / `ssh-ed25519 AAA...` / `add your public ssh key`）。
+- 拒否理由は `{ code, message }` で返し、`message` は日本語。
+
+### 共有: `browser-bridge/shared/memory-schema.mjs`
+
+同じ検査ロジックを `inspectMemoryContent` として追加。Web側の `memory-safety.ts` と同一パターン・同一メッセージ。MCPサーバは `memoryValidate` に加えて保存直前にこれを呼ぶ。
+
+### `web/src/lib/memory.ts`
+
+- `createMemory`: 文字数制限後に `memorySafetyError` を呼び、違反があれば `RangeError` を投げて書き込みを阻止。
+- `updateMemory`: `patch.content` が渡された場合に同検査。
+- `insertExtractedMemories`: 各 item ごとに同検査を行い、違反は `errors` 配列へ追加してスキップ（created には含めない）。
+- 新規 `memorySafetyError(content)` と再エクスポート `inspectMemoryContent` / `MemorySafetyViolation`。
+
+### `web/src/lib/goal-memory-hook.ts`
+
+- 新規 `WRITE_APPROVAL_SETTING_KEY = "memory.write_approval"`。
+- `isMemoryWriteApprovalEnabled()`: `settings` テーブルの値が `"1"` のとき true、それ以外は false（Hermes互換の自動確定が既定）。
+
+### `web/src/lib/memory-extract.ts`
+
+- `runMemoryExtraction` が `isMemoryWriteApprovalEnabled()` を参照し、`false` なら `approved: true`、`true` なら `approved: false` で挿入。
+- 監査ログの `detail` に `approved=0|1` を追記。
+
+### `browser-bridge/mcp/memory-server.mjs`
+
+- `createMemoryStore` が `writeApproval` オプションを受け取り、`memory_add` の `approved` を `writeApproval ? 0 : 1` にする。従来は `approved=1` 固定だった例外を解消。
+- `add` / `update` で `inspectMemoryContent` を呼び、違反時は `INVALID_REQUEST` を投げる。
+- `createMemoryMcpServer` と `runStdio` が `writeApproval` を受け渡し、`OPENCODE_WEBUI_MEMORY_WRITE_APPROVAL=1` 環境変数で有効化。
+
+## 回帰テスト
+
+### 新規 `web/src/lib/memory-safety.test.ts`（7件）
+
+- 通常ファクトは許可、不可視Unicode・境界タグ・プロンプト注入7種・資格情報5種・SSHバックドア3種を拒否、良性の言及は誤検知しない。
+
+### `web/src/lib/memory.test.ts`（+4件、計21件）
+
+- `memorySafetyError` の違反メッセージ。
+- `createMemory` が脅威内容を `RangeError` で拒否し、DBへ残さない。
+- `updateMemory` が脅威内容を拒否し、既存内容を維持。
+- `insertExtractedMemories` が脅威 item を `errors` に記録し `created` から除外。
+
+### `web/src/lib/goal-memory-hook.test.ts`（+2件、計7件）
+
+- `isMemoryWriteApprovalEnabled` の既定値（false = 自動確定）。
+- `WRITE_APPROVAL_SETTING_KEY` が `"1"` のとき true、`""` で false。
+
+### `browser-bridge/test/memory-mcp-stdio.test.mjs`（+2テスト）
+
+- `validation and not-found errors` に脅威内容の拒否（プロンプト注入・境界タグ）を追加。
+- 新規 `write approval gate stages agent writes as candidates`: `OPENCODE_WEBUI_MEMORY_WRITE_APPROVAL=1` で `memory_add` が `approved=false` になり、検索に出ず、承認後に検索へ出ることを検証。
+
+## 検証
+
+- `npm --prefix web run typecheck` ... 成功
+- `npx eslint`（対象7ファイル） ... 成功（0 error / 0 warning）
+- `npm --prefix web test -- --run`（対象6ファイル） ... 54 tests 成功
+- `cd browser-bridge && node --test test/memory-mcp-stdio.test.mjs` ... 5 tests 成功
+- 本番ビルドはプロジェクト指示により実行しない
+
+## 設計メモ
+
+- 脅威検査は純粋関数で SQLite トランザクション内でも副作用がない。
+- 共有スキーマ版と Web 版は同じパターン・同一メッセージ。パターン追加時は両方へ反映すること。
+- 承認ゲートは書き込み時点で解決するため、トグル直後の抽出から即時反映される。
+- 既存の未承認候補は自動昇格させず、ユーザーが一括承認で移行する（計画第6項）。

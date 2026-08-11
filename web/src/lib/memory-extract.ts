@@ -10,6 +10,7 @@
 
 import { getWorkspace, type WorkspaceRow } from "./db";
 import { insertExtractedMemories, logMemoryAudit, type MemoryDto } from "./memory";
+import { isMemoryWriteApprovalEnabled } from "./goal-memory-hook";
 import { chooseAutoModel, type AutoDecision } from "./auto-model";
 import { OcError, ocServer } from "./oc-server";
 import {
@@ -275,13 +276,13 @@ export async function runMemoryExtraction(input: {
     workspaceId: input.workspaceId,
     sourceSessionId: input.sessionId,
     provenance: "auto-extract",
-    approved: false,
+    approved: !isMemoryWriteApprovalEnabled(),
     items: items as Array<{ kind: MemoryDto["kind"]; content: string }>,
   });
   logMemoryAudit("extract", {
     workspaceId: input.workspaceId,
     sessionId: input.sessionId,
-    detail: `created=${result.created} skipped=${result.skipped}`,
+    detail: `created=${result.created} skipped=${result.skipped} approved=${!isMemoryWriteApprovalEnabled() ? 1 : 0}`,
   });
   return result;
   } finally {
