@@ -63,6 +63,26 @@
 - `tsc --noEmit` 成功
 
 ---
+# 作業ログ: 新bundle反映後の実測検証
+
+## 日付
+2026-08-12
+
+## 結果
+
+- 新bundleは live（`profiles/main` に新コード、opencode pid=39072 が 01:13 起動、provider baseURL 32125 は同プロセスのリスナ）。
+- ヘッダ無しで proxy へ直接POSTすると `Session resume enabled but OpenCode session ID is unavailable` が出る。ヘッダ付き（直接POST 2ターン）では出ず、`.cursor/chats` 側も1チャットにまとまった → **proxy単体の resume は成立**。
+- OpenCode 経由（cursor/auto で2ターン）でも警告は出ない → **`chat.headers` は OpenCode 1.18.14 から実際に届いている**。前回の11件の警告は旧状態のもの。
+- ただし OpenCode 経由の1ターン目で Cursor チャットが**388ms差で2個**作られた（`9c596b7f` と `7f6447f6`、いずれも createdAtMs 01:18:30）。タイトル生成などの副次リクエストが同じ sessionID を共有していると見られる。
+- 2ターン目は本会話チャットではなく**もう一方のチャット（`7f6447f6`）へ resume** された。結果 cache_read が 41344 → 512 に崩れ、コストは 0.0114 → 0.0523 USD（約4.6倍）に増えた。
+
+## 次の課題
+
+- 同一 sessionID を持つ副次リクエスト（title/summarize 等）が resume キャッシュを奪う。ツール無し・単発リクエストを resume 対象外にするか、anchor にシステムプロンプトやメッセージ構造を含めて本会話と区別する必要がある。
+- 検証で作成した OpenCode セッション2件は削除済み。
+
+---
+
 # 作業ログ: vendor再適用が効かない原因の修正
 
 ## 日付
