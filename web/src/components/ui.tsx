@@ -473,12 +473,11 @@ export function formatMessageTime(
   if (!iso) return "";
   const t = typeof iso === "number" ? iso : Date.parse(iso);
   if (Number.isNaN(t)) return "";
-  return new Date(t).toLocaleString("ja-JP", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const date = new Date(t);
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${date.getMonth() + 1}/${date.getDate()}${weekdays[date.getDay()]} ${hours}:${minutes}`;
 }
 
 /** Codex-like relative time: 3m / 2h / 5d */

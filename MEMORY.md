@@ -4890,3 +4890,21 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `npm run lint -- src/components/task/MessageMetaHeader.tsx src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx`: 合格
 
 ---
+## メッセージ日時の表示短縮
+
+### 日付
+
+2026-08-11
+
+### 修正
+
+`formatMessageTime` の日時表示を `8月11日 09:19` から `8/11火 09:19` の形式へ変更し、月名の文字列を短縮した。
+
+### 検証
+
+- `MessageMetaHeader.test.tsx` で曜日付き日時表示を検証
+- `npm run test -- --run src/components/task/MessageMetaHeader.test.tsx`: 8 tests passed
+- `npm run typecheck`: 合格
+- `npm run lint -- src/components/ui.tsx src/components/task/MessageMetaHeader.test.tsx`: 合格
+
+---

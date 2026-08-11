@@ -33,7 +33,7 @@ describe("MessageMetaHeader", () => {
     // Default prefs → JPY without USD suffix.
     expect(screen.getByText("¥18.8")).toBeTruthy();
     const meta = screen.getByLabelText("応答メタデータ");
-    expect(meta.textContent).toContain("14:32");
+    expect(meta.textContent).toContain("7/19日 14:32");
     expect(meta.textContent).not.toContain("$0.1250");
     // Cost renders after the model and time.
     const text = meta.textContent ?? "";
