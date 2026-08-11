@@ -190,6 +190,35 @@ describe("listProviderModels", () => {
     expect(gpt4o.variants).toBeUndefined();
   });
 
+  it("fills variants for configured proxy models from a matching live model", async () => {
+    h.ocServer.mockResolvedValue({
+      all: [
+        {
+          id: "configured-openai",
+          name: "Configured OpenAI",
+          models: { "gpt-5.6-luna": { name: "GPT-5.6 Luna" } },
+        },
+        {
+          id: "live-provider",
+          name: "Live Provider",
+          models: {
+            "openai/gpt-5.6-luna": {
+              variants: { low: {}, high: {} },
+            },
+          },
+        },
+      ],
+      connected: ["configured-openai"],
+      default: {},
+    });
+
+    const providers = await listProviderModels();
+    expect(Object.keys(providers[0].models[0].variants ?? {})).toEqual([
+      "low",
+      "high",
+    ]);
+  });
+
   it("keeps the provider response cache across a module reload", async () => {
     await listProviderModels();
     expect(h.ocServer).toHaveBeenCalledTimes(1);

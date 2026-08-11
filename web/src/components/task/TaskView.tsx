@@ -1392,6 +1392,13 @@ export function TaskView({
     changeTab("chat");
   }, [isLg, tab, permissions.length, stream.questions.length, changeTab]);
 
+  // A split pane is too narrow for the full side-panel layout. Always show
+  // the conversation when a task enters split view, including workflow tasks.
+  useEffect(() => {
+    if (!splitActive || (tab === "chat" && viewTab === "chat")) return;
+    changeTab("chat");
+  }, [splitActive, tab, viewTab, changeTab]);
+
   useEffect(() => {
     if (!shellActive) {
       setActiveSessionAttention(null, taskId);

@@ -5789,3 +5789,20 @@ UI 上のスキル名を青文字で表示し、ホバーでスキル概要を�
 
 - ルートディレクトリからのESLint実行は依存構成上の互換エラーになるため、Webディレクトリ内の公式スクリプトで検証した。
 
+---
+
+# 作業ログ: effort欄が消える不具合の修正
+
+## 日付
+2026-08-11
+
+## 内容
+
+- 設定済みプロバイダーのモデルIDとOpenCodeのライブモデルIDで接頭辞が異なる場合、`/api/extensions/provider-models` のvariantsが空になり、HomeView/TaskViewのeffortセレクタが消える問題を修正した。
+- `provider-models.ts` で同一モデルIDのライブvariantsを補完するようにし、回帰テストを追加した。
+
+## 検証
+
+- `npm test -- --run src/lib/opencode-extensions/provider-models.test.ts src/components/home/HomeView.test.tsx`: 109 tests成功
+- `npm run typecheck`: 成功
+- `npx eslint src/lib/opencode-extensions/provider-models.ts src/lib/opencode-extensions/provider-models.test.ts`: 成功

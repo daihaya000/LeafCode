@@ -42,6 +42,13 @@ const {
   playSessionCompleteSound: vi.fn(),
 }));
 
+const { taskSplitState } = vi.hoisted(() => ({
+  taskSplitState: {
+    activeTaskId: null as string | null,
+    splitActive: false,
+  },
+}));
+
 vi.mock("next/link", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -103,6 +110,10 @@ vi.mock("@/components/shell/ShellContext", () => ({
     openMobileNav: vi.fn(),
     closeMobileNav: vi.fn(),
   }),
+}));
+
+vi.mock("@/components/shell/TaskSplitContext", () => ({
+  useTaskSplit: () => taskSplitState,
 }));
 
 vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
@@ -225,6 +236,8 @@ describe("TaskView", () => {
     readDefaultModel.mockReturnValue(null);
     readLastUsedModel.mockReturnValue(null);
     taskResponseId = "ws1";
+    taskSplitState.activeTaskId = null;
+    taskSplitState.splitActive = false;
     __clearTaskViewCachesForTest();
     diffPaneRefreshKeys.length = 0;
     slashCommands.length = 0;
@@ -342,6 +355,31 @@ describe("TaskView", () => {
     const [menu] = menus;
     expect(menu.getAttribute("aria-controls")).toBe("mobile-nav");
     expect(menu.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("switches to the conversation tab when entering split view", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+    const view = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "タスク操作" })).getByRole(
+        "button",
+        { name: "グラフ" },
+      ),
+    );
+    taskSplitState.activeTaskId = "ws1";
+    taskSplitState.splitActive = true;
+    view.rerender(<TaskView taskId="ws1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^会話$/ }).className,
+      ).toContain("border-primary");
+    });
+    expect(localStorage.getItem("webui:side-tab")).toBe("chat");
   });
 
   it("closes a secondary split pane from the task header", async () => {

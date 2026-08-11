@@ -310,6 +310,44 @@ async function revalidateProviderResponse(): Promise<void> {
   }
 }
 
+function hasVariants(
+  model: ProviderResponse["all"][number]["models"][string] | undefined,
+): boolean {
+  return !!model?.variants && Object.keys(model.variants).length > 0;
+}
+
+function modelIdsMatch(left: string, right: string): boolean {
+  if (left === right) return true;
+  const leftBase = left.slice(left.lastIndexOf("/") + 1);
+  const rightBase = right.slice(right.lastIndexOf("/") + 1);
+  return leftBase === rightBase;
+}
+
+function liveVariantsFor(
+  data: ProviderResponse,
+  providerID: string,
+  modelID: string,
+  current: ProviderResponse["all"][number]["models"][string] | undefined,
+) {
+  if (hasVariants(current)) return current?.variants;
+
+  // Configured provider IDs can differ from the live provider ID (for example
+  // a configured OpenAI-compatible provider may proxy a live OpenAI model).
+  // Preserve the effort choices instead of making the selector disappear.
+  const candidates = [
+    ...data.all.filter((provider) => provider.id === providerID),
+    ...data.all.filter((provider) => provider.id !== providerID),
+  ];
+  for (const provider of candidates) {
+    for (const [liveModelID, liveModel] of Object.entries(provider.models ?? {})) {
+      if (modelIdsMatch(liveModelID, modelID) && hasVariants(liveModel)) {
+        return liveModel.variants;
+      }
+    }
+  }
+  return current?.variants;
+}
+
 /**
  * List all providers and their models, merged with the WebUI-local
  * disabled state. Only connected providers are included when the
@@ -372,7 +410,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
             input: model.capabilities.input,
           }
         : undefined,
-      variants: model.variants,
+      variants: liveVariantsFor(data, id, modelID, model),
     }));
 
     // Sort models using saved order first, then existing intelligence ordering.
