@@ -34561,38 +34561,35 @@ function createToolLoopGuard(messages, maxRepeat) {
     initialCounts,
     initialCoarseCounts,
     initialValidationCounts,
-    initialValidationCoarseCounts
+    initialValidationCoarseCounts,
+    trailingSuccessFingerprint,
+    trailingSuccessCount
   } = indexToolLoopHistory(messages);
   const counts = new Map(initialCounts);
   const coarseCounts = new Map(initialCoarseCounts);
   const validationCounts = new Map(initialValidationCounts);
   const validationCoarseCounts = new Map(initialValidationCoarseCounts);
+  let lastSuccessFingerprint = trailingSuccessFingerprint;
+  let consecutiveSuccessCount = trailingSuccessCount;
   return {
     evaluate(toolCall) {
       const errorClass = normalizeErrorClassForTool(toolCall.function.name, byCallId.get(toolCall.id) ?? latestByToolName.get(toolCall.function.name) ?? latest ?? "unknown");
       const argShape = deriveArgumentShape(toolCall.function.arguments);
       if (errorClass === "success") {
-        const valueSignature = deriveArgumentValueSignature(toolCall.function.arguments);
-        const successFingerprint = `${toolCall.function.name}|values:${valueSignature}|success`;
-        const repeatCount = (counts.get(successFingerprint) ?? 0) + 1;
-        counts.set(successFingerprint, repeatCount);
-        const isExplorationTool = EXPLORATION_TOOLS.has(toolCall.function.name.toLowerCase());
-        const effectiveMaxRepeat = isExplorationTool ? maxRepeat * EXPLORATION_LIMIT_MULTIPLIER : maxRepeat;
-        const coarseSuccessFingerprint = deriveSuccessCoarseFingerprint(toolCall.function.name, toolCall.function.arguments);
-        const coarseRepeatCount = coarseSuccessFingerprint ? (coarseCounts.get(coarseSuccessFingerprint) ?? 0) + 1 : 0;
-        if (coarseSuccessFingerprint) {
-          coarseCounts.set(coarseSuccessFingerprint, coarseRepeatCount);
-        }
-        const coarseTriggered = coarseSuccessFingerprint ? coarseRepeatCount > effectiveMaxRepeat : false;
+        const successFingerprint = deriveSuccessLoopFingerprint(toolCall.function.name, toolCall.function.arguments);
+        consecutiveSuccessCount = successFingerprint === lastSuccessFingerprint ? consecutiveSuccessCount + 1 : 1;
+        lastSuccessFingerprint = successFingerprint;
         return {
-          fingerprint: coarseTriggered ? coarseSuccessFingerprint : successFingerprint,
-          repeatCount: coarseTriggered ? coarseRepeatCount : repeatCount,
-          maxRepeat: effectiveMaxRepeat,
+          fingerprint: successFingerprint,
+          repeatCount: consecutiveSuccessCount,
+          maxRepeat,
           errorClass,
-          triggered: repeatCount > effectiveMaxRepeat || coarseTriggered,
+          triggered: consecutiveSuccessCount > maxRepeat,
           tracked: true
         };
       }
+      lastSuccessFingerprint = null;
+      consecutiveSuccessCount = 0;
       const strictFingerprint = `${toolCall.function.name}|${argShape}|${errorClass}`;
       const coarseFingerprint = `${toolCall.function.name}|${errorClass}`;
       return evaluateWithFingerprints(toolCall.function.name, errorClass, strictFingerprint, coarseFingerprint, counts, coarseCounts, maxRepeat, coarseMaxRepeat);
@@ -34604,6 +34601,10 @@ function createToolLoopGuard(messages, maxRepeat) {
       return evaluateWithFingerprints(toolCall.function.name, "validation", strictFingerprint, coarseFingerprint, validationCounts, validationCoarseCounts, maxRepeat, coarseMaxRepeat);
     },
     resetFingerprint(fingerprint) {
+      if (lastSuccessFingerprint === fingerprint) {
+        lastSuccessFingerprint = null;
+        consecutiveSuccessCount = 0;
+      }
       counts.delete(fingerprint);
       coarseCounts.delete(fingerprint);
       validationCounts.delete(fingerprint);
@@ -34686,6 +34687,7 @@ function indexToolLoopHistory(messages) {
     incrementCount(initialValidationCounts, `${call.name}|schema:${schemaSignature}|validation`);
     incrementCount(initialValidationCoarseCounts, `${call.name}|validation`);
   }
+  const trailingSuccess = deriveTrailingSuccessState(messages, byCallId, latestByToolName, latest);
   return {
     byCallId,
     latest,
@@ -34693,8 +34695,45 @@ function indexToolLoopHistory(messages) {
     initialCounts,
     initialCoarseCounts,
     initialValidationCounts,
-    initialValidationCoarseCounts
+    initialValidationCoarseCounts,
+    trailingSuccessFingerprint: trailingSuccess.fingerprint,
+    trailingSuccessCount: trailingSuccess.count
   };
+}
+function deriveTrailingSuccessState(messages, byCallId, latestByToolName, latest) {
+  let fingerprint = null;
+  let count = 0;
+  let currentTurnStart = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (isRecord6(messages[index]) && messages[index].role === "user") {
+      currentTurnStart = index;
+      break;
+    }
+  }
+  for (let index = currentTurnStart + 1; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!isRecord6(message) || message.role !== "assistant") {
+      continue;
+    }
+    const calls = extractAssistantToolCalls([message]);
+    if (calls.length === 0) {
+      fingerprint = null;
+      count = 0;
+      continue;
+    }
+    for (const call of calls) {
+      const errorClass = normalizeErrorClassForTool(call.name, byCallId.get(call.id) ?? latestByToolName.get(call.name) ?? latest ?? "unknown");
+      if (errorClass !== "success") {
+        fingerprint = null;
+        count = 0;
+        continue;
+      }
+      const nextFingerprint = deriveSuccessLoopFingerprint(call.name, call.rawArguments);
+      count = nextFingerprint === fingerprint ? count + 1 : 1;
+      fingerprint = nextFingerprint;
+    }
+  }
+  return { fingerprint, count };
 }
 function classifyToolResult(content) {
   const text = toLowerText(content);
@@ -34761,6 +34800,24 @@ function deriveArgumentValueSignature(rawArguments) {
   } catch {
     return `invalid:${hashString(rawArguments)}`;
   }
+}
+function deriveSuccessLoopFingerprint(toolName, rawArguments) {
+  const normalizedTool = toolName.toLowerCase().replace(/^oc_/, "");
+  const coarseFingerprint = deriveSuccessCoarseFingerprint(normalizedTool, rawArguments);
+  if (coarseFingerprint) {
+    return coarseFingerprint;
+  }
+  if (normalizedTool === "bash" || normalizedTool === "shell") {
+    try {
+      const parsed = JSON.parse(rawArguments);
+      const command = isRecord6(parsed) && typeof parsed.command === "string" ? parsed.command : "";
+      if (/\bgit(?:\.exe)?\s+status\b/i.test(command)) {
+        return "shell|intent:git-status|success";
+      }
+    } catch {
+    }
+  }
+  return `${normalizedTool}|values:${deriveArgumentValueSignature(rawArguments)}|success`;
 }
 function deriveSuccessCoarseFingerprint(toolName, rawArguments) {
   const lowered = toolName.toLowerCase();
@@ -34961,7 +35018,7 @@ function containsAny(text, patterns) {
 function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-var UNKNOWN_AS_SUCCESS_TOOLS, EXPLORATION_TOOLS, COARSE_LIMIT_MULTIPLIER = 3, EXPLORATION_LIMIT_MULTIPLIER = 3;
+var UNKNOWN_AS_SUCCESS_TOOLS, EXPLORATION_TOOLS, COARSE_LIMIT_MULTIPLIER = 3, EXPLORATION_LIMIT_MULTIPLIER = 1;
 var init_tool_loop_guard = __esm(() => {
   UNKNOWN_AS_SUCCESS_TOOLS = /* @__PURE__ */ new Set([
     "bash",
