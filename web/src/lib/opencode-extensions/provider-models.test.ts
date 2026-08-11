@@ -163,6 +163,19 @@ describe("listProviderModels", () => {
     expect(gpt4o.variants).toBeUndefined();
   });
 
+  it("keeps the provider response cache across a module reload", async () => {
+    await listProviderModels();
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+
+    // Next dev can re-evaluate this module between requests. The cache must
+    // live on globalThis rather than in the module instance itself.
+    vi.resetModules();
+    const reloaded = await import("./provider-models");
+    await reloaded.listProviderModels();
+
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+  });
+
   it("filters to connected providers when connected is non-empty", async () => {
     h.ocServer.mockResolvedValue({
       ...MOCK_PROVIDER_RESPONSE,
