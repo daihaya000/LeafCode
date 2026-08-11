@@ -124,7 +124,6 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
   // (disabled) applied below, reflected immediately in this response.
   const disabled = { ...state.disabled };
   const configured = configuredProvidersFromContent(
-    readConfigContentForProviders(),
     disabled,
     state.providerIcons,
   );
@@ -243,6 +242,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+// The config file rarely changes between boot-burst calls. Cache its parsed
+// root keyed by mtime+size so listProviderModels() doesn't re-read and
+// re-parse the JSONC on every Home load. Writes go through updateConfigFile
+// (atomicWriteFile) which always changes mtime, so the cache stays fresh.
+let cachedConfigRoot: {
+  mtimeMs: number;
+  size: number;
+  root: Record<string, unknown>;
+} | null = null;
+
+/** Test-only: drop the parsed-config cache between tests. */
+export function __clearConfigRootCacheForTest(): void {
+  cachedConfigRoot = null;
+}
+
 function readConfigContentForProviders(): string {
   try {
     return readConfigContent(opencodeConfigFilePath());
@@ -251,12 +265,33 @@ function readConfigContentForProviders(): string {
   }
 }
 
+function parsedConfigRoot(): Record<string, unknown> {
+  const filePath = opencodeConfigFilePath();
+  try {
+    const stat = fs.statSync(filePath);
+    const mtimeMs = stat.mtimeMs;
+    const size = stat.size;
+    if (
+      cachedConfigRoot &&
+      cachedConfigRoot.mtimeMs === mtimeMs &&
+      cachedConfigRoot.size === size
+    ) {
+      return cachedConfigRoot.root;
+    }
+    const content = readConfigContent(filePath);
+    const root = parseJsoncConfig(content);
+    cachedConfigRoot = { mtimeMs, size, root };
+    return root;
+  } catch {
+    return {};
+  }
+}
+
 function configuredProvidersFromContent(
-  content: string,
   disabled: Record<string, true>,
   providerIcons: Record<string, string>,
 ): ProviderModelsDto[] {
-  const root = parseJsoncConfig(content);
+  const root = parsedConfigRoot();
   if (root.provider === undefined) return [];
   if (!isRecord(root.provider)) {
     throw new ExtensionsError("config", "provider 設定が不正です");

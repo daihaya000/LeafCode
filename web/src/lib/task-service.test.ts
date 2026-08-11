@@ -6,6 +6,9 @@ const h = vi.hoisted(() => ({
   ocResponses: {} as Record<string, unknown>,
   ocFail: new Set<string>(),
   ocCalls: [] as string[],
+  messageDelayMs: 0,
+  activeMessageCalls: 0,
+  maxMessageCalls: 0,
 }));
 
 vi.mock("./db", () => ({
@@ -38,6 +41,14 @@ vi.mock("./oc-server", async () => {
       if (h.ocFail.has(key)) throw new Error("engine unavailable");
       if (path === "/session/status") return {};
       if (path === "/global/health") return { healthy: true };
+      if (path.endsWith("/message")) {
+        h.activeMessageCalls += 1;
+        h.maxMessageCalls = Math.max(h.maxMessageCalls, h.activeMessageCalls);
+        if (h.messageDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, h.messageDelayMs));
+        }
+        h.activeMessageCalls -= 1;
+      }
       return h.ocResponses[key] ?? [];
     }),
   };
@@ -76,6 +87,9 @@ beforeEach(() => {
   h.ocResponses = {};
   h.ocFail = new Set();
   h.ocCalls = [];
+  h.messageDelayMs = 0;
+  h.activeMessageCalls = 0;
+  h.maxMessageCalls = 0;
   __clearSessionEstimateCacheForTest();
 });
 
@@ -159,6 +173,37 @@ describe("listTasks cost aggregation", () => {
     const { tasks } = await listTasks();
     expect(tasks[0].cost).toBe(0.32);
     expect(h.ocCalls).toContain("/repo/session/sess1/message");
+  });
+
+  it("limits concurrent transcript estimates per directory", async () => {
+    const sessionCount = 9;
+    h.messageDelayMs = 10;
+    h.workspaces = Array.from({ length: sessionCount }, (_, index) => ({
+      ...WS,
+      id: `ws-${index}`,
+    }));
+    h.bindings = new Map(
+      Array.from({ length: sessionCount }, (_, index) => [
+        `ws-${index}`,
+        { ...BINDING, workspace_id: `ws-${index}`, opencode_session_id: `sess-${index}` },
+      ]),
+    );
+    h.ocResponses["/repo/session"] = Array.from(
+      { length: sessionCount },
+      (_, index) => ({
+        id: `sess-${index}`,
+        cost: 0,
+        model: { id: "gpt-5.6-luna", providerID: "openai" },
+        tokens: { input: 1_000_000, output: 100_000, reasoning: 0 },
+      }),
+    );
+
+    await listTasks();
+
+    expect(h.ocCalls.filter((call) => call.endsWith("/message"))).toHaveLength(
+      sessionCount,
+    );
+    expect(h.maxMessageCalls).toBe(4);
   });
 
   it("retries transcript estimation after a temporary fetch failure", async () => {

@@ -45,6 +45,9 @@ type CachedSessionEstimate = {
 
 const sessionEstimateCache = new Map<string, CachedSessionEstimate>();
 const SESSION_ESTIMATE_CACHE_MAX = 256;
+// Avoid serializing dozens of transcript requests for a busy workspace while
+// also avoiding an unbounded burst against the OpenCode engine.
+const SESSION_COST_FETCH_CONCURRENCY = 4;
 
 const EMPTY_STAT: DirStat = {
   git: false,
@@ -226,6 +229,10 @@ async function sessionMetaFor(
       const sessions = await ocServer<SessionEntry[]>(dir, SESSION_LIST_PATH, {
         timeoutMs: 1500,
       });
+      const estimateCandidates: Array<{
+        session: SessionEntry;
+        meta: SessionMeta;
+      }> = [];
       for (const s of sessions) {
         const meta: SessionMeta = {};
         if (typeof s.cost === "number" && Number.isFinite(s.cost) && s.cost >= 0) {
@@ -237,10 +244,28 @@ async function sessionMetaFor(
         if (typeof s.model?.id === "string") meta.modelID = s.model.id;
         if (typeof s.model?.variant === "string") meta.variant = s.model.variant;
         if ((meta.cost ?? 0) <= 0 && trackedSessionIds.has(s.id)) {
-          const estimated = await estimateSessionCostWithCache(dir, s);
-          if (estimated !== null) meta.cost = estimated;
+          estimateCandidates.push({ session: s, meta });
         }
         metas[s.id] = meta;
+      }
+
+      // Fetch transcript-based estimates in small parallel batches. The old
+      // loop awaited each /message call before starting the next one, so a
+      // directory with many zero-cost sessions made task listing grow with
+      // the sum of all transcript latencies.
+      for (
+        let i = 0;
+        i < estimateCandidates.length;
+        i += SESSION_COST_FETCH_CONCURRENCY
+      ) {
+        await Promise.all(
+          estimateCandidates
+            .slice(i, i + SESSION_COST_FETCH_CONCURRENCY)
+            .map(async ({ session, meta }) => {
+              const estimated = await estimateSessionCostWithCache(dir, session);
+              if (estimated !== null) meta.cost = estimated;
+            }),
+        );
       }
     }),
   );

@@ -28,6 +28,7 @@ import {
   addCustomProvider,
   deleteCustomProvider,
   __clearProviderResponseCacheForTest,
+  __clearConfigRootCacheForTest,
   listConfiguredImageModels,
   listProviderModels,
   saveProviderModelOrder,
@@ -100,6 +101,7 @@ beforeEach(() => {
   h.ocServer.mockReset();
   h.ocServer.mockResolvedValue(MOCK_PROVIDER_RESPONSE);
   __clearProviderResponseCacheForTest();
+  __clearConfigRootCacheForTest();
 });
 
 afterEach(() => {
