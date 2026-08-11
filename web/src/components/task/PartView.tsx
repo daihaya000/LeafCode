@@ -33,6 +33,7 @@ import { readHangTimeoutMs, subscribeHangTimeout } from "@/lib/hang-timeout";
 import { Markdown } from "./Markdown";
 import { NestedAgentPanel } from "./NestedAgentPanel";
 import { ProviderIcon } from "./ProviderIcon";
+import { MessageTokenHighlight } from "./MessageTokenHighlight";
 import {
   questionInputFields,
   questionToolSummary,
@@ -571,6 +572,8 @@ export const PartView = memo(function PartView({
   costPrefs,
   onMarkHang,
   markHangBusy,
+  skillOverviews,
+  agentOverviews,
 }: {
   part: Part;
   role: "user" | "assistant";
@@ -582,6 +585,10 @@ export const PartView = memo(function PartView({
   costPrefs?: CostDisplayPrefs;
   onMarkHang?: () => void;
   markHangBusy?: boolean;
+  /** Lowercased skill name → overview, for blue highlight + hover title. */
+  skillOverviews?: ReadonlyMap<string, string>;
+  /** Lowercased agent name → overview, for blue highlight + hover title. */
+  agentOverviews?: ReadonlyMap<string, string>;
 }) {
   switch (part.type) {
     case "text": {
@@ -597,7 +604,13 @@ export const PartView = memo(function PartView({
       if (role === "user") {
         return (
           <div className="ml-auto min-w-0 max-w-[88%] rounded-2xl rounded-br-md bg-surface-3 px-4 py-2.5">
-            <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">{shown}</div>
+            <div className="md min-w-0 text-[0.925rem] whitespace-pre-wrap break-words">
+              <MessageTokenHighlight
+                text={shown}
+                skills={skillOverviews}
+                agents={agentOverviews}
+              />
+            </div>
           </div>
         );
       }

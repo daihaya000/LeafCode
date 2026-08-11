@@ -25,6 +25,10 @@ import { OPENCODE_BASE_URL } from "./opencode";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
+// OpenCode can emit several completed assistant messages for one turn
+// (reasoning/tool steps). Wait for the burst to settle and extract once from
+// the session transcript instead of starting one extraction per step.
+export const ASSISTANT_EVENT_DEBOUNCE_MS = 500;
 
 export type CompletedAssistantEvent = {
   directory: string;
@@ -198,17 +202,45 @@ export function handleMemoryGlobalEvent(raw: string): number {
   let scheduled = 0;
   for (const workspaceId of workspaces) {
     touchSessionActivity(workspaceId, event.sessionId);
-    if (
-      scheduleAssistantMemoryExtraction({
-        workspaceId,
-        sessionId: event.sessionId,
-        assistantMessageId: event.assistantMessageId,
-      })
-    ) {
+    if (scheduleSettledAssistantMemoryExtraction({
+      workspaceId,
+      sessionId: event.sessionId,
+      assistantMessageId: event.assistantMessageId,
+    })) {
       scheduled += 1;
     }
   }
   return scheduled;
+}
+
+type PendingAssistantExtraction = {
+  input: {
+    workspaceId: string;
+    sessionId: string;
+    assistantMessageId: string;
+  };
+  timer: ReturnType<typeof setTimeout>;
+};
+
+const pendingAssistantExtractions = new Map<string, PendingAssistantExtraction>();
+
+function scheduleSettledAssistantMemoryExtraction(input: {
+  workspaceId: string;
+  sessionId: string;
+  assistantMessageId: string;
+}): boolean {
+  const key = `${input.workspaceId}\u0000${input.sessionId}`;
+  const previous = pendingAssistantExtractions.get(key);
+  if (previous?.input.assistantMessageId === input.assistantMessageId) {
+    return false;
+  }
+  if (previous) clearTimeout(previous.timer);
+  const timer = setTimeout(() => {
+    pendingAssistantExtractions.delete(key);
+    scheduleAssistantMemoryExtraction(input);
+  }, ASSISTANT_EVENT_DEBOUNCE_MS);
+  pendingAssistantExtractions.set(key, { input, timer });
+  return true;
 }
 
 function waitForReconnect(ms: number, signal: AbortSignal): Promise<void> {
@@ -275,4 +307,8 @@ export function stopMemoryAutoExtractionMonitorForTest(): void {
   monitorController?.abort();
   monitorController = null;
   monitorPromise = null;
+  for (const pending of pendingAssistantExtractions.values()) {
+    clearTimeout(pending.timer);
+  }
+  pendingAssistantExtractions.clear();
 }

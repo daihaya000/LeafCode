@@ -121,14 +121,14 @@ describe("handleMemoryGlobalEvent", () => {
   it("claims and schedules each assistant message only once", async () => {
     expect(handleMemoryGlobalEvent(completedEvent("msg-dedupe"))).toBe(1);
     expect(handleMemoryGlobalEvent(completedEvent("msg-dedupe"))).toBe(0);
-    expect(runMemoryExtraction).toHaveBeenCalledTimes(1);
-    expect(runMemoryExtraction).toHaveBeenCalledWith({
-      workspaceId: "ws-auto",
-      sessionId: "ses-auto",
-      assistantMessageId: "msg-dedupe",
-      trigger: "assistant-completed",
-    });
     await vi.waitFor(() => {
+      expect(runMemoryExtraction).toHaveBeenCalledTimes(1);
+      expect(runMemoryExtraction).toHaveBeenCalledWith({
+        workspaceId: "ws-auto",
+        sessionId: "ses-auto",
+        assistantMessageId: "msg-dedupe",
+        trigger: "assistant-completed",
+      });
       expect(
         getDb()
           .prepare(
@@ -136,6 +136,22 @@ describe("handleMemoryGlobalEvent", () => {
           )
           .get("msg-dedupe"),
       ).toEqual({ status: "completed" });
+    });
+  });
+
+  it("coalesces multiple completed assistant steps into one extraction", async () => {
+    expect(handleMemoryGlobalEvent(completedEvent("msg-step-1"))).toBe(1);
+    expect(handleMemoryGlobalEvent(completedEvent("msg-step-2"))).toBe(1);
+    expect(handleMemoryGlobalEvent(completedEvent("msg-step-3"))).toBe(1);
+    expect(runMemoryExtraction).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(runMemoryExtraction).toHaveBeenCalledTimes(1);
+    });
+    expect(runMemoryExtraction).toHaveBeenCalledWith({
+      workspaceId: "ws-auto",
+      sessionId: "ses-auto",
+      assistantMessageId: "msg-step-3",
+      trigger: "assistant-completed",
     });
   });
 });

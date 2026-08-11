@@ -1,3 +1,24 @@
+# 作業ログ: 送信メッセージ内のスキル/エージェント呼び出しを青文字表示
+
+## 日付
+2026-08-11
+
+## 内容
+
+送信済みユーザーメッセージ内の `/skill-name` と `@agent-name` トークンも青字で表示するようにした。
+
+- `components/task/MessageTokenHighlight.tsx`: ユーザーメッセージ本文をトークン分割し、既知のスキル/エージェントトークンを `text-accent`（青）＋ホバー概要で表示。未知の `/foo` や `@bar` は装飾しない。
+- `components/task/PartView.tsx`: `skillOverviews` / `agentOverviews` props を追加し、ユーザーメッセージ表示に `MessageTokenHighlight` を適用。
+- `components/task/TaskView.tsx`: `slashCommands` / `agentMentions` から概要マップを構築して `PartView` に渡す。
+
+## 検証
+
+- `npm run typecheck`: 成功
+- `npm run lint`（関連ファイル）: 成功
+- `vitest run`: MessageTokenHighlight 5 / PartView 15 / TaskView 127 tests passed
+
+---
+
 # 作業ログ: @エージェントメンションの青文字ハイライトとホバー概要
 
 ---

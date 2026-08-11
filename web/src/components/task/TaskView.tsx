@@ -758,6 +758,26 @@ export function TaskView({
   const mentionOpen =
     !mentionDismissed && mentionItems.length > 0 && !slashOpen;
 
+  // Lowercased name → overview maps for the sent-message token highlight.
+  const skillOverviewMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const cmd of slashCommands) {
+      if (cmd.source === "skill" && cmd.name && cmd.description) {
+        map.set(cmd.name.toLowerCase(), cmd.description);
+      }
+    }
+    return map;
+  }, [slashCommands]);
+  const agentOverviewMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const agent of agentMentions) {
+      if (agent.name && agent.description) {
+        map.set(agent.name.toLowerCase(), agent.description);
+      }
+    }
+    return map;
+  }, [agentMentions]);
+
   useEffect(() => {
     setSlashIndex(0);
     setSlashDismissed(false);
@@ -4458,6 +4478,8 @@ export function TaskView({
                         costPrefs={costPrefs}
                         onMarkHang={markTaskHang}
                         markHangBusy={stream.aborting}
+                        skillOverviews={skillOverviewMap}
+                        agentOverviews={agentOverviewMap}
                       />
                     ))}
                     {planPaths.get(m.info.id) && (
