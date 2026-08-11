@@ -61,6 +61,7 @@ import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
 import { MobileMenuButton } from "@/components/shell/MobileMenuButton";
 import { AttentionBadge } from "@/components/shell/AttentionBadge";
+import { useTaskSplit } from "@/components/shell/TaskSplitContext";
 import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/components/ui";
 import {
   readAccessMode,
@@ -524,10 +525,18 @@ function TurnNoticeBanner({
   );
 }
 
-export function TaskView({ taskId }: { taskId: string }) {
+export function TaskView({
+  taskId,
+  onCloseSplit,
+}: {
+  taskId: string;
+  onCloseSplit?: () => void;
+}) {
   const router = useRouter();
   const { setExtras } = useShellExtras();
   const setActiveScope = useShellSetActiveScope();
+  const { activeTaskId, splitActive } = useTaskSplit();
+  const shellActive = !splitActive || activeTaskId === taskId;
   const [task, setTask] = useState<TaskSummary | null>(() =>
     readCachedTaskSummary(taskId),
   );
@@ -589,7 +598,8 @@ export function TaskView({ taskId }: { taskId: string }) {
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
   const [sideWidth, setSideWidth] = useState(SIDE_DEFAULT);
   const [sideResizing, setSideResizing] = useState(false);
-  const [isLg, setIsLg] = useState(false);
+  const [viewportIsLg, setViewportIsLg] = useState(false);
+  const isLg = viewportIsLg && !splitActive;
   // Initialize from the actual matchMedia to avoid desktop permanent collapse
   // (isMd starts false on SSR/first paint, causing initialCollapsed=true on desktop).
   const [isMd, setIsMd] = useState(() => {
@@ -1005,7 +1015,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     const mq = window.matchMedia("(min-width: 1024px)");
     const mqMd = window.matchMedia("(min-width: 768px)");
     const apply = () => {
-      setIsLg(mq.matches);
+      setViewportIsLg(mq.matches);
       setIsMd(mqMd.matches);
       setSideWidth((w) => clampSideWidth(w));
     };
@@ -1337,18 +1347,28 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [isLg, tab, permissions.length, stream.questions.length, changeTab]);
 
   useEffect(() => {
+    if (!shellActive) {
+      setActiveSessionAttention(null, taskId);
+      return;
+    }
     const sessionId = task?.sessionId ?? null;
     if (!sessionId) {
-      setActiveSessionAttention(null);
+      setActiveSessionAttention(null, taskId);
       return;
     }
     setActiveSessionAttention({
       sessionId,
       permissions: permissions.length,
       questions: stream.questions.length,
-    });
-    return () => setActiveSessionAttention(null);
-  }, [task?.sessionId, permissions.length, stream.questions.length]);
+    }, taskId);
+    return () => setActiveSessionAttention(null, taskId);
+  }, [
+    shellActive,
+    taskId,
+    task?.sessionId,
+    permissions.length,
+    stream.questions.length,
+  ]);
 
 
   // pending 権限を自動処理（失敗時は手動カードへフォールバック）:
@@ -2961,13 +2981,14 @@ export function TaskView({ taskId }: { taskId: string }) {
     try {
       await sendJson("DELETE", `/api/tasks/${targetId}`);
       notifyTasksChanged();
-      router.push("/");
+      if (onCloseSplit) onCloseSplit();
+      else router.push("/");
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "削除に失敗しました");
     } finally {
       setTaskActionBusy(null);
     }
-  }, [task, taskId, router, taskActionBusy]);
+  }, [task, taskId, router, taskActionBusy, onCloseSplit]);
 
   const convertToWorkflow = useCallback(async () => {
     if (!task || taskActionBusy) return;
@@ -3084,6 +3105,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   // Tab title + favicon badge notification for approvals / working
   useEffect(() => {
+    if (!shellActive) return;
     const base = task?.title ? `${task.title} · OpenCodeWebUI` : "OpenCodeWebUI";
     const needsAttention =
       stream.permissions.length > 0 || stream.questions.length > 0;
@@ -3102,6 +3124,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       applyFaviconBadge("idle");
     };
   }, [
+    shellActive,
     task?.title,
     working,
     stream.permissions.length,
@@ -3475,26 +3498,25 @@ export function TaskView({ taskId }: { taskId: string }) {
   );
 
   useEffect(() => {
-    if (!task?.directory) {
-      setExtras({});
+    if (!shellActive || !task?.directory) {
+      setExtras({}, taskId);
       return;
     }
-    setExtras({ directory: task.directory, onFile: openFileInDiff });
-    return () => setExtras({});
-  }, [task?.directory, openFileInDiff, setExtras]);
+    setExtras({ directory: task.directory, onFile: openFileInDiff }, taskId);
+    return () => setExtras({}, taskId);
+  }, [shellActive, taskId, task?.directory, openFileInDiff, setExtras]);
 
   useEffect(() => {
-    if (task?.directory && task?.sessionId) {
-      setActiveScope({ directory: task.directory, sessionId: task.sessionId });
+    if (shellActive && task?.directory && task?.sessionId) {
+      setActiveScope(
+        { directory: task.directory, sessionId: task.sessionId },
+        taskId,
+      );
     } else {
-      setActiveScope(null);
+      setActiveScope(null, taskId);
     }
-  }, [task?.directory, task?.sessionId, setActiveScope]);
-
-  // Clear only on TaskView unmount — not on every session switch cleanup.
-  useEffect(() => {
-    return () => setActiveScope(null);
-  }, [setActiveScope]);
+    return () => setActiveScope(null, taskId);
+  }, [shellActive, taskId, task?.directory, task?.sessionId, setActiveScope]);
 
   const timeline = useMemo(
     () =>
@@ -3605,8 +3627,19 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   if (loadError) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col">
         <MobileMenuHeader />
+        {onCloseSplit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="分割表示を閉じる"
+            className="absolute top-2 right-2 z-10 h-9 w-9"
+            onClick={onCloseSplit}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4">
           <p className="text-sm text-danger">{loadError}</p>
           <Link href="/" className="text-sm text-accent underline">
@@ -3619,8 +3652,19 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   if (!task) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col">
         <MobileMenuHeader />
+        {onCloseSplit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="分割表示を閉じる"
+            className="absolute top-2 right-2 z-10 h-9 w-9"
+            onClick={onCloseSplit}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <Spinner />
         </div>
@@ -3935,6 +3979,18 @@ export function TaskView({ taskId }: { taskId: string }) {
             />
           )}
         </div>
+        {onCloseSplit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="分割表示を閉じる"
+            aria-label="分割表示を閉じる"
+            className="h-11 w-11 shrink-0 md:h-9 md:w-9"
+            onClick={onCloseSplit}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </header>
 
       {pendingTaskDelete && (
@@ -4101,7 +4157,16 @@ export function TaskView({ taskId }: { taskId: string }) {
       )}
 
       {/* Mobile tabs for standard tasks */}
-      <div className={cx("flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", task.executionMode === "workflow" ? "hidden" : "lg:hidden")}>
+      <div
+        className={cx(
+          "flex shrink-0 overflow-x-auto border-b border-border bg-surface [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          task.executionMode === "workflow"
+            ? "hidden"
+            : splitActive
+              ? "flex"
+              : "lg:hidden",
+        )}
+      >
         {(
           [
             { key: "chat" as const, label: "会話", panel: null },
@@ -4190,7 +4255,11 @@ export function TaskView({ taskId }: { taskId: string }) {
         <div
           className={cx(
             "min-w-0 flex-1 flex-col",
-            chatVisible ? "flex" : "hidden lg:flex",
+            chatVisible
+              ? "flex"
+              : splitActive
+                ? "hidden"
+                : "hidden lg:flex",
           )}
         >
           {workflowFocusNode && chatVisible && (
@@ -4851,9 +4920,10 @@ export function TaskView({ taskId }: { taskId: string }) {
           className={cx(
             "relative min-h-0 min-w-0 flex-col border-border",
             diffVisible ? "flex flex-1" : "hidden",
-            showDiff
-              ? "lg:flex lg:flex-none lg:border-l"
-              : "lg:hidden",
+            !splitActive &&
+              (showDiff
+                ? "lg:flex lg:flex-none lg:border-l"
+                : "lg:hidden"),
           )}
           style={showDiff && isLg ? { width: sideWidth } : undefined}
         >

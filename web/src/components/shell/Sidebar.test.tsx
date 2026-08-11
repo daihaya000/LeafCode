@@ -2,10 +2,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatHeaderDate, Sidebar } from "./Sidebar";
 
-const { getJson, sendJson, timedFetch, attentionState } = vi.hoisted(() => ({
+const { getJson, sendJson, timedFetch, attentionState, closeSplit } = vi.hoisted(() => ({
   getJson: vi.fn(),
   sendJson: vi.fn(),
   timedFetch: vi.fn().mockResolvedValue({ ok: false }),
+  closeSplit: vi.fn(),
   attentionState: {
     items: [] as Array<{
       kind: "question" | "permission";
@@ -62,6 +63,14 @@ vi.mock("./AttentionBadge", () => ({
 
 vi.mock("./GlobalAttentionProvider", () => ({
   useGlobalAttention: () => attentionState,
+}));
+
+vi.mock("./TaskSplitContext", () => ({
+  useTaskSplit: () => ({
+    desktopSplitEnabled: true,
+    secondaryTaskId: null,
+    closeSplit,
+  }),
 }));
 
 describe("Sidebar", () => {
@@ -167,6 +176,14 @@ describe("Sidebar", () => {
     expect(actionGroup.className).not.toContain("absolute");
     expect(actionGroup.className).toContain("shrink-0");
     expect(actionGroup.parentElement).toBe(infoRow);
+    expect(taskButton?.getAttribute("draggable")).toBe("true");
+    const dataTransfer = { effectAllowed: "none", setData: vi.fn() };
+    fireEvent.dragStart(taskButton!, { dataTransfer });
+    expect(dataTransfer.effectAllowed).toBe("copy");
+    expect(dataTransfer.setData).toHaveBeenCalledWith(
+      "application/x-opencode-task",
+      "ws1",
+    );
     fireEvent.click(favorite);
 
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith(

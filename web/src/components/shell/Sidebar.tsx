@@ -10,6 +10,7 @@ import {
   Cpu,
   GitBranch,
   Loader2,
+  PanelRight,
   Plus,
   Settings,
   Star,
@@ -34,6 +35,8 @@ import {
   readSidebarFromServer,
   writeSidebarToServer,
 } from "@/lib/sidebar-settings";
+import { TASK_DRAG_MIME } from "@/lib/task-drag";
+import { useTaskSplit } from "./TaskSplitContext";
 import type { ProjectDto, TaskSummary } from "@/lib/types";
 
 type SidebarConfirmation = {
@@ -201,6 +204,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { desktopSplitEnabled, secondaryTaskId, closeSplit } = useTaskSplit();
   const costPrefs = useCostDisplayPrefs();
   const { actionableItems: attentionItems } = useGlobalAttention();
   const [projects, setProjects] = useState<ProjectDto[]>([]);
@@ -726,6 +730,7 @@ export function Sidebar({
     try {
       await sendJson("PATCH", `/api/tasks/${task.id}/archive`);
       if (activeTaskId === task.id) router.push("/");
+      if (secondaryTaskId === task.id) closeSplit();
       notifyTasksChanged();
       await refresh();
     } catch (err) {
@@ -1224,6 +1229,7 @@ export function Sidebar({
                       ) : (
                         children.map((task) => {
                           const active = task.id === activeTaskId;
+                          const secondaryActive = task.id === secondaryTaskId;
                           const waitingForAttention =
                             task.sessionId !== null &&
                             attentionSessionIds.has(task.sessionId);
@@ -1238,13 +1244,31 @@ export function Sidebar({
                                   active
                                     ? "bg-surface-3 text-text"
                                     : "text-muted hover:bg-surface-2 hover:text-text",
+                                  secondaryActive &&
+                                    "ring-1 ring-inset ring-accent/50",
                                 )}
                               >
                                 <button
                                   type="button"
+                                  draggable={desktopSplitEnabled}
+                                  onDragStart={(event) => {
+                                    if (!desktopSplitEnabled) return;
+                                    event.dataTransfer.effectAllowed = "copy";
+                                    event.dataTransfer.setData(TASK_DRAG_MIME, task.id);
+                                  }}
                                   onClick={() => nav(`/task/${task.id}`)}
-                                  title={task.title}
-                                  className="flex min-w-0 w-full cursor-pointer items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                  title={
+                                    secondaryActive
+                                      ? `${task.title}（右ペインに表示中）`
+                                      : desktopSplitEnabled
+                                        ? `${task.title}（右側へドラッグして分割表示）`
+                                        : task.title
+                                  }
+                                  className={cx(
+                                    "flex min-w-0 w-full cursor-pointer items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+                                    desktopSplitEnabled &&
+                                      "lg:cursor-grab lg:active:cursor-grabbing",
+                                  )}
                                 >
                                   <span className="flex h-3 w-3 shrink-0 items-center justify-center">
                                       {!waitingForAttention &&
@@ -1287,6 +1311,12 @@ export function Sidebar({
                                   <span className="min-w-0 flex-1 truncate text-xs font-medium">
                                     {task.title}
                                   </span>
+                                  {secondaryActive && (
+                                    <PanelRight
+                                      aria-hidden="true"
+                                      className="h-3 w-3 shrink-0 text-accent"
+                                    />
+                                  )}
                                 </button>
                                 <div
                                   className="flex min-w-0 items-center gap-1 px-2 pb-0.5 pl-5 text-[10px] text-muted"

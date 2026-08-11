@@ -7,10 +7,14 @@ export type ActiveSessionAttention = {
 };
 
 let current: ActiveSessionAttention | null = null;
+let currentOwner: string | null = null;
 
 export function setActiveSessionAttention(
   next: ActiveSessionAttention | null,
+  owner?: string,
 ) {
+  if (!next && owner && currentOwner !== owner) return;
+  currentOwner = next ? owner ?? null : null;
   const same =
     (current === null && next === null) ||
     (current !== null &&

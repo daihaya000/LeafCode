@@ -344,6 +344,15 @@ describe("TaskView", () => {
     expect(menu.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("closes a secondary split pane from the task header", async () => {
+    const onCloseSplit = vi.fn();
+    render(<TaskView taskId="ws1" onCloseSplit={onCloseSplit} />);
+    await flushTaskLoad();
+
+    fireEvent.click(screen.getByRole("button", { name: "分割表示を閉じる" }));
+    expect(onCloseSplit).toHaveBeenCalledTimes(1);
+  });
+
 
 
   it("sends on Enter but leaves Shift+Enter for a newline", async () => {
