@@ -243,6 +243,24 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 
 # 作業ログ: スキル呼び出し候補の視認性改善
 # 作業ログ: provider-models設定キャッシュとtask-serviceセッション推定の高速化
+# 作業ログ: provider-models globalThisキャッシュの再評価耐性
+
+## 日付
+
+2026-08-11
+
+## 変更
+
+`web/src/lib/opencode-extensions/provider-models.ts` のOpenCode `/provider` 生レスポンスキャッシュをモジュール変数から `globalThis.__opencodeWebuiProviderResponseCache` へ移行。Next devのモジュール再評価後も5秒TTLのキャッシュを保持できるようにした。
+
+## 検証
+
+- `provider-models.test.ts` に動的再import後も `ocServer` が再呼び出しされない回帰テストを追加。
+- provider-models/API route 43テスト、tsc、eslintが合格。
+- コミット: `7560011` 実装、`4a41a23` 回帰テスト。
+- 稼働中のport 3000はworkspaceではなく、2026-08-11 07:10生成の古いmirrorを実行中。runtime改善値は未検証。AGENTS.mdの制約によりビルド・再起動は実施しない。
+
+---
 
 ## 日付
 
