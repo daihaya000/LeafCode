@@ -73,4 +73,23 @@ describe("rankModelUsage", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ providerID: "free", tokensPerDollar: null });
   });
+
+  it("uses configured model pricing when OpenCode reports no cost", () => {
+    const result = rankModelUsage(
+      [{ sessionId: "ses-1", messages: [message("paid", "model", 100, 0)] }],
+      { "paid::model": { input: 0, output: 10 } },
+    );
+
+    expect(result[0].cost).toBeCloseTo(0.001, 12);
+    expect(result[0].tokensPerDollar).toBeCloseTo(100_000, 8);
+  });
+
+  it("prefers OpenCode's reported cost over a configured estimate", () => {
+    const result = rankModelUsage(
+      [{ sessionId: "ses-1", messages: [message("paid", "model", 100, 2)] }],
+      { "paid::model": { input: 0, output: 10 } },
+    );
+
+    expect(result[0]).toMatchObject({ cost: 2, tokensPerDollar: 50 });
+  });
 });

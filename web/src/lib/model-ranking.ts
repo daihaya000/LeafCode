@@ -1,3 +1,4 @@
+import { estimateOpenAIApiCost, type TokenPrice } from "./openai-pricing";
 import type { MessageWithParts } from "./types";
 
 export type ModelRankingEntry = {
@@ -19,11 +20,13 @@ type ModelUsage = {
 
 /**
  * Aggregate assistant history by the model that produced each turn.
- * Cost is OpenCode's reported message cost; no client-side price estimation is
- * performed. Entries without a provider or model are intentionally excluded.
+ * Cost uses OpenCode's reported message cost when available, and falls back to
+ * the configured model price when OpenCode reports no cost. Entries without a
+ * provider or model are intentionally excluded.
  */
 export function rankModelUsage(
   histories: readonly { sessionId: string; messages: MessageWithParts[] }[],
+  modelPricing: Readonly<Record<string, TokenPrice>> = {},
 ): ModelRankingEntry[] {
   const usage = new Map<string, ModelUsage>();
 
@@ -43,7 +46,15 @@ export function rankModelUsage(
       current.sessions.add(history.sessionId);
       current.turns += 1;
       current.tokens += Math.max(0, info.tokens?.output ?? 0) + Math.max(0, info.tokens?.reasoning ?? 0);
-      current.cost += Math.max(0, info.cost ?? 0);
+      const reportedCost =
+        typeof info.cost === "number" && Number.isFinite(info.cost) && info.cost > 0
+          ? info.cost
+          : null;
+      const estimatedCost =
+        reportedCost === null
+          ? estimateOpenAIApiCost(info, modelPricing[key])
+          : null;
+      current.cost += reportedCost ?? estimatedCost ?? 0;
       usage.set(key, current);
     }
   }

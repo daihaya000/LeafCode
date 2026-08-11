@@ -3,6 +3,7 @@ import { getDb, listWorkspacesJoined } from "@/lib/db";
 import { ocServer } from "@/lib/oc-server";
 import { rankModelUsage } from "@/lib/model-ranking";
 import { sessionMessagePath } from "@/lib/opencode-paths";
+import { readProviderModelState } from "@/lib/provider-model-state";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
 
@@ -50,6 +51,7 @@ export async function GET(req: Request) {
         (history): history is { sessionId: string; messages: MessageWithParts[] } =>
           history !== null && Array.isArray(history.messages),
       ),
+      readProviderModelState().modelPricing,
     ),
   });
 }

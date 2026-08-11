@@ -5415,6 +5415,37 @@ Hermes Agent と同様に「自動確定を既定、必要なら承認制」を�
 
 ---
 
+# 作業ログ: コスパランキングの価格設定済みモデル無料判定修正
+
+## 日付
+
+2026-08-11
+
+## 根本原因
+
+`rankModelUsage` が `MessageInfo.cost` のみを集計しており、設定画面で保存した `providerID::modelID` 別の価格を、OpenCodeが費用を0として返すモデルに適用していなかった。そのため、価格設定済みモデルがランキングで「無料」と判定されていた。
+
+## 修正
+
+- `rankModelUsage` に価格レジストリを渡せるようにし、正の報告費用を優先しつつ、0または未設定の場合は手動価格または組み込みOpenAI価格表から費用を推定するようにした。
+- モデルランキングAPIで `readProviderModelState().modelPricing` を集計へ渡すようにした。
+- 画面説明を、報告費用または設定価格による比較であることに更新した。
+
+## 回帰テスト
+
+- `model-ranking.test.ts` に、設定価格による推定と報告費用の優先を追加。
+- `model-ranking/route.test.ts` に、API経由で保存価格が適用されることを追加。
+
+## 検証
+
+- `npx vitest run`: 271 files / 3259 passed / 1 skipped
+- `npm run typecheck`: 成功
+- 関連5ファイルのESLint: 成功
+- `git diff --check`: 成功
+- 本番ビルドはプロジェクト指示により実行しない
+
+---
+
 # 作業ログ: 通常会話のassistant完了後メモリ抽出（第3段階）
 
 ## 日付
