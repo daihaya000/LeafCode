@@ -3686,7 +3686,7 @@ describe("TaskView voice input", () => {
     });
   });
 
-  describe("中断ターンの再開", () => {
+  describe("中断・無言終了ターンの再開", () => {
     // The voice-input suite leaves `taskSessionId` at whatever the previous
     // test set; the resume button needs a real session to render.
     beforeEach(() => {
@@ -3770,7 +3770,7 @@ describe("TaskView voice input", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      const banner = screen.getByTestId("aborted-resume");
+      const banner = screen.getByTestId("turn-resume");
       expect(banner.textContent).toContain("Aborted");
       const button = within(banner).getByRole("button", {
         name: "中断したターンを再開",
@@ -3779,7 +3779,7 @@ describe("TaskView voice input", () => {
       // pushed to the far edge of the same row.
       expect(button.parentElement?.className).toContain("justify-between");
       // Exactly one banner — the transcript copy is not duplicated at the tail.
-      expect(screen.getAllByTestId("aborted-resume")).toHaveLength(1);
+      expect(screen.getAllByTestId("turn-resume")).toHaveLength(1);
     });
 
     it("resumes when earlier assistant steps of the same turn sit in between", async () => {
@@ -3860,7 +3860,7 @@ describe("TaskView voice input", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      expect(screen.queryByTestId("aborted-resume")).toBeNull();
+      expect(screen.queryByTestId("turn-resume")).toBeNull();
     });
 
     it("hides the resume button while the session is busy again", async () => {
@@ -3869,7 +3869,7 @@ describe("TaskView voice input", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      expect(screen.queryByTestId("aborted-resume")).toBeNull();
+      expect(screen.queryByTestId("turn-resume")).toBeNull();
     });
 
     it("shows no resume button for an ordinary completed turn", async () => {
@@ -3884,7 +3884,79 @@ describe("TaskView voice input", () => {
       render(<TaskView taskId="ws1" />);
       await flushTaskLoad();
 
-      expect(screen.queryByTestId("aborted-resume")).toBeNull();
+      expect(screen.queryByTestId("turn-resume")).toBeNull();
+    });
+
+    it("offers a neutral resume notice when the agent finished silently", async () => {
+      taskStatus = "idle";
+      const stream = mountStream([
+        userPrompt,
+        {
+          info: {
+            id: "assistant-silent",
+            role: "assistant",
+            agent: "build",
+            providerID: "openai",
+            modelID: "gpt-5.6-sol",
+            time: { created: 2 },
+          },
+          parts: [{ id: "tool-1", type: "tool", tool: "bash", state: { status: "completed" } }],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      const banner = screen.getByTestId("turn-resume");
+      expect(banner.textContent).toContain("応答がありませんでした");
+      // A silent finish is not a failure, so the banner is not styled as danger.
+      expect(banner.className).not.toContain("danger");
+
+      await act(async () => {
+        fireEvent.click(
+          within(banner).getByRole("button", { name: "無言終了したターンを再開" }),
+        );
+      });
+
+      expect(stream.sendPrompt).toHaveBeenCalledWith("テストを直して", {
+        agent: "build",
+        model: { providerID: "openai", modelID: "gpt-5.6-sol" },
+        sessionId: "sess1",
+      });
+    });
+
+    it("waits for a running tool instead of calling the turn silent", async () => {
+      taskStatus = "idle";
+      mountStream([
+        userPrompt,
+        {
+          info: { id: "assistant-1", role: "assistant", time: { created: 2 } },
+          parts: [{ id: "tool-1", type: "tool", tool: "bash", state: { status: "running" } }],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByTestId("turn-resume")).toBeNull();
+    });
+
+    it("leaves a non-abort error alone — no resume button on its banner", async () => {
+      taskStatus = "idle";
+      mountStream([
+        userPrompt,
+        {
+          info: {
+            id: "assistant-1",
+            role: "assistant",
+            error: { name: "APIError", data: { message: "rate limited" } },
+            time: { created: 2 },
+          },
+          parts: [],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      expect(screen.queryByTestId("turn-resume")).toBeNull();
     });
   });
 });

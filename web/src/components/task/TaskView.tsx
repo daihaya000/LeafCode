@@ -48,8 +48,8 @@ import { SubagentPermissionSelect } from "@/components/SubagentPermissionSelect"
 import { StatusBadge } from "@/components/StatusBadge";
 import { notifyTasksChanged } from "@/lib/events";
 import {
-  findAbortedResumeTarget,
-  type AbortedResumeTarget,
+  findResumableTurn,
+  type ResumableTurn,
 } from "@/lib/aborted-resume";
 import { setActiveSessionAttention } from "@/lib/active-session-attention";
 import {
@@ -476,28 +476,43 @@ function saveSideWidth(n: number) {
 }
 
 /**
- * A turn-level error banner (e.g. the `Aborted` box). `action` is pinned to the
- * right edge of the same row so recovery controls sit inside the box that
- * explains why they are needed.
+ * A turn-level notice banner (the `Aborted` box, or "no reply" for a silent
+ * finish). `action` is pinned to the right edge of the same row so recovery
+ * controls sit inside the box that explains why they are needed.
  */
-function MessageErrorBanner({
+function TurnNoticeBanner({
   message,
   action,
   actionError,
   testId,
+  tone = "danger",
 }: {
   message: string;
   action?: React.ReactNode;
   actionError?: string | null;
   testId?: string;
+  /** A silent finish is not a failure, so it stays neutral. */
+  tone?: "danger" | "neutral";
 }) {
   return (
     <div
       data-testid={testId}
-      className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2"
+      className={cx(
+        "rounded-lg border px-3 py-2",
+        tone === "danger"
+          ? "border-danger/30 bg-danger-bg"
+          : "border-border bg-surface-2",
+      )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 break-all text-xs text-danger">{message}</p>
+        <p
+          className={cx(
+            "min-w-0 break-all text-xs",
+            tone === "danger" ? "text-danger" : "text-muted",
+          )}
+        >
+          {message}
+        </p>
         {action}
       </div>
       {actionError && (
@@ -1940,9 +1955,9 @@ export function TaskView({ taskId }: { taskId: string }) {
     stream.permissions.length === 0 &&
     stream.questions.length === 0;
   const [sending, setSending] = useState(false);
-  /** POST in flight for the manual "再開" of an aborted turn. */
-  const [resumingAbort, setResumingAbort] = useState(false);
-  const [resumeAbortError, setResumeAbortError] = useState<string | null>(null);
+  /** POST in flight for the manual "再開" of an interrupted/silent turn. */
+  const [resumingTurn, setResumingTurn] = useState(false);
+  const [resumeTurnError, setResumeTurnError] = useState<string | null>(null);
   /** Scope that owns the in-flight send — other sessions must stay editable. */
   const [sendingScopeKey, setSendingScopeKey] = useState<string | null>(null);
   const sendingScopeRef = useRef<string | null>(null);
@@ -1954,8 +1969,8 @@ export function TaskView({ taskId }: { taskId: string }) {
     autoCompactInFlightRef.current = false;
     autoCompactCooldownRef.current = 0;
     // 再開の失敗表示は中断したセッション固有なので、切り替え時に持ち越さない。
-    setResumingAbort(false);
-    setResumeAbortError(null);
+    setResumingTurn(false);
+    setResumeTurnError(null);
   }, [task?.sessionId]);
   const composerLocked =
     (sending && sendingScopeKey === composerScopeKey) || goalLoopStarting;
@@ -2727,18 +2742,18 @@ export function TaskView({ taskId }: { taskId: string }) {
   }, [working, stream, touchActivity, refreshSessionTitle]);
 
   /**
-   * 中断（`MessageAbortedError`）されたターンを、同じプロンプトの再送で再開する。
-   * agent とモデルは中断されたターン自身のものを引き継ぐので、Auto 解決や
-   * コンポーザーの選択状態には依存しない。
+   * 中断（`MessageAbortedError`）または無言終了したターンを、同じプロンプトの
+   * 再送で再開する。agent とモデルはそのターン自身のものを引き継ぐので、Auto
+   * 解決やコンポーザーの選択状態には依存しない。
    */
-  const resumeAbortedTurn = useCallback(
-    async (target: AbortedResumeTarget) => {
-      if (working || resumingAbort) return;
+  const resumeTurn = useCallback(
+    async (target: ResumableTurn) => {
+      if (working || resumingTurn) return;
       const sessionId = taskRef.current?.sessionId;
       const activityTaskId = taskRef.current?.id;
       if (!sessionId || !activityTaskId) return;
-      setResumeAbortError(null);
-      setResumingAbort(true);
+      setResumeTurnError(null);
+      setResumingTurn(true);
       stickRef.current = true;
       try {
         await touchActivity(sessionId, activityTaskId);
@@ -2750,15 +2765,15 @@ export function TaskView({ taskId }: { taskId: string }) {
           sessionId,
         });
       } catch (err) {
-        setResumeAbortError(
+        setResumeTurnError(
           err instanceof Error ? err.message : "再開に失敗しました",
         );
       } finally {
-        setResumingAbort(false);
+        setResumingTurn(false);
         notifyTasksChanged();
       }
     },
-    [working, resumingAbort, stream, touchActivity, intelligence],
+    [working, resumingTurn, stream, touchActivity, intelligence],
   );
 
   const intelligenceVariants = useMemo(() => {
@@ -3497,42 +3512,61 @@ export function TaskView({ taskId }: { taskId: string }) {
     [stream.visibleMessages],
   );
   /**
-   * 末尾が中断ターンのときだけ再開情報を持つ。`timeline` ではなく
-   * `visibleMessages` から求めるのは、出力前に中断された（描画対象パートが無い）
-   * assistant メッセージでも再開できるようにするため。
+   * 現在のターンが中断／無言終了で終わっているときだけ再開情報を持つ。`timeline`
+   * ではなく `visibleMessages` から求めるのは、描画対象パートを持たない
+   * assistant メッセージ（出力前の中断、完全な無言終了）でも再開できるように
+   * するため。
    */
-  const abortedResume = useMemo(
-    () => findAbortedResumeTarget(stream.visibleMessages),
+  const resumeTarget = useMemo(
+    () => findResumableTurn(stream.visibleMessages),
     [stream.visibleMessages],
   );
-  /** Goal Loop 稼働中の再開は GoalLoopPanel が担うので、こちらは出さない。 */
-  const showAbortedResume =
-    !!abortedResume && !!task?.sessionId && !working && !goalLoopLive;
   /**
-   * 中断メッセージが parts を持たない（送信直後の停止など）と `timeline` から
-   * 除外され、Aborted 枠そのものが描画されない。その場合だけ会話末尾に同じ枠を
-   * 補って再開ボタンの置き場所を確保する。
+   * `findResumableTurn` は idle 前提の判定なので `working` を必須にする。Goal Loop
+   * 稼働中の再開は GoalLoopPanel が担うので、こちらは出さない。
    */
-  const abortedResumeInTimeline =
-    !!abortedResume && timeline.some((m) => m.info.id === abortedResume.messageId);
-  const abortedResumeErrorText = abortedResume
-    ? stream.visibleMessages.find((m) => m.info.id === abortedResume.messageId)
-        ?.info.error?.data?.message ?? "Aborted"
+  const showResume =
+    !!resumeTarget &&
+    !!task?.sessionId &&
+    stream.loaded &&
+    !working &&
+    !goalLoopLive;
+  const resumeErrorText = resumeTarget
+    ? stream.visibleMessages.find((m) => m.info.id === resumeTarget.messageId)
+        ?.info.error?.data?.message ?? ""
     : "";
-  const abortedResumeAction =
-    showAbortedResume && abortedResume ? (
+  /**
+   * 中断は既存の Aborted 枠へ差し込む。無言終了には枠が無く、中断でも parts を
+   * 持たないメッセージは `timeline` から除外されて枠が描画されないため、その場合
+   * だけ会話末尾に枠を補って再開ボタンの置き場所を作る。
+   */
+  const resumeInsideExistingBanner =
+    !!resumeTarget &&
+    resumeTarget.reason === "aborted" &&
+    !!resumeErrorText &&
+    timeline.some((m) => m.info.id === resumeTarget.messageId);
+  const resumeBannerText =
+    resumeTarget?.reason === "silent"
+      ? "応答がありませんでした"
+      : resumeErrorText || "Aborted";
+  const resumeAction =
+    showResume && resumeTarget ? (
       <Button
         variant="secondary"
         size="sm"
         className="shrink-0"
-        aria-label="中断したターンを再開"
-        title="中断されたプロンプトを同じ内容で再送します"
-        busy={resumingAbort}
-        disabled={resumingAbort}
-        onClick={() => void resumeAbortedTurn(abortedResume)}
+        aria-label={
+          resumeTarget.reason === "silent"
+            ? "無言終了したターンを再開"
+            : "中断したターンを再開"
+        }
+        title="直前のプロンプトを同じ内容で再送します"
+        busy={resumingTurn}
+        disabled={resumingTurn}
+        onClick={() => void resumeTurn(resumeTarget)}
       >
-        {!resumingAbort && <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />}
-        {resumingAbort ? "再開中…" : "再開"}
+        {!resumingTurn && <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />}
+        {resumingTurn ? "再開中…" : "再開"}
       </Button>
     ) : null;
   const currentGoalProgress = goalLoop?.progress.at(-1);
@@ -4336,25 +4370,26 @@ export function TaskView({ taskId }: { taskId: string }) {
                       </div>
                     )}
                     {m.info.error?.data?.message &&
-                      (showAbortedResume && abortedResume?.messageId === m.info.id ? (
-                        <MessageErrorBanner
-                          testId="aborted-resume"
+                      (showResume && resumeTarget?.messageId === m.info.id ? (
+                        <TurnNoticeBanner
+                          testId="turn-resume"
                           message={m.info.error.data.message}
-                          action={abortedResumeAction}
-                          actionError={resumeAbortError}
+                          action={resumeAction}
+                          actionError={resumeTurnError}
                         />
                       ) : (
-                        <MessageErrorBanner message={m.info.error.data.message} />
+                        <TurnNoticeBanner message={m.info.error.data.message} />
                       ))}
                   </div>
                 );
                 })}
-                {showAbortedResume && !abortedResumeInTimeline && (
-                  <MessageErrorBanner
-                    testId="aborted-resume"
-                    message={abortedResumeErrorText}
-                    action={abortedResumeAction}
-                    actionError={resumeAbortError}
+                {showResume && !resumeInsideExistingBanner && (
+                  <TurnNoticeBanner
+                    testId="turn-resume"
+                    message={resumeBannerText}
+                    action={resumeAction}
+                    actionError={resumeTurnError}
+                    tone={resumeTarget?.reason === "silent" ? "neutral" : "danger"}
                   />
                 )}
                 {stream.permissions

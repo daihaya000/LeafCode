@@ -36,6 +36,18 @@
 - 中断メッセージは **parts が空**のケースが多い（送信直後の停止など）。`timeline` から算出していたら検出できないため、`visibleMessages` 基準かつボタンをメッセージ配列の外（末尾直後）に描画する設計が必要だった。
 - 末尾に「parts も error も無い assistant メッセージ」が残ることがあるため、中断判定時はこれを読み飛ばす。中身のある assistant が後続する場合は従来どおり非表示。
 
+## 無言終了への拡張（ユーザー指示）
+
+エージェントが本文を返さずターンを終えた場合（無言終了）も再開対象にした。
+
+- `findAbortedResumeTarget()` → `findResumableTurn()` に改名し、`reason: "aborted" | "silent"` を返すようにした。型も `AbortedResumeTarget` → `ResumableTurn`。
+- 判定は**ターン単位**（直近 user プロンプト以降の assistant 群）。
+  - `aborted`: ターン内に `MessageAbortedError` があり、その後に本文が出ていない。
+  - `silent`: ターン内に本文（非空 text パート）・structured output・error のいずれも無く、走行中/保留中の tool も無い。基準は `hang-watchdog.ts` の `hasAssistantResponse()` に合わせた。
+- 除外条件: 非 abort の error（`APIError` 等）はそのエラー自体を見せるべきなので再開を出さない。tool が `running`/`pending` の間はまだ進行中扱い。プロンプト以降に assistant が 1 通も無い場合は送信直後と区別できないので出さない。
+- 判定は idle 前提なので UI 側で `!working` と `stream.loaded` を必須にしている。
+- 表示: 中断は赤い Aborted 枠へ差し込み、無言終了は「応答がありませんでした」の**中立トーン**枠（`TurnNoticeBanner` の `tone="neutral"`）。aria-label も「中断したターンを再開」/「無言終了したターンを再開」で分ける。
+
 ## 配置（ユーザー指示による変更）
 
 - 「再開」ボタンは Aborted 枠の**内側・右寄せ**に置く。`MessageErrorBanner`（TaskView.tsx のモジュールスコープ）でエラー文＋アクションを `justify-between` の1行に並べ、失敗表示はその下に出す。
@@ -43,10 +55,10 @@
 
 ## 検証
 
-- `npx vitest run`: 270ファイル / 3244成功 / 1スキップ
+- `npx vitest run`: 270ファイル / 3256成功 / 1スキップ
 - `npx tsc --noEmit`: 成功
 - 変更/追加4ファイルのESLint: 成功
-- 追加テスト: `aborted-resume.test.ts` 18件、`TaskView.test.tsx` の「中断ターンの再開」7件（同一プロンプト+agent/model再送、ターン内に assistant ステップが挟まる場合、parts が無い中断、失敗表示、会話が先に進んだ場合の非表示、busy中の非表示、通常完了ターンでの非表示）
+- 追加テスト: `aborted-resume.test.ts` 27件、`TaskView.test.tsx` の「中断・無言終了ターンの再開」10件（同一プロンプト+agent/model再送、枠内右寄せ配置、ターン内に assistant ステップが挟まる場合、parts が無い中断、無言終了の中立枠と再送、走行中toolでの非表示、非abortエラーでの非表示、失敗表示、会話が先に進んだ場合の非表示、busy中の非表示、通常完了ターンでの非表示）
 
 ## 注意
 
