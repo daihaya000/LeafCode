@@ -7,6 +7,37 @@ export type TokenPrice = {
   output: number;
 };
 
+/**
+ * Resolve a configured price for a provider/model pair.
+ * Exact model IDs win; legacy/base entries also cover tagged IDs such as
+ * `gpt-oss` -> `gpt-oss:120b`.
+ */
+export function lookupModelPricing(
+  pricing: Readonly<Record<string, TokenPrice>>,
+  providerID: string | undefined,
+  modelID: string | undefined,
+): TokenPrice | null {
+  if (!providerID || !modelID) return null;
+  const providerPrefix = `${providerID}::`;
+  const exact = pricing[`${providerPrefix}${modelID}`];
+  if (exact) return exact;
+
+  let best: TokenPrice | null = null;
+  let bestModelLength = -1;
+  for (const [key, price] of Object.entries(pricing)) {
+    if (!key.startsWith(providerPrefix)) continue;
+    const configuredModelID = key.slice(providerPrefix.length);
+    if (
+      configuredModelID.length > bestModelLength &&
+      modelID.startsWith(`${configuredModelID}:`)
+    ) {
+      best = price;
+      bestModelLength = configuredModelID.length;
+    }
+  }
+  return best;
+}
+
 // USD per 1M tokens. Source: https://platform.openai.com/docs/pricing
 const STANDARD: Record<string, TokenPrice> = {
   "gpt-5.6-sol": { input: 5, cachedInput: 0.5, cacheWrite: 6.25, output: 30 },

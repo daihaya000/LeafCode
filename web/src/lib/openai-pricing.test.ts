@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateOpenAIApiCost } from "./openai-pricing";
+import { estimateOpenAIApiCost, lookupModelPricing } from "./openai-pricing";
 
 describe("estimateOpenAIApiCost", () => {
   it("prices uncached, cached, cache-write, and reasoning tokens separately", () => {
@@ -96,5 +96,23 @@ describe("estimateOpenAIApiCost", () => {
         null,
       ),
     ).toBeNull();
+  });
+});
+
+describe("lookupModelPricing", () => {
+  it("matches tagged model IDs while preferring exact and longer base IDs", () => {
+    const pricing = {
+      "ollama-cloud::gpt-oss": { input: 1, output: 2 },
+      "ollama-cloud::gpt-oss:120b": { input: 3, output: 4 },
+    };
+
+    expect(lookupModelPricing(pricing, "ollama-cloud", "gpt-oss:120b")).toEqual({
+      input: 3,
+      output: 4,
+    });
+    expect(lookupModelPricing(pricing, "ollama-cloud", "gpt-oss:20b")).toEqual({
+      input: 1,
+      output: 2,
+    });
   });
 });

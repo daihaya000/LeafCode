@@ -76,7 +76,7 @@ describe("rankModelUsage", () => {
 
   it("uses configured model pricing when OpenCode reports no cost", () => {
     const result = rankModelUsage(
-      [{ sessionId: "ses-1", messages: [message("paid", "model", 100, 0)] }],
+      [{ sessionId: "ses-1", messages: [message("paid", "model:variant", 100, 0)] }],
       { "paid::model": { input: 0, output: 10 } },
     );
 

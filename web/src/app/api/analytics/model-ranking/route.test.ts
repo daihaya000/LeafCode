@@ -26,7 +26,7 @@ const assistantMessage = {
     id: "msg-1",
     role: "assistant" as const,
     providerID: "paid",
-    modelID: "model",
+    modelID: "model:variant",
     cost: 0,
     tokens: { input: 0, output: 100, reasoning: 0 },
   },

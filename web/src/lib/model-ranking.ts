@@ -1,4 +1,8 @@
-import { estimateOpenAIApiCost, type TokenPrice } from "./openai-pricing";
+import {
+  estimateOpenAIApiCost,
+  lookupModelPricing,
+  type TokenPrice,
+} from "./openai-pricing";
 import type { MessageWithParts } from "./types";
 
 export type ModelRankingEntry = {
@@ -52,7 +56,10 @@ export function rankModelUsage(
           : null;
       const estimatedCost =
         reportedCost === null
-          ? estimateOpenAIApiCost(info, modelPricing[key])
+          ? estimateOpenAIApiCost(
+              info,
+              lookupModelPricing(modelPricing, info.providerID, info.modelID),
+            )
           : null;
       current.cost += reportedCost ?? estimatedCost ?? 0;
       usage.set(key, current);

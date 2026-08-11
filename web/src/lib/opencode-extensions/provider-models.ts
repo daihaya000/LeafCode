@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ocServer } from "../oc-server";
 import type { ProviderModelsDto } from "../extensions";
+import { lookupModelPricing } from "../openai-pricing";
 import { dataDir, ensureDataDir } from "../paths";
 import {
   formatModelLabel,
@@ -295,7 +296,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
       id: modelID,
       name: formatModelLabel(model.name, modelID),
       enabled: providerEnabled && !disabled[`${id}::${modelID}`],
-      pricing: state.modelPricing[`${id}::${modelID}`],
+      pricing: lookupModelPricing(state.modelPricing, id, modelID) ?? undefined,
       capabilities: model.capabilities
         ? {
             attachment: model.capabilities.attachment,
@@ -320,7 +321,7 @@ export async function listProviderModels(): Promise<ProviderModelsDto[]> {
         id: modelID,
         name: opt.label,
         enabled: providerEnabled && !disabled[`${id}::${modelID}`],
-        pricing: state.modelPricing[`${id}::${modelID}`],
+        pricing: lookupModelPricing(state.modelPricing, id, modelID) ?? undefined,
       };
     });
 

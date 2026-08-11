@@ -122,6 +122,33 @@ describe("listProviderModels", () => {
     expect(openai.models[0].enabled).toBe(true);
   });
 
+  it("applies a base model price to tagged model IDs", async () => {
+    h.ocServer.mockResolvedValue({
+      all: [
+        {
+          id: "ollama-cloud",
+          name: "Ollama Cloud",
+          models: { "gpt-oss:120b": { name: "GPT-OSS 120B" } },
+        },
+      ],
+      connected: ["ollama-cloud"],
+      default: {},
+    });
+    fs.writeFileSync(
+      statePath(),
+      JSON.stringify({
+        disabled: {},
+        providerOrder: [],
+        modelOrder: {},
+        providerIcons: {},
+        modelPricing: { "ollama-cloud::gpt-oss": { input: 1, output: 2 } },
+      }),
+    );
+
+    const providers = await listProviderModels();
+    expect(providers[0].models[0].pricing).toEqual({ input: 1, output: 2 });
+  });
+
   it("forwards engine capabilities (attachment/input.image) onto each model", async () => {
     h.ocServer.mockResolvedValue({
       all: [

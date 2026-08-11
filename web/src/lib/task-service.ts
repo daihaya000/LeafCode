@@ -12,7 +12,7 @@ import {
   sessionMessagePath,
   sessionPath,
 } from "./opencode-paths";
-import { estimateOpenAIApiCost } from "./openai-pricing";
+import { estimateOpenAIApiCost, lookupModelPricing } from "./openai-pricing";
 import { readProviderModelState } from "./provider-model-state";
 import { restoreAllKnownProjects } from "./project-session-sync";
 import { deriveTaskStatus } from "./task-status";
@@ -61,9 +61,11 @@ function estimateSessionCost(session: SessionUsage): number | null {
   if (!session.tokens || !session.model?.providerID || !session.model.id) {
     return null;
   }
-  const manual = readProviderModelState().modelPricing[
-    `${session.model.providerID}::${session.model.id}`
-  ];
+  const manual = lookupModelPricing(
+    readProviderModelState().modelPricing,
+    session.model.providerID,
+    session.model.id,
+  );
   return estimateOpenAIApiCost(
     {
       providerID: session.model.providerID,
@@ -110,9 +112,11 @@ function exactMessageCost(messages: MessageWithParts[]): number | null {
       observed = true;
       continue;
     }
-    const manual = message.info.providerID && message.info.modelID
-      ? pricing[`${message.info.providerID}::${message.info.modelID}`]
-      : undefined;
+    const manual = lookupModelPricing(
+      pricing,
+      message.info.providerID,
+      message.info.modelID,
+    );
     const estimated = estimateOpenAIApiCost(message.info, manual);
     if (estimated !== null) {
       total += estimated;
