@@ -246,4 +246,84 @@ describe("useSessionStream stuck-busy recovery", () => {
     await flush();
     expect(result.current.aborting).toBe(false);
   });
+
+  it("re-locks busy from REST when abort fails while the engine is still running", async () => {
+    const { useSessionStream } = await import("./useSessionStream");
+    statusMap = { [SESSION]: { type: "busy" } };
+    ocJson.mockImplementation(async (path: string) => {
+      if (path === `/session/${SESSION}/abort`) {
+        throw new Error("abort failed");
+      }
+      if (path === "/session/status") return statusMap;
+      if (path === `/session/${SESSION}/message`) return [];
+      if (path === `/session/${SESSION}/todo`) return [];
+      if (path === `/session/${SESSION}`) return { revert: null };
+      if (path === "/permission" || path === "/question") return [];
+      return {};
+    });
+
+    const { result } = renderHook(() => useSessionStream(DIRECTORY, SESSION));
+    await flush();
+    const es = FakeEventSource.instances[0]!;
+    await act(async () => {
+      es.onopen?.();
+      es.onmessage?.({
+        data: JSON.stringify({
+          type: "session.status",
+          properties: { sessionID: SESSION, status: { type: "busy" } },
+        }),
+      });
+    });
+    await flush();
+    expect(result.current.status?.type).toBe("busy");
+    expect(result.current.connection).toBe("live");
+
+    await act(async () => {
+      await expect(result.current.abort()).rejects.toThrow("abort failed");
+    });
+    await flush();
+
+    // Optimistic idle must not stick: REST still reports busy after failed abort.
+    expect(result.current.status?.type).toBe("busy");
+    expect(result.current.aborting).toBe(false);
+  });
+
+  it("does not keep aborting true after switching to another session mid-abort", async () => {
+    const { useSessionStream } = await import("./useSessionStream");
+    let resolveAbort: (() => void) | undefined;
+    ocJson.mockImplementation((path: string) => {
+      if (typeof path === "string" && path.endsWith("/abort")) {
+        return new Promise<void>((resolve) => {
+          resolveAbort = resolve;
+        });
+      }
+      if (path === "/session/status") return Promise.resolve(statusMap);
+      if (typeof path === "string" && path.endsWith("/message")) return Promise.resolve([]);
+      if (typeof path === "string" && path.endsWith("/todo")) return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useSessionStream(DIRECTORY, sessionId),
+      { initialProps: { sessionId: SESSION } },
+    );
+    await flush();
+
+    await act(async () => {
+      void result.current.abort();
+      await Promise.resolve();
+    });
+    expect(result.current.aborting).toBe(true);
+
+    await act(async () => {
+      rerender({ sessionId: "sess-2" });
+    });
+    await flush();
+    // New session must be free to stop / compose while the old abort completes.
+    expect(result.current.aborting).toBe(false);
+
+    resolveAbort?.();
+    await flush();
+    expect(result.current.aborting).toBe(false);
+  });
 });

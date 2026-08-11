@@ -766,7 +766,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const statusRef = useRef(state.status);
   /** After sendPrompt/sendCommand until busy/idle SSE — suppress message init races. */
   const pendingMutationRef = useRef(false);
-  const abortingRef = useRef(false);
+  /** Scopes with an in-flight abort POST — concurrent sessions can stop independently. */
+  const abortingScopesRef = useRef(new Set<string>());
   const [aborting, setAborting] = useState(false);
   const connectionRef = useRef<ConnectionState>(state.connection);
   /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
@@ -822,6 +823,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     // reconcile.
     lastResyncMsRef.current = 0;
     clearMutationTimers();
+    // Previous session's abort POST may still be in flight; only the viewed
+    // session should show "stopping" / block its own stop button.
+    setAborting(abortingScopesRef.current.has(scopeKey));
   }, [scopeKey, clearMutationTimers]);
 
   // A session can keep its SSE connection alive while the active turn itself is
@@ -2026,35 +2030,46 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     async (reason?: string) => {
       const sid = sessionRef.current;
       if (!directory || !sid) return;
-      if (abortingRef.current) return;
-      abortingRef.current = true;
-      setAborting(true);
+      const myScope = `${directory}\u0000${sid}`;
+      if (abortingScopesRef.current.has(myScope)) return;
+      abortingScopesRef.current.add(myScope);
+      if (scopeRef.current === myScope) setAborting(true);
       // Unlock immediately so a hung/failed abort POST cannot freeze the composer.
       pendingMutationRef.current = false;
-      statusRef.current = { type: "idle" };
-      dispatch({ kind: "status", status: { type: "idle" } });
-      clearMutationTimers();
-      if (reason) {
-        dispatch({ kind: "sessionError", message: reason });
+      if (scopeRef.current === myScope) {
+        statusRef.current = { type: "idle" };
+        dispatch({ kind: "status", status: { type: "idle" } });
+        clearMutationTimers();
+        if (reason) {
+          dispatch({ kind: "sessionError", message: reason });
+        }
+        // If abort fails and the session is still busy, REST must re-lock.
+        // Keep this true until after the post-abort resync (not cleared before it).
+        preferRestStatusRef.current = true;
       }
-      // If abort fails and the session is still busy, REST must re-lock.
-      preferRestStatusRef.current = true;
       try {
         await ocJson(sessionAbortPath(sid), directory, {
           method: "POST",
           timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         });
       } finally {
-        // Reset preferRestStatus immediately after abort completes so that
-        // subsequent sends are not affected by the stale idle guard (R17).
-        preferRestStatusRef.current = false;
         try {
-          if (sessionRef.current === sid) await resync();
+          if (sessionRef.current === sid) {
+            // preferRest remains true for this resync so optimistic idle can be
+            // corrected when the engine is still busy (staleBusy would otherwise
+            // suppress the REST busy snapshot).
+            await resync();
+          }
         } catch {
           /* non-fatal */
         } finally {
-          abortingRef.current = false;
-          setAborting(false);
+          if (sessionRef.current === sid) {
+            // Clear after the re-lock resync so subsequent sends are not affected
+            // by the stale idle guard (R17).
+            preferRestStatusRef.current = false;
+          }
+          abortingScopesRef.current.delete(myScope);
+          setAborting(abortingScopesRef.current.has(scopeRef.current));
         }
       }
     },
