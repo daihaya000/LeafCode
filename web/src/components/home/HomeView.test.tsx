@@ -1195,6 +1195,40 @@ describe("HomeView last-used model", () => {
     });
   });
 
+  it("shows the configured agent model and effort before the provider catalogue loads", async () => {
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/agent")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [
+            {
+              name: "build",
+              model: {
+                providerID: "openai",
+                modelID: "gpt-5",
+                variant: "high",
+              },
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("モデル")).toBeTruthy();
+      expect(screen.getByLabelText("インテリジェンス")).toBeTruthy();
+    });
+    expect((screen.getByLabelText("モデル") as HTMLButtonElement).value).toBe(
+      "openai::gpt-5",
+    );
+    expect((screen.getByLabelText("インテリジェンス") as HTMLButtonElement).value).toBe(
+      "",
+    );
+  });
+
   it("applies the server default after provider options win the hydration race", async () => {
     let releaseServer!: (value: string | null) => void;
     readDefaultModelFromServer.mockImplementation(

@@ -111,7 +111,7 @@ type AgentResponse = {
   name: string;
   mode?: string;
   hidden?: boolean;
-  model?: { providerID: string; modelID: string };
+  model?: { providerID: string; modelID: string; variant?: string };
 }[];
 
 type Attachment = ComposerAttachment;
@@ -184,7 +184,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [qwenNativeAvailable, setQwenNativeAvailable] = useState(false);
   const [agents, setAgents] = useState<string[]>([]);
   const [agentModels, setAgentModels] = useState<
-    Record<string, { providerID: string; modelID: string }>
+    Record<string, { providerID: string; modelID: string; variant?: string }>
   >({});
   const [model, setModel] = useState("");
   const [serverDefaultModel, setServerDefaultModel] = useState<string | null>(null);
@@ -581,7 +581,10 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
             .filter((a) => a.mode !== "subagent" && !a.hidden)
             .map((a) => a.name);
           setAgents(names);
-          const models: Record<string, { providerID: string; modelID: string }> = {};
+          const models: Record<
+            string,
+            { providerID: string; modelID: string; variant?: string }
+          > = {};
           for (const item of agentsData) {
             if (item.name && item.model?.providerID && item.model.modelID) {
               models[item.name] = item.model;
@@ -596,6 +599,38 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               ? "build"
               : (names[0] ?? "");
           setAgent((cur) => cur || initial);
+
+          // Keep the configured agent usable while the provider catalogue is
+          // still loading. The catalogue replaces this metadata when it
+          // arrives, but the composer should not hide both selectors on boot.
+          const fallbackModel = models[initial];
+          if (fallbackModel) {
+            const fallbackKey = `${fallbackModel.providerID}::${fallbackModel.modelID}`;
+            setModelOptions((current) => {
+              if (current.length > 0) return current;
+              return [
+                {
+                  value: fallbackKey,
+                  label: formatModelLabel(
+                    fallbackModel.modelID,
+                    fallbackModel.modelID,
+                  ),
+                  group: fallbackModel.providerID,
+                },
+              ];
+            });
+            setModel((current) => current || fallbackKey);
+            const fallbackVariant = fallbackModel.variant;
+            if (isIntelligenceVariant(fallbackVariant)) {
+              setProviderModelsMap((current) => ({
+                ...current,
+                [fallbackKey]: {
+                  name: fallbackModel.modelID,
+                  variants: { [fallbackVariant]: {} },
+                },
+              }));
+            }
+          }
         }
       } catch {
         /* non-fatal */
