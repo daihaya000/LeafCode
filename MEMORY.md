@@ -244,6 +244,32 @@ Home の `Promise.all` でこの3つが同時に走る。`/api/opencode/provider
 # 作業ログ: スキル呼び出し候補の視認性改善
 # 作業ログ: provider-models設定キャッシュとtask-serviceセッション推定の高速化
 # 作業ログ: provider-models globalThisキャッシュの再評価耐性
+# 作業ログ: client GET in-flight dedupによるHome初期化高速化
+
+## 日付
+
+2026-08-11
+
+## 根本原因
+
+HomeView、Sidebar、GlobalAttentionProvider、useAttentionQueueが初期化時に同じ `/api/tasks` を個別に `getJson` していた。`getJson` にリクエスト共有がなく、同時実行時に同じ `listTasks()` が重複していた。
+
+## 修正
+
+`web/src/lib/client.ts` の `getJson` に、URLとtimeoutをキーにしたin-flight Promise共有を追加。リクエスト完了・失敗時にMapから削除するため、stale responseを保持せず、完了後の次回GETは通常通り再取得する。
+
+## 回帰テスト・検証
+
+- `client.test.ts` に同時2回のGETがfetch 1回になり、完了後の3回目は再fetchするテストを追加。
+- client単体25テスト、HomeView/Sidebar/GlobalAttentionProvider/useAttentionQueue計134テストが合格。
+- `npx tsc --noEmit` とclient変更ファイルeslintが合格。
+- コミット: `f3036af 同時GETリクエストを共有してHome初期化を高速化`
+
+## 制約
+
+稼働中port 3000はworkspaceではなく古いproduction mirrorを実行中のため、runtimeで重複GETが1回になることは未計測。AGENTS.mdの制約によりビルド・host再起動は実施しない。
+
+---
 
 ## 日付
 
