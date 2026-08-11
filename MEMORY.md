@@ -5151,3 +5151,29 @@ TaskView ヘッダーの `累計コスト`、`累計トークン`、`累計思�
 - `npm run test -- --run src/components/task/TaskView.test.tsx`: 115 tests passed
 
 ---
+
+# 調査ログ: メモリ自動抽出の承認ゲート
+
+## 日付
+
+2026-08-11
+
+## 結論
+
+現状の自動抽出メモリは、候補を作成するところまで自動で、承認しない限り通常会話へ注入されない。したがって、人間が承認しない運用では自動メモリとして実質利用されない。
+
+## 根拠
+
+- `web/src/lib/memory-extract.ts` は抽出結果を `approved: false` で保存する。
+- `web/src/lib/memory.ts` の検索・注入は `approved = 1` の行だけを対象にする。
+- `MemorySettings` も「候補」を承認すると利用される、と表示している。
+- 自動抽出のトリガーは goal loop 完了またはアイドルであり、通常の手動抽出は画面操作が必要。
+- 例外として、MCP の `memory_add` はエージェント由来の承認済み行を直接作る。
+
+## 検証
+
+- `npm --prefix web test -- --run src/lib/memory.test.ts src/lib/memory-extract.test.ts src/components/settings/MemorySettings.test.tsx` ... 3 files / 30 tests 成功
+
+## 判断
+
+これは実装上の偶発的な不具合ではなく、`docs/specs/memory-layer.md` が定めた承認先行設計による挙動。自動承認へ変更する場合は、候補を即時利用できる代わりに、モデル出力によるメモリ汚染を人間が止める機会を失うため、設定として選べる形が望ましい。
