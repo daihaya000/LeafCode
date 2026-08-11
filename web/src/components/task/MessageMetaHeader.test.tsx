@@ -12,7 +12,7 @@ vi.mock("@addons/codexbar", () => ({
 afterEach(() => cleanup());
 
 describe("MessageMetaHeader", () => {
-  it("shows provider icon, resolved model label, time, then Japanese cost label", () => {
+  it("shows provider icon, resolved model label, time, then cost", () => {
     render(
       <MessageMetaHeader
         info={{
@@ -31,14 +31,14 @@ describe("MessageMetaHeader", () => {
       "GPT-5.6 Sol",
     );
     // Default prefs → JPY without USD suffix.
-    expect(screen.getByText("コスト ¥18.8")).toBeTruthy();
+    expect(screen.getByText("¥18.8")).toBeTruthy();
     const meta = screen.getByLabelText("応答メタデータ");
     expect(meta.textContent).toContain("14:32");
     expect(meta.textContent).not.toContain("$0.1250");
     // Cost renders after the model and time.
     const text = meta.textContent ?? "";
     expect(text.indexOf("GPT-5.6 Sol")).toBeLessThan(text.indexOf("14:32"));
-    expect(text.indexOf("14:32")).toBeLessThan(text.indexOf("コスト ¥18.8"));
+    expect(text.indexOf("14:32")).toBeLessThan(text.indexOf("¥18.8"));
   });
 
   it("falls back to modelID and hides a zero cost without stray separators", () => {
@@ -68,7 +68,7 @@ describe("MessageMetaHeader", () => {
       />,
     );
 
-    expect(screen.getByText("コスト $0.3200")).toBeTruthy();
+    expect(screen.getByText("$0.3200")).toBeTruthy();
   });
 
   it("shows the reasoning effort immediately after the model", () => {
@@ -105,12 +105,15 @@ describe("MessageMetaHeader", () => {
     );
 
     const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
-    expect(text).toContain("トークン 2.3k");
-    expect(text).not.toContain("トークン 12.3k");
-    expect(text).toContain("コスト ¥7.5");
-    expect(text).toContain("思考 1m 05s");
-    expect(text.indexOf("コスト ¥7.5")).toBeLessThan(text.indexOf("トークン 2.3k"));
-    expect(text.indexOf("トークン 2.3k")).toBeLessThan(text.indexOf("思考 1m 05s"));
+    expect(text).toContain("2.3ktok");
+    expect(text).not.toContain("12.3k");
+    expect(text).toContain("¥7.5");
+    expect(text).toContain("1m 05s");
+    expect(text).not.toContain("コスト");
+    expect(text).not.toContain("トークン");
+    expect(text).not.toContain("思考");
+    expect(text.indexOf("¥7.5")).toBeLessThan(text.indexOf("2.3ktok"));
+    expect(text.indexOf("2.3ktok")).toBeLessThan(text.indexOf("1m 05s"));
   });
 
   it("hides thinking time when only created is present", () => {

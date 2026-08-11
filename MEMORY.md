@@ -4835,3 +4835,25 @@ QwenLM/Qwen-MM-Plugins の core capability をローカル MCP として opencod
 - `npm exec eslint -- src/lib/goal-loop.ts src/lib/goal-loop.integration.test.ts` 成功。
 - `npx vitest run src/lib/goal-loop.integration.test.ts` ... 39 tests passed。
 - `npx vitest run`(web全体) ... 264 files / 3132 tests passed / 1 skipped。
+## メッセージメタデータの表示短縮
+
+### 日付
+
+2026-08-11
+
+### 修正
+
+`MessageMetaHeader` の応答メタデータから `コスト`、`トークン`、`思考` の表示ラベルを削除し、表示領域を節約した。トークン数には末尾に `tok` を付け、表示形式を `¥7.5 · 2.3ktok · 1m 05s` のように変更した。
+
+### 回帰テスト
+
+- `MessageMetaHeader.test.tsx` でラベル非表示、`tok` 付与、表示順を検証
+- `NestedAgentPanel.test.tsx` の共有メタデータ表示期待値を更新
+
+### 検証
+
+- `npm run test -- --run src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx`: 16 tests passed
+- `npm run typecheck`: 合格
+- `npm run lint -- src/components/task/MessageMetaHeader.tsx src/components/task/MessageMetaHeader.test.tsx src/components/task/NestedAgentPanel.test.tsx`: 合格
+
+---

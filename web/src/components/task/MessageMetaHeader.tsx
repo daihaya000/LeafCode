@@ -59,10 +59,10 @@ export function MessageMetaHeader({
     model ? { key: "model", text: model } : null,
     effortLabel ? { key: "effort", text: effortLabel } : null,
     time ? { key: "time", text: time } : null,
-    cost ? { key: "cost", text: `コスト ${cost}` } : null,
-    tokens > 0 ? { key: "tokens", text: `トークン ${formatTokens(tokens)}` } : null,
+    cost ? { key: "cost", text: cost } : null,
+    tokens > 0 ? { key: "tokens", text: `${formatTokens(tokens)}tok` } : null,
     thinking != null
-      ? { key: "thinking", text: `思考 ${formatElapsed(thinking)}` }
+      ? { key: "thinking", text: formatElapsed(thinking) }
       : null,
   ].filter((field): field is { key: string; text: string } => field !== null);
 

@@ -88,7 +88,7 @@ describe("NestedAgentPanel", () => {
     );
     expect(await screen.findByText("子エージェント")).toBeTruthy();
     expect(await screen.findByText("Claude Sonnet 5")).toBeTruthy();
-    expect(screen.getByText("コスト $0.0312")).toBeTruthy();
+    expect(screen.getByText("$0.0312")).toBeTruthy();
     expect(screen.queryByText("explore")).toBeNull();
     expect(screen.getByText("子エージェント")).toBeTruthy();
   });
