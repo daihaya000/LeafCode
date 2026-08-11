@@ -39,6 +39,23 @@ type SessionRow = {
   updatedAt: string;
 };
 
+type ExtractionRun = {
+  id: string;
+  sourceSessionId: string;
+  assistantMessageId: string | null;
+  trigger: "assistant-completed" | "goal-completed" | "idle" | "manual";
+  status: "running" | "completed" | "failed";
+  createdCount: number;
+  savedCount: number;
+  candidateCount: number;
+  rejectedCount: number;
+  skippedCount: number;
+  error: string | null;
+  startedAt: number;
+  completedAt: number | null;
+  readAt: number | null;
+};
+
 const KIND_LABELS: Record<MemoryDto["kind"], string> = {
   fact: "事実",
   preference: "好み",
@@ -50,6 +67,13 @@ const PROVENANCE_LABELS: Record<MemoryDto["provenance"], string> = {
   agent: "エージェント",
   "auto-extract": "自動抽出",
   "auto-extract-retrospective": "自動抽出(振り返り)",
+  manual: "手動",
+};
+
+const EXTRACTION_TRIGGER_LABELS: Record<ExtractionRun["trigger"], string> = {
+  "assistant-completed": "会話完了",
+  "goal-completed": "ゴール完了",
+  idle: "アイドル時",
   manual: "手動",
 };
 
@@ -72,6 +96,10 @@ export function MemorySettings() {
   const [writeApproval, setWriteApproval] = useState(false);
   const [writeApprovalLoaded, setWriteApprovalLoaded] = useState(false);
   const [writeApprovalBusy, setWriteApprovalBusy] = useState(false);
+  const [extractionRuns, setExtractionRuns] = useState<ExtractionRun[]>([]);
+  const [unreadExtractionCount, setUnreadExtractionCount] = useState(0);
+  const [extractionHistoryLoading, setExtractionHistoryLoading] = useState(false);
+  const [extractionHistoryBusy, setExtractionHistoryBusy] = useState(false);
 
   const candidates = memories.filter((m) => !m.approved);
   const approved = memories.filter((m) => m.approved);
@@ -119,6 +147,32 @@ export function MemorySettings() {
     [],
   );
 
+  const loadExtractionHistory = useCallback(async (workspaceId: string) => {
+    if (!workspaceId) {
+      setExtractionRuns([]);
+      setUnreadExtractionCount(0);
+      return;
+    }
+    setExtractionHistoryLoading(true);
+    try {
+      const data = await getJson<{
+        runs: ExtractionRun[];
+        unreadCount: number;
+      }>("/api/memory/extractions", {
+        workspace_id: workspaceId,
+        limit: "20",
+      });
+      setExtractionRuns(Array.isArray(data.runs) ? data.runs : []);
+      setUnreadExtractionCount(
+        typeof data.unreadCount === "number" ? data.unreadCount : 0,
+      );
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "抽出履歴を取得できません");
+    } finally {
+      setExtractionHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
     void loadWorkspaces();
@@ -138,7 +192,11 @@ export function MemorySettings() {
   const selectedWorkspaceChanged = async (workspaceId: string) => {
     setSelectedWorkspace(workspaceId);
     setSelectedSession("");
-    await Promise.all([loadSessions(workspaceId), loadMemories(workspaceId)]);
+    await Promise.all([
+      loadSessions(workspaceId),
+      loadMemories(workspaceId),
+      loadExtractionHistory(workspaceId),
+    ]);
   };
 
   useEffect(() => {
@@ -147,6 +205,14 @@ export function MemorySettings() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaces]);
+
+  useEffect(() => {
+    if (!selectedWorkspace) return;
+    const timer = window.setInterval(() => {
+      void loadExtractionHistory(selectedWorkspace);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [selectedWorkspace, loadExtractionHistory]);
 
   const hint = (message: string) => setNotice(message);
   const alert = (message: string) => setLoadError(message);
@@ -259,7 +325,16 @@ export function MemorySettings() {
     setNotice(null);
     setLoadError(null);
     try {
-      const data = await sendJson<{ result?: { created: number; skipped: number }; error?: string }>(
+      const data = await sendJson<{
+        result?: {
+          created: number;
+          saved?: number;
+          candidates?: number;
+          rejected?: number;
+          skipped: number;
+        };
+        error?: string;
+      }>(
         "POST",
         "/api/memory/extract",
         { workspaceId: selectedWorkspace, sessionId: selectedSession },
@@ -268,16 +343,40 @@ export function MemorySettings() {
       );
       if (data.error) {
         alert(data.error);
+        void loadExtractionHistory(selectedWorkspace);
       } else {
         hint(
-          `${writeApproval ? "候補抽出" : "自動保存"}完了: ${data.result?.created ?? 0}件作成 / ${data.result?.skipped ?? 0}件重複スキップ`,
+          `${writeApproval ? "候補抽出" : "自動保存"}完了: 保存 ${data.result?.saved ?? 0}件 / 候補 ${data.result?.candidates ?? 0}件 / 拒否 ${data.result?.rejected ?? 0}件 / 重複 ${data.result?.skipped ?? 0}件`,
         );
         void loadMemories(selectedWorkspace);
+        void loadExtractionHistory(selectedWorkspace);
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "抽出に失敗しました");
+      void loadExtractionHistory(selectedWorkspace);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const markExtractionHistoryRead = async () => {
+    if (!selectedWorkspace || unreadExtractionCount === 0) return;
+    setExtractionHistoryBusy(true);
+    try {
+      const data = await sendJson<{ unreadCount?: number }>(
+        "POST",
+        "/api/memory/extractions/read",
+        { workspaceId: selectedWorkspace },
+      );
+      setUnreadExtractionCount(data.unreadCount ?? 0);
+      setExtractionRuns((prev) =>
+        prev.map((run) => (run.readAt === null ? { ...run, readAt: Date.now() } : run)),
+      );
+      hint("抽出履歴を既読にしました");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "抽出履歴の既読化に失敗しました");
+    } finally {
+      setExtractionHistoryBusy(false);
     }
   };
 
@@ -286,7 +385,14 @@ export function MemorySettings() {
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-muted">メモリ</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-muted">メモリ</h2>
+          {unreadExtractionCount > 0 && (
+            <Badge tone="warning" pulse>
+              新着 {unreadExtractionCount}件
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3 text-xs leading-5 text-muted">
@@ -382,6 +488,77 @@ export function MemorySettings() {
 
         {notice && <p className="text-[11px] text-success">{notice}</p>}
         {loadError && <p className="text-[11px] text-danger">{loadError}</p>}
+      </div>
+
+      <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-medium text-text">自動抽出の履歴</h3>
+            <p className="mt-0.5 text-[11px] text-faint">
+              保存・候補化・拒否・失敗した抽出結果を確認できます。
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={extractionHistoryBusy || unreadExtractionCount === 0}
+            onClick={() => void markExtractionHistoryRead()}
+          >
+            すべて既読
+          </Button>
+        </div>
+        {extractionHistoryLoading ? (
+          <p className="text-[11px] text-faint">履歴を読み込み中…</p>
+        ) : extractionRuns.length === 0 ? (
+          <p className="text-[11px] text-faint">まだ抽出履歴はありません。</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {extractionRuns.map((run) => {
+              const sessionTitle = sessions.find(
+                (session) => session.opencodeSessionId === run.sourceSessionId,
+              )?.title;
+              const sourceLabel = sessionTitle || run.sourceSessionId.slice(0, 12);
+              const statusTone =
+                run.status === "completed"
+                  ? "success"
+                  : run.status === "failed"
+                    ? "danger"
+                    : "working";
+              const statusLabel =
+                run.status === "completed"
+                  ? `保存 ${run.savedCount} / 候補 ${run.candidateCount} / 拒否 ${run.rejectedCount}`
+                  : run.status === "failed"
+                    ? `失敗: ${run.error || "原因不明"}`
+                    : "実行中";
+              return (
+                <li
+                  key={run.id}
+                  className={cx(
+                    "rounded-lg border px-3 py-2",
+                    run.readAt === null
+                      ? "border-warning/40 bg-warning-bg/30"
+                      : "border-border bg-bg/30",
+                  )}
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={statusTone}>{statusLabel}</Badge>
+                    <Badge tone="neutral">{EXTRACTION_TRIGGER_LABELS[run.trigger]}</Badge>
+                    {run.readAt === null && <Badge tone="warning">未読</Badge>}
+                    <span className="text-[11px] text-faint">
+                      {new Date(run.startedAt).toLocaleString("ja-JP")}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-[11px] text-muted" title={run.sourceSessionId}>
+                    {sourceLabel}
+                    {run.status === "completed" && run.skippedCount > 0
+                      ? `・重複 ${run.skippedCount}件`
+                      : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       <div className="mb-4 flex items-center gap-2">

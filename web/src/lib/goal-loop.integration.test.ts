@@ -95,6 +95,7 @@ vi.mock("./db", () => ({
       .prepare("SELECT * FROM session_bindings WHERE workspace_id = ? ORDER BY updated_at DESC")
       .all(workspaceId) as unknown[],
   touchSessionActivity: () => true,
+  claimAssistantMemoryExtraction: () => null,
   getSetting: (key: string) =>
     key === "token-saving"
       ? h.tokenSavingMode

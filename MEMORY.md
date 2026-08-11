@@ -1,5 +1,30 @@
 # 作業ログ: 透過プロキシ /provider GET レスポンスキャッシュ追加
 
+# 作業ログ: 自動メモリ抽出の通知バッジと履歴
+
+## 日付
+
+2026-08-11
+
+## 実装内容
+
+- `memory_extraction_runs` テーブルとCRUDを追加し、抽出トリガー、実行状態、保存・候補・拒否・重複件数、失敗理由、既読時刻を永続化するようにした。
+- 通常会話、goal完了、idle、手動の各抽出経路からtriggerとassistant message IDを渡し、開始時に履歴を作成、成功/失敗時に更新するようにした。
+- `insertExtractedMemories()` が保存・候補・拒否件数を返すようにし、抽出監査ログにも実件数を記録するようにした。
+- `GET /api/memory/extractions` と `POST /api/memory/extractions/read` を追加した。どちらも認可ガードを通し、workspace単位で一覧・未読件数・既読化を扱う。
+- MemorySettingsに未読通知バッジ、抽出履歴、保存/候補/拒否/失敗表示、明示的な「すべて既読」、15秒間隔の履歴更新を追加した。
+- メモリ仕様書に履歴テーブル、API、UI、テスト方針を追記した。
+- 全体テストで不足していたgoal-loopのDBモックexportを補い、メモリ件数テストを明示的な承認値と後片付けで隔離した。
+
+## 検証
+
+- Web全体テスト: 269ファイル / 3218成功 / 1スキップ
+- `npm --prefix web run typecheck`: 成功
+- 変更対象のESLint: 成功
+- `git diff --check`: 成功
+
+---
+
 # タスク完了後のハングwatchdog再開誤判定を修正
 
 ## 日付

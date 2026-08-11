@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
   const result = await runMemoryExtraction({
     workspaceId: body.workspaceId,
     sessionId: body.sessionId,
+    trigger: "manual",
   });
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 502 });

@@ -3,12 +3,20 @@
  *
  * Reads the tail of a source session's transcript, runs a lightweight model in a
  * throwaway OpenCode session, parses the fenced-JSON result, and inserts
- * `approved=0` candidates. Pure helpers are unit-tested; the network driver is
+ * approved memories or `approved=0` candidates, depending on the shared write
+ * gate. Pure helpers are unit-tested; the network driver is
  * intentionally a thin wrapper over the existing `ocServer` path used by the
  * goal loop (POST /session + prompt_async + transcript poll + DELETE).
  */
 
-import { getWorkspace, type WorkspaceRow } from "./db";
+import {
+  completeMemoryExtractionRun,
+  createMemoryExtractionRun,
+  failMemoryExtractionRun,
+  getWorkspace,
+  type MemoryExtractionTrigger,
+  type WorkspaceRow,
+} from "./db";
 import { insertExtractedMemories, logMemoryAudit, type MemoryDto } from "./memory";
 import { chooseAutoModel, type AutoDecision } from "./auto-model";
 import { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
@@ -29,6 +37,9 @@ export type ExtractionResult = {
   created: number;
   skipped: number;
   errors: string[];
+  saved?: number;
+  candidates?: number;
+  rejected?: number;
   /** Set only when the whole run failed before inserting anything. */
   error?: string;
 };
@@ -169,18 +180,31 @@ export async function resolveLightweightModel(
 }
 
 /**
- * Run one extraction for `sourceSessionId` inside `workspaceId`. Inserts
- * approved=0 candidates. Never touches the source transcript (it runs in a
- * throwaway session).
+ * Run one extraction for `sourceSessionId` inside `workspaceId`. The result is
+ * recorded in the extraction history before any network work begins, so failed
+ * and rejected runs are visible in the memory UI as well as successful runs.
+ * Never touches the source transcript (it runs in a throwaway session).
  */
 export async function runMemoryExtraction(input: {
   workspaceId: string;
   sessionId: string;
+  assistantMessageId?: string;
+  trigger?: MemoryExtractionTrigger;
 }): Promise<ExtractionResult> {
   const workspace = getWorkspace(input.workspaceId) as WorkspaceRow | undefined;
   if (!workspace) {
     return { created: 0, skipped: 0, errors: [], error: "workspace not found" };
   }
+  const historyRunId = createMemoryExtractionRun({
+    workspaceId: input.workspaceId,
+    sourceSessionId: input.sessionId,
+    assistantMessageId: input.assistantMessageId,
+    trigger: input.trigger ?? "manual",
+  });
+  const failed = (error: string): ExtractionResult => {
+    failMemoryExtractionRun(historyRunId, error);
+    return { created: 0, skipped: 0, errors: [], error };
+  };
   const directory = workspace.absolute_path;
 
   let messages: MessageWithParts[];
@@ -191,19 +215,21 @@ export async function runMemoryExtraction(input: {
       { timeoutMs: 10_000 },
     );
   } catch {
-    return {
-      created: 0,
-      skipped: 0,
-      errors: [],
-      error: "source session transcript is not readable",
-    };
+    return failed("source session transcript is not readable");
   }
   const transcript = extractTranscriptTail(messages);
   if (transcript.trim().length === 0) {
-    return { created: 0, skipped: 0, errors: [], error: "source session is empty" };
+    return failed("source session is empty");
   }
 
-  const model = await resolveLightweightModel(directory);
+  let model: Pick<AutoDecision, "providerID" | "modelID" | "variant"> | null;
+  try {
+    model = await resolveLightweightModel(directory);
+  } catch (err) {
+    return failed(
+      `抽出モデルを解決できませんでした: ${err instanceof Error ? err.message : "原因不明のエラー"}`,
+    );
+  }
 
   let sessionID: string | null = null;
   try {
@@ -215,29 +241,21 @@ export async function runMemoryExtraction(input: {
     sessionID = created?.id ?? null;
     if (!sessionID) throw new OcError("session create returned no id", 500);
   } catch (err) {
-    return {
-      created: 0,
-      skipped: 0,
-      errors: [],
-      error: `抽出用セッションを作成できませんでした: ${err instanceof Error ? err.message : "原因不明のエラー"}`,
-    };
+    return failed(
+      `抽出用セッションを作成できませんでした: ${err instanceof Error ? err.message : "原因不明のエラー"}`,
+    );
   }
 
   try {
-  try {
-    await ocServer(directory, sessionPromptAsyncPath(sessionID), {
-      method: "POST",
-      body: { parts: [{ type: "text", text: buildExtractionPrompt(transcript) }] },
-      timeoutMs: 10_000,
-    });
-  } catch {
-    return {
-      created: 0,
-      skipped: 0,
-      errors: [],
-      error: "extraction prompt could not be sent",
-    };
-  }
+    try {
+      await ocServer(directory, sessionPromptAsyncPath(sessionID), {
+        method: "POST",
+        body: { parts: [{ type: "text", text: buildExtractionPrompt(transcript) }] },
+        timeoutMs: 10_000,
+      });
+    } catch {
+      return failed("extraction prompt could not be sent");
+    }
 
   const deadline = Date.now() + MEMORY_EXTRACT_RESULT_TIMEOUT_MS;
   let items: Array<{ kind: string; content: string }> | null = null;
@@ -264,12 +282,7 @@ export async function runMemoryExtraction(input: {
   }
 
   if (items === null) {
-    return {
-      created: 0,
-      skipped: 0,
-      errors: [],
-      error: "extraction timed out without a structured reply",
-    };
+    return failed("extraction timed out without a structured reply");
   }
 
   const writeApproval = isMemoryWriteApprovalEnabled();
@@ -280,12 +293,23 @@ export async function runMemoryExtraction(input: {
     approved: !writeApproval,
     items: items as Array<{ kind: MemoryDto["kind"]; content: string }>,
   });
+  completeMemoryExtractionRun(historyRunId, {
+    created: result.created,
+    saved: result.saved,
+    candidates: result.candidates,
+    rejected: result.rejected,
+    skipped: result.skipped,
+  });
   logMemoryAudit("extract", {
     workspaceId: input.workspaceId,
     sessionId: input.sessionId,
-    detail: `created=${result.created} skipped=${result.skipped} approved=${writeApproval ? 0 : 1}`,
+    detail: `created=${result.created} saved=${result.saved} candidates=${result.candidates} rejected=${result.rejected} skipped=${result.skipped}`,
   });
   return result;
+  } catch (err) {
+    return failed(
+      `memory extraction failed: ${err instanceof Error ? err.message : "unknown error"}`,
+    );
   } finally {
     // Extraction sessions are implementation details; never leave them in the
     // user's session list after a successful run, error, or timeout.

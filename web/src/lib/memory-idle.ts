@@ -82,6 +82,7 @@ function launchIdleExtraction(row: SessionBindingRow): boolean {
   void runMemoryExtraction({
     workspaceId: row.workspaceId,
     sessionId: row.sessionId,
+    trigger: "idle",
   })
     .then((result) => {
       if (!result.error) markIdleExtracted(row.workspaceId, row.sessionId);

@@ -16,6 +16,7 @@ import {
   releaseAssistantMemoryExtraction,
   touchSessionActivity,
   type MemoryAssistantExtractClaim,
+  type MemoryExtractionTrigger,
 } from "./db";
 import { getSetting } from "./db";
 import { runMemoryExtraction } from "./memory-extract";
@@ -122,10 +123,15 @@ function isAutoExtractEnabled(): boolean {
   }
 }
 
-function scheduleClaimedExtraction(claim: MemoryAssistantExtractClaim): void {
+function scheduleClaimedExtraction(
+  claim: MemoryAssistantExtractClaim,
+  trigger: MemoryExtractionTrigger,
+): void {
   void runMemoryExtraction({
     workspaceId: claim.workspaceId,
     sessionId: claim.sessionId,
+    assistantMessageId: claim.assistantMessageId,
+    trigger,
   })
     .then((result) => {
       if (result.error) {
@@ -151,6 +157,7 @@ export function scheduleAssistantMemoryExtraction(input: {
   workspaceId: string;
   sessionId: string;
   assistantMessageId: string;
+  trigger?: MemoryExtractionTrigger;
   allowActiveGoalLoop?: boolean;
 }): boolean {
   if (!isAutoExtractEnabled()) return false;
@@ -173,7 +180,7 @@ export function scheduleAssistantMemoryExtraction(input: {
     input.assistantMessageId,
   );
   if (!claim) return false;
-  scheduleClaimedExtraction(claim);
+  scheduleClaimedExtraction(claim, input.trigger ?? "assistant-completed");
   return true;
 }
 

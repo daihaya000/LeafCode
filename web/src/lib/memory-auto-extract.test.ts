@@ -125,6 +125,8 @@ describe("handleMemoryGlobalEvent", () => {
     expect(runMemoryExtraction).toHaveBeenCalledWith({
       workspaceId: "ws-auto",
       sessionId: "ses-auto",
+      assistantMessageId: "msg-dedupe",
+      trigger: "assistant-completed",
     });
     await vi.waitFor(() => {
       expect(

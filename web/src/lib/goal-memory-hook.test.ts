@@ -59,6 +59,7 @@ describe("goal-memory-hook", () => {
     expect(vi.mocked(runMemoryExtraction)).toHaveBeenCalledWith({
       workspaceId: "ws-1",
       sessionId: "ses-1",
+      trigger: "goal-completed",
     });
   });
 

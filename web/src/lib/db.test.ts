@@ -14,6 +14,12 @@ const {
   deleteProject,
   getDb,
   findWorkspaceIdsBySessionAndDirectory,
+  createMemoryExtractionRun,
+  completeMemoryExtractionRun,
+  failMemoryExtractionRun,
+  listMemoryExtractionRuns,
+  countUnreadMemoryExtractionRuns,
+  markMemoryExtractionRunsRead,
   claimAssistantMemoryExtraction,
   completeAssistantMemoryExtraction,
   releaseAssistantMemoryExtraction,
@@ -87,6 +93,53 @@ test("assistant memory extraction claims are durable, exclusive, and reclaimable
     40_000 + MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS + 1,
   );
   expect(reclaimed?.claimedAt).toBe(40_000 + MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS + 1);
+});
+
+test("memory extraction run history stores counts and unread state", () => {
+  const completed = createMemoryExtractionRun({
+    workspaceId: "ws-1",
+    sourceSessionId: "ses-history",
+    assistantMessageId: "msg-history",
+    trigger: "assistant-completed",
+    startedAt: 50_000,
+  });
+  expect(
+    completeMemoryExtractionRun(
+      completed,
+      { created: 4, saved: 3, candidates: 1, rejected: 2, skipped: 1 },
+      50_100,
+    ),
+  ).toBe(true);
+
+  const failed = createMemoryExtractionRun({
+    workspaceId: "ws-1",
+    sourceSessionId: "ses-history",
+    trigger: "manual",
+    startedAt: 50_200,
+  });
+  expect(failMemoryExtractionRun(failed, "model timeout", 50_300)).toBe(true);
+
+  expect(countUnreadMemoryExtractionRuns("ws-1")).toBe(2);
+  expect(listMemoryExtractionRuns({ workspaceId: "ws-1", limit: 10 })).toMatchObject([
+    {
+      id: failed,
+      trigger: "manual",
+      status: "failed",
+      error: "model timeout",
+    },
+    {
+      id: completed,
+      trigger: "assistant-completed",
+      status: "completed",
+      createdCount: 4,
+      savedCount: 3,
+      candidateCount: 1,
+      rejectedCount: 2,
+      skippedCount: 1,
+    },
+  ]);
+  expect(markMemoryExtractionRunsRead("ws-1", 50_400)).toBe(2);
+  expect(countUnreadMemoryExtractionRuns("ws-1")).toBe(0);
 });
 
 test("session compaction lock is exclusive per session", () => {

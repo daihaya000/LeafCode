@@ -93,6 +93,7 @@ describe("memory-idle extraction", () => {
     expect(vi.mocked(runMemoryExtraction)).toHaveBeenCalledWith({
       workspaceId: "ws-3",
       sessionId: "ses-1",
+      trigger: "idle",
     });
 
     // Second sweep: ledged → no relaunch.

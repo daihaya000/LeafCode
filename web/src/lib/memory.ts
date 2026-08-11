@@ -572,10 +572,19 @@ export function insertExtractedMemories(input: {
   provenance: MemoryProvenance;
   approved?: boolean;
   items: Array<{ kind: MemoryKind; content: string }>;
-}): { created: number; skipped: number; errors: string[] } {
+}): {
+  created: number;
+  skipped: number;
+  errors: string[];
+  saved: number;
+  candidates: number;
+  rejected: number;
+} {
   const created: string[] = [];
   const skipped: string[] = [];
   const errors: string[] = [];
+  let saved = 0;
+  let candidates = 0;
   const tx = getDb().transaction(() => {
     for (const item of input.items) {
       if (!isMemoryKind(item.kind)) {
@@ -601,20 +610,28 @@ export function insertExtractedMemories(input: {
         skipped.push(item.content);
         continue;
       }
-      created.push(
-        createMemory({
-          workspaceId: input.workspaceId,
-          kind: item.kind,
-          content: item.content,
-          sourceSessionId: input.sourceSessionId,
-          provenance: input.provenance,
-          approved: input.approved,
-        }).id,
-      );
+      const memory = createMemory({
+        workspaceId: input.workspaceId,
+        kind: item.kind,
+        content: item.content,
+        sourceSessionId: input.sourceSessionId,
+        provenance: input.provenance,
+        approved: input.approved,
+      });
+      created.push(memory.id);
+      if (memory.approved) saved += 1;
+      else candidates += 1;
     }
   });
   tx();
-  return { created: created.length, skipped: skipped.length, errors };
+  return {
+    created: created.length,
+    skipped: skipped.length,
+    errors,
+    saved,
+    candidates,
+    rejected: errors.length,
+  };
 }
 
 export type MemoryAuditAction =

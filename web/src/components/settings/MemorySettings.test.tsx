@@ -20,11 +20,15 @@ function apiHandler({
   workspaces,
   sessions,
   writeApproval = false,
+  extractionRuns = [],
+  unreadExtractionCount = 0,
 }: {
   memories: unknown[];
   workspaces: unknown[];
   sessions: unknown[];
   writeApproval?: boolean;
+  extractionRuns?: unknown[];
+  unreadExtractionCount?: number;
 }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -39,6 +43,12 @@ function apiHandler({
     }
     if (url.includes("/api/workspaces")) {
       return jsonResponse({ workspaces });
+    }
+    if (url.includes("/api/memory/extractions/read")) {
+      return jsonResponse({ marked: unreadExtractionCount, unreadCount: 0 });
+    }
+    if (url.includes("/api/memory/extractions")) {
+      return jsonResponse({ runs: extractionRuns, unreadCount: unreadExtractionCount });
     }
     if (url.includes("/api/memory/extract")) {
       return jsonResponse({ result: { created: 2, skipped: 2 } });
@@ -221,5 +231,49 @@ describe("MemorySettings", () => {
     const checkbox = await screen.findByLabelText("メモリの保存前確認");
     await waitFor(() => expect((checkbox as HTMLInputElement).checked).toBe(true));
     expect(screen.getByText(/保存前の確認が有効です/)).toBeTruthy();
+  });
+
+  it("shows unread extraction results and marks them read explicitly", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [],
+      extractionRuns: [
+        {
+          id: "run-1",
+          sourceSessionId: "session-1",
+          assistantMessageId: "message-1",
+          trigger: "assistant-completed",
+          status: "completed",
+          createdCount: 3,
+          savedCount: 1,
+          candidateCount: 2,
+          rejectedCount: 0,
+          skippedCount: 1,
+          error: null,
+          startedAt: 1700000000000,
+          completedAt: 1700000001000,
+          readAt: null,
+        },
+      ],
+      unreadExtractionCount: 1,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    expect(await screen.findByText("新着 1件")).toBeTruthy();
+    expect(screen.getByText(/保存 1 \/ 候補 2 \/ 拒否 0/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "すべて既読" }));
+    const readCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).includes("/api/memory/extractions/read") && init?.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      return call;
+    });
+    expect(JSON.parse(String(readCall?.[1]?.body))).toEqual({ workspaceId: "ws-1" });
+    await waitFor(() => expect(screen.queryByText("新着 1件")).toBeNull());
   });
 });

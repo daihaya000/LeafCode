@@ -58,11 +58,12 @@ export function scheduleAutoExtractAfterGoalCompleted(
       workspaceId,
       sessionId,
       assistantMessageId,
+      trigger: "goal-completed",
       allowActiveGoalLoop: true,
     });
     return;
   }
-  void runMemoryExtraction({ workspaceId, sessionId }).catch(() => {
+  void runMemoryExtraction({ workspaceId, sessionId, trigger: "goal-completed" }).catch(() => {
     // Background extraction must never surface an error to the goal loop.
   });
 }

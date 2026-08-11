@@ -81,6 +81,12 @@ END;
 (v1のCREATE文には含めない。追加時は `db.ts` の既存パターンである guard付き `ALTER TABLE`
 で追加する)。
 
+抽出実行は `memory_extraction_runs` に永続化する。トリガー、実行状態、保存・候補化・
+安全検査による拒否・重複スキップの件数、失敗理由、既読時刻を保持し、ワークスペース単位の
+通知バッジと履歴表示に使う。履歴は抽出開始時に `running` で作成し、成功時は `completed`、
+例外・タイムアウト時は `failed` に更新する。未読は画面を開いただけでは既読にせず、ユーザーの
+明示操作で既読化する。
+
 不変条件:
 
 - 注入・エージェントツール検索の対象は `approved = 1` のみ。
@@ -151,7 +157,9 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 3. 各行を `provenance='auto-extract'` で挿入し、`memory.write_approval` に応じて `approved` を決める。重複判定はv1では**完全一致のみ**
    (FTS5のbm25スコアは正規化された0-1類似度ではないため、「類似度0.9以上」のような閾値は
    定義できない)。近似重複の排除は埋め込み導入後のv2に持ち越す。
-4. WebUIに通知バッジを出す(`/settings/memory` へのリンク)。
+4. `memory_extraction_runs` に結果を記録し、WebUIのメモリ画面に未読件数バッジと履歴を出す。
+   履歴には保存・候補化・拒否・失敗・重複スキップの状態を表示し、「すべて既読」で明示的に
+   既読化する。
 
 通常会話のassistant完了イベントとgoal完了が同じメッセージを指す場合は、同じ台帳のclaimを
 共有して一度だけ抽出する。抽出成功後はidleの一回限りフォールバックも完了扱いにする。
@@ -193,6 +201,8 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 | `PATCH /api/memory/:id` | `workspaceId`, `expectedRevision`一致時に内容・種別編集 |
 | `DELETE /api/memory/:id?workspace_id=&expected_revision=` | workspace/revision一致時に削除 |
 | `POST /api/memory/extract` | 手動抽出(対象セッションid指定) |
+| `GET /api/memory/extractions?workspace_id=&limit=&unread_only=` | 抽出履歴と未読件数 |
+| `POST /api/memory/extractions/read` | 指定workspaceの抽出履歴を既読化 |
 
 revision不一致は `409 Conflict` として現在の行を返す。これにより複数セッションの
 管理UI/MCPが古い表示内容で上書きしない。
@@ -208,11 +218,13 @@ revision不一致は `409 Conflict` として現在の行を返す。これに�
 - 候補タブ: 一括承認 / 個別承認 / 却下。却下は行削除(却下理由はv2)。
 - 編集はインラインテキストエリア。種別はドロップダウン。
 - 「今すぐ抽出」ボタン(`POST /api/memory/extract`)。
+- 抽出履歴: 未読件数バッジ、トリガー・状態・件数・失敗理由を表示し、「すべて既読」で通知を消す。
 
 ## テスト
 
 - `memory-layer.test.ts`(vitest): マイグレーション、CRUD、FTS同期、
   「未承認は検索に出ない」不変条件、重複スキップ。
+- 抽出履歴: 実行状態・件数・未読件数・既読化、履歴API、設定画面の通知表示を検証する。
 - MCPサーバーは `browser-bridge/test/mcp-stdio.test.mjs` と同型のstdio統合テスト。
 - 注入は送信経路の単体テスト(プレフィックスが付く / トランスクリプトに永続化される /
   UI描画でブロックが除外される / 件数上限)。

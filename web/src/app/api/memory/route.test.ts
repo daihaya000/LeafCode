@@ -9,7 +9,13 @@ const previousAppData = process.env.APPDATA;
 const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(testDataDir);
 process.env.APPDATA = testDataDir;
 
-const { getDb, upsertProject, createWorkspace } = await import("@/lib/db");
+const {
+  getDb,
+  upsertProject,
+  createWorkspace,
+  createMemoryExtractionRun,
+  completeMemoryExtractionRun,
+} = await import("@/lib/db");
 const { createMemory } = await import("@/lib/memory");
 
 vi.mock("@/lib/memory-extract", () => ({
@@ -23,6 +29,8 @@ const { GET } = await import("./route");
 const { POST } = await import("./extract/route");
 const { PATCH, DELETE } = await import("./[id]/route");
 const { POST: approvePOST } = await import("./[id]/approve/route");
+const { GET: extractionGET } = await import("./extractions/route");
+const { POST: extractionReadPOST } = await import("./extractions/read/route");
 
 function ensureWorkspace(id: string) {
   const project = upsertProject({ name: `proj-${id}`, rootPath: path.join(testDataDir, id) });
@@ -157,5 +165,45 @@ describe("memory API", () => {
   it("extract endpoint rejects a missing body", async () => {
     const res = await POST(req("/api/memory/extract", { method: "POST", body: {} }));
     expect(res.status).toBe(400);
+  });
+
+  it("lists extraction history and marks one workspace read", async () => {
+    const runId = createMemoryExtractionRun({
+      workspaceId: "ws-a",
+      sourceSessionId: "ses-history",
+      assistantMessageId: "msg-history",
+      trigger: "assistant-completed",
+      startedAt: 100,
+    });
+    completeMemoryExtractionRun(
+      runId,
+      { created: 3, saved: 2, candidates: 1, rejected: 1, skipped: 0 },
+      200,
+    );
+
+    const listed = await extractionGET(req("/api/memory/extractions?workspace_id=ws-a"));
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      unreadCount: 1,
+      runs: [
+        {
+          id: runId,
+          trigger: "assistant-completed",
+          status: "completed",
+          savedCount: 2,
+          candidateCount: 1,
+          rejectedCount: 1,
+        },
+      ],
+    });
+
+    const marked = await extractionReadPOST(
+      req("/api/memory/extractions/read", {
+        method: "POST",
+        body: { workspaceId: "ws-a" },
+      }),
+    );
+    expect(marked.status).toBe(200);
+    expect(await marked.json()).toMatchObject({ marked: 1, unreadCount: 0 });
   });
 });

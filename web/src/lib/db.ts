@@ -349,6 +349,27 @@ export function getDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_memory_audit_workspace
       ON memory_audit_log(workspace_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS memory_extraction_runs (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      source_session_id TEXT NOT NULL,
+      assistant_message_id TEXT,
+      trigger_type TEXT NOT NULL CHECK (trigger_type IN ('assistant-completed', 'goal-completed', 'idle', 'manual')),
+      status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+      created_count INTEGER NOT NULL DEFAULT 0,
+      saved_count INTEGER NOT NULL DEFAULT 0,
+      candidate_count INTEGER NOT NULL DEFAULT 0,
+      rejected_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      error TEXT,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      read_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_extraction_runs_workspace
+      ON memory_extraction_runs(workspace_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_extraction_runs_unread
+      ON memory_extraction_runs(workspace_id, read_at, started_at DESC);
     -- FTS5 access path. id is carried as an UNINDEXED column (TEXT PK does not
     -- align with SQLite rowid), so the sync never relies on rowid.
     CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
@@ -790,6 +811,198 @@ export function listIdleExtracts(): MemoryIdleExtractRow[] {
   }));
 }
 
+export const MEMORY_EXTRACTION_TRIGGERS = [
+  "assistant-completed",
+  "goal-completed",
+  "idle",
+  "manual",
+] as const;
+export type MemoryExtractionTrigger = (typeof MEMORY_EXTRACTION_TRIGGERS)[number];
+export type MemoryExtractionRunStatus = "running" | "completed" | "failed";
+
+export type MemoryExtractionRunDto = {
+  id: string;
+  workspaceId: string;
+  sourceSessionId: string;
+  assistantMessageId: string | null;
+  trigger: MemoryExtractionTrigger;
+  status: MemoryExtractionRunStatus;
+  createdCount: number;
+  savedCount: number;
+  candidateCount: number;
+  rejectedCount: number;
+  skippedCount: number;
+  error: string | null;
+  startedAt: number;
+  completedAt: number | null;
+  readAt: number | null;
+};
+
+function toMemoryExtractionRunDto(row: {
+  id: string;
+  workspace_id: string;
+  source_session_id: string;
+  assistant_message_id: string | null;
+  trigger_type: MemoryExtractionTrigger;
+  status: MemoryExtractionRunStatus;
+  created_count: number;
+  saved_count: number;
+  candidate_count: number;
+  rejected_count: number;
+  skipped_count: number;
+  error: string | null;
+  started_at: number;
+  completed_at: number | null;
+  read_at: number | null;
+}): MemoryExtractionRunDto {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    sourceSessionId: row.source_session_id,
+    assistantMessageId: row.assistant_message_id,
+    trigger: row.trigger_type,
+    status: row.status,
+    createdCount: row.created_count,
+    savedCount: row.saved_count,
+    candidateCount: row.candidate_count,
+    rejectedCount: row.rejected_count,
+    skippedCount: row.skipped_count,
+    error: row.error,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    readAt: row.read_at,
+  };
+}
+
+export function createMemoryExtractionRun(input: {
+  workspaceId: string;
+  sourceSessionId: string;
+  assistantMessageId?: string;
+  trigger: MemoryExtractionTrigger;
+  startedAt?: number;
+}): string {
+  const id = crypto.randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO memory_extraction_runs
+        (id, workspace_id, source_session_id, assistant_message_id, trigger_type, status,
+         created_count, saved_count, candidate_count, rejected_count, skipped_count,
+         error, started_at, completed_at, read_at)
+       VALUES (?, ?, ?, ?, ?, 'running', 0, 0, 0, 0, 0, NULL, ?, NULL, NULL)`,
+    )
+    .run(
+      id,
+      input.workspaceId,
+      input.sourceSessionId,
+      input.assistantMessageId ?? null,
+      input.trigger,
+      input.startedAt ?? Date.now(),
+    );
+  return id;
+}
+
+export function completeMemoryExtractionRun(
+  id: string,
+  counts: {
+    created: number;
+    saved: number;
+    candidates: number;
+    rejected: number;
+    skipped: number;
+  },
+  completedAt = Date.now(),
+): boolean {
+  return (
+    getDb()
+      .prepare(
+        `UPDATE memory_extraction_runs
+         SET status = 'completed', created_count = ?, saved_count = ?, candidate_count = ?,
+             rejected_count = ?, skipped_count = ?, error = NULL, completed_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        Math.max(0, counts.created),
+        Math.max(0, counts.saved),
+        Math.max(0, counts.candidates),
+        Math.max(0, counts.rejected),
+        Math.max(0, counts.skipped),
+        completedAt,
+        id,
+      ).changes > 0
+  );
+}
+
+export function failMemoryExtractionRun(
+  id: string,
+  error: string,
+  completedAt = Date.now(),
+): boolean {
+  return (
+    getDb()
+      .prepare(
+        `UPDATE memory_extraction_runs
+         SET status = 'failed', error = ?, completed_at = ?
+         WHERE id = ?`,
+      )
+      .run(Array.from(error).slice(0, 4000).join(""), completedAt, id).changes > 0
+  );
+}
+
+export function listMemoryExtractionRuns(input?: {
+  workspaceId?: string;
+  limit?: number;
+  unreadOnly?: boolean;
+}): MemoryExtractionRunDto[] {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (input?.workspaceId) {
+    clauses.push("workspace_id = ?");
+    params.push(input.workspaceId);
+  }
+  if (input?.unreadOnly) clauses.push("read_at IS NULL");
+  const limit = Math.max(1, Math.min(100, Math.floor(input?.limit ?? 30)));
+  params.push(limit);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM memory_extraction_runs
+       ${clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""}
+       ORDER BY started_at DESC, id DESC LIMIT ?`,
+    )
+    .all(...params) as Parameters<typeof toMemoryExtractionRunDto>[0][];
+  return rows.map(toMemoryExtractionRunDto);
+}
+
+export function countUnreadMemoryExtractionRuns(workspaceId?: string): number {
+  const row = workspaceId
+    ? (getDb()
+        .prepare(
+          "SELECT COUNT(*) AS count FROM memory_extraction_runs WHERE workspace_id = ? AND read_at IS NULL",
+        )
+        .get(workspaceId) as { count: number })
+    : (getDb()
+        .prepare("SELECT COUNT(*) AS count FROM memory_extraction_runs WHERE read_at IS NULL")
+        .get() as { count: number });
+  return row.count;
+}
+
+export function markMemoryExtractionRunsRead(
+  workspaceId?: string,
+  readAt = Date.now(),
+): number {
+  const result = workspaceId
+    ? getDb()
+        .prepare(
+          "UPDATE memory_extraction_runs SET read_at = COALESCE(read_at, ?) WHERE workspace_id = ? AND read_at IS NULL",
+        )
+        .run(readAt, workspaceId)
+    : getDb()
+        .prepare(
+          "UPDATE memory_extraction_runs SET read_at = COALESCE(read_at, ?) WHERE read_at IS NULL",
+        )
+        .run(readAt);
+  return result.changes;
+}
+
 export const MEMORY_ASSISTANT_EXTRACT_CLAIM_TTL_MS = 10 * 60 * 1000;
 
 export type MemoryAssistantExtractClaim = {
@@ -1085,6 +1298,7 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   getDb().prepare("DELETE FROM memory_audit_log WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_idle_extracts WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_assistant_extracts WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM memory_extraction_runs WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_session_injections WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM collaboration_snapshots WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
@@ -1122,6 +1336,11 @@ export function deleteProject(id: string): ProjectRow | undefined {
   getDb()
     .prepare(
       "DELETE FROM memory_assistant_extracts WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM memory_extraction_runs WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
     )
     .run(id);
   getDb()
