@@ -1,3 +1,63 @@
+# 作業ログ: /loop 1m バグハント — Goal Loop画像のみ開始の後段失敗
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: Goal Loop ON 時は goal テキスト必須。空なら送信前に弾く
+- 実際: 画像のみでも送信可 → POST /api/tasks（VL待ち）→ goal-loop POST が invalid goal → タスクはロールバックされずホームにエラー
+
+## 根本原因
+- HomeView の送信可否が「テキスト or 添付」のみで、goalLoopEnabled 時の createGoalLoop 契約（非空 goal）を見ない
+- Workflow 画像のみは既修正だが Goal Loop 側は未ガード
+
+## 修正
+- goalLoopEnabled && startMode=task かつ prompt 空ならタスク作成前にエラー return
+- 送信ボタンも同条件で disabled
+
+## 回帰防止
+- HomeView: does not create a Task when Goal Loop has images but no goal text
+
+## 検証
+- vitest HomeView -t "Goal Loop has images|Workflow|starts a goal loop|does not start" 5 PASS
+- eslint HomeView 対象 OK
+
+## 残存リスク
+- コスト表示タブ同期、Host BUILD_ID/pause UX 体感、voice 入力は未着手（高影響の確定バグは未確認）
+
+---
+# 作業ログ: モデルドロップダウンが画面外にずれる問題の修正
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: デフォルトモデル等のドロップダウンがトリガーに沿って表示される
+- 実際: 実ブラウザ計測で menu.x=976（trigger.right=608）、menu 右端=1756 > viewport 1280 にはみ出す
+
+## 根本原因
+- updateMenuPosition は「menu の min-width: rect.width 適用前のコンテンツ幅」(215px) で left を算出し、min-width が効いて幅 779px に広がった後に再計算されない
+- CSS では min-width > max-w-[22rem] の場合 min-width が勝つため、画面外まで広がる
+- トリガー `flex-1` のため rect（root div）幅 779px が min-width に流れ込む
+
+## 修正
+- menuWidth = min(max(menuRect.width, rect.width), maxMenuWidth) で実効幅を算出
+- minWidth も Math.min(rect.width, maxMenuWidth) でビューポート内にクランプ
+- ModelSelect.tsx / ui.tsx（GhostSelect）両方に適用
+
+## 回帰防止
+- ModelSelect: keeps the menu inside the viewport when the trigger is wider than its measured content
+
+## 検証
+- vitest ModelSelect 9 + ui 5 PASS（回帰テスト含む）
+- tsc / eslint 対象 3 ファイル OK
+- 実ブラウザ反映は next ビルド/再起動待ち（playwright-cli は PID 起動なので常駐に注意）
+
+## 残存リスク
+- trunk 幅を max-w-[22rem] でクランプしているため、実効幅見積もりは min(実内容幅, 352px) との差が出る場合がある
+- ビルド反映前は旧コードの表示のまま
+
+---
 # 作業ログ: /loop 1m バグハント — Workflow画像のみ開始の後段失敗
 
 ## 日付

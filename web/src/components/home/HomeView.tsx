@@ -856,6 +856,22 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       setError("Workflow で開始するには目標テキストが必要です。");
       return;
     }
+    // Goal Loop needs a non-empty text goal and cannot carry attachments
+    // (same contract as TaskView startGoalLoop). Otherwise POST /api/tasks
+    // succeeds and the follow-up /goal-loop fails with "invalid goal",
+    // leaving an orphaned task (unlike Workflow, which DELETEs on failure).
+    if (goalLoopEnabled && startMode === "task") {
+      if (attachments.length > 0) {
+        setError(
+          "ループでは添付ファイルを利用できません。添付を削除してから開始してください。",
+        );
+        return;
+      }
+      if (!text) {
+        setError("ゴールループで開始するには目標テキストが必要です。");
+        return;
+      }
+    }
     // Match OpenCode's agent precedence: configured agent model overrides the
     // manual selector; when the agent has no model, fall back to the request
     // model (same as TaskView / BFF image capability checks).
@@ -1031,7 +1047,11 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       rememberHomeComposerDraft({ prompt: "", attachments: [] });
       router.push(`/task/${data.taskId}`);
     } catch (err) {
-      if (startMode === "workflow" && workflowModeEnabled && createdTaskId) {
+      if (
+        createdTaskId &&
+        ((startMode === "workflow" && workflowModeEnabled) ||
+          (goalLoopEnabled && startMode === "task"))
+      ) {
         try {
           await sendJson("DELETE", `/api/tasks/${encodeURIComponent(createdTaskId)}`);
         } catch {
@@ -1555,6 +1575,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   (startMode === "workflow" &&
                     workflowModeEnabled &&
                     !prompt.trim()) ||
+                  (goalLoopEnabled &&
+                    startMode === "task" &&
+                    (!prompt.trim() || attachments.length > 0)) ||
                   !projectId ||
                   submitting ||
                   !engineOk ||

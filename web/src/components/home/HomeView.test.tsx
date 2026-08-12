@@ -1779,6 +1779,61 @@ describe("HomeView goal loop toggle", () => {
       sendJson.mock.calls.some(([, p]) => String(p).endsWith("/goal-loop")),
     ).toBe(false);
   });
+
+  it("does not create a Task when Goal Loop has images but no goal text", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
+                    name: "Vision",
+                    enabled: true,
+                    capabilities: { input: { image: true } },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    const toggle = await screen.findByRole("button", {
+      name: "ループで継続実行",
+    });
+    fireEvent.click(toggle);
+
+    const image = new File(["image"], "shot.png", { type: "image/png" });
+    fireEvent.change(await screen.findByLabelText("画像ファイルを選択"), {
+      target: { files: [image] },
+    });
+    expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
+
+    const submit = screen.getByRole("button", {
+      name: "タスク開始",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(true));
+    fireEvent.click(submit);
+    expect(
+      sendJson.mock.calls.some(
+        (call) => call[0] === "POST" && call[1] === "/api/tasks",
+      ),
+    ).toBe(false);
+    expect(
+      sendJson.mock.calls.some(([, p]) => String(p).endsWith("/goal-loop")),
+    ).toBe(false);
+  });
 });
 
 describe("HomeView auto model", () => {
