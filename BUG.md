@@ -25,6 +25,8 @@
 | **BU-9** | 低 | **分割ビューで同一コンポーネントが複数マウントされると固定 DOM id が重複する** | `AppShell.tsx` は `splitActive` 時に primary + secondary の 2 つの `TaskView`（`SplitTaskView`）を同時マウントする。この下位で固定文字列の id を持つ要素が重複する: `SlashSuggestMenu.tsx:34` の `id="slash-suggest-listbox"`、`AgentSuggestMenu.tsx:34` の `id="agent-suggest-listbox"`（Composer の `aria-controls` が参照）、`GoalLoopPanel.tsx:348` の `id="goal-loop-detail"` と `:282` の `id="goal-loop-stop-confirm"`、`SessionActions.tsx:398` の `id="message-revert-confirm"`（`aria-controls` が参照）。両ペインで同時にスラッシュ候補を開くと `aria-controls` が同 id の先頭要素にしか解決されず、AT のラベル付けや自動テストのセレクタが曖昧になる。クラッシュはしないが HTML の id 一意性違反。他の場所（`GhostSelect`・`NextAction`・`AutoRouteOverridesEditor` 等）は `useId()` を使っているのに非対称。→ `useId()` 化する |
 | **BU-10** | 低 | **メインの会話タイムラインで複数画像が横並びにグループ化されず縦積みになる（NestedAgentPanel と非対称）** | メインタイムライン（`TaskView.tsx:4717-4718`）は `m.parts.filter(...).map((p) => <PartView/>)` で各パートを独立ブロック描画し、`groupImagePartsForRender`（`web/src/lib/message-parts.ts`）を使わない。一方 `NestedAgentPanel.tsx:362` は `groupImagePartsForRender` で連続する画像パートを `flex-wrap` の横並びにグループ化する。ユーザーメッセージに複数画像を添付すると、メイン会話では 112px の `FileImagePreview` が縦に重なり大きな縦空白を消費するのに対し、サブエージェントパネルでは横並びになる。`groupImagePartsForRender` は NestedAgentPanel 専用に導入された形跡があり、メインタイムラインへの適用漏れ。→ メインタイムラインにも同様に適用して表示を統一する |
 
+**2026-08-13 ラウンドの総括**: Composer / ゴールループ / メッセージ / 設定画面の UI/UX を 50 ターンで網羅的に調査し、**新規バグ 10 件（BU-1〜10）** を BUG.md に記録した（修正は行わない方針）。中優先度: BU-1（Workflow 中ループトグル無効）、BU-2（プロジェクト設定のタブ切替で draft 混線・誤保存リスク）。低優先度: BU-3〜10（数値入力クランプ、ハイライトミラー同期、ゴール JSON の過剰除去、スキルトークン句読点の非対称、成功通知の danger 表示、ループ開始ボタンの無効化非対称、分割ビューの重複 DOM id、メインタイムラインの画像未グループ化）。健全確認のため再調査防止メモを多数追記。コミットは全て BUG.md のみ（他エージェント差分は混入なし）。
+
 ## 修正状況（2026-08-12 全件対応）
 
 以下の全 13 件を修正済み。検証: `tsc --noEmit` / `eslint .`（既存警告 1 件のみ）/
