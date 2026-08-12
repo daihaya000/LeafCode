@@ -14,7 +14,7 @@ import {
 } from "@/lib/session-title";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
-import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
+import { GENERATION_MODEL_EFFORT_SETTING_KEY, GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +70,10 @@ export async function POST(req: NextRequest, context: Ctx) {
         return { providerID, modelID };
       })()
     : latestModelFromMessages(messages);
+  // Paired reasoning effort for the configured generation model.
+  const configuredEffort = configuredModel
+    ? getSetting(GENERATION_MODEL_EFFORT_SETTING_KEY) || undefined
+    : undefined;
 
   // Generate via a temporary unbound session so the original stays clean.
   let tempId: string | null = null;
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest, context: Ctx) {
       parts: [{ type: "text", text: transcript }],
     };
     if (model) promptBody.model = model;
+    if (configuredEffort) promptBody.variant = configuredEffort;
 
     const result = await ocServer<{ parts: { type: string; text?: string }[] }>(
       dir,

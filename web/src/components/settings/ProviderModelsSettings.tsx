@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { GripVertical, Trash2 } from "lucide-react";
-import { Badge, Button, cx } from "@/components/ui";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Brain, GripVertical, Trash2 } from "lucide-react";
+import { Badge, Button, cx, GhostSelect } from "@/components/ui";
 import { ModelSelect } from "@/components/ModelSelect";
 import { AutoOptimizeSelect } from "@/components/AutoOptimizeSelect";
 import { AutoRouteOverridesEditor } from "@/components/settings/AutoRouteOverridesEditor";
@@ -25,14 +25,22 @@ import {
 import { AUTO_MODEL_OPTION, type AutoOptimizeMode, type RouteOverrides } from "@/lib/auto-model";
 import {
   readDefaultModel,
+  readDefaultModelEffort,
+  readDefaultModelEffortFromServer,
   readDefaultModelFromServer,
   writeDefaultModel,
+  writeDefaultModelEffort,
+  writeDefaultModelEffortToServer,
   writeDefaultModelToServer,
 } from "@/lib/default-model";
 import {
   readGenerationModel,
+  readGenerationModelEffort,
+  readGenerationModelEffortFromServer,
   readGenerationModelFromServer,
   writeGenerationModel,
+  writeGenerationModelEffort,
+  writeGenerationModelEffortToServer,
   writeGenerationModelToServer,
 } from "@/lib/generation-model";
 import {
@@ -40,6 +48,11 @@ import {
   sortModelOptions,
   type ModelOption,
 } from "@/lib/model-options";
+import {
+  getIntelligenceVariants,
+  isIntelligenceVariant,
+  type IntelligenceVariant,
+} from "@/lib/model-variants";
 import { providerIconSrcForOpencodeId } from "@addons/codexbar";
 import { OpenAISubscriptionAuth } from "./OpenAISubscriptionAuth";
 import { ClaudeSubscriptionAuth } from "./ClaudeSubscriptionAuth";
@@ -51,6 +64,7 @@ type ModelDto = {
   name: string;
   enabled: boolean;
   pricing?: { input: number; cachedInput?: number; cacheWrite?: number; output: number };
+  variants?: Record<string, { disabled?: boolean } | undefined>;
 };
 
 type ProviderDto = {
@@ -155,6 +169,73 @@ function pricingFieldValues(pricing: ModelDto["pricing"] | undefined) {
     cacheWrite:
       pricing?.cacheWrite !== undefined ? String(pricing.cacheWrite) : "",
   };
+}
+
+/** All known reasoning-effort keys, least to most effort. */
+const ALL_EFFORT_KEYS: readonly IntelligenceVariant[] = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "thinking",
+];
+
+/**
+ * Reasoning effort (intelligence variant) selector for the default /
+ * generation model settings. `""` means デフォルト（モデル側の既定値）.
+ * The option list is restricted to the variants the selected model declares
+ * when known, falling back to all known efforts for models without variant
+ * metadata (e.g. custom OpenAI-compatible providers).
+ */
+function EffortSelect({
+  label,
+  modelKey,
+  providers,
+  value,
+  onChange,
+}: {
+  label: string;
+  modelKey: string;
+  providers: ProviderDto[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const variants = useMemo(() => {
+    const [providerID, modelID] = modelKey.split("::");
+    const model = providers
+      .flatMap((provider) =>
+        provider.models.map((m) => ({ providerID: provider.id, m })),
+      )
+      .find(
+        ({ providerID: pid, m }) => pid === providerID && m.id === modelID,
+      )?.m;
+    const declared = model ? getIntelligenceVariants(model) : [];
+    return declared.length > 0 ? declared : ALL_EFFORT_KEYS;
+  }, [modelKey, providers]);
+
+  return (
+    <GhostSelect
+      value={value}
+      aria-label={label}
+      icon={<Brain className="h-3.5 w-3.5" />}
+      valueLabel={value || "デフォルト"}
+      onChange={(next) => {
+        if (isIntelligenceVariant(next)) onChange(next);
+        else onChange("");
+      }}
+      className="h-8 shrink-0"
+    >
+      <option value="">デフォルト</option>
+      {variants.map((variant) => (
+        <option key={variant} value={variant}>
+          {variant}
+        </option>
+      ))}
+    </GhostSelect>
+  );
 }
 
 /**
@@ -508,7 +589,9 @@ export function ProviderModelsSettings() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("");
+  const [defaultModelEffort, setDefaultModelEffort] = useState<string>("");
   const [generationModel, setGenerationModel] = useState<string>("");
+  const [generationModelEffort, setGenerationModelEffort] = useState<string>("");
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
@@ -522,7 +605,9 @@ export function ProviderModelsSettings() {
     routeOverrides: false,
   });
   const defaultModelTouched = useRef(false);
+  const defaultModelEffortTouched = useRef(false);
   const generationModelTouched = useRef(false);
+  const generationModelEffortTouched = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
@@ -572,6 +657,33 @@ export function ProviderModelsSettings() {
       // DBに無くlocalStorageにある場合はDBへ保存（マイグレーション）。
       if (!touched && serverValue == null && localValue) {
         await writeDefaultModelToServer(localValue).catch(() => undefined);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const serverValue = await readDefaultModelEffortFromServer().catch(
+        () => null,
+      );
+      const localValue = readDefaultModelEffort();
+      const touched = defaultModelEffortTouched.current;
+      const resolved = touched
+        ? localValue ?? ""
+        : serverValue ?? localValue ?? "";
+      if (!active) return;
+      setDefaultModelEffort(resolved);
+      if (!touched && serverValue && serverValue !== localValue) {
+        writeDefaultModelEffort(serverValue);
+      }
+      if (!touched && serverValue == null && localValue) {
+        await writeDefaultModelEffortToServer(localValue).catch(
+          () => undefined,
+        );
       }
     })();
     return () => {
@@ -857,6 +969,37 @@ export function ProviderModelsSettings() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const serverValue = await readGenerationModelEffortFromServer().catch(
+        () => null,
+      );
+      const localValue = readGenerationModelEffort();
+      const resolved = generationModelEffortTouched.current
+        ? localValue ?? ""
+        : serverValue ?? localValue ?? "";
+      if (!active) return;
+      setGenerationModelEffort(resolved);
+      if (
+        !generationModelEffortTouched.current &&
+        serverValue &&
+        serverValue !== localValue
+      ) {
+        writeGenerationModelEffort(serverValue);
+      } else if (
+        !generationModelEffortTouched.current &&
+        !serverValue &&
+        localValue
+      ) {
+        await writeGenerationModelEffortToServer(localValue).catch(
+          () => undefined,
+        );
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   /**
    * 取得済みのローカルモデルをそのまま登録する。手入力フォームでは
    * 画像入力対応（`attachment` / `modalities`）を表現できず、VLモデルが
@@ -1070,6 +1213,23 @@ export function ProviderModelsSettings() {
                 }}
                 className="min-w-56 flex-1"
               />
+              {defaultModel && defaultModel !== AUTO_MODEL_OPTION.value && (
+                <EffortSelect
+                  label="デフォルトモデルのEffort"
+                  modelKey={defaultModel}
+                  providers={providers}
+                  value={defaultModelEffort}
+                  onChange={(effort) => {
+                    defaultModelEffortTouched.current = true;
+                    const next = effort || "";
+                    setDefaultModelEffort(next);
+                    writeDefaultModelEffort(next || null);
+                    void writeDefaultModelEffortToServer(next || null).catch(
+                      () => undefined,
+                    );
+                  }}
+                />
+              )}
               {defaultModel && (
                 <Button
                   variant="ghost"
@@ -1112,6 +1272,23 @@ export function ProviderModelsSettings() {
               }}
               className="min-w-56 flex-1"
             />
+            {generationModel && (
+              <EffortSelect
+                label="生成モデルのEffort"
+                modelKey={generationModel}
+                providers={providers}
+                value={generationModelEffort}
+                onChange={(effort) => {
+                  generationModelEffortTouched.current = true;
+                  const next = effort || "";
+                  setGenerationModelEffort(next);
+                  writeGenerationModelEffort(next || null);
+                  void writeGenerationModelEffortToServer(next || null).catch(
+                    () => undefined,
+                  );
+                }}
+              />
+            )}
             {generationModel && (
               <Button
                 variant="ghost"

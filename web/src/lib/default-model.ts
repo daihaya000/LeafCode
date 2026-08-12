@@ -21,6 +21,77 @@ export const DEFAULT_MODEL_EVENT = "webui:default-model";
 let defaultModelWriteQueue = Promise.resolve();
 
 /**
+ * Reasoning effort paired with the default model. The Home/Task composers
+ * preselect the stored effort when the initial model comes from the default
+ * model, so the Settings screen can pin both at once. Stored as a plain
+ * `IntelligenceVariant` string (e.g. "low", "high") or "" when unset.
+ */
+export const DEFAULT_MODEL_EFFORT_SETTING_KEY = "default-model-effort";
+const EFFORT_STORAGE_KEY = "webui:default-model-effort";
+export const DEFAULT_MODEL_EFFORT_EVENT = "webui:default-model-effort";
+let defaultModelEffortWriteQueue = Promise.resolve();
+
+export function readDefaultModelEffort(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(EFFORT_STORAGE_KEY);
+    if (typeof raw === "string" && raw.length > 0) return raw;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function writeDefaultModelEffort(value: string | null): void {
+  try {
+    if (value) {
+      localStorage.setItem(EFFORT_STORAGE_KEY, value);
+    } else {
+      localStorage.removeItem(EFFORT_STORAGE_KEY);
+    }
+    window.dispatchEvent(
+      new CustomEvent(DEFAULT_MODEL_EFFORT_EVENT, { detail: value ?? "" }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function readDefaultModelEffortFromServer(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  await defaultModelEffortWriteQueue.catch(() => undefined);
+  try {
+    const data = await getJson<{ value: string | null }>(
+      `/api/settings/${DEFAULT_MODEL_EFFORT_SETTING_KEY}`,
+    );
+    const value = data?.value;
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeDefaultModelEffortToServer(
+  value: string | null,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const operation = defaultModelEffortWriteQueue.then(async () => {
+    try {
+      await sendJson("PUT", `/api/settings/${DEFAULT_MODEL_EFFORT_SETTING_KEY}`, {
+        value,
+      });
+    } catch (err) {
+      console.warn("writeDefaultModelEffortToServer failed", err);
+    }
+  });
+  defaultModelEffortWriteQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  await operation;
+}
+
+/**
  * Last used model: the model actually applied to the most recent successful
  * submission in HomeView or TaskView. This takes priority over the user-
  * configured default model when resolving the initial model for a new

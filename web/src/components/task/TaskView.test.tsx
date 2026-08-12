@@ -97,8 +97,11 @@ vi.mock("@/lib/default-model", () => ({
   DEFAULT_MODEL_EVENT: "webui:default-model",
   readDefaultModel,
   readDefaultModelFromServer: () => Promise.resolve(null),
-  readLastUsedModel,
+  readDefaultModelEffort: vi.fn((): string | null => null),
+  readDefaultModelEffortFromServer: () => Promise.resolve(null),
   writeDefaultModel: vi.fn(),
+  writeDefaultModelEffort: vi.fn(),
+  readLastUsedModel,
   writeLastUsedModel: vi.fn(),
 }));
 

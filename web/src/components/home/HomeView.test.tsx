@@ -52,6 +52,18 @@ vi.mock("@/lib/default-model", () => ({
       localStorage.removeItem("webui:default-model");
     }
   },
+  readDefaultModelEffort: () => {
+    const v = localStorage.getItem("webui:default-model-effort");
+    return typeof v === "string" && v.length > 0 ? v : null;
+  },
+  readDefaultModelEffortFromServer: () => Promise.resolve(null),
+  writeDefaultModelEffort: (value: string | null) => {
+    if (value) {
+      localStorage.setItem("webui:default-model-effort", value);
+    } else {
+      localStorage.removeItem("webui:default-model-effort");
+    }
+  },
   readLastUsedModel: () => {
     const v = localStorage.getItem("webui:last-used-model");
     return typeof v === "string" && v.length > 0 ? v : null;
@@ -1394,6 +1406,47 @@ describe("HomeView last-used model", () => {
     await waitFor(() => expect(select.value).toBe("openai::gpt-5"));
     releaseServer("openai::vision");
     await waitFor(() => expect(select.value).toBe("openai::vision"));
+  });
+
+  it("seeds the intelligence effort from the stored default model effort", async () => {
+    localStorage.setItem("webui:default-model", "openai::gpt-5");
+    localStorage.setItem("webui:default-model-effort", "high");
+    timedFetch.mockImplementation((input: string) => {
+      if (input.endsWith("/provider-models")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [
+                  {
+                    id: "gpt-5",
+                    name: "GPT-5",
+                    enabled: true,
+                    variants: { low: {}, medium: {}, high: {} },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+
+    const modelSelect = (await screen.findByLabelText(
+      "モデル",
+    )) as HTMLButtonElement;
+    await waitFor(() => expect(modelSelect.value).toBe("openai::gpt-5"));
+    const intelligenceSelect = screen.getByLabelText(
+      "インテリジェンス",
+    ) as HTMLButtonElement;
+    expect(intelligenceSelect.value).toBe("high");
   });
 
   it("prefers the configured default model over the last-used model", async () => {

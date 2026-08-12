@@ -44,9 +44,12 @@ import {
 } from "@/lib/skill-permission";
 import {
   readDefaultModel,
+  readDefaultModelEffort,
+  readDefaultModelEffortFromServer,
   readDefaultModelFromServer,
   readLastUsedModel,
   writeDefaultModel,
+  writeDefaultModelEffort,
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
@@ -361,6 +364,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       if (!cancelled && mountedRef.current && serverValue) {
         setServerDefaultModel(serverValue);
         if (!readDefaultModel()) writeDefaultModel(serverValue);
+        // Migrate the paired effort too; an existing local effort stays.
+        const serverEffort = await readDefaultModelEffortFromServer().catch(
+          () => null,
+        );
+        if (!cancelled && serverEffort && !readDefaultModelEffort()) {
+          writeDefaultModelEffort(serverEffort);
+        }
       }
     })();
     return () => {
@@ -588,12 +598,14 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           // dropped: it was the last resort and the first enabled option
           // below is an equivalent final fallback.
           let initial = "";
+          let fromDefault = false;
           const savedDefault = readDefaultModel();
           if (
             savedDefault &&
             selectableOptions.some((o) => o.value === savedDefault)
           ) {
             initial = savedDefault;
+            fromDefault = true;
           }
           if (!initial) {
             const lastUsed = readLastUsedModel();
@@ -617,6 +629,16 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           // Never fall back to Auto: it stays an explicit manual choice.
           if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
           setModel((cur) => cur || initial);
+          // Pair the default model with its configured effort (Settings →
+          // プロバイダー/モデル). Seeded only when the model came from the
+          // saved default; an invalid/unavailable effort is cleared by the
+          // intelligence-variant guard effect below.
+          if (fromDefault && initial !== AUTO_MODEL_OPTION.value) {
+            const savedEffort = readDefaultModelEffort();
+            if (isIntelligenceVariant(savedEffort)) {
+              setIntelligence((cur) => cur || savedEffort);
+            }
+          }
         }
 
         if (agentRes.ok) {

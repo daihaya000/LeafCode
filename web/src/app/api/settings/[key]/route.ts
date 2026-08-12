@@ -21,11 +21,12 @@ import {
   MAX_TOKEN_SAVING_THRESHOLD,
   MIN_TOKEN_SAVING_THRESHOLD,
 } from "@/lib/token-saving-settings";
-import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
+import { GENERATION_MODEL_EFFORT_SETTING_KEY, GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 import {
   isOpenCodeApiGeneration,
   OPENCODE_API_GENERATION_SETTING_KEY,
 } from "@/lib/opencode-generation";
+import { isIntelligenceVariant } from "@/lib/model-variants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ const ALLOWED_KEYS = new Set<string>([
   "auto-show-model",
   "auto-route-overrides",
   "default-model",
+  "default-model-effort",
   "sidebar",
   "sidepanel-width",
   "hang-timeout",
@@ -51,6 +53,7 @@ const ALLOWED_KEYS = new Set<string>([
   TOKEN_SAVING_SETTING_KEY,
   TOKEN_SAVING_THRESHOLD_KEY,
   GENERATION_MODEL_SETTING_KEY,
+  GENERATION_MODEL_EFFORT_SETTING_KEY,
   OPENCODE_API_GENERATION_SETTING_KEY,
 ]);
 
@@ -105,6 +108,16 @@ function normalizeSettingValue(
   if (key === GENERATION_MODEL_SETTING_KEY) {
     if (value.length > DEFAULT_MODEL_MAX_CHARS || !/^[^:\s]+::\S+$/.test(value)) {
       return { ok: false, error: "generation-model must be provider::model" };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === "default-model-effort" || key === GENERATION_MODEL_EFFORT_SETTING_KEY) {
+    if (value.length > DEFAULT_MODEL_MAX_CHARS || !isIntelligenceVariant(value)) {
+      return {
+        ok: false,
+        error: `${key} must be a valid reasoning effort (e.g. low, medium, high)`,
+      };
     }
     return { ok: true, value };
   }

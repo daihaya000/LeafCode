@@ -3,7 +3,7 @@ import { assertAllowedDirectory } from "@/lib/allowlist";
 import { getSetting } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
 import { OcError, ocServer } from "@/lib/oc-server";
-import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
+import { GENERATION_MODEL_EFFORT_SETTING_KEY, GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "@/lib/opencode-paths";
 
 export const runtime = "nodejs";
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "generation model is not configured" }, { status: 409 });
   }
   const [providerID, modelID] = configuredModel.split("::");
+  const configuredEffort = getSetting(GENERATION_MODEL_EFFORT_SETTING_KEY) || undefined;
   const transcript = files
     .map((file) => JSON.stringify({
       path: file.path,
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
         body: {
           system: SYSTEM,
           model: { providerID, modelID },
+          ...(configuredEffort ? { variant: configuredEffort } : {}),
           tools,
           parts: [{ type: "text", text: transcript }],
         },

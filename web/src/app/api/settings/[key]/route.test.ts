@@ -264,6 +264,36 @@ describe("/api/settings/[key]", () => {
       expect(setSetting).not.toHaveBeenCalled();
     });
 
+    it("stores a valid default-model-effort", async () => {
+      const res = await PUT(putReq({ value: "high" }, "default-model-effort") as never, ctx("default-model-effort"));
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("default-model-effort", "high");
+    });
+
+    it("rejects an invalid default-model-effort", async () => {
+      const res = await PUT(putReq({ value: "turbo" }, "default-model-effort") as never, ctx("default-model-effort"));
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+
+    it("stores a valid generation-model-effort", async () => {
+      const res = await PUT(putReq({ value: "low" }, "generation-model-effort") as never, ctx("generation-model-effort"));
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("generation-model-effort", "low");
+    });
+
+    it("rejects an invalid generation-model-effort", async () => {
+      const res = await PUT(putReq({ value: "insane" }, "generation-model-effort") as never, ctx("generation-model-effort"));
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
+    });
+
+    it("clears default-model-effort with an empty value", async () => {
+      const res = await PUT(putReq({ value: "" }, "default-model-effort") as never, ctx("default-model-effort"));
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith("default-model-effort", "");
+    });
+
     it("rejects malformed sidebar JSON", async () => {
       const res = await PUT(putReq({ value: "{not-json" }, "sidebar") as never, ctx("sidebar"));
       expect(res.status).toBe(400);

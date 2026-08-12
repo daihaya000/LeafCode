@@ -5,6 +5,69 @@ const STORAGE_KEY = "webui:generation-model";
 export const GENERATION_MODEL_EVENT = "webui:generation-model";
 let writeQueue = Promise.resolve();
 
+/**
+ * Reasoning effort paired with the generation model (title / next-action /
+ * commit message). The server-side generation routes forward it as the
+ * prompt `variant`. Stored as a plain `IntelligenceVariant` string (e.g.
+ * "low", "high") or "" when unset.
+ */
+export const GENERATION_MODEL_EFFORT_SETTING_KEY = "generation-model-effort";
+const EFFORT_STORAGE_KEY = "webui:generation-model-effort";
+export const GENERATION_MODEL_EFFORT_EVENT = "webui:generation-model-effort";
+let effortWriteQueue = Promise.resolve();
+
+export function readGenerationModelEffort(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(EFFORT_STORAGE_KEY);
+    return raw && raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGenerationModelEffort(value: string | null): void {
+  try {
+    if (value) localStorage.setItem(EFFORT_STORAGE_KEY, value);
+    else localStorage.removeItem(EFFORT_STORAGE_KEY);
+    window.dispatchEvent(
+      new CustomEvent(GENERATION_MODEL_EFFORT_EVENT, { detail: value ?? "" }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function readGenerationModelEffortFromServer(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  await effortWriteQueue.catch(() => undefined);
+  try {
+    const data = await getJson<{ value: string | null }>(
+      `/api/settings/${GENERATION_MODEL_EFFORT_SETTING_KEY}`,
+    );
+    return data?.value && data.value.length > 0 ? data.value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeGenerationModelEffortToServer(
+  value: string | null,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const operation = effortWriteQueue.then(async () => {
+    try {
+      await sendJson("PUT", `/api/settings/${GENERATION_MODEL_EFFORT_SETTING_KEY}`, {
+        value,
+      });
+    } catch (err) {
+      console.warn("writeGenerationModelEffortToServer failed", err);
+    }
+  });
+  effortWriteQueue = operation.then(() => undefined, () => undefined);
+  await operation;
+}
+
 export function readGenerationModel(): string | null {
   if (typeof window === "undefined") return null;
   try {

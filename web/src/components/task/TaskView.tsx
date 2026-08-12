@@ -88,9 +88,12 @@ import {
 import {
   DEFAULT_MODEL_EVENT,
   readDefaultModel,
+  readDefaultModelEffort,
+  readDefaultModelEffortFromServer,
   readDefaultModelFromServer,
   readLastUsedModel,
   writeDefaultModel,
+  writeDefaultModelEffort,
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { formatTokens } from "@addons/codexbar";
@@ -1194,6 +1197,13 @@ export function TaskView({
       if (serverValue) {
         setServerDefaultModel(serverValue);
         if (!readDefaultModel()) writeDefaultModel(serverValue);
+        // Migrate the paired effort too; an existing local effort stays.
+        const serverEffort = await readDefaultModelEffortFromServer().catch(
+          () => null,
+        );
+        if (serverEffort && !readDefaultModelEffort()) {
+          writeDefaultModelEffort(serverEffort);
+        }
       }
     })();
   }, []);
@@ -1331,11 +1341,22 @@ export function TaskView({
       const next = typeof detail === "string" && detail.length > 0 ? detail : "";
       if (!next) return;
       modelTouchedRef.current = true;
+      let applied = false;
       setModel((cur) => {
         if (cur && cur === next) return cur;
-        if (modelOptions.some((o) => o.value === next)) return next;
+        if (modelOptions.some((o) => o.value === next)) {
+          applied = true;
+          return next;
+        }
         return cur;
       });
+      // Keep the paired effort in sync with the synced default model.
+      if (applied && next !== AUTO_MODEL_VALUE) {
+        const savedEffort = readDefaultModelEffort();
+        if (isIntelligenceVariant(savedEffort)) {
+          setIntelligence((cur) => cur || savedEffort);
+        }
+      }
     };
     window.addEventListener(DEFAULT_MODEL_EVENT, onDefault);
     return () => window.removeEventListener(DEFAULT_MODEL_EVENT, onDefault);
@@ -1763,7 +1784,19 @@ export function TaskView({
             }
           }
           if (!initial && enabledOptions[0]) initial = enabledOptions[0].value;
+          const initialFromDefault =
+            !!savedDefault && !readAutoTaskRecord(taskId) && initial === savedDefault;
           setModel((cur) => cur || initial);
+          // Pair the default model with its configured effort (Settings →
+          // プロバイダー/モデル). Seeded only when the model came from the
+          // saved default; an invalid/unavailable effort is cleared by the
+          // intelligence-variant guard effect below.
+          if (initialFromDefault && initial !== AUTO_MODEL_VALUE) {
+            const savedEffort = readDefaultModelEffort();
+            if (isIntelligenceVariant(savedEffort)) {
+              setIntelligence((cur) => cur || savedEffort);
+            }
+          }
 
           // Awaited last on purpose: no await may split setModelOptions from
           // the setModel above. React commits the options-only render at such

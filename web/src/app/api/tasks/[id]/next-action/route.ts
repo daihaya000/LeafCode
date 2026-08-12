@@ -12,7 +12,7 @@ import {
 } from "@/lib/next-action-text";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
-import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
+import { GENERATION_MODEL_EFFORT_SETTING_KEY, GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +114,10 @@ export async function POST(req: NextRequest, context: Ctx) {
         return { providerID, modelID };
       })()
     : requestModel;
+  // Paired reasoning effort for the configured generation model.
+  const configuredEffort = configuredModel
+    ? getSetting(GENERATION_MODEL_EFFORT_SETTING_KEY) || undefined
+    : undefined;
   const agent =
     typeof agentInput === "string" && agentInput.trim()
       ? agentInput.trim()
@@ -199,6 +203,7 @@ export async function POST(req: NextRequest, context: Ctx) {
       };
       if (model) promptBody.model = model;
       if (agent) promptBody.agent = agent;
+      if (configuredEffort) promptBody.variant = configuredEffort;
 
       try {
         const result = await ocServer<{

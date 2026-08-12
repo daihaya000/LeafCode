@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_MODEL_EFFORT_EVENT,
   DEFAULT_MODEL_EVENT,
   LAST_USED_MODEL_EVENT,
   readDefaultModel,
+  readDefaultModelEffort,
+  readDefaultModelEffortFromServer,
   readDefaultModelFromServer,
   readLastUsedModel,
   writeDefaultModel,
+  writeDefaultModelEffort,
+  writeDefaultModelEffortToServer,
   writeDefaultModelToServer,
   writeLastUsedModel,
 } from "./default-model";
@@ -200,5 +205,80 @@ describe("default-model server sync", () => {
     await write;
     expect(await read).toBe("openai::gpt-5");
     expect(getJson).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("default-model effort storage", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("returns null when nothing is stored", () => {
+    expect(readDefaultModelEffort()).toBeNull();
+  });
+
+  it("round-trips a stored effort", () => {
+    writeDefaultModelEffort("high");
+    expect(localStorage.getItem("webui:default-model-effort")).toBe("high");
+    expect(readDefaultModelEffort()).toBe("high");
+    writeDefaultModelEffort(null);
+    expect(localStorage.getItem("webui:default-model-effort")).toBeNull();
+    expect(readDefaultModelEffort()).toBeNull();
+  });
+
+  it("dispatches a CustomEvent with the effort on write", () => {
+    const detail: string[] = [];
+    const onEvent = (e: Event) =>
+      detail.push((e as CustomEvent<string>).detail);
+    window.addEventListener(DEFAULT_MODEL_EFFORT_EVENT, onEvent);
+    writeDefaultModelEffort("medium");
+    window.removeEventListener(DEFAULT_MODEL_EFFORT_EVENT, onEvent);
+    expect(detail).toEqual(["medium"]);
+  });
+
+  it("uses a separate key from the default model", () => {
+    writeDefaultModel("openai::gpt-5");
+    writeDefaultModelEffort("low");
+    expect(localStorage.getItem("webui:default-model")).toBe("openai::gpt-5");
+    expect(localStorage.getItem("webui:default-model-effort")).toBe("low");
+  });
+
+  it("reads the effort from the server settings endpoint", async () => {
+    getJson.mockResolvedValue({ value: "high" });
+    expect(await readDefaultModelEffortFromServer()).toBe("high");
+    expect(getJson).toHaveBeenCalledWith("/api/settings/default-model-effort");
+  });
+
+  it("returns null when the server has no effort", async () => {
+    getJson.mockResolvedValue({ value: "" });
+    expect(await readDefaultModelEffortFromServer()).toBeNull();
+  });
+
+  it("returns null on effort fetch failure", async () => {
+    getJson.mockRejectedValue(new Error("network"));
+    expect(await readDefaultModelEffortFromServer()).toBeNull();
+  });
+
+  it("writes the effort to the server settings endpoint", async () => {
+    sendJson.mockResolvedValue({ ok: true });
+    await writeDefaultModelEffortToServer("low");
+    expect(sendJson).toHaveBeenCalledWith(
+      "PUT",
+      "/api/settings/default-model-effort",
+      { value: "low" },
+    );
+  });
+
+  it("swallows effort write errors", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    sendJson.mockRejectedValue(new Error("network"));
+    await expect(
+      writeDefaultModelEffortToServer("low"),
+    ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
   });
 });

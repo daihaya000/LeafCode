@@ -38,6 +38,7 @@ type TestProvider = {
     name: string;
     enabled: boolean;
     pricing?: TestPricing;
+    variants?: Record<string, { disabled?: boolean } | undefined>;
   }[];
 };
 
@@ -65,6 +66,9 @@ function mockGetJson(overrides?: {
   fail?: boolean;
   empty?: boolean;
   defaultModel?: string | null;
+  defaultModelEffort?: string | null;
+  generationModel?: string | null;
+  generationModelEffort?: string | null;
   autoOptimize?: string | null;
   autoShowModel?: string | null;
   providers?: typeof PROVIDERS;
@@ -72,6 +76,15 @@ function mockGetJson(overrides?: {
   getJson.mockImplementation((path: string) => {
     if (path === "/api/settings/default-model") {
       return Promise.resolve({ value: overrides?.defaultModel ?? null });
+    }
+    if (path === "/api/settings/default-model-effort") {
+      return Promise.resolve({ value: overrides?.defaultModelEffort ?? null });
+    }
+    if (path === "/api/settings/generation-model") {
+      return Promise.resolve({ value: overrides?.generationModel ?? null });
+    }
+    if (path === "/api/settings/generation-model-effort") {
+      return Promise.resolve({ value: overrides?.generationModelEffort ?? null });
     }
     if (path === "/api/settings/auto-optimize") {
       return Promise.resolve({ value: overrides?.autoOptimize ?? null });
@@ -155,6 +168,91 @@ describe("ProviderModelsSettings", () => {
       expect(
         screen.getByRole("combobox", { name: "デフォルトモデル" }).textContent,
       ).toContain("GPT-5");
+    });
+  });
+
+  it("persists the default model effort locally and to the server", async () => {
+    mockGetJson({ defaultModel: "openai::gpt-5" });
+    render(<ProviderModelsSettings />);
+
+    await screen.findByRole("combobox", { name: "デフォルトモデル" });
+    const effortTrigger = screen.getByRole("button", {
+      name: "デフォルトモデルのEffort",
+    });
+    fireEvent.click(effortTrigger);
+    fireEvent.click(screen.getByRole("option", { name: "high" }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:default-model-effort")).toBe("high");
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/default-model-effort",
+        { value: "high" },
+      );
+    });
+  });
+
+  it("hydrates the server default model effort into localStorage on load", async () => {
+    mockGetJson({ defaultModel: "openai::gpt-5", defaultModelEffort: "medium" });
+    render(<ProviderModelsSettings />);
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:default-model-effort")).toBe("medium");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "デフォルトモデルのEffort" })
+          .textContent,
+      ).toContain("medium");
+    });
+  });
+
+  it("restricts default effort options to the model's declared variants", async () => {
+    mockGetJson({
+      defaultModel: "openai::gpt-5",
+      providers: [
+        {
+          ...PROVIDERS[0],
+          models: [
+            {
+              ...PROVIDERS[0].models[0],
+              variants: { medium: {}, high: {} },
+            },
+            PROVIDERS[0].models[1],
+          ],
+        },
+        PROVIDERS[1],
+      ],
+    });
+    render(<ProviderModelsSettings />);
+
+    const effortTrigger = await screen.findByRole("button", {
+      name: "デフォルトモデルのEffort",
+    });
+    fireEvent.click(effortTrigger);
+    expect(screen.getByRole("option", { name: "high" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "medium" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "xhigh" })).toBeNull();
+  });
+
+  it("persists the generation model effort locally and to the server", async () => {
+    mockGetJson({ generationModel: "openai::gpt-5" });
+    render(<ProviderModelsSettings />);
+
+    await screen.findByRole("combobox", { name: "タイトル / NextAction 生成モデル" });
+    const effortTrigger = screen.getByRole("button", {
+      name: "生成モデルのEffort",
+    });
+    fireEvent.click(effortTrigger);
+    fireEvent.click(screen.getByRole("option", { name: "low" }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem("webui:generation-model-effort")).toBe("low");
+      expect(sendJson).toHaveBeenCalledWith(
+        "PUT",
+        "/api/settings/generation-model-effort",
+        { value: "low" },
+      );
     });
   });
 
