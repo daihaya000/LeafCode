@@ -166,7 +166,7 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
   return (
     <>
       {showLogout && (
-        <div className="fixed top-0 right-0 z-50 hidden items-center gap-2 p-2 md:flex">
+        <div className="fixed right-3 bottom-3 z-50 hidden items-center gap-2 rounded-md border border-border bg-surface/95 px-2 py-1 shadow-sm backdrop-blur-sm md:flex">
           <span className="text-[11px] text-muted">{user}</span>
           <button
             type="button"
