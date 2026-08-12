@@ -174,6 +174,7 @@ import {
   PLAN_APPROVAL_PROMPT,
 } from "@/lib/plan-document";
 import { collectTaskCallIds } from "@/lib/match-child-session";
+import { groupImagePartsForRender } from "@/lib/message-parts";
 import { lastAssistantText, looksLikeCompletionReport } from "@/lib/completion-report";
 import { extractSessionTouchedPaths } from "@/lib/session-touched-files";
 import {
@@ -4715,19 +4716,47 @@ export function TaskView({
                         messageTime && <span>{formatMessageTime(messageTime)}</span>
                       )}
                     </div>
-                    {m.parts
-                      .filter((p) => {
+                    {groupImagePartsForRender(
+                      m.parts.filter((p) => {
                         const planPath = planPaths.get(m.info.id);
                         if (!planPath) return true;
                         return (
                           normalizedPlanPath(p.text) !== planPath &&
                           normalizedPlanPath(p.filename) !== planPath
                         );
-                      })
-                      .map((p) => (
+                      }),
+                    ).map((group) =>
+                      group.kind === "images" ? (
+                        <div
+                          key={group.key}
+                          className={cx(
+                            "flex flex-wrap gap-2",
+                            m.info.role === "user" ? "justify-end" : "justify-start",
+                          )}
+                        >
+                          {group.items.map((p) => (
+                            <PartView
+                              key={p.id}
+                              part={p}
+                              role={m.info.role}
+                              onFileClick={openFileInDiff}
+                              directory={task.directory}
+                              rootSessionId={task.sessionId}
+                              siblingTaskCallIds={siblingTaskCallIds}
+                              modelLabels={modelLabels}
+                              costPrefs={costPrefs}
+                              onMarkHang={markTaskHang}
+                              markHangBusy={stream.aborting}
+                              skillOverviews={skillOverviewMap}
+                              agentOverviews={agentOverviewMap}
+                              stripGoalLoopJson={goalLoop !== null}
+                            />
+                          ))}
+                        </div>
+                      ) : (
                       <PartView
-                        key={p.id}
-                        part={p}
+                        key={group.item.id}
+                        part={group.item}
                         role={m.info.role}
                         onFileClick={openFileInDiff}
                         directory={task.directory}
@@ -4741,7 +4770,8 @@ export function TaskView({
                         agentOverviews={agentOverviewMap}
                         stripGoalLoopJson={goalLoop !== null}
                       />
-                    ))}
+                      ),
+                    )}
                     {planPaths.get(m.info.id) && (
                       <PlanDocumentCard
                         path={planPaths.get(m.info.id)!}

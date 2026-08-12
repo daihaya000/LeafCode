@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
@@ -505,7 +505,7 @@ describe("TaskView", () => {
       todos: [{ id: "todo-1", content: "実装する", status: "in_progress" }],
       messages: [
         {
-          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
           parts: [{ id: "p1", messageID: "m1", type: "text", text: "お願いします" }],
         },
         {
@@ -1858,6 +1858,47 @@ describe("TaskView", () => {
     // it moves into the mobile kebab menu alongside the other panel toggles.
     expect(screen.queryByRole("button", { name: "ターミナル" })).toBeNull();
     expect(screen.getByRole("button", { name: "メニューを開く" })).toBeTruthy();
+  });
+
+  it("groups multiple image attachments in a user message into one flex row", async () => {
+    taskStatus = "idle";
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      status: { type: "idle" },
+      visibleMessages: [
+        {
+          info: { id: "m-img", role: "user", time: { created: Date.now() } },
+          parts: [
+            {
+              id: "img-1",
+              messageID: "m-img",
+              type: "file",
+              filename: "a.png",
+              mime: "image/png",
+              url: "data:image/png;base64,AAAA",
+            },
+            {
+              id: "img-2",
+              messageID: "m-img",
+              type: "file",
+              filename: "b.png",
+              mime: "image/png",
+              url: "data:image/png;base64,BBBB",
+            },
+          ],
+        },
+      ],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    // PartView is mocked to null in this suite, so the grouping is observable
+    // through the single flex-wrap wrapper TaskView renders around consecutive
+    // image parts (BU-10); the pre-fix per-part render produced no wrapper.
+    const scroller = document.querySelector('[data-testid="message-scroller"]');
+    const wrappers = Array.from(scroller?.querySelectorAll(".flex-wrap") ?? []);
+    expect(wrappers).toHaveLength(1);
+    expect(wrappers[0]!.className).toContain("justify-end");
   });
 
   describe("パネルトグル", () => {
@@ -3749,7 +3790,7 @@ describe("TaskView voice input", () => {
       loaded: true,
       messages: [
         {
-          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
           parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
         },
         {
@@ -3807,7 +3848,7 @@ describe("TaskView voice input", () => {
       loaded: true,
       messages: [
         {
-          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
           parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
         },
         {
@@ -3862,7 +3903,7 @@ describe("TaskView voice input", () => {
       loaded: true,
       messages: [
         {
-          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          info: { id: "m1", role: "assistant", time: { created: Date.now() } },
           parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
         },
         {
@@ -4347,3 +4388,4 @@ describe("TaskView voice input", () => {
     });
   });
 });
+
