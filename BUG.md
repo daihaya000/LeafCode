@@ -1,8 +1,24 @@
-# BUG インベントリ（2026-08-12 バグハント）
+# BUG インベントリ
 
 > 対象リポジトリ: OpenCodeWebUI（`web/` + `host/` + `browser-bridge/`）
-> 検証環境: git HEAD `eadcb41`（クリーン）、Windows / OneDrive
 > このファイルは**発見記録のみ**。修正は本ファイルを参照して別途行う（修正禁止）。
+
+---
+
+# 2026-08-13 UI/UX バグハント（Composer / ループ / メッセージ / 設定画面）
+
+> 検証環境: git HEAD `c47cd6f`（クリーン）、Windows / OneDrive / OpenCode 1.18.16
+> スコープ: Composer・Goal Loop・メッセージ表示・設定画面の UI/UX 中心。
+> 前回（2026-08-12）の 13 件（BH-1〜13）は全て修正済み。本ラウンドは**発見記録のみ・修正しない**。
+> 検証: 対象コンポーネントの vitest（Composer/GoalLoopComposer/GoalLoopPanel/PartView/MessageMetaHeader/HomeView）155 テスト全 PASS の上で、コードレビュー + 実データ照合で以下を確認。
+
+| ID | 優先度 | 要約 | 根拠 / 影響 |
+|----|--------|------|-------------|
+| **BU-1** | 中 | **HomeView で Workflow 開始モード中もループのトグル/承認条件が表示され有効化できるが、ループは開始されない（無言の無効）** | `web/src/components/home/HomeView.tsx`。ツールバーの `GoalLoopToggle`（`:1600`）は常時表示、`goalLoopEnabled` なら `GoalLoopOptions`（`:1487`）も表示される。一方 `submit()` の goal-loop 起動は `goalLoopEnabled && startMode === "task"`（`:1017`）に限定され、Workflow 変換は `startMode === "workflow"`（`:1005`）のみ実行。`startMode` 切替時に `goalLoopEnabled` をリセットする処理が無いため、Task で ON にした後に Workflow へ切り替えてもトグルは青いまま・承認条件欄も出たまま送信され、ループは**静かに**無視される（acceptance / maxTurns / 完走モードが全て無視）。ユーザーはループが動いていると錯覚する。→ 開始モードと排他にする（Workflow 時はトグル非表示 or 切替時に OFF 化）か、送信時に警告する |
+| **BU-2** | 中 | **プロジェクト設定のタブ切替で編集内容（`draft`）が他タブの内容のまま残り、誤ったファイルへ保存され得る** | `web/src/components/settings/ProjectSettingsView.tsx`。`files` / `agents` / `skills` 3 タブが単一の `draft` state（`:55`）を共有。`loadFiles` はマウント時のみ（`:125-127`）で、agents/skills への切替では `loadAgents`/`loadSkills` が `draft` を上書き（`:129-132`）。エージェントタブ→設定ファイルタブへ戻しても `loadFiles` は走らず、**AGENTS.md の編集欄に最後に開いたエージェント/スキルの内容が表示されたまま**「保存」で AGENTS.md へ書き込まれる（誤書き込み＝データ破壊リスク）。また未保存の編集内容がタブ切替で無警告に失われる（AgentsSettings.tsx は `baselineRef` で未保存編集を保持しており、非対称）。→ タブ切替時に当該タブの内容を再ロード or 未保存なら確認する |
+| **BU-3** | 低 | **GoalLoopComposer の「最大ターン」数値入力がクリア時に即 1 へ強制され、自由に入力・編集できない** | `web/src/components/GoalLoopComposer.tsx:95`。`onChange` が `Math.min(100, Math.max(1, Number(e.target.value) || 1))` を毎キー実行するため、空欄にしようとすると即座に `1` が入り、既存値のクリア→新値入力ができない（例: `10` を消して `20` にしたいとき `1` に戻る）。GoalLoopPanel.tsx は編集時テキスト state に保持してこの問題を回避済みなのに Composer 側（Home/TaskView 共通）は未対応。テストはこの挙動を明示仕様として固定している（`GoalLoopComposer.test.tsx` の "falls back to 1 for junk"）ため、仕様変更が必要。同系: `VisionSettings.tsx` のタイムアウト入力も `Number("")=0` で表示が `0` に張り付く |
+| **BU-4** | 低 | **Composer のハイライトミラーが初回出現時に textarea の scrollTop と同期されない** | `web/src/components/Composer.tsx`。ミラーへスクロールを同期する `useEffect`（`:150-157`）の依存が `[textarea.value, textarea.ref]` のみで、`hasHighlight` の出現契機を含まない。スラッシュ/エージェント候補が非同期ロード（`useSlashCommands`/`useAgents`）で後から届き `hasHighlight` が true になるケースでは textarea.value が変わらずミラーが scrollTop=0 で新規マウントされ、長文スクロール中はハイライト位置がズレる（次の scroll イベントまで）。またミラー末尾に常時 `"\n"` を付加するため 1 行分の高さ差が出得る |
+| **BU-5** | 低 | **`stripGoalLoopJsonBlock` がゴールループ以外の assistant テキストにも適用され、末尾の ```json {status:...} が表示から消える** | `web/src/components/task/PartView.tsx:599` で role=assistant の**全**テキストパートに適用。`useSessionStream.ts:451` の判定は「末尾の ```json ブロックのパース結果に status=progress/completed/blocked/verified_completed が含まれる」のみで、ループ実行中か否かを考慮しない。通常の（非ループ）会話でモデルが末尾に例示としてそのような JSON を書いた場合も表示から剥がれる。頻度は低いが「ループ専用」の表示ロジックが全 assistant メッセージに掛かる非対称 |
 
 ## 修正状況（2026-08-12 全件対応）
 
