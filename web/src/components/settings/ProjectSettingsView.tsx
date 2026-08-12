@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, FileText, Plus, Sparkles, Trash2, Users } from "lucide-react";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
@@ -52,7 +52,23 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
   const [activeFile, setActiveFile] = useState<ProjectSettingFileKey>("AGENTS.md");
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [activeSkill, setActiveSkill] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  // Drafts are kept per tab so switching tabs never shows another tab's
+  // content in the editor and unsaved edits survive tab round-trips (BU-2).
+  const [draftByTab, setDraftByTab] = useState<Record<Tab, string>>({
+    files: "",
+    agents: "",
+    skills: "",
+  });
+  const draft = draftByTab[tab];
+  const setDraftForTab = useCallback((target: Tab, value: string) => {
+    setDraftByTab((prev) => ({ ...prev, [target]: value }));
+  }, []);
+  // agents/skills are fetched once on first visit so a tab round-trip does
+  // not overwrite unsaved edits; files load on mount.
+  const loadedTabsRef = useRef<{ agents: boolean; skills: boolean }>({
+    agents: false,
+    skills: false,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,14 +91,14 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       const selected = result.files.find((file) => file.key === "AGENTS.md") ?? result.files[0];
       if (selected) {
         setActiveFile(selected.key);
-        setDraft(selected.content);
+        setDraftForTab("files", selected.content);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "プロジェクト設定の読み込みに失敗しました");
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, setDraftForTab]);
 
   const loadAgents = useCallback(async () => {
     setError(null);
@@ -93,15 +109,15 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       setAgents(result.agents);
       if (result.agents.length > 0) {
         setActiveAgent(result.agents[0].name);
-        setDraft(result.agents[0].content);
+        setDraftForTab("agents", result.agents[0].content);
       } else {
         setActiveAgent(null);
-        setDraft("");
+        setDraftForTab("agents", "");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "エージェント一覧の取得に失敗しました");
     }
-  }, [projectId]);
+  }, [projectId, setDraftForTab]);
 
   const loadSkills = useCallback(async () => {
     setError(null);
@@ -112,30 +128,36 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       setSkills(result.skills);
       if (result.skills.length > 0) {
         setActiveSkill(result.skills[0].name);
-        setDraft(result.skills[0].content);
+        setDraftForTab("skills", result.skills[0].content);
       } else {
         setActiveSkill(null);
-        setDraft("");
+        setDraftForTab("skills", "");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "スキル一覧の取得に失敗しました");
     }
-  }, [projectId]);
+  }, [projectId, setDraftForTab]);
 
   useEffect(() => {
     void loadFiles();
   }, [loadFiles]);
 
   useEffect(() => {
-    if (tab === "agents") void loadAgents();
-    if (tab === "skills") void loadSkills();
+    if (tab === "agents" && !loadedTabsRef.current.agents) {
+      loadedTabsRef.current.agents = true;
+      void loadAgents();
+    }
+    if (tab === "skills" && !loadedTabsRef.current.skills) {
+      loadedTabsRef.current.skills = true;
+      void loadSkills();
+    }
   }, [tab, loadAgents, loadSkills]);
 
   const selectFile = (key: ProjectSettingFileKey) => {
     const file = data?.files.find((candidate) => candidate.key === key);
     if (!file) return;
     setActiveFile(key);
-    setDraft(file.content);
+    setDraftForTab("files", file.content);
     setMessage(null);
     setError(null);
   };
@@ -144,7 +166,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
     const agent = agents.find((candidate) => candidate.name === name);
     if (!agent) return;
     setActiveAgent(name);
-    setDraft(agent.content);
+    setDraftForTab("agents", agent.content);
     setMessage(null);
     setError(null);
   };
@@ -153,7 +175,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
     const skill = skills.find((candidate) => candidate.name === name);
     if (!skill) return;
     setActiveSkill(name);
-    setDraft(skill.content);
+    setDraftForTab("skills", skill.content);
     setMessage(null);
     setError(null);
   };
@@ -224,7 +246,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       // The editor shows the same file, so keep the draft in sync with the
       // frontmatter the toggle just rewrote instead of leaving a stale copy
       // that would undo the change on the next save.
-      if (activeAgent === name) setDraft(res.agent.content);
+      if (activeAgent === name) setDraftForTab("agents", res.agent.content);
       setMessage(`エージェント「${name}」を${enabled ? "有効化" : "無効化"}しました`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "エージェントの切り替えに失敗しました");
@@ -250,7 +272,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
         [...current, res.agent].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setActiveAgent(name);
-      setDraft(DEFAULT_AGENT_TEMPLATE);
+      setDraftForTab("agents", DEFAULT_AGENT_TEMPLATE);
       setNewAgentName("");
       setMessage(`エージェント「${name}」を作成しました`);
     } catch (err) {
@@ -275,10 +297,10 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       if (activeAgent === name) {
         if (remaining.length > 0) {
           setActiveAgent(remaining[0].name);
-          setDraft(remaining[0].content);
+          setDraftForTab("agents", remaining[0].content);
         } else {
           setActiveAgent(null);
-          setDraft("");
+          setDraftForTab("agents", "");
         }
       }
       setMessage(`エージェント「${name}」を削除しました`);
@@ -329,7 +351,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
         [...current, res.skill].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setActiveSkill(name);
-      setDraft(content);
+      setDraftForTab("skills", content);
       setNewSkillName("");
       setMessage(`スキル「${name}」を作成しました`);
     } catch (err) {
@@ -353,7 +375,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       setSkills(remaining);
       if (activeSkill === name) {
         setActiveSkill(remaining[0]?.name ?? null);
-        setDraft(remaining[0]?.content ?? "");
+        setDraftForTab("skills", remaining[0]?.content ?? "");
       }
       setMessage(`スキル「${name}」を削除しました`);
     } catch (err) {
@@ -482,7 +504,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                 <textarea
                   aria-label={`${selected.label}の内容`}
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => setDraftForTab(tab, event.target.value)}
                   spellCheck={false}
                   className="min-h-[28rem] w-full resize-y rounded-lg border border-border bg-bg px-3 py-3 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
                 />
@@ -603,7 +625,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                     <textarea
                       aria-label={`エージェント「${selectedAgent.name}」の内容`}
                       value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
+                      onChange={(event) => setDraftForTab(tab, event.target.value)}
                       spellCheck={false}
                       className="min-h-[28rem] w-full resize-y rounded-lg border border-border bg-bg px-3 py-3 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
                     />
@@ -715,7 +737,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                     <textarea
                       aria-label={`スキル「${selectedSkill.name}」の内容`}
                       value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
+                      onChange={(event) => setDraftForTab(tab, event.target.value)}
                       spellCheck={false}
                       className="min-h-[28rem] w-full resize-y rounded-lg border border-border bg-bg px-3 py-3 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
                     />
