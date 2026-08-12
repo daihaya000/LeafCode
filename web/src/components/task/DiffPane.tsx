@@ -881,15 +881,22 @@ export function DiffPane({
           <div className="flex flex-col items-center gap-3 py-10 text-center">
             <p className="text-sm text-faint" role="status" aria-live="polite">
               {payload.error ||
-                (payload.files.length > 0
-                  ? `${filter === "tracked" ? "既存の変更" : "新規ファイル"}はありません`
-                  : "変更はありません")}
+                (payload.files.length === 0
+                  ? "変更はありません"
+                  : sessionFilter !== "all" && touchedPaths?.size
+                    ? sessionFilter === "current"
+                      ? "このセッションが変更したファイルはありません（別セッション・外部の変更があります）"
+                      : "別セッション・外部の変更はありません（このセッションの変更があります）"
+                    : `${filter === "tracked" ? "既存の変更" : "新規ファイル"}はありません`)}
             </p>
             {payload.files.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setFilter("all")}
+                onClick={() => {
+                  setFilter("all");
+                  setSessionFilter("all");
+                }}
               >
                 すべて表示
               </Button>
