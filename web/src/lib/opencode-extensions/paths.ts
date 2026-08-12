@@ -17,6 +17,25 @@ export function opencodeConfigDir(): string {
   return path.join(os.homedir(), ".config", "opencode");
 }
 
+/**
+ * Rewrite an absolute path under the user's home dir as `~/...` for display,
+ * else return it with forward slashes for a consistent cross-platform look
+ * (relevant when `OPENCODE_CONFIG_DIR` points somewhere outside the home dir).
+ */
+export function homeRelative(absPath: string): string {
+  const normalized = absPath.split(path.sep).join("/");
+  const home = os.homedir();
+  if (!home) return normalized;
+  const homeNormalized = home.split(path.sep).join("/");
+  if (
+    normalized === homeNormalized ||
+    normalized.startsWith(`${homeNormalized}/`)
+  ) {
+    return `~${normalized.slice(homeNormalized.length)}`;
+  }
+  return normalized;
+}
+
 export function skillsDir(): string {
   return path.join(opencodeConfigDir(), "skills");
 }

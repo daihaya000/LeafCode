@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { ocServer } from "@/lib/oc-server";
 import { dataDir } from "@/lib/paths";
@@ -18,6 +17,7 @@ import {
 import {
   agentDefinitionDirs,
   configDirStateKey,
+  homeRelative,
   opencodeConfigFilePath,
   projectAgentDefinitionDirs,
   projectConfigFilePath,
@@ -171,22 +171,6 @@ function readConfigAgentMapAt(
   } catch {
     return {};
   }
-}
-
-/**
- * Rewrite an absolute path under the user's home dir as `~/...` for display,
- * else return it with forward slashes for a consistent cross-platform look
- * (relevant when `OPENCODE_CONFIG_DIR` points somewhere outside the home dir).
- */
-function homeRelative(absPath: string): string {
-  const normalized = absPath.split(path.sep).join("/");
-  const home = os.homedir();
-  if (!home) return normalized;
-  const homeNormalized = home.split(path.sep).join("/");
-  if (normalized === homeNormalized || normalized.startsWith(`${homeNormalized}/`)) {
-    return `~${normalized.slice(homeNormalized.length)}`;
-  }
-  return normalized;
 }
 
 /** Rewrite an absolute path under the project root as a relative display path. */

@@ -1,5 +1,5 @@
 /**
- * Project-scoped subagent definition files.
+ * Project-scoped agent definition files.
  *
  * OpenCode looks up agent definitions under `<project>/.opencode/agent` and
  * `<project>/.opencode/agents` (see opencode-extensions/paths.ts). This module
@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isAgentEnabled, setAgentDisabled } from "@/lib/agent-frontmatter";
 
 const MAX_AGENT_FILE_BYTES = 2 * 1024 * 1024;
 
@@ -30,6 +31,12 @@ export type ProjectAgentDto = {
   relativePath: string;
   exists: boolean;
   content: string;
+  /**
+   * `false` when the definition's frontmatter carries `disable: true`
+   * (see https://opencode.ai/docs/agents#disable). Derived from `content`, so
+   * the settings UI never has to parse frontmatter to render the toggle.
+   */
+  enabled: boolean;
 };
 
 function isWithinRoot(root: string, candidate: string): boolean {
@@ -49,6 +56,22 @@ function resolveAgentFile(root: string, name: string): string {
     }
   }
   return path.join(projectAgentDirs(root)[0], `${name}.md`);
+}
+
+/**
+ * Path of the existing definition file for `name`, without following symlinks.
+ *
+ * Writes must land on the file OpenCode already reads — resolving to the
+ * canonical `agents/` directory instead would silently create a second
+ * definition next to an existing `agent/<name>.md` and leave the edited copy
+ * shadowed by directory lookup order.
+ */
+function existingAgentFile(root: string, name: string): string | null {
+  for (const dir of projectAgentDirs(root)) {
+    const file = path.join(dir, `${name}.md`);
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
 }
 
 /** Enumerate every `*.md` under the project agent directories. */
@@ -87,6 +110,7 @@ export function listProjectAgents(root: string): ProjectAgentDto[] {
         relativePath: path.relative(root, real).split(path.sep).join("/"),
         exists: true,
         content,
+        enabled: isAgentEnabled(content),
       });
     }
   }
@@ -106,6 +130,7 @@ export function readProjectAgent(root: string, name: string): ProjectAgentDto {
       relativePath: path.relative(root, file).split(path.sep).join("/"),
       exists: false,
       content: "",
+      enabled: true,
     };
   }
   const real = fs.realpathSync.native(file);
@@ -116,12 +141,14 @@ export function readProjectAgent(root: string, name: string): ProjectAgentDto {
   if (size > MAX_AGENT_FILE_BYTES) {
     throw new Error(`エージェント「${name}」は2MBを超えているため編集できません`);
   }
+  const content = fs.readFileSync(real, "utf8");
   return {
     name,
     path: real,
     relativePath: path.relative(root, real).split(path.sep).join("/"),
     exists: true,
-    content: fs.readFileSync(real, "utf8"),
+    content,
+    enabled: isAgentEnabled(content),
   };
 }
 
@@ -132,7 +159,9 @@ export function writeProjectAgent(root: string, name: string, content: string): 
   if (Buffer.byteLength(content, "utf8") > MAX_AGENT_FILE_BYTES) {
     throw new Error("エージェント定義は2MB以内で指定してください");
   }
-  const target = path.join(projectAgentDirs(root)[0], `${name}.md`);
+  const target =
+    existingAgentFile(root, name) ??
+    path.join(projectAgentDirs(root)[0], `${name}.md`);
   if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) {
     throw new Error(`エージェント「${name}」はシンボリックリンクのため編集できません`);
   }
@@ -148,7 +177,29 @@ export function writeProjectAgent(root: string, name: string, content: string): 
     relativePath: path.relative(root, target).split(path.sep).join("/"),
     exists: true,
     content,
+    enabled: isAgentEnabled(content),
   };
+}
+
+/**
+ * Enable/disable a project agent by flipping `disable` in its frontmatter.
+ *
+ * Writing the flag into the definition file (rather than the project's
+ * `opencode.jsonc`) keeps the toggle self-contained: the agent stays where
+ * OpenCode looks for it, and projects without a local config file don't need
+ * one created just to hide an agent.
+ */
+export function setProjectAgentEnabled(
+  root: string,
+  name: string,
+  enabled: boolean,
+): ProjectAgentDto {
+  const current = readProjectAgent(root, name);
+  if (!current.exists) {
+    throw new Error(`エージェント「${name}」が見つかりません`);
+  }
+  if (current.enabled === enabled) return current;
+  return writeProjectAgent(root, name, setAgentDisabled(current.content, !enabled));
 }
 
 export function deleteProjectAgent(root: string, name: string): void {

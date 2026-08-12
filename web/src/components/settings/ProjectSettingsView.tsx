@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, FileText, Plus, Sparkles, Trash2, Users } from "lucide-react";
 import { MobileMenuHeader } from "@/components/shell/MobileMenuHeader";
 import { useMobileScrollTarget } from "@/components/shell/MobileScrollTargetContext";
+import { AgentSwitch } from "@/components/settings/AgentSwitch";
 import { Badge, Button, cx, Spinner } from "@/components/ui";
 import { getJson, sendJson } from "@/lib/client";
 import type {
@@ -59,6 +60,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
   const [newAgentName, setNewAgentName] = useState("");
   const [newSkillName, setNewSkillName] = useState("");
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const [togglingAgent, setTogglingAgent] = useState<string | null>(null);
   const [creatingSkill, setCreatingSkill] = useState(false);
   const setScrollTarget = useMobileScrollTarget();
 
@@ -97,7 +99,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
         setDraft("");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "サブエージェント一覧の取得に失敗しました");
+      setError(err instanceof Error ? err.message : "エージェント一覧の取得に失敗しました");
     }
   }, [projectId]);
 
@@ -199,11 +201,35 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       setAgents((current) =>
         current.map((a) => (a.name === activeAgent ? res.agent : a)),
       );
-      setMessage(`サブエージェント「${activeAgent}」を保存しました`);
+      setMessage(`エージェント「${activeAgent}」を保存しました`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "サブエージェントの保存に失敗しました");
+      setError(err instanceof Error ? err.message : "エージェントの保存に失敗しました");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleAgent = async (name: string, enabled: boolean) => {
+    if (togglingAgent) return;
+    setTogglingAgent(name);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await sendJson<{ agent: ProjectAgentDto }>(
+        "PATCH",
+        `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(name)}`,
+        { enabled },
+      );
+      setAgents((current) => current.map((a) => (a.name === name ? res.agent : a)));
+      // The editor shows the same file, so keep the draft in sync with the
+      // frontmatter the toggle just rewrote instead of leaving a stale copy
+      // that would undo the change on the next save.
+      if (activeAgent === name) setDraft(res.agent.content);
+      setMessage(`エージェント「${name}」を${enabled ? "有効化" : "無効化"}しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "エージェントの切り替えに失敗しました");
+    } finally {
+      setTogglingAgent(null);
     }
   };
 
@@ -226,9 +252,9 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
       setActiveAgent(name);
       setDraft(DEFAULT_AGENT_TEMPLATE);
       setNewAgentName("");
-      setMessage(`サブエージェント「${name}」を作成しました`);
+      setMessage(`エージェント「${name}」を作成しました`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "サブエージェントの作成に失敗しました");
+      setError(err instanceof Error ? err.message : "エージェントの作成に失敗しました");
     } finally {
       setCreatingAgent(false);
     }
@@ -255,9 +281,9 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
           setDraft("");
         }
       }
-      setMessage(`サブエージェント「${name}」を削除しました`);
+      setMessage(`エージェント「${name}」を削除しました`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "サブエージェントの削除に失敗しました");
+      setError(err instanceof Error ? err.message : "エージェントの削除に失敗しました");
     } finally {
       setSaving(false);
     }
@@ -369,7 +395,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
             <div role="tablist" aria-label="プロジェクト設定カテゴリ" className="flex gap-x-2">
               {([
                 { key: "files", label: "設定ファイル" },
-                { key: "agents", label: "サブエージェント" },
+                { key: "agents", label: "エージェント" },
                 { key: "skills", label: "スキル" },
               ] as const).map((t) => (
                 <button
@@ -471,13 +497,13 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
 
           {tab === "agents" && (
             <div className="grid gap-4 md:grid-cols-[15rem_minmax(0,1fr)]">
-              <nav aria-label="プロジェクトサブエージェント" className="space-y-2">
+              <nav aria-label="プロジェクトエージェント" className="space-y-2">
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={newAgentName}
                     onChange={(e) => setNewAgentName(e.target.value)}
-                    aria-label="新規サブエージェント名"
+                    aria-label="新規エージェント名"
                     placeholder="新しいエージェント名"
                     className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-primary"
                     onKeyDown={(e) => {
@@ -486,8 +512,8 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                   />
                   <button
                     type="button"
-                    aria-label="サブエージェントを作成"
-                    title="サブエージェントを作成"
+                    aria-label="エージェントを作成"
+                    title="エージェントを作成"
                     disabled={creatingAgent || !newAgentName.trim()}
                     onClick={() => void createAgent()}
                     className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:bg-surface-2 hover:text-text disabled:opacity-40"
@@ -510,9 +536,19 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                       onClick={() => selectAgent(agent.name)}
                       className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
                     >
-                      <Users className="h-3.5 w-3.5 shrink-0 text-muted" />
+                      <Users
+                        className={cx(
+                          "h-3.5 w-3.5 shrink-0",
+                          agent.enabled ? "text-muted" : "text-faint",
+                        )}
+                      />
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-text">
+                        <span
+                          className={cx(
+                            "block truncate text-sm font-medium",
+                            agent.enabled ? "text-text" : "text-faint",
+                          )}
+                        >
                           {agent.name}
                         </span>
                         <span className="block truncate font-mono text-[10px] text-faint">
@@ -520,9 +556,15 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                         </span>
                       </span>
                     </button>
+                    <AgentSwitch
+                      name={agent.name}
+                      enabled={agent.enabled}
+                      busy={togglingAgent !== null || saving}
+                      onToggle={() => void toggleAgent(agent.name, !agent.enabled)}
+                    />
                     <button
                       type="button"
-                      aria-label={`サブエージェント「${agent.name}」を削除`}
+                      aria-label={`エージェント「${agent.name}」を削除`}
                       title="削除"
                       disabled={saving}
                       onClick={() => void removeAgent(agent.name)}
@@ -534,7 +576,7 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                 ))}
                 {agents.length === 0 && (
                   <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-faint">
-                    サブエージェントがありません
+                    エージェントがありません
                   </p>
                 )}
               </nav>
@@ -547,14 +589,19 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                         <h2 className="font-mono text-sm font-semibold text-text">
                           {selectedAgent.name}
                         </h2>
-                        <Badge tone="neutral">.opencode/agents</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge tone={selectedAgent.enabled ? "success" : "neutral"}>
+                            {selectedAgent.enabled ? "有効" : "無効"}
+                          </Badge>
+                          <Badge tone="neutral">.opencode/agents</Badge>
+                        </div>
                       </div>
                       <p className="mt-1 truncate font-mono text-[11px] text-faint">
                         {selectedAgent.relativePath}
                       </p>
                     </div>
                     <textarea
-                      aria-label={`サブエージェント「${selectedAgent.name}」の内容`}
+                      aria-label={`エージェント「${selectedAgent.name}」の内容`}
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
                       spellCheck={false}
@@ -562,13 +609,13 @@ export function ProjectSettingsView({ projectId }: { projectId: string }) {
                     />
                     <div className="mt-3 flex justify-end">
                       <Button type="button" variant="primary" busy={saving} onClick={() => void saveAgent()}>
-                        サブエージェントを保存
+                        エージェントを保存
                       </Button>
                     </div>
                   </>
                 ) : (
                   <p className="py-12 text-center text-sm text-faint">
-                    左の「+」からサブエージェントを作成してください
+                    左の「+」からエージェントを作成してください
                   </p>
                 )}
               </section>

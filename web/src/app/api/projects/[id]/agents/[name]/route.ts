@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db";
 import {
   deleteProjectAgent,
   readProjectAgent,
+  setProjectAgentEnabled,
   writeProjectAgent,
 } from "@/lib/project-agents";
 
@@ -72,6 +73,35 @@ export async function PUT(
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "エージェントの保存に失敗しました" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string; name: string }> },
+) {
+  const denied = await requireAuthorized(req);
+  if (denied) return denied;
+
+  const { id, name } = await context.params;
+  const project = getProject(id);
+  if (!project) {
+    return NextResponse.json({ error: "プロジェクトが見つかりません" }, { status: 404 });
+  }
+  const body = (await req.json().catch(() => null)) as { enabled?: unknown } | null;
+  if (typeof body?.enabled !== "boolean") {
+    return NextResponse.json({ error: "enabledを真偽値で指定してください" }, { status: 400 });
+  }
+
+  try {
+    const root = resolveProjectRoot(project);
+    const agent = setProjectAgentEnabled(root, decodeURIComponent(name), body.enabled);
+    return NextResponse.json({ ok: true, agent });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "エージェントの切り替えに失敗しました" },
       { status: 400 },
     );
   }

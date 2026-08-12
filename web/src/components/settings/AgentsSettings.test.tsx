@@ -79,25 +79,30 @@ describe("AgentsSettings", () => {
     expect(screen.getAllByText("lead-programmer").length).toBeGreaterThan(0);
   });
 
-  it("shows each agent's scope and source path, without a redundant per-row rank badge", async () => {
+  it("lists each agent's source path and shows its scope once selected", async () => {
     render(<AgentsSettings />);
     await screen.findByRole("heading", { name: "Rank A" });
 
-    // Rank is already the section heading; it must not also repeat as a
-    // per-row badge (desktop table + mobile card would double the count).
+    // Rank is already the group heading; it must not also repeat as a
+    // per-row badge.
     expect(screen.getAllByText("Rank B")).toHaveLength(1);
 
-    expect(screen.getAllByText("グローバル").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("プロジェクト").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("ビルトイン").length).toBeGreaterThan(0);
+    // Source paths are the list rows' secondary label.
     expect(screen.getAllByText("~/opencode.jsonc").length).toBeGreaterThan(0);
     expect(
       screen.getAllByText(".opencode/agents/a-explorer-openai-gpt-5.md")
         .length,
     ).toBeGreaterThan(0);
+    expect(screen.getAllByText("ビルトイン").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /explorer/ }));
+    expect(screen.getByText("プロジェクト")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /lead-programmer/ }));
+    expect(screen.getByText("グローバル")).toBeTruthy();
   });
 
-  it("shows enabled/disabled badges", async () => {
+  it("shows the selected agent's enabled state", async () => {
     stubFetch(() =>
       new Response(
         JSON.stringify({
@@ -117,8 +122,11 @@ describe("AgentsSettings", () => {
     render(<AgentsSettings />);
     await screen.findByRole("heading", { name: "Rank A" });
 
-    expect(screen.getAllByText("有効").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("無効").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /legacy/ }));
+    expect(screen.getByText("無効")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /explorer/ }));
+    expect(screen.getByText("有効")).toBeTruthy();
   });
 
   it("keeps rank and model visible for a disabled agent", async () => {
@@ -146,8 +154,10 @@ describe("AgentsSettings", () => {
       screen.queryByRole("heading", { name: "その他のエージェント" }),
     ).toBeNull();
     expect(screen.getAllByText("critical-architect").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /critical-architect/ }));
     expect(screen.getAllByText(/claude-fable-5/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("無効").length).toBeGreaterThan(0);
+    expect(screen.getByText("無効")).toBeTruthy();
   });
 
   it("filters agents via the search box", async () => {
