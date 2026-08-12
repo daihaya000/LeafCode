@@ -1,5 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  IMAGE_ANALYSIS_SEND_TIMEOUT_MS,
+  NEW_TASK_SEND_TIMEOUT_MS,
+} from "@/lib/image-send-timeout";
 import { HomeView, __clearHomeComposerDraftForTest } from "./HomeView";
 
 const { getJson, sendJson, push, timedFetch, readDefaultModelFromServer } = vi.hoisted(() => ({
@@ -14,7 +18,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
-vi.mock("@/lib/client", () => ({ getJson, sendJson, timedFetch }));
+// Spread the real module so re-exported constants (NEW_TASK_SEND_TIMEOUT_MS /
+// IMAGE_ANALYSIS_SEND_TIMEOUT_MS, read inside submit) stay defined. A factory
+// listing only the request helpers makes those reads throw, which turns every
+// submit into the error path instead of a POST /api/tasks.
+vi.mock("@/lib/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/client")>()),
+  getJson,
+  sendJson,
+  timedFetch,
+}));
 vi.mock("@/lib/events", () => ({ notifyTasksChanged: vi.fn() }));
 vi.mock("@/lib/access-mode", () => ({
   ACCESS_MODE_OPTIONS: [
@@ -146,6 +159,8 @@ describe("HomeView image attachments", () => {
         "POST",
         "/api/tasks",
         expect.objectContaining({ prompt: "keyboard task" }),
+        undefined,
+        { timeoutMs: NEW_TASK_SEND_TIMEOUT_MS },
       ),
     );
   });
@@ -245,6 +260,9 @@ describe("HomeView image attachments", () => {
             expect.objectContaining({ mime: "image/png", name: "reference.png" }),
           ],
         }),
+        undefined,
+        // An attachment moves the send onto the VL pre-analysis budget.
+        { timeoutMs: IMAGE_ANALYSIS_SEND_TIMEOUT_MS },
       ),
     );
   });
@@ -353,6 +371,8 @@ describe("HomeView image attachments", () => {
           model: { providerID: "openai", modelID: "text" },
           files: [expect.objectContaining({ name: "fallback.png", mime: "image/png" })],
         }),
+        undefined,
+        { timeoutMs: IMAGE_ANALYSIS_SEND_TIMEOUT_MS },
       ),
     );
   });
@@ -914,6 +934,8 @@ describe("HomeView composer draft persistence", () => {
         "POST",
         "/api/tasks",
         expect.objectContaining({ prompt: "submit me" }),
+        undefined,
+        { timeoutMs: NEW_TASK_SEND_TIMEOUT_MS },
       ),
     );
     // router.push はモックなので HomeView はアンマウントされない。
@@ -1039,6 +1061,8 @@ describe("HomeView subagent permission", () => {
         "POST",
         "/api/tasks",
         expect.objectContaining({ subagentPermission: "deny" }),
+        undefined,
+        { timeoutMs: NEW_TASK_SEND_TIMEOUT_MS },
       ),
     );
     const [, , sentBody] = sendJson.mock.calls.find(
@@ -1067,6 +1091,8 @@ describe("HomeView subagent permission", () => {
         "POST",
         "/api/tasks",
         expect.objectContaining({ accessMode: "ask" }),
+        undefined,
+        { timeoutMs: NEW_TASK_SEND_TIMEOUT_MS },
       ),
     );
   });
