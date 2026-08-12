@@ -1811,6 +1811,9 @@ describe("HomeView goal loop toggle", () => {
     fireEvent.change(screen.getByLabelText("最大ターン数"), {
       target: { value: "4" },
     });
+    // maxTurns commits on blur (BU-3); the submit click alone does not fire
+    // the input's blur in jsdom.
+    fireEvent.blur(screen.getByLabelText("最大ターン数"));
     fireEvent.change(screen.getByLabelText("タスクの説明"), {
       target: { value: "バグを直す" },
     });
