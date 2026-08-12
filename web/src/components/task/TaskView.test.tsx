@@ -1704,7 +1704,7 @@ describe("TaskView", () => {
     const header = await screen.findByLabelText("応答メタデータ");
     await within(header).findByText("GPT-5.6 Sol");
     expect(within(header).getByText("$0.2500")).toBeTruthy();
-    expect(screen.queryByText("build")).toBeNull();
+    expect(within(header).getByText("build")).toBeTruthy();
     expect(screen.getAllByText("$0.2500")).toHaveLength(1);
   });
 
