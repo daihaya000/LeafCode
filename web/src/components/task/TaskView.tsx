@@ -66,6 +66,8 @@ import { Button, GhostSelect, Spinner, cx, formatMessageTime } from "@/component
 import {
   readAccessMode,
   writeAccessMode,
+  ACCESS_MODE_EVENT,
+  ACCESS_MODE_STORAGE_KEY,
   type AccessMode,
 } from "@/lib/access-mode";
 import {
@@ -73,12 +75,14 @@ import {
   readSubagentPermission,
   writeSubagentPermission,
   SUBAGENT_PERMISSION_EVENT,
+  SUBAGENT_PERMISSION_STORAGE_KEY,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
 import {
   readSkillPermission,
   writeSkillPermission,
   SKILL_PERMISSION_EVENT,
+  SKILL_PERMISSION_STORAGE_KEY,
   type SkillPermission,
 } from "@/lib/skill-permission";
 import {
@@ -1127,8 +1131,17 @@ export function TaskView({
       const detail = (e as CustomEvent<AccessMode>).detail;
       if (detail === "ask" || detail === "full") setAccessMode(detail);
     };
-    window.addEventListener("webui:access-mode", onMode);
-    return () => window.removeEventListener("webui:access-mode", onMode);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== ACCESS_MODE_STORAGE_KEY) return;
+      if (e.newValue === "ask" || e.newValue === "full") setAccessMode(e.newValue);
+      if (e.newValue == null) setAccessMode(readAccessMode());
+    };
+    window.addEventListener(ACCESS_MODE_EVENT, onMode);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(ACCESS_MODE_EVENT, onMode);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -1136,9 +1149,19 @@ export function TaskView({
       const detail = (e as CustomEvent<SubagentPermission>).detail;
       if (detail === "allow" || detail === "deny") setSubagentPermission(detail);
     };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== SUBAGENT_PERMISSION_STORAGE_KEY) return;
+      if (e.newValue === "allow" || e.newValue === "deny") {
+        setSubagentPermission(e.newValue);
+      }
+      if (e.newValue == null) setSubagentPermission(readSubagentPermission());
+    };
     window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
-    return () =>
+    window.addEventListener("storage", onStorage);
+    return () => {
       window.removeEventListener(SUBAGENT_PERMISSION_EVENT, onSubagent);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -1146,8 +1169,19 @@ export function TaskView({
       const detail = (e as CustomEvent<SkillPermission>).detail;
       if (detail === "allow" || detail === "deny") setSkillPermission(detail);
     };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== SKILL_PERMISSION_STORAGE_KEY) return;
+      if (e.newValue === "allow" || e.newValue === "deny") {
+        setSkillPermission(e.newValue);
+      }
+      if (e.newValue == null) setSkillPermission(readSkillPermission());
+    };
     window.addEventListener(SKILL_PERMISSION_EVENT, onSkill);
-    return () => window.removeEventListener(SKILL_PERMISSION_EVENT, onSkill);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(SKILL_PERMISSION_EVENT, onSkill);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   // DB → localStorage migration so the default model set on another
@@ -1220,6 +1254,8 @@ export function TaskView({
   // カードなしで実行される（`permission.asked` が発行されない）。
   // 依存に accessMode を含めるので、AttentionQueueModal の
   // writeAccessMode("full") 経由の切替もイベント → state 更新で追従する。
+  // descendantAccessSync は session.created（サブエージェント）で増える。
+  // 親の次回同期を待たず、子生成直後に天井を載せ直す。
   // Workflow 実行中は node ごとの write deny が後勝ちで上書きされないよう同期しない。
   useEffect(() => {
     if (!task?.id || !task.sessionId) return;
@@ -1240,7 +1276,13 @@ export function TaskView({
     return () => {
       cancelled = true;
     };
-  }, [task?.id, task?.sessionId, task?.executionMode, accessMode]);
+  }, [
+    task?.id,
+    task?.sessionId,
+    task?.executionMode,
+    accessMode,
+    stream.descendantAccessSync,
+  ]);
 
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.

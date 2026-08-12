@@ -25,6 +25,7 @@ import {
 } from "./opencode-paths";
 import { isSseConnectStalled, isSseSilent, SSE_SILENCE_MS } from "./sse-health";
 import { HANG_RETRY_METADATA_KEY as HANG_RETRY_KEY } from "./hang-retry";
+import { shouldSyncAccessCeilingForSessionCreated } from "./opencode-access-mode";
 import type {
   MessageInfo,
   MessageWithParts,
@@ -54,6 +55,12 @@ export type StreamState = {
   mutationStartedAt: number | null;
   /** Last published elapsed ms for display/warning thresholds. */
   mutationElapsedMs: number | null;
+  /**
+   * Bumped when a descendant (subagent) session is created under this stream's
+   * root. TaskView re-POSTs /api/access-mode so the edit ceiling lands before
+   * the child's first apply_patch.
+   */
+  descendantAccessSync: number;
 };
 
 export type StreamAction =
@@ -84,7 +91,8 @@ export type StreamAction =
   | { kind: "connection"; connection: ConnectionState }
   | { kind: "sessionError"; message: string | null }
   | { kind: "mutationStarted"; startedAt: number }
-  | { kind: "mutationElapsed"; elapsedMs: number };
+  | { kind: "mutationElapsed"; elapsedMs: number }
+  | { kind: "descendantSessionCreated"; sessionID: string };
 
 /** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
@@ -332,6 +340,7 @@ export function createInitialStreamState(scopeKey = ""): StreamState {
     loaded: false,
     mutationStartedAt: null,
     mutationElapsedMs: null,
+    descendantAccessSync: 0,
   };
 }
 
@@ -747,6 +756,11 @@ export function sessionStreamReducer(
       };
     case "mutationElapsed":
       return { ...state, mutationElapsedMs: action.elapsedMs };
+    case "descendantSessionCreated":
+      return {
+        ...state,
+        descendantAccessSync: (state.descendantAccessSync ?? 0) + 1,
+      };
     default:
       return state;
   }
@@ -1187,6 +1201,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     let connectStartedAt = Date.now();
     /** Accrue session.next.tool.input.delta fragments until .ended / .called. */
     const toolInputBuf = new Map<string, string>();
+    /** Known descendant session ids under this stream's root (for nested subagents). */
+    const knownDescendants = new Set<string>();
     const markActivity = () => {
       lastActivityAt = Date.now();
     };
@@ -1324,6 +1340,34 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           preferRestStatusRef.current = true;
           void resync().finally(() => {
             preferRestStatusRef.current = false;
+          });
+        }
+        return;
+      }
+      if (type === "session.created") {
+        const info = props.info as
+          | { id?: unknown; parentID?: unknown }
+          | undefined;
+        const createdId =
+          typeof info?.id === "string"
+            ? info.id
+            : typeof props.sessionID === "string"
+              ? props.sessionID
+              : undefined;
+        const parentID =
+          typeof info?.parentID === "string" ? info.parentID : undefined;
+        if (!sid) return;
+        const decision = shouldSyncAccessCeilingForSessionCreated({
+          rootSessionId: sid,
+          parentID,
+          sessionID: createdId,
+          knownDescendants,
+        });
+        if (decision.track) {
+          knownDescendants.add(decision.sessionID);
+          dispatch({
+            kind: "descendantSessionCreated",
+            sessionID: decision.sessionID,
           });
         }
         return;

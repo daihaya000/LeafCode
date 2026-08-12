@@ -294,6 +294,7 @@ describe("TaskView", () => {
       connection: "live",
       sessionError: null,
       loaded: true,
+      descendantAccessSync: 0,
       abort: vi.fn(),
       refreshTodos: vi.fn(),
       rejectQuestion: vi.fn(),
@@ -753,6 +754,37 @@ describe("TaskView", () => {
     // permission event and ran with no approval card.
     render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+      taskId: "ws1",
+      sessionId: "sess1",
+      mode: "ask",
+    });
+  });
+
+  it("re-syncs access mode when a descendant subagent session is created", async () => {
+    // Regression: child sessions start with OpenCode's default allow ruleset.
+    // Waiting for the next parent accessMode effect left a window where
+    // apply_patch ran with no approval card.
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      descendantAccessSync: 0,
+    });
+    const { rerender } = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    sendJson.mockClear();
+
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      descendantAccessSync: 1,
+    });
+    rerender(<TaskView taskId="ws1" />);
     await act(async () => {
       await Promise.resolve();
     });

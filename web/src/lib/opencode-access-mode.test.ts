@@ -10,7 +10,10 @@ vi.mock("@/lib/oc-server", () => ({
   ocServer,
 }));
 
-import { setSessionEditPermission } from "./opencode-access-mode";
+import {
+  setSessionEditPermission,
+  shouldSyncAccessCeilingForSessionCreated,
+} from "./opencode-access-mode";
 
 describe("setSessionEditPermission", () => {
   beforeEach(() => {
@@ -72,7 +75,10 @@ describe("setSessionEditPermission", () => {
   it("applies the same edit ceiling to direct child sessions", async () => {
     ocServer.mockImplementation(async (_directory: string, path: string) => {
       if (String(path).endsWith("/children")) {
-        return [{ id: "ses_child" }, { id: "ses_other" }];
+        if (String(path).includes("ses_parent")) {
+          return [{ id: "ses_child" }, { id: "ses_other" }];
+        }
+        return [];
       }
       return undefined;
     });
@@ -97,8 +103,37 @@ describe("setSessionEditPermission", () => {
           permission: [{ permission: "edit", pattern: "*", action: "ask" }],
         },
       });
-      expect(path).not.toBe("/session/ses_parent/children");
+      expect(String(path)).not.toMatch(/\/children$/);
     }
+  });
+
+  it("recursively applies the ceiling to nested grandchild sessions", async () => {
+    ocServer.mockImplementation(async (_directory: string, path: string) => {
+      const p = String(path);
+      if (p.endsWith("/children")) {
+        if (p.includes("ses_parent") && !p.includes("ses_child")) {
+          return [{ id: "ses_child" }];
+        }
+        if (p.includes("ses_child")) {
+          return [{ id: "ses_grand" }];
+        }
+        return [];
+      }
+      return undefined;
+    });
+
+    await setSessionEditPermission("C:\\worktree", "ses_parent", "ask");
+
+    const patched = ocServer.mock.calls
+      .filter(([, , init]) => init && typeof init === "object")
+      .map(([, path]) => path);
+    expect(patched).toEqual(
+      expect.arrayContaining([
+        "/session/ses_parent",
+        "/session/ses_child",
+        "/session/ses_grand",
+      ]),
+    );
   });
 
   it("still succeeds when listing children fails", async () => {
@@ -118,5 +153,40 @@ describe("setSessionEditPermission", () => {
         permission: [{ permission: "edit", pattern: "*", action: "allow" }],
       },
     });
+  });
+});
+
+describe("shouldSyncAccessCeilingForSessionCreated", () => {
+  it("tracks a direct child of the root session", () => {
+    expect(
+      shouldSyncAccessCeilingForSessionCreated({
+        rootSessionId: "ses_root",
+        parentID: "ses_root",
+        sessionID: "ses_child",
+        knownDescendants: new Set(),
+      }),
+    ).toEqual({ track: true, sessionID: "ses_child" });
+  });
+
+  it("tracks a grandchild when the parent was already known", () => {
+    expect(
+      shouldSyncAccessCeilingForSessionCreated({
+        rootSessionId: "ses_root",
+        parentID: "ses_child",
+        sessionID: "ses_grand",
+        knownDescendants: new Set(["ses_child"]),
+      }),
+    ).toEqual({ track: true, sessionID: "ses_grand" });
+  });
+
+  it("ignores unrelated sessions", () => {
+    expect(
+      shouldSyncAccessCeilingForSessionCreated({
+        rootSessionId: "ses_root",
+        parentID: "ses_other",
+        sessionID: "ses_x",
+        knownDescendants: new Set(),
+      }),
+    ).toEqual({ track: false });
   });
 });

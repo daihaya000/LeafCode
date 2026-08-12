@@ -1,6 +1,9 @@
 import { OcError, ocServer } from "@/lib/oc-server";
 import type { AccessMode } from "@/lib/access-mode";
 
+/** Max nesting depth when applying the edit ceiling to descendant sessions. */
+export const MAX_SESSION_DESCENDANT_DEPTH = 8;
+
 function editRule(mode: AccessMode) {
   return {
     permission: "edit",
@@ -51,6 +54,36 @@ export async function listChildSessionIds(
   }
 }
 
+/**
+ * Breadth-first descendants of a parent session (not including the parent).
+ * Caps depth so a pathological nesting graph cannot hang the access-mode path.
+ */
+export async function listDescendantSessionIds(
+  directory: string,
+  parentSessionId: string,
+  maxDepth: number = MAX_SESSION_DESCENDANT_DEPTH,
+): Promise<string[]> {
+  const root = parentSessionId.trim();
+  if (!root || root.length > 256) return [];
+  const out: string[] = [];
+  const seen = new Set<string>([root]);
+  let frontier = [root];
+  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      const children = await listChildSessionIds(directory, id);
+      for (const child of children) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        out.push(child);
+        next.push(child);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
 async function patchSessionEditPermission(
   directory: string,
   sessionId: string,
@@ -85,9 +118,10 @@ async function patchSessionEditPermission(
  * session rules are appended and evaluated LAST, so this always wins over the
  * agent/config defaults and over a previous toggle in the other direction.
  *
- * Direct child sessions inherit the same ceiling. Subagents otherwise start
- * with OpenCode's default `{ "*": "allow" }` and would rewrite files with no
- * approval card while the parent UI still said 確認する.
+ * Descendant sessions (direct children and nested grandchildren) inherit the
+ * same ceiling. Subagents otherwise start with OpenCode's default
+ * `{ "*": "allow" }` and would rewrite files with no approval card while the
+ * parent UI still said 確認する.
  */
 export async function setSessionEditPermission(
   directory: string,
@@ -99,9 +133,32 @@ export async function setSessionEditPermission(
     throw new OcError("invalid session", 400);
   }
   await patchSessionEditPermission(directory, id, mode);
-  const children = await listChildSessionIds(directory, id);
-  if (children.length === 0) return;
+  const descendants = await listDescendantSessionIds(directory, id);
+  if (descendants.length === 0) return;
   await Promise.allSettled(
-    children.map((childId) => patchSessionEditPermission(directory, childId, mode)),
+    descendants.map((childId) =>
+      patchSessionEditPermission(directory, childId, mode),
+    ),
   );
+}
+
+/**
+ * True when a `session.created` SSE payload is a descendant of `rootSessionId`
+ * (direct child, or child of a previously tracked descendant).
+ */
+export function shouldSyncAccessCeilingForSessionCreated(opts: {
+  rootSessionId: string;
+  parentID: string | undefined;
+  sessionID: string | undefined;
+  knownDescendants: ReadonlySet<string>;
+}): { track: true; sessionID: string } | { track: false } {
+  const root = opts.rootSessionId.trim();
+  const parentID = opts.parentID?.trim() ?? "";
+  const sessionID = opts.sessionID?.trim() ?? "";
+  if (!root || !parentID || !sessionID) return { track: false };
+  if (sessionID === root || sessionID.length > 256) return { track: false };
+  if (parentID !== root && !opts.knownDescendants.has(parentID)) {
+    return { track: false };
+  }
+  return { track: true, sessionID };
 }

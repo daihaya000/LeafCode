@@ -6,7 +6,7 @@
 
 export type SkillPermission = "allow" | "deny";
 
-const STORAGE_KEY = "webui:skill-permission";
+export const SKILL_PERMISSION_STORAGE_KEY = "webui:skill-permission";
 
 export const SKILL_PERMISSION_EVENT = "webui:skill-permission";
 
@@ -30,7 +30,7 @@ export const SKILL_PERMISSION_OPTIONS: {
 export function readSkillPermission(): SkillPermission {
   if (typeof window === "undefined") return "allow";
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(SKILL_PERMISSION_STORAGE_KEY);
     if (raw === "allow" || raw === "deny") return raw;
   } catch {
     /* ignore */
@@ -40,7 +40,7 @@ export function readSkillPermission(): SkillPermission {
 
 export function writeSkillPermission(mode: SkillPermission): void {
   try {
-    localStorage.setItem(STORAGE_KEY, mode);
+    localStorage.setItem(SKILL_PERMISSION_STORAGE_KEY, mode);
     window.dispatchEvent(
       new CustomEvent(SKILL_PERMISSION_EVENT, { detail: mode }),
     );

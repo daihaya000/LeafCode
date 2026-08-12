@@ -8,7 +8,7 @@ import type { SkillPermission } from "./skill-permission";
 
 export type SubagentPermission = "allow" | "deny";
 
-const STORAGE_KEY = "webui:subagent-permission";
+export const SUBAGENT_PERMISSION_STORAGE_KEY = "webui:subagent-permission";
 
 export const SUBAGENT_PERMISSION_EVENT = "webui:subagent-permission";
 
@@ -32,7 +32,7 @@ export const SUBAGENT_PERMISSION_OPTIONS: {
 export function readSubagentPermission(): SubagentPermission {
   if (typeof window === "undefined") return "allow";
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(SUBAGENT_PERMISSION_STORAGE_KEY);
     if (raw === "allow" || raw === "deny") return raw;
   } catch {
     /* ignore */
@@ -42,7 +42,7 @@ export function readSubagentPermission(): SubagentPermission {
 
 export function writeSubagentPermission(mode: SubagentPermission): void {
   try {
-    localStorage.setItem(STORAGE_KEY, mode);
+    localStorage.setItem(SUBAGENT_PERMISSION_STORAGE_KEY, mode);
     window.dispatchEvent(
       new CustomEvent(SUBAGENT_PERMISSION_EVENT, { detail: mode }),
     );

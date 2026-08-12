@@ -34,6 +34,8 @@ vi.mock("@/lib/access-mode", () => ({
     { value: "ask", label: "確認する", title: "" },
     { value: "full", label: "フルアクセス", title: "" },
   ],
+  ACCESS_MODE_EVENT: "webui:access-mode",
+  ACCESS_MODE_STORAGE_KEY: "webui:access-mode",
   readAccessMode: () => "ask",
   writeAccessMode: vi.fn(),
 }));

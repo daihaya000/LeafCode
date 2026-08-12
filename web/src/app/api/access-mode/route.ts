@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace, latestBindings, listSessionBindings } from "@/lib/db";
 import { OcError } from "@/lib/oc-server";
 import {
-  listChildSessionIds,
+  listDescendantSessionIds,
   setSessionEditPermission,
 } from "@/lib/opencode-access-mode";
 import type { AccessMode } from "@/lib/access-mode";
@@ -83,14 +83,15 @@ export async function POST(req: NextRequest) {
       if (belongs) {
         sessionId = requested;
       } else {
-        // Subagent sessions are not bound, but they still need the parent's
-        // 確認する / フルアクセス ceiling or child writes skip approval cards.
+        // Subagent sessions (including nested grandchildren) are not bound,
+        // but they still need the parent's 確認する / フルアクセス ceiling or
+        // child writes skip approval cards.
         for (const binding of bindings) {
-          const children = await listChildSessionIds(
+          const descendants = await listDescendantSessionIds(
             workspace.absolute_path,
             binding.opencode_session_id,
           );
-          if (children.includes(requested)) {
+          if (descendants.includes(requested)) {
             sessionId = requested;
             break;
           }

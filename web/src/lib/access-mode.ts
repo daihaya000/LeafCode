@@ -1,6 +1,7 @@
 export type AccessMode = "ask" | "full";
 
-const STORAGE_KEY = "webui:access-mode";
+export const ACCESS_MODE_STORAGE_KEY = "webui:access-mode";
+export const ACCESS_MODE_EVENT = "webui:access-mode";
 
 export const ACCESS_MODE_OPTIONS: {
   value: AccessMode;
@@ -24,7 +25,7 @@ export const ACCESS_MODE_OPTIONS: {
 export function readAccessMode(): AccessMode {
   if (typeof window === "undefined") return "ask";
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(ACCESS_MODE_STORAGE_KEY);
     if (raw === "full" || raw === "ask") return raw;
   } catch {
     /* ignore */
@@ -34,9 +35,9 @@ export function readAccessMode(): AccessMode {
 
 export function writeAccessMode(mode: AccessMode): void {
   try {
-    localStorage.setItem(STORAGE_KEY, mode);
+    localStorage.setItem(ACCESS_MODE_STORAGE_KEY, mode);
     window.dispatchEvent(
-      new CustomEvent("webui:access-mode", { detail: mode }),
+      new CustomEvent(ACCESS_MODE_EVENT, { detail: mode }),
     );
   } catch {
     /* ignore */

@@ -22,6 +22,8 @@ import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { Button, GhostSelect, cx } from "@/components/ui";
 import { useVoiceInput } from "@/lib/use-voice-input";
 import {
+  ACCESS_MODE_EVENT,
+  ACCESS_MODE_STORAGE_KEY,
   readAccessMode,
   writeAccessMode,
   type AccessMode,
@@ -29,6 +31,7 @@ import {
 import {
   readSubagentPermission,
   SUBAGENT_PERMISSION_EVENT,
+  SUBAGENT_PERMISSION_STORAGE_KEY,
   writeSubagentPermission,
   type SubagentPermission,
 } from "@/lib/subagent-permission";
@@ -36,6 +39,7 @@ import {
   readSkillPermission,
   writeSkillPermission,
   SKILL_PERMISSION_EVENT,
+  SKILL_PERMISSION_STORAGE_KEY,
   type SkillPermission,
 } from "@/lib/skill-permission";
 import {
@@ -308,16 +312,41 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
       const detail = (event as CustomEvent<SkillPermission>).detail;
       if (detail === "allow" || detail === "deny") setSkillPermission(detail);
     };
-    window.addEventListener("webui:access-mode", onAccessMode);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === ACCESS_MODE_STORAGE_KEY) {
+        if (event.newValue === "ask" || event.newValue === "full") {
+          setAccessMode(event.newValue);
+        } else if (event.newValue == null) {
+          setAccessMode(readAccessMode());
+        }
+      }
+      if (event.key === SUBAGENT_PERMISSION_STORAGE_KEY) {
+        if (event.newValue === "allow" || event.newValue === "deny") {
+          setSubagentPermission(event.newValue);
+        } else if (event.newValue == null) {
+          setSubagentPermission(readSubagentPermission());
+        }
+      }
+      if (event.key === SKILL_PERMISSION_STORAGE_KEY) {
+        if (event.newValue === "allow" || event.newValue === "deny") {
+          setSkillPermission(event.newValue);
+        } else if (event.newValue == null) {
+          setSkillPermission(readSkillPermission());
+        }
+      }
+    };
+    window.addEventListener(ACCESS_MODE_EVENT, onAccessMode);
     window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagentPermission);
     window.addEventListener(SKILL_PERMISSION_EVENT, onSkillPermission);
+    window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener("webui:access-mode", onAccessMode);
+      window.removeEventListener(ACCESS_MODE_EVENT, onAccessMode);
       window.removeEventListener(
         SUBAGENT_PERMISSION_EVENT,
         onSubagentPermission,
       );
       window.removeEventListener(SKILL_PERMISSION_EVENT, onSkillPermission);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
