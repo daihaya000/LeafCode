@@ -304,9 +304,12 @@ describe("GlobalAttentionProvider", () => {
     await waitFor(() => {
       const item = latest.find((i) => i.request.id === "grand-perm");
       expect(item?.kind).toBe("permission");
-      expect(item?.request.sessionID).toBe("grand-1");
-      expect(item?.request.permission).toBe("edit");
-      expect(item?.request.version).toBe("v2");
+      if (item?.kind !== "permission") {
+        throw new Error("expected grandchild permission item");
+      }
+      expect(item.request.sessionID).toBe("grand-1");
+      expect(item.request.permission).toBe("edit");
+      expect(item.request.version).toBe("v2");
     });
   });
 

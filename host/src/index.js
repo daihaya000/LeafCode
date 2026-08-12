@@ -1386,7 +1386,22 @@ async function spawnWeb() {
   let buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
   let plan = getWebLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);
   if (plan.needsBuild) {
-    await buildWebProduction(hasBuild && buildStale ? 'stale' : 'missing');
+    const rebuildReason = hasBuild && buildStale ? 'stale' : 'missing';
+    try {
+      await buildWebProduction(rebuildReason);
+    } catch (err) {
+      // build-web.mjs restores a stashed `.next` after failure. If that left a
+      // usable BUILD_ID, prefer serving the last good production build over
+      // exiting the tray host with no WebUI at all.
+      hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
+      if (rebuildReason === 'stale' && hasBuild) {
+        error(
+          `WebUI stale rebuild failed; continuing with the existing production build (${err instanceof Error ? err.message : String(err)})`,
+        );
+      } else {
+        throw err;
+      }
+    }
     hasBuild = existsSync(join(WEB_DIST_DIR, 'BUILD_ID'));
     buildStale = hasBuild && isWebBuildStale(WEB_DIR, WEB_DIST_DIR);
     plan = getPostBuildLaunchPlan(process.env.OPENCODE_WEBUI_MODE, hasBuild, buildStale);

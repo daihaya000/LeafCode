@@ -1,5 +1,5 @@
 import { spawnSync, execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { syncMirror } from "./web-build-mirror.mjs";
@@ -14,6 +14,73 @@ import { syncMirror } from "./web-build-mirror.mjs";
  * what Next 16's Turbopack requires, since it refuses a distDir that navigates
  * out of the project.
  */
+
+/** Sibling directory used to keep the last good `.next` across a failed rebuild. */
+export function previousBuildDir(distDir) {
+  return `${distDir}.prev`;
+}
+
+/**
+ * Move an existing production output aside before rebuilding. Returns true when
+ * a previous build was stashed. Callers must restore or discard it afterwards.
+ *
+ * @param {string} distDir
+ * @param {{
+ *   existsSync?: (path: string) => boolean,
+ *   renameSync?: (from: string, to: string) => void,
+ *   rmSync?: (path: string, opts: object) => void,
+ * }} [fsApi]
+ */
+export function stashPreviousBuild(distDir, fsApi = {}) {
+  const exists = fsApi.existsSync ?? existsSync;
+  const rename = fsApi.renameSync ?? renameSync;
+  const remove = fsApi.rmSync ?? rmSync;
+  if (!exists(distDir)) return false;
+  const prev = previousBuildDir(distDir);
+  remove(prev, { recursive: true, force: true });
+  rename(distDir, prev);
+  return true;
+}
+
+/**
+ * Put a stashed production output back when the rebuild fails, so EXE startup
+ * can still serve the last good BUILD_ID instead of leaving the mirror empty.
+ *
+ * @param {string} distDir
+ * @param {{
+ *   existsSync?: (path: string) => boolean,
+ *   renameSync?: (from: string, to: string) => void,
+ *   rmSync?: (path: string, opts: object) => void,
+ * }} [fsApi]
+ */
+export function restorePreviousBuild(distDir, fsApi = {}) {
+  const exists = fsApi.existsSync ?? existsSync;
+  const rename = fsApi.renameSync ?? renameSync;
+  const remove = fsApi.rmSync ?? rmSync;
+  const prev = previousBuildDir(distDir);
+  if (!exists(prev)) return false;
+  remove(distDir, { recursive: true, force: true });
+  rename(prev, distDir);
+  return true;
+}
+
+/**
+ * Drop the stashed copy after a successful rebuild.
+ *
+ * @param {string} distDir
+ * @param {{
+ *   existsSync?: (path: string) => boolean,
+ *   rmSync?: (path: string, opts: object) => void,
+ * }} [fsApi]
+ */
+export function discardPreviousBuild(distDir, fsApi = {}) {
+  const exists = fsApi.existsSync ?? existsSync;
+  const remove = fsApi.rmSync ?? rmSync;
+  const prev = previousBuildDir(distDir);
+  if (!exists(prev)) return false;
+  remove(prev, { recursive: true, force: true });
+  return true;
+}
 
 const HERE = fileURLToPath(import.meta.url);
 const INSTALL_ROOT = resolve(dirname(HERE), "..");
@@ -115,23 +182,36 @@ export async function main(argv = process.argv.slice(2)) {
   };
   console.error(`[build-web] bundler: ${useWebpack ? "webpack" : "turbopack"}`);
   // Rebuilding means no WebUI is serving this directory (the production
-  // guard has already passed). Remove the old generated state before the
-  // first attempt so a cancelled Turbopack task cannot be reused and printed
-  // as a panic on every startup.
-  rmSync(mirror.distDir, { recursive: true, force: true });
+  // guard has already passed). Stash the last good `.next` instead of deleting
+  // it: a typecheck/Turbopack failure must not leave EXE startup without a
+  // BUILD_ID (that bricks the tray host until a later successful rebuild).
+  stashPreviousBuild(mirror.distDir);
   let status = run(process.execPath, nextArgs, buildOptions);
   if (status !== 0 && !useWebpack) {
     console.error("[build-web] Turbopack failed; clearing generated output and retrying once...");
     rmSync(mirror.distDir, { recursive: true, force: true });
     status = run(process.execPath, nextArgs, buildOptions);
   }
-  if (status !== 0) return status;
+  if (status !== 0) {
+    if (restorePreviousBuild(mirror.distDir)) {
+      console.error(
+        `[build-web] rebuild failed; restored previous production build at ${mirror.distDir}`,
+      );
+    }
+    return status;
+  }
 
   if (!existsSync(join(mirror.distDir, "BUILD_ID"))) {
     console.error(`[build-web] the build finished without producing ${join(mirror.distDir, "BUILD_ID")}`);
+    if (restorePreviousBuild(mirror.distDir)) {
+      console.error(
+        `[build-web] missing BUILD_ID; restored previous production build at ${mirror.distDir}`,
+      );
+    }
     return 1;
   }
 
+  discardPreviousBuild(mirror.distDir);
   console.error(`[build-web] build output: ${mirror.distDir}`);
   return 0;
 }

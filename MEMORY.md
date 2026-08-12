@@ -1,4 +1,37 @@
-﻿# 作業ログ: /loop 1m バグハント — abort 中 SSE 再接続で composer 固着
+﻿# 作業ログ: EXE起動でサーバーが立ち上がらない
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: `OpenCodeWebUI.exe` 起動後に WebUI（`:3000`）が listen する
+- 実際: host は stale rebuild を開始するが TypeScript 失敗で終了し、`.next/BUILD_ID` が消え、ポート 3000 が空のまま
+
+## 根本原因
+- `GlobalAttentionProvider.test.tsx` が union `PermissionRequest | QuestionRequest` に対し narrowing なしで `.permission` を参照（TS2339）
+- Next 本番ビルドの typecheck がテストファイルも含むためビルド失敗
+- `scripts/build-web.mjs` が rebuild 前に `.next` を削除するため、失敗後に BUILD_ID が残らず host が `WebUI production build failed` で exit
+
+## 修正
+- テストで `kind === "permission"` 後にフィールドを検証するよう narrowing
+- build-web は `.next` を `.next.prev` に退避し、失敗時に復元・成功時に破棄
+- host `spawnWeb` は stale rebuild 失敗でも BUILD_ID が残っていれば既存本番ビルドで起動継続
+
+## 回帰防止
+- `host/src/build-web-preserve.test.js`（stash/restore/discard + ソース契約）
+- GlobalAttentionProvider.test.tsx の孫権限ケース
+
+## 検証
+- vitest GlobalAttentionProvider 12 PASS
+- `node --test src/build-web-preserve.test.js` 5 PASS
+- `npm run typecheck`（web）成功
+- 本番 `next build` は AGENTS.md により未実行。ユーザーは EXE 再起動で初回ビルド（BUILD_ID 欠落のため数分）を走らせる
+
+## 残存リスク
+- 現環境の mirror は BUILD_ID 欠落済みのため、今回の「失敗時復元」は次回以降の stale rebuild から有効。今回の復旧は型修正後の再ビルド成功に依存
+
+---
+# 作業ログ: /loop 1m バグハント — abort 中 SSE 再接続で composer 固着
 
 ## 日付
 2026-08-12
