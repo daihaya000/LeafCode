@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -96,6 +96,9 @@ export function GoalLoopPanel({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+  // Unique ids per mounted panel so split view never duplicates DOM ids (BU-9).
+  const detailId = useId();
+  const stopConfirmId = useId();
   // Keep the draft as text. Clamping on every keystroke made it impossible to
   // clear a value such as `1` before typing a multi-digit replacement (`20`).
   const [editingMaxTurns, setEditingMaxTurns] = useState<string | null>(null);
@@ -230,7 +233,7 @@ export function GoalLoopPanel({
             type="button"
             className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text focus:outline-none focus:ring-2 focus:ring-primary"
             aria-label={expanded ? "ループの詳細を折りたたむ" : "ループの詳細を展開"}
-            aria-controls="goal-loop-detail"
+            aria-controls={detailId}
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
@@ -279,13 +282,13 @@ export function GoalLoopPanel({
       {stopConfirmOpen && canStop && (
         <div
           ref={stopDialogRef}
-          id="goal-loop-stop-confirm"
+          id={stopConfirmId}
           role="dialog"
           aria-label="ループ停止の確認"
-          aria-describedby="goal-loop-stop-confirm-description"
+          aria-describedby={`${stopConfirmId}-description`}
           className="mt-3 rounded-lg border border-danger/30 bg-danger-bg px-3 py-3 text-sm text-danger"
         >
-          <p id="goal-loop-stop-confirm-description">
+          <p id={`${stopConfirmId}-description`}>
             ループを停止しますか？セッションは中断され、進行中の作業は失われます。
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -345,7 +348,7 @@ export function GoalLoopPanel({
       )}
 
       {expanded && (
-        <div id="goal-loop-detail" className="mt-3 border-t border-border pt-3" aria-live="polite">
+        <div id={detailId} className="mt-3 border-t border-border pt-3" aria-live="polite">
       {canEditMaxTurns && (
         <div className="mt-2 flex items-center gap-2 text-xs text-muted">
           <label htmlFor="goal-loop-maxturns" className="shrink-0">

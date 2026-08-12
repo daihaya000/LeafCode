@@ -8,6 +8,7 @@ describe("AgentSuggestMenu", () => {
   it("renders agents with blue names and hover titles", () => {
     render(
       <AgentSuggestMenu
+        id="agent-listbox"
         items={[
           {
             name: "build",
@@ -31,6 +32,7 @@ describe("AgentSuggestMenu", () => {
   it("renders nothing when the list is empty", () => {
     const { container } = render(
       <AgentSuggestMenu
+        id="agent-listbox"
         items={[]}
         activeIndex={0}
         onHover={vi.fn()}

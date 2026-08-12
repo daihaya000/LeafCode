@@ -14,7 +14,7 @@ import type {
   ReactNode,
   UIEvent,
 } from "react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, X } from "lucide-react";
 import { SlashSuggestMenu } from "@/components/SlashSuggestMenu";
 import { AgentSuggestMenu } from "@/components/AgentSuggestMenu";
@@ -125,6 +125,10 @@ export function Composer({
 }: ComposerProps) {
   const slashOpen = Boolean(slash && slash.items.length > 0);
   const mentionOpen = Boolean(mention && mention.items.length > 0);
+  // Unique listbox/option ids per mounted composer so split view never emits
+  // duplicate DOM ids or ambiguous aria-controls references (BU-9).
+  const slashListboxId = useId();
+  const mentionListboxId = useId();
   const highlightRef = useRef<HTMLDivElement>(null);
   const [caret, setCaret] = useState(0);
   const skillRanges = useMemo(
@@ -175,6 +179,7 @@ export function Composer({
     <>
       {slashOpen && slash && (
         <SlashSuggestMenu
+          id={slashListboxId}
           items={slash.items}
           activeIndex={slash.activeIndex}
           onHover={slash.onHover}
@@ -183,6 +188,7 @@ export function Composer({
       )}
       {mentionOpen && mention && !slashOpen && (
         <AgentSuggestMenu
+          id={mentionListboxId}
           items={mention.items}
           activeIndex={mention.activeIndex}
           onHover={mention.onHover}
@@ -264,17 +270,17 @@ export function Composer({
           aria-autocomplete="list"
           aria-controls={
             slashOpen
-              ? "slash-suggest-listbox"
+              ? slashListboxId
               : mentionOpen
-                ? "agent-suggest-listbox"
+                ? mentionListboxId
                 : undefined
           }
           aria-expanded={slashOpen || mentionOpen}
           aria-activedescendant={
             slashOpen && slash?.items[slash.activeIndex]
-              ? `slash-cmd-${slash.items[slash.activeIndex].name}`
+              ? `${slashListboxId}-option-${slash.items[slash.activeIndex].name}`
               : mentionOpen && mention?.items[mention.activeIndex]
-                ? `agent-cmd-${mention.items[mention.activeIndex].name}`
+                ? `${mentionListboxId}-option-${mention.items[mention.activeIndex].name}`
                 : undefined
           }
           title={hoverTitle}

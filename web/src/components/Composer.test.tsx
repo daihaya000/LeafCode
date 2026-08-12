@@ -74,7 +74,12 @@ describe("Composer", () => {
     const textarea = screen.getByRole("combobox", { name: "プロンプト" });
 
     expect((textarea as HTMLTextAreaElement).value).toBe("/rev");
-    expect(textarea.getAttribute("aria-controls")).toBe("slash-suggest-listbox");
+    // aria-controls references the mounted slash listbox by its generated id.
+    const listboxId = textarea.getAttribute("aria-controls");
+    expect(listboxId).toBeTruthy();
+    const listbox = listboxId ? document.getElementById(listboxId) : null;
+    expect(listbox?.getAttribute("role")).toBe("listbox");
+    expect(listbox?.getAttribute("aria-label")).toBe("スラッシュコマンド");
     fireEvent.change(textarea, { target: { value: "next" } });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
 

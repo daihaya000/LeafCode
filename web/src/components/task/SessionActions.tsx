@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RotateCcw, Shrink } from "lucide-react";
 import { Button } from "@/components/ui";
 import type { ComposerAttachment } from "@/components/Composer";
@@ -317,6 +317,9 @@ export function MessageRevertButton({
   const mountedRef = useRef(false);
   const confirmRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // Unique id per mounted revert button so split view never duplicates DOM
+  // ids or ambiguous aria-controls references (BU-9).
+  const confirmId = useId();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -379,7 +382,7 @@ export function MessageRevertButton({
         disabled={disabled || busy || confirmOpen}
         aria-busy={busy || undefined}
         aria-expanded={confirmOpen}
-        aria-controls="message-revert-confirm"
+        aria-controls={confirmId}
         title="このコメントを入力欄に戻して巻き戻す"
         onClick={() => {
           triggerRef.current = document.activeElement instanceof HTMLButtonElement
@@ -395,13 +398,13 @@ export function MessageRevertButton({
       {confirmOpen && (
         <div
           ref={confirmRef}
-          id="message-revert-confirm"
+          id={confirmId}
           role="dialog"
           aria-label="メッセージ巻き戻しの確認"
-          aria-describedby="message-revert-confirm-description"
+          aria-describedby={`${confirmId}-description`}
           className="max-w-[min(22rem,80vw)] rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-right text-[11px] text-warning"
         >
-          <p id="message-revert-confirm-description">
+          <p id={`${confirmId}-description`}>
             このコメントを入力欄に戻し、ここ以降を巻き戻しますか？
           </p>
           <div className="mt-2 flex justify-end gap-2">

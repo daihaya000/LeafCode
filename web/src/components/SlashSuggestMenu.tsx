@@ -6,11 +6,14 @@ import { cx } from "@/components/ui";
 import { isSkillCommand, type SlashCommand } from "@/lib/slash-command";
 
 export function SlashSuggestMenu({
+  id,
   items,
   activeIndex,
   onHover,
   onSelect,
 }: {
+  /** Unique listbox id (useId) so split view never duplicates DOM ids (BU-9). */
+  id: string;
   items: SlashCommand[];
   activeIndex: number;
   onHover: (index: number) => void;
@@ -31,7 +34,7 @@ export function SlashSuggestMenu({
 
   return (
     <div
-      id="slash-suggest-listbox"
+      id={id}
       role="listbox"
       aria-label="スラッシュコマンド"
       className="absolute bottom-full left-0 right-0 z-20 mb-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-lg"
@@ -48,7 +51,7 @@ export function SlashSuggestMenu({
             }}
             type="button"
             role="option"
-            id={`slash-cmd-${item.name}`}
+            id={`${id}-option-${item.name}`}
             aria-selected={active}
             title={item.description || undefined}
             onMouseEnter={() => onHover(index)}

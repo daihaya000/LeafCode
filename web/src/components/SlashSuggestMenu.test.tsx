@@ -11,6 +11,7 @@ describe("SlashSuggestMenu", () => {
 
     render(
       <SlashSuggestMenu
+        id="slash-listbox"
         items={[
           { name: "review" },
           { name: "plan" },
@@ -29,6 +30,7 @@ describe("SlashSuggestMenu", () => {
   it("shows skill descriptions as readable secondary text", () => {
     render(
       <SlashSuggestMenu
+        id="slash-listbox"
         items={[
           {
             name: "bug-hunt",
@@ -51,6 +53,7 @@ describe("SlashSuggestMenu", () => {
   it("styles skill names in accent blue and exposes description on hover", () => {
     render(
       <SlashSuggestMenu
+        id="slash-listbox"
         items={[
           {
             name: "customize-opencode",
