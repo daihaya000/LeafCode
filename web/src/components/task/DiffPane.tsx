@@ -738,15 +738,23 @@ export function DiffPane({
             className="w-full shrink-0 sm:w-auto"
             disabled={selectedPaths.length === 0}
             title="選択したファイルからメッセージ案を生成"
-            onClick={() =>
-              setCommitMsg(
-                suggestCommitMessage(
-                  files
-                    .filter((f) => !deselected[f.path])
-                    .map((f) => ({ path: f.path, untracked: f.untracked })),
-                ),
-              )
-            }
+            onClick={async () => {
+              const selectedFiles = files.filter((f) => !deselected[f.path]);
+              try {
+                const result = await sendJson<{ message: string }>(
+                  "POST",
+                  "/api/git/commit-message",
+                  { directory, files: selectedFiles },
+                );
+                setCommitMsg(result.message);
+              } catch {
+                setCommitMsg(
+                  suggestCommitMessage(
+                    selectedFiles.map((f) => ({ path: f.path, untracked: f.untracked })),
+                  ),
+                );
+              }
+            }}
           >
             生成
           </Button>
