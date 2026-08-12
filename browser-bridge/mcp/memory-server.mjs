@@ -10,9 +10,14 @@ import {
   inspectMemoryContent,
   isMemoryKind,
   memoryContentError,
+  memorySimilarityVerdict,
   memoryValidate,
+  normalizeMemoryKey,
   toFtsPhrase,
 } from '../shared/memory-schema.mjs';
+
+/** Rows compared when probing for a near-duplicate (mirrors the web limit). */
+const DUPLICATE_SCAN_LIMIT = 3000;
 
 const READ_ONLY_ANNOTATIONS = Object.freeze({
   readOnlyHint: true,
@@ -78,7 +83,24 @@ function toMemoryDto(row) {
     updatedAt: row.updated_at,
     lastUsedAt: row.last_used_at,
     useCount: row.use_count,
+    scopeKind: row.scope_kind ?? null,
+    scopeKey: row.scope_key ?? null,
   };
+}
+
+/**
+ * Retrieval scope of a workspace (mirrors resolveMemoryScope in
+ * web/src/lib/memory.ts): the project when known, else the workspace itself.
+ * Resolved once at startup — the MCP process is pinned to one workspace.
+ */
+function resolveMemoryScope(db, workspaceId) {
+  try {
+    const row = db.prepare('SELECT project_id FROM workspaces WHERE id = ?').get(workspaceId);
+    if (row && row.project_id) return { kind: 'project', key: row.project_id };
+  } catch {
+    // Pre-schema database: fall back to workspace scope.
+  }
+  return { kind: 'workspace', key: workspaceId };
 }
 
 function openMemoryDb(dbPathValue) {
@@ -120,31 +142,74 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
     );
   `);
   const memoryColumns = db.pragma('table_info(memories)');
-  if (!memoryColumns.some((column) => column.name === 'revision')) {
+  const hasMemoryColumn = (name) => memoryColumns.some((column) => column.name === name);
+  if (!hasMemoryColumn('revision')) {
     db.exec('ALTER TABLE memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
   }
+  // Scope/dedupe columns. The web side owns the backfill; here they only need to
+  // exist so MCP writes are visible to project-scoped retrieval.
+  if (!hasMemoryColumn('scope_kind')) db.exec('ALTER TABLE memories ADD COLUMN scope_kind TEXT');
+  if (!hasMemoryColumn('scope_key')) db.exec('ALTER TABLE memories ADD COLUMN scope_key TEXT');
+  if (!hasMemoryColumn('norm_key')) db.exec('ALTER TABLE memories ADD COLUMN norm_key TEXT');
 
-  const selectById = db.prepare('SELECT * FROM memories WHERE id = ? AND workspace_id = ?');
+  const scope = resolveMemoryScope(db, workspaceId);
+  // Reads and mutations match on the scope, so an agent running in a new task
+  // sees (and can correct) knowledge captured by earlier tasks of the project.
+  const selectById = db.prepare(
+    'SELECT * FROM memories WHERE id = ? AND (scope_key = ? OR workspace_id = ?)',
+  );
   const insert = db.prepare(`
     INSERT INTO memories
       (id, workspace_id, kind, content, source_session_id, provenance, approved,
-       created_at, updated_at, last_used_at, use_count)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, 0)
+       created_at, updated_at, last_used_at, use_count, scope_kind, scope_key, norm_key)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, 0, ?, ?, ?)
   `);
-  const update = db.prepare('UPDATE memories SET content = COALESCE(?, content), kind = COALESCE(?, kind), approved = CASE WHEN ? = 1 THEN 0 ELSE approved END, updated_at = ?, revision = revision + 1 WHERE id = ? AND workspace_id = ? AND revision = ?');
-  const remove = db.prepare('DELETE FROM memories WHERE id = ? AND workspace_id = ? AND revision = ?');
+  const update = db.prepare(
+    'UPDATE memories SET content = COALESCE(?, content), norm_key = COALESCE(?, norm_key), kind = COALESCE(?, kind), approved = CASE WHEN ? = 1 THEN 0 ELSE approved END, updated_at = ?, revision = revision + 1 WHERE id = ? AND (scope_key = ? OR workspace_id = ?) AND revision = ?',
+  );
+  const remove = db.prepare(
+    'DELETE FROM memories WHERE id = ? AND (scope_key = ? OR workspace_id = ?) AND revision = ?',
+  );
+  const selectByNormKey = db.prepare(
+    `SELECT * FROM memories
+     WHERE (scope_key = ? OR workspace_id = ?) AND norm_key = ?
+     ORDER BY approved DESC, use_count DESC, id DESC
+     LIMIT 1`,
+  );
+  const selectDuplicateCandidates = db.prepare(
+    `SELECT * FROM memories
+     WHERE (scope_key = ? OR workspace_id = ?)
+     ORDER BY approved DESC, updated_at DESC
+     LIMIT ?`,
+  );
+  const touch = db.prepare('UPDATE memories SET updated_at = ? WHERE id = ?');
   const audit = db.prepare(`
     INSERT INTO memory_audit_log
       (action, workspace_id, memory_id, session_id, detail, created_at)
     VALUES (?, ?, ?, NULL, ?, ?)
   `);
 
+  /** Existing row stating the same thing, or undefined when content is new. */
+  function findDuplicate(content) {
+    const normKey = normalizeMemoryKey(content);
+    if (normKey.length > 0) {
+      const exact = selectByNormKey.get(scope.key, workspaceId, normKey);
+      if (exact) return exact;
+    }
+    const candidates = selectDuplicateCandidates.all(scope.key, workspaceId, DUPLICATE_SCAN_LIMIT);
+    for (const candidate of candidates) {
+      if (memorySimilarityVerdict(candidate.content, content).duplicate) return candidate;
+    }
+    return undefined;
+  }
+
   return {
     workspaceId,
+    scope,
     search({ query, kind, limit }) {
       const phrase = toFtsPhrase(query);
-      const clauses = ['memories_fts MATCH ?', 'm.workspace_id = ?'];
-      const params = [phrase, workspaceId];
+      const clauses = ['memories_fts MATCH ?', '(m.scope_key = ? OR m.workspace_id = ?)'];
+      const params = [phrase, scope.key, workspaceId];
       if (kind && isMemoryKind(kind)) {
         clauses.push('m.kind = ?');
         params.push(kind);
@@ -183,12 +248,35 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
         error.code = 'INVALID_REQUEST';
         throw error;
       }
+      const trimmed = content.trim();
+      // Re-adding a known fact returns the existing row instead of storing a
+      // second wording of it. Agents re-state conventions constantly, and every
+      // stored paraphrase consumes part of the injection budget forever.
+      const duplicate = findDuplicate(trimmed);
+      if (duplicate) {
+        const nowTouch = Date.now();
+        touch.run(nowTouch, duplicate.id);
+        audit.run('create', workspaceId, duplicate.id, 'provenance=agent duplicate=1', nowTouch);
+        return { ...toMemoryDto(duplicate), duplicate: true };
+      }
       const id = randomUUID();
       const now = Date.now();
       const approved = readWriteApprovalSetting(db, writeApproval) ? 0 : 1;
-      insert.run(id, workspaceId, kind, content.trim(), 'agent', approved, now, now);
+      insert.run(
+        id,
+        workspaceId,
+        kind,
+        trimmed,
+        'agent',
+        approved,
+        now,
+        now,
+        scope.kind,
+        scope.key,
+        normalizeMemoryKey(trimmed),
+      );
       audit.run('create', workspaceId, id, `provenance=agent approved=${approved}`, now);
-      return toMemoryDto(selectById.get(id, workspaceId));
+      return toMemoryDto(selectById.get(id, scope.key, workspaceId));
     },
     update({ id, content, kind, expectedRevision }) {
       if (content !== undefined && memoryContentError(content)) {
@@ -207,28 +295,31 @@ function createMemoryStore(db, workspaceId, { writeApproval = false } = {}) {
       }
       const now = Date.now();
       const writeApprovalNow = readWriteApprovalSetting(db, writeApproval) ? 1 : 0;
+      const nextContent = content !== undefined ? content.trim() : null;
       const changed = update.run(
-        content !== undefined ? content.trim() : null,
+        nextContent,
+        nextContent !== null ? normalizeMemoryKey(nextContent) : null,
         kind !== undefined ? kind : null,
         writeApprovalNow,
         now,
         id,
+        scope.key,
         workspaceId,
         expectedRevision,
       );
       if (changed.changes === 0) {
-        const conflict = Boolean(selectById.get(id, workspaceId));
+        const conflict = Boolean(selectById.get(id, scope.key, workspaceId));
         const error = new Error(conflict ? 'memory revision conflict' : 'memory not found');
         error.code = conflict ? 'CONFLICT' : 'NOT_FOUND';
         throw error;
       }
       audit.run('update', workspaceId, id, null, now);
-      return toMemoryDto(selectById.get(id, workspaceId));
+      return toMemoryDto(selectById.get(id, scope.key, workspaceId));
     },
     delete({ id, expectedRevision }) {
-      const changed = remove.run(id, workspaceId, expectedRevision);
+      const changed = remove.run(id, scope.key, workspaceId, expectedRevision);
       if (changed.changes === 0) {
-        const conflict = Boolean(selectById.get(id, workspaceId));
+        const conflict = Boolean(selectById.get(id, scope.key, workspaceId));
         const error = new Error(conflict ? 'memory revision conflict' : 'memory not found');
         error.code = conflict ? 'CONFLICT' : 'NOT_FOUND';
         throw error;
@@ -245,7 +336,7 @@ function buildTools(server, store) {
   server.registerTool('memory_search', {
     title: 'memory_search',
     description:
-      'Search the workspace memory store (approved memories only) via FTS5. Bumps usage so frequently-used memories are injected first.',
+      'Search the project memory store (approved memories only) via FTS5. Covers memories captured by earlier tasks in the same project. Bumps usage so frequently-used memories are injected first.',
     inputSchema: z.object({
       query: z.string().min(1).max(8192),
       kind: kindSchema.optional(),
@@ -257,7 +348,7 @@ function buildTools(server, store) {
   server.registerTool('memory_add', {
     title: 'memory_add',
     description:
-      "a durable, reusable fact/preference/lesson/reference for this workspace. Written rows are approved and appear in future injection context. content must be a proposition, not code or file contents.",
+      'Store a durable, reusable fact/preference/lesson/reference for this project. Written rows are approved and appear in future injection context. content must be a proposition, not code or file contents. Re-adding something already stored (even reworded) returns the existing row with duplicate=true instead of creating a second entry.',
     inputSchema: z.object({
       kind: kindSchema,
       content: z.string().min(1).max(2000),

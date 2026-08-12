@@ -397,7 +397,10 @@ export function MemorySettings() {
 
       <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3 text-xs leading-5 text-muted">
         <p>
-          このワークスペースで繰り返し使う事実・好み・教訓を、セッションをまたいで保持します。
+          プロジェクトで繰り返し使う事実・好み・教訓を、セッションやタスクをまたいで保持します。
+        </p>
+        <p className="mt-1 text-faint">
+          メモリはプロジェクト単位で共有されます。ワークスペース（タスク）を選ぶと、そのプロジェクトのメモリが表示されます。
         </p>
         <p className="mt-1 text-faint">
           {writeApproval
@@ -440,7 +443,7 @@ export function MemorySettings() {
 
       <div className="mb-4 space-y-3 rounded-xl border border-border bg-surface px-4 py-3">
         <label className="flex flex-col gap-1.5">
-          <span className="shrink-0 text-sm text-muted">保存先ワークスペース</span>
+          <span className="shrink-0 text-sm text-muted">対象プロジェクト（ワークスペースで選択）</span>
           <select
             value={selectedWorkspace}
             onChange={(e) => void selectedWorkspaceChanged(e.target.value)}
@@ -481,8 +484,8 @@ export function MemorySettings() {
             </Button>
           </div>
           <span className="text-[11px] text-faint">
-            選んだ会話の末尾をAIが読み、長く役立つ内容だけを
-            {writeApproval ? "候補" : "メモリ"}として作成します。抽出にはモデル利用料がかかる場合があります。
+            選んだ会話の未抽出分をAIが読み、長く役立つ内容だけを
+            {writeApproval ? "候補" : "メモリ"}として作成します。既存メモリと同義の内容は保存されません。抽出にはモデル利用料がかかる場合があります。
           </span>
         </label>
 

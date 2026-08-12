@@ -16,10 +16,13 @@ const {
   claimMemoryInjectionForSession,
   createMemory,
   deleteMemory,
+  findDuplicateMemory,
   findExactDuplicateMemory,
   insertExtractedMemories,
   logMemoryAudit,
   listMemories,
+  listMemoryHintsForExtraction,
+  resolveMemoryScope,
   memoryContentError,
   memoryInjectionFor,
   memorySafetyError,
@@ -249,6 +252,150 @@ describe("memory CRUD + injection", () => {
     expect(getDb().prepare("SELECT content FROM memories WHERE id = ?").get(m.id)).toEqual({
       content: "private convention",
     });
+  });
+
+  it("shares memories across workspaces of the same project and isolates other projects", () => {
+    const now = new Date().toISOString();
+    const insertProject = getDb().prepare(
+      `INSERT OR IGNORE INTO projects (id, name, root_path, created_at) VALUES (?, ?, ?, ?)`,
+    );
+    const insertWorkspace = getDb().prepare(
+      `INSERT OR IGNORE INTO workspaces
+        (id, project_id, display_name, absolute_path, isolation, status, created_at)
+       VALUES (?, ?, ?, ?, 'current_folder', 'active', ?)`,
+    );
+    insertProject.run("proj-scope", "Scope test", "/scope-test", now);
+    insertProject.run("proj-other", "Other project", "/other-test", now);
+    // Two tasks of one project, plus one task of an unrelated project.
+    insertWorkspace.run("ws-task-1", "proj-scope", "task 1", "/scope-test", now);
+    insertWorkspace.run("ws-task-2", "proj-scope", "task 2", "/scope-test", now);
+    insertWorkspace.run("ws-foreign", "proj-other", "foreign", "/other-test", now);
+
+    expect(resolveMemoryScope("ws-task-1")).toEqual({ kind: "project", key: "proj-scope" });
+    expect(resolveMemoryScope("ws-unknown")).toEqual({ kind: "workspace", key: "ws-unknown" });
+
+    const learned = createMemory({
+      workspaceId: "ws-task-1",
+      kind: "lesson",
+      content: "scope-shared lesson from the first task",
+      provenance: "auto-extract",
+      approved: true,
+    });
+    expect(learned.scopeKind).toBe("project");
+    expect(learned.scopeKey).toBe("proj-scope");
+
+    // A brand new task of the same project sees, injects, searches and can edit it.
+    const fromSibling = listMemories({ workspaceId: "ws-task-2" });
+    expect(fromSibling.map((m) => m.id)).toContain(learned.id);
+    expect(memoryInjectionFor("ws-task-2")).toContain("scope-shared lesson");
+    expect(
+      searchMemories({ workspaceId: "ws-task-2", query: "scope-shared", limit: 5 }).map((m) => m.id),
+    ).toContain(learned.id);
+    const edited = updateMemory(learned.id, "ws-task-2", learned.revision, {
+      content: "scope-shared lesson, refined by the second task",
+    });
+    expect(edited?.content).toBe("scope-shared lesson, refined by the second task");
+
+    // An unrelated project must not see it.
+    expect(listMemories({ workspaceId: "ws-foreign" }).map((m) => m.id)).not.toContain(learned.id);
+    expect(memoryInjectionFor("ws-foreign")).not.toContain("scope-shared lesson");
+    expect(updateMemory(learned.id, "ws-foreign", edited!.revision, { content: "hijack" })).toBeUndefined();
+    expect(deleteMemory(learned.id, "ws-foreign", edited!.revision)).toBe(false);
+  });
+
+  it("skips paraphrases of stored memories but keeps the negated form", () => {
+    const first = insertExtractedMemories({
+      workspaceId: "ws-dedupe",
+      provenance: "auto-extract",
+      approved: true,
+      items: [
+        {
+          kind: "preference",
+          content:
+            "プロジェクト直下の MEMORY.md はローカル専用として .gitignore に含め、Git で追跡しない。",
+        },
+      ],
+    });
+    expect(first.created).toBe(1);
+
+    // Reworded restatement of the same rule: stored once, counted as skipped.
+    const second = insertExtractedMemories({
+      workspaceId: "ws-dedupe",
+      provenance: "auto-extract",
+      approved: true,
+      items: [
+        {
+          kind: "fact",
+          content:
+            "プロジェクト直下の MEMORY.md はローカル専用として .gitignore 対象にし、コミットしない。",
+        },
+      ],
+    });
+    expect(second.created).toBe(0);
+    expect(second.skipped).toBe(1);
+
+    // The opposite rule is a different proposition and must survive.
+    const opposite = insertExtractedMemories({
+      workspaceId: "ws-dedupe",
+      provenance: "auto-extract",
+      approved: true,
+      items: [{ kind: "fact", content: "MEMORY.md はコミットする。" }],
+    });
+    expect(opposite.created).toBe(1);
+
+    // Two wordings inside one batch collapse as well.
+    const batch = insertExtractedMemories({
+      workspaceId: "ws-dedupe",
+      provenance: "auto-extract",
+      approved: true,
+      items: [
+        { kind: "fact", content: "bat ファイルの改行は CRLF、BOM なしで保存する。" },
+        { kind: "fact", content: "bat ファイルの改行は CRLF で BOM なしにする。" },
+      ],
+    });
+    expect(batch.created).toBe(1);
+    expect(batch.skipped).toBe(1);
+  });
+
+  it("findDuplicateMemory reports the canonical-key hit", () => {
+    createMemory({
+      workspaceId: "ws-probe",
+      kind: "fact",
+      content: "npm run test:encoding で bat のエンコードを検証する",
+      provenance: "manual",
+      approved: true,
+    });
+    const hit = findDuplicateMemory(
+      "ws-probe",
+      "ｎｐｍ　run test:encoding で bat のエンコードを検証します。",
+    );
+    expect(hit?.verdict.reason).toBe("norm-key");
+    expect(findDuplicateMemory("ws-probe", "まったく別の命題である")).toBeUndefined();
+    expect(findDuplicateMemory("ws-probe", "   ")).toBeUndefined();
+  });
+
+  it("listMemoryHintsForExtraction returns existing memories for the prompt", () => {
+    createMemory({
+      workspaceId: "ws-hints",
+      kind: "fact",
+      content: "hint-target: the encoding test lives in host/src",
+      provenance: "manual",
+      approved: true,
+    });
+    const hints = listMemoryHintsForExtraction("ws-hints", "encoding test host/src");
+    expect(hints.some((hint) => hint.includes("hint-target"))).toBe(true);
+    expect(listMemoryHintsForExtraction("ws-hints", "anything", 0)).toEqual([]);
+    const long = "x".repeat(400);
+    createMemory({
+      workspaceId: "ws-hints-long",
+      kind: "fact",
+      content: long,
+      provenance: "manual",
+      approved: true,
+    });
+    const truncated = listMemoryHintsForExtraction("ws-hints-long", "");
+    expect(truncated[0].endsWith("…")).toBe(true);
+    expect(truncated[0].length).toBeLessThan(200);
   });
 
   it("dedupes exact duplicates in batch insert", () => {

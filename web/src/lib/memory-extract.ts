@@ -13,11 +13,18 @@ import {
   completeMemoryExtractionRun,
   createMemoryExtractionRun,
   failMemoryExtractionRun,
+  getSessionExtractState,
   getWorkspace,
+  setSessionExtractState,
   type MemoryExtractionTrigger,
   type WorkspaceRow,
 } from "./db";
-import { insertExtractedMemories, logMemoryAudit, type MemoryDto } from "./memory";
+import {
+  insertExtractedMemories,
+  listMemoryHintsForExtraction,
+  logMemoryAudit,
+  type MemoryDto,
+} from "./memory";
 import { chooseAutoModel, type AutoDecision } from "./auto-model";
 import { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
 import { OcError, ocServer } from "./oc-server";
@@ -32,6 +39,13 @@ import type { MessageWithParts } from "./types";
 export const MEMORY_EXTRACT_TRANSCRIPT_MAX_CHARS = 16_000;
 export const MEMORY_EXTRACT_RESULT_TIMEOUT_MS = 120_000;
 export const MEMORY_EXTRACT_POLL_MS = 2_000;
+
+/**
+ * Upper bound on rows one run may add. Without it a single reply can inflate
+ * the store (and every later run pays the dedupe scan for it); durable facts
+ * arrive at a rate of one or two per turn, not ten.
+ */
+export const MEMORY_EXTRACT_MAX_ITEMS_PER_RUN = 3;
 
 export type ExtractionResult = {
   created: number;
@@ -76,6 +90,38 @@ export function extractTranscriptTail(
 ): string {
   const text = messages.map(messageText).filter(Boolean).join("\n");
   return text.length <= maxChars ? text : text.slice(text.length - maxChars);
+}
+
+/**
+ * Messages added after `lastMessageId` — the slice an incremental run digests.
+ *
+ * The v1 driver always submitted the last 16k characters of the transcript, so
+ * every turn of a long session re-analysed the same material and the model
+ * answered with a fresh paraphrase each time (production: 358 runs and 634 rows
+ * for one session, 407 of them paraphrase duplicates). Feeding only the delta
+ * removes that source at the root.
+ *
+ * An unknown/absent `lastMessageId` means "never extracted", so the full
+ * transcript is returned. A `lastMessageId` that is the final message yields an
+ * empty slice and the caller skips the run.
+ */
+export function messagesAfter(
+  messages: MessageWithParts[],
+  lastMessageId: string | null | undefined,
+): MessageWithParts[] {
+  if (!lastMessageId) return messages;
+  const index = messages.findIndex((message) => message.info?.id === lastMessageId);
+  if (index < 0) return messages;
+  return messages.slice(index + 1);
+}
+
+/** Id of the newest message in a transcript, or null for an empty transcript. */
+export function lastMessageId(messages: MessageWithParts[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const id = messages[i]?.info?.id;
+    if (typeof id === "string" && id.length > 0) return id;
+  }
+  return null;
 }
 
 /** Pull the last fenced ```json ... ``` block out of a reply. */
@@ -123,7 +169,24 @@ export function parseExtractionJson(
   }
 }
 
-export function buildExtractionPrompt(transcript: string): string {
+/**
+ * Build the extraction prompt.
+ *
+ * `existing` lists memories already stored for this scope. Showing them is the
+ * cheapest duplicate defense available: the model can only avoid restating a
+ * known fact if it knows the fact is known. The mechanical near-duplicate probe
+ * in `insertExtractedMemories` remains the backstop.
+ */
+export function buildExtractionPrompt(
+  transcript: string,
+  existing: string[] = [],
+): string {
+  const known =
+    existing.length > 0
+      ? `\nALREADY STORED (do not restate these, not even reworded):\n${existing
+          .map((item) => `- ${item.replace(/[\r\n]+/g, " ")}`)
+          .join("\n")}\n`
+      : "";
   return `<!-- webui-memory-extract -->
 
 Extract durable, reusable facts about this project and its working conventions from the transcript below. Output ONLY a single fenced JSON block:
@@ -135,11 +198,12 @@ ${JSON.stringify(EXTRACTION_JSON_SCHEMA, null, 2)}
 Rules:
 - kinds: fact (project structure / commands), preference (user conventions), lesson (gotchas / pitfalls learned), reference (URLs, names, versions worth remembering).
 - Do NOT quote code or file contents. Only generally-applicable propositions.
-- 1-2 items is normal. Skip trivia and one-off remarks.
-- If nothing is worth keeping, output {"memories": []}.
+- At most ${MEMORY_EXTRACT_MAX_ITEMS_PER_RUN} items, and 0-1 items is the normal answer. Skip trivia and one-off remarks.
+- Skip anything already stored below, including paraphrases, narrowed or widened restatements, and translations.
+- If nothing new is worth keeping, output {"memories": []}.
 - Write nothing after the closing fence.
-
-TRANSCRIPT (tail):
+${known}
+TRANSCRIPT (new messages since the last extraction):
 ${transcript}`;
 }
 
@@ -180,10 +244,14 @@ export async function resolveLightweightModel(
 }
 
 /**
- * Run one extraction for `sourceSessionId` inside `workspaceId`. The result is
- * recorded in the extraction history before any network work begins, so failed
- * and rejected runs are visible in the memory UI as well as successful runs.
- * Never touches the source transcript (it runs in a throwaway session).
+ * Run one extraction for `sourceSessionId` inside `workspaceId`.
+ *
+ * Only the messages appended since the previous successful run are analysed
+ * (see {@link messagesAfter}); a run with no new messages is a no-op and does
+ * not create history noise. The history row is created before any network work
+ * begins, so failed and rejected runs are visible in the memory UI as well as
+ * successful ones. Never touches the source transcript (it runs in a throwaway
+ * session).
  */
 export async function runMemoryExtraction(input: {
   workspaceId: string;
@@ -195,6 +263,49 @@ export async function runMemoryExtraction(input: {
   if (!workspace) {
     return { created: 0, skipped: 0, errors: [], error: "workspace not found" };
   }
+  const directory = workspace.absolute_path;
+
+  // Read the transcript before opening a history row: a run with nothing new to
+  // analyse should leave no trace at all.
+  let messages: MessageWithParts[];
+  try {
+    messages = await ocServer<MessageWithParts[]>(
+      directory,
+      sessionMessagePath(input.sessionId),
+      { timeoutMs: 10_000 },
+    );
+  } catch {
+    const historyRunId = createMemoryExtractionRun({
+      workspaceId: input.workspaceId,
+      sourceSessionId: input.sessionId,
+      assistantMessageId: input.assistantMessageId,
+      trigger: input.trigger ?? "manual",
+    });
+    failMemoryExtractionRun(historyRunId, "source session transcript is not readable");
+    return {
+      created: 0,
+      skipped: 0,
+      errors: [],
+      error: "source session transcript is not readable",
+    };
+  }
+  const state = getSessionExtractState(input.workspaceId, input.sessionId);
+  const pending = messagesAfter(messages, state?.lastMessageId);
+  const newestMessageId = lastMessageId(messages);
+  const transcript = extractTranscriptTail(pending);
+  if (transcript.trim().length === 0) {
+    // Nothing new since the previous run. Record the cursor so the cooldown and
+    // the delta stay in sync, then stop without an error.
+    if (state?.lastMessageId !== newestMessageId) {
+      setSessionExtractState({
+        workspaceId: input.workspaceId,
+        sessionId: input.sessionId,
+        lastMessageId: newestMessageId,
+        extractedAt: state?.lastExtractedAt ?? 0,
+      });
+    }
+    return { created: 0, skipped: 0, errors: [], saved: 0, candidates: 0, rejected: 0 };
+  }
   const historyRunId = createMemoryExtractionRun({
     workspaceId: input.workspaceId,
     sourceSessionId: input.sessionId,
@@ -205,22 +316,6 @@ export async function runMemoryExtraction(input: {
     failMemoryExtractionRun(historyRunId, error);
     return { created: 0, skipped: 0, errors: [], error };
   };
-  const directory = workspace.absolute_path;
-
-  let messages: MessageWithParts[];
-  try {
-    messages = await ocServer<MessageWithParts[]>(
-      directory,
-      sessionMessagePath(input.sessionId),
-      { timeoutMs: 10_000 },
-    );
-  } catch {
-    return failed("source session transcript is not readable");
-  }
-  const transcript = extractTranscriptTail(messages);
-  if (transcript.trim().length === 0) {
-    return failed("source session is empty");
-  }
 
   let model: Pick<AutoDecision, "providerID" | "modelID" | "variant"> | null;
   try {
@@ -248,9 +343,12 @@ export async function runMemoryExtraction(input: {
 
   try {
     try {
+      const hints = listMemoryHintsForExtraction(input.workspaceId, transcript);
       await ocServer(directory, sessionPromptAsyncPath(sessionID), {
         method: "POST",
-        body: { parts: [{ type: "text", text: buildExtractionPrompt(transcript) }] },
+        body: {
+          parts: [{ type: "text", text: buildExtractionPrompt(transcript, hints) }],
+        },
         timeoutMs: 10_000,
       });
     } catch {
@@ -291,7 +389,17 @@ export async function runMemoryExtraction(input: {
     sourceSessionId: input.sessionId,
     provenance: "auto-extract",
     approved: !writeApproval,
-    items: items as Array<{ kind: MemoryDto["kind"]; content: string }>,
+    items: (items as Array<{ kind: MemoryDto["kind"]; content: string }>).slice(
+      0,
+      MEMORY_EXTRACT_MAX_ITEMS_PER_RUN,
+    ),
+  });
+  // Advance the cursor only on a completed run, so a failure re-reads the same
+  // delta on the next attempt instead of dropping it.
+  setSessionExtractState({
+    workspaceId: input.workspaceId,
+    sessionId: input.sessionId,
+    lastMessageId: newestMessageId,
   });
   completeMemoryExtractionRun(historyRunId, {
     created: result.created,

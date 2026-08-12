@@ -52,6 +52,30 @@ function createMemorySchema(db) {
   `);
 }
 
+/**
+ * Add the project/workspace tables the scope resolver reads. Kept optional so
+ * the other cases still cover the pre-schema fallback (workspace scope).
+ */
+function createWorkspaceSchema(db) {
+  db.exec(`
+    CREATE TABLE projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      root_path TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE workspaces (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      absolute_path TEXT NOT NULL,
+      isolation TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+}
+
 function mkLaunch(dataDir) {
   return {
     command: process.execPath,
@@ -292,6 +316,113 @@ test('memory MCP: write approval gate stages agent writes as candidates', async 
   const approvedHits = JSON.parse(approvedSearch.content[0].text);
   assert.equal(approvedHits.length, 1);
   assert.equal(approvedHits[0].content, 'gated agent fact');
+});
+
+test('memory MCP: reads and writes the project scope, not the single task', async (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const db = new Database(path.join(dir, 'webui.db'));
+  createMemorySchema(db);
+  createWorkspaceSchema(db);
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO projects (id, name, root_path, created_at) VALUES (?, ?, ?, ?)')
+    .run('proj-1', 'Proj', '/proj', now);
+  const insertWorkspace = db.prepare(
+    `INSERT INTO workspaces (id, project_id, display_name, absolute_path, isolation, status, created_at)
+     VALUES (?, 'proj-1', ?, '/proj', 'current_folder', 'active', ?)`,
+  );
+  // ws-1 is the workspace the server runs in; ws-earlier is a finished task of
+  // the same project whose memory must still be visible.
+  insertWorkspace.run('ws-1', 'task now', now);
+  insertWorkspace.run('ws-earlier', 'task before', now);
+  // Simulate an already-upgraded database (the web app owns this migration; the
+  // server adds the columns too, but the seed row below needs them up front).
+  db.exec(`ALTER TABLE memories ADD COLUMN scope_kind TEXT;
+           ALTER TABLE memories ADD COLUMN scope_key TEXT;`);
+  db.prepare(
+    `INSERT INTO memories
+      (id, workspace_id, kind, content, provenance, approved, created_at, updated_at, use_count,
+       scope_kind, scope_key)
+     VALUES ('mem-earlier', 'ws-earlier', 'lesson', 'the encoding test lives in host/src',
+             'auto-extract', 1, 1, 1, 0, 'project', 'proj-1')`,
+  ).run();
+  db.pragma('journal_mode = WAL');
+  db.close();
+
+  const transport = new StdioClientTransport(mkLaunch(dir));
+  const client = await connectClient(transport);
+  t.after(() => client.close());
+  t.after(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  // Visible from a different task of the same project.
+  const hits = JSON.parse((await client.callTool({
+    name: 'memory_search',
+    arguments: { query: 'encoding', limit: 5 },
+  })).content[0].text);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].id, 'mem-earlier');
+
+  // Editable from there too (same scope, not the same workspace row).
+  const updated = await client.callTool({
+    name: 'memory_update',
+    arguments: { id: 'mem-earlier', expectedRevision: 0, content: 'the encoding test lives in host/src/bat-encoding.test.js' },
+  });
+  assert.equal(updated.isError, undefined);
+
+  // New writes are stamped with the project scope so later tasks inherit them.
+  const added = JSON.parse((await client.callTool({
+    name: 'memory_add',
+    arguments: { kind: 'fact', content: 'bat files must stay ASCII only' },
+  })).content[0].text);
+  assert.equal(added.scopeKind, 'project');
+  assert.equal(added.scopeKey, 'proj-1');
+});
+
+test('memory MCP: re-adding a stored proposition returns the existing row', async (t) => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'opencode-webui-memory-mcp-'));
+  const db = new Database(path.join(dir, 'webui.db'));
+  createMemorySchema(db);
+  db.pragma('journal_mode = WAL');
+  db.close();
+
+  const transport = new StdioClientTransport(mkLaunch(dir));
+  const client = await connectClient(transport);
+  t.after(() => client.close());
+  t.after(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const first = JSON.parse((await client.callTool({
+    name: 'memory_add',
+    arguments: {
+      kind: 'preference',
+      content: 'プロジェクト直下の MEMORY.md はローカル専用として .gitignore に含め、Git で追跡しない。',
+    },
+  })).content[0].text);
+  assert.equal(first.duplicate, undefined);
+
+  // Reworded restatement of the same rule: no second row.
+  const again = JSON.parse((await client.callTool({
+    name: 'memory_add',
+    arguments: {
+      kind: 'fact',
+      content: 'プロジェクト直下の MEMORY.md はローカル専用として .gitignore 対象にし、コミットしない。',
+    },
+  })).content[0].text);
+  assert.equal(again.duplicate, true);
+  assert.equal(again.id, first.id);
+
+  // The negated rule is a different proposition and is stored.
+  const opposite = JSON.parse((await client.callTool({
+    name: 'memory_add',
+    arguments: { kind: 'fact', content: 'MEMORY.md はコミットする。' },
+  })).content[0].text);
+  assert.equal(opposite.duplicate, undefined);
+  assert.notEqual(opposite.id, first.id);
+
+  const admin = new Database(path.join(dir, 'webui.db'));
+  const rows = admin.prepare('SELECT id, norm_key FROM memories ORDER BY created_at').all();
+  admin.close();
+  assert.equal(rows.length, 2);
+  // norm_key is written on insert so the indexed probe works without a backfill.
+  assert.ok(rows.every((row) => typeof row.norm_key === 'string' && row.norm_key.length > 0));
 });
 
 test('memory MCP requires a workspace; CLI --workspace wins over env', async () => {

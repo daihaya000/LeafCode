@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  MEMORY_EXTRACT_MAX_ITEMS_PER_RUN,
   buildExtractionSessionBody,
   buildExtractionPrompt,
   extractTranscriptTail,
   lastJsonBlock,
+  lastMessageId,
   messageText,
+  messagesAfter,
   parseExtractionJson,
 } from "@/lib/memory-extract";
 import type { MessageWithParts } from "@/lib/types";
 
-function part(role: "user" | "assistant", texts: string[]): MessageWithParts {
+function part(role: "user" | "assistant", texts: string[], id: string = role): MessageWithParts {
   return {
     info: {
-      id: role,
+      id,
       role,
       agent: "plan",
       modelID: "m",
@@ -85,11 +88,69 @@ describe("parseExtractionJson", () => {
   });
 });
 
+describe("messagesAfter / lastMessageId", () => {
+  const transcript = [
+    part("user", ["first ask"], "m1"),
+    part("assistant", ["first answer"], "m2"),
+    part("user", ["second ask"], "m3"),
+    part("assistant", ["second answer"], "m4"),
+  ];
+
+  it("returns the whole transcript when nothing was extracted yet", () => {
+    expect(messagesAfter(transcript, null)).toHaveLength(4);
+    expect(messagesAfter(transcript, undefined)).toHaveLength(4);
+  });
+
+  it("returns only the messages after the cursor", () => {
+    const delta = messagesAfter(transcript, "m2");
+    expect(delta.map((m) => m.info.id)).toEqual(["m3", "m4"]);
+    expect(extractTranscriptTail(delta, 500)).not.toContain("first ask");
+  });
+
+  it("returns an empty slice when the cursor is already at the newest message", () => {
+    expect(messagesAfter(transcript, "m4")).toEqual([]);
+  });
+
+  it("falls back to the whole transcript when the cursor message is gone", () => {
+    expect(messagesAfter(transcript, "pruned")).toHaveLength(4);
+  });
+
+  it("reports the newest message id and tolerates empty transcripts", () => {
+    expect(lastMessageId(transcript)).toBe("m4");
+    expect(lastMessageId([])).toBeNull();
+    expect(lastMessageId([{ info: {}, parts: [] } as unknown as MessageWithParts])).toBeNull();
+  });
+});
+
 describe("buildExtractionPrompt", () => {
   it("embeds the transcript", () => {
     const prompt = buildExtractionPrompt("the transcript");
     expect(prompt).toContain("the transcript");
     expect(prompt).toContain('"memories"');
+  });
+
+  it("caps the requested item count", () => {
+    expect(buildExtractionPrompt("t")).toContain(`At most ${MEMORY_EXTRACT_MAX_ITEMS_PER_RUN} items`);
+    expect(MEMORY_EXTRACT_MAX_ITEMS_PER_RUN).toBeLessThanOrEqual(3);
+  });
+
+  it("lists already stored memories so paraphrases are not re-emitted", () => {
+    const prompt = buildExtractionPrompt("t", [
+      "MEMORY.md は .gitignore 対象",
+      "bat は CRLF で保存する",
+    ]);
+    expect(prompt).toContain("ALREADY STORED");
+    expect(prompt).toContain("- MEMORY.md は .gitignore 対象");
+    expect(prompt).toContain("- bat は CRLF で保存する");
+  });
+
+  it("flattens newlines in hints so one hint stays one bullet", () => {
+    const prompt = buildExtractionPrompt("t", ["line one\nline two"]);
+    expect(prompt).toContain("- line one line two");
+  });
+
+  it("omits the stored section entirely when the scope is empty", () => {
+    expect(buildExtractionPrompt("t", [])).not.toContain("ALREADY STORED");
   });
 });
 

@@ -4,14 +4,33 @@
  * Pure DB operations over the `memories` table and its FTS5 access path, plus
  * the injection block builder and audit logging. No network / OpenCode calls
  * live here: everything is synchronous against `better-sqlite3`.
+ *
+ * Retrieval is keyed on the *scope* of a workspace, not the workspace id. A
+ * workspace in this product is one task (production: 306 workspaces over 7
+ * directories), so a workspace-keyed store starts empty on every new task and
+ * strands everything learned earlier. `resolveMemoryScope` maps a workspace to
+ * its project, and all reads/writes below use the resulting `scope_key`.
+ * Public function signatures still take `workspaceId` so callers (API, MCP,
+ * goal loop) are unchanged.
  */
 
 import { getDb } from "./db";
+import {
+  memorySimilarityVerdict,
+  normalizeMemoryKey,
+  type MemorySimilarityVerdict,
+} from "./memory-key";
 import { inspectMemoryContent } from "./memory-safety";
 import { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
 
 export { inspectMemoryContent } from "./memory-safety";
 export type { MemorySafetyViolation } from "./memory-safety";
+export {
+  memorySimilarityVerdict,
+  normalizeMemoryKey,
+  memoryPolarity,
+  trigramSimilarity,
+} from "./memory-key";
 
 export const MEMORY_KINDS = ["fact", "preference", "lesson", "reference"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
@@ -42,7 +61,31 @@ export type MemoryRow = {
   last_used_at: number | null;
   use_count: number;
   revision: number;
+  scope_kind: MemoryScopeKind | null;
+  scope_key: string | null;
+  norm_key: string | null;
 };
+
+export const MEMORY_SCOPE_KINDS = ["project", "workspace"] as const;
+export type MemoryScopeKind = (typeof MEMORY_SCOPE_KINDS)[number];
+
+export type MemoryScope = {
+  kind: MemoryScopeKind;
+  key: string;
+};
+
+/**
+ * Retrieval scope of a workspace: its project when the workspace is known,
+ * otherwise the workspace itself (used by tests and by rows whose workspace
+ * row was removed). Cheap enough to call per request; it is one indexed lookup.
+ */
+export function resolveMemoryScope(workspaceId: string): MemoryScope {
+  const row = getDb()
+    .prepare("SELECT project_id FROM workspaces WHERE id = ?")
+    .get(workspaceId) as { project_id?: string } | undefined;
+  if (row?.project_id) return { kind: "project", key: row.project_id };
+  return { kind: "workspace", key: workspaceId };
+}
 
 /** Public DTO (camelCase) surfaced by the web API / UI. */
 export type MemoryDto = {
@@ -58,6 +101,8 @@ export type MemoryDto = {
   lastUsedAt: number | null;
   useCount: number;
   revision: number;
+  scopeKind: MemoryScopeKind | null;
+  scopeKey: string | null;
 };
 
 export function isMemoryKind(value: unknown): value is MemoryKind {
@@ -105,6 +150,8 @@ export function toMemoryDto(row: MemoryRow): MemoryDto {
     lastUsedAt: row.last_used_at,
     useCount: row.use_count,
     revision: row.revision,
+    scopeKind: row.scope_kind ?? null,
+    scopeKey: row.scope_key ?? null,
   };
 }
 
@@ -135,33 +182,52 @@ export function createMemory(input: {
   const now = Date.now();
   const approved = isMemoryWriteApprovalEnabled() ? false : input.approved === true;
   const id = crypto.randomUUID();
+  const content = input.content.trim();
+  const scope = resolveMemoryScope(input.workspaceId);
   getDb()
     .prepare(
       `INSERT INTO memories
         (id, workspace_id, kind, content, source_session_id, provenance, approved,
-         created_at, updated_at, last_used_at, use_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)`,
+         created_at, updated_at, last_used_at, use_count, scope_kind, scope_key, norm_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?)`,
     )
     .run(
       id,
       input.workspaceId,
       input.kind,
-      input.content.trim(),
+      content,
       input.sourceSessionId ?? null,
       input.provenance,
       approved ? 1 : 0,
       now,
       now,
+      scope.kind,
+      scope.key,
+      normalizeMemoryKey(content),
     );
   return getMemoryById(id) as MemoryDto;
 }
 
+/**
+ * Fetch one memory. When `workspaceId` is given the row must belong to that
+ * workspace's *scope* (not the workspace itself), so the memory UI of a new
+ * task can still edit knowledge captured by an earlier task of the same
+ * project.
+ */
 export function getMemoryById(id: string, workspaceId?: string): MemoryDto | undefined {
-  const row = workspaceId
-    ? (getDb()
-        .prepare("SELECT * FROM memories WHERE id = ? AND workspace_id = ?")
-        .get(id, workspaceId) as MemoryRow | undefined)
-    : (getDb().prepare("SELECT * FROM memories WHERE id = ?").get(id) as MemoryRow | undefined);
+  if (!workspaceId) {
+    const anyRow = getDb().prepare("SELECT * FROM memories WHERE id = ?").get(id) as
+      | MemoryRow
+      | undefined;
+    return anyRow ? toMemoryDto(anyRow) : undefined;
+  }
+  const scope = resolveMemoryScope(workspaceId);
+  const row = getDb()
+    .prepare(
+      `SELECT * FROM memories
+       WHERE id = ? AND (scope_key = ? OR workspace_id = ?)`,
+    )
+    .get(id, scope.key, workspaceId) as MemoryRow | undefined;
   return row ? toMemoryDto(row) : undefined;
 }
 
@@ -173,8 +239,9 @@ export function listMemories(filter?: {
   const clauses: string[] = [];
   const params: unknown[] = [];
   if (filter?.workspaceId) {
-    clauses.push("workspace_id = ?");
-    params.push(filter.workspaceId);
+    const scope = resolveMemoryScope(filter.workspaceId);
+    clauses.push("(scope_key = ? OR workspace_id = ?)");
+    params.push(scope.key, filter.workspaceId);
   }
   if (filter?.approved !== undefined) {
     clauses.push("approved = ?");
@@ -199,12 +266,13 @@ export function approveMemory(
   expectedRevision: number,
 ): MemoryDto | undefined {
   const now = Date.now();
+  const scope = resolveMemoryScope(workspaceId);
   const result = getDb()
     .prepare(
       `UPDATE memories SET approved = 1, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ?`,
+       WHERE id = ? AND (scope_key = ? OR workspace_id = ?) AND revision = ?`,
     )
-    .run(now, id, workspaceId, expectedRevision);
+    .run(now, id, scope.key, workspaceId, expectedRevision);
   return result.changes > 0 ? getMemoryById(id, workspaceId) : undefined;
 }
 
@@ -237,8 +305,11 @@ export function updateMemory(
     params.push(patch.kind);
   }
   if (patch.content !== undefined) {
+    const trimmed = patch.content.trim();
     assignments.push("content = ?");
-    params.push(patch.content.trim());
+    params.push(trimmed);
+    assignments.push("norm_key = ?");
+    params.push(normalizeMemoryKey(trimmed));
   }
   if (assignments.length === 0) {
     const current = getMemoryById(id, workspaceId);
@@ -251,40 +322,190 @@ export function updateMemory(
   assignments.push("revision = revision + 1");
   params.push(Date.now());
   params.push(id);
+  const scope = resolveMemoryScope(workspaceId);
   const result = getDb()
     .prepare(
       `UPDATE memories SET ${assignments.join(", ")}
-       WHERE id = ? AND workspace_id = ? AND revision = ?`,
+       WHERE id = ? AND (scope_key = ? OR workspace_id = ?) AND revision = ?`,
     )
-    .run(...params, workspaceId, expectedRevision);
+    .run(...params, scope.key, workspaceId, expectedRevision);
   return result.changes > 0 ? getMemoryById(id, workspaceId) : undefined;
 }
 
 export function deleteMemory(id: string, workspaceId: string, expectedRevision: number): boolean {
-  return getDb()
-    .prepare("DELETE FROM memories WHERE id = ? AND workspace_id = ? AND revision = ?")
-    .run(id, workspaceId, expectedRevision).changes > 0;
+  const scope = resolveMemoryScope(workspaceId);
+  return (
+    getDb()
+      .prepare(
+        `DELETE FROM memories
+         WHERE id = ? AND (scope_key = ? OR workspace_id = ?) AND revision = ?`,
+      )
+      .run(id, scope.key, workspaceId, expectedRevision).changes > 0
+  );
 }
 
-/** Count approved rows for a workspace (used by the injection cap). */
+/** Count approved rows in a workspace's scope (used by the injection cap). */
 export function countApprovedMemories(workspaceId: string): number {
+  const scope = resolveMemoryScope(workspaceId);
   const row = getDb()
-    .prepare("SELECT COUNT(*) AS n FROM memories WHERE workspace_id = ? AND approved = 1")
-    .get(workspaceId) as { n: number };
+    .prepare(
+      `SELECT COUNT(*) AS n FROM memories
+       WHERE (scope_key = ? OR workspace_id = ?) AND approved = 1`,
+    )
+    .get(scope.key, workspaceId) as { n: number };
   return row.n;
 }
 
-/** Exact-match duplicate probe used by both auto-extract and retrospective. */
+/** Exact-match duplicate probe (kept for callers that need strict equality). */
 export function findExactDuplicateMemory(
   workspaceId: string,
   content: string,
 ): MemoryDto | undefined {
+  const scope = resolveMemoryScope(workspaceId);
   const row = getDb()
     .prepare(
-      "SELECT * FROM memories WHERE workspace_id = ? AND content = ? ORDER BY id DESC LIMIT 1",
+      `SELECT * FROM memories
+       WHERE (scope_key = ? OR workspace_id = ?) AND content = ?
+       ORDER BY id DESC LIMIT 1`,
     )
-    .get(workspaceId, content.trim()) as MemoryRow | undefined;
+    .get(scope.key, workspaceId, content.trim()) as MemoryRow | undefined;
   return row ? toMemoryDto(row) : undefined;
+}
+
+/**
+ * Maximum rows compared when probing for a near-duplicate. Comparison is a
+ * bounded set intersection per row, so this stays in the low milliseconds even
+ * at the cap; it exists only so an unbounded scope cannot make writes slow.
+ */
+export const MEMORY_DUPLICATE_SCAN_LIMIT = 3000;
+
+export type MemoryDuplicateHit = {
+  memory: MemoryDto;
+  verdict: MemorySimilarityVerdict;
+};
+
+/**
+ * Find an existing memory in the same scope that states the same thing.
+ *
+ * Two stages: an indexed `norm_key` lookup for formatting-only differences,
+ * then a bounded near-duplicate scan (see memory-key.ts for the thresholds and
+ * the polarity guard that keeps a rule and its negation apart). Returns
+ * `undefined` when the content is genuinely new.
+ */
+export function findDuplicateMemory(
+  workspaceId: string,
+  content: string,
+): MemoryDuplicateHit | undefined {
+  const trimmed = content.trim();
+  if (trimmed.length === 0) return undefined;
+  const scope = resolveMemoryScope(workspaceId);
+  const normKey = normalizeMemoryKey(trimmed);
+  if (normKey.length > 0) {
+    const exact = getDb()
+      .prepare(
+        `SELECT * FROM memories
+         WHERE (scope_key = ? OR workspace_id = ?) AND norm_key = ?
+         ORDER BY approved DESC, use_count DESC, id DESC
+         LIMIT 1`,
+      )
+      .get(scope.key, workspaceId, normKey) as MemoryRow | undefined;
+    if (exact) {
+      return {
+        memory: toMemoryDto(exact),
+        verdict: { duplicate: true, similarity: 1, threshold: 0, reason: "norm-key" },
+      };
+    }
+  }
+  const candidates = getDb()
+    .prepare(
+      `SELECT * FROM memories
+       WHERE (scope_key = ? OR workspace_id = ?)
+       ORDER BY approved DESC, updated_at DESC
+       LIMIT ?`,
+    )
+    .all(scope.key, workspaceId, MEMORY_DUPLICATE_SCAN_LIMIT) as MemoryRow[];
+  for (const candidate of candidates) {
+    const verdict = memorySimilarityVerdict(candidate.content, trimmed);
+    if (verdict.duplicate) return { memory: toMemoryDto(candidate), verdict };
+  }
+  return undefined;
+}
+
+/**
+ * Record that a duplicate was observed again: the surviving row is touched so
+ * consolidation/decay treats it as fresh, but `use_count` is not bumped because
+ * nothing consumed it.
+ */
+export function touchMemoryAsReobserved(id: string, now = Date.now()): void {
+  getDb().prepare("UPDATE memories SET updated_at = ? WHERE id = ?").run(now, id);
+}
+
+/** How many existing memories are shown to the extraction model. */
+export const MEMORY_EXTRACT_HINT_LIMIT = 20;
+/** Per-hint truncation so the prompt stays small. */
+export const MEMORY_EXTRACT_HINT_MAX_CHARS = 160;
+
+/**
+ * Existing memories to show the extraction model so it does not re-emit a
+ * paraphrase of something already stored (the dominant duplicate source once
+ * incremental extraction is in place). Relevance-first via FTS on the
+ * transcript, padded with the most recently updated rows.
+ *
+ * Read-only: usage counters are deliberately not bumped, because showing a
+ * memory to the extractor is not the agent consuming it.
+ */
+export function listMemoryHintsForExtraction(
+  workspaceId: string,
+  transcript: string,
+  limit: number = MEMORY_EXTRACT_HINT_LIMIT,
+): string[] {
+  const scope = resolveMemoryScope(workspaceId);
+  const cap = Math.max(0, limit);
+  if (cap === 0) return [];
+  const seen = new Set<string>();
+  const hints: string[] = [];
+  const push = (row: { id: string; content: string }): void => {
+    if (seen.has(row.id) || hints.length >= cap) return;
+    seen.add(row.id);
+    hints.push(
+      row.content.length > MEMORY_EXTRACT_HINT_MAX_CHARS
+        ? `${row.content.slice(0, MEMORY_EXTRACT_HINT_MAX_CHARS)}…`
+        : row.content,
+    );
+  };
+  const query = transcript.slice(-2000).trim();
+  if (query.length > 0) {
+    try {
+      const matched = getDb()
+        .prepare(
+          `SELECT m.id, m.content FROM memories_fts f
+           JOIN memories m ON m.id = f.id
+           WHERE memories_fts MATCH ? AND (m.scope_key = ? OR m.workspace_id = ?)
+           ORDER BY f.rank
+           LIMIT ?`,
+        )
+        .all(toFtsAnyQuery(query), scope.key, workspaceId, cap) as {
+        id: string;
+        content: string;
+      }[];
+      for (const row of matched) push(row);
+    } catch {
+      // A malformed FTS query must not block extraction; recency padding below
+      // still gives the model something to compare against.
+    }
+  }
+  if (hints.length < cap) {
+    const recent = getDb()
+      .prepare(
+        `SELECT id, content FROM memories
+         WHERE (scope_key = ? OR workspace_id = ?)
+         ORDER BY updated_at DESC
+         LIMIT ?`,
+      )
+      .all(scope.key, workspaceId, cap) as { id: string; content: string }[];
+    for (const row of recent) push(row);
+  }
+  return hints;
 }
 
 /** Escape a user query so FTS5 treats it as a single phrase. */
@@ -326,8 +547,9 @@ export function searchMemories(input: {
   const params: unknown[] = [phrase];
   const clauses = ["memories_fts MATCH ?"];
   if (input.workspaceId) {
-    clauses.push("m.workspace_id = ?");
-    params.push(input.workspaceId);
+    const scope = resolveMemoryScope(input.workspaceId);
+    clauses.push("(m.scope_key = ? OR m.workspace_id = ?)");
+    params.push(scope.key, input.workspaceId);
   }
   if (input.kind && isMemoryKind(input.kind)) {
     clauses.push("m.kind = ?");
@@ -453,15 +675,38 @@ export { stripMemoryInjectionBlock } from "./memory-text";
  * should use {@link buildMemoryInjectionBlock} directly. Returns "" when there
  * is nothing to inject.
  */
-export function memoryInjectionFor(workspaceId: string): string {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM memories
-       WHERE workspace_id = ? AND approved = 1
-       ORDER BY use_count DESC, updated_at DESC
-       LIMIT ?`,
-    )
-    .all(workspaceId, MEMORY_INJECTION_BUDGET_ITEMS) as MemoryRow[];
+export function memoryInjectionFor(workspaceId: string, query?: string): string {
+  const scope = resolveMemoryScope(workspaceId);
+  const trimmedQuery = (query ?? "").trim();
+  let rows: MemoryRow[] = [];
+  if (trimmedQuery.length > 0) {
+    rows = getDb()
+      .prepare(
+        `SELECT m.* FROM memories_fts f
+         JOIN memories m ON m.id = f.id
+         WHERE memories_fts MATCH ?
+           AND (m.scope_key = ? OR m.workspace_id = ?)
+           AND m.approved = 1
+         ORDER BY f.rank
+         LIMIT ?`,
+      )
+      .all(
+        toFtsAnyQuery(trimmedQuery),
+        scope.key,
+        workspaceId,
+        MEMORY_INJECTION_BUDGET_ITEMS,
+      ) as MemoryRow[];
+  }
+  if (rows.length === 0) {
+    rows = getDb()
+      .prepare(
+        `SELECT * FROM memories
+         WHERE (scope_key = ? OR workspace_id = ?) AND approved = 1
+         ORDER BY use_count DESC, updated_at DESC
+         LIMIT ?`,
+      )
+      .all(scope.key, workspaceId, MEMORY_INJECTION_BUDGET_ITEMS) as MemoryRow[];
+  }
   if (rows.length > 0) {
     const now = Date.now();
     const bump = getDb().prepare(
@@ -499,6 +744,7 @@ export function claimMemoryInjectionForSession(
   query?: string,
 ): MemoryInjectionClaim | null {
   const db = getDb();
+  const scope = resolveMemoryScope(workspaceId);
   const claim = db.transaction(() => {
     const trimmedQuery = (query ?? "").trim();
     let rows: MemoryRow[] = [];
@@ -508,21 +754,23 @@ export function claimMemoryInjectionForSession(
         .prepare(
           `SELECT m.* FROM memories_fts f
            JOIN memories m ON m.id = f.id
-           WHERE memories_fts MATCH ? AND m.workspace_id = ? AND m.approved = 1
+           WHERE memories_fts MATCH ?
+             AND (m.scope_key = ? OR m.workspace_id = ?)
+             AND m.approved = 1
            ORDER BY f.rank
            LIMIT ?`,
         )
-        .all(phrase, workspaceId, MEMORY_INJECTION_MAX_ITEMS) as MemoryRow[];
+        .all(phrase, scope.key, workspaceId, MEMORY_INJECTION_MAX_ITEMS) as MemoryRow[];
     }
     if (rows.length === 0) {
       rows = db
         .prepare(
           `SELECT * FROM memories
-           WHERE workspace_id = ? AND approved = 1
+           WHERE (scope_key = ? OR workspace_id = ?) AND approved = 1
            ORDER BY use_count DESC, updated_at DESC
            LIMIT ?`,
         )
-        .all(workspaceId, MEMORY_INJECTION_MAX_ITEMS) as MemoryRow[];
+        .all(scope.key, workspaceId, MEMORY_INJECTION_MAX_ITEMS) as MemoryRow[];
     }
     if (rows.length === 0) return null;
 
@@ -536,10 +784,10 @@ export function claimMemoryInjectionForSession(
     if (inserted.changes === 0) return null;
 
     const bump = db.prepare(
-      "UPDATE memories SET last_used_at = ?, use_count = use_count + 1 WHERE id = ? AND workspace_id = ?",
+      "UPDATE memories SET last_used_at = ?, use_count = use_count + 1 WHERE id = ?",
     );
     const now = Date.now();
-    for (const row of rows) bump.run(now, row.id, workspaceId);
+    for (const row of rows) bump.run(now, row.id);
     return {
       workspaceId,
       sessionId,
@@ -562,8 +810,14 @@ export function releaseMemoryInjectionClaim(
 }
 
 /**
- * Insert an extraction/retrospective result. Each item is validated and
- * deduplicated by exact content match; the whole batch skips duplicates.
+ * Insert an extraction/retrospective result.
+ *
+ * Each item is validated, threat-inspected, and probed for a near-duplicate in
+ * the same scope (`findDuplicateMemory`). Duplicates touch the surviving row
+ * and count as `skipped` instead of inserting a paraphrase. Items already
+ * inserted earlier in the same batch are matched too, so one reply cannot add
+ * two wordings of the same fact.
+ *
  * Returns per-run accounting for callers (API / driver) to report.
  */
 export function insertExtractedMemories(input: {
@@ -606,7 +860,9 @@ export function insertExtractedMemories(input: {
         });
         continue;
       }
-      if (findExactDuplicateMemory(input.workspaceId, item.content)) {
+      const duplicate = findDuplicateMemory(input.workspaceId, item.content);
+      if (duplicate) {
+        touchMemoryAsReobserved(duplicate.memory.id);
         skipped.push(item.content);
         continue;
       }

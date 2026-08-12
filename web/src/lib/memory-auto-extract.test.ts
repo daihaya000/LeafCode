@@ -13,8 +13,16 @@ const previousAppData = process.env.APPDATA;
 const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(testDataDir);
 process.env.APPDATA = testDataDir;
 
-const { createWorkspace, bindSession, getDb, upsertProject } = await import("./db");
 const {
+  createWorkspace,
+  bindSession,
+  getDb,
+  upsertProject,
+  setSessionExtractState,
+  MEMORY_EXTRACT_COOLDOWN_MS,
+} = await import("./db");
+const {
+  ASSISTANT_EVENT_DEBOUNCE_MS,
   completedAssistantEvent,
   consumeMemoryEventStream,
   handleMemoryGlobalEvent,
@@ -33,6 +41,7 @@ afterAll(() => {
 
 beforeEach(() => {
   runMemoryExtraction.mockClear();
+  getDb().prepare("DELETE FROM memory_session_extract_state WHERE session_id = ?").run("ses-auto");
   const project = upsertProject({ name: "Auto memory", rootPath: workspaceRoot });
   if (!getDb().prepare("SELECT 1 FROM workspaces WHERE id = ?").get("ws-auto")) {
     createWorkspace({
@@ -152,6 +161,42 @@ describe("handleMemoryGlobalEvent", () => {
       sessionId: "ses-auto",
       assistantMessageId: "msg-step-3",
       trigger: "assistant-completed",
+    });
+  });
+
+  it("skips a turn whose session was extracted within the cooldown window", async () => {
+    // v1 extracted on every completed assistant message; the cooldown is what
+    // stops one long session from producing hundreds of runs.
+    setSessionExtractState({
+      workspaceId: "ws-auto",
+      sessionId: "ses-auto",
+      lastMessageId: "msg-earlier",
+      extractedAt: Date.now(),
+    });
+    // The event is still registered with the debouncer; the cooldown is applied
+    // when the timer fires, so a cooldown that lapses mid-burst still runs.
+    expect(handleMemoryGlobalEvent(completedEvent("msg-cooldown"))).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, ASSISTANT_EVENT_DEBOUNCE_MS + 200));
+    expect(runMemoryExtraction).not.toHaveBeenCalled();
+    // No claim is recorded, so the same message is reconsidered once the
+    // cooldown lapses rather than being permanently swallowed.
+    expect(
+      getDb()
+        .prepare("SELECT status FROM memory_assistant_extracts WHERE assistant_message_id = ?")
+        .get("msg-cooldown"),
+    ).toBeUndefined();
+  });
+
+  it("runs again once the cooldown has elapsed", async () => {
+    setSessionExtractState({
+      workspaceId: "ws-auto",
+      sessionId: "ses-auto",
+      lastMessageId: "msg-earlier",
+      extractedAt: Date.now() - (MEMORY_EXTRACT_COOLDOWN_MS + 1),
+    });
+    expect(handleMemoryGlobalEvent(completedEvent("msg-after-cooldown"))).toBe(1);
+    await vi.waitFor(() => {
+      expect(runMemoryExtraction).toHaveBeenCalledTimes(1);
     });
   });
 });

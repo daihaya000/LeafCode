@@ -882,7 +882,10 @@ function buildGoalPromptWithMemory(
       ? buildGoalPrompt(loop, turnNumber, maxTurns)
       : buildGoalContinuationPrompt(loop, turnNumber, maxTurns);
   if (turnNumber !== 1 && !forceMemory) return prompt;
-  const memory = memoryInjectionFor(loop.workspaceId);
+  // The goal text is the retrieval query: injecting the globally most-used
+  // memories regardless of the task fills the budget with irrelevant notes and
+  // makes the same few rows win forever (use_count feedback loop).
+  const memory = memoryInjectionFor(loop.workspaceId, loop.goal);
   return memory ? `${memory}\n${prompt}` : prompt;
 }
 
@@ -1541,7 +1544,8 @@ async function processLoop(loop: GoalLoopDto): Promise<void> {
       verifyCounts?.turn_count ?? loop.turnCount,
       verifyCounts?.max_turns ?? loop.maxTurns,
     );
-    const memory = compactResult === "compacted" ? memoryInjectionFor(loop.workspaceId) : "";
+    const memory =
+      compactResult === "compacted" ? memoryInjectionFor(loop.workspaceId, loop.goal) : "";
     const body: Record<string, unknown> = {
       parts: [
         {

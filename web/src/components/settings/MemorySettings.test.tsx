@@ -104,7 +104,9 @@ describe("MemorySettings", () => {
 
     render(<MemorySettings />);
 
-    expect(screen.getByText(/セッションをまたいで保持します/)).toBeTruthy();
+    expect(screen.getByText(/セッションやタスクをまたいで保持します/)).toBeTruthy();
+    // Scope is the project, so the UI must say so: a workspace is one task.
+    expect(screen.getByText(/メモリはプロジェクト単位で共有されます/)).toBeTruthy();
     expect(screen.getByText(/自動保存が有効です/)).toBeTruthy();
     expect(screen.getByLabelText("メモリの保存前確認")).toBeTruthy();
 

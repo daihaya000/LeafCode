@@ -214,8 +214,14 @@ function makeDb(): Database.Database {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_used_at INTEGER,
-      use_count INTEGER NOT NULL DEFAULT 0
+      use_count INTEGER NOT NULL DEFAULT 0,
+      -- Retrieval scope (see db.ts): memories belong to the project, not to the
+      -- one-task workspace that happened to observe them.
+      scope_kind TEXT,
+      scope_key TEXT,
+      norm_key TEXT
     );
+    CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope_key, approved);
     CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
     CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
       INSERT INTO memories_fts(id, content) VALUES (new.id, new.content);

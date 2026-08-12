@@ -10,18 +10,41 @@ OpenCode CLI 自体には長期メモリがない。セッションをまたぐ�
 
 ## 目的
 
-1. ワークスペース単位の構造化記憶ストアをDBに置く。
+1. プロジェクト単位の構造化記憶ストアをDBに置く。
 2. OpenCodeセッションからMCPツール経由で検索・書き込みできるようにする。
 3. セッション完了時に軽量モデルで事実を自動抽出し、既定は自動保存、必要に応じて承認制へ切り替える。
 4. セッション冒頭に承認済み記憶を自動注入する。
+
+## 記憶スコープ(v2で変更)
+
+**記憶はプロジェクト(`projects.id`)に属する。ワークスペースには属さない。**
+
+v1はスコープを `workspace_id` にしていたが、WebUIのワークスペースは「1タスク」の単位で
+量産される(実測: 実パス7種に対してワークスペース306個)。結果として同じプロジェクトの
+知識が68ワークスペースに分散し、新しいタスクを始めた瞬間に過去の記憶が一切見えなくなっていた
+(注入実績は2,356件に対して12回)。これは「セッション横断の永続記憶」という本仕様の目的に
+対する機能欠損である。
+
+- 書き込み時に `resolveMemoryScope(workspaceId)` でスコープを解決し、`scope_kind='project'` /
+  `scope_key=<project_id>` を行に記録する。プロジェクトに属さないワークスペース
+  (legacy)だけが `scope_kind='workspace'` / `scope_key=<workspace_id>` になる。
+- 読み出し条件は `(scope_key = :scope OR workspace_id = :workspaceId)`。後者は
+  `scope_key` 未設定の旧行を取りこぼさないためのフォールバック。
+- API・MCPの引数は互換のため `workspaceId` を維持し、スコープ解決はサーバー内部で行う。
+- `deleteWorkspace` は `scope_kind IS NULL OR 'workspace'` の行だけ削除する。
+  1タスクの終了でプロジェクトの学びを消してはならない。プロジェクト削除時のみ全削除する
+  (`deleteProject`)。
 
 ## 対象と非対象
 
 - 対象: DBスキーマ(`memories` テーブル)、MCPサーバー(`memory-mcp`)、
   自動抽出フック、注入フック、管理UI(`/settings/memory`)。
 - 非対象: 埋め込みベクトル検索(v1はFTS5のみ。`embedding` 列はv1のスキーマに含めず、
-  必要になった時点で `ALTER TABLE` で追加する)。
-- 非対象: ワークスペース横断のグローバルメモリ(v2候補)。
+  必要になった時点で `ALTER TABLE` で追加する)。近似重複の判定も埋め込みを使わず
+  字句ベースで行う(「重複判定」節)。
+- 非対象: プロジェクト横断のグローバルメモリ。
+- 非対象: 既存行の一括統合(destructive merge)。v2は「これ以上増やさない」ことを保証し、
+  既存の重複はUIからの手動削除に任せる。
 - 非対象: OpenCode本体のフォーク。すべて外部から付加する。
 
 ## データモデル
@@ -44,9 +67,16 @@ CREATE TABLE memories (
   updated_at INTEGER NOT NULL,
   last_used_at INTEGER,
   use_count INTEGER NOT NULL DEFAULT 0,
-  revision INTEGER NOT NULL DEFAULT 0          -- optimistic concurrency token
+  revision INTEGER NOT NULL DEFAULT 0,         -- optimistic concurrency token
+  -- v2: 検索スコープ(「記憶スコープ」節)。NULL は未解決の旧行
+  scope_kind TEXT,                             -- 'project' | 'workspace'
+  scope_key TEXT,
+  -- v2: 重複判定用の正規化キー(「重複判定」節)
+  norm_key TEXT
 );
 CREATE INDEX idx_memories_ws ON memories(workspace_id, approved);
+CREATE INDEX idx_memories_scope ON memories(scope_key, approved);
+CREATE INDEX idx_memories_norm ON memories(scope_key, norm_key);
 CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
 
 CREATE TABLE memory_session_injections (
@@ -55,7 +85,21 @@ CREATE TABLE memory_session_injections (
   injected_at INTEGER NOT NULL,
   PRIMARY KEY (workspace_id, session_id)
 );
+
+-- v2: セッションごとの抽出カーソルとクールダウン台帳(「自動抽出」節)
+CREATE TABLE memory_session_extract_state (
+  workspace_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  last_message_id TEXT,
+  last_extracted_at INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, session_id)
+);
 ```
+
+`scope_kind` / `scope_key` / `norm_key` は既存インストールへ guard付き `ALTER TABLE` で追加し、
+初期化時に (a) ワークスペースが属するプロジェクトIDでスコープを、(b) `norm_key` を
+backfillする。UNIQUE制約は張らない(既存2,356行に近似重複が含まれており、
+制約追加はマイグレーション失敗を招くため)。重複防止は挿入前照合で行う。
 
 `id TEXT PRIMARY KEY` を他テーブル(`goal_loops` 等)と揃えたまま FTS5 を使うため、
 **外部コンテンツ表(`content_rowid`)は使わない**(TEXT PKはSQLiteのrowidと別物になり
@@ -90,6 +134,7 @@ END;
 不変条件:
 
 - 注入・エージェントツール検索の対象は `approved = 1` のみ。
+- 同一スコープ内に同義の命題を2行作らない(「重複判定」節)。
 - `memory.write_approval = '1'` のとき、全ての新規書き込みは `approved = 0` で候補として作成される。
 - `memory.write_approval` が未設定または空のときは、脅威検査を通過した新規書き込みを `approved = 1` で保存する（Hermes Agent互換の既定）。
 - `content` は1件2,000字上限。超過は抽出側で分割する。
@@ -146,20 +191,68 @@ OpenCode の MCP 設定に `memory` エントリを追加する。
 `(workspace_id, session_id, assistant_message_id)` 台帳で重複を排除する。idle検出は既存に無いため
 **新規実装**とし、サーバー内タイマーで60分超過を判定する（ブラウザの時刻流用やポーリングはしない）。
 
+### 実行頻度(v2で変更)
+
+v1は完了済みassistantメッセージごとに抽出し、毎回「トランスクリプト末尾16k文字」を
+読み直していた。同じ会話の同じ範囲を繰り返し読ませたため、実測で1セッション358回の抽出から
+634件が作られ、そのうち407件が言い換え重複だった。v2では次の2点で抑制する。
+
+- **差分のみ抽出**: `memory_session_extract_state.last_message_id` 以降のメッセージだけを
+  入力にする。差分が空なら抽出実行そのものを作らない(`memory_extraction_runs` にも
+  記録しない)。カーソルは**成功時のみ**前進させる(失敗した回は同じ差分を再読する)。
+- **セッション単位のクールダウン**: `assistant-completed` トリガーは
+  `MEMORY_EXTRACT_COOLDOWN_MS`(10分)以内に同一セッションを再抽出しない。
+  `manual` / `goal-completed` / `idle` はクールダウンを無視する(明示操作・終端イベント)。
+  クールダウン判定はデバウンス発火時に行うため、待機中にクールダウンが切れた分は実行される。
+
 手順:
 
-1. 対象セッションのトランスクリプト末尾(最大16k文字)を読む。
-2. 軽量モデル(`auto-model.ts` の既存ルーティングで最安クラス)で抽出プロンプトを実行。
+1. `messagesAfter(messages, last_message_id)` で未抽出分だけを取り出し、末尾最大16k文字にする
+   (差分0件なら終了)。
+2. 同一スコープの既存メモリを `listMemoryHintsForExtraction()` で最大20件・各160字までに
+   まとめ、プロンプトの `ALREADY STORED` 節として提示する。既知の命題を言い換えて
+   再提出させないための最初の防波堤(モデルは既知だと知らなければ避けられない)。
+3. 軽量モデル(`auto-model.ts` の既存ルーティングで最安クラス)で抽出プロンプトを実行。
    出力は構造化JSONのみ許容:
    ```json
    { "memories": [ { "kind": "...", "content": "..." } ] }
    ```
-3. 各行を `provenance='auto-extract'` で挿入し、`memory.write_approval` に応じて `approved` を決める。重複判定はv1では**完全一致のみ**
-   (FTS5のbm25スコアは正規化された0-1類似度ではないため、「類似度0.9以上」のような閾値は
-   定義できない)。近似重複の排除は埋め込み導入後のv2に持ち越す。
-4. `memory_extraction_runs` に結果を記録し、WebUIのメモリ画面に未読件数バッジと履歴を出す。
+   1回あたりの採用は `MEMORY_EXTRACT_MAX_ITEMS_PER_RUN`(3件)までに切り詰める。
+   通常の正解は0〜1件である旨をプロンプトに明記する。
+4. 各行を `provenance='auto-extract'` で挿入し、`memory.write_approval` に応じて `approved` を
+   決める。挿入前に「重複判定」を通し、同義の行は挿入せず既存行の `updated_at` を更新して
+   `skipped` に数える。
+5. 成功時のみ `memory_session_extract_state` を更新する(カーソル前進 + クールダウン開始)。
+6. `memory_extraction_runs` に結果を記録し、WebUIのメモリ画面に未読件数バッジと履歴を出す。
    履歴には保存・候補化・拒否・失敗・重複スキップの状態を表示し、「すべて既読」で明示的に
    既読化する。
+
+### 重複判定(v2で変更)
+
+v1は完全一致(`content` の厳密比較)のみで、実測では**一件も**重複を検出できていなかった
+(完全一致0件・言い換え重複407件)。v2は埋め込みを導入せず、`memory-key.ts` の
+決定的な字句判定で近似重複を落とす。判定は**保守的**にする。誤マージ(別の命題を
+同一視して捨てる)は重複残存より有害だからである。
+
+1. **正規化キー(`norm_key`)**: NFKC・小文字化・空白と句読点の畳み込み・日本語の丁寧形/
+   語尾の正規化を行い、書式だけの差を同一キーにする。インデックス付きの等値検索で
+   拾える分はここで拾う。
+2. **極性ガード**: 否定形(`〜しない` / `〜してはいけない` / `〜されません` 等)と肯定形は
+   **常に別命題**として扱う。「MEMORY.md はコミットしない」と「〜コミットする」を
+   マージしてはならない。
+3. **識別子ゲート**: ファイル名・コマンド・設定キー等の識別子集合を抽出し、
+   Jaccard係数で一致度を測る。識別子が十分重なる場合のみ低い閾値
+   (`MEMORY_SIMILARITY_SAME_IDENTIFIERS = 0.6`)を使い、識別子が食い違う場合は
+   高い閾値(`_DIFFERENT_IDENTIFIERS = 0.85`)、識別子が無い散文は `_NO_IDENTIFIERS = 0.75`
+   を使う。これにより `MEMORY.md` と `LESSONS.md` のように文面がほぼ同じで対象が違う規則は
+   分離される。
+4. **文字trigramのJaccard類似度**で最終判定する。長さが極端に違う候補は先に落とす。
+5. 走査は同一スコープの最大 `MEMORY_DUPLICATE_SCAN_LIMIT`(3,000)件まで。
+
+実データ(1セッション634件)での検証では 634 → 363 件(271件マージ)となり、
+目視サンプルで誤マージは0件だった。
+
+`memory_add`(MCP)は重複を検出した場合、新規作成せず既存行を `duplicate: true` を付けて返す。
 
 通常会話のassistant完了イベントとgoal完了が同じメッセージを指す場合は、同じ台帳のclaimを
 共有して一度だけ抽出する。抽出成功後はidleの一回限りフォールバックも完了扱いにする。
@@ -176,9 +269,16 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 
 ```
 <workspace-memory>
-- (承認済み記憶を use_count 降順で最大8件、出所付きで各1行)
+- (承認済み記憶を最大8件、出所付きで各1行)
 </workspace-memory>
 ```
+
+選択は `memoryInjectionFor(workspaceId, query?)`。`query` があるときはFTSの関連度順で選び、
+足りない分を最近更新順で埋める。`query` がないときのみ `use_count` 降順にフォールバックする。
+
+`use_count` 降順のみで選ぶv1の方式は、一度注入された行が使用回数を増やし続けて
+上位8枠を占有する rich-get-richer になっていた(実測: 2,356件中2,271件が `use_count = 0`)。
+goal loop は `goal` テキストを `query` として渡す。
 
 - 注入された行の `use_count` を+1する。
 - **このプレフィックスは OpenCode が受信したメッセージとしてトランスクリプトに永続化される**
@@ -196,7 +296,7 @@ OpenCode の `message` API はシステム文脈の上書きを許さないた�
 
 | メソッド / パス | 意味 |
 | --- | --- |
-| `GET /api/memory?workspace_id=&approved=&kind=` | workspace必須の一覧 |
+| `GET /api/memory?workspace_id=&approved=&kind=` | `workspace_id` 必須。返るのは解決後スコープ(通常はプロジェクト)の一覧 |
 | `POST /api/memory/:id/approve` | `workspaceId`, `expectedRevision`一致時に承認(`approved=1`) |
 | `PATCH /api/memory/:id` | `workspaceId`, `expectedRevision`一致時に内容・種別編集 |
 | `DELETE /api/memory/:id?workspace_id=&expected_revision=` | workspace/revision一致時に削除 |
@@ -213,6 +313,7 @@ revision不一致は `409 Conflict` として現在の行を返す。これに�
 
 `/settings/memory` ページ(既存設定ビューのセクション追加):
 
+- メモリがプロジェクト単位で共有される旨の明示(ワークスペース選択は対象プロジェクトの指定)。
 - 「保存前に確認する」トグル(`memory.write_approval`)。既定OFFは脅威検査通過後に自動保存、ONは全書き込みを候補として保存。
 - 一覧テーブル(種別・内容・出所・作成日・使用回数)。承認済み/候補のタブ切替。
 - 候補タブ: 一括承認 / 個別承認 / 却下。却下は行削除(却下理由はv2)。
@@ -224,6 +325,13 @@ revision不一致は `409 Conflict` として現在の行を返す。これに�
 
 - `memory-layer.test.ts`(vitest): マイグレーション、CRUD、FTS同期、
   「未承認は検索に出ない」不変条件、重複スキップ。
+- スコープ: 同一プロジェクトの別ワークスペースから見える / 別プロジェクトからは見えない・
+  編集も削除もできない、`deleteWorkspace` でプロジェクトスコープの行が残る、
+  旧行のスコープと `norm_key` がbackfillされる。
+- 重複判定(`memory-key.test.ts`): 正規化キー、極性ガード(否定はマージしない)、
+  識別子ゲート(対象ファイルが違う規則は分離)、閾値、長さ差による早期棄却。
+- 差分抽出: `messagesAfter` / `lastMessageId` の境界、差分0で実行を作らない、
+  `ALREADY STORED` 節の生成、1回あたり件数上限、クールダウン中はスキップし経過後は実行。
 - 抽出履歴: 実行状態・件数・未読件数・既読化、履歴API、設定画面の通知表示を検証する。
 - MCPサーバーは `browser-bridge/test/mcp-stdio.test.mjs` と同型のstdio統合テスト。
 - 注入は送信経路の単体テスト(プレフィックスが付く / トランスクリプトに永続化される /
@@ -237,3 +345,4 @@ revision不一致は `409 Conflict` として現在の行を返す。これに�
 4. 自動抽出（通常assistant完了イベント・`goal-completed`・注入）
 5. UI
 6. `idle` トリガー
+7. v2: プロジェクトスコープ化・差分抽出+クールダウン・近似重複判定・関連度注入

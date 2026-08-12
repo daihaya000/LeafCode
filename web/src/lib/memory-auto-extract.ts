@@ -12,6 +12,7 @@ import {
   completeAssistantMemoryExtraction,
   findWorkspaceIdsBySessionAndDirectory,
   hasActiveGoalLoopForSession,
+  isSessionExtractCooldownActive,
   markIdleExtracted,
   releaseAssistantMemoryExtraction,
   touchSessionActivity,
@@ -156,6 +157,12 @@ function scheduleClaimedExtraction(
 /**
  * Schedule one assistant-message extraction. Returns true only when this
  * process acquired the durable claim and launched background work.
+ *
+ * Ordinary turns are rate-limited per session (see
+ * `MEMORY_EXTRACT_COOLDOWN_MS`): extraction reads the transcript delta, so
+ * running it on every completed message costs one model call per turn while
+ * adding almost nothing. Explicit and terminal triggers (`manual`,
+ * `goal-completed`, `idle`) bypass the cooldown.
  */
 export function scheduleAssistantMemoryExtraction(input: {
   workspaceId: string;
@@ -178,13 +185,20 @@ export function scheduleAssistantMemoryExtraction(input: {
   ) {
     return false;
   }
+  const trigger = input.trigger ?? "assistant-completed";
+  if (
+    trigger === "assistant-completed" &&
+    isSessionExtractCooldownActive(input.workspaceId, input.sessionId)
+  ) {
+    return false;
+  }
   const claim = claimAssistantMemoryExtraction(
     input.workspaceId,
     input.sessionId,
     input.assistantMessageId,
   );
   if (!claim) return false;
-  scheduleClaimedExtraction(claim, input.trigger ?? "assistant-completed");
+  scheduleClaimedExtraction(claim, trigger);
   return true;
 }
 
@@ -196,8 +210,9 @@ export function handleMemoryGlobalEvent(raw: string): number {
     event.sessionId,
     event.directory,
   );
-  // Do not guess when a session/directory is shared by multiple workspaces;
-  // memory is workspace-scoped and ambiguous ownership would leak context.
+  // Do not guess when a session/directory is shared by multiple workspaces:
+  // the memory scope is derived from the workspace, so ambiguous ownership
+  // could write a session's learnings into the wrong project.
   if (workspaces.length !== 1) return 0;
   let scheduled = 0;
   for (const workspaceId of workspaces) {

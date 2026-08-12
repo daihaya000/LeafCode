@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { isSafeOpenCodeSessionId } from "./opencode-id";
+import { normalizeMemoryKey } from "./memory-key";
 import { dbPath, ensureDataDir } from "./paths";
 import type { TaskExecutionMode } from "./types";
 import path from "node:path";
@@ -112,7 +113,11 @@ export type WorkflowArtifactRow = {
 };
 
 export function getDb(): Database.Database {
-  if (db) return db;
+  // A closed handle is never usable again, so drop it and reconnect instead of
+  // handing back a dead connection (this also re-runs schema init, which is
+  // idempotent and is what an upgrade path exercises).
+  if (db?.open) return db;
+  db = null;
   ensureDataDir();
   db = new Database(dbPath());
   db.pragma("journal_mode = WAL");
@@ -336,7 +341,16 @@ export function getDb(): Database.Database {
       updated_at INTEGER NOT NULL,
       last_used_at INTEGER,
       use_count INTEGER NOT NULL DEFAULT 0,
-      revision INTEGER NOT NULL DEFAULT 0
+      revision INTEGER NOT NULL DEFAULT 0,
+      -- Retrieval scope. workspace_id records the origin of a row, but a
+      -- workspace is created per task in this product (hundreds of workspaces
+      -- over a handful of directories), so a workspace-scoped store loses all
+      -- prior knowledge on every new task. Retrieval therefore keys on
+      -- scope_key (the project id); NULL means "not yet resolved".
+      scope_kind TEXT,                 -- 'project' | 'workspace'
+      scope_key TEXT,
+      -- Canonical dedupe key (see memory-key.ts). NULL means "not yet computed".
+      norm_key TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_memories_ws ON memories(workspace_id, approved);
     CREATE TABLE IF NOT EXISTS memory_audit_log (
@@ -411,6 +425,18 @@ export function getDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_memory_assistant_extracts_status
       ON memory_assistant_extracts(status, claimed_at);
+    -- Incremental-extraction state, one row per (workspace, session).
+    -- last_message_id is the newest transcript message already digested, so a
+    -- later run only feeds the delta to the model instead of re-submitting the
+    -- same 16k tail (the v1 behaviour that produced 358 runs / 634 paraphrased
+    -- rows for a single session). last_extracted_at drives the cooldown.
+    CREATE TABLE IF NOT EXISTS memory_session_extract_state (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      last_message_id TEXT,
+      last_extracted_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (workspace_id, session_id)
+    );
     CREATE TABLE IF NOT EXISTS memory_session_injections (
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       session_id TEXT NOT NULL,
@@ -473,9 +499,40 @@ export function getDb(): Database.Database {
   const memoryColumns = db
     .prepare("PRAGMA table_info(memories)")
     .all() as { name: string }[];
-  if (!memoryColumns.some((column) => column.name === "revision")) {
+  const hasMemoryColumn = (name: string): boolean =>
+    memoryColumns.some((column) => column.name === name);
+  if (!hasMemoryColumn("revision")) {
     db.exec("ALTER TABLE memories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
   }
+  // Retrieval scope + dedupe key (docs/specs/memory-layer.md 「スコープ」).
+  // Nullable on purpose: NULL marks a row the backfill below has not processed.
+  if (!hasMemoryColumn("scope_kind")) {
+    db.exec("ALTER TABLE memories ADD COLUMN scope_kind TEXT");
+  }
+  if (!hasMemoryColumn("scope_key")) {
+    db.exec("ALTER TABLE memories ADD COLUMN scope_key TEXT");
+  }
+  if (!hasMemoryColumn("norm_key")) {
+    db.exec("ALTER TABLE memories ADD COLUMN norm_key TEXT");
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope_key, approved);
+    CREATE INDEX IF NOT EXISTS idx_memories_norm ON memories(scope_key, norm_key);
+  `);
+  // Promote workspace-scoped rows to their project scope so knowledge captured
+  // under an earlier task remains retrievable from later tasks in the same
+  // project. Rows whose workspace no longer exists keep a workspace scope.
+  db.exec(`
+    UPDATE memories
+    SET scope_kind = 'project',
+        scope_key = (SELECT w.project_id FROM workspaces w WHERE w.id = memories.workspace_id)
+    WHERE scope_key IS NULL
+      AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = memories.workspace_id);
+    UPDATE memories
+    SET scope_kind = 'workspace', scope_key = workspace_id
+    WHERE scope_key IS NULL;
+  `);
+  backfillMemoryNormKeys(db);
   if (!hasWorkspaceColumn("revision")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
   }
@@ -814,6 +871,103 @@ export function listIdleExtracts(): MemoryIdleExtractRow[] {
     sessionId: r.session_id,
     extractedAt: r.extracted_at,
   }));
+}
+
+/**
+ * Fill `memories.norm_key` for rows written before the dedupe key existed.
+ * NFKC normalization is not expressible in SQL, so this runs in JS once per
+ * process startup; after the first pass the guarded SELECT matches no rows.
+ */
+function backfillMemoryNormKeys(database: Database.Database): void {
+  const rows = database
+    .prepare("SELECT id, content FROM memories WHERE norm_key IS NULL LIMIT 20000")
+    .all() as { id: string; content: string }[];
+  if (rows.length === 0) return;
+  const update = database.prepare("UPDATE memories SET norm_key = ? WHERE id = ?");
+  database.transaction(() => {
+    for (const row of rows) update.run(normalizeMemoryKey(row.content), row.id);
+  })();
+}
+
+export type MemorySessionExtractState = {
+  workspaceId: string;
+  sessionId: string;
+  lastMessageId: string | null;
+  lastExtractedAt: number;
+};
+
+/** Incremental-extraction state for one (workspace, session), if any. */
+export function getSessionExtractState(
+  workspaceId: string,
+  sessionId: string,
+): MemorySessionExtractState | undefined {
+  const row = getDb()
+    .prepare(
+      `SELECT workspace_id, session_id, last_message_id, last_extracted_at
+       FROM memory_session_extract_state
+       WHERE workspace_id = ? AND session_id = ?`,
+    )
+    .get(workspaceId, sessionId) as
+    | {
+        workspace_id: string;
+        session_id: string;
+        last_message_id: string | null;
+        last_extracted_at: number;
+      }
+    | undefined;
+  if (!row) return undefined;
+  return {
+    workspaceId: row.workspace_id,
+    sessionId: row.session_id,
+    lastMessageId: row.last_message_id,
+    lastExtractedAt: row.last_extracted_at,
+  };
+}
+
+/**
+ * Record how far a session's transcript has been digested. Called only after a
+ * run finishes without error, so a failed run re-reads the same delta.
+ */
+export function setSessionExtractState(input: {
+  workspaceId: string;
+  sessionId: string;
+  lastMessageId: string | null;
+  extractedAt?: number;
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO memory_session_extract_state
+        (workspace_id, session_id, last_message_id, last_extracted_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(workspace_id, session_id) DO UPDATE SET
+         last_message_id = excluded.last_message_id,
+         last_extracted_at = excluded.last_extracted_at`,
+    )
+    .run(
+      input.workspaceId,
+      input.sessionId,
+      input.lastMessageId,
+      input.extractedAt ?? Date.now(),
+    );
+}
+
+/**
+ * Minimum spacing between automatic extractions of one session. The v1 layer
+ * extracted on every completed assistant message, which produced 1,570 runs
+ * (and thousands of paraphrased rows) in normal use.
+ */
+export const MEMORY_EXTRACT_COOLDOWN_MS = 10 * 60 * 1000;
+
+/** True when this session was auto-extracted too recently to run again. */
+export function isSessionExtractCooldownActive(
+  workspaceId: string,
+  sessionId: string,
+  now = Date.now(),
+  cooldownMs: number = MEMORY_EXTRACT_COOLDOWN_MS,
+): boolean {
+  const state = getSessionExtractState(workspaceId, sessionId);
+  if (!state || state.lastExtractedAt <= 0) return false;
+  return now - state.lastExtractedAt < cooldownMs;
 }
 
 export const MEMORY_EXTRACTION_TRIGGERS = [
@@ -1299,10 +1453,22 @@ export function deleteWorkspace(id: string): WorkspaceRow | undefined {
   getDb().prepare("DELETE FROM session_bindings WHERE workspace_id = ?").run(id);
   // memories has no FK on older installed databases, so clean it explicitly
   // along with its audit trail before deleting the workspace row.
-  getDb().prepare("DELETE FROM memories WHERE workspace_id = ?").run(id);
+  //
+  // Project-scoped rows deliberately SURVIVE workspace deletion: a workspace is
+  // one task, and deleting a finished task must not erase what the project
+  // learned from it. Only rows whose retrieval scope is the workspace itself
+  // (legacy rows whose workspace had no project) are removed here; the whole
+  // set is cleaned by deleteProject.
+  getDb()
+    .prepare(
+      `DELETE FROM memories
+       WHERE workspace_id = ? AND (scope_kind IS NULL OR scope_kind = 'workspace')`,
+    )
+    .run(id);
   getDb().prepare("DELETE FROM memory_audit_log WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_idle_extracts WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_assistant_extracts WHERE workspace_id = ?").run(id);
+  getDb().prepare("DELETE FROM memory_session_extract_state WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_extraction_runs WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM memory_session_injections WHERE workspace_id = ?").run(id);
   getDb().prepare("DELETE FROM collaboration_snapshots WHERE workspace_id = ?").run(id);
@@ -1325,9 +1491,11 @@ export function deleteProject(id: string): ProjectRow | undefined {
   // content when this low-level helper is used by restore/maintenance code.
   getDb()
     .prepare(
-      "DELETE FROM memories WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+      `DELETE FROM memories
+       WHERE scope_key = ?
+          OR workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)`,
     )
-    .run(id);
+    .run(id, id);
   getDb()
     .prepare(
       "DELETE FROM memory_audit_log WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
@@ -1341,6 +1509,11 @@ export function deleteProject(id: string): ProjectRow | undefined {
   getDb()
     .prepare(
       "DELETE FROM memory_assistant_extracts WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
+    )
+    .run(id);
+  getDb()
+    .prepare(
+      "DELETE FROM memory_session_extract_state WHERE workspace_id IN (SELECT id FROM workspaces WHERE project_id = ?)",
     )
     .run(id);
   getDb()
