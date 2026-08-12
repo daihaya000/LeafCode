@@ -1,4 +1,29 @@
-# 作業ログ: /loop 1m バグハント tick — 高影響の新規なし
+# 作業ログ: HomeView Auto 選択時に画像添付が常に無効
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: Auto 選択時、接続モデルのいずれかに画像能力があれば添付ボタンが有効（TaskView / submit と同じ）
+- 実際: Auto に image 能力フラグがなく、手動セレクタの option.image のみ見ていたため常に disabled
+
+## 根本原因
+- UI ゲートが modelOptions / modelCapabilities[model] のみで、Auto（AUTO_MODEL_VALUE）とエージェント固定モデルを考慮していなかった
+- addImageFiles にも能力ガードが無く、TaskView と非対称だった
+
+## 修正
+- effectiveModelKey（エージェント優先）で画像可否を判定
+- Auto 時は modelCapabilities のいずれかに image/attachment があれば可
+- addImageFiles でも同ゲートを適用（貼り付け / 隠し input 経由のすり抜け防止）
+
+## 回帰防止
+- HomeView.test: Auto で画像可/不可、エージェント text モデルで添付ブロック、能力ロード待ち
+
+## 検証
+- npx vitest run src/components/home/HomeView.test.tsx: 65 passed
+- npx eslint（HomeView / test）: 成功
+
+---# 作業ログ: /loop 1m バグハント tick — 高影響の新規なし
 
 ## 日付
 2026-08-12

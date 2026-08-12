@@ -237,10 +237,13 @@ describe("HomeView image attachments", () => {
     });
     render(<HomeView />);
 
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    await waitFor(() => expect((attach as HTMLButtonElement).disabled).toBe(false));
+
     const image = new File(["image"], "reference.png", {
       type: "image/png",
     });
-    const input = await screen.findByLabelText("画像ファイルを選択");
+    const input = screen.getByLabelText("画像ファイルを選択");
     fireEvent.change(input, { target: { files: [image] } });
 
     expect(await screen.findByRole("img", { name: "reference.png" })).toBeTruthy();
@@ -269,20 +272,17 @@ describe("HomeView image attachments", () => {
     );
   });
 
-  it("blocks image submission to an unknown model (capability undefined)", async () => {
+  it("blocks image attachment when model image capability is undefined", async () => {
     render(<HomeView />);
 
     const image = new File(["image"], "unknown.png", { type: "image/png" });
     const input = await screen.findByLabelText("画像ファイルを選択");
     fireEvent.change(input, { target: { files: [image] } });
-    expect(await screen.findByRole("img", { name: "unknown.png" })).toBeTruthy();
-
-    const submit = screen.getByRole("button", { name: "タスク開始" });
-    fireEvent.click(submit);
-
-    await waitFor(() => {
-      expect(sendJson).not.toHaveBeenCalled();
-    });
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "画像入力に対応していない",
+    );
+    expect(screen.queryByRole("img", { name: "unknown.png" })).toBeNull();
+    expect(sendJson).not.toHaveBeenCalled();
   });
 
   it("keeps the image attachment button visible but disabled for image-unsupported models", async () => {
@@ -432,23 +432,60 @@ describe("HomeView image attachments", () => {
         "openai::vision",
       );
     });
-    const input = await screen.findByLabelText("画像ファイルを選択");
+    const attach = screen.getByRole("button", { name: "画像を添付" });
+    expect((attach as HTMLButtonElement).disabled).toBe(true);
+
+    const input = screen.getByLabelText("画像ファイルを選択");
     fireEvent.change(input, {
       target: { files: [new File(["image"], "agent-text.png", { type: "image/png" })] },
     });
-    const submit = screen.getByRole("button", { name: "タスク開始" });
-    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(submit);
-
-    await waitFor(() => {
-      expect(sendJson).not.toHaveBeenCalled();
-    });
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "画像入力に対応していない",
+    );
+    expect(screen.queryByRole("img", { name: "agent-text.png" })).toBeNull();
+    expect(sendJson).not.toHaveBeenCalled();
   });
 
-  it("previews multiple images and removes one independently", async () => {
-    render(<HomeView />);
+  function mockVisionProvider() {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
+                    name: "Vision",
+                    enabled: true,
+                    capabilities: { input: { image: true } },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+  }
 
-    const input = await screen.findByLabelText("画像ファイルを選択");
+  async function waitForImageAttachEnabled() {
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    await waitFor(() => expect((attach as HTMLButtonElement).disabled).toBe(false));
+    return attach;
+  }
+
+  it("previews multiple images and removes one independently", async () => {
+    mockVisionProvider();
+    render(<HomeView />);
+    await waitForImageAttachEnabled();
+
+    const input = screen.getByLabelText("画像ファイルを選択");
     fireEvent.change(input, {
       target: {
         files: [
@@ -466,10 +503,12 @@ describe("HomeView image attachments", () => {
   });
 
   it("labels the prompt and keeps attachment removal visible on keyboard focus", async () => {
+    mockVisionProvider();
     render(<HomeView />);
+    await waitForImageAttachEnabled();
 
-    expect(await screen.findByLabelText("タスクの説明")).toBeTruthy();
-    const input = await screen.findByLabelText("画像ファイルを選択");
+    expect(screen.getByLabelText("タスクの説明")).toBeTruthy();
+    const input = screen.getByLabelText("画像ファイルを選択");
     fireEvent.change(input, {
       target: { files: [new File(["image"], "keyboard.png", { type: "image/png" })] },
     });
@@ -478,7 +517,9 @@ describe("HomeView image attachments", () => {
   });
 
   it("adds an image pasted into the prompt", async () => {
+    mockVisionProvider();
     render(<HomeView />);
+    await waitForImageAttachEnabled();
 
     const image = new File(["image"], "pasted.png", { type: "image/png" });
     fireEvent.paste(
@@ -2027,6 +2068,9 @@ describe("HomeView auto model", () => {
     render(<HomeView />);
     await selectAuto();
 
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    expect((attach as HTMLButtonElement).disabled).toBe(false);
+
     const input = screen.getByLabelText("画像ファイルを選択");
     fireEvent.change(input, {
       target: { files: [new File(["i"], "shot.png", { type: "image/png" })] },
@@ -2043,16 +2087,17 @@ describe("HomeView auto model", () => {
     render(<HomeView />);
     await selectAuto();
 
+    const attach = await screen.findByRole("button", { name: "画像を添付" });
+    expect((attach as HTMLButtonElement).disabled).toBe(true);
+
     const input = screen.getByLabelText("画像ファイルを選択");
     fireEvent.change(input, {
       target: { files: [new File(["i"], "shot.png", { type: "image/png" })] },
     });
-    expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "タスク開始" }));
-
     expect((await screen.findByRole("alert")).textContent).toContain(
       "画像入力に対応していない",
     );
+    expect(screen.queryByRole("img", { name: "shot.png" })).toBeNull();
     expect(sendJson).not.toHaveBeenCalled();
   });
 

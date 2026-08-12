@@ -830,10 +830,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
 
   const selectedProject = projects.find((project) => project.id === projectId);
   const selectedModel = modelOptions.find((option) => option.value === model);
-  const selectedModelSupportsImage = model
-    ? selectedModel?.image === true || modelCapabilities[model]?.attachment === true
-    : false;
-  const selectedModelCanUseImage = selectedModelSupportsImage || qwenNativeAvailable;
 
   const submit = useCallback(async () => {
     const text = prompt.trim();
@@ -1112,7 +1108,40 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     writeSkillPermission(mode);
   }, []);
 
+  // Calculate intelligence variants based on the effective model (agent's model
+  // if agent is selected, otherwise manual model). This ensures the variants
+  // match the actual model being used, not the manual selection (R24).
+  const effectiveModelKey = useMemo(() => {
+    if (agent) {
+      const agentModel = agentModels[agent];
+      if (agentModel) return `${agentModel.providerID}::${agentModel.modelID}`;
+    }
+    return model;
+  }, [agent, agentModels, model]);
+
+  // Match TaskView / submit(): Auto is attachment-usable when any connected
+  // model supports images (Auto itself has no capability flags).
+  const selectedModelSupportsImage =
+    effectiveModelKey === AUTO_MODEL_VALUE
+      ? Object.values(modelCapabilities).some(
+          (capability) =>
+            capability.image === true || capability.attachment === true,
+        )
+      : effectiveModelKey
+        ? modelCapabilities[effectiveModelKey]?.image === true ||
+          modelCapabilities[effectiveModelKey]?.attachment === true ||
+          modelOptions.find((option) => option.value === effectiveModelKey)
+            ?.image === true
+        : false;
+  const selectedModelCanUseImage = selectedModelSupportsImage || qwenNativeAvailable;
+
   const addImageFiles = useCallback(async (files: FileList | File[]) => {
+    if (!selectedModelCanUseImage) {
+      setError(
+        "選択中のモデルは画像入力に対応していないか、画像事前解析も有効ではありません。画像対応モデルを選ぶか、設定の「画像解析」タブで事前解析モデルを選んで有効化してください。",
+      );
+      return;
+    }
     const list = Array.from(files).filter((file) => IMAGE_MIME_RE.test(file.type));
     if (list.length === 0) return;
 
@@ -1149,7 +1178,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
         `一部の画像をスキップしました（上限 ${MAX_IMAGE_COUNT} 枚 / ${Math.floor(MAX_IMAGE_SIZE_BYTES / (1024 * 1024))} MB）。`,
       );
     }
-  }, []);
+  }, [selectedModelCanUseImage]);
 
   const onPaste = useCallback(
     (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1186,17 +1215,6 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     attachmentsRef.current = next;
     setAttachments(next);
   }, []);
-
-  // Calculate intelligence variants based on the effective model (agent's model
-  // if agent is selected, otherwise manual model). This ensures the variants
-  // match the actual model being used, not the manual selection (R24).
-  const effectiveModelKey = useMemo(() => {
-    if (agent) {
-      const agentModel = agentModels[agent];
-      if (agentModel) return `${agentModel.providerID}::${agentModel.modelID}`;
-    }
-    return model;
-  }, [agent, agentModels, model]);
 
   const intelligenceVariants = useMemo(() => {
     if (!effectiveModelKey) return [];
