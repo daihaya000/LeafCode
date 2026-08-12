@@ -237,4 +237,137 @@ describe("POST refresh-title", () => {
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(updateSessionTitle).not.toHaveBeenCalled();
   });
+
+  it("retries once with a fresh temp session on timeout (408)", async () => {
+    let tempSeq = 0;
+    let promptCalls = 0;
+    ocServer.mockImplementation(
+      async (
+        _dir: string,
+        path: string,
+        init?: { method?: string; body?: unknown; timeoutMs?: number },
+      ) => {
+        if (path === "/session/sess1/message" && init?.method === undefined)
+          return [
+            {
+              info: { id: "m1", role: "user", providerID: "p", modelID: "m" },
+              parts: [{ id: "x", messageID: "m1", type: "text", text: "hi" }],
+            },
+          ];
+        if (path === "/session" && init?.method === "POST") {
+          tempSeq++;
+          return { id: `temp${tempSeq}` };
+        }
+        if (path === "/experimental/tool/ids")
+          return ["bash", "edit"];
+        if (path === "/session/temp1/message" && init?.method === "POST") {
+          promptCalls++;
+          throw new OcError("OpenCode engine が60秒でタイムアウトしました", 408);
+        }
+        if (path === "/session/temp2/message" && init?.method === "POST") {
+          promptCalls++;
+          return {
+            info: { id: "a1", role: "assistant" },
+            parts: [
+              { id: "y", messageID: "a1", type: "text", text: "再試行で成功" },
+            ],
+          };
+        }
+        if (path === "/session/temp2" && init?.method === "DELETE") return true;
+        if (path === "/session/sess1" && init?.method === "PATCH")
+          return { id: "sess1", title: "再試行で成功" };
+        throw new Error("unexpected " + path);
+      },
+    );
+    const res = await POST(req(), ctx());
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.title).toBe("再試行で成功");
+    expect(promptCalls).toBe(2);
+    expect(updateSessionTitle).toHaveBeenCalledWith(
+      "ws1",
+      "sess1",
+      "再試行で成功",
+    );
+  });
+
+  it("fails with 502 when both attempts time out", async () => {
+    ocServer.mockImplementation(
+      async (_dir: string, path: string, init?: { method?: string }) => {
+        if (path === "/session/sess1/message" && init?.method === undefined)
+          return [
+            {
+              info: { id: "m1", role: "user", providerID: "p", modelID: "m" },
+              parts: [{ id: "x", messageID: "m1", type: "text", text: "hi" }],
+            },
+          ];
+        if (path === "/session" && init?.method === "POST")
+          return { id: "temp1" };
+        if (path === "/experimental/tool/ids") return ["bash"];
+        if (path === "/session/temp1/message" && init?.method === "POST")
+          throw new OcError("timeout", 408);
+        if (path === "/session/temp1" && init?.method === "DELETE") return true;
+        throw new Error("unexpected " + path);
+      },
+    );
+    const res = await POST(req(), ctx());
+    expect(res.status).toBe(408);
+    expect(updateSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it("returns a clear message when the model returns no text", async () => {
+    ocServer.mockImplementation(
+      async (_dir: string, path: string, init?: { method?: string }) => {
+        if (path === "/session/sess1/message" && init?.method === undefined)
+          return [
+            {
+              info: { id: "m1", role: "user", providerID: "p", modelID: "m" },
+              parts: [{ id: "x", messageID: "m1", type: "text", text: "hi" }],
+            },
+          ];
+        if (path === "/session" && init?.method === "POST")
+          return { id: "temp1" };
+        if (path === "/experimental/tool/ids") return ["bash"];
+        if (path === "/session/temp1/message" && init?.method === "POST")
+          return {
+            info: { id: "a1", role: "assistant" },
+            parts: [{ id: "y", messageID: "a1", type: "tool", text: undefined }],
+          };
+        if (path === "/session/temp1" && init?.method === "DELETE") return true;
+        throw new Error("unexpected " + path);
+      },
+    );
+    const res = await POST(req(), ctx());
+    const json = await res.json();
+    expect(res.status).toBe(502);
+    expect(json.error).toContain("空の応答");
+    expect(updateSessionTitle).not.toHaveBeenCalled();
+  });
+
+  it("hints at the missing generation model when prompt generation fails", async () => {
+    getSetting.mockReturnValue(null);
+    ocServer.mockImplementation(
+      async (_dir: string, path: string, init?: { method?: string }) => {
+        if (path === "/session/sess1/message" && init?.method === undefined)
+          return [
+            {
+              info: { id: "m1", role: "user" },
+              parts: [{ id: "x", messageID: "m1", type: "text", text: "hi" }],
+            },
+          ];
+        if (path === "/session" && init?.method === "POST")
+          return { id: "temp1" };
+        if (path === "/experimental/tool/ids") return ["bash"];
+        if (path === "/session/temp1/message" && init?.method === "POST")
+          throw new OcError("model not found", 400);
+        if (path === "/session/temp1" && init?.method === "DELETE") return true;
+        throw new Error("unexpected " + path);
+      },
+    );
+    const res = await POST(req(), ctx());
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("生成モデルが未設定");
+    expect(updateSessionTitle).not.toHaveBeenCalled();
+  });
 });

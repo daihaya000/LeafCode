@@ -2516,8 +2516,12 @@ export function TaskView({
         `/api/workspaces/${taskId}/sessions/${sessionId}/refresh-title`,
       );
       notifyTasksChanged();
-    } catch {
-      // Title regeneration is best-effort and must not block the prompt.
+    } catch (err) {
+      // Title regeneration is best-effort and must not block the prompt,
+      // but a silent failure hides a broken session title — surface it.
+      const message =
+        err instanceof Error ? err.message : "タイトルの再生成に失敗しました";
+      setSendError(`タイトルを更新できませんでした: ${message}`);
     }
   }, []);
 

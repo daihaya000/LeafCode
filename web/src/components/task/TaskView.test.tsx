@@ -1,4 +1,5 @@
 ﻿import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/client";
 import {
   act,
   cleanup,
@@ -62,6 +63,13 @@ vi.mock("@/lib/client", () => ({
   ocJson: vi.fn(),
   sendJson,
   timedFetch: (input: RequestInfo | URL) => fetch(input),
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
 }));
 
 
@@ -1519,6 +1527,47 @@ describe("TaskView", () => {
       { agent: "build", sessionId: "sess1" },
     );
     expect(notifyTasksChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a refresh-title failure via the error banner", async () => {
+    const streamMock = useSessionStream();
+    streamMock.status = { type: "idle" };
+    streamMock.sendPrompt.mockImplementation(async () => {});
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    const activity = deferred<void>();
+    sendJson.mockImplementation((_method: string, url: string) => {
+      if (url.endsWith("/refresh-title")) {
+        return Promise.reject(
+          new ApiError("タイトルを生成できませんでした。モデルが空の応答を返しました", 502),
+        );
+      }
+      return activity.promise.then(() => undefined);
+    });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "フォローアップを送信" }), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "送信" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    activity.resolve(undefined);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(streamMock.sendPrompt).toHaveBeenCalledTimes(1);
+    expect(sendJson).toHaveBeenCalledWith(
+      "POST",
+      "/api/workspaces/ws1/sessions/sess1/refresh-title",
+    );
+    expect(
+      await screen.findByText(
+        /タイトルを更新できませんでした: タイトルを生成できませんでした。モデルが空の応答を返しました/,
+      ),
+    ).toBeTruthy();
   });
 
   it("shows the plan card expanded with its document on desktop", async () => {

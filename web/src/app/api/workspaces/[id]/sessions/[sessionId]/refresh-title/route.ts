@@ -25,6 +25,9 @@ const TITLE_INSTRUCTION =
   "以下の会話を要約する、簡潔で人間が読みやすい日本語タイトルを生成してください。" +
   "最大20文字程度。タイトルのみを返し、引用符や説明は不要です。";
 
+const TITLE_TIMEOUT_MS = 60_000;
+const TITLE_MAX_ATTEMPTS = 2;
+
 export async function POST(req: NextRequest, context: Ctx) {
   const denied = await requireAuthorized(req);
   if (denied) return denied;
@@ -74,63 +77,98 @@ export async function POST(req: NextRequest, context: Ctx) {
   const configuredEffort = configuredModel
     ? getSetting(GENERATION_MODEL_EFFORT_SETTING_KEY) || undefined
     : undefined;
+  // When neither the setting nor the conversation resolved a model, the
+  // engine falls back to its default — that is a common failure cause.
+  const modelHint = model
+    ? ""
+    : "（生成モデルが未設定のため、エンジンのデフォルトモデルに依存しました。設定タブで生成モデルを指定すると安定します）";
 
   // Generate via a temporary unbound session so the original stays clean.
-  let tempId: string | null = null;
+  // Timeouts (408) are retried once with a fresh temp session.
   let title = "";
+  let titleTempId: string | null = null;
   try {
-    const temp = await ocServer<{ id: string }>(dir, SESSION_LIST_PATH, {
-      method: "POST",
-      body: { title: "title-gen" },
-    });
-    tempId = temp.id;
+    for (let attempt = 1; attempt <= TITLE_MAX_ATTEMPTS; attempt++) {
+      let tempId: string | null = null;
+      try {
+        const temp = await ocServer<{ id: string }>(dir, SESSION_LIST_PATH, {
+          method: "POST",
+          body: { title: "title-gen" },
+        });
+        tempId = temp.id;
 
-    // Explicitly disable every tool; without a complete ID list this is not fail-closed.
-    let ids: unknown;
-    try {
-      ids = await ocServer<unknown>(dir, "/experimental/tool/ids");
-    } catch {
-      throw new Error("failed to read a non-empty tool ID list");
+        // Explicitly disable every tool; without a complete ID list this is not fail-closed.
+        let ids: unknown;
+        try {
+          ids = await ocServer<unknown>(dir, "/experimental/tool/ids");
+        } catch {
+          throw new Error("failed to read a non-empty tool ID list");
+        }
+        if (!Array.isArray(ids) || ids.length === 0) {
+          throw new Error("failed to read a non-empty tool ID list");
+        }
+        const toolIds = ids as string[];
+        const toolsMap: Record<string, boolean> = {};
+        for (const toolId of toolIds) toolsMap[toolId] = false;
+
+        const promptBody: Record<string, unknown> = {
+          system: TITLE_INSTRUCTION,
+          tools: toolsMap,
+          parts: [{ type: "text", text: transcript }],
+        };
+        if (model) promptBody.model = model;
+        if (configuredEffort) promptBody.variant = configuredEffort;
+
+        const result = await ocServer<
+          { parts: { type: string; text?: string }[] }
+        >(
+          dir,
+          sessionMessagePath(tempId),
+          { method: "POST", body: promptBody, timeoutMs: TITLE_TIMEOUT_MS },
+        ).catch((err) => {
+          // Keep 408 intact so the retry below can recognize a timeout.
+          if (err instanceof OcError && err.status === 408) throw err;
+          throw new OcError(
+            `${err instanceof Error ? err.message : "failed to generate title"}${modelHint}`,
+            err instanceof OcError ? err.status : 502,
+          );
+        });
+        const raw = (result.parts ?? [])
+          .filter((p) => p.type === "text" && p.text)
+          .map((p) => p.text!)
+          .join("\n");
+        title = sanitizeTitle(raw);
+        titleTempId = tempId;
+        break;
+      } catch (err) {
+        if (tempId) {
+          await ocServer(dir, sessionPath(tempId), { method: "DELETE" }).catch(
+            () => undefined,
+          );
+        }
+        const isTimeout =
+          err instanceof OcError && err.status === 408;
+        if (isTimeout && attempt < TITLE_MAX_ATTEMPTS) {
+          // Retry with a fresh temp session; the timed-out one is gone.
+          continue;
+        }
+        throw err;
+      }
     }
-    if (!Array.isArray(ids) || ids.length === 0) {
-      throw new Error("failed to read a non-empty tool ID list");
-    }
-    const toolIds = ids as string[];
-    const toolsMap: Record<string, boolean> = {};
-    for (const toolId of toolIds) toolsMap[toolId] = false;
-
-    const promptBody: Record<string, unknown> = {
-      system: TITLE_INSTRUCTION,
-      tools: toolsMap,
-      parts: [{ type: "text", text: transcript }],
-    };
-    if (model) promptBody.model = model;
-    if (configuredEffort) promptBody.variant = configuredEffort;
-
-    const result = await ocServer<{ parts: { type: string; text?: string }[] }>(
-      dir,
-      sessionMessagePath(tempId),
-      { method: "POST", body: promptBody, timeoutMs: 30_000 },
-    );
-    const raw = (result.parts ?? [])
-      .filter((p) => p.type === "text" && p.text)
-      .map((p) => p.text!)
-      .join("\n");
-    title = sanitizeTitle(raw);
   } catch (err) {
-    if (tempId)
-      await ocServer(dir, sessionPath(tempId), { method: "DELETE" }).catch(
-        () => undefined,
-      );
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "failed to generate title" },
+      {
+        error: err instanceof Error ? err.message : "failed to generate title",
+      },
       { status: err instanceof OcError ? err.status : 502 },
     );
   }
 
   // Cleanup temp session BEFORE touching the original. Fail hard on cleanup error.
   try {
-    if (tempId) await ocServer(dir, sessionPath(tempId), { method: "DELETE" });
+    if (titleTempId) {
+      await ocServer(dir, sessionPath(titleTempId), { method: "DELETE" });
+    }
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "failed to clean up" },
@@ -140,7 +178,9 @@ export async function POST(req: NextRequest, context: Ctx) {
 
   if (!title) {
     return NextResponse.json(
-      { error: "タイトルを生成できませんでした" },
+      {
+        error: `タイトルを生成できませんでした。モデルが空の応答を返しました。${modelHint}`,
+      },
       { status: 502 },
     );
   }
