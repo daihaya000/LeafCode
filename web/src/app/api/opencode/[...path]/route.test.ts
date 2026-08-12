@@ -1424,3 +1424,219 @@ describe("arms the server-side hang watchdog (docs/specs/hang-watchdog-server-si
     fetchMock.mockRestore();
   });
 });
+
+describe("v2 API path support", () => {
+  function v2SessionPost(
+    operation: string,
+    body: Record<string, unknown>,
+    directory = "C:\\\\repo",
+  ) {
+    return POST(
+      new NextRequest(
+        `http://localhost/api/opencode/api/session/session-1/${operation}?directory=${encodeURIComponent(directory)}`,
+        {
+          method: "POST",
+          headers: { host: "127.0.0.1:3000", "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      ),
+      { params: Promise.resolve({ path: ["api", "session", "session-1", operation] }) },
+    );
+  }
+
+  it("arms hang watch for v2 prompt path", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await v2SessionPost("prompt", { prompt: { text: "hello" } });
+
+    expect(hangWatch.armed).toHaveLength(1);
+    expect(hangWatch.armed[0]!.sessionId).toBe("session-1");
+    expect(hangWatch.armed[0]!.requestPath).toBe("/api/session/session-1/prompt");
+    fetchMock.mockRestore();
+  });
+
+  it("disarms hang watch for v2 interrupt path", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await v2SessionPost("interrupt", {});
+
+    expect(hangWatch.disarmed).toContain("session-1");
+    fetchMock.mockRestore();
+  });
+
+  it("pauses goal loop for v2 prompt path", async () => {
+    goalLoopHook.workspaceIds = ["ws-1"];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await v2SessionPost("prompt", { prompt: { text: "hello" } });
+
+    expect(goalLoopHook.calls).toEqual([
+      { workspaceId: "ws-1", sessionId: "session-1" },
+    ]);
+    fetchMock.mockRestore();
+  });
+
+  it("acquires compaction lock for v2 compact path", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await v2SessionPost("compact", {});
+
+    expect(goalLoopHook.compactionLockAcquires).toHaveLength(1);
+    expect(goalLoopHook.compactionLockAcquires[0]!.sessionId).toBe("session-1");
+    fetchMock.mockRestore();
+  });
+
+  it("converts v1 prompt_async body to v2 prompt body", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const v1Body = {
+      messageID: "msg_123",
+      parts: [
+        { type: "text", text: "hello world" },
+      ],
+    };
+
+    await v2SessionPost("prompt", v1Body);
+
+    const sentBody = JSON.parse(
+      new TextDecoder().decode(fetchMock.mock.calls[0]![1]?.body as ArrayBuffer),
+    ) as Record<string, unknown>;
+
+    expect(sentBody).toHaveProperty("prompt");
+    expect((sentBody.prompt as { text: string }).text).toBe("hello world");
+    expect(sentBody.id).toBe("msg_123");
+    expect(sentBody.delivery).toBe("steer");
+    fetchMock.mockRestore();
+  });
+
+  it("passes through v2 prompt body that is already in v2 shape", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const v2Body = {
+      id: "msg_456",
+      prompt: { text: "already v2" },
+      delivery: "queue",
+    };
+
+    await v2SessionPost("prompt", v2Body);
+
+    const sentBody = JSON.parse(
+      new TextDecoder().decode(fetchMock.mock.calls[0]![1]?.body as ArrayBuffer),
+    ) as Record<string, unknown>;
+
+    expect(sentBody).toEqual(v2Body);
+    fetchMock.mockRestore();
+  });
+
+  it("unwraps { data: T } from v2 JSON responses", async () => {
+    const inner = { id: "ses_1", title: "Test Session" };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: inner }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/api/session/ses_1?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
+      ) as never,
+      { params: Promise.resolve({ path: ["api", "session", "ses_1"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual(inner);
+    fetchMock.mockRestore();
+  });
+
+  it("unwraps { data: T[] } from v2 list responses", async () => {
+    const items = [{ id: "ses_1" }, { id: "ses_2" }];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: items }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/api/session/active?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
+      ) as never,
+      { params: Promise.resolve({ path: ["api", "session", "active"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual(items);
+    fetchMock.mockRestore();
+  });
+
+  it("does not unwrap non-data v2 error responses", async () => {
+    const errBody = { error: "session not found" };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify(errBody), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/api/session/ses_missing?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
+      ) as never,
+      { params: Promise.resolve({ path: ["api", "session", "ses_missing"] }) },
+    );
+
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body).toEqual(errBody);
+    fetchMock.mockRestore();
+  });
+
+  it("does not unwrap v1 responses", async () => {
+    const v1Body = { id: "ses_1", title: "v1 shape" };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify(v1Body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/opencode/session/ses_1?directory=C%3A%5C%5Crepo",
+      { headers: { host: "127.0.0.1:3000" } },
+      ) as never,
+      { params: Promise.resolve({ path: ["session", "ses_1"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual(v1Body);
+    fetchMock.mockRestore();
+  });
+});

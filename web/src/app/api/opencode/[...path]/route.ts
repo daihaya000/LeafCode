@@ -57,7 +57,7 @@ const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
  */
 function manualSendSessionId(method: string, pathname: string): string | null {
   if (method !== "POST") return null;
-  const match = /^\/session\/([^/]+)\/(?:prompt_async|prompt|command)$/.exec(pathname);
+  const match = /^(?:\/api)?\/session\/([^/]+)\/(?:prompt_async|prompt|command)$/.exec(pathname);
   return match ? match[1] : null;
 }
 
@@ -78,7 +78,7 @@ function hangWatchSessionId(method: string, pathname: string): string | null {
 /** An explicit user abort must cancel recovery for the stopped turn. */
 function abortedSessionId(method: string, pathname: string): string | null {
   if (method !== "POST") return null;
-  const match = /^(?:\/api)?\/session\/([^/]+)\/abort$/.exec(pathname);
+  const match = /^(?:\/api)?\/session\/([^/]+)\/(?:abort|interrupt)$/.exec(pathname);
   return match ? match[1] : null;
 }
 
@@ -86,10 +86,9 @@ function abortedSessionId(method: string, pathname: string): string | null {
 function isLongRunningSyncMutation(method: string, pathname: string): boolean {
   if (method !== "POST") return false;
   return (
-    /^\/session\/[^/]+\/command$/.test(pathname) ||
-    /^\/session\/[^/]+\/prompt$/.test(pathname) ||
-    /^\/session\/[^/]+\/message$/.test(pathname) ||
-    /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
+    /^(?:\/api)?\/session\/[^/]+\/command$/.test(pathname) ||
+    /^(?:\/api)?\/session\/[^/]+\/prompt$/.test(pathname) ||
+    /^(?:\/api)?\/session\/[^/]+\/message$/.test(pathname)
   );
 }
 
@@ -120,11 +119,10 @@ function bodyHasPermissionField(body: unknown): boolean {
 /** Session write paths that can carry image parts (R28 limits + capability). */
 function isImageGuardedWrite(pathname: string): boolean {
   return (
-    /^\/session\/[^/]+\/prompt_async$/.test(pathname) ||
-    /^\/session\/[^/]+\/command$/.test(pathname) ||
-    /^\/session\/[^/]+\/prompt$/.test(pathname) ||
-    /^\/session\/[^/]+\/message$/.test(pathname) ||
-    /^\/api\/session\/[^/]+\/prompt$/.test(pathname)
+    /^(?:\/api)?\/session\/[^/]+\/prompt_async$/.test(pathname) ||
+    /^(?:\/api)?\/session\/[^/]+\/command$/.test(pathname) ||
+    /^(?:\/api)?\/session\/[^/]+\/prompt$/.test(pathname) ||
+    /^(?:\/api)?\/session\/[^/]+\/message$/.test(pathname)
   );
 }
 
@@ -587,7 +585,11 @@ async function proxy(
     headers.set(key, value);
   }
 
-  const wantsSse = pathname === "/event" || pathname === "/global/event";
+  const wantsSse =
+    pathname === "/event" ||
+    pathname === "/global/event" ||
+    pathname === "/api/event" ||
+    /^\/api\/session\/[^/]+\/event$/.test(pathname);
 
   let requestBody: ArrayBuffer | undefined;
   let upstream: Response;
@@ -637,7 +639,7 @@ async function proxy(
               ? (body as { variant?: unknown }).variant
               : undefined;
           if (
-            /^\/session\/[^/]+\/prompt_async$/.test(pathname) &&
+            /^(?:\/api)?\/session\/[^/]+\/prompt_async$/.test(pathname) &&
             variant !== undefined &&
             variant !== null &&
             variant !== "" &&
@@ -686,6 +688,18 @@ async function proxy(
           // Preserve the existing behavior for non-JSON or malformed bodies.
         }
       }
+      // Convert v1 prompt_async body → v2 prompt body for v2 prompt endpoints.
+      if (req.method === "POST" && isV2PromptPath(pathname) && requestBody) {
+        try {
+          const body = JSON.parse(new TextDecoder().decode(requestBody)) as Record<string, unknown>;
+          if (Array.isArray(body.parts)) {
+            const converted = v1PromptBodyToV2(body);
+            requestBody = new TextEncoder().encode(JSON.stringify(converted)).buffer;
+          }
+        } catch {
+          // Non-JSON or malformed body: pass through unchanged.
+        }
+      }
       const explicitlyAbortedSessionId =
         abortedSessionId(req.method, pathname) ??
         abortedSessionId(req.method, resolvedPathname);
@@ -711,7 +725,7 @@ async function proxy(
             );
           }
         }
-        if (/^\/session\/[^/]+\/prompt_async$/.test(pathname)) {
+        if (/^(?:\/api)?\/session\/[^/]+\/prompt_async$/.test(pathname)) {
           const injection = injectWorkspaceMemory(requestBody, manualSessionId, directory!);
           requestBody = injection.body;
           memoryClaim = injection.claim;
@@ -1046,10 +1060,100 @@ async function proxy(
     return new Response(stream, { status: upstream.status, headers: outHeaders });
   }
 
+  const unwrapped = await maybeUnwrapV2Data(upstream, pathname, outHeaders, isSse);
+  if (unwrapped) return unwrapped;
+
   return new Response(upstream.body, {
     status: upstream.status,
     headers: outHeaders,
   });
+}
+
+/**
+ * v2 API responses are wrapped in `{ data: T }`. Unwrap them so existing v1
+ * client code sees the same shape it did before the migration. SSE and
+ * error responses (non-2xx) are passed through unchanged. Secret-masked
+ * endpoints (/provider, /config) already handle their own JSON parsing above.
+ */
+function isV2Path(pathname: string): boolean {
+  return pathname.startsWith("/api/") && !pathname.startsWith("/api/opencode/");
+}
+
+/**
+ * Convert a v1 `prompt_async` body shape to a v2 `prompt` body shape.
+ *
+ * v1: `{ messageID, model: {providerID, modelID}, agent, parts: [{type:"text", text}, {type:"file", url, mime, filename}], variant, ... }`
+ * v2: `{ id, prompt: { text, files: [{uri, name}], agents: [{name}] }, delivery: "steer" }`
+ *
+ * Only transforms when the body has a `parts` array (the v1 signature). Bodies
+ * that are already in v2 shape (with a `prompt` field) are passed through.
+ */
+function v1PromptBodyToV2(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.parts)) return body;
+  const textParts: string[] = [];
+  const fileParts: Array<{ uri: string; name?: string; source?: unknown }> = [];
+  const agentParts: Array<{ name: string; source?: unknown }> = [];
+
+  for (const part of body.parts) {
+    if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+    const p = part as Record<string, unknown>;
+    if (p.type === "text" && typeof p.text === "string") {
+      textParts.push(p.text);
+    } else if (p.type === "file") {
+      const uri = typeof p.url === "string" ? p.url : typeof p.uri === "string" ? p.uri : "";
+      if (uri) fileParts.push({ uri, name: typeof p.filename === "string" ? p.filename : undefined, source: p.source });
+    } else if (p.type === "agent") {
+      if (typeof p.name === "string") agentParts.push({ name: p.name, source: p.source });
+    }
+  }
+
+  const prompt: Record<string, unknown> = { text: textParts.join("\n") };
+  if (fileParts.length > 0) prompt.files = fileParts;
+  if (agentParts.length > 0) prompt.agents = agentParts;
+
+  const v2: Record<string, unknown> = { prompt };
+  if (typeof body.messageID === "string") v2.id = body.messageID;
+  v2.delivery = "steer";
+  return v2;
+}
+
+/** True when the request targets a v2 prompt endpoint with a v1-style body. */
+function isV2PromptPath(pathname: string): boolean {
+  return /^\/api\/session\/[^/]+\/prompt$/.test(pathname);
+}
+
+function maybeUnwrapV2Data(
+  upstream: Response,
+  pathname: string,
+  outHeaders: Headers,
+  isSse: boolean,
+): Promise<Response | null> {
+  if (isSse) return Promise.resolve(null);
+  if (!isV2Path(pathname)) return Promise.resolve(null);
+  const ct = upstream.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) return Promise.resolve(null);
+  if (!upstream.ok) return Promise.resolve(null);
+  if (upstream.status === 204 || upstream.status === 205) return Promise.resolve(null);
+
+  return upstream.json().then(
+    (json: unknown) => {
+      if (
+        json &&
+        typeof json === "object" &&
+        !Array.isArray(json) &&
+        Object.prototype.hasOwnProperty.call(json, "data") &&
+        Object.keys(json as Record<string, unknown>).length === 1
+      ) {
+        const unwrapped = (json as { data: unknown }).data;
+        return NextResponse.json(unwrapped, {
+          status: upstream.status,
+          headers: outHeaders,
+        });
+      }
+      return null;
+    },
+    () => null,
+  );
 }
 
 export const GET = proxy;
