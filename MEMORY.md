@@ -1,3 +1,31 @@
+# 作業ログ: /loop 1m バグハント tick — Goal Loop 画像のみ開始の後段失敗
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: Goal Loop ON 時は目標テキスト必須・添付不可（TaskView と同契約）
+- 実際: 画像のみでも送信可 → POST /api/tasks → /goal-loop が invalid goal → タスクが孤児のまま残る（Workflow と違い DELETE なし）
+
+## 根本原因
+- HomeView submit が Workflow のみ goal 空を弾き、Goal Loop は後段 API 契約を見ない
+- catch のロールバックも Workflow 限定だった
+
+## 修正
+- goalLoopEnabled 時は添付あり / 空テキストを作成前に弾く
+- 送信ボタンも同条件で disabled
+- goal-loop 初期化失敗時も createdTaskId を DELETE
+
+## 回帰防止
+- HomeView: does not create a Task when Goal Loop has images but no goal text
+
+## 検証
+- vitest Goal Loop|Workflow 10 PASS / eslint OK
+
+## 残存リスク
+- コスト表示タブ間 storage 未同期、Host BUILD_ID 初回待ち UX
+
+---
 # 作業ログ: /loop 1m バグハント — Goal Loop画像のみ開始の後段失敗
 
 ## 日付
