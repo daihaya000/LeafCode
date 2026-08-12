@@ -12,6 +12,7 @@ function mockVoice(overrides: Partial<UseVoiceInputReturn> = {}): UseVoiceInputR
     transcript: "",
     error: null,
     clearError: vi.fn(),
+    clearTranscript: vi.fn(),
     ...overrides,
     busy: overrides.busy ?? false,
   };
@@ -298,6 +299,41 @@ describe("VoiceInputButton", () => {
     act(() => resolveStop("late transcript"));
 
     await waitFor(() => expect(onTranscript).not.toHaveBeenCalled());
+  });
+
+  it("commits leftover transcript after a spontaneous session end", () => {
+    const clearTranscript = vi.fn();
+    const onTranscript = vi.fn();
+    render(
+      <VoiceInputButton
+        voice={mockVoice({
+          listening: false,
+          busy: false,
+          transcript: "spoken text",
+          clearTranscript,
+        })}
+        onTranscript={onTranscript}
+      />,
+    );
+
+    expect(onTranscript).toHaveBeenCalledWith("spoken text");
+    expect(clearTranscript).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not auto-commit transcript while the voice session is still busy", () => {
+    const onTranscript = vi.fn();
+    render(
+      <VoiceInputButton
+        voice={mockVoice({
+          listening: false,
+          busy: true,
+          transcript: "not yet",
+        })}
+        onTranscript={onTranscript}
+      />,
+    );
+
+    expect(onTranscript).not.toHaveBeenCalled();
   });
 
   it("keeps Web Speech mode on smartphones", async () => {

@@ -441,6 +441,44 @@ describe("useVoiceInput", () => {
     await expect(pendingStop).resolves.toBe("");
   });
 
+  it("keeps finalized transcript after no-speech when stop() was not called", () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "keep me" }, isFinal: true }],
+      }),
+    );
+    act(() => mockRecognition._dispatch("error", { error: "no-speech" }));
+    expect(result.current.transcript).toBe("keep me");
+    act(() => mockRecognition._dispatch("end"));
+    expect(result.current.busy).toBe(false);
+    expect(result.current.listening).toBe(false);
+    expect(result.current.transcript).toBe("keep me");
+  });
+
+  it("resolves stop() with finalized text when no-speech interrupts after speech", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+    act(() => result.current.start());
+    act(() => mockRecognition._dispatch("start"));
+    act(() =>
+      mockRecognition._dispatch("result", {
+        resultIndex: 0,
+        results: [{ 0: { transcript: "spoken words" }, isFinal: true }],
+      }),
+    );
+
+    let text = "";
+    await act(async () => {
+      const pendingStop = result.current.stop();
+      mockRecognition._dispatch("error", { error: "no-speech" });
+      text = await pendingStop;
+    });
+    expect(text).toBe("spoken words");
+  });
+
   it("settles stop() when recognition.stop() throws", async () => {
     mockRecognition.stop.mockImplementationOnce(() => {
       throw new Error("stop failed");

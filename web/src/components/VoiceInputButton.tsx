@@ -64,6 +64,31 @@ export function VoiceInputButton({
   }, []);
 
   const isWindowsNative = mode === "windows-native";
+  const {
+    listening: voiceListening,
+    busy: voiceBusy,
+    transcript: voiceTranscript,
+    clearTranscript,
+  } = voice;
+
+  // Spontaneous session end (e.g. no-speech after the user already spoke) leaves
+  // finalized text in the hook without a stop() click. Commit it once settled.
+  useEffect(() => {
+    if (isWindowsNative) return;
+    if (stoppingRef.current) return;
+    if (voiceListening || voiceBusy) return;
+    if (!voiceTranscript) return;
+    onTranscript(voiceTranscript);
+    clearTranscript();
+  }, [
+    isWindowsNative,
+    onTranscript,
+    voiceBusy,
+    clearTranscript,
+    voiceListening,
+    voiceTranscript,
+  ]);
+
   const busy = isWindowsNative ? nativeBusy : voice.busy || stopping;
 
   if (!isWindowsNative && !voice.supported) return null;

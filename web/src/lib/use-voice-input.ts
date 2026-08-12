@@ -70,6 +70,7 @@ export interface UseVoiceInputReturn {
   transcript: string;
   error: string | null;
   clearError: () => void;
+  clearTranscript: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,12 +179,20 @@ export function useVoiceInput(
 
     recognition.addEventListener("end", () => {
       if (stateRef.current === "idle") return;
-      const interrupted = stateRef.current === "interrupted";
+      // Keep any finalized text even after a soft interrupt (e.g. no-speech).
+      // Disabled/unmount paths clear the transcript before end arrives, so
+      // those discards still resolve empty. Forcing "" here used to drop speech
+      // that ended on no-speech before the user could click stop.
+      const text = transcriptRef.current;
       stateRef.current = "idle";
       listeningRef.current = false;
       setListening(false);
       setBusy(false);
-      settlePendingStop(interrupted ? "" : transcriptRef.current);
+      if (pendingStopResolveRef.current) {
+        settlePendingStop(text);
+      }
+      // Soft end without stop(): leave transcript for VoiceInputButton to
+      // auto-commit, then clear via clearTranscript().
     });
 
     recognition.addEventListener("result", (event) => {
@@ -244,7 +253,12 @@ export function useVoiceInput(
       listeningRef.current = false;
       setListening(false);
       setBusy(true);
-      settlePendingStop(transcriptRef.current);
+      // Only settle a user stop() here. Spontaneous errors (no-speech after
+      // speech, network, …) must keep finalized text until `end` so the UI can
+      // commit it; settlePendingStop would wipe it with no listener.
+      if (pendingStopResolveRef.current) {
+        settlePendingStop(transcriptRef.current);
+      }
       if (SILENT_ERRORS.has(code)) {
         setError(null);
         return;
@@ -325,6 +339,12 @@ export function useVoiceInput(
     setError(null);
   }, []);
 
+  const clearTranscript = useCallback(() => {
+    transcriptRef.current = "";
+    setTranscript("");
+    processedResultIndexRef.current = 0;
+  }, []);
+
   // Auto-stop an active (including not-yet-started) session when disabled.
   useEffect(() => {
     if (disabled && stateRef.current !== "idle") {
@@ -385,5 +405,6 @@ export function useVoiceInput(
     transcript,
     error,
     clearError,
+    clearTranscript,
   };
 }

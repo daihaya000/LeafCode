@@ -1,3 +1,34 @@
+# 作業ログ: /loop 1m バグハント — voice no-speech で確定テキスト消失
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 発話確定後に no-speech でセッションが自然終了しても、確定テキストが composer に入る
+- 実際: error ハンドラが pending stop 無しでも settlePendingStop し transcript を消去。停止クリック前に消えるため入力が失われる
+
+## 根本原因
+- use-voice-input.ts error: 常に settlePendingStop → transcript クリア
+- end: interrupted 時に強制 "" で再クリア
+- VoiceInputButton は stop() クリック時だけ onTranscript
+
+## 修正
+- pending stop があるときだけ error で settle
+- end は pending stop があるとき確定テキストを返す（interrupted でも落とさない）
+- VoiceInputButton が idle+transcript 残を自動 commit + clearTranscript
+
+## 回帰防止
+- keeps finalized transcript after no-speech when stop() was not called
+- resolves stop() with finalized text when no-speech interrupts after speech
+- commits leftover transcript after a spontaneous session end
+
+## 検証
+- vitest use-voice-input + VoiceInputButton 52 PASS / eslint OK
+
+## 残存リスク
+- Host BUILD_ID 初回待ち UX 体感、画像タイムアウト残差の未再現分
+
+---
 # 作業ログ: /loop 1m バグハント tick — 画像解析 setup の 10s タイムアウト残差
 
 ## 日付
