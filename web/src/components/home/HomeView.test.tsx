@@ -1159,6 +1159,56 @@ describe("HomeView start mode", () => {
     await waitFor(() => expect(sendJson).toHaveBeenCalledWith("POST", "/api/tasks/task-1/workflow", expect.objectContaining({ workspaceRevision: 0, goal: "Build a workflow" })));
     expect(push).toHaveBeenCalledWith("/task/task-1");
   });
+
+  it("does not create a Task when Workflow mode has images but no goal text", async () => {
+    timedFetch.mockImplementation((path: string) => {
+      if (path === "/api/extensions/provider-models") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            providers: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                enabled: true,
+                models: [
+                  {
+                    id: "vision",
+                    name: "Vision",
+                    enabled: true,
+                    capabilities: { input: { image: true } },
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
+    render(<HomeView />);
+    await screen.findByRole("form", { name: "タスク作成" });
+    fireEvent.click(screen.getByRole("button", { name: "開始モード" }));
+    fireEvent.click(screen.getByRole("option", { name: "Workflowで開始" }));
+
+    const image = new File(["image"], "shot.png", { type: "image/png" });
+    fireEvent.change(await screen.findByLabelText("画像ファイルを選択"), {
+      target: { files: [image] },
+    });
+    expect(await screen.findByRole("img", { name: "shot.png" })).toBeTruthy();
+
+    const submit = screen.getByRole("button", {
+      name: "タスク開始",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(true));
+    fireEvent.click(submit);
+    expect(
+      sendJson.mock.calls.some(
+        (call) => call[0] === "POST" && call[1] === "/api/tasks",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("HomeView last-used model", () => {

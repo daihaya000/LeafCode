@@ -1,4 +1,33 @@
-﻿# 作業ログ: /loop 1m バグハント — SessionSwitcher 既存切替の権限同期
+# 作業ログ: /loop 1m バグハント — Workflow画像のみ開始の後段失敗
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: Workflow開始は goal テキスト必須。空なら送信前に弾く
+- 実際: 画像のみでも送信可 → POST /api/tasks（VL待ち）→ workflow POST が goal is required → タスク DELETE
+
+## 根本原因
+- HomeView の送信可否が「テキスト or 添付」のみで、workflow の goal 契約を見ない
+- submit もタスク作成後に空 goal を送る
+
+## 修正
+- startMode=workflow かつ prompt 空ならタスク作成前にエラー return
+- 送信ボタンも同条件で disabled
+
+## 回帰防止
+- HomeView: does not create a Task when Workflow mode has images but no goal text
+
+## 検証
+- vitest HomeView -t Workflow 2 PASS
+- eslint HomeView 対象 OK
+
+## 残存リスク
+- Goal Loop + 画像のみの同様ギャップは未着手
+- Host BUILD_ID 初回ビルド待ち UX、コスト表示タブ間同期は未着手
+
+---
+# 作業ログ: /loop 1m バグハント — SessionSwitcher 既存切替の権限同期
 
 ## 日付
 2026-08-12

@@ -849,6 +849,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     ) {
       return;
     }
+    // Workflow conversion requires a non-empty goal string. Image-only
+    // submissions would create a task (and may burn VL pre-analysis time)
+    // then fail with "goal is required" and delete the task.
+    if (startMode === "workflow" && workflowModeEnabled && !text) {
+      setError("Workflow で開始するには目標テキストが必要です。");
+      return;
+    }
     // Match OpenCode's agent precedence: configured agent model overrides the
     // manual selector; when the agent has no model, fall back to the request
     // model (same as TaskView / BFF image capability checks).
@@ -1545,6 +1552,9 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                 busy={submitting}
                 disabled={
                   (!prompt.trim() && attachments.length === 0) ||
+                  (startMode === "workflow" &&
+                    workflowModeEnabled &&
+                    !prompt.trim()) ||
                   !projectId ||
                   submitting ||
                   !engineOk ||
