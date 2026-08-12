@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  VISION_ANALYSIS_TIMEOUT_DEFAULT_MS,
+  clampVisionAnalysisTimeoutMs,
+} from "../image-send-timeout";
 import { dataDir } from "../paths";
 
 export type ProfileSetupSettings = {
@@ -24,7 +28,7 @@ export type QwenNativeSettings = {
 export const QWEN_NATIVE_DEFAULTS: QwenNativeSettings = {
   enabled: false,
   opencodeModel: "",
-  timeoutMs: 120_000,
+  timeoutMs: VISION_ANALYSIS_TIMEOUT_DEFAULT_MS,
 };
 
 const DEFAULT_SETTINGS: ProfileSetupSettings = {
@@ -83,7 +87,7 @@ export function readQwenNativeSettings(): QwenNativeSettings {
         typeof parsed.opencodeModel === "string" ? parsed.opencodeModel.trim() : "",
       timeoutMs:
         typeof parsed.timeoutMs === "number" && Number.isFinite(parsed.timeoutMs) && parsed.timeoutMs > 0
-          ? parsed.timeoutMs
+          ? clampVisionAnalysisTimeoutMs(parsed.timeoutMs)
           : QWEN_NATIVE_DEFAULTS.timeoutMs,
     };
   } catch {

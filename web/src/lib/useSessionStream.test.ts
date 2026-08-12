@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "./image-send-timeout";
 import {
   ACTIVE_SESSION_RECONCILE_MS,
   classifyToolFailureStatus,
@@ -53,7 +54,8 @@ describe("SESSION_COMMAND_TIMEOUT_MS", () => {
   it("extends the mutation budget when attachments may trigger pre-analysis", () => {
     expect(mutationTimeoutForSend(false)).toBe(SESSION_MUTATION_TIMEOUT_MS);
     expect(mutationTimeoutForSend(true)).toBeGreaterThan(SESSION_MUTATION_TIMEOUT_MS);
-    expect(mutationTimeoutForSend(true)).toBeGreaterThanOrEqual(180_000);
+    expect(mutationTimeoutForSend(true)).toBe(IMAGE_ANALYSIS_SEND_TIMEOUT_MS);
+    expect(mutationTimeoutForSend(true)).toBeGreaterThanOrEqual(600_000);
   });
 });
 

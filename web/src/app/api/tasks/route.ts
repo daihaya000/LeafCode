@@ -32,6 +32,10 @@ import {
 import { listTasks } from "@/lib/task-service";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
+  IMAGE_SEND_ROUTE_MAX_DURATION_SEC,
+  SESSION_PROMPT_ASYNC_TIMEOUT_MS,
+} from "@/lib/image-send-timeout";
+import {
   analyzeNativeImages,
   isQwenNativeVisionAvailable,
   nativeImageContext,
@@ -45,12 +49,15 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = IMAGE_SEND_ROUTE_MAX_DURATION_SEC;
 
 /**
  * Resume timeouts stored on the hang watch for this task's first turn. They
- * mirror the client-side send timeouts in `useSessionStream.ts`.
+ * mirror the BFF upstream budgets (`UPSTREAM_TIMEOUT_MS` /
+ * `LONG_RUNNING_UPSTREAM_TIMEOUT_MS`) and must be passed to `ocServer` —
+ * the implicit 10s default aborts a slow engine accept or slash command.
  */
-const SESSION_PROMPT_TIMEOUT_MS = 60_000;
+const SESSION_PROMPT_TIMEOUT_MS = SESSION_PROMPT_ASYNC_TIMEOUT_MS;
 const SESSION_COMMAND_TIMEOUT_MS = 290_000;
 
 type ImageFile = { uri: string; mime: string; name?: string };
@@ -591,7 +598,11 @@ export async function POST(req: NextRequest) {
       await ocServer(
         workspace.absolute_path,
         `/session/${session.id}/command`,
-        { method: "POST", body: commandBody },
+        {
+          method: "POST",
+          body: commandBody,
+          timeoutMs: SESSION_COMMAND_TIMEOUT_MS,
+        },
       );
       // The synchronous command endpoint returns only after the turn finishes.
       // Do not leave a completed, possibly textless command under the hang
@@ -631,7 +642,11 @@ export async function POST(req: NextRequest) {
       await ocServer(
         workspace.absolute_path,
         `/session/${session.id}/prompt_async`,
-        { method: "POST", body: promptBody },
+        {
+          method: "POST",
+          body: promptBody,
+          timeoutMs: SESSION_PROMPT_TIMEOUT_MS,
+        },
       );
     }
     touchProjectOpened(workspace.project_id);

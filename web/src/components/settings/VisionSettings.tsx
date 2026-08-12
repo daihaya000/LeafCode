@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, cx } from "@/components/ui";
 import { getJson, sendJson, timedFetch } from "@/lib/client";
+import {
+  VISION_ANALYSIS_TIMEOUT_DEFAULT_MS,
+  VISION_ANALYSIS_TIMEOUT_MAX_MS,
+  VISION_ANALYSIS_TIMEOUT_MIN_MS,
+  clampVisionAnalysisTimeoutMs,
+} from "@/lib/image-send-timeout";
 
 type QwenNativeSettings = {
   enabled: boolean;
@@ -23,17 +29,16 @@ type ModelOption = { value: string; label: string; group: string };
 const DEFAULTS: QwenNativeSettings = {
   enabled: false,
   opencodeModel: "",
-  timeoutMs: 120_000,
+  timeoutMs: VISION_ANALYSIS_TIMEOUT_DEFAULT_MS,
 };
 
 const DEFAULT_OLLAMA_MODEL = "qwen2.5vl:7b";
-const TIMEOUT_MIN_MS = 10_000;
-const TIMEOUT_MAX_MS = 600_000;
+const TIMEOUT_MIN_MS = VISION_ANALYSIS_TIMEOUT_MIN_MS;
+const TIMEOUT_MAX_MS = VISION_ANALYSIS_TIMEOUT_MAX_MS;
 const SETUP_TIMEOUT_MS = 900_000;
 
 function clampTimeout(value: number): number {
-  if (!Number.isFinite(value) || value <= 0) return DEFAULTS.timeoutMs;
-  return Math.min(TIMEOUT_MAX_MS, Math.max(TIMEOUT_MIN_MS, Math.round(value)));
+  return clampVisionAnalysisTimeoutMs(value);
 }
 
 export function VisionSettings() {

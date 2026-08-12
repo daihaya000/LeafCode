@@ -135,6 +135,7 @@ describe("POST /api/tasks arms the hang watchdog", () => {
       sessionId: "session-1",
       directory: "C:\\repo",
       requestPath: "/session/session-1/prompt_async",
+      timeoutMs: 90_000,
     });
     expect(hangWatch.armed[0].body).toMatchObject({
       parts: [{ type: "text", text: "hello" }],
@@ -146,6 +147,9 @@ describe("POST /api/tasks arms the hang watchdog", () => {
       (call) => String(call[1]).includes("/prompt_async"),
     );
     expect(promptIndex).toBeGreaterThanOrEqual(0);
+    expect((ocServer as ReturnType<typeof vi.fn>).mock.calls[promptIndex][2]).toMatchObject({
+      timeoutMs: 90_000,
+    });
   });
 
   it("disarms the watch when the first prompt fails and the task rolls back", async () => {
@@ -192,6 +196,11 @@ describe("POST /api/tasks arms the hang watchdog", () => {
     expect(res.status).toBe(200);
     expect(hangWatch.armed).toHaveLength(1);
     expect(hangWatch.armed[0].requestPath).toBe("/session/session-1/command");
+    expect(hangWatch.armed[0].timeoutMs).toBe(290_000);
+    const commandCall = mocked.mock.calls.find(
+      (call) => String(call[1]).includes("/command") && call[2]?.method === "POST",
+    );
+    expect(commandCall?.[2]).toMatchObject({ timeoutMs: 290_000 });
     expect(hangWatch.disarmed).toEqual(["session-1"]);
 
     mocked.mockImplementation(async (_dir: string | null, path: string) => {

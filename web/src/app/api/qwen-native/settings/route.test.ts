@@ -96,4 +96,10 @@ describe("/api/qwen-native/settings", () => {
     const response = await PUT(local("PUT", { ...DEFAULT_SETTINGS, timeoutMs: -1 }));
     expect(response.status).toBe(400);
   });
+
+  it("rejects timeoutMs above the image-analysis maximum", async () => {
+    const response = await PUT(local("PUT", { ...DEFAULT_SETTINGS, timeoutMs: 601_000 }));
+    expect(response.status).toBe(400);
+    expect(h.write).not.toHaveBeenCalled();
+  });
 });

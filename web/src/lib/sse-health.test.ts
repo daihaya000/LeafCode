@@ -45,7 +45,7 @@ describe("sse-health", () => {
   });
 
   it("keeps the upstream connect timeout inside the route's maxDuration", () => {
-    // app/api/opencode/[...path]/route.ts sets maxDuration = 300 (seconds).
+    // app/api/opencode/[...path]/route.ts `maxDuration` is at least 300s.
     expect(SSE_UPSTREAM_CONNECT_TIMEOUT_MS).toBeLessThan(300_000);
     expect(SSE_UPSTREAM_CONNECT_TIMEOUT_MS).toBeGreaterThan(SSE_HEARTBEAT_MS);
   });

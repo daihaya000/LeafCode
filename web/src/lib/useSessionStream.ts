@@ -112,8 +112,8 @@ export const SESSION_COMMAND_TIMEOUT_MS = 295_000;
 
 /**
  * When the send carries images, the BFF may run a full VL pre-analysis turn
- * (up to ~120s) before proxying `prompt_async`. The default mutation budget
- * aborts mid-analysis and makes the UI look stuck/failed.
+ * (settings max 600s) before proxying `prompt_async`. The default mutation
+ * budget aborts mid-analysis and makes the UI look stuck/failed.
  */
 export function mutationTimeoutForSend(hasFiles: boolean): number {
   return hasFiles

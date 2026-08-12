@@ -8,12 +8,10 @@ import { directoryHeaders } from "./directory-header";
 /** Default abort for hung BFF/engine calls that omit an explicit timeout. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
-/**
- * Client wait budget when a request may perform image pre-analysis (VL turn
- * up to ~120s) plus workspace/session setup. Used by Home new-task and
- * follow-up sends that carry attachments.
- */
-export const IMAGE_ANALYSIS_SEND_TIMEOUT_MS = 180_000;
+export {
+  IMAGE_ANALYSIS_SEND_TIMEOUT_MS,
+  NEW_TASK_SEND_TIMEOUT_MS,
+} from "./image-send-timeout";
 
 export function apiUrl(path: string, params?: Record<string, string | undefined>) {
   const u = new URL(path, window.location.origin);

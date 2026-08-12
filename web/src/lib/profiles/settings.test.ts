@@ -58,6 +58,15 @@ describe("readQwenNativeSettings / writeQwenNativeSettings", () => {
     expect(readQwenNativeSettings().timeoutMs).toBe(QWEN_NATIVE_DEFAULTS.timeoutMs);
   });
 
+  it("clamps oversized timeoutMs to the settings maximum", () => {
+    fs.writeFileSync(
+      path.join(testDir, "qwen-native-settings.json"),
+      JSON.stringify({ enabled: true, timeoutMs: 999_999 }),
+      "utf8",
+    );
+    expect(readQwenNativeSettings().timeoutMs).toBe(600_000);
+  });
+
   it("drops the removed OpenAI-compatible endpoint fields", () => {
     fs.writeFileSync(
       path.join(testDir, "qwen-native-settings.json"),

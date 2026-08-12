@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import {
+  VISION_ANALYSIS_TIMEOUT_MAX_MS,
+  VISION_ANALYSIS_TIMEOUT_MIN_MS,
+} from "@/lib/image-send-timeout";
+import {
   readQwenNativeSettings,
   writeQwenNativeSettings,
   type QwenNativeSettings,
@@ -26,6 +30,12 @@ function sanitizeInput(body: unknown): QwenNativeSettings | null {
   if (value.enabled && !MODEL_RE.test(opencodeModel)) return null;
   if (opencodeModel && !MODEL_RE.test(opencodeModel)) return null;
   if (!isFinitePositive(value.timeoutMs)) return null;
+  if (
+    value.timeoutMs < VISION_ANALYSIS_TIMEOUT_MIN_MS ||
+    value.timeoutMs > VISION_ANALYSIS_TIMEOUT_MAX_MS
+  ) {
+    return null;
+  }
   return {
     enabled: value.enabled,
     opencodeModel,

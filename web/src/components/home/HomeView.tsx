@@ -45,7 +45,13 @@ import {
   writeLastUsedModel,
 } from "@/lib/default-model";
 import { notifyTasksChanged } from "@/lib/events";
-import { getJson, sendJson, timedFetch, IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "@/lib/client";
+import {
+  getJson,
+  sendJson,
+  timedFetch,
+  IMAGE_ANALYSIS_SEND_TIMEOUT_MS,
+  NEW_TASK_SEND_TIMEOUT_MS,
+} from "@/lib/client";
 import { prepareAttachedImage } from "@/lib/prepare-attached-image";
 import { limitedProviderSet, readCodexBarAutoUsage } from "@/lib/codexbar-auto";
 import {
@@ -912,7 +918,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
           timeoutMs:
             attachments.length > 0
               ? IMAGE_ANALYSIS_SEND_TIMEOUT_MS
-              : undefined,
+              : NEW_TASK_SEND_TIMEOUT_MS,
         },
       );
       createdTaskId = data.taskId;

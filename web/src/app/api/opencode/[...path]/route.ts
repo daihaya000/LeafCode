@@ -42,8 +42,8 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
 
 /**
  * Synchronous mutations (session.command / session.prompt) block until the
- * engine finishes running the command. Keep this below the route's 300s
- * maxDuration while allowing legitimate five-minute commands to finish.
+ * engine finishes running the command. Keep this below the route's
+ * `maxDuration` while allowing legitimate five-minute commands to finish.
  */
 const LONG_RUNNING_UPSTREAM_TIMEOUT_MS = 290_000;
 
@@ -203,10 +203,11 @@ async function injectCollaborationContext(
 }
 
 import { requireAuthorized } from "@/lib/api-guard";
+import { IMAGE_SEND_ROUTE_MAX_DURATION_SEC } from "@/lib/image-send-timeout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = IMAGE_SEND_ROUTE_MAX_DURATION_SEC;
 
 const HOP_BY_HOP = new Set([
   "connection",
