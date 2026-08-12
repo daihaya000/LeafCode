@@ -33,19 +33,19 @@ function commonDir(paths: string[]): string {
 }
 
 /**
- * Deterministic commit-message suggestion from the set of changed files.
- * Imperative, sentence-case (matches repo style). Empty when no files.
+ * Deterministic Japanese commit-message suggestion from the set of changed files.
+ * Empty when no files are provided.
  */
 export function suggestCommitMessage(files: CommitFileInfo[]): string {
   if (files.length === 0) return "";
   const verb = files.every((f) => f.untracked) ? "Add" : "Update";
 
   if (files.length === 1) {
-    return `${verb} ${basename(files[0].path)}`;
+    return `${verb === "Add" ? "追加" : "更新"} ${basename(files[0].path)}`;
   }
 
   const dir = commonDir(files.map((f) => f.path));
   return dir
-    ? `${verb} ${files.length} files in ${dir}`
-    : `${verb} ${files.length} files`;
+    ? `${dir} の${files.length}ファイルを${verb === "Add" ? "追加" : "更新"}`
+    : `${files.length}ファイルを${verb === "Add" ? "追加" : "更新"}`;
 }

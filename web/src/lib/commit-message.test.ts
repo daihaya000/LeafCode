@@ -9,13 +9,13 @@ describe("suggestCommitMessage", () => {
   it("uses basename for a single tracked file", () => {
     expect(
       suggestCommitMessage([{ path: "web/src/lib/git.ts", untracked: false }]),
-    ).toBe("Update git.ts");
+    ).toBe("更新 git.ts");
   });
 
   it("uses Add verb when all files are untracked", () => {
     expect(
       suggestCommitMessage([{ path: "docs/new.md", untracked: true }]),
-    ).toBe("Add new.md");
+    ).toBe("追加 new.md");
   });
 
   it("summarizes multiple files with a common directory", () => {
@@ -24,7 +24,7 @@ describe("suggestCommitMessage", () => {
         { path: "web/src/lib/a.ts", untracked: false },
         { path: "web/src/lib/b.ts", untracked: false },
       ]),
-    ).toBe("Update 2 files in web/src/lib");
+    ).toBe("web/src/lib の2ファイルを更新");
   });
 
   it("summarizes multiple files without a common directory", () => {
@@ -33,18 +33,18 @@ describe("suggestCommitMessage", () => {
         { path: "web/a.ts", untracked: false },
         { path: "host/b.js", untracked: false },
       ]),
-    ).toBe("Update 2 files");
+    ).toBe("2ファイルを更新");
   });
 
   it("handles Windows backslash-separated paths the same as forward-slash paths", () => {
     expect(
       suggestCommitMessage([{ path: "web\\src\\lib\\git.ts", untracked: false }]),
-    ).toBe("Update git.ts");
+    ).toBe("更新 git.ts");
     expect(
       suggestCommitMessage([
         { path: "web\\src\\lib\\a.ts", untracked: false },
         { path: "web\\src\\lib\\b.ts", untracked: false },
       ]),
-    ).toBe("Update 2 files in web/src/lib");
+    ).toBe("web/src/lib の2ファイルを更新");
   });
 });
