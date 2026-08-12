@@ -5244,12 +5244,14 @@ export function TaskView({
             diffVisible ? "flex flex-1" : "hidden",
             !splitActive &&
               (showDiff
-                ? "lg:flex lg:flex-none lg:border-l"
+                ? chatVisible
+                  ? "lg:flex lg:flex-none lg:border-l"
+                  : "lg:flex-1 lg:border-l"
                 : "lg:hidden"),
           )}
-          style={showDiff && isLg ? { width: sideWidth } : undefined}
+          style={showDiff && isLg && chatVisible ? { width: sideWidth } : undefined}
         >
-          {showDiff && isLg && (
+          {showDiff && isLg && chatVisible && (
             <div
               role="separator"
               aria-orientation="vertical"
