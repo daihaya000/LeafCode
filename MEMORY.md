@@ -1,3 +1,31 @@
+# 作業ログ: /loop 1m バグハント tick — Workflow pause_requested 固着
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: in-flight 中 Pause → pause_requested → 結果保存後 paused → Resume 可
+- 実際: pause_requested のまま固着。runningAttempts が running のみ対象で結果読取せず、paused 遷移も未実装
+
+## 根本原因
+- workflow-scheduler.ts runningAttempts が r.status='running' のみ
+- pause_requested → paused の finalize パスが無い
+
+## 修正
+- runningAttempts に pause_requested を含める（readyAttempts は running のみ＝新規 dispatch しない）
+- finalizePauseRequestedIfIdle / tick 末尾の一括 finalize
+- recoverInterruptedAttempts も pause_requested を対象
+
+## 回帰防止
+- finalizes pause_requested to paused after the in-flight Attempt result is saved
+
+## 検証
+- vitest workflow-scheduler 8 PASS / eslint OK
+
+## 残存リスク
+- Host BUILD_ID 初回待ち UX、voice 未コミット変更は未着手
+
+---
 # 作業ログ: /loop 1m バグハント tick — 画像事前解析 tools 空配列 fail-open
 
 ## 日付

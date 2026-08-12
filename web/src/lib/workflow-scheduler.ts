@@ -97,10 +97,39 @@ function runningAttempts(): WorkflowNodeAttemptRow[] {
       `SELECT a.* FROM workflow_node_attempts a
        JOIN workflow_node_runs n ON n.id = a.node_run_id
        JOIN workflow_runs r ON r.id = n.workflow_run_id
-       WHERE r.status = 'running' AND a.status = 'running'
+       WHERE r.status IN ('running', 'pause_requested') AND a.status = 'running'
        ORDER BY a.rowid ASC`,
     )
     .all() as WorkflowNodeAttemptRow[];
+}
+
+/** Spec: pause_requested + all in-flight done → paused (after result save). */
+function finalizePauseRequestedIfIdle(workflowRunId: string): void {
+  const database = getDb();
+  const inFlight = database
+    .prepare(
+      `SELECT 1 FROM workflow_node_attempts a
+       JOIN workflow_node_runs n ON n.id = a.node_run_id
+       WHERE n.workflow_run_id = ?
+         AND a.status IN ('creating_session', 'dispatching', 'running')
+       LIMIT 1`,
+    )
+    .get(workflowRunId);
+  if (inFlight) return;
+  database
+    .prepare(
+      `UPDATE workflow_runs
+       SET status = 'paused', revision = revision + 1, updated_at = ?
+       WHERE id = ? AND status = 'pause_requested'`,
+    )
+    .run(new Date().toISOString(), workflowRunId);
+}
+
+function finalizeIdlePauseRequestedRuns(): void {
+  const runs = getDb()
+    .prepare(`SELECT id FROM workflow_runs WHERE status = 'pause_requested'`)
+    .all() as Array<{ id: string }>;
+  for (const run of runs) finalizePauseRequestedIfIdle(run.id);
 }
 
 function messageText(message: MessageWithParts): string {
@@ -180,7 +209,7 @@ function recoverInterruptedAttempts(): void {
       `SELECT DISTINCT r.id FROM workflow_runs r
        JOIN workflow_node_runs n ON n.workflow_run_id = r.id
        JOIN workflow_node_attempts a ON a.node_run_id = n.id
-       WHERE r.status = 'running' AND a.status IN ('creating_session', 'dispatching')`,
+       WHERE r.status IN ('running', 'pause_requested') AND a.status IN ('creating_session', 'dispatching')`,
     ).all() as Array<{ id: string }>;
     getDb().prepare(
       `UPDATE workflow_node_attempts SET status = 'failed', dispatch_status = 'unknown_delivery', error = 'Scheduler restart requires a manual retry', finished_at = ?, revision = revision + 1
@@ -188,7 +217,7 @@ function recoverInterruptedAttempts(): void {
     ).run(now);
     for (const run of interrupted) {
       getDb().prepare(
-        `UPDATE workflow_runs SET status = 'paused', pause_reason = 'scheduler_restart', error = 'An in-flight Attempt was interrupted by scheduler restart', revision = revision + 1, updated_at = ? WHERE id = ? AND status = 'running'`,
+        `UPDATE workflow_runs SET status = 'paused', pause_reason = 'scheduler_restart', error = 'An in-flight Attempt was interrupted by scheduler restart', revision = revision + 1, updated_at = ? WHERE id = ? AND status IN ('running', 'pause_requested')`,
       ).run(now, run.id);
     }
   })();
@@ -382,6 +411,9 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
   }
   if (updated.changes === 1 && (info.node_key === "code_review" || info.node_key === "visual_judge")) {
     await advanceReviewGate(info.workflow_run_id);
+  }
+  if (updated.changes === 1) {
+    finalizePauseRequestedIfIdle(info.workflow_run_id);
   }
 }
 
@@ -612,6 +644,7 @@ export async function runWorkflowSchedulerTick(): Promise<void> {
         pauseAttemptBestEffort(attempt.id, error);
       }
     }
+    finalizeIdlePauseRequestedRuns();
     for (const attempt of ready) {
       const node = getDb().prepare("SELECT n.node_key, n.workflow_run_id FROM workflow_node_runs n WHERE n.id = ?").get(attempt.node_run_id) as { node_key: string; workflow_run_id: string } | undefined;
       if (!node) continue;

@@ -140,6 +140,65 @@ describe("workflow scheduler", () => {
     updateWorkflow({ workspaceId: "scheduler-usage", action: "stop", workflowRevision: getWorkflow("scheduler-usage")!.run!.revision });
   });
 
+  test("finalizes pause_requested to paused after the in-flight Attempt result is saved", async () => {
+    const revision = setup("scheduler-pause-inflight");
+    createWorkflow({
+      workspaceId: "scheduler-pause-inflight",
+      workspaceRevision: revision,
+      taskContext: { goal: "Build UI", acceptance: [], constraints: [] },
+    });
+    updateWorkflow({
+      workspaceId: "scheduler-pause-inflight",
+      action: "start",
+      workflowRevision: 0,
+    });
+    ocServer.mockResolvedValueOnce(undefined);
+    await runWorkflowSchedulerTick();
+
+    const before = getWorkflow("scheduler-pause-inflight")!;
+    const attempt = before.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    expect(attempt.status).toBe("running");
+    expect(before.run?.status).toBe("running");
+
+    const paused = updateWorkflow({
+      workspaceId: "scheduler-pause-inflight",
+      action: "pause",
+      workflowRevision: before.run!.revision,
+    });
+    expect(paused.run?.status).toBe("pause_requested");
+
+    ocServer.mockResolvedValueOnce([
+      {
+        info: {
+          id: "result-1",
+          role: "assistant",
+          time: { created: 10, completed: 30 },
+          tokens: { total: 4, input: 2, output: 2, reasoning: 0 },
+        },
+        parts: [
+          {
+            type: "text",
+            text: `<!-- webui-workflow-result:${attempt.promptMarker} -->\n\`\`\`json\n{"status":"progress","summary":"paused mid-flight","evidence":[]}\n\`\`\``,
+          },
+        ],
+      },
+    ]);
+    await runWorkflowSchedulerTick();
+
+    const after = getWorkflow("scheduler-pause-inflight")!;
+    const finished = after.nodes.find((node) => node.nodeKey === "implement_ui")!.attempts[0]!;
+    expect(finished.status).toBe("succeeded");
+    expect(after.run?.status).toBe("paused");
+    expect(after.run?.pauseReason).toBe("user");
+
+    updateWorkflow({
+      workspaceId: "scheduler-pause-inflight",
+      action: "resume",
+      workflowRevision: after.run!.revision,
+    });
+    expect(getWorkflow("scheduler-pause-inflight")!.run?.status).toBe("running");
+  });
+
   test("pauses interrupted dispatches on scheduler restart", async () => {
     const revision = setup("scheduler-restart");
     createWorkflow({ workspaceId: "scheduler-restart", workspaceRevision: revision, taskContext: { goal: "Build UI", acceptance: [], constraints: [] } });
