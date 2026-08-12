@@ -1,3 +1,22 @@
+# 作業ログ: /loop 1m tick — session.created イベント登録漏れ
+
+## 日付
+2026-08-12
+
+## 根本原因
+- 直前の子セッション天井修正で `useSessionStream` が `session.created` を処理するが、`HANDLED_V1_EVENT_TYPES` に未登録
+- `opencode-events` ドリフト検知が失敗（回帰）
+
+## 修正
+- `web/src/lib/opencode-events.ts` に `session.created` を追加
+
+## 検証
+- `opencode-events.test.ts` 7 PASS
+- stuck-busy 6 PASS（旧失敗は解消済み）
+- `:3000` health 200
+
+---
+
 # 作業ログ: /loop 1m バグハント — 子セッション edit 天井ギャップ
 
 ## 日付

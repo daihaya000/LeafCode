@@ -34,6 +34,7 @@ export const HANDLED_V1_EVENT_TYPES = [
   "session.idle",
   "session.compacted",
   "session.error",
+  "session.created",
   "todo.updated",
   "permission.asked",
   "permission.replied",
