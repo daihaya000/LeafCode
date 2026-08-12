@@ -1,3 +1,7 @@
+# Any folder whose name starts with a dot is local/tool-scratch state;
+# do not commit it (files like .gitignore / .editorconfig are unaffected).
+.*/
+
 node_modules/
 .next/
 .next-*/
