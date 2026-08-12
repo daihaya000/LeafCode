@@ -154,6 +154,24 @@ describe("setSessionEditPermission", () => {
       },
     });
   });
+
+  it("PATCHes ensureSessionIds even when /children returns empty", async () => {
+    ocServer.mockImplementation(async (_directory: string, path: string) => {
+      if (String(path).endsWith("/children")) return [];
+      return undefined;
+    });
+
+    await setSessionEditPermission("C:\\worktree", "ses_parent", "ask", [
+      "ses_child",
+    ]);
+
+    const patched = ocServer.mock.calls
+      .filter(([, , init]) => init && typeof init === "object")
+      .map(([, path]) => path);
+    expect(patched).toEqual(
+      expect.arrayContaining(["/session/ses_parent", "/session/ses_child"]),
+    );
+  });
 });
 
 describe("shouldSyncAccessCeilingForSessionCreated", () => {

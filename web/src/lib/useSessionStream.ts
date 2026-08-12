@@ -61,6 +61,12 @@ export type StreamState = {
    * the child's first apply_patch.
    */
   descendantAccessSync: number;
+  /**
+   * Descendant session ids from `session.created` that still need an explicit
+   * edit-ceiling PATCH. `/children` can lag, so these ids are sent as
+   * `ensureSessionIds` and must not be discarded after a failed listing.
+   */
+  pendingDescendantSessionIds: string[];
 };
 
 export type StreamAction =
@@ -92,7 +98,8 @@ export type StreamAction =
   | { kind: "sessionError"; message: string | null }
   | { kind: "mutationStarted"; startedAt: number }
   | { kind: "mutationElapsed"; elapsedMs: number }
-  | { kind: "descendantSessionCreated"; sessionID: string };
+  | { kind: "descendantSessionCreated"; sessionID: string }
+  | { kind: "clearPendingDescendants" };
 
 /** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
@@ -341,6 +348,7 @@ export function createInitialStreamState(scopeKey = ""): StreamState {
     mutationStartedAt: null,
     mutationElapsedMs: null,
     descendantAccessSync: 0,
+    pendingDescendantSessionIds: [],
   };
 }
 
@@ -756,11 +764,19 @@ export function sessionStreamReducer(
       };
     case "mutationElapsed":
       return { ...state, mutationElapsedMs: action.elapsedMs };
-    case "descendantSessionCreated":
+    case "descendantSessionCreated": {
+      const pending = state.pendingDescendantSessionIds ?? [];
+      const nextPending = pending.includes(action.sessionID)
+        ? pending
+        : [...pending, action.sessionID];
       return {
         ...state,
         descendantAccessSync: (state.descendantAccessSync ?? 0) + 1,
+        pendingDescendantSessionIds: nextPending,
       };
+    }
+    case "clearPendingDescendants":
+      return { ...state, pendingDescendantSessionIds: [] };
     default:
       return state;
   }
@@ -2236,6 +2252,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     [directory],
   );
 
+  const clearPendingDescendants = useCallback(() => {
+    dispatch({ kind: "clearPendingDescendants" });
+  }, []);
+
   // Effects reset the reducer after a scope change. Gate the render as well so
   // React never paints the previous session's messages during that transition.
   const visibleState =
@@ -2262,6 +2282,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     replyPermission,
     replyQuestion,
     rejectQuestion,
+    clearPendingDescendants,
   };
 }
 

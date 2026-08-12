@@ -91,6 +91,26 @@
 - 稼働中 `.next` には未反映
 
 ---
+# 作業ログ: /loop 1m tick — ensureSessionIds で /children 空ラグを塞ぐ
+
+## 日付
+2026-08-12
+
+## 根本原因
+- `session.created` の子 ID をカウンタだけ上げて捨て、再 POST は親 + `/children` 依存
+- `/children` が一瞬空だと天井が一度も載らず、以降トグルするまで欠落
+
+## 修正
+- `pendingDescendantSessionIds` を保持し `ensureSessionIds` として `/api/access-mode` へ送る
+- `parentID` チェーンで bound 配下を検証してから created ID を即 PATCH
+- 成功後に pending をクリア
+
+## 検証
+- opencode-access-mode 12 / access-mode route 11 / TaskView ensure 系 PASS
+- eslint 対象 OK
+
+---
+
 # 作業ログ: /loop 1m tick — session.created イベント登録漏れ
 
 ## 日付

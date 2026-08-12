@@ -7,12 +7,14 @@ const {
   listSessionBindings,
   setSessionEditPermission,
   listDescendantSessionIds,
+  isSessionUnderRoots,
 } = vi.hoisted(() => ({
   getWorkspace: vi.fn(),
   latestBindings: vi.fn(),
   listSessionBindings: vi.fn(),
   setSessionEditPermission: vi.fn(),
   listDescendantSessionIds: vi.fn(),
+  isSessionUnderRoots: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ getWorkspace, latestBindings, listSessionBindings }));
@@ -26,6 +28,7 @@ vi.mock("@/lib/oc-server", () => ({
 vi.mock("@/lib/opencode-access-mode", () => ({
   setSessionEditPermission,
   listDescendantSessionIds,
+  isSessionUnderRoots,
 }));
 
 import { POST } from "./route";
@@ -42,10 +45,13 @@ describe("POST /api/access-mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listDescendantSessionIds.mockResolvedValue([]);
+    isSessionUnderRoots.mockResolvedValue(false);
+    listSessionBindings.mockReturnValue([]);
   });
 
   it("applies the edit ruleset to the task's live OpenCode session", async () => {
     getWorkspace.mockReturnValue({ absolute_path: "C:\\worktree" });
+    listSessionBindings.mockReturnValue([{ opencode_session_id: "ses_1" }]);
     latestBindings.mockReturnValue(
       new Map([["task-1", { opencode_session_id: "ses_1" }]]),
     );
@@ -57,6 +63,7 @@ describe("POST /api/access-mode", () => {
       "C:\\worktree",
       "ses_1",
       "ask",
+      [],
     );
   });
 
@@ -79,6 +86,7 @@ describe("POST /api/access-mode", () => {
       "C:\\worktree",
       "ses_target",
       "full",
+      [],
     );
   });
 
@@ -86,6 +94,7 @@ describe("POST /api/access-mode", () => {
     getWorkspace.mockReturnValue({ absolute_path: "C:\\worktree" });
     listSessionBindings.mockReturnValue([{ opencode_session_id: "ses_1" }]);
     listDescendantSessionIds.mockResolvedValue([]);
+    isSessionUnderRoots.mockResolvedValue(false);
 
     const response = await POST(
       request({ taskId: "task-1", sessionId: "ses_other", mode: "ask" }),
@@ -116,6 +125,7 @@ describe("POST /api/access-mode", () => {
       "C:\\worktree",
       "ses_child",
       "ask",
+      [],
     );
   });
 
@@ -136,6 +146,64 @@ describe("POST /api/access-mode", () => {
       "C:\\worktree",
       "ses_grand",
       "ask",
+      [],
+    );
+  });
+
+  it("PATCHes ensureSessionIds when /children is still empty after session.created", async () => {
+    // Regression: listing lag used to skip the child forever after one empty
+    // /children response, leaving OpenCode's default allow ruleset in place.
+    getWorkspace.mockReturnValue({ absolute_path: "C:\\worktree" });
+    listSessionBindings.mockReturnValue([{ opencode_session_id: "ses_parent" }]);
+    latestBindings.mockReturnValue(
+      new Map([["task-1", { opencode_session_id: "ses_parent" }]]),
+    );
+    listDescendantSessionIds.mockResolvedValue([]);
+    isSessionUnderRoots.mockImplementation(
+      async (_directory: string, sessionId: string) => sessionId === "ses_child",
+    );
+
+    const response = await POST(
+      request({
+        taskId: "task-1",
+        sessionId: "ses_parent",
+        mode: "ask",
+        ensureSessionIds: ["ses_child"],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(setSessionEditPermission).toHaveBeenCalledWith(
+      "C:\\worktree",
+      "ses_parent",
+      "ask",
+      ["ses_child"],
+    );
+  });
+
+  it("ignores ensureSessionIds that are not under a bound parent", async () => {
+    getWorkspace.mockReturnValue({ absolute_path: "C:\\worktree" });
+    listSessionBindings.mockReturnValue([{ opencode_session_id: "ses_parent" }]);
+    latestBindings.mockReturnValue(
+      new Map([["task-1", { opencode_session_id: "ses_parent" }]]),
+    );
+    isSessionUnderRoots.mockResolvedValue(false);
+
+    const response = await POST(
+      request({
+        taskId: "task-1",
+        sessionId: "ses_parent",
+        mode: "ask",
+        ensureSessionIds: ["ses_foreign"],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(setSessionEditPermission).toHaveBeenCalledWith(
+      "C:\\worktree",
+      "ses_parent",
+      "ask",
+      [],
     );
   });
 

@@ -295,6 +295,7 @@ describe("TaskView", () => {
       sessionError: null,
       loaded: true,
       descendantAccessSync: 0,
+      pendingDescendantSessionIds: [],
       abort: vi.fn(),
       refreshTodos: vi.fn(),
       rejectQuestion: vi.fn(),
@@ -303,6 +304,7 @@ describe("TaskView", () => {
       resync: vi.fn(),
       sendPrompt: vi.fn(),
       sendCommand: vi.fn(),
+      clearPendingDescendants: vi.fn(),
     });
     getJson.mockImplementation((path: string) => {
       if (path === "/api/files/content") {
@@ -769,9 +771,12 @@ describe("TaskView", () => {
     // Regression: child sessions start with OpenCode's default allow ruleset.
     // Waiting for the next parent accessMode effect left a window where
     // apply_patch ran with no approval card.
+    const clearPendingDescendants = vi.fn();
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       descendantAccessSync: 0,
+      pendingDescendantSessionIds: [],
+      clearPendingDescendants,
     });
     const { rerender } = render(<TaskView taskId="ws1" />);
     await flushTaskLoad();
@@ -779,10 +784,13 @@ describe("TaskView", () => {
       await Promise.resolve();
     });
     sendJson.mockClear();
+    clearPendingDescendants.mockClear();
 
     useSessionStream.mockReturnValue({
       ...useSessionStream(),
       descendantAccessSync: 1,
+      pendingDescendantSessionIds: ["ses_child"],
+      clearPendingDescendants,
     });
     rerender(<TaskView taskId="ws1" />);
     await act(async () => {
@@ -793,7 +801,12 @@ describe("TaskView", () => {
       taskId: "ws1",
       sessionId: "sess1",
       mode: "ask",
+      ensureSessionIds: ["ses_child"],
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(clearPendingDescendants).toHaveBeenCalled();
   });
 
   it("hydrates フルアクセス before the first engine sync so ask cannot win the race", async () => {

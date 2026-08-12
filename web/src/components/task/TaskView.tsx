@@ -1255,24 +1255,35 @@ export function TaskView({
   // 依存に accessMode を含めるので、AttentionQueueModal の
   // writeAccessMode("full") 経由の切替もイベント → state 更新で追従する。
   // descendantAccessSync は session.created（サブエージェント）で増える。
-  // 親の次回同期を待たず、子生成直後に天井を載せ直す。
+  // pendingDescendantSessionIds を ensureSessionIds として送り、/children が
+  // 空でも created ID へ天井を即 PATCH する。
   // Workflow 実行中は node ごとの write deny が後勝ちで上書きされないよう同期しない。
+  const descendantAccessSync = stream.descendantAccessSync;
+  const pendingDescendantSessionIds = stream.pendingDescendantSessionIds;
+  const clearPendingDescendants = stream.clearPendingDescendants;
   useEffect(() => {
     if (!task?.id || !task.sessionId) return;
     if (task.executionMode === "workflow") return;
     let cancelled = false;
+    const ensureSessionIds = pendingDescendantSessionIds ?? [];
     void sendJson("POST", "/api/access-mode", {
       taskId: task.id,
       sessionId: task.sessionId,
       mode: accessMode,
-    }).catch((err) => {
-      if (cancelled) return;
-      setSendError(
-        err instanceof Error
-          ? `アクセスモードを同期できませんでした: ${err.message}`
-          : "アクセスモードを同期できませんでした。",
-      );
-    });
+      ...(ensureSessionIds.length > 0 ? { ensureSessionIds } : {}),
+    })
+      .then(() => {
+        if (cancelled || ensureSessionIds.length === 0) return;
+        clearPendingDescendants?.();
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSendError(
+          err instanceof Error
+            ? `アクセスモードを同期できませんでした: ${err.message}`
+            : "アクセスモードを同期できませんでした。",
+        );
+      });
     return () => {
       cancelled = true;
     };
@@ -1281,7 +1292,9 @@ export function TaskView({
     task?.sessionId,
     task?.executionMode,
     accessMode,
-    stream.descendantAccessSync,
+    descendantAccessSync,
+    pendingDescendantSessionIds,
+    clearPendingDescendants,
   ]);
 
   // Sync default model when changed in Settings while a task is open and the

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace, latestBindings, listSessionBindings } from "@/lib/db";
 import { OcError } from "@/lib/oc-server";
 import {
+  isSessionUnderRoots,
   listDescendantSessionIds,
   setSessionEditPermission,
 } from "@/lib/opencode-access-mode";
@@ -11,14 +12,30 @@ import { requireAuthorized } from "@/lib/api-guard";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const MAX_ENSURE_SESSION_IDS = 32;
+
 type RequestBody = {
   mode?: unknown;
   taskId?: unknown;
   sessionId?: unknown;
+  ensureSessionIds?: unknown;
 };
 
 function isAccessMode(value: unknown): value is AccessMode {
   return value === "ask" || value === "full";
+}
+
+function parseEnsureSessionIds(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_ENSURE_SESSION_IDS) return null;
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return null;
+    const id = entry.trim();
+    if (!id || id.length > 256) return null;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 function failure(err: unknown) {
@@ -37,6 +54,9 @@ function failure(err: unknown) {
  * so 確認する actually makes the engine ask before edit / write / apply_patch.
  * When sessionId is omitted, the workspace's latest binding is used. It never
  * accepts an arbitrary directory, agent, or config payload.
+ *
+ * `ensureSessionIds` carries ids from `session.created` so a lagging
+ * `/children` listing cannot permanently skip the ceiling on a new subagent.
  */
 export async function POST(req: NextRequest) {
   const denied = await requireAuthorized(req);
@@ -47,7 +67,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid access mode" }, { status: 400 });
   }
   const keys = Object.keys(body);
-  if (!keys.every((key) => ["mode", "taskId", "sessionId"].includes(key))) {
+  if (
+    !keys.every((key) =>
+      ["mode", "taskId", "sessionId", "ensureSessionIds"].includes(key),
+    )
+  ) {
     return NextResponse.json(
       { error: "invalid access mode request" },
       { status: 400 },
@@ -68,6 +92,13 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  const ensureSessionIds = parseEnsureSessionIds(body.ensureSessionIds);
+  if (ensureSessionIds === null) {
+    return NextResponse.json(
+      { error: "invalid ensure session ids" },
+      { status: 400 },
+    );
+  }
 
   try {
     const workspace = getWorkspace(body.taskId);
@@ -75,11 +106,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "task not found" }, { status: 404 });
     }
 
+    const bindings = listSessionBindings(body.taskId);
+    const boundRoots = new Set(
+      bindings.map((binding) => binding.opencode_session_id),
+    );
+
     let sessionId: string | undefined;
     if (typeof body.sessionId === "string" && body.sessionId.trim()) {
       const requested = body.sessionId.trim();
-      const bindings = listSessionBindings(body.taskId);
-      const belongs = bindings.some((b) => b.opencode_session_id === requested);
+      const belongs = boundRoots.has(requested);
       if (belongs) {
         sessionId = requested;
       } else {
@@ -97,6 +132,14 @@ export async function POST(req: NextRequest) {
           }
         }
         if (!sessionId) {
+          const underBound = await isSessionUnderRoots(
+            workspace.absolute_path,
+            requested,
+            boundRoots,
+          );
+          if (underBound) sessionId = requested;
+        }
+        if (!sessionId) {
           return NextResponse.json({ error: "task not found" }, { status: 404 });
         }
       }
@@ -107,10 +150,23 @@ export async function POST(req: NextRequest) {
     if (!sessionId) {
       return NextResponse.json({ error: "task not found" }, { status: 404 });
     }
+
+    const roots = new Set(boundRoots);
+    roots.add(sessionId);
+    const verifiedEnsure: string[] = [];
+    for (const ensureId of ensureSessionIds) {
+      if (ensureId === sessionId || roots.has(ensureId)) continue;
+      if (await isSessionUnderRoots(workspace.absolute_path, ensureId, roots)) {
+        verifiedEnsure.push(ensureId);
+        roots.add(ensureId);
+      }
+    }
+
     await setSessionEditPermission(
       workspace.absolute_path,
       sessionId,
       body.mode,
+      verifiedEnsure,
     );
     return NextResponse.json({ mode: body.mode });
   } catch (err) {

@@ -95,6 +95,52 @@ async function patchSessionEditPermission(
   });
 }
 
+/** Read `parentID` for a session. Null when missing or the fetch fails. */
+export async function fetchSessionParentId(
+  directory: string,
+  sessionId: string,
+): Promise<string | null> {
+  const id = sessionId.trim();
+  if (!id || id.length > 256) return null;
+  try {
+    const info = await ocServer<unknown>(
+      directory,
+      `/session/${encodeURIComponent(id)}`,
+    );
+    if (!info || typeof info !== "object") return null;
+    const parent = (info as { parentID?: unknown }).parentID;
+    return typeof parent === "string" && parent.trim() ? parent.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Walk `parentID` links to see whether `sessionId` is under any of `rootIds`.
+ * Used when `/children` lags behind `session.created` and we still need to
+ * authorize an explicit ensure-id PATCH.
+ */
+export async function isSessionUnderRoots(
+  directory: string,
+  sessionId: string,
+  rootIds: ReadonlySet<string>,
+): Promise<boolean> {
+  const id = sessionId.trim();
+  if (!id || id.length > 256) return false;
+  if (rootIds.has(id)) return true;
+  let current = id;
+  const seen = new Set<string>();
+  for (let depth = 0; depth < MAX_SESSION_DESCENDANT_DEPTH; depth++) {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    const parent = await fetchSessionParentId(directory, current);
+    if (!parent) return false;
+    if (rootIds.has(parent)) return true;
+    current = parent;
+  }
+  return false;
+}
+
 /**
  * Enforce the アクセスモード ceiling for file writes in a single OpenCode
  * session.
@@ -122,11 +168,16 @@ async function patchSessionEditPermission(
  * same ceiling. Subagents otherwise start with OpenCode's default
  * `{ "*": "allow" }` and would rewrite files with no approval card while the
  * parent UI still said 確認する.
+ *
+ * `ensureSessionIds` PATCHes sessions that `session.created` already revealed
+ * even when `/children` still returns empty (listing lag). Callers must have
+ * already verified those ids belong under this parent tree.
  */
 export async function setSessionEditPermission(
   directory: string,
   sessionId: string,
   mode: AccessMode,
+  ensureSessionIds: readonly string[] = [],
 ): Promise<void> {
   const id = sessionId.trim();
   if (!id || id.length > 256) {
@@ -134,11 +185,17 @@ export async function setSessionEditPermission(
   }
   await patchSessionEditPermission(directory, id, mode);
   const descendants = await listDescendantSessionIds(directory, id);
-  if (descendants.length === 0) return;
-  await Promise.allSettled(
-    descendants.map((childId) =>
-      patchSessionEditPermission(directory, childId, mode),
+  const ensured = [
+    ...new Set(
+      ensureSessionIds
+        .map((value) => value.trim())
+        .filter((value) => value && value !== id && value.length <= 256),
     ),
+  ].filter((value) => !descendants.includes(value));
+  const targets = [...descendants, ...ensured];
+  if (targets.length === 0) return;
+  await Promise.allSettled(
+    targets.map((childId) => patchSessionEditPermission(directory, childId, mode)),
   );
 }
 
