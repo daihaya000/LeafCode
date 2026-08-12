@@ -4,16 +4,19 @@ import { NextRequest } from "next/server";
 const {
   getWorkspaceMock,
   listSessionBindingsMock,
+  getSettingMock,
   ocServerMock,
 } = vi.hoisted(() => ({
   getWorkspaceMock: vi.fn(),
   listSessionBindingsMock: vi.fn(),
+  getSettingMock: vi.fn().mockReturnValue(null),
   ocServerMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   getWorkspace: getWorkspaceMock,
   listSessionBindings: listSessionBindingsMock,
+  getSetting: getSettingMock,
 }));
 
 vi.mock("@/lib/oc-server", () => ({

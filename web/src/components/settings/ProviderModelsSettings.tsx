@@ -30,6 +30,12 @@ import {
   writeDefaultModelToServer,
 } from "@/lib/default-model";
 import {
+  readGenerationModel,
+  readGenerationModelFromServer,
+  writeGenerationModel,
+  writeGenerationModelToServer,
+} from "@/lib/generation-model";
+import {
   formatModelLabel,
   sortModelOptions,
   type ModelOption,
@@ -502,6 +508,7 @@ export function ProviderModelsSettings() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [defaultModel, setDefaultModel] = useState<string>("");
+  const [generationModel, setGenerationModel] = useState<string>("");
   const [autoOptimize, setAutoOptimize] = useState<AutoOptimizeMode>(() =>
     readAutoOptimizeMode(),
   );
@@ -515,6 +522,7 @@ export function ProviderModelsSettings() {
     routeOverrides: false,
   });
   const defaultModelTouched = useRef(false);
+  const generationModelTouched = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addMessage, setAddMessage] = useState<string | null>(null);
@@ -830,6 +838,25 @@ export function ProviderModelsSettings() {
     setNewProvider({ id: "", name: "", baseURL: "", apiKeyEnv: "", icon: "", models: "" });
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const serverValue = await readGenerationModelFromServer();
+      const localValue = readGenerationModel();
+      const resolved = generationModelTouched.current
+        ? localValue ?? ""
+        : serverValue ?? localValue ?? "";
+      if (!active) return;
+      setGenerationModel(resolved);
+      if (!generationModelTouched.current && serverValue && serverValue !== localValue) {
+        writeGenerationModel(serverValue);
+      } else if (!generationModelTouched.current && !serverValue && localValue) {
+        await writeGenerationModelToServer(localValue);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
   /**
    * 取得済みのローカルモデルをそのまま登録する。手入力フォームでは
    * 画像入力対応（`attachment` / `modalities`）を表現できず、VLモデルが
@@ -1060,6 +1087,47 @@ export function ProviderModelsSettings() {
               )}
             </div>
           )}
+        </div>
+      </section>
+
+      <section aria-labelledby="generation-model-heading">
+        <h2 id="generation-model-heading" className="mb-3 text-sm font-semibold text-muted">
+          タイトル / NextAction 生成モデル
+        </h2>
+        <p className="mb-3 text-xs text-faint">
+          会話タイトルと次のアクションの提案に使うモデルです。未設定時は従来のモデル選択を使います。
+        </p>
+        <div className="rounded-xl border border-border bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <ModelSelect
+              value={generationModel}
+              options={modelOptions.filter((option) => option.value !== AUTO_MODEL_OPTION.value)}
+              ariaLabel="タイトル / NextAction 生成モデル"
+              emptyLabel="選択してください"
+              onChange={(value) => {
+                generationModelTouched.current = true;
+                setGenerationModel(value);
+                writeGenerationModel(value || null);
+                void writeGenerationModelToServer(value || null);
+              }}
+              className="min-w-56 flex-1"
+            />
+            {generationModel && (
+              <Button
+                variant="ghost"
+                size="sm"
+                title="生成モデルをクリア"
+                onClick={() => {
+                  generationModelTouched.current = true;
+                  setGenerationModel("");
+                  writeGenerationModel(null);
+                  void writeGenerationModelToServer(null);
+                }}
+              >
+                クリア
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWorkspace, listSessionBindings } from "@/lib/db";
+import { getSetting, getWorkspace, listSessionBindings } from "@/lib/db";
 import { OcError, ocServer } from "@/lib/oc-server";
 import { assertSafeOpenCodeSessionId } from "@/lib/opencode-id";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/lib/next-action-text";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
+import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest, context: Ctx) {
   // Optional model/agent pass-through from the composer.
   const modelInput = body?.model;
   const agentInput = body?.agent;
-  const model =
+  const requestModel =
     modelInput &&
     typeof modelInput === "object" &&
     typeof (modelInput as Record<string, unknown>).providerID === "string" &&
@@ -106,6 +107,13 @@ export async function POST(req: NextRequest, context: Ctx) {
           modelID: (modelInput as Record<string, string>).modelID,
         }
       : undefined;
+  const configuredModel = getSetting(GENERATION_MODEL_SETTING_KEY);
+  const model = configuredModel
+    ? (() => {
+        const [providerID, modelID] = configuredModel.split("::");
+        return { providerID, modelID };
+      })()
+    : requestModel;
   const agent =
     typeof agentInput === "string" && agentInput.trim()
       ? agentInput.trim()

@@ -21,6 +21,7 @@ import {
   MAX_TOKEN_SAVING_THRESHOLD,
   MIN_TOKEN_SAVING_THRESHOLD,
 } from "@/lib/token-saving-settings";
+import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ const ALLOWED_KEYS = new Set<string>([
   COMMIT_AUTHOR_EMAIL_KEY,
   TOKEN_SAVING_SETTING_KEY,
   TOKEN_SAVING_THRESHOLD_KEY,
+  GENERATION_MODEL_SETTING_KEY,
 ]);
 
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
@@ -91,6 +93,13 @@ function normalizeSettingValue(
         ok: false,
         error: "default-model must be provider::model",
       };
+    }
+    return { ok: true, value };
+  }
+
+  if (key === GENERATION_MODEL_SETTING_KEY) {
+    if (value.length > DEFAULT_MODEL_MAX_CHARS || !/^[^:\s]+::\S+$/.test(value)) {
+      return { ok: false, error: "generation-model must be provider::model" };
     }
     return { ok: true, value };
   }

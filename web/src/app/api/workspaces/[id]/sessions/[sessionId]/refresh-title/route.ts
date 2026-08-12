@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWorkspace, listSessionBindings, updateSessionTitle } from "@/lib/db";
+import { getSetting, getWorkspace, listSessionBindings, updateSessionTitle } from "@/lib/db";
 import { OcError, ocServer } from "@/lib/oc-server";
 import {
   SESSION_LIST_PATH,
@@ -14,6 +14,7 @@ import {
 } from "@/lib/session-title";
 import type { MessageWithParts } from "@/lib/types";
 import { requireAuthorized } from "@/lib/api-guard";
+import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,7 +63,13 @@ export async function POST(req: NextRequest, context: Ctx) {
       { status: 422 },
     );
   }
-  const model = latestModelFromMessages(messages);
+  const configuredModel = getSetting(GENERATION_MODEL_SETTING_KEY);
+  const model = configuredModel
+    ? (() => {
+        const [providerID, modelID] = configuredModel.split("::");
+        return { providerID, modelID };
+      })()
+    : latestModelFromMessages(messages);
 
   // Generate via a temporary unbound session so the original stays clean.
   let tempId: string | null = null;

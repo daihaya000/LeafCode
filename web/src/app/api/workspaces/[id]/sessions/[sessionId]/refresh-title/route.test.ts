@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
   ocServer,
+  getSetting,
   getWorkspace,
   listSessionBindings,
   updateSessionTitle,
   persistProjectSessions,
 } = vi.hoisted(() => ({
   ocServer: vi.fn(),
+  getSetting: vi.fn().mockReturnValue(null),
   getWorkspace: vi.fn(),
   listSessionBindings: vi.fn(),
   updateSessionTitle: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock("@/lib/oc-server", async () => {
 vi.mock("@/lib/db", () => ({
   getWorkspace,
   listSessionBindings,
+  getSetting,
   updateSessionTitle,
 }));
 vi.mock("@/lib/project-session-sync", () => ({ persistProjectSessions }));
