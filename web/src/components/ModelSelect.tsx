@@ -129,9 +129,13 @@ export function ModelSelect({
     const menuRect = menuRef.current?.getBoundingClientRect();
     const viewportPadding = 16;
     const gap = 4;
+    const maxMenuWidth = window.innerWidth - viewportPadding * 2;
+    // The menu enforces `min-width: rect.width`, so its laid-out width is at
+    // least as wide as the trigger even on the first frame where the content
+    // still measures narrower. Clamp that effective width to the viewport.
     const menuWidth = Math.min(
-      menuRect?.width || Math.max(rect.width, 224),
-      window.innerWidth - viewportPadding * 2,
+      Math.max(menuRect?.width || Math.max(rect.width, 224), rect.width),
+      maxMenuWidth,
     );
     const menuHeight = Math.min(
       menuRect?.height || 320,
@@ -152,7 +156,7 @@ export function ModelSelect({
           window.innerWidth - viewportPadding - menuWidth,
         ),
       ),
-      minWidth: rect.width,
+      minWidth: Math.min(rect.width, maxMenuWidth),
     });
   }, []);
 

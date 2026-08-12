@@ -59,6 +59,51 @@ describe("ModelSelect", () => {
     expect(listbox.style.top).toBe("176px");
   });
 
+  it("keeps the menu inside the viewport when the trigger is wider than its measured content", () => {
+    render(
+      <ModelSelect
+        value="openai::gpt-5.5"
+        options={options}
+        onChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("combobox", { name: "モデル" });
+    trigger.parentElement!.getBoundingClientRect = vi.fn(() => ({
+      x: 300,
+      y: 500,
+      top: 500,
+      right: 700,
+      bottom: 532,
+      left: 300,
+      width: 400,
+      height: 32,
+      toJSON: () => ({}),
+    }));
+
+    fireEvent.click(trigger);
+
+    const listbox = screen.getByRole("listbox", { name: "モデル" });
+    // The portal menu first measures narrower than the trigger (its content
+    // width), but the enforced min-width widens it afterwards. The position
+    // must be recomputed from that effective width or it drifts off-screen.
+    listbox.getBoundingClientRect = vi.fn(() => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      right: 215,
+      bottom: 200,
+      left: 0,
+      width: 215,
+      height: 200,
+      toJSON: () => ({}),
+    }));
+
+    fireEvent(window, new Event("resize"));
+
+    expect(listbox.style.left).toBe("300px");
+    expect(listbox.style.minWidth).toBe("400px");
+  });
+
   it("uses the OpenCodeWebUI icon for Auto", () => {
     render(<ModelSelect value="auto" options={options} onChange={vi.fn()} />);
 
