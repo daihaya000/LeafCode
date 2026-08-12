@@ -131,7 +131,10 @@ function toPermissionItem(
   };
 }
 
-async function childSessionIdsFor(
+/** Match access-mode ceiling depth so nested subagents stay in the permission poll. */
+const MAX_ATTENTION_DESCENDANT_DEPTH = 8;
+
+async function directChildSessionIdsFor(
   directory: string,
   parentSessionID: string,
 ): Promise<string[]> {
@@ -146,6 +149,36 @@ async function childSessionIdsFor(
   } catch {
     return [];
   }
+}
+
+/**
+ * Breadth-first descendants (not including the parent).
+ * Direct `/children` alone misses grandchildren that now receive the edit
+ * ceiling and emit permission.asked — without these ids, v2 REST restore
+ * after reconnect drops nested approval cards.
+ */
+async function descendantSessionIdsFor(
+  directory: string,
+  parentSessionID: string,
+  maxDepth: number = MAX_ATTENTION_DESCENDANT_DEPTH,
+): Promise<string[]> {
+  const out: string[] = [];
+  const seen = new Set<string>([parentSessionID]);
+  let frontier = [parentSessionID];
+  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      const children = await directChildSessionIdsFor(directory, id);
+      for (const child of children) {
+        if (!child || seen.has(child)) continue;
+        seen.add(child);
+        out.push(child);
+        next.push(child);
+      }
+    }
+    frontier = next;
+  }
+  return out;
 }
 
 export function GlobalAttentionProvider({
@@ -348,14 +381,16 @@ export function GlobalAttentionProvider({
               .map((t) => t.sessionId as string),
           ),
         ];
-        const childSessionIds = (
+        const descendantSessionIds = (
           await Promise.all(
             rootSessionIds.map((sessionID) =>
-              childSessionIdsFor(directory, sessionID),
+              descendantSessionIdsFor(directory, sessionID),
             ),
           )
         ).flat();
-        const sessionIds = [...new Set([...rootSessionIds, ...childSessionIds])];
+        const sessionIds = [
+          ...new Set([...rootSessionIds, ...descendantSessionIds]),
+        ];
         const v2Permissions: AttentionItem[] = [];
         const v2Questions: AttentionItem[] = [];
         const v2QuestionOkSessions = new Set<string>();

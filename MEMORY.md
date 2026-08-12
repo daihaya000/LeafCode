@@ -1,3 +1,32 @@
+﻿# 作業ログ: /loop 1m バグハント — GlobalAttention 孫権限カード漏れ
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: ネストした孫サブエージェントの edit/bash 承認待ちが、再接続後も GlobalAttention に復元される
+- 実際: v1 `/permission` が空のとき、直下 children のみ v2 ポーリングされ孫のカードが消える（セッションは承認待ちのままスタック）
+
+## 根本原因
+- `GlobalAttentionProvider.tsx` の `childSessionIdsFor` が `/session/{id}/children` の直下のみ
+- 直前の edit 天井修正で孫にも `ask` が乗るため、孫の `permission.asked` が増える一方、REST 復元は未追従
+
+## 修正
+- `descendantSessionIdsFor`（深さ上限 8 の BFS）で親配下の子孫 id を集め v2 permission/question を同期
+
+## 回帰防止
+- `restores grandchild session v2 permissions into the global queue`
+
+## 検証
+- GlobalAttentionProvider.test.tsx 12 PASS
+- eslint 対象 2 ファイル OK
+- HomeView / stuck-busy / image-timeout / host BUILD_ID は既に PASS（今回対象外の高影響新規バグなし）
+
+## 残存リスク
+- SSE で届いた孫権限は従来どおり表示される。本修正は再接続・初回 REST 復元経路
+- 稼働中 `.next` には未反映
+
+---
 # 作業ログ: /loop 1m tick — session.created イベント登録漏れ
 
 ## 日付

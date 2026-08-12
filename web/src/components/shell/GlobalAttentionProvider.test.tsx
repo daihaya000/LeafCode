@@ -263,6 +263,53 @@ describe("GlobalAttentionProvider", () => {
     });
   });
 
+  it("restores grandchild session v2 permissions into the global queue", async () => {
+    getJsonMock.mockResolvedValue({
+      tasks: [{ directory: "/repo", sessionId: "parent", title: "root task" }],
+    });
+    ocJsonMock.mockImplementation(async (path: string) => {
+      if (path === "/question" || path === "/permission") return [];
+      if (path === "/session/parent/children") {
+        return { data: [{ id: "child-1" }] };
+      }
+      if (path === "/session/child-1/children") {
+        return { data: [{ id: "grand-1" }] };
+      }
+      if (path === "/api/session/parent/question") return { data: [] };
+      if (path === "/api/session/parent/permission") return { data: [] };
+      if (path === "/api/session/child-1/question") return { data: [] };
+      if (path === "/api/session/child-1/permission") return { data: [] };
+      if (path === "/api/session/grand-1/question") return { data: [] };
+      if (path === "/api/session/grand-1/permission") {
+        return {
+          data: [
+            {
+              id: "grand-perm",
+              sessionID: "grand-1",
+              permission: "edit",
+              patterns: ["*.ts"],
+            },
+          ],
+        };
+      }
+      return [];
+    });
+    let latest: AttentionItem[] = [];
+    render(
+      <GlobalAttentionProvider activeScope={{ directory: "/repo", sessionId: "parent" }}>
+        <TestConsumer onItems={(items) => (latest = items)} />
+      </GlobalAttentionProvider>,
+    );
+    openConnection();
+    await waitFor(() => {
+      const item = latest.find((i) => i.request.id === "grand-perm");
+      expect(item?.kind).toBe("permission");
+      expect(item?.request.sessionID).toBe("grand-1");
+      expect(item?.request.permission).toBe("edit");
+      expect(item?.request.version).toBe("v2");
+    });
+  });
+
   it("restores pending questions after a reconnect", async () => {
     vi.useFakeTimers();
     getJsonMock.mockResolvedValue({ tasks: [{ directory: "/repo", sessionId: "s1" }] });
