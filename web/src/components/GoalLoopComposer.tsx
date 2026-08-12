@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ListTodo } from "lucide-react";
 import { cx } from "@/components/ui";
 
@@ -69,6 +70,23 @@ export function GoalLoopOptions({
   onMaxTurnsChange: (value: number) => void;
   onForceFullRunChange?: (value: boolean) => void;
 }) {
+  // Keep the number field as a string draft so clearing it to type a new
+  // value does not snap back to 1 on every keystroke (BU-3). The clamped
+  // value is reported on blur / Enter, mirroring GoalLoopPanel's editor.
+  const [maxTurnsDraft, setMaxTurnsDraft] = useState(String(maxTurns));
+  useEffect(() => {
+    setMaxTurnsDraft(String(maxTurns));
+  }, [maxTurns]);
+
+  const commitMaxTurns = () => {
+    const clamped = Math.min(
+      100,
+      Math.max(1, Math.trunc(Number(maxTurnsDraft) || 1)),
+    );
+    if (clamped !== maxTurns) onMaxTurnsChange(clamped);
+    setMaxTurnsDraft(String(clamped));
+  };
+
   return (
     <div className="mt-1 flex flex-col gap-1.5">
       <div className="flex flex-wrap items-start gap-2">
@@ -87,14 +105,17 @@ export function GoalLoopOptions({
             type="number"
             min={1}
             max={100}
-            value={maxTurns}
+            value={maxTurnsDraft}
             disabled={disabled}
             aria-label="最大ターン数"
-            onChange={(e) =>
-              onMaxTurnsChange(
-                Math.min(100, Math.max(1, Number(e.target.value) || 1)),
-              )
-            }
+            onChange={(e) => setMaxTurnsDraft(e.target.value)}
+            onBlur={commitMaxTurns}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitMaxTurns();
+              }
+            }}
             className="h-8 w-16 rounded-lg border border-border bg-bg px-2 text-sm text-text outline-none focus:border-primary"
           />
         </label>

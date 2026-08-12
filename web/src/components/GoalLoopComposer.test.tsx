@@ -79,15 +79,30 @@ describe("GoalLoopOptions", () => {
     expect(onAcceptanceChange).toHaveBeenCalledWith("tests pass\nlint clean");
   });
 
-  it("clamps maxTurns into 1..100 and falls back to 1 for junk", () => {
+  it("commits clamped maxTurns on blur and falls back to 1 for junk", () => {
     const { onMaxTurnsChange } = setup();
     const input = screen.getByLabelText("最大ターン数");
     fireEvent.change(input, { target: { value: "500" } });
+    fireEvent.blur(input);
     expect(onMaxTurnsChange).toHaveBeenLastCalledWith(100);
     fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.blur(input);
     expect(onMaxTurnsChange).toHaveBeenLastCalledWith(1);
     fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
     expect(onMaxTurnsChange).toHaveBeenLastCalledWith(1);
+  });
+
+  it("lets the user clear the field and type a new value without snapping back to 1", () => {
+    const { onMaxTurnsChange } = setup();
+    const input = screen.getByLabelText("最大ターン数") as HTMLInputElement;
+    // Clearing the field must not force "1" while the user is typing.
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.value).toBe("");
+    expect(onMaxTurnsChange).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "20" } });
+    fireEvent.blur(input);
+    expect(onMaxTurnsChange).toHaveBeenLastCalledWith(20);
   });
 
   it("defaults force full-run OFF and reports toggles", () => {
