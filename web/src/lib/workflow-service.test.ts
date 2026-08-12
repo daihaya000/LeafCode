@@ -265,4 +265,57 @@ describe("workflow service", () => {
     expect(getWorkflow("ws-archive-active")?.run?.status).toBe("stopped");
     expect(() => stopActiveWorkflowForArchive("ws-archive-active")).not.toThrow();
   });
+
+  test("detach rejects pause_requested until the run is fully paused", () => {
+    const workspaceRevision = setupWorkspace("ws-pause-req", "ses-pause-req");
+    const created = createWorkflow({
+      workspaceId: "ws-pause-req",
+      workspaceRevision,
+      taskContext: { goal: "goal", acceptance: [], constraints: [] },
+    });
+    const started = updateWorkflow({
+      workspaceId: "ws-pause-req",
+      action: "start",
+      workflowRevision: created.run!.revision,
+    });
+    getDb()
+      .prepare("UPDATE workflow_runs SET status = 'pause_requested' WHERE id = ?")
+      .run(started.run!.id);
+    expect(() =>
+      updateWorkflow({
+        workspaceId: "ws-pause-req",
+        action: "detach",
+        workflowRevision: started.run!.revision,
+        workspaceRevision: started.workspaceRevision,
+      }),
+    ).toThrowError(/paused or terminal/);
+  });
+
+  test("stop then detach succeeds from a running workflow", () => {
+    const workspaceRevision = setupWorkspace("ws-stop-detach", "ses-stop-detach");
+    const created = createWorkflow({
+      workspaceId: "ws-stop-detach",
+      workspaceRevision,
+      taskContext: { goal: "goal", acceptance: [], constraints: [] },
+    });
+    const started = updateWorkflow({
+      workspaceId: "ws-stop-detach",
+      action: "start",
+      workflowRevision: created.run!.revision,
+    });
+    const stopped = updateWorkflow({
+      workspaceId: "ws-stop-detach",
+      action: "stop",
+      workflowRevision: started.run!.revision,
+    });
+    expect(stopped.run?.status).toBe("stopped");
+    const detached = updateWorkflow({
+      workspaceId: "ws-stop-detach",
+      action: "detach",
+      workflowRevision: stopped.run!.revision,
+      workspaceRevision: stopped.workspaceRevision,
+    });
+    expect(detached.executionMode).toBe("standard");
+    expect(detached.run?.status).toBe("detached");
+  });
 });

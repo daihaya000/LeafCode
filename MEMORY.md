@@ -1,3 +1,32 @@
+# 作業ログ: /loop 1m バグハント — Workflow Taskモード変換の detach 失敗
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 実行中 Workflow を Task モードへ変換（停止・デタッチ）できる
+- 実際: pause → 即 detach で pause_requested のまま 409。stop 経路も detach が requireActiveRun で stopped run を見失い 404
+
+## 根本原因
+- TaskView.convertToTask が in-flight 中 pause すると pause_requested → detach は paused/terminal 必須で失敗
+- pause_requested 状態で pause 再送は 409
+- detach が requireActiveRun（stopped 除外）のため stop 後も run を取得できない
+
+## 修正
+- convertToTask: pause → stop（UI 文言「停止・デタッチ」と一致）
+- workflow-service: detach は requireDetachableRun（latestRunRow、stopped 含む）
+
+## 回帰防止
+- detach rejects pause_requested until the run is fully paused
+- stop then detach succeeds from a running workflow
+
+## 検証
+- vitest workflow-service 10 PASS / eslint OK
+
+## 残存リスク
+- Host BUILD_ID 初回待ち UX、画像タイムアウト残差の未再現分
+
+---
 # 作業ログ: HomeView Auto 選択時に画像添付が常に無効
 
 ## 日付

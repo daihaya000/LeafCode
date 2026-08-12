@@ -3299,21 +3299,23 @@ export function TaskView({
       );
       const run = current.workflow.run;
       if (!run) throw new Error("このTaskはすでにTaskモードです");
+      // Stop (not pause): pause leaves pause_requested while Attempts finish, and
+      // detach requires a terminal or fully paused run.
       const activeStatuses = ["ready", "running", "pause_requested"];
       if (activeStatuses.includes(run.status)) {
         await sendJson("PATCH", `/api/tasks/${encodeURIComponent(task.id)}/workflow`, {
-          action: "pause",
+          action: "stop",
           workflowRevision: run.revision,
         });
       }
-      const paused = await getJson<{ workflow: WorkflowSnapshot }>(
+      const stopped = await getJson<{ workflow: WorkflowSnapshot }>(
         `/api/tasks/${encodeURIComponent(task.id)}/workflow`,
       );
-      if (!paused.workflow.run) throw new Error("Workflow状態を取得できませんでした");
+      if (!stopped.workflow.run) throw new Error("Workflow状態を取得できませんでした");
       await sendJson("PATCH", `/api/tasks/${encodeURIComponent(task.id)}/workflow`, {
         action: "detach",
-        workflowRevision: paused.workflow.run.revision,
-        workspaceRevision: paused.workflow.workspaceRevision,
+        workflowRevision: stopped.workflow.run.revision,
+        workspaceRevision: stopped.workflow.workspaceRevision,
       });
       setTaskToStandardConfirmOpen(false);
       await refreshTask();

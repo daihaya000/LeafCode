@@ -455,6 +455,14 @@ export function createWorkflow(input: {
   return getWorkflow(input.workspaceId)!;
 }
 
+function requireDetachableRun(workspaceId: string): WorkflowRunRow {
+  const run = latestRunRow(workspaceId);
+  if (!run || run.status === "detached") {
+    throw new WorkflowServiceError("active Workflow not found", 404);
+  }
+  return run;
+}
+
 function requireActiveRun(workspaceId: string): WorkflowRunRow {
   const run = activeRunRow(workspaceId);
   if (!run) throw new WorkflowServiceError("active Workflow not found", 404);
@@ -478,7 +486,10 @@ export function updateWorkflow(input: {
 }): WorkflowView {
   const database = getDb();
   database.transaction(() => {
-    const run = requireActiveRun(input.workspaceId);
+    const run =
+      input.action === "detach"
+        ? requireDetachableRun(input.workspaceId)
+        : requireActiveRun(input.workspaceId);
     requireWorkflowRevision(run, input.workflowRevision);
     const workspace = getWorkspace(input.workspaceId);
     if (!workspace) throw new WorkflowServiceError("task not found", 404);
