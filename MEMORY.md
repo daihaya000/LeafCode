@@ -28,6 +28,30 @@
 - Dialog の `onSwitch={() => void onSwitch()}` は親 refresh 完了を待たない（今回対象外）
 
 ---
+# 作業ログ: /loop 1m バグハント — ensure 未適用でも pending を消さない
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: `isSessionUnderRoots` が一時失敗した ensure id は pending に残り再試行される
+- 実際: 200 + 空の verifiedEnsure でも TaskView が pending を全消しし、子は既定 allow のまま固定
+
+## 根本原因
+- `/api/access-mode` が適用結果を返さず、TaskView が成功＝全 ensure 完了とみなしていた
+
+## 修正
+- 応答に `appliedEnsureSessionIds` を追加
+- `clearPendingDescendants(ids?)` で適用済みのみ除去、未適用は最大5回バックオフ再試行
+
+## 回帰防止
+- route: applied 配列の契約
+- TaskView: 空 applied では clear しない
+
+## 検証
+- vitest access-mode / 関連 TaskView 4+24 PASS / eslint OK
+
+---
 # 作業ログ: /loop 1m バグハント — ensureSessionIds を BFS より先に PATCH
 
 ## 日付
