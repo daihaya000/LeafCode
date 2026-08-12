@@ -5272,7 +5272,11 @@ export function TaskView({
                       busy={goalLoopStarting}
                       disabled={
                         goalLoopEnabled && !goalLoopLive
-                          ? !input.trim() || !task.sessionId || goalLoopBusy
+                          ? !input.trim() || !task.sessionId || goalLoopBusy ||
+                            // Goal loops cannot carry attachments; disable the
+                            // button instead of failing at send (BU-8, matches
+                            // HomeView).
+                            attachments.length > 0
                           : (!input.trim() && attachments.length === 0) ||
                             !task.sessionId
                       }
