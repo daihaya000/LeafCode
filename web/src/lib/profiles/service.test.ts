@@ -127,7 +127,24 @@ describe("listProfiles", () => {
 
     const result = await listProfiles();
     expect(result.profiles).toHaveLength(2);
+    expect(result.profiles.map((profile) => profile.name)).toEqual(["default", "work"]);
     expect(result.canSwitch).toBe(true);
+  });
+
+  it("keeps the active profile first regardless of registration order", async () => {
+    const current = makeConfigDir(path.join(sandbox, "onedrive"), "D");
+    setupLink(current);
+    await listProfiles();
+
+    const second = makeConfigDir(path.join(profilesDir(), "work"), "W");
+    const registryPath = path.join(sandbox, "appdata", "opencode-webui", "profiles.json");
+    const state = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+    state.profiles.unshift({ id: "work-id", name: "work", path: second });
+    fs.writeFileSync(registryPath, JSON.stringify(state));
+
+    const result = await listProfiles();
+    expect(result.profiles.map((profile) => profile.name)).toEqual(["default", "work"]);
+    expect(result.profiles[0].active).toBe(true);
   });
 
   it("reports realdir and canSwitch=false", async () => {

@@ -68,11 +68,13 @@ export async function listProfiles(): Promise<ListResult> {
   const activeId = resolveActiveId(state, link);
   const reason = switchBlockReason(link) ?? undefined;
 
-  const profiles: ProfileDto[] = state.profiles.map((p) => ({
-    ...p,
-    active: p.id === activeId,
-    exists: dirExists(p.path),
-  }));
+  const profiles: ProfileDto[] = state.profiles
+    .map((p) => ({
+      ...p,
+      active: p.id === activeId,
+      exists: dirExists(p.path),
+    }))
+    .sort((a, b) => Number(b.active) - Number(a.active));
 
   // Best-effort one-shot migration of renamed provider keys across all
   // known profile config files (cursor-acp → cursor). Failures are swallowed
