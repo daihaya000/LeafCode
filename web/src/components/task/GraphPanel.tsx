@@ -437,7 +437,7 @@ export function GraphPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col border-border bg-surface lg:border-l">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col border-border bg-surface lg:border-l">
       <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 border-b border-border px-2.5 py-1.5">
         <GitGraph className="h-3.5 w-3.5 shrink-0 text-muted" />
         <span className="shrink-0 text-xs font-semibold text-muted">グラフ</span>
