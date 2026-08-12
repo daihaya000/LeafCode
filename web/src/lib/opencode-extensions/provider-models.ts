@@ -113,12 +113,16 @@ function normalizeProviderResponse(value: unknown): ProviderResponse {
                 }
 
                 if (isRecord(source.variants)) {
+                  // Keep declared keys as `{}` when OpenCode omits `disabled`.
+                  // `undefined` values are dropped by JSON.stringify, which
+                  // made `/api/extensions/provider-models` return empty
+                  // `variants` objects and hid the Home/Task effort selector.
                   model.variants = Object.fromEntries(
                     Object.entries(source.variants).map(([variant, rawVariant]) => [
                       variant,
                       isRecord(rawVariant) && typeof rawVariant.disabled === "boolean"
                         ? { disabled: rawVariant.disabled }
-                        : undefined,
+                        : {},
                     ]),
                   );
                 }
@@ -174,8 +178,11 @@ const providerModelsGlobal = globalThis as ProviderModelsGlobal;
  */
 const DISK_CACHE_FILE = () => path.join(dataDir(), "provider-response-cache.json");
 const DISK_CACHE_STALE_MS = 300_000;
+/** Bump when the on-disk `/provider` shape changes. v1 dropped empty variant
+ *  objects via JSON.stringify, so those entries must not be reused. */
+const DISK_CACHE_VERSION = 2;
 
-type DiskCacheEntry = { at: number; data: ProviderResponse };
+type DiskCacheEntry = { version?: number; at: number; data: ProviderResponse };
 
 function readDiskCache(): DiskCacheEntry | null {
   try {
@@ -183,6 +190,7 @@ function readDiskCache(): DiskCacheEntry | null {
     const parsed = JSON.parse(raw) as DiskCacheEntry;
     if (
       parsed &&
+      parsed.version === DISK_CACHE_VERSION &&
       typeof parsed.at === "number" &&
       parsed.data &&
       Array.isArray(parsed.data.all) &&
@@ -199,7 +207,11 @@ function readDiskCache(): DiskCacheEntry | null {
 function writeDiskCache(data: ProviderResponse): void {
   try {
     ensureDataDir();
-    const entry: DiskCacheEntry = { at: Date.now(), data };
+    const entry: DiskCacheEntry = {
+      version: DISK_CACHE_VERSION,
+      at: Date.now(),
+      data,
+    };
     const tmp = `${DISK_CACHE_FILE()}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(entry), "utf8");
     fs.renameSync(tmp, DISK_CACHE_FILE());

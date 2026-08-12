@@ -62,10 +62,11 @@ export function getIntelligenceVariants(
   if (!model?.variants) return [];
   const result: IntelligenceVariant[] = [];
   for (const key of INTELLIGENCE_KEYS) {
-    const entry = model.variants[key];
-    if (entry === undefined) continue;
     if (!Object.prototype.hasOwnProperty.call(model.variants, key)) continue;
-    if (entry?.disabled === true) continue;
+    // A declared key with an undefined/`{}` value is enabled. Skipping
+    // `undefined` here used to hide effort options after cache/API
+    // round-trips that keep the key but drop the empty object.
+    if (model.variants[key]?.disabled === true) continue;
     result.push(key);
   }
   return result;

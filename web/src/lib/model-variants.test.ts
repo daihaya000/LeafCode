@@ -67,6 +67,15 @@ describe("getIntelligenceVariants", () => {
     ).toEqual([]);
   });
 
+  it("treats a declared key with an undefined value as enabled", () => {
+    expect(
+      getIntelligenceVariants({
+        name: "Claude Opus 5",
+        variants: { low: undefined, high: {}, max: undefined },
+      }),
+    ).toEqual(["low", "high", "max"]);
+  });
+
   it("ignores unknown variant keys", () => {
     expect(
       getIntelligenceVariants({

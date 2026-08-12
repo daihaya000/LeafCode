@@ -24,6 +24,7 @@ vi.mock("@/lib/paths", () => ({
   ensureDataDir: () => undefined,
 }));
 
+import { getIntelligenceVariants } from "../model-variants";
 import {
   addCustomProvider,
   deleteCustomProvider,
@@ -219,6 +220,46 @@ describe("listProviderModels", () => {
     ]);
   });
 
+  it("keeps empty variant objects so JSON clients still see effort keys", async () => {
+    h.ocServer.mockResolvedValue({
+      all: [
+        {
+          id: "anthropic",
+          name: "Anthropic",
+          models: {
+            "claude-opus-5": {
+              name: "Claude Opus 5",
+              variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {} },
+            },
+          },
+        },
+      ],
+      connected: ["anthropic"],
+      default: {},
+    });
+
+    const providers = await listProviderModels();
+    const opus = providers
+      .find((provider) => provider.id === "anthropic")
+      ?.models.find((model) => model.id === "claude-opus-5");
+    const roundTripped = JSON.parse(JSON.stringify(opus)) as typeof opus;
+
+    expect(roundTripped?.variants).toEqual({
+      low: {},
+      medium: {},
+      high: {},
+      xhigh: {},
+      max: {},
+    });
+    expect(getIntelligenceVariants(roundTripped)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+  });
+
   it("keeps the provider response cache across a module reload", async () => {
     await listProviderModels();
     expect(h.ocServer).toHaveBeenCalledTimes(1);
@@ -343,7 +384,7 @@ describe("listProviderModels", () => {
       default: {},
     };
     const staleAge = 120_000; // 2 minutes
-    const diskEntry = { at: Date.now() - staleAge, data: staleData };
+    const diskEntry = { version: 2, at: Date.now() - staleAge, data: staleData };
     fs.writeFileSync(
       path.join(data, "provider-response-cache.json"),
       JSON.stringify(diskEntry),
@@ -360,6 +401,33 @@ describe("listProviderModels", () => {
     });
   });
 
+  it("ignores a pre-v2 disk cache that dropped empty variant objects", async () => {
+    __clearProviderResponseCacheForTest();
+    fs.writeFileSync(
+      path.join(data, "provider-response-cache.json"),
+      JSON.stringify({
+        at: Date.now(),
+        data: {
+          all: [
+            {
+              id: "anthropic",
+              name: "Anthropic (legacy cache)",
+              models: { "claude-opus-5": { name: "Claude Opus 5", variants: {} } },
+            },
+          ],
+          connected: ["anthropic"],
+          default: {},
+        },
+      }),
+    );
+
+    const providers = await listProviderModels();
+    expect(h.ocServer).toHaveBeenCalledTimes(1);
+    expect(providers.find((provider) => provider.id === "anthropic")?.name).toBe(
+      "Anthropic",
+    );
+  });
+
   it("falls back to network when disk cache is older than stale window", async () => {
     // Clear in-memory cache first (this also removes any disk cache).
     __clearProviderResponseCacheForTest();
@@ -372,7 +440,7 @@ describe("listProviderModels", () => {
       default: {},
     };
     const staleAge = 600_000; // 10 minutes
-    const diskEntry = { at: Date.now() - staleAge, data: staleData };
+    const diskEntry = { version: 2, at: Date.now() - staleAge, data: staleData };
     fs.writeFileSync(
       path.join(data, "provider-response-cache.json"),
       JSON.stringify(diskEntry),
@@ -528,7 +596,7 @@ describe("listProviderModels", () => {
 
     const providers = await listProviderModels();
     expect(providers.find((provider) => provider.id === "custom")?.models[0].variants)
-      .toMatchObject({ low: undefined, high: undefined });
+      .toEqual({ low: {}, high: {} });
   });
 
   it("handles malformed state file gracefully", async () => {
