@@ -119,8 +119,8 @@ export function formatCost(
 
 /**
  * Live cost-display prefs, kept in sync with Settings via
- * `COST_DISPLAY_EVENT` (fired by `writeCostDisplayPrefs`). Client-only:
- * returns `DEFAULT_COST_PREFS` during SSR/first paint.
+ * `COST_DISPLAY_EVENT` (same tab) and the native `storage` event (other tabs).
+ * Client-only: returns `DEFAULT_COST_PREFS` during SSR/first paint.
  *
  * When `rateMode` is `"auto"`, fetches the daily USD/JPY rate once on mount
  * and writes it back to prefs (failures are ignored).
@@ -136,7 +136,14 @@ export function useCostDisplayPrefs(): CostDisplayPrefs {
       const detail = (e as CustomEvent<CostDisplayPrefs>).detail;
       setPrefs(sanitizeCostDisplayPrefs(detail));
     };
+    // CustomEvent does not cross tabs; localStorage `storage` fills that gap.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY || event.key === null) {
+        setPrefs(readCostDisplayPrefs());
+      }
+    };
     window.addEventListener(COST_DISPLAY_EVENT, onPrefs);
+    window.addEventListener("storage", onStorage);
 
     const current = readCostDisplayPrefs();
     if (current.rateMode === "auto") {
@@ -170,6 +177,7 @@ export function useCostDisplayPrefs(): CostDisplayPrefs {
     return () => {
       cancelled = true;
       window.removeEventListener(COST_DISPLAY_EVENT, onPrefs);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
   return prefs;

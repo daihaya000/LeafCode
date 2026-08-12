@@ -231,6 +231,46 @@ describe("useCostDisplayPrefs", () => {
     expect(result.current).toEqual(DEFAULT_COST_PREFS);
   });
 
+  it("updates when another tab writes cost-display via storage event", () => {
+    const { result } = renderHook(() => useCostDisplayPrefs());
+    expect(result.current).toEqual(DEFAULT_COST_PREFS);
+
+    const next = {
+      currency: "USD" as const,
+      rateMode: "manual" as const,
+      usdJpyRate: 140,
+      showUsdSuffix: true,
+    };
+    act(() => {
+      // Simulate another tab: setItem alone does not fire `storage` here.
+      localStorage.setItem("webui:cost-display", JSON.stringify(next));
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "webui:cost-display",
+          newValue: JSON.stringify(next),
+        }),
+      );
+    });
+    expect(result.current).toEqual(next);
+  });
+
+  it("resets to defaults when another tab clears localStorage", () => {
+    writeCostDisplayPrefs({
+      currency: "USD",
+      rateMode: "manual",
+      usdJpyRate: 140,
+      showUsdSuffix: true,
+    });
+    const { result } = renderHook(() => useCostDisplayPrefs());
+    expect(result.current.currency).toBe("USD");
+
+    act(() => {
+      localStorage.clear();
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    });
+    expect(result.current).toEqual(DEFAULT_COST_PREFS);
+  });
+
   it("fetches daily rate when rateMode is auto and writes it back", async () => {
     writeCostDisplayPrefs({
       currency: "JPY",
