@@ -47,6 +47,7 @@ import {
   type SkillPermission,
 } from "@/lib/skill-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
+import { wasRecentlyReplied } from "@/lib/recently-replied";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
 import { useAttentionQueue } from "@/lib/useAttentionQueue";
 
@@ -291,6 +292,11 @@ export function GlobalAttentionProvider({
       const itemKey = attentionItemKey(item);
       if (autoReplyIdsRef.current.has(itemKey)) continue;
       if (autoReplyFailedIds.has(itemKey)) continue;
+      // TaskView / PermissionCard may already have answered the same id.
+      if (wasRecentlyReplied(item.request.id, item.request.sessionID)) {
+        remove(item.request.id, item.request.sessionID);
+        continue;
+      }
       const action = permissionAutoAction({
         permission: item.request.permission,
         subagent: subagentPermission,

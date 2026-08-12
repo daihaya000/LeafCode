@@ -222,6 +222,121 @@ describe("GlobalAttentionProvider", () => {
     }
   });
 
+  it("フルアクセス切替後、キュー内の残り権限を一度だけ自動処理する", async () => {
+    localStorage.setItem("webui:access-mode", "ask");
+    localStorage.setItem("webui:subagent-permission", "allow");
+    ocJsonMock.mockResolvedValue({});
+    try {
+      render(
+        <GlobalAttentionProvider activeScope={null}>
+          <TestConsumer onItems={() => undefined} />
+        </GlobalAttentionProvider>,
+      );
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "permission.asked",
+            directory: "/repo",
+            properties: {
+              id: "p_bash",
+              sessionID: "session-1",
+              permission: "bash",
+            },
+          }),
+        } as MessageEvent);
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "permission.asked",
+            directory: "/repo",
+            properties: {
+              id: "p_task",
+              sessionID: "session-1",
+              permission: "task",
+            },
+          }),
+        } as MessageEvent);
+      });
+      expect(ocJsonMock).not.toHaveBeenCalled();
+
+      act(() => {
+        localStorage.setItem("webui:subagent-permission", "deny");
+        window.dispatchEvent(
+          new CustomEvent("webui:subagent-permission", { detail: "deny" }),
+        );
+        localStorage.setItem("webui:access-mode", "full");
+        window.dispatchEvent(
+          new CustomEvent("webui:access-mode", { detail: "full" }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(ocJsonMock).toHaveBeenCalledWith(
+          expect.stringContaining("/permissions/p_bash"),
+          "/repo",
+          expect.objectContaining({ body: { response: "once" } }),
+        );
+        expect(ocJsonMock).toHaveBeenCalledWith(
+          expect.stringContaining("/permissions/p_task"),
+          "/repo",
+          expect.objectContaining({ body: { response: "reject" } }),
+        );
+      });
+      expect(
+        ocJsonMock.mock.calls.filter(([path]) =>
+          String(path).includes("/permissions/"),
+        ),
+      ).toHaveLength(2);
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+      localStorage.removeItem("webui:subagent-permission");
+    }
+  });
+
+  it("skips auto-reply when the request was already answered elsewhere", async () => {
+    const { rememberReplied } = await import("@/lib/recently-replied");
+    localStorage.setItem("webui:access-mode", "ask");
+    ocJsonMock.mockResolvedValue({});
+    let latest: AttentionItem[] = [];
+    try {
+      render(
+        <GlobalAttentionProvider activeScope={null}>
+          <TestConsumer onItems={(items) => (latest = items)} />
+        </GlobalAttentionProvider>,
+      );
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "permission.asked",
+            directory: "/repo",
+            properties: {
+              id: "p_done",
+              sessionID: "session-1",
+              permission: "bash",
+            },
+          }),
+        } as MessageEvent);
+      });
+      await waitFor(() =>
+        expect(latest.some((i) => i.request.id === "p_done")).toBe(true),
+      );
+
+      rememberReplied("p_done", "session-1");
+      act(() => {
+        localStorage.setItem("webui:access-mode", "full");
+        window.dispatchEvent(
+          new CustomEvent("webui:access-mode", { detail: "full" }),
+        );
+      });
+
+      await waitFor(() =>
+        expect(latest.some((i) => i.request.id === "p_done")).toBe(false),
+      );
+      expect(ocJsonMock).not.toHaveBeenCalled();
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
   it("restores child session v2 permissions into the global queue", async () => {
     getJsonMock.mockResolvedValue({
       tasks: [{ directory: "/repo", sessionId: "parent", title: "root task" }],

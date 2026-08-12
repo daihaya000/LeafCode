@@ -14,11 +14,6 @@ import { Button, cx } from "@/components/ui";
 import { ApiError, ocJson, sendJson } from "@/lib/client";
 import { replyPath, rejectPath, type AttentionItem } from "@/lib/attention";
 import { writeAccessMode } from "@/lib/access-mode";
-import {
-  permissionAutoAction,
-  readSubagentPermission,
-} from "@/lib/subagent-permission";
-import { readSkillPermission } from "@/lib/skill-permission";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { useGlobalAttention } from "./GlobalAttentionProvider";
 import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
@@ -156,22 +151,15 @@ export function AttentionQueueModal() {
     [respond],
   );
 
-  // R36#2: full-access へ切替時、キュー内の権限を自動処理。
-  // TaskView と同様、サブエージェント / スキル不許可の対象権限は reject を優先する。
-  // Home 上では TaskView の同期 effect が無いので、既知タスクへ直接 PATCH する。
-  const enableFullAccess = useCallback(async (exclude?: AttentionItem) => {
+  // R36#2: full-access 切替はモード永続化とエンジン PATCH のみ。
+  // 残りの権限カード自動応答は GlobalAttentionProvider の effect が担う。
+  // ここで ocJson すると GlobalAttention と二重 POST になる。
+  const enableFullAccess = useCallback(async () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
-    const excludedKey = exclude
-      ? `${exclude.request.id}\u0000${exclude.request.sessionID}`
-      : null;
-    let subagent: ReturnType<typeof readSubagentPermission>;
-    let skill: ReturnType<typeof readSkillPermission>;
     try {
       writeAccessMode("full");
-      subagent = readSubagentPermission();
-      skill = readSkillPermission();
     } catch {
       busyRef.current = false;
       if (mountedRef.current) setBusy(false);
@@ -198,39 +186,9 @@ export function AttentionQueueModal() {
         }),
       ),
     );
-    const permissionItems = items.filter(
-      (item) =>
-        item.kind === "permission" &&
-        `${item.request.id}\u0000${item.request.sessionID}` !== excludedKey,
-    );
-    for (const item of permissionItems) {
-      if (!mountedRef.current) break;
-      if (item.kind !== "permission") continue;
-      const action = permissionAutoAction({
-        permission: item.request.permission,
-        subagent,
-        skill,
-        fullAccess: true,
-      });
-      if (action === "manual") continue;
-      const reply = action === "reject" ? "reject" : "once";
-      try {
-        await ocJson(replyPath(item), item.directory, {
-          method: "POST",
-          body:
-            item.request.version === "v2"
-              ? { reply }
-              : { response: reply },
-          timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
-        });
-        if (mountedRef.current) remove(item.request.id, item.request.sessionID);
-      } catch {
-        // Ignore errors — individual failures will remain in queue for manual handling
-      }
-    }
     busyRef.current = false;
     if (mountedRef.current) setBusy(false);
-  }, [items, remove, tasks]);
+  }, [items, tasks]);
 
   const replyQuestion = useCallback(
     async (item: AttentionItem, answers: string[][]) => {
@@ -320,7 +278,7 @@ export function AttentionQueueModal() {
             <PermissionCard
               key={current.request.id}
               request={current.request}
-              onEnableFullAccess={() => enableFullAccess(current)}
+              onEnableFullAccess={() => void enableFullAccess()}
               onReply={async (req, response) =>
                 await replyPermission(
                   { kind: "permission", directory: current.directory, request: req },

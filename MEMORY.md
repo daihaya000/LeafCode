@@ -1,4 +1,33 @@
-﻿# 作業ログ: EXE起動でサーバーが立ち上がらない
+﻿# 作業ログ: /loop 1m バグハント — 権限カード二重応答
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: モーダルで「フルアクセス」を選ぶと、現在カードは PermissionCard が1回返信し、残りは GlobalAttention が1回だけ自動処理する
+- 実際: `AttentionQueueModal.enableFullAccess` が残り権限へ ocJson し、同時に GlobalAttention の full 切替 effect も同じ id へ POST → 二重応答
+
+## 根本原因
+- フルアクセス切替の自動返信オーナーがモーダルと GlobalAttention の二重定義
+- `AttentionQueueModal.tsx` の enableFullAccess 返信ループと `GlobalAttentionProvider.tsx` の auto-reply effect
+
+## 修正
+- enableFullAccess は `writeAccessMode` + `/api/access-mode` PATCH のみ（残りカードの ocJson を削除）
+- GlobalAttention auto-reply は `wasRecentlyReplied` なら POST せず queue から除去
+
+## 回帰防止
+- AttentionQueueModal: フルアクセス時に permissions ocJson は現在カード1回のみ
+- GlobalAttention: モード切替後の一括自動処理が各 id 1回 / 既返信スキップ
+
+## 検証
+- vitest AttentionQueueModal + GlobalAttentionProvider 29 PASS
+- eslint 対象 OK
+
+## 残存リスク
+- 権限 PATCH 極短窓、Host BUILD_ID 欠落時の初回ビルド待ち、画像送信の未再現不具合は未着手
+
+---
+# 作業ログ: EXE起動でサーバーが立ち上がらない
 
 ## 日付
 2026-08-12

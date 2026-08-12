@@ -319,7 +319,7 @@ describe("AttentionQueueModal", () => {
       fetchSpy.mockRestore();
     });
 
-    it("フルアクセス切替時、サブエージェント不許可なら残りの task 権限を reject する", async () => {
+    it("フルアクセス切替時、残りの権限返信は GlobalAttention に任せ二重 POST しない", async () => {
       localStorage.setItem("webui:subagent-permission", "deny");
       mockOcJson.mockResolvedValue({});
       attentionState.tasks = [
@@ -338,8 +338,8 @@ describe("AttentionQueueModal", () => {
           receivedAt: 2,
         },
       };
-      // current = bash (older); task は自動 reject 対象なのでモーダル非表示、
-      // enableFullAccess は raw items から残りの task を reject する。
+      // current = bash (older); task は自動 reject 対象なのでモーダル非表示。
+      // enableFullAccess はモード PATCH のみ行い、残カードの ocJson はしない。
       attentionState.items = [bashPerm, taskPerm];
       attentionState.actionableItems = [bashPerm];
       attentionState.open = true;
@@ -352,8 +352,7 @@ describe("AttentionQueueModal", () => {
         select.dispatchEvent(new Event("change", { bubbles: true }));
       });
 
-      // PermissionCard が現在の bash を once で承認したあと、
-      // enableFullAccess が残りの task を reject する。
+      // PermissionCard が現在の bash を once で承認するだけ。
       expect(mockOcJson).toHaveBeenCalledWith(
         expect.stringContaining("/permissions/p1"),
         "/repo",
@@ -361,13 +360,11 @@ describe("AttentionQueueModal", () => {
           body: { response: "once" },
         }),
       );
-      expect(mockOcJson).toHaveBeenCalledWith(
-        expect.stringContaining("/permissions/p_task"),
-        "/repo",
-        expect.objectContaining({
-          body: { response: "reject" },
-        }),
-      );
+      expect(
+        mockOcJson.mock.calls.filter(([path]) =>
+          String(path).includes("/permissions/"),
+        ),
+      ).toHaveLength(1);
       expect(mockSendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
         taskId: "task-1",
         sessionId: "ses_abc",
@@ -376,7 +373,7 @@ describe("AttentionQueueModal", () => {
       localStorage.removeItem("webui:subagent-permission");
     });
 
-    it("フルアクセス切替時、スキル不許可なら残りの skill 権限を reject する", async () => {
+    it("フルアクセス切替時、スキル権限もモーダルからは追加返信しない", async () => {
       localStorage.setItem("webui:skill-permission", "deny");
       mockOcJson.mockResolvedValue({});
       attentionState.tasks = [
@@ -416,16 +413,14 @@ describe("AttentionQueueModal", () => {
       );
       expect(
         mockOcJson.mock.calls.filter(
-          ([path]) => String(path).includes("/permissions/p1"),
+          ([path]) => String(path).includes("/permissions/"),
         ),
       ).toHaveLength(1);
-      expect(mockOcJson).toHaveBeenCalledWith(
-        expect.stringContaining("/permissions/p_skill"),
-        "/repo",
-        expect.objectContaining({
-          body: { response: "reject" },
-        }),
-      );
+      expect(mockSendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+        taskId: "task-1",
+        sessionId: "ses_abc",
+        mode: "full",
+      });
       localStorage.removeItem("webui:skill-permission");
     });
 
