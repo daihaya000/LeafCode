@@ -1,3 +1,8 @@
+# Default: normalize text files to LF in the repo. Without this, on Windows
+# core.autocrlf=true makes git report CRLF working copies of LF blobs as
+# modified (size-only phantom modifications) even when the diff is empty.
+* text=auto
+
 # cmd.exe needs CRLF: with LF-only line endings labels and goto break.
 # Batch files must also stay ASCII-only (see docs/specs/bat-encoding-safety.md).
 *.bat text eol=crlf
