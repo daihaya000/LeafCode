@@ -118,7 +118,7 @@ function AgentGroupTable({
       </h2>
 
       {/* Desktop: table */}
-      <div className="hidden overflow-hidden rounded-xl border border-border bg-surface sm:block">
+      <div className="hidden overflow-hidden rounded-xl border border-border bg-surface md:block">
         <table className="w-full table-fixed text-left text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted">
@@ -203,7 +203,7 @@ function AgentGroupTable({
       </div>
 
       {/* Mobile: row cards */}
-      <ul className="space-y-2 sm:hidden">
+      <ul className="space-y-3 md:hidden">
         {group.agents.map((agent) => {
           const row = agent as AgentRowModel;
           const busy = busyName === row.name;
@@ -213,44 +213,37 @@ function AgentGroupTable({
               aria-busy={busy || undefined}
               className="rounded-xl border border-border bg-surface px-4 py-3"
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-text">
                   {row.displayName}
                 </span>
-                <Badge tone={modeTone(row.mode)}>{row.mode}</Badge>
+                <AgentSwitch
+                  name={row.name}
+                  enabled={row.enabled}
+                  busy={busyName !== null || busyProvider !== null}
+                  onToggle={() => onToggle(row, !row.enabled)}
+                />
               </div>
-              {row.role && (
-                <p className="mt-1 truncate font-mono text-xs text-muted">
-                  {row.name}
-                </p>
-              )}
-              <p className="mt-1 text-xs">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <Badge tone={modeTone(row.mode)}>{row.mode}</Badge>
+                <Badge tone={enabledTone(row.enabled)}>
+                  {row.enabled ? "有効" : "無効"}
+                </Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted">
                 <ModelLabel agent={row} />
               </p>
-              <div className="mt-2">
+              <div className="mt-1.5">
                 <SourceInfo agent={row} />
               </div>
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Badge tone={enabledTone(row.enabled)}>
-                    {row.enabled ? "有効" : "無効"}
-                  </Badge>
-                  {actionError && busy && (
-                    <span className="text-xs text-danger">{actionError}</span>
-                  )}
-                </div>
-                {row.toggleable && (
-                  <AgentSwitch
-                    name={row.name}
-                    enabled={row.enabled}
-                    busy={busyName !== null || busyProvider !== null}
-                    onToggle={() => onToggle(row, !row.enabled)}
-                  />
-                )}
-              </div>
               {row.description && (
-                <p className="mt-1 line-clamp-2 text-xs text-muted">
+                <p className="mt-2 line-clamp-2 text-xs text-muted">
                   {row.description}
+                </p>
+              )}
+              {actionError && busy && (
+                <p role="alert" className="mt-1 text-xs text-danger">
+                  {actionError}
                 </p>
               )}
             </li>
@@ -578,7 +571,7 @@ export function AgentsSettings() {
           >
             提供元ごとの一括操作
           </h2>
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className="grid gap-2 md:grid-cols-2">
             {providerGroups.map((group) => (
               <li
                 key={group.providerID}
@@ -609,7 +602,7 @@ export function AgentsSettings() {
         </section>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-muted">{agents.length} 件のエージェント</p>
         <input
           type="search"
@@ -617,7 +610,7 @@ export function AgentsSettings() {
           onChange={(e) => setQuery(e.target.value)}
           aria-label="エージェントを検索"
           placeholder="名前・役割・提供元・モデル・説明・Mode・状態で検索"
-          className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary sm:max-w-xs"
+          className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm outline-none focus:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary md:max-w-xs"
         />
       </div>
 
