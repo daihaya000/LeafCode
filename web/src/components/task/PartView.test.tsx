@@ -234,6 +234,35 @@ describe("PartView memory injection hiding", () => {
   });
 });
 
+describe("PartView goal-loop JSON stripping", () => {
+  const GOAL_BLOCK =
+    'Some work done.\n\n```json\n{"status":"progress","summary":"did things","next":"more"}\n```';
+
+  it("keeps a trailing goal-result JSON block when stripGoalLoopJson is not set", () => {
+    const part: Part = {
+      id: "p-noloop",
+      messageID: "m-noloop",
+      type: "text",
+      text: GOAL_BLOCK,
+    };
+    render(<PartView part={part} role="assistant" />);
+    expect(screen.getByText(/Some work done/)).toBeTruthy();
+    expect(screen.getByText(/did things/)).toBeTruthy();
+  });
+
+  it("strips the trailing goal-result JSON block only when stripGoalLoopJson is true", () => {
+    const part: Part = {
+      id: "p-loop",
+      messageID: "m-loop",
+      type: "text",
+      text: GOAL_BLOCK,
+    };
+    render(<PartView part={part} role="assistant" stripGoalLoopJson />);
+    expect(screen.getByText(/Some work done/)).toBeTruthy();
+    expect(screen.queryByText(/did things/)).toBeNull();
+  });
+});
+
 describe("PartView long-running tool display", () => {
   it("warns when a shell tool has run for the configured five-minute threshold", () => {
     vi.useFakeTimers();

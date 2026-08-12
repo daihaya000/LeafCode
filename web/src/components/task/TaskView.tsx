@@ -4739,6 +4739,7 @@ export function TaskView({
                         markHangBusy={stream.aborting}
                         skillOverviews={skillOverviewMap}
                         agentOverviews={agentOverviewMap}
+                        stripGoalLoopJson={goalLoop !== null}
                       />
                     ))}
                     {planPaths.get(m.info.id) && (

@@ -574,6 +574,7 @@ export const PartView = memo(function PartView({
   markHangBusy,
   skillOverviews,
   agentOverviews,
+  stripGoalLoopJson,
 }: {
   part: Part;
   role: "user" | "assistant";
@@ -589,6 +590,12 @@ export const PartView = memo(function PartView({
   skillOverviews?: ReadonlyMap<string, string>;
   /** Lowercased agent name → overview, for blue highlight + hover title. */
   agentOverviews?: ReadonlyMap<string, string>;
+  /**
+   * Only strip the goal-loop trailing JSON block when the session actually
+   * runs a goal loop. A plain chat turn ending in a ```json block with a
+   * status field must stay visible (BU-5).
+   */
+  stripGoalLoopJson?: boolean;
 }) {
   switch (part.type) {
     case "text": {
@@ -596,7 +603,10 @@ export const PartView = memo(function PartView({
       // The goal loop asks the model to emit a trailing ```json result block;
       // it is internal bookkeeping, not chat content. Only strips a trailing
       // block whose parsed object looks like a goal result.
-      const text = role === "assistant" ? stripGoalLoopJsonBlock(raw) : raw;
+      const text =
+        role === "assistant" && stripGoalLoopJson
+          ? stripGoalLoopJsonBlock(raw)
+          : raw;
       // The first goal-loop user message carries a `<workspace-memory>` prefix
       // block that is internal context, not chat content. Hide it at render.
       const shown = role === "user" ? stripMemoryInjectionBlock(text) : text;
