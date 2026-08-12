@@ -1,6 +1,6 @@
-import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
-import { ocServer } from "./oc-server";
+import { OcError, ocServer } from "./oc-server";
 import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "./opencode-paths";
+import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
 
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
 
@@ -101,59 +101,9 @@ async function loadToolDisableMap(
   return tools;
 }
 
-type ProviderModelCapabilities = {
-  toolcall?: boolean;
-};
-type ProviderResponse = {
-  all?: {
-    id?: string;
-    models?: Record<string, ProviderModelCapabilities>;
-  }[];
-  connected?: string[];
-};
-
-let toolcallCache:
-  | { at: number; directory: string | null; providerID: string; modelID: string; supported: boolean }
-  | null = null;
-const TOOLCALL_CACHE_TTL_MS = 5 * 60_000;
-
-async function modelSupportsToolcall(
-  directory: string | null,
-  providerID: string,
-  modelID: string,
-): Promise<boolean> {
-  const now = Date.now();
-  if (
-    toolcallCache &&
-    toolcallCache.directory === directory &&
-    toolcallCache.providerID === providerID &&
-    toolcallCache.modelID === modelID &&
-    now - toolcallCache.at < TOOLCALL_CACHE_TTL_MS
-  ) {
-    return toolcallCache.supported;
-  }
-  try {
-    const providers = await ocServer<ProviderResponse>(directory, "/provider");
-    const connected = providers.connected;
-    if (connected && !connected.includes(providerID)) {
-      toolcallCache = { at: now, directory, providerID, modelID, supported: false };
-      return false;
-    }
-    const caps = providers.all
-      ?.find((p) => p.id === providerID)
-      ?.models?.[modelID];
-    const supported = caps?.toolcall === true;
-    toolcallCache = { at: now, directory, providerID, modelID, supported };
-    return supported;
-  } catch {
-    return false;
-  }
-}
-
-/** Test helper — drops the process-local tool-id and toolcall caches. */
+/** Test helper — drops the process-local tool-id cache. */
 export function __resetQwenNativeVisionCachesForTest(): void {
   toolDisableCache = null;
-  toolcallCache = null;
 }
 
 export async function analyzeNativeImages(
@@ -182,6 +132,10 @@ export async function analyzeNativeImages(
   );
 }
 
+function isToolsRejectedError(error: unknown): boolean {
+  return error instanceof OcError && error.status === 400;
+}
+
 async function analyzeWithOpenCode(
   prompt: string,
   images: readonly NativeVisionImage[],
@@ -199,19 +153,17 @@ async function analyzeWithOpenCode(
   };
   let sessionId: string | undefined;
   try {
-    // Session create, tool-id lookup, and toolcall capability check are
-    // independent; run them together so setup overhead is not stacked on
-    // every image send.
-    const [session, tools, supportsTools] = await Promise.all([
+    // Session create and tool-id lookup are independent; run together so setup
+    // overhead is not stacked on every image send.
+    const [session, tools] = await Promise.all([
       ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
         method: "POST",
         body: { title: "image-analysis" },
       }),
       loadToolDisableMap(directory),
-      modelSupportsToolcall(directory, model.providerID, model.modelID),
     ]);
     sessionId = session.id;
-    const body: Record<string, unknown> = {
+    const baseBody: Record<string, unknown> = {
       model,
       // OpenCode engine forwards image parts to the model only when an agent
       // is explicitly named. Without this, the engine silently strips file
@@ -228,20 +180,36 @@ async function analyzeWithOpenCode(
         })),
       ],
     };
-    // Tools are disabled so the analysis session cannot touch the workspace.
-    // However, some vision models (e.g. Ollama qwen2.5vl) reject the `tools`
-    // parameter entirely — even an empty object — with a 400 error. Only send
-    // `tools` when the model declares tool-call support.
-    if (supportsTools) body.tools = tools;
-    const response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
-      directory,
-      sessionMessagePath(sessionId),
-      {
-        method: "POST",
-        timeoutMs,
-        body,
-      },
-    );
+    // Always disable tools first. The analysis session is created in the
+    // user's workspace with agent "build"; omitting `tools` used to leave
+    // OpenCode's default {"*":"allow"} in place when /provider failed or
+    // toolcall was undeclared — a vision model that still accepts tools
+    // could then edit/bash without approval. Some Ollama VL models reject
+    // the tools parameter with 400; retry once without it in that case.
+    const bodyWithTools = { ...baseBody, tools };
+    let response: { parts?: { type?: string; text?: string }[] };
+    try {
+      response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
+        directory,
+        sessionMessagePath(sessionId),
+        {
+          method: "POST",
+          timeoutMs,
+          body: bodyWithTools,
+        },
+      );
+    } catch (error) {
+      if (!isToolsRejectedError(error)) throw error;
+      response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
+        directory,
+        sessionMessagePath(sessionId),
+        {
+          method: "POST",
+          timeoutMs,
+          body: baseBody,
+        },
+      );
+    }
     const text = (response.parts ?? [])
       .filter((part) => part.type === "text" && typeof part.text === "string")
       .map((part) => part.text!.trim())

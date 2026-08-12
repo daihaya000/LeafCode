@@ -1,4 +1,4 @@
-# 作業ログ: /loop 1m バグハント tick — Goal Loop 画像のみ開始の後段失敗
+﻿# 作業ログ: /loop 1m バグハント tick — Goal Loop 画像のみ開始の後段失敗
 
 ## 日付
 2026-08-12
@@ -143,6 +143,31 @@
 ## 残存リスク
 - 権限 PATCH 極短窓（session.created〜PATCH）、Host BUILD_ID 欠落時の初回ビルド待ち、画像送信の未再現不具合は未着手
 - Dialog の `onSwitch={() => void onSwitch()}` は親 refresh 完了を待たない（今回対象外）
+
+---
+# 作業ログ: /loop 1m バグハント — 画像事前解析の tools 無効化 fail-open
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 画像事前解析の一時セッションは常に tools 無効（作業ツリーを触れない）
+- 実際: `/provider` 失敗や toolcall 未申告で `supportsTools=false` となり tools を省略 → 既定 allow のまま build エージェントが動き得た
+
+## 根本原因
+- `qwen-native-vision.ts` が toolcall 能力に依存して tools 無効化を省略（fail-open）
+
+## 修正
+- 常に tools disable を先に送る。400 のときだけ tools なしで1回リトライ
+
+## 回帰防止
+- disables tools by default / retries without tools on 400
+
+## 検証
+- vitest qwen-native-vision 10 PASS / eslint OK
+
+## その他
+- /loop シェルが exit 4294967295 で停止したため再起動済み
 
 ---
 # 作業ログ: /loop 1m バグハント — ensure 未適用でも pending を消さない
