@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   compactedMessageResponse: null as MessageWithParts[] | null,
   compactFailureError: null as (Error & { status?: number }) | null,
   compactionMarks: [] as { workspaceId: string; sessionId: string }[],
+  autoExtractCalls: [] as { loopId: string; assistantMessageId?: string }[],
 }));
 
 vi.mock("./oc-server", () => ({
@@ -83,6 +84,16 @@ vi.mock("./oc-server", () => ({
     if (path.endsWith("/abort")) return {};
     return {};
   }),
+}));
+
+vi.mock("./goal-memory-hook", () => ({
+  isAutoExtractEnabled: () => true,
+  scheduleAutoExtractAfterGoalCompleted: (
+    loop: { id: string },
+    assistantMessageId?: string,
+  ) => {
+    h.autoExtractCalls.push({ loopId: loop.id, assistantMessageId });
+  },
 }));
 
 vi.mock("./collaboration-context", () => ({
@@ -313,6 +324,7 @@ beforeEach(() => {
   h.compactedMessageResponse = null;
   h.compactFailureError = null;
   h.compactionMarks.length = 0;
+  h.autoExtractCalls.length = 0;
 });
 
 afterEach(() => {
@@ -556,6 +568,83 @@ describe("goal loop verification turn", () => {
     expect(loop.progress.at(-1)?.status).toBe("progress");
     expect(loop.progress.at(-1)?.summary).toBe("done early");
     expect(loop.turnCount).toBe(1);
+  });
+
+  it("extracts memory when a full-run loop reaches its turn limit", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    const created = await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 1,
+      forceFullRun: true,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    expect(h.autoExtractCalls).toEqual([]);
+
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "progress", summary: "worked", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    const loop = getGoalLoop("ws-1")!;
+    expect(loop.status).toBe("paused");
+    expect(loop.pauseReason).toBe("turn_limit");
+    // 完走モードは `completed` に到達しないため、ここで回収しないと全ターンが
+    // 一度も抽出されない。
+    expect(h.autoExtractCalls).toEqual([
+      { loopId: created.id, assistantMessageId: "loop-reply" },
+    ]);
+  });
+
+  it("does not extract when a normal-mode loop merely runs out of turns", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 1,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", { status: "progress", summary: "worked", evidence: "ok" }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    expect(getGoalLoop("ws-1")?.pauseReason).toBe("turn_limit");
+    expect(h.autoExtractCalls).toEqual([]);
+  });
+
+  it("does not extract when a full-run loop ends blocked", async () => {
+    setupWorkspace("ws-1", "sess-1");
+    await createGoalLoop({
+      workspaceId: "ws-1",
+      sessionId: "sess-1",
+      goal: "test",
+      maxTurns: 1,
+      forceFullRun: true,
+    });
+
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+    h.messageResponse = [
+      msg("m0", "assistant"),
+      msg("loop-prompt", "user"),
+      msg("loop-reply", "assistant", {
+        status: "blocked",
+        summary: "stuck",
+        blockedReason: "needs credentials",
+      }),
+    ];
+    await goalLoopTestSeams.processLoop(getGoalLoop("ws-1")!);
+
+    expect(getGoalLoop("ws-1")?.status).toBe("blocked");
+    expect(h.autoExtractCalls).toEqual([]);
   });
 
   it("force full-run defaults OFF so normal completion verification still works", async () => {

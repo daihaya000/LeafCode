@@ -1361,7 +1361,12 @@ function applyAssistantResult(
 
   // The loop is genuinely `completed` now. Trigger background memory
   // extraction (fire-and-forget) so durable facts are captured for reuse.
-  if (nextStatus === "completed") {
+  //
+  // 完走モードは完了宣言を使わないので `completed` に到達しない。予定した
+  // ターン数を走り切った時点が通常モードの完了に相当するため、そこで同じ
+  // 抽出を回す。これがないと完走ループの全ターンが一度も回収されない
+  // （ループ稼働中は通常の assistant-completed 抽出も抑止されるため）。
+  if (nextStatus === "completed" || (reachedTurnLimit && loop.forceFullRun)) {
     scheduleAutoExtractAfterGoalCompleted(loop, assistant.info.id);
   }
 }
