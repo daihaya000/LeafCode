@@ -105,6 +105,18 @@ function mockFetch(hostOk: boolean) {
       if (url.includes("/api/host/restart")) {
         return new Response(JSON.stringify({ ok: true }), { status: 202 });
       }
+      if (url.includes("/api/host/browser-bridge/approvals")) {
+        return new Response(
+          JSON.stringify({ approvals: [], available: true }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/host/browser-bridge/pairing")) {
+        return new Response(
+          JSON.stringify({ requests: [], available: true }),
+          { status: 200 },
+        );
+      }
       if (url.includes("/api/host")) {
         return new Response(JSON.stringify({ ok: hostOk }), { status: 200 });
       }
@@ -148,7 +160,7 @@ afterEach(() => {
 });
 
 describe("ExtensionsSettings", () => {
-  it.each(["skills", "mcp"] as const)(
+  it.each(["skills", "plugins"] as const)(
     "does not show Browser Bridge approvals on the %s tab",
     async (activeSection) => {
       render(<ExtensionsSettings activeSection={activeSection} />);
@@ -158,6 +170,14 @@ describe("ExtensionsSettings", () => {
       });
     },
   );
+
+  it("shows Browser Bridge approvals on the mcp tab", async () => {
+    render(<ExtensionsSettings activeSection="mcp" />);
+
+    expect(
+      await screen.findByRole("region", { name: "Browser Bridge 承認" }),
+    ).toBeTruthy();
+  });
 
   it("lists skills with accessible switches", async () => {
     render(<ExtensionsSettings activeSection="skills" />);

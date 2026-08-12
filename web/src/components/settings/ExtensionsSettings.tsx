@@ -723,9 +723,12 @@ export function ExtensionsSettings({
         </div>
       )}
 
-      <BrowserBridgeSettings />
-
-      {activeSection === "plugins" && <BrowserBridgeApprovals />}
+      {activeSection === "mcp" && (
+        <>
+          <BrowserBridgeSettings />
+          <BrowserBridgeApprovals />
+        </>
+      )}
 
       {activeSection === "skills" && (
         <SectionShell
