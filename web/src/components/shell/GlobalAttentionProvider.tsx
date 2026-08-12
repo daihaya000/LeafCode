@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiUrl, getJson, ocJson } from "@/lib/client";
+import { apiUrl, getJson, ocJson, sendJson } from "@/lib/client";
 import {
   isSseConnectStalled,
   isSseSilent,
@@ -19,6 +19,7 @@ import {
 import { notifyAttentionCountChanged } from "@/lib/events";
 import {
   parseGlobalEvent,
+  parseGlobalSessionCreated,
   isResolvedEvent,
   normalizeOcList,
   replyPath,
@@ -46,6 +47,7 @@ import {
   SKILL_PERMISSION_STORAGE_KEY,
   type SkillPermission,
 } from "@/lib/skill-permission";
+import { shouldSyncAccessCeilingForSessionCreated } from "@/lib/opencode-access-mode";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { wasRecentlyReplied } from "@/lib/recently-replied";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
@@ -191,6 +193,10 @@ export function GlobalAttentionProvider({
 }) {
   const { items, add, remove, reconcileDirectory, resolveSessionTitle, setTasks, tasks } =
     useAttentionQueue(activeScope);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  /** Per root session: descendant ids seen via global session.created. */
+  const knownDescendantsByRootRef = useRef(new Map<string, Set<string>>());
   const [open, setOpenState] = useState(false);
   const openRef = useRef(open);
   openRef.current = open;
@@ -577,6 +583,42 @@ export function GlobalAttentionProvider({
         const resolved = isResolvedEvent(ev.data);
         if (resolved) {
           remove(resolved.requestId, resolved.sessionID);
+          return;
+        }
+        // TaskView is the usual owner of session.created → ensureSessionIds, but
+        // it unmounts on Home / other tasks. Without this, background subagents
+        // keep OpenCode's default edit:allow while the UI still says 確認する.
+        const created = parseGlobalSessionCreated(ev.data);
+        if (created) {
+          const mode = readAccessMode();
+          for (const task of tasksRef.current) {
+            if (task.executionMode === "workflow") continue;
+            if (!task.id || !task.sessionId || task.directory !== created.directory) {
+              continue;
+            }
+            const rootKey = `${task.directory}\u0000${task.sessionId}`;
+            let known = knownDescendantsByRootRef.current.get(rootKey);
+            if (!known) {
+              known = new Set();
+              knownDescendantsByRootRef.current.set(rootKey, known);
+            }
+            const decision = shouldSyncAccessCeilingForSessionCreated({
+              rootSessionId: task.sessionId,
+              parentID: created.parentID,
+              sessionID: created.sessionID,
+              knownDescendants: known,
+            });
+            if (!decision.track) continue;
+            known.add(decision.sessionID);
+            void sendJson("POST", "/api/access-mode", {
+              taskId: task.id,
+              sessionId: task.sessionId,
+              mode,
+              ensureSessionIds: [decision.sessionID],
+            }).catch(() => {
+              /* non-fatal — next sync / TaskView remount can retry */
+            });
+          }
           return;
         }
         const item = parseGlobalEvent(ev.data);

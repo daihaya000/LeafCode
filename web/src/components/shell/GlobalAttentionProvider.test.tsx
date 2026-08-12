@@ -3,15 +3,17 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { GlobalAttentionProvider, useGlobalAttention } from "./GlobalAttentionProvider";
 import type { AttentionItem } from "@/lib/attention";
 
-const { getJsonMock, ocJsonMock } = vi.hoisted(() => ({
+const { getJsonMock, ocJsonMock, sendJsonMock } = vi.hoisted(() => ({
   getJsonMock: vi.fn(),
   ocJsonMock: vi.fn(),
+  sendJsonMock: vi.fn(),
 }));
 
 vi.mock("@/lib/client", () => ({
   apiUrl: (p: string) => p,
   getJson: getJsonMock,
   ocJson: ocJsonMock,
+  sendJson: sendJsonMock,
 }));
 
 const TestConsumer = ({ onItems }: { onItems: (items: AttentionItem[]) => void }) => {
@@ -82,8 +84,10 @@ describe("GlobalAttentionProvider", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     getJsonMock.mockReset();
     ocJsonMock.mockReset();
+    sendJsonMock.mockReset();
     getJsonMock.mockResolvedValue({ tasks: [] });
     ocJsonMock.mockResolvedValue([]);
+    sendJsonMock.mockResolvedValue({});
   });
   afterEach(() => {
     cleanup();
@@ -220,6 +224,155 @@ describe("GlobalAttentionProvider", () => {
     } finally {
       localStorage.removeItem("webui:access-mode");
     }
+  });
+
+  it("PATCHes edit ceiling for session.created under a known task without TaskView", async () => {
+    localStorage.setItem("webui:access-mode", "ask");
+    getJsonMock.mockResolvedValue({
+      tasks: [
+        {
+          id: "task-1",
+          directory: "/repo",
+          sessionId: "parent",
+          title: "background task",
+        },
+      ],
+    });
+    try {
+      render(
+        <GlobalAttentionProvider activeScope={null}>
+          <TestConsumer onItems={() => undefined} />
+        </GlobalAttentionProvider>,
+      );
+      openConnection();
+      await waitFor(() => expect(getJsonMock).toHaveBeenCalled());
+
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "session.created",
+            directory: "/repo",
+            properties: {
+              info: { id: "child-1", parentID: "parent" },
+            },
+          }),
+        } as MessageEvent);
+      });
+
+      await waitFor(() =>
+        expect(sendJsonMock).toHaveBeenCalledWith("POST", "/api/access-mode", {
+          taskId: "task-1",
+          sessionId: "parent",
+          mode: "ask",
+          ensureSessionIds: ["child-1"],
+        }),
+      );
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
+  it("PATCHes nested grandchild session.created after tracking the child", async () => {
+    localStorage.setItem("webui:access-mode", "ask");
+    getJsonMock.mockResolvedValue({
+      tasks: [
+        {
+          id: "task-1",
+          directory: "/repo",
+          sessionId: "parent",
+          title: "background task",
+        },
+      ],
+    });
+    try {
+      render(
+        <GlobalAttentionProvider activeScope={null}>
+          <TestConsumer onItems={() => undefined} />
+        </GlobalAttentionProvider>,
+      );
+      openConnection();
+      await waitFor(() => expect(getJsonMock).toHaveBeenCalled());
+
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "session.created",
+            directory: "/repo",
+            properties: {
+              info: { id: "child-1", parentID: "parent" },
+            },
+          }),
+        } as MessageEvent);
+      });
+      await waitFor(() =>
+        expect(sendJsonMock).toHaveBeenCalledWith(
+          "POST",
+          "/api/access-mode",
+          expect.objectContaining({ ensureSessionIds: ["child-1"] }),
+        ),
+      );
+      sendJsonMock.mockClear();
+
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "session.created",
+            directory: "/repo",
+            properties: {
+              info: { id: "grand-1", parentID: "child-1" },
+            },
+          }),
+        } as MessageEvent);
+      });
+
+      await waitFor(() =>
+        expect(sendJsonMock).toHaveBeenCalledWith("POST", "/api/access-mode", {
+          taskId: "task-1",
+          sessionId: "parent",
+          mode: "ask",
+          ensureSessionIds: ["grand-1"],
+        }),
+      );
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
+  it("ignores session.created that is not under a known task root", async () => {
+    getJsonMock.mockResolvedValue({
+      tasks: [
+        {
+          id: "task-1",
+          directory: "/repo",
+          sessionId: "parent",
+          title: "background task",
+        },
+      ],
+    });
+    render(
+      <GlobalAttentionProvider activeScope={null}>
+        <TestConsumer onItems={() => undefined} />
+      </GlobalAttentionProvider>,
+    );
+    openConnection();
+    await waitFor(() => expect(getJsonMock).toHaveBeenCalled());
+
+    act(() => {
+      FakeEventSource.latest?.onmessage?.({
+        data: JSON.stringify({
+          type: "session.created",
+          directory: "/repo",
+          properties: {
+            info: { id: "orphan", parentID: "someone-else" },
+          },
+        }),
+      } as MessageEvent);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sendJsonMock).not.toHaveBeenCalled();
   });
 
   it("フルアクセス切替後、キュー内の残り権限を一度だけ自動処理する", async () => {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseGlobalEvent, isResolvedEvent, normalizeOcList } from "./attention";
+import {
+  parseGlobalEvent,
+  parseGlobalSessionCreated,
+  isResolvedEvent,
+  normalizeOcList,
+} from "./attention";
 import type { PermissionRequest, QuestionRequest } from "./types";
 
 describe("normalizeOcList", () => {
@@ -140,5 +145,45 @@ describe("isResolvedEvent", () => {
   it("returns null for asked", () => {
     expect(isResolvedEvent(JSON.stringify({ type: "permission.asked", properties: { id: "p1" } })))
       .toBeNull();
+  });
+});
+
+describe("parseGlobalSessionCreated", () => {
+  it("parses info.id and info.parentID", () => {
+    expect(
+      parseGlobalSessionCreated(
+        JSON.stringify({
+          type: "session.created",
+          directory: "/repo",
+          properties: { info: { id: "child", parentID: "parent" } },
+        }),
+      ),
+    ).toEqual({ directory: "/repo", sessionID: "child", parentID: "parent" });
+  });
+
+  it("parses nested payload envelopes", () => {
+    expect(
+      parseGlobalSessionCreated(
+        JSON.stringify({
+          directory: "/repo",
+          payload: {
+            type: "session.created",
+            properties: { info: { id: "c2", parentID: "p2" } },
+          },
+        }),
+      ),
+    ).toEqual({ directory: "/repo", sessionID: "c2", parentID: "p2" });
+  });
+
+  it("returns null without parentID", () => {
+    expect(
+      parseGlobalSessionCreated(
+        JSON.stringify({
+          type: "session.created",
+          directory: "/repo",
+          properties: { info: { id: "child" } },
+        }),
+      ),
+    ).toBeNull();
   });
 });

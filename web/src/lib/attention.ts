@@ -65,6 +65,43 @@ function normalizeEnvelope(envelope: GlobalEventEnvelope): {
   };
 }
 
+/** Descendant session revealed by global `session.created` (edit-ceiling sync). */
+export type GlobalSessionCreated = {
+  directory: string;
+  sessionID: string;
+  parentID: string;
+};
+
+/**
+ * Parse a global SSE `session.created` payload for access-ceiling sync.
+ * Returns null for unrelated events or incomplete parent/child ids.
+ */
+export function parseGlobalSessionCreated(raw: string): GlobalSessionCreated | null {
+  let envelope: GlobalEventEnvelope;
+  try {
+    envelope = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const { type, directory, props } = normalizeEnvelope(envelope);
+  if (type !== "session.created" || !directory) return null;
+  const info = props.info as { id?: unknown; parentID?: unknown } | undefined;
+  const sessionID =
+    typeof info?.id === "string"
+      ? info.id.trim()
+      : typeof props.sessionID === "string"
+        ? props.sessionID.trim()
+        : "";
+  const parentID =
+    typeof info?.parentID === "string"
+      ? info.parentID.trim()
+      : typeof props.parentID === "string"
+        ? props.parentID.trim()
+        : "";
+  if (!sessionID || !parentID || sessionID.length > 256) return null;
+  return { directory, sessionID, parentID };
+}
+
 export function parseGlobalEvent(raw: string): AttentionItem | null {
   let envelope: GlobalEventEnvelope;
   try {
