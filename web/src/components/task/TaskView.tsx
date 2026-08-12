@@ -590,6 +590,7 @@ export function TaskView({
     taskRef.current = cached;
     setTask(cached);
     setViewTab("chat");
+    wasSplitActiveRef.current = false;
     setWorkflowFocusNode(null);
     setLoadError(null);
     return () => {
@@ -609,6 +610,7 @@ export function TaskView({
   }, [taskId]);
   const [tab, setTab] = useState<ChatTab>("chat");
   const [viewTab, setViewTab] = useState<"chat" | "workflow" | "diff">("chat");
+  const wasSplitActiveRef = useRef(false);
   const [workflowFocusNode, setWorkflowFocusNode] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(true);
   const [sidePanel, setSidePanel] = useState<SidePanelKind>("graph");
@@ -1436,8 +1438,11 @@ export function TaskView({
   // A split pane is too narrow for the full side-panel layout. Always show
   // the conversation when a task enters split view, including workflow tasks.
   useEffect(() => {
-    if (!splitActive || (tab === "chat" && viewTab === "chat")) return;
-    changeTab("chat");
+    const enteredSplitView = splitActive && !wasSplitActiveRef.current;
+    wasSplitActiveRef.current = splitActive;
+    if (enteredSplitView && (tab !== "chat" || viewTab !== "chat")) {
+      changeTab("chat");
+    }
   }, [splitActive, tab, viewTab, changeTab]);
 
   useEffect(() => {

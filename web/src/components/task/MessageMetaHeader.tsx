@@ -12,7 +12,7 @@ import { ProviderIcon } from "./ProviderIcon";
 
 type MetaInfo = Pick<
   MessageInfo,
-  "providerID" | "modelID" | "cost" | "time" | "tokens"
+  "providerID" | "modelID" | "agent" | "cost" | "time" | "tokens"
 >;
 
 function thinkingDuration(info: MetaInfo): number | null {
@@ -38,6 +38,7 @@ export function MessageMetaHeader({
 }) {
   const model = modelLabel?.trim() || info.modelID?.trim() || "";
   const effortLabel = effort?.trim() || "";
+  const agentLabel = info.agent?.trim() || "";
   const reportedCost =
     typeof info.cost === "number" && info.cost > 0 ? info.cost : null;
   const estimatedCost = reportedCost === null
@@ -58,6 +59,7 @@ export function MessageMetaHeader({
   const fields = [
     model ? { key: "model", text: model } : null,
     effortLabel ? { key: "effort", text: effortLabel } : null,
+    agentLabel ? { key: "agent", text: agentLabel } : null,
     time ? { key: "time", text: time } : null,
     cost ? { key: "cost", text: cost } : null,
     tokens > 0 ? { key: "tokens", text: `${formatTokens(tokens).replace("k", "K")}tk` } : null,

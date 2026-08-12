@@ -405,6 +405,24 @@ describe("TaskView", () => {
     expect(localStorage.getItem("webui:side-tab")).toBe("chat");
   });
 
+  it("allows switching away from conversation after entering split view", async () => {
+    taskStatus = "idle";
+    const streamMock = useSessionStream();
+    useSessionStream.mockReturnValue({ ...streamMock, status: { type: "idle" } });
+    const view = render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    taskSplitState.activeTaskId = "ws1";
+    taskSplitState.splitActive = true;
+    view.rerender(<TaskView taskId="ws1" />);
+
+    const filesTab = await screen.findByRole("button", { name: "ファイル" });
+    fireEvent.click(filesTab);
+
+    expect(filesTab.className).toContain("border-primary");
+    expect(localStorage.getItem("webui:side-tab")).toBe("diff");
+  });
+
   it("closes a secondary split pane from the task header", async () => {
     const onCloseSplit = vi.fn();
     render(<TaskView taskId="ws1" onCloseSplit={onCloseSplit} />);

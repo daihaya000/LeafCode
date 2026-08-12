@@ -87,6 +87,21 @@ describe("MessageMetaHeader", () => {
     expect(text.indexOf("GPT-5.6 Luna")).toBeLessThan(text.indexOf("high"));
   });
 
+  it("shows the agent immediately after the reasoning effort", () => {
+    render(
+      <MessageMetaHeader
+        info={{ agent: "build", modelID: "gpt-5.6-luna", time: { created: 1 } }}
+        modelLabel="GPT-5.6 Luna"
+        effort="default"
+        costPrefs={DEFAULT_COST_PREFS}
+      />,
+    );
+
+    const text = screen.getByLabelText("応答メタデータ").textContent ?? "";
+    expect(text).toContain("GPT-5.6 Luna·default·build·");
+    expect(text.indexOf("default")).toBeLessThan(text.indexOf("build"));
+  });
+
   it("shows cost, tokens, and thinking time in the header order", () => {
     render(
       <MessageMetaHeader
