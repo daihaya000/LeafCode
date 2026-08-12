@@ -9,7 +9,10 @@ import {
 import { getSetting, setSetting } from "@/lib/db";
 import { requireAuthorized } from "@/lib/api-guard";
 import { WORKFLOW_MODE_SETTING_KEY } from "@/lib/workflow-feature";
-import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "@/lib/memory-settings";
+import {
+  MEMORY_ENABLED_SETTING_KEY,
+  MEMORY_WRITE_APPROVAL_SETTING_KEY,
+} from "@/lib/memory-settings";
 import {
   isTokenSavingMode,
   TOKEN_SAVING_SETTING_KEY,
@@ -37,6 +40,7 @@ const ALLOWED_KEYS = new Set<string>([
   "hang-timeout",
   WORKFLOW_MODE_SETTING_KEY,
   MEMORY_WRITE_APPROVAL_SETTING_KEY,
+  MEMORY_ENABLED_SETTING_KEY,
   COMMIT_AUTHOR_NAME_KEY,
   COMMIT_AUTHOR_EMAIL_KEY,
   TOKEN_SAVING_SETTING_KEY,
@@ -161,6 +165,15 @@ function normalizeSettingValue(
       };
     }
     return { ok: true, value: String(clampThreshold(n)) };
+  }
+
+  if (key === MEMORY_ENABLED_SETTING_KEY) {
+    // Tri-state on purpose: "1" on, "0" off, unset on (the pre-switch default).
+    // Storing "1" explicitly lets the UI show that the user chose it.
+    if (value !== "0" && value !== "1") {
+      return { ok: false, error: `${key} must be 0 or 1` };
+    }
+    return { ok: true, value };
   }
 
   if (BOOLEAN_SETTING_KEYS.has(key)) {

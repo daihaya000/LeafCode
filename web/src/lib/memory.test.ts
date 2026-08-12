@@ -1,7 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const testDataDir = mkdtempSync(path.join(os.tmpdir(), "opencode-webui-memory-"));
 const previousAppData = process.env.APPDATA;
@@ -16,9 +16,11 @@ const {
   claimMemoryInjectionForSession,
   consolidateDuplicateMemories,
   createMemory,
+  deleteAllMemories,
   deleteMemory,
   findDuplicateMemory,
   findExactDuplicateMemory,
+  getMemoryById,
   insertExtractedMemories,
   logMemoryAudit,
   listMemories,
@@ -35,7 +37,9 @@ const {
   updateMemory,
 } = await import("./memory");
 const { getDb, setSetting } = await import("./db");
-const { MEMORY_WRITE_APPROVAL_SETTING_KEY } = await import("./memory-settings");
+const { MEMORY_ENABLED_SETTING_KEY, MEMORY_WRITE_APPROVAL_SETTING_KEY } = await import(
+  "./memory-settings"
+);
 
 afterAll(() => {
   getDb().close();
@@ -741,5 +745,140 @@ describe("memory CRUD + injection", () => {
     expect(claim).not.toBeNull();
     expect(claim!.block).toContain("database migration steps");
     releaseMemoryInjectionClaim("ws-fallback", "ses-fallback");
+  });
+});
+
+describe("memory master switch", () => {
+  afterEach(() => {
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
+  });
+
+  it("stops injection and extraction writes while keeping stored rows", () => {
+    // `memory_session_injections` references workspaces, so the claim path needs
+    // a real workspace row.
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, name, root_path, created_at)
+         VALUES ('memory-switch-project', 'Switch test', '/switch-test', ?)`,
+      )
+      .run(new Date().toISOString());
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO workspaces
+          (id, project_id, display_name, absolute_path, isolation, status, created_at)
+         VALUES ('ws-switch', 'memory-switch-project', 'Switch test', '/switch-test', 'standard', 'active', ?)`,
+      )
+      .run(new Date().toISOString());
+    const stored = createMemory({
+      workspaceId: "ws-switch",
+      kind: "fact",
+      content: "この行は無効化しても残る。",
+      provenance: "manual",
+      approved: true,
+    });
+
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "0");
+    expect(memoryInjectionFor("ws-switch")).toBe("");
+    expect(claimMemoryInjectionForSession("ws-switch", "ses-switch")).toBeNull();
+    expect(
+      insertExtractedMemories({
+        workspaceId: "ws-switch",
+        provenance: "auto-extract",
+        approved: true,
+        items: [{ kind: "fact", content: "無効中に抽出された行。" }],
+      }),
+    ).toEqual({ created: 0, skipped: 0, errors: [], saved: 0, candidates: 0, rejected: 0 });
+    // Disabling is not deleting: the row is still listed and editable.
+    expect(listMemories({ workspaceId: "ws-switch" }).map((m) => m.id)).toEqual([stored.id]);
+
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
+    expect(memoryInjectionFor("ws-switch")).toContain("この行は無効化しても残る。");
+    // No claim row was written while off, so the same session can still be
+    // injected once the user turns memory back on.
+    const claim = claimMemoryInjectionForSession("ws-switch", "ses-switch");
+    expect(claim?.block).toContain("この行は無効化しても残る。");
+    releaseMemoryInjectionClaim("ws-switch", "ses-switch");
+  });
+
+  it("treats an unset value as enabled", () => {
+    createMemory({
+      workspaceId: "ws-switch-default",
+      kind: "fact",
+      content: "未設定なら従来どおり注入される。",
+      provenance: "manual",
+      approved: true,
+    });
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "");
+    expect(memoryInjectionFor("ws-switch-default")).toContain(
+      "未設定なら従来どおり注入される。",
+    );
+  });
+});
+
+describe("deleteAllMemories", () => {
+  it("removes every row in the scope, records one audit entry, and leaves other scopes alone", () => {
+    const approvedRow = createMemory({
+      workspaceId: "ws-purge",
+      kind: "fact",
+      content: "削除対象の承認済みメモリ。",
+      provenance: "manual",
+      approved: true,
+    });
+    createMemory({
+      workspaceId: "ws-purge",
+      kind: "lesson",
+      content: "削除対象の候補メモリ。",
+      provenance: "auto-extract",
+      approved: false,
+    });
+    createMemory({
+      workspaceId: "ws-purge-other",
+      kind: "fact",
+      content: "別スコープなので残るメモリ。",
+      provenance: "manual",
+      approved: true,
+    });
+
+    expect(deleteAllMemories({ workspaceId: "ws-purge" })).toEqual({ removed: 2 });
+    expect(listMemories({ workspaceId: "ws-purge" })).toEqual([]);
+    expect(listMemories({ workspaceId: "ws-purge-other" })).toHaveLength(1);
+    expect(getMemoryById(approvedRow.id)).toBeUndefined();
+
+    // One summary row per user action, not one row per deleted memory.
+    const audit = getDb()
+      .prepare(
+        "SELECT detail FROM memory_audit_log WHERE workspace_id = ? AND detail LIKE 'purge %'",
+      )
+      .all("ws-purge") as Array<{ detail: string }>;
+    expect(audit).toHaveLength(1);
+    expect(audit[0].detail).toContain("count=2");
+
+    // Purging an empty scope is a no-op and adds no audit noise.
+    expect(deleteAllMemories({ workspaceId: "ws-purge" })).toEqual({ removed: 0 });
+    expect(
+      (
+        getDb()
+          .prepare(
+            "SELECT COUNT(*) AS n FROM memory_audit_log WHERE workspace_id = ? AND detail LIKE 'purge %'",
+          )
+          .get("ws-purge") as { n: number }
+      ).n,
+    ).toBe(1);
+  });
+
+  it("deletes even while the memory layer is switched off", () => {
+    createMemory({
+      workspaceId: "ws-purge-disabled",
+      kind: "fact",
+      content: "無効化中でも掃除できる。",
+      provenance: "manual",
+      approved: true,
+    });
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "0");
+    try {
+      expect(deleteAllMemories({ workspaceId: "ws-purge-disabled" })).toEqual({ removed: 1 });
+    } finally {
+      setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
+    }
   });
 });

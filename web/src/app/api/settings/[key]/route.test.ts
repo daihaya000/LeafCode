@@ -8,7 +8,10 @@ const { getSetting, setSetting } = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ getSetting, setSetting }));
 
 import { GET, PUT } from "./route";
-import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "@/lib/memory-settings";
+import {
+  MEMORY_ENABLED_SETTING_KEY,
+  MEMORY_WRITE_APPROVAL_SETTING_KEY,
+} from "@/lib/memory-settings";
 
 function putReq(body: unknown, key = "default-model"): Request {
   return new Request(`http://localhost/api/settings/${key}`, {
@@ -191,6 +194,31 @@ describe("/api/settings/[key]", () => {
       );
       expect(cleared.status).toBe(200);
       expect(setSetting).toHaveBeenCalledWith(MEMORY_WRITE_APPROVAL_SETTING_KEY, "");
+    });
+
+    it("stores both states of the memory master switch", async () => {
+      const off = await PUT(
+        putReq({ value: "0" }, MEMORY_ENABLED_SETTING_KEY) as never,
+        ctx(MEMORY_ENABLED_SETTING_KEY),
+      );
+      expect(off.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(MEMORY_ENABLED_SETTING_KEY, "0");
+
+      const on = await PUT(
+        putReq({ value: "1" }, MEMORY_ENABLED_SETTING_KEY) as never,
+        ctx(MEMORY_ENABLED_SETTING_KEY),
+      );
+      expect(on.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(MEMORY_ENABLED_SETTING_KEY, "1");
+    });
+
+    it("rejects a memory master switch value other than 0 or 1", async () => {
+      const res = await PUT(
+        putReq({ value: "off" }, MEMORY_ENABLED_SETTING_KEY) as never,
+        ctx(MEMORY_ENABLED_SETTING_KEY),
+      );
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
     });
 
     it("rejects a memory write approval value other than 1 or empty", async () => {

@@ -21,7 +21,7 @@ import {
   type MemorySimilarityVerdict,
 } from "./memory-key";
 import { inspectMemoryContent } from "./memory-safety";
-import { isMemoryWriteApprovalEnabled } from "./memory-write-gate";
+import { isMemoryEnabled, isMemoryWriteApprovalEnabled } from "./memory-write-gate";
 
 export { inspectMemoryContent } from "./memory-safety";
 export type { MemorySafetyViolation } from "./memory-safety";
@@ -556,6 +556,34 @@ export function consolidateDuplicateMemories(input: {
 }
 
 /**
+ * Delete every memory in one scope.
+ *
+ * This is the "start over" escape hatch for a scope whose memories are wrong or
+ * no longer wanted. It is deliberately all-or-nothing and never runs on its own:
+ * the caller (settings UI) confirms first.
+ *
+ * The deletion is one transaction, and one summary audit row records it — a row
+ * per memory would bury the log under thousands of near-identical entries for a
+ * single user action, and the deleted contents are gone either way.
+ */
+export function deleteAllMemories(input: { workspaceId: string }): { removed: number } {
+  const scope = resolveMemoryScope(input.workspaceId);
+  const db = getDb();
+  const removed = db.transaction(() => {
+    return db
+      .prepare("DELETE FROM memories WHERE scope_key = ? OR workspace_id = ?")
+      .run(scope.key, input.workspaceId).changes;
+  })();
+  if (removed > 0) {
+    logMemoryAudit("delete", {
+      workspaceId: input.workspaceId,
+      detail: `purge scope=${scope.key} count=${removed}`,
+    });
+  }
+  return { removed };
+}
+
+/**
  * Record that a duplicate was observed again: the surviving row is touched so
  * consolidation/decay treats it as fresh, but `use_count` is not bumped because
  * nothing consumed it.
@@ -797,9 +825,10 @@ export { stripMemoryInjectionBlock } from "./memory-text";
  * Returns the budgeted injection block for a workspace and bumps each injected
  * row's `use_count` (the spec's "injected lines +1"); a purely advisory lookup
  * should use {@link buildMemoryInjectionBlock} directly. Returns "" when there
- * is nothing to inject.
+ * is nothing to inject or the memory layer is switched off.
  */
 export function memoryInjectionFor(workspaceId: string, query?: string): string {
+  if (!isMemoryEnabled()) return "";
   const scope = resolveMemoryScope(workspaceId);
   const trimmedQuery = (query ?? "").trim();
   let rows: MemoryRow[] = [];
@@ -867,6 +896,9 @@ export function claimMemoryInjectionForSession(
   sessionId: string,
   query?: string,
 ): MemoryInjectionClaim | null {
+  // No claim row is written while the layer is off, so the session can still be
+  // injected normally once the user turns it back on.
+  if (!isMemoryEnabled()) return null;
   const db = getDb();
   const scope = resolveMemoryScope(workspaceId);
   const claim = db.transaction(() => {
@@ -943,6 +975,9 @@ export function releaseMemoryInjectionClaim(
  * two wordings of the same fact.
  *
  * Returns per-run accounting for callers (API / driver) to report.
+ *
+ * Writes nothing while the memory layer is switched off; the counts come back
+ * as zero so callers report "nothing saved" instead of failing.
  */
 export function insertExtractedMemories(input: {
   workspaceId: string;
@@ -963,6 +998,9 @@ export function insertExtractedMemories(input: {
   const errors: string[] = [];
   let saved = 0;
   let candidates = 0;
+  if (!isMemoryEnabled()) {
+    return { created: 0, skipped: 0, errors: [], saved: 0, candidates: 0, rejected: 0 };
+  }
   const tx = getDb().transaction(() => {
     for (const item of input.items) {
       if (!isMemoryKind(item.kind)) {

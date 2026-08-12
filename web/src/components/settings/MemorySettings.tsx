@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Badge, cx } from "@/components/ui";
 import { ApiError, getJson, sendJson } from "@/lib/client";
-import { MEMORY_WRITE_APPROVAL_SETTING_KEY } from "@/lib/memory-settings";
+import {
+  MEMORY_ENABLED_SETTING_KEY,
+  MEMORY_WRITE_APPROVAL_SETTING_KEY,
+} from "@/lib/memory-settings";
 
 type MemoryDto = {
   id: string;
@@ -96,6 +99,12 @@ export function MemorySettings() {
   const [writeApproval, setWriteApproval] = useState(false);
   const [writeApprovalLoaded, setWriteApprovalLoaded] = useState(false);
   const [writeApprovalBusy, setWriteApprovalBusy] = useState(false);
+  // Unset means enabled, so the optimistic default matches the server default
+  // and the toggle never flashes "off" for an untouched install.
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const [memoryEnabledLoaded, setMemoryEnabledLoaded] = useState(false);
+  const [memoryEnabledBusy, setMemoryEnabledBusy] = useState(false);
+  const [purgeBusy, setPurgeBusy] = useState(false);
   const [extractionRuns, setExtractionRuns] = useState<ExtractionRun[]>([]);
   const [unreadExtractionCount, setUnreadExtractionCount] = useState(0);
   const [extractionHistoryLoading, setExtractionHistoryLoading] = useState(false);
@@ -185,6 +194,12 @@ export function MemorySettings() {
         // The safe default is automatic writes when the setting is unavailable.
       })
       .finally(() => setWriteApprovalLoaded(true));
+    void getJson<{ value: string | null }>(`/api/settings/${MEMORY_ENABLED_SETTING_KEY}`)
+      .then((data) => setMemoryEnabled(data.value !== "0"))
+      .catch(() => {
+        // Matches the server gate: only an explicit "0" turns memory off.
+      })
+      .finally(() => setMemoryEnabledLoaded(true));
     return () => {
       mountedRef.current = false;
     };
@@ -217,6 +232,27 @@ export function MemorySettings() {
 
   const hint = (message: string) => setNotice(message);
   const alert = (message: string) => setLoadError(message);
+
+  const toggleMemoryEnabled = async (enabled: boolean) => {
+    setMemoryEnabledBusy(true);
+    setNotice(null);
+    setLoadError(null);
+    try {
+      await sendJson("PUT", `/api/settings/${MEMORY_ENABLED_SETTING_KEY}`, {
+        value: enabled ? "1" : "0",
+      });
+      setMemoryEnabled(enabled);
+      hint(
+        enabled
+          ? "メモリ機能を有効にしました"
+          : "メモリ機能を無効にしました。保存済みのメモリは残りますが、注入も抽出もされません。",
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "メモリ機能の切り替えに失敗しました");
+    } finally {
+      setMemoryEnabledBusy(false);
+    }
+  };
 
   const toggleWriteApproval = async (enabled: boolean) => {
     setWriteApprovalBusy(true);
@@ -405,6 +441,42 @@ export function MemorySettings() {
     }
   };
 
+  /**
+   * Delete every memory in the selected project scope. Confirmation names the
+   * project and the exact count, because this cannot be undone and the scope is
+   * wider than the workspace the user picked.
+   */
+  const purgeAll = async () => {
+    if (!selectedWorkspace) {
+      alert("ワークスペースを選択してください");
+      return;
+    }
+    if (memories.length === 0) return;
+    const workspaceLabel =
+      workspaces.find((w) => w.id === selectedWorkspace)?.displayName || "このプロジェクト";
+    const ok = window.confirm(
+      `${workspaceLabel} のメモリ ${memories.length}件（使用中 ${approved.length}件 / 候補 ${candidates.length}件）をすべて削除します。\n` +
+        "この操作は取り消せません。実行しますか？",
+    );
+    if (!ok) return;
+    setPurgeBusy(true);
+    setNotice(null);
+    setLoadError(null);
+    try {
+      const result = await sendJson<{ removed: number }>("POST", "/api/memory/purge", {
+        workspaceId: selectedWorkspace,
+        confirm: true,
+      });
+      setMemories([]);
+      hint(`${result.removed}件のメモリを削除しました`);
+      void loadMemories(selectedWorkspace);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "一括削除に失敗しました");
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
+
   const markExtractionHistoryRead = async () => {
     if (!selectedWorkspace || unreadExtractionCount === 0) return;
     setExtractionHistoryBusy(true);
@@ -449,11 +521,35 @@ export function MemorySettings() {
           メモリはプロジェクト単位で共有されます。ワークスペース（タスク）を選ぶと、そのプロジェクトのメモリが表示されます。
         </p>
         <p className="mt-1 text-faint">
-          {writeApproval
-            ? "保存前の確認が有効です。会話から抽出した内容は「候補」になり、承認すると今後の会話で参照されます。"
-            : "自動保存が有効です。会話から抽出した内容は脅威検査後、承認なしで今後の会話から参照されます。"
+          {!memoryEnabled
+            ? "メモリ機能は無効です。保存済みのメモリは残っていますが、会話には注入されず、新しい抽出も行われません。"
+            : writeApproval
+              ? "保存前の確認が有効です。会話から抽出した内容は「候補」になり、承認すると今後の会話で参照されます。"
+              : "自動保存が有効です。会話から抽出した内容は脅威検査後、承認なしで今後の会話から参照されます。"
           }
         </p>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
+        <label className="flex cursor-pointer items-start gap-3" htmlFor="memory-enabled">
+          <input
+            id="memory-enabled"
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+            checked={memoryEnabled}
+            disabled={!memoryEnabledLoaded || memoryEnabledBusy}
+            onChange={(event) => void toggleMemoryEnabled(event.target.checked)}
+            aria-label="メモリ機能"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-text">メモリ機能を使う</span>
+            <span className="block text-xs leading-5 text-muted">
+              {memoryEnabled
+                ? "会話への注入と自動抽出が動作します。"
+                : "注入・抽出を停止します。保存済みのメモリは削除されないので、いつでも元に戻せます。"}
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-3">
@@ -466,7 +562,7 @@ export function MemorySettings() {
             type="checkbox"
             className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
             checked={writeApproval}
-            disabled={!writeApprovalLoaded || writeApprovalBusy}
+            disabled={!writeApprovalLoaded || writeApprovalBusy || !memoryEnabled}
             onChange={(event) => void toggleWriteApproval(event.target.checked)}
             aria-label="メモリの保存前確認"
           />
@@ -523,7 +619,7 @@ export function MemorySettings() {
             <Button
               variant="secondary"
               size="sm"
-              disabled={busy || !selectedWorkspace || !selectedSession}
+              disabled={busy || !selectedWorkspace || !selectedSession || !memoryEnabled}
               onClick={() => void runExtract()}
             >
               {writeApproval ? "候補を抽出" : "メモリを抽出"}
@@ -546,6 +642,20 @@ export function MemorySettings() {
             onClick={() => void consolidateDuplicates()}
           >
             重複を整理
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+          <span className="text-[11px] text-faint">
+            このプロジェクトのメモリを候補ごとすべて削除します。取り消せません。
+          </span>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={purgeBusy || !selectedWorkspace || memories.length === 0}
+            onClick={() => void purgeAll()}
+          >
+            すべて削除（{memories.length}件）
           </Button>
         </div>
 

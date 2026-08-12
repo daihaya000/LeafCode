@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthorized } from "@/lib/api-guard";
 import { runMemoryExtraction } from "@/lib/memory-extract";
+import { isMemoryEnabled } from "@/lib/memory-write-gate";
 import { getWorkspace } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -21,6 +22,14 @@ export async function POST(req: NextRequest) {
     typeof body.sessionId !== "string"
   ) {
     return NextResponse.json({ error: "workspaceId and sessionId are required" }, { status: 400 });
+  }
+  // Refuse before calling the model: extraction while the layer is off would
+  // cost money and then discard every row at the write gate.
+  if (!isMemoryEnabled()) {
+    return NextResponse.json(
+      { error: "メモリ機能が無効です。設定で有効にしてください。" },
+      { status: 409 },
+    );
   }
   const workspace = getWorkspace(body.workspaceId);
   if (!workspace) {

@@ -20,6 +20,7 @@ function apiHandler({
   workspaces,
   sessions,
   writeApproval = false,
+  memoryEnabled = true,
   extractionRuns = [],
   unreadExtractionCount = 0,
   consolidate = { scanned: 0, removed: 0, remaining: 0 },
@@ -28,6 +29,7 @@ function apiHandler({
   workspaces: unknown[];
   sessions: unknown[];
   writeApproval?: boolean;
+  memoryEnabled?: boolean;
   extractionRuns?: unknown[];
   unreadExtractionCount?: number;
   consolidate?: { scanned: number; removed: number; remaining: number };
@@ -35,6 +37,11 @@ function apiHandler({
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
+    if (url.includes("/api/settings/memory.enabled")) {
+      return method === "PUT"
+        ? jsonResponse({ ok: true })
+        : jsonResponse({ value: memoryEnabled ? null : "0" });
+    }
     if (url.includes("/api/settings/memory.write_approval")) {
       return method === "PUT"
         ? jsonResponse({ ok: true })
@@ -54,6 +61,9 @@ function apiHandler({
     }
     if (url.includes("/api/memory/extract")) {
       return jsonResponse({ result: { created: 2, skipped: 2 } });
+    }
+    if (url.includes("/api/memory/purge")) {
+      return jsonResponse({ removed: (memories as unknown[]).length });
     }
     if (url.includes("/api/memory/consolidate")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { dryRun?: boolean };
@@ -314,6 +324,140 @@ describe("MemorySettings", () => {
     });
     expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({ value: "1" });
     expect(await screen.findByText(/保存前の確認が有効/)).toBeTruthy();
+  });
+
+  it("turns the memory layer off and stops offering extraction", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [
+        { workspaceId: "ws-1", opencodeSessionId: "session-9", title: "Sess", favorite: false, updatedAt: "x" },
+      ],
+      memories: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    const toggle = await screen.findByLabelText("メモリ機能");
+    await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(toggle);
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input).includes("/api/settings/memory.enabled") && init?.method === "PUT",
+      );
+      expect(call).toBeTruthy();
+      return call;
+    });
+    expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({ value: "0" });
+    expect(await screen.findByText(/保存済みのメモリは残ります/)).toBeTruthy();
+
+    // Extraction must be unavailable while the layer is off: the API refuses it
+    // anyway, so the button should not invite a wasted round trip.
+    fireEvent.change(screen.getByLabelText("抽出元セッション"), {
+      target: { value: "session-9" },
+    });
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "メモリを抽出" }) as HTMLButtonElement).disabled,
+      ).toBe(true),
+    );
+    expect(
+      (screen.getByLabelText("メモリの保存前確認") as HTMLInputElement).disabled,
+    ).toBe(true);
+  });
+
+  it("loads the disabled state from the server and keeps stored memories visible", async () => {
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memoryEnabled: false,
+      memories: [
+        {
+          id: "m1", workspaceId: "ws-1", kind: "fact", content: "残るメモリ", sourceSessionId: null,
+          provenance: "manual", approved: true, createdAt: 1, updatedAt: 1, lastUsedAt: null,
+          useCount: 0, revision: 0,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    const toggle = await screen.findByLabelText("メモリ機能");
+    await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(false));
+    expect(screen.getByText(/メモリ機能は無効です/)).toBeTruthy();
+    // Disabling is not deleting: the row stays listed so it can be reviewed.
+    expect(await screen.findByText("残るメモリ")).toBeTruthy();
+  });
+
+  it("deletes every memory in the scope after the confirmation is accepted", async () => {
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "Project A", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [
+        {
+          id: "m1", workspaceId: "ws-1", kind: "fact", content: "A", sourceSessionId: null,
+          provenance: "manual", approved: true, createdAt: 1, updatedAt: 1, lastUsedAt: null,
+          useCount: 0, revision: 0,
+        },
+        {
+          id: "m2", workspaceId: "ws-1", kind: "lesson", content: "B", sourceSessionId: null,
+          provenance: "auto-extract", approved: false, createdAt: 1, updatedAt: 1, lastUsedAt: null,
+          useCount: 0, revision: 0,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    const purgeButton = await screen.findByRole("button", { name: /すべて削除（2件）/ });
+    fireEvent.click(purgeButton);
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
+    // The confirmation names the project and the exact damage.
+    expect(confirmMock.mock.calls[0][0]).toContain("Project A");
+    expect(confirmMock.mock.calls[0][0]).toContain("2件");
+
+    const purge = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) =>
+        String(input).includes("/api/memory/purge"),
+      );
+      expect(call).toBeTruthy();
+      return call;
+    });
+    expect(JSON.parse(String(purge?.[1]?.body))).toEqual({
+      workspaceId: "ws-1",
+      confirm: true,
+    });
+    expect(await screen.findByText(/2件のメモリを削除しました/)).toBeTruthy();
+  });
+
+  it("does not delete anything when the purge confirmation is cancelled", async () => {
+    const confirmMock = vi.fn().mockReturnValue(false);
+    vi.stubGlobal("confirm", confirmMock);
+    const fetchMock = apiHandler({
+      workspaces: [{ id: "ws-1", displayName: "P", absolutePath: "/r", status: "active" }],
+      sessions: [],
+      memories: [
+        {
+          id: "m1", workspaceId: "ws-1", kind: "fact", content: "A", sourceSessionId: null,
+          provenance: "manual", approved: true, createdAt: 1, updatedAt: 1, lastUsedAt: null,
+          useCount: 0, revision: 0,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemorySettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /すべて削除（1件）/ }));
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes("/api/memory/purge")),
+    ).toBe(false);
+    expect(screen.getByText("A")).toBeTruthy();
   });
 
   it("loads review mode from the server setting", async () => {

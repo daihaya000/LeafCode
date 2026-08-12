@@ -22,6 +22,7 @@ import {
 import { getSetting } from "./db";
 import { runMemoryExtraction } from "./memory-extract";
 import { MEMORY_AUTO_EXTRACT_SETTING_KEY } from "./memory-settings";
+import { isMemoryEnabled } from "./memory-write-gate";
 import { OPENCODE_BASE_URL } from "./opencode";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
@@ -121,6 +122,9 @@ export async function consumeMemoryEventStream(
 }
 
 function isAutoExtractEnabled(): boolean {
+  // The master switch wins: with memory off, a background extraction would burn
+  // model tokens for rows that can never be written or injected.
+  if (!isMemoryEnabled()) return false;
   try {
     return getSetting(MEMORY_AUTO_EXTRACT_SETTING_KEY) !== "0";
   } catch {

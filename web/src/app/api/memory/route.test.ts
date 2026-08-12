@@ -11,12 +11,14 @@ process.env.APPDATA = testDataDir;
 
 const {
   getDb,
+  setSetting,
   upsertProject,
   createWorkspace,
   createMemoryExtractionRun,
   completeMemoryExtractionRun,
 } = await import("@/lib/db");
 const { createMemory } = await import("@/lib/memory");
+const { MEMORY_ENABLED_SETTING_KEY } = await import("@/lib/memory-settings");
 
 vi.mock("@/lib/memory-extract", () => ({
   runMemoryExtraction: vi.fn(async () => ({ created: 0, skipped: 0, errors: [] })),
@@ -25,8 +27,10 @@ vi.mock("@/lib/api-guard", () => ({
   requireAuthorized: vi.fn(async () => null),
 }));
 
+const { runMemoryExtraction } = await import("@/lib/memory-extract");
 const { GET } = await import("./route");
 const { POST } = await import("./extract/route");
+const { POST: purgePOST } = await import("./purge/route");
 const { PATCH, DELETE } = await import("./[id]/route");
 const { POST: approvePOST } = await import("./[id]/approve/route");
 const { GET: extractionGET } = await import("./extractions/route");
@@ -205,5 +209,82 @@ describe("memory API", () => {
     );
     expect(marked.status).toBe(200);
     expect(await marked.json()).toMatchObject({ marked: 1, unreadCount: 0 });
+  });
+
+  it("refuses extraction while the memory layer is switched off", async () => {
+    vi.mocked(runMemoryExtraction).mockClear();
+    setSetting(MEMORY_ENABLED_SETTING_KEY, "0");
+    try {
+      const res = await POST(
+        req("/api/memory/extract", {
+          method: "POST",
+          body: { workspaceId: "ws-a", sessionId: "ses-off" },
+        }),
+      );
+      expect(res.status).toBe(409);
+      // The model must not be called for rows that could never be written.
+      expect(runMemoryExtraction).not.toHaveBeenCalled();
+    } finally {
+      setSetting(MEMORY_ENABLED_SETTING_KEY, "1");
+    }
+  });
+
+  describe("purge", () => {
+    it("deletes every memory in the scope after an explicit confirm", async () => {
+      ensureWorkspace("ws-purge-api");
+      createMemory({
+        workspaceId: "ws-purge-api",
+        kind: "fact",
+        content: "purge api approved",
+        provenance: "manual",
+        approved: true,
+      });
+      createMemory({
+        workspaceId: "ws-purge-api",
+        kind: "lesson",
+        content: "purge api candidate",
+        provenance: "auto-extract",
+        approved: false,
+      });
+
+      const res = await purgePOST(
+        req("/api/memory/purge", {
+          method: "POST",
+          body: { workspaceId: "ws-purge-api", confirm: true },
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ removed: 2 });
+
+      const listed = await GET(req("/api/memory?workspace_id=ws-purge-api"));
+      expect((await listed.json()).memories).toHaveLength(0);
+    });
+
+    it("rejects a purge without confirm and keeps the memories", async () => {
+      ensureWorkspace("ws-purge-guard");
+      createMemory({
+        workspaceId: "ws-purge-guard",
+        kind: "fact",
+        content: "still here",
+        provenance: "manual",
+        approved: true,
+      });
+
+      const noConfirm = await purgePOST(
+        req("/api/memory/purge", {
+          method: "POST",
+          body: { workspaceId: "ws-purge-guard" },
+        }),
+      );
+      expect(noConfirm.status).toBe(400);
+
+      const noWorkspace = await purgePOST(
+        req("/api/memory/purge", { method: "POST", body: { confirm: true } }),
+      );
+      expect(noWorkspace.status).toBe(400);
+
+      const listed = await GET(req("/api/memory?workspace_id=ws-purge-guard"));
+      expect((await listed.json()).memories).toHaveLength(1);
+    });
   });
 });
