@@ -162,3 +162,395 @@ WebUI は **どちらか一方ではなく両方を使っているハイブリ�
 3. **`PATCH /session/{id}` 代替**は `POST /api/session/{id}/permission` への N 回展開（または `save` 経由）で実装。BFF 形状変換レイヤーでクライアント非互換を吸収
 4. **`/session/status` 代替**は `/api/session/active` + BFF 形状変換で対応。`summary` 補完は別途検討
 5. 次の OpenCode バージョンアップで v2 が完全スーパーセットになるまで、v1+v2 ハイブリッド運用を継続
+
+---
+
+## Phase B 詳細設計 (2026-08-12)
+
+### B-1. 操作の分類
+
+#### v2 移行対象（v2 等価物が存在する操作）
+
+| 操作 | v1 パス（現状） | v2 パス（移行先） | 備考 |
+|------|----------------|------------------|------|
+| セッション一覧 | `GET /session` | `GET /api/session` | レスポンス形状差あり（B-4 で後述） |
+| セッション作成 | `POST /session` | `POST /api/session` | body 形状差あり（B-5 で後述） |
+| セッション取得 | `GET /session/{id}` | `GET /api/session/{id}` | レスポンス形状差あり |
+| プロンプト送信 | `POST /session/{id}/prompt_async` | `POST /api/session/{id}/prompt` | body 形状が大きく異なる（B-5 で後述） |
+| トランスクリプト | `GET /session/{id}/message` | `GET /api/session/{id}/message` | レスポンス形状差あり |
+| 中断 | `POST /session/{id}/abort` | `POST /api/session/{id}/interrupt` | 名称変更、body なし |
+| コンテキスト圧縮 | `POST /session/{id}/summarize` | `POST /api/session/{id}/compact` | body あり→なし、セマンティクス差あり |
+| 権限要求一覧 | `GET /permission` | `GET /api/session/{id}/permission` + `GET /api/permission/request` | セッションスコープ化 |
+| 権限応答 | `POST /session/{id}/permissions/{pid}` | `POST /api/session/{id}/permission/{rid}/reply` | レジストリ済み |
+| 質問一覧 | `GET /question` | `GET /api/session/{id}/question` + `GET /api/question/request` | セッションスコープ化 |
+| 質問応答 | `POST /question/{rid}/reply` | `POST /api/session/{id}/question/{rid}/reply` | レジストリ済み |
+| 質問拒否 | `POST /question/{rid}/reject` | `POST /api/session/{id}/question/{rid}/reject` | レジストリ済み |
+| リバート | `POST /session/{id}/revert` | `POST /api/session/{id}/revert/stage` + `/commit` + `/clear` | 3 エンドポイントに分割 |
+| SSE ストリーム | `GET /event` | `GET /api/event` または `GET /api/session/{id}/event` | セッションスコープ版あり |
+| エージェント切替 | （v1 になし） | `POST /api/session/{id}/agent` | v2 新設 |
+| モデル切替 | （v1 になし） | `POST /api/session/{id}/model` | v2 新設 |
+| 履歴 | （v1 になし） | `GET /api/session/{id}/history` | v2 新設 |
+
+#### v1 維持（v2 等価物が存在しない操作）
+
+| 操作 | v1 パス | 理由 | 将来対応 |
+|------|---------|------|----------|
+| セッション状態一覧 | `GET /session/status` | v2 `/api/session/active` は形状が異なる（`SessionStatus` マップではない） | BFF 形状変換で対応可能だが、`summary` フィールド欠如のため要検討 |
+| todo | `GET /session/{id}/todo` | v2 に等価なし | SSE `todo.updated` で代替検討 |
+| 差分 | `GET /session/{id}/diff` | v2 に等価なし | BFF の `git diff` で代替済み |
+| コマンド | `POST /session/{id}/command` | v2 に等価なし | v2 追加待ち |
+| 子セッション一覧 | `GET /session/{id}/children` | v2 に等価なし | `/api/session/active` の `parentID` フィルタで代替検討 |
+| セッション削除 | `DELETE /session/{id}` | v2 `DELETE /api/session/{id}` なし | v2 追加待ち |
+| 要約（旧） | `POST /session/{id}/summarize` | v2 `compact` は body 形状が異なる | `compact` へ移行 |
+| フォーク | `POST /session/{id}/fork` | v2 に等価なし | v2 追加待ち |
+| 共有 | `POST/DELETE /session/{id}/share` | v2 に等価なし | v2 追加待ち |
+| 初期化 | `POST /session/{id}/init` | v2 に等価なし | ブロック対象 |
+| シェル | `POST /session/{id}/shell` | v2 に等価なし | ブロック対象 |
+| リバート取消 | `POST /session/{id}/unrevert` | v2 に等価なし | `revert/clear` で代替可能か検討 |
+| メッセージ部分編集 | `DELETE/PATCH /session/{id}/message/{mid}/part/{pid}` | v2 に等価なし | v2 追加待ち |
+| 権限ルール書き込み | `PATCH /session/{id}` | v2 に PATCH なし | `POST /api/session/{id}/permission` で代替（B-6 で後述） |
+
+### B-2. `opencode-paths.ts` の拡張設計
+
+#### 追加する v2 パステンプレート
+
+```ts
+export const OC_PATH_TEMPLATES = {
+  // --- v1: sessions（既存・維持） -----------------------------------------
+  sessionList: "/session",
+  sessionStatus: "/session/status",
+  session: "/session/{sessionID}",
+  sessionMessage: "/session/{sessionID}/message",
+  sessionTodo: "/session/{sessionID}/todo",          // v1 維持
+  sessionDiff: "/session/{sessionID}/diff",           // v1 維持
+  sessionAbort: "/session/{sessionID}/abort",         // v1 維持（interrupt と分離）
+  sessionPromptAsync: "/session/{sessionID}/prompt_async", // v1 維持（prompt と分離）
+  sessionCommand: "/session/{sessionID}/command",     // v1 維持
+  sessionPermissionReply: "/session/{sessionID}/permissions/{permissionID}",
+  sessionSummarize: "/session/{sessionID}/summarize", // v1 維持
+  sessionChildren: "/session/{sessionID}/children",   // v1 維持
+  sessionFork: "/session/{sessionID}/fork",            // v1 維持
+  sessionShare: "/session/{sessionID}/share",          // v1 維持
+  sessionInit: "/session/{sessionID}/init",            // v1 維持（ブロック対象）
+  sessionShell: "/session/{sessionID}/shell",           // v1 維持（ブロック対象）
+  sessionRevert: "/session/{sessionID}/revert",         // v1 維持
+  sessionUnrevert: "/session/{sessionID}/unrevert",     // v1 維持
+  sessionPartEdit: "/session/{sessionID}/message/{messageID}/part/{partID}", // v1 維持
+
+  // --- v1: global permission / question（既存・維持） --------------------
+  permissionList: "/permission",
+  questionList: "/question",
+  questionReply: "/question/{requestID}/reply",
+  questionReject: "/question/{requestID}/reject",
+
+  // --- v1: misc -----------------------------------------------------------
+  event: "/event",
+
+  // --- v2 (beta): session-scoped permission / question（既存） ------------
+  v2SessionPermissionList: "/api/session/{sessionID}/permission",
+  v2SessionPermissionReply: "/api/session/{sessionID}/permission/{requestID}/reply",
+  v2SessionQuestionList: "/api/session/{sessionID}/question",
+  v2SessionQuestionReply: "/api/session/{sessionID}/question/{requestID}/reply",
+  v2SessionQuestionReject: "/api/session/{sessionID}/question/{requestID}/reject",
+
+  // --- v2: 新規追加（Phase B 移行対象） -----------------------------------
+  v2SessionList: "/api/session",
+  v2Session: "/api/session/{sessionID}",
+  v2SessionPrompt: "/api/session/{sessionID}/prompt",
+  v2SessionMessage: "/api/session/{sessionID}/message",
+  v2SessionInterrupt: "/api/session/{sessionID}/interrupt",
+  v2SessionCompact: "/api/session/{sessionID}/compact",
+  v2SessionEvent: "/api/session/{sessionID}/event",
+  v2SessionHistory: "/api/session/{sessionID}/history",
+  v2SessionContext: "/api/session/{sessionID}/context",
+  v2SessionAgent: "/api/session/{sessionID}/agent",
+  v2SessionModel: "/api/session/{sessionID}/model",
+  v2SessionActive: "/api/session/active",
+  v2Event: "/api/event",
+  v2PermissionRequest: "/api/permission/request",
+  v2PermissionSaved: "/api/permission/saved",
+  v2PermissionSavedDelete: "/api/permission/saved/{id}",
+  v2QuestionRequest: "/api/question/request",
+  v2SessionRevertStage: "/api/session/{sessionID}/revert/stage",
+  v2SessionRevertCommit: "/api/session/{sessionID}/revert/commit",
+  v2SessionRevertClear: "/api/session/{sessionID}/revert/clear",
+} as const satisfies Record<string, keyof OcPaths>;
+```
+
+#### 追加する v2 ビルダー関数
+
+```ts
+// --- v2: session -----------------------------------------------------------
+
+/** v2: `GET` / `POST` to create or list sessions. */
+export const SESSION_LIST_PATH_V2: string = OC_PATH_TEMPLATES.v2SessionList;
+
+/** v2: list active sessions (replaces /session/status with shape transform). */
+export const SESSION_ACTIVE_PATH_V2: string = OC_PATH_TEMPLATES.v2SessionActive;
+
+/** v2: `GET` a single session. */
+export function sessionPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}`;
+}
+
+/** v2: send a prompt (replaces prompt_async). */
+export function sessionPromptPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/prompt`;
+}
+
+/** v2: get transcript (replaces /session/{id}/message). */
+export function sessionMessagePathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/message`;
+}
+
+/** v2: interrupt (replaces /session/{id}/abort). */
+export function sessionInterruptPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/interrupt`;
+}
+
+/** v2: compact context (replaces /session/{id}/summarize). */
+export function sessionCompactPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/compact`;
+}
+
+/** v2: session-scoped SSE stream. */
+export function sessionEventPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/event`;
+}
+
+/** v2: session history. */
+export function sessionHistoryPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/history`;
+}
+
+/** v2: session context (transcript with parts). */
+export function sessionContextPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/context`;
+}
+
+/** v2: switch agent. */
+export function sessionAgentPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/agent`;
+}
+
+/** v2: switch model. */
+export function sessionModelPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/model`;
+}
+
+// --- v2: revert（3 エンドポイント分割） ------------------------------------
+
+export function sessionRevertStagePathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/revert/stage`;
+}
+
+export function sessionRevertCommitPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/revert/commit`;
+}
+
+export function sessionRevertClearPathV2(sessionId: string): string {
+  return `/api/session/${encodePathId(sessionId)}/revert/clear`;
+}
+
+// --- v2: global permission / question queues -------------------------------
+
+export const PERMISSION_REQUEST_PATH_V2: string = OC_PATH_TEMPLATES.v2PermissionRequest;
+export const QUESTION_REQUEST_PATH_V2: string = OC_PATH_TEMPLATES.v2QuestionRequest;
+export const PERMISSION_SAVED_PATH_V2: string = OC_PATH_TEMPLATES.v2PermissionSaved;
+
+// --- v2: SSE stream --------------------------------------------------------
+
+export const EVENT_PATH_V2: string = OC_PATH_TEMPLATES.v2Event;
+```
+
+#### 設計原則
+
+1. **v1 と v2 のビルダーを明示的に分離**: `sessionPath` と `sessionPathV2` は別関数。暗黙の切替をしない。呼び出し側が明示的に v2 を選択する
+2. **v1 ビルダーは残存**: v1 維持操作（todo/diff/command/children/fork/share/init/shell/revert/unrevert/partEdit）は v1 ビルダー経由のまま
+3. **`...PathV2` 命名規則**: 既存の `permissionReplyPathV2` / `sessionPermissionListPathV2` に準拠。新しいビルダーも `...PathV2` サフィックスで統一
+4. **`OC_PATH_TEMPLATES` の `satisfies` 検証**: 新規 v2 エントリも `keyof OcPaths` でコンパイル時検証。openapi.json に存在しないパスを追加すると tsc エラー
+5. **`encodePathId` 共通利用**: v2 ビルダーも `assertSafeOpenCodeSessionId` 経由で id 検証。`openCodeSessionPath` の `/session/` プレフィックスを使わず、`/api/session/` プレフィックスを直接構築
+
+### B-3. BFF `/api/opencode` プレフィックスと二重 `/api` 問題の解決方針
+
+#### 問題
+
+現在のブラウザ→BFF 経路:
+
+```
+Browser → /api/opencode/{enginePath} → BFF (app/api/opencode/[...path]/route.ts)
+                                    → fetch(OPENCODE_BASE_URL + "/" + enginePath)
+```
+
+`client.ts:ocJson()` は `/api/opencode${path}` を構築。`path` が v2 の `/api/session/{id}/prompt` の場合:
+
+```
+Browser fetch: /api/opencode/api/session/{id}/prompt
+BFF catch-all: pathname = "/api/session/{id}/prompt"
+BFF upstream:  http://127.0.0.1:4096/api/session/{id}/prompt
+```
+
+#### 結論: 二重 `/api` は問題なし
+
+Next.js の `[...path]` catch-all は URL パス全体をセグメント配列として受け取る。`/api/opencode/api/session/{id}/prompt` の場合:
+
+1. Next.js ルータ: `/api/opencode` がマウントポイント、残り `api/session/{id}/prompt` が `path` パラメータ
+2. `route.ts`: `const pathname = "/" + segments.join("/")` → `pathname = "/api/session/{id}/prompt"`
+3. `fetch(target)`: `new URL(pathname + search, OPENCODE_BASE_URL)` → `http://127.0.0.1:4096/api/session/{id}/prompt`
+4. OpenCode エンジンは `/api/session/{id}/prompt` で応答（v2 パス）
+
+**問題なし。** `/api/opencode` は BFF のマウントポイントであり、エンジンの `/api` とは独立。`[...path]` が `/api/session/...` を正しく捕捉する。
+
+#### 検証済み
+
+`opencode.ts:isBlockedOpencodeWrite` は既に v2 パス（`/api/pty`, `/api/session/{id}/shell` 等）の正規表現を保持しており、`/api/opencode/api/...` 経由でも `resolvedOpenCodePathname` が `/api/...` に正規化されるためブロックリストが機能する。
+
+#### 注意点
+
+1. **`assertSafeOpenCodePath`**: `/api/session/...` の最初のセグメント `api` は `SAFE_OC_SESSION_ID` に一致しないが、`assertSafeOpenCodePath` はパス全体の走査安全性のみ検証し、セグメント名を制限しないため問題なし
+2. **`manualSendSessionId` / `hangWatchSessionId` 等の正規表現**: 現在 `/session/([^/]+)/...` にマッチ。v2 パス `/api/session/([^/]+)/...` にはマッチしないため、Phase C で正規表現を `(?:\/api)?\/session\/...` 形式に拡張が必要
+3. **`isImageGuardedWrite` / `isLongRunningSyncMutation`**: 同様に v2 パスを含めるよう正規表現拡張が必要（Phase C）
+
+### B-4. レスポンス形状変換レイヤー
+
+v2 はレスポンスを `{ data: T }` でラップする。v1 は `T` を直接返す。クライアントコードの大規模改修を避けるため、BFF プロキシで形状変換を行う。
+
+#### 変換方針
+
+```
+v2 response:  { "data": SessionV2Info | SessionV2Info[] | ... }
+                ↓ BFF unwrap
+v1-compatible: SessionV2Info | SessionV2Info[] | ...
+```
+
+**実装箇所**: `app/api/opencode/[...path]/route.ts` の `proxy()` 関数。v2 パスからのレスポンスボディを JSON としてパースし、`data` フィールドを抽出してクライアントへ返す。
+
+**条件判定**: `pathname.startsWith("/api/")` で v2 パスと判定。ただし SSE（`text/event-stream`）はボディ変換しない。
+
+**リスク**: `data` フィールドの有無をエンジン側で保証しているか要確認。OpenAPI では v2 全レスポンスが `{ data: ... }` 形状だが、エラーレスポンス（400/401/404）は `{ error: ... }` 形状のため、ステータスコードで分岐が必要。
+
+### B-5. リクエスト body 形状変換
+
+#### プロンプト送信（最大の形状差）
+
+| v1 `prompt_async` | v2 `prompt` |
+|---------------------|-------------|
+| `{ messageID, model: {providerID, modelID}, agent, parts: [{type:"text", text}...], variant, noReply, tools, format, system }` | `{ id: "msg_...", prompt: { text, files: [{uri, name, source}], agents: [{name, source}] }, delivery: "steer"\|"queue", resume: bool }` |
+
+**変換方針**: BFF で v1 形状の body を受け取り、v2 形状に変換して upstream へ送信。
+
+```ts
+// BFF 内の変換例（概念）
+function v1PromptToV2(v1Body: V1PromptBody): V2PromptBody {
+  const textParts = v1Body.parts?.filter(p => p.type === "text") ?? [];
+  const fileParts = v1Body.parts?.filter(p => p.type === "file") ?? [];
+  const agentParts = v1Body.parts?.filter(p => p.type === "agent") ?? [];
+
+  return {
+    id: v1Body.messageID,
+    prompt: {
+      text: textParts.map(p => p.text).join("\n"),
+      files: fileParts.map(p => ({ uri: p.url, name: p.filename, source: p.source })),
+      agents: agentParts.map(p => ({ name: p.name, source: p.source })),
+    },
+    delivery: "steer",  // prompt_async は steer 相当
+    // resume は省略（デフォルト false）
+  };
+}
+```
+
+**注意**: v1 の `model` / `variant` / `tools` / `format` / `system` / `noReply` は v2 `prompt` body に対応フィールドがない。これらは:
+- `model` / `agent`: `POST /api/session/{id}/model` / `POST /api/session/{id}/agent` で事前切替
+- `variant` / `tools` / `format` / `system` / `noReply`: **v2 に等価なし。** セッション作成時にエージェント設定で指定するか、v2 での追加を待つ
+
+#### セッション作成
+
+| v1 `POST /session` | v2 `POST /api/session` |
+|---------------------|------------------------|
+| `{ parentID, title, agent, model: {id, providerID, variant}, metadata, permission, workspaceID }` | `{ id?, agent, model, location: { path, projectID? } }` |
+
+**変換方針**: BFF で v1 形状 → v2 形状に変換。
+
+- `model: {id, providerID, variant}` → `model: { providerID, modelID: model.id }`（`ModelRef` 形状）
+- `permission: PermissionRuleset` → セッション作成後に `POST /api/session/{id}/permission` で各ルールを注入（B-6 で後述）
+- `title` / `metadata` / `workspaceID` → v2 に対応フィールドなし。**v2 追加待ち** または別 API で設定
+- `location.path` は directory パラメータから設定
+
+### B-6. `PATCH /session/{id}` 権限ルール書き込みの代替実装
+
+#### 現状の用途
+
+`opencode-access-mode.ts` / `opencode-skill-permission.ts` / `opencode-task-permission.ts` が `PATCH /session/{id}` で `PermissionRuleset`（`PermissionRule[]`）を一括書き込み。各ルールは:
+
+```ts
+type PermissionRule = {
+  permission: string;  // tool 名等
+  pattern: string;      // リソースパターン
+  action: "allow" | "deny" | "ask";
+}
+```
+
+#### v2 代替フロー
+
+```
+1. POST /api/session でセッション作成
+2. PermissionRuleset の各 Rule ごとに:
+   POST /api/session/{id}/permission {
+     action: rule.action,       // "allow" | "deny" | "ask"
+     resources: [rule.pattern],  // pattern を resources 配列へ
+     save: [rule.permission],   // 永続化する場合は save へ
+     metadata: { source: "webui-access-mode" }
+   }
+3. 応答の effect が期待通りであることを確認
+```
+
+#### BFF 形状互換性レイヤー
+
+クライアント（`opencode-access-mode.ts` 等）は従来通り `PATCH /session/{id}` 形状で BFF へ送信。BFF が:
+
+1. `PATCH /session/{id}` リクエストをインターセプト
+2. body の `permission` フィールド（`PermissionRuleset`）を抽出
+3. 各 `PermissionRule` を `POST /api/session/{id}/permission` へ展開（N 回呼び出し）
+4. 全結果を集約してクライアントへレスポンス
+
+**実装箇所**: `app/api/opencode/[...path]/route.ts` の `proxy()` 内。`isSessionPermissionWrite` 判定で `PATCH /session/{id}` を検出した場合、v2 展開ロジックへ分岐。
+
+**エラーハンドリング**: N 回呼び出しの一部が失敗した場合、成功分は反映済みのため部分成功を返すか、全体をロールバックするか要設計。推奨: 部分成功を 207 Multi-Status で返す。
+
+#### `assertSafeOpenCodeSessionId` 厳格検証の載せ替え
+
+既存テスト（`/session/ses%2Fweird%20id` を期待）は percent-encode のみ通す契約。v2 ビルダーは `assertSafeOpenCodeSessionId` で throw するため、これを載せ替えると挙動が変わる。
+
+**方針**: `PATCH /session/{id}` の代替ロジックは BFF 内で完結し、クライアントは従来通り v1 パスへ送るため、`assertSafeOpenCodeSessionId` 厳格検証の影響を受けない。v2 `POST /api/session/{id}/permission` の呼び出しは BFF 内部（`ocServer` 経由）で行い、id は BFF が管理するため安全。
+
+### B-7. 実装ステップ（Phase B の実行順序）
+
+1. **`opencode-paths.ts` 拡張**
+   - v2 パステンプレート追加（`OC_PATH_TEMPLATES`）
+   - v2 ビルダー関数追加（`...PathV2` シリーズ）
+   - `opencode-paths.test.ts` に v2 ビルダーの期待値テスト追加
+
+2. **`opencode-events.ts` 確認**
+   - v1 廃止予定イベントが v2 で置換されているか確認
+   - `session.next.*` の v2 ストリーミングイベントが `opencode-events.test.ts` で検証済みであることを確認
+
+3. **型再生成・ドリフト検知**
+   - `npm run gen:types` → `opencode-schema.d.ts` 再生成
+   - `npx tsc --noEmit` → 新規 v2 テンプレートが `satisfies` を通過することを確認
+   - `npx vitest run opencode-paths.test.ts opencode-events.test.ts opencode-schema-freshness.test.ts`
+
+4. **BFF プロキシ拡張（Phase C へ引継ぎ）**
+   - `route.ts` の正規表現を v2 パス対応へ拡張
+   - レスポンス形状変換レイヤー追加
+   - リクエスト body 形状変換レイヤー追加
+   - `PATCH /session/{id}` → v2 権限展開ロジック追加
+
+5. **クライアント側の切替（Phase C へ引継ぎ）**
+   - `useSessionStream.ts` / `goal-loop.ts` / `hang-watchdog.ts` / `task-service.ts` / `memory-extract.ts` / `workflow-scheduler.ts` / `collaboration-context.ts` / `qwen-native-vision.ts` の v1 ビルダー呼び出しを v2 ビルダーへ切替
+   - v1 維持操作（todo/diff/command/children 等）は v1 ビルダーのまま
+
+### B-8. v1+v2 ハイブリッド運用の制約
+
+1. **同一セッションで v1 と v2 を混用しない**: セッション作成を v2 で行った場合、以降の操作も v2 で統一。v1 で作成したセッションは v1 で統一。これはエンジン内部のセッション状態管理世代が一致することを保証するため
+2. **SSE ストリームは混用可能**: `useSessionStream.ts` は既に v1+v2 イベントを同一ストリームで処理している。`/event` と `/api/event` は両方の世代のイベントを送出するため、移行期は現状 `/event` で両方受信し続ける
+3. **`/session/status` は当面 v1 維持**: `SessionStatus` マップの形状互換性が BFF で保証できないため、v2 `/api/session/active` への切替は別途検討
