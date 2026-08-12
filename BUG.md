@@ -101,6 +101,7 @@ vitest 287 ファイル・3561 テスト / host 395 テスト / browser-bridge 9
 
 ## 調査して「バグではない」と確認した候補（再調査防止メモ）
 
+- **BU ラウンド（2026-08-13）追加レビュー（健全・新規確定なし）**: ターン1 `AccessModeSelect` / `SkillPermissionSelect` / `IntelligenceSelect` / `AutoOptimizeSelect` / `AgentSuggestMenu`（GhostSelect ラッパーで親が状態制御）・`ProviderModelsSettings` の並び替え（`saveOrder` はキュー直列化、`moveItem` はコピー返却で state を変異させない）。ターン2 `NestedAgentPanel`（子セッション照合・sticky match・BFF unwrap で v2 `{data}` は解決済み）・`PermissionCard` / `QuestionCard` / `TurnNoticeBanner`（busy/世代ガード）・`message-parts.ts`。ターン3 `AutoRouteOverridesEditor`（explicit/preset 切替、empty override 防止）・`ExtensionsSettings`（`buildSkillTree` の group→skill 昇格は順序依存なし、プラグイン options はサーバへ送らず維持）・`BrowserBridgeApprovals`・SettingsView「接続」タブ（VPN/CA証明書/ファイアウォール）。**注記**: `BrowserBridgeSettings` の「この接続を削除」はサーバ側 revoke 未実装（コード内 TODO）で純粋にローカル表示のみのため、再マウントで接続が復活する。既知の未実装として記録対象外。
 - `filterRevertedMessages` の文字列比較 → 現行 ID 形式では正しく動作（BH-3 参照）。
 - `isBlockedOpencodeWrite` が `/api/config` PATCH を塞がない → OpenCode 1.18.14 の schema には `/config`・`/global/config` のみで `/api/config` は存在せず、現状は塞がっている。
 - `task-status.ts` / `dirstat.ts` / `git.ts` / `api-guard.ts` / `memory-*` / `pty-*` / `hang-watchdog.ts` / `goal-loop.ts` / `workflow-scheduler.ts` → いずれも実データ・テストと整合。
