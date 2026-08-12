@@ -131,6 +131,9 @@ export type SkillTokenRange = {
   description?: string;
 };
 
+/** Skill names use the same safe charset as agent names. */
+const TOKEN_CHARS = /[A-Za-z0-9._-]/;
+
 /** Locate whole `/skill-name` tokens that match known skills. */
 export function findSkillTokens(
   text: string,
@@ -148,7 +151,14 @@ export function findSkillTokens(
   let match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
     const prefix = match[1] ?? "";
-    const name = match[2] ?? "";
+    const raw = match[2] ?? "";
+    // Trim trailing characters that cannot belong to a skill name so tokens
+    // immediately followed by punctuation (e.g. "/bug-hunt,") still resolve,
+    // matching how sent messages highlight them (BU-6).
+    let end = raw.length;
+    while (end > 0 && !TOKEN_CHARS.test(raw[end - 1])) end -= 1;
+    const name = raw.slice(0, end);
+    if (!name) continue;
     const slashIndex = match.index + prefix.length;
     const command = byName.get(name.toLowerCase());
     if (!command) continue;

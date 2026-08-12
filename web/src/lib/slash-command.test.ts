@@ -156,6 +156,25 @@ describe("skill token highlights", () => {
     ]);
   });
 
+  it("resolves skill tokens followed by punctuation, matching sent-message highlighting", () => {
+    expect(findSkillTokens("/loop, now", COMMANDS)).toEqual([
+      {
+        start: 0,
+        end: 5,
+        name: "loop",
+        description: "Run on an interval",
+      },
+    ]);
+    expect(findSkillTokens("run /babysit!", COMMANDS)).toEqual([
+      {
+        start: 4,
+        end: 12,
+        name: "babysit",
+        description: "Watch a PR",
+      },
+    ]);
+  });
+
   it("segments skill tokens for blue rendering and hover descriptions", () => {
     expect(segmentSkillHighlights("/loop now", COMMANDS)).toEqual([
       {
