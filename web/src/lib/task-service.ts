@@ -440,11 +440,19 @@ export async function getTaskCost(id: string): Promise<number | undefined> {
   if (!ws) return undefined;
   const binding = primaryBindings().get(id);
   if (!binding) return undefined;
-  const session = await ocServer<SessionUsage>(
-    ws.absolute_path,
-    sessionPath(binding.opencode_session_id),
-    { timeoutMs: 1500 },
-  );
+  let session: SessionUsage;
+  try {
+    session = await ocServer<SessionUsage>(
+      ws.absolute_path,
+      sessionPath(binding.opencode_session_id),
+      { timeoutMs: 1500 },
+    );
+  } catch {
+    // Live cost polling is best-effort. A busy/slow engine must not surface a
+    // 408 from `/api/tasks/:id/cost` or flood the host log; clients keep the
+    // last known cost (TaskView / Sidebar already ignore refresh failures).
+    return undefined;
+  }
   const reportedCost =
     typeof session.cost === "number" && Number.isFinite(session.cost) && session.cost >= 0
       ? session.cost

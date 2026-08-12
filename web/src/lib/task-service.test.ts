@@ -61,6 +61,7 @@ import {
   listArchivedTasks,
   listTasks,
 } from "./task-service";
+import { OcError, ocServer } from "./oc-server";
 
 const WS = {
   id: "ws1",
@@ -311,6 +312,16 @@ describe("getTask cost aggregation", () => {
     await expect(getTaskCost("ws1")).resolves.toBe(3.75);
     expect(h.ocCalls).toContain("/repo/session/sess1");
     expect(h.ocCalls).not.toContain("/repo/session/sess1/message");
+  });
+
+  it("returns undefined when the lightweight session endpoint times out", async () => {
+    vi.mocked(ocServer).mockRejectedValueOnce(
+      new OcError(
+        "OpenCode engine が2秒でタイムアウトしました (/session/sess1)",
+        408,
+      ),
+    );
+    await expect(getTaskCost("ws1")).resolves.toBeUndefined();
   });
 
   it("estimates a lightweight task cost from aggregate session tokens", async () => {
