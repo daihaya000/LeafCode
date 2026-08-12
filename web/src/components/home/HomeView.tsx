@@ -1353,7 +1353,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               icon={<Play className="h-3.5 w-3.5" />}
               valueLabel={startMode === "task" ? "Taskで開始" : "Workflowで開始"}
               onChange={(value) => {
-                if (value === "task" || value === "workflow") setStartMode(value);
+                if (value === "task" || value === "workflow") {
+                  setStartMode(value);
+                  // Goal loop and Workflow are mutually exclusive: the loop
+                  // toggle is hidden in Workflow mode and a stale ON state
+                  // would silently ignore the loop settings at submit (BU-1).
+                  if (value === "workflow") setGoalLoopEnabled(false);
+                }
               }}
               className="max-w-[11rem] shrink-0 sm:max-w-44"
               title={
@@ -1484,7 +1490,7 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
               className: "w-full resize-none bg-transparent py-1.5 text-base outline-none focus-visible:outline-none placeholder:text-faint",
             }}
             afterTextarea={
-              goalLoopEnabled ? (
+              goalLoopEnabled && startMode === "task" ? (
                 <GoalLoopOptions
                   acceptance={goalLoopAcceptance}
                   maxTurns={goalLoopMaxTurns}
@@ -1597,11 +1603,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
                   onChange={(m) => changeSubagentPermission(m)}
                   className="h-8 shrink-0"
                 />
-                <GoalLoopToggle
-                  enabled={goalLoopEnabled}
-                  disabled={submitting}
-                  onToggle={() => setGoalLoopEnabled((v) => !v)}
-                />
+                {startMode === "task" && (
+                  <GoalLoopToggle
+                    enabled={goalLoopEnabled}
+                    disabled={submitting}
+                    onToggle={() => setGoalLoopEnabled((v) => !v)}
+                  />
+                )}
               </>}
             action={<Button
                 variant="primary"
