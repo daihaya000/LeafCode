@@ -326,4 +326,74 @@ describe("useSessionStream stuck-busy recovery", () => {
     await flush();
     expect(result.current.aborting).toBe(false);
   });
+
+  it("applies REST idle after abort even when SSE reconnects mid-abort", async () => {
+    const { useSessionStream } = await import("./useSessionStream");
+    let resolveAbort: (() => void) | undefined;
+    statusMap = { [SESSION]: { type: "busy" } };
+    ocJson.mockImplementation((path: string) => {
+      if (path === `/session/${SESSION}/abort`) {
+        return new Promise<void>((resolve) => {
+          resolveAbort = () => resolve();
+        });
+      }
+      if (path === "/session/status") return Promise.resolve(statusMap);
+      if (path === `/session/${SESSION}/message`) return Promise.resolve([]);
+      if (path === `/session/${SESSION}/todo`) return Promise.resolve([]);
+      if (path === `/session/${SESSION}`) return Promise.resolve({ revert: null });
+      if (path === "/permission" || path === "/question") return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+
+    const { result } = renderHook(() => useSessionStream(DIRECTORY, SESSION));
+    await flush();
+    const es = FakeEventSource.instances[0]!;
+    await act(async () => {
+      es.onopen?.();
+      es.onmessage?.({
+        data: JSON.stringify({
+          type: "session.status",
+          properties: { sessionID: SESSION, status: { type: "busy" } },
+        }),
+      });
+    });
+    await flush();
+    expect(result.current.status?.type).toBe("busy");
+
+    await act(async () => {
+      void result.current.abort();
+      await Promise.resolve();
+    });
+    expect(result.current.aborting).toBe(true);
+    expect(result.current.status?.type).toBe("idle");
+
+    // SSE drops and reconnects while the abort POST is still in flight.
+    await act(async () => {
+      es.onerror?.();
+    });
+    await flush(1000);
+    const es2 = FakeEventSource.instances[FakeEventSource.instances.length - 1]!;
+    expect(es2).not.toBe(es);
+
+    await act(async () => {
+      es2.onopen?.();
+    });
+    await flush();
+    // Reconnect resync trusts REST busy and re-locks the optimistic idle.
+    expect(result.current.status?.type).toBe("busy");
+    expect(result.current.aborting).toBe(true);
+
+    // Engine finished; post-abort resync must accept REST idle. A boolean
+    // preferRest flag would already have been cleared by reconnect.finally,
+    // leaving staleIdle to drop this unlock until stuck-busy (~12s).
+    statusMap = { [SESSION]: { type: "idle" } };
+    await act(async () => {
+      resolveAbort?.();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(result.current.status?.type).toBe("idle");
+    expect(result.current.aborting).toBe(false);
+  });
 });

@@ -1,7 +1,38 @@
-﻿# 作業ログ: /loop 1m バグハント — GlobalAttention 孫権限カード漏れ
+﻿# 作業ログ: /loop 1m バグハント — abort 中 SSE 再接続で composer 固着
 
 ## 日付
 2026-08-12
+
+## 期待 / 実際
+- 期待: 停止後、abort 完了の REST idle で composer が開く
+- 実際: abort POST 中に SSE 再接続すると `preferRestStatus` が先に false になり、post-abort の REST idle が `staleIdle` で捨てられ ~12s+ 送信不可
+
+## 根本原因
+- `useSessionStream.ts` の `preferRestStatusRef` が boolean 1本。reconnect / step.ended / error の `resync().finally` が abort 所有中でも無条件 clear
+
+## 修正
+- hold カウンタ（`acquirePreferRest` / `releasePreferRest`）に変更し、ネストした holder が互いに潰さない
+
+## 回帰防止
+- `applies REST idle after abort even when SSE reconnects mid-abort`
+
+## 検証
+- stuck-busy 7 PASS / eslint 対象 OK
+
+## 残存リスク
+- 権限 PATCH 極短窓、Host BUILD_ID 欠落時の初回ビルド待ちは未着手
+
+---
+# 作業ログ: /loop 1m バグハント — GlobalAttention 孫権限カード漏れ
+
+## 日付
+2026-08-12
+
+## Diffコミットメッセージ生成
+- Diffパネルの決定的なファイル名要約を、`generation-model` 設定を使うAI生成 APIへ接続した。
+- Diff内容はサーバー側で一時セッションへ渡し、全ツールを無効化して生成後にセッションを削除する。
+- AI生成失敗時は既存の決定的候補へフォールバックする。
+- 関連テスト 21 件通過。全体の型チェックは既存の `GlobalAttentionProvider.test.tsx` の型エラーで失敗。
 
 ## 期待 / 実際
 - 期待: ネストした孫サブエージェントの edit/bash 承認待ちが、再接続後も GlobalAttention に復元される

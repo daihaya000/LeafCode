@@ -784,8 +784,19 @@ export function useSessionStream(directory: string | null, sessionId: string | n
   const abortingScopesRef = useRef(new Set<string>());
   const [aborting, setAborting] = useState(false);
   const connectionRef = useRef<ConnectionState>(state.connection);
-  /** After SSE reconnect, trust REST status for one resync (may have gone idle offline). */
-  const preferRestStatusRef = useRef(false);
+  /**
+   * Nested holders that force REST status to win over staleIdle/staleBusy.
+   * A boolean flag is unsafe: SSE reconnect (or step.ended/error) clears it in
+   * `resync().finally` while an in-flight abort still needs the hold, so the
+   * post-abort REST idle is dropped and the composer stays locked.
+   */
+  const preferRestHoldRef = useRef(0);
+  const acquirePreferRest = useCallback(() => {
+    preferRestHoldRef.current += 1;
+  }, []);
+  const releasePreferRest = useCallback(() => {
+    preferRestHoldRef.current = Math.max(0, preferRestHoldRef.current - 1);
+  }, []);
   /** Consecutive REST idle snapshots seen while local status stayed busy. */
   const idleStreakRef = useRef(0);
   /** Last SSE event scoped to this session — proves the turn is still running. */
@@ -829,7 +840,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     dispatch({ kind: "reset", scopeKey, cached: readCachedSessionState(scopeKey) });
     pendingMutationRef.current = false;
     mutationStartedAtRef.current = null;
-    preferRestStatusRef.current = false;
+    preferRestHoldRef.current = 0;
     idleStreakRef.current = 0;
     sessionIdleEventReceivedRef.current = false;
     sessionActivityAtRef.current = Date.now();
@@ -940,7 +951,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         else idleStreakRef.current = 0;
         const decision = resolveResyncStatus({
           pendingMutation: pendingMutationRef.current,
-          preferRestStatus: preferRestStatusRef.current,
+          preferRestStatus: preferRestHoldRef.current > 0,
           connection: connectionRef.current,
           currentType: statusRef.current?.type,
           next,
@@ -1337,9 +1348,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
             message: err?.data?.message ?? "セッションでエラーが発生しました",
           });
           // Engine may omit idle after error — trust REST status/messages.
-          preferRestStatusRef.current = true;
+          acquirePreferRest();
           void resync().finally(() => {
-            preferRestStatusRef.current = false;
+            releasePreferRest();
           });
         }
         return;
@@ -1447,10 +1458,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           // normal reconcile intentionally suppresses REST idle while SSE is
           // live, which would leave the composer locked after the final step.
           // A step boundary is the authoritative point to consult REST.
-          preferRestStatusRef.current = true;
+          acquirePreferRest();
           void resync().finally(() => {
             if (scopeRef.current === effectScope) {
-              preferRestStatusRef.current = false;
+              releasePreferRest();
             }
           });
           return;
@@ -1723,9 +1734,9 @@ export function useSessionStream(directory: string | null, sessionId: string | n
               err?.message ??
               "セッションのステップが失敗しました",
           });
-          preferRestStatusRef.current = true;
+          acquirePreferRest();
           void resync().finally(() => {
-            preferRestStatusRef.current = false;
+            releasePreferRest();
           });
           return;
         }
@@ -1764,9 +1775,11 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           // After any reconnection (not just error), trust REST status for one
           // resync. The session may have gone idle while disconnected, and the
           // staleIdle guard would otherwise prevent the update (R9#1).
-          preferRestStatusRef.current = true;
+          // Use a hold count so an overlapping abort (or step.ended) is not
+          // cleared early by this finally — that left the composer busy-locked.
+          acquirePreferRest();
           void resync().finally(() => {
-            preferRestStatusRef.current = false;
+            releasePreferRest();
           });
         }
       };
@@ -1859,7 +1872,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       window.removeEventListener("online", onOnline);
       es?.close();
     };
-  }, [directory, sessionId, resync]);
+  }, [directory, sessionId, resync, acquirePreferRest, releasePreferRest]);
 
   /**
    * Start an elapsed-time ticker for the in-flight mutation.
@@ -1947,8 +1960,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           pendingMutationRef.current = false;
           // Do not flip to idle: the engine may still be busy after a client
           // timeout. Prefer REST and resync so status/composer stay truthful.
-          preferRestStatusRef.current = true;
-          void resync();
+          acquirePreferRest();
+          void resync().finally(() => {
+            releasePreferRest();
+          });
         }
         throw err;
       } finally {
@@ -1963,7 +1978,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }
       }
     },
-    [directory, resync, startMutationElapsed],
+    [directory, resync, startMutationElapsed, acquirePreferRest, releasePreferRest],
   );
 
   const sendCommand = useCallback(
@@ -2031,8 +2046,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       } catch (err) {
         if (markLiveScope()) {
           pendingMutationRef.current = false;
-          preferRestStatusRef.current = true;
-          void resync();
+          acquirePreferRest();
+          void resync().finally(() => {
+            releasePreferRest();
+          });
         }
         throw err;
       } finally {
@@ -2047,7 +2064,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         }
       }
     },
-    [directory, resync, startMutationElapsed],
+    [directory, resync, startMutationElapsed, acquirePreferRest, releasePreferRest],
   );
 
   // Re-fetch the todo list on demand. The engine occasionally skips the final
@@ -2080,6 +2097,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       if (scopeRef.current === myScope) setAborting(true);
       // Unlock immediately so a hung/failed abort POST cannot freeze the composer.
       pendingMutationRef.current = false;
+      let heldPreferRest = false;
       if (scopeRef.current === myScope) {
         statusRef.current = { type: "idle" };
         dispatch({ kind: "status", status: { type: "idle" } });
@@ -2088,8 +2106,10 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           dispatch({ kind: "sessionError", message: reason });
         }
         // If abort fails and the session is still busy, REST must re-lock.
-        // Keep this true until after the post-abort resync (not cleared before it).
-        preferRestStatusRef.current = true;
+        // Hold until after the post-abort resync; nested reconnect/step holders
+        // must not clear this early (composer busy-lock regression).
+        acquirePreferRest();
+        heldPreferRest = true;
       }
       try {
         await ocJson(sessionAbortPath(sid), directory, {
@@ -2099,7 +2119,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
       } finally {
         try {
           if (sessionRef.current === sid) {
-            // preferRest remains true for this resync so optimistic idle can be
+            // preferRest remains held for this resync so optimistic idle can be
             // corrected when the engine is still busy (staleBusy would otherwise
             // suppress the REST busy snapshot).
             await resync();
@@ -2107,17 +2127,13 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         } catch {
           /* non-fatal */
         } finally {
-          if (sessionRef.current === sid) {
-            // Clear after the re-lock resync so subsequent sends are not affected
-            // by the stale idle guard (R17).
-            preferRestStatusRef.current = false;
-          }
+          if (heldPreferRest) releasePreferRest();
           abortingScopesRef.current.delete(myScope);
           setAborting(abortingScopesRef.current.has(scopeRef.current));
         }
       }
     },
-    [directory, resync, clearMutationTimers],
+    [directory, resync, clearMutationTimers, acquirePreferRest, releasePreferRest],
   );
   abortRef.current = abort;
 
