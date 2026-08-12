@@ -2309,6 +2309,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/session/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active sessions
+         * @description Retrieve foreground Session drains currently owned by this OpenCode process. Sessions absent from the result are inactive.
+         */
+        get: operations["v2.session.active"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session/{sessionID}": {
         parameters: {
             query?: never;
@@ -2495,6 +2515,86 @@ export interface paths {
          * @description Retrieve the active context messages for a session (all messages after the last compaction).
          */
         get: operations["v2.session.context"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session/{sessionID}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get session history
+         * @description Read one finite page of public durable Session events after an exclusive aggregate sequence. Newly committed events may appear on later pages.
+         */
+        get: operations["v2.session.history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session/{sessionID}/event": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Subscribe to session events
+         * @description Replay durable events after an aggregate sequence, then continue with new durable events.
+         */
+        get: operations["v2.session.events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session/{sessionID}/interrupt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interrupt session execution
+         * @description Interrupt active execution owned by this OpenCode process. Idle interruption is a no-op.
+         */
+        post: operations["v2.session.interrupt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session/{sessionID}/message/{messageID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get session message
+         * @description Retrieve one projected message owned by the Session.
+         */
+        get: operations["v2.session.message"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2803,6 +2903,30 @@ export interface paths {
          * @description Retrieve pending permission requests owned by a session.
          */
         get: operations["v2.session.permission.list"];
+        put?: never;
+        /**
+         * Create permission request
+         * @description Evaluate and, when approval is required, create a permission request for a session.
+         */
+        post: operations["v2.session.permission.create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/session/{sessionID}/permission/{requestID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get permission request
+         * @description Retrieve a pending permission request owned by a session.
+         */
+        get: operations["v2.session.permission.get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3851,11 +3975,7 @@ export interface components {
                     timestamp: number;
                     sessionID: string;
                     messageID: string;
-                    model: {
-                        id: string;
-                        providerID: string;
-                        variant?: string;
-                    };
+                    model: components["schemas"]["ModelRef"];
                 };
             } | {
                 id: string;
@@ -3941,11 +4061,7 @@ export interface components {
                     sessionID: string;
                     assistantMessageID: string;
                     agent: string;
-                    model: {
-                        id: string;
-                        providerID: string;
-                        variant?: string;
-                    };
+                    model: components["schemas"]["ModelRef"];
                     snapshot?: string;
                 };
             } | {
@@ -4021,9 +4137,7 @@ export interface components {
                     sessionID: string;
                     assistantMessageID: string;
                     reasoningID: string;
-                    providerMetadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    providerMetadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             } | {
                 id: string;
@@ -4046,9 +4160,7 @@ export interface components {
                     assistantMessageID: string;
                     reasoningID: string;
                     text: string;
-                    providerMetadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    providerMetadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             } | {
                 id: string;
@@ -4096,9 +4208,7 @@ export interface components {
                     input: Record<string, never>;
                     provider: {
                         executed: boolean;
-                        metadata?: {
-                            [key: string]: Record<string, never>;
-                        };
+                        metadata?: components["schemas"]["LLMProviderMetadata"];
                     };
                 };
             } | {
@@ -4111,7 +4221,7 @@ export interface components {
                     assistantMessageID: string;
                     callID: string;
                     structured: Record<string, never>;
-                    content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+                    content: components["schemas"]["LLMToolContent"][];
                 };
             } | {
                 id: string;
@@ -4123,14 +4233,12 @@ export interface components {
                     assistantMessageID: string;
                     callID: string;
                     structured: Record<string, never>;
-                    content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+                    content: components["schemas"]["LLMToolContent"][];
                     outputPaths?: string[];
                     result?: unknown;
                     provider: {
                         executed: boolean;
-                        metadata?: {
-                            [key: string]: Record<string, never>;
-                        };
+                        metadata?: components["schemas"]["LLMProviderMetadata"];
                     };
                 };
             } | {
@@ -4146,9 +4254,7 @@ export interface components {
                     result?: unknown;
                     provider: {
                         executed: boolean;
-                        metadata?: {
-                            [key: string]: Record<string, never>;
-                        };
+                        metadata?: components["schemas"]["LLMProviderMetadata"];
                     };
                 };
             } | {
@@ -4202,13 +4308,7 @@ export interface components {
                 properties: {
                     timestamp: number;
                     sessionID: string;
-                    revert: {
-                        messageID: string;
-                        partID?: string;
-                        snapshot?: string;
-                        diff?: string;
-                        files?: components["schemas"]["FileDiff"][];
-                    };
+                    revert: components["schemas"]["RevertState"];
                 };
             } | {
                 id: string;
@@ -4486,23 +4586,11 @@ export interface components {
                 properties: {
                     id: string;
                     worktree: string;
-                    /** @enum {string} */
-                    vcs?: "git";
+                    vcs?: components["schemas"]["ProjectVcs"];
                     name?: string;
-                    icon?: {
-                        url?: string;
-                        override?: string;
-                        color?: string;
-                    };
-                    commands?: {
-                        /** @description Startup script to run when creating a new workspace (worktree) */
-                        start?: string;
-                    };
-                    time: {
-                        created: number;
-                        updated: number;
-                        initialized?: number;
-                    };
+                    icon?: components["schemas"]["ProjectIcon"];
+                    commands?: components["schemas"]["ProjectCommands"];
+                    time: components["schemas"]["ProjectTime"];
                     sandboxes: string[];
                 };
             } | {
@@ -4704,9 +4792,8 @@ export interface components {
                     reasoning?: boolean;
                     temperature?: boolean;
                     tool_call?: boolean;
-                    interleaved?: true | {
-                        /** @enum {string} */
-                        field: "reasoning" | "reasoning_content" | "reasoning_details";
+                    interleaved?: boolean | ("reasoning" | "reasoning_content" | "reasoning_text") | string | {
+                        field: ("reasoning" | "reasoning_content" | "reasoning_text") | string;
                     };
                     cost?: {
                         input: number;
@@ -4846,6 +4933,7 @@ export interface components {
             model?: string;
             small_model?: string;
             default_agent?: string;
+            subagent_depth?: number;
             username?: string;
             mode?: {
                 build?: components["schemas"]["AgentConfig"];
@@ -4959,8 +5047,7 @@ export interface components {
                     pdf: boolean;
                 };
                 interleaved: boolean | {
-                    /** @enum {string} */
-                    field: "reasoning" | "reasoning_content" | "reasoning_details";
+                    field: ("reasoning" | "reasoning_content" | "reasoning_text") | string;
                 };
             };
             cost: {
@@ -5284,23 +5371,11 @@ export interface components {
         Project: {
             id: string;
             worktree: string;
-            /** @enum {string} */
-            vcs?: "git";
+            vcs?: components["schemas"]["ProjectVcs"];
             name?: string;
-            icon?: {
-                url?: string;
-                override?: string;
-                color?: string;
-            };
-            commands?: {
-                /** @description Startup script to run when creating a new workspace (worktree) */
-                start?: string;
-            };
-            time: {
-                created: number;
-                updated: number;
-                initialized?: number;
-            };
+            icon?: components["schemas"]["ProjectIcon"];
+            commands?: components["schemas"]["ProjectCommands"];
+            time: components["schemas"]["ProjectTime"];
             sandboxes: string[];
         };
         ProjectNotFoundError: {
@@ -5534,11 +5609,20 @@ export interface components {
             _tag: "InvalidCursorError";
             message: string;
         };
+        SessionActive: {
+            /** @enum {string} */
+            type: "running";
+        };
         SessionNotFoundError: {
             /** @enum {string} */
             _tag: "SessionNotFoundError";
             sessionID: string;
             message: string;
+        };
+        PromptInput: {
+            text: string;
+            files?: components["schemas"]["PromptInputFileAttachment"][];
+            agents?: components["schemas"]["PromptAgentAttachment"][];
         };
         ConflictError: {
             /** @enum {string} */
@@ -5565,6 +5649,12 @@ export interface components {
             message: string;
             ref?: string;
         };
+        SessionDurableEvent: components["schemas"]["SessionNextAgentSwitched"] | components["schemas"]["SessionNextModelSwitched"] | components["schemas"]["SessionNextMoved"] | components["schemas"]["SessionNextPrompted"] | components["schemas"]["SessionNextPromptAdmitted"] | components["schemas"]["SessionNextContextUpdated"] | components["schemas"]["SessionNextSynthetic"] | components["schemas"]["SessionNextShellStarted"] | components["schemas"]["SessionNextShellEnded"] | components["schemas"]["SessionNextStepStarted"] | components["schemas"]["SessionNextStepEnded"] | components["schemas"]["SessionNextStepFailed"] | components["schemas"]["SessionNextTextStarted"] | components["schemas"]["SessionNextTextEnded"] | components["schemas"]["SessionNextToolInputStarted"] | components["schemas"]["SessionNextToolInputEnded"] | components["schemas"]["SessionNextToolCalled"] | components["schemas"]["SessionNextToolProgress"] | components["schemas"]["SessionNextToolSuccess"] | components["schemas"]["SessionNextToolFailed"] | components["schemas"]["SessionNextReasoningStarted"] | components["schemas"]["SessionNextReasoningEnded"] | components["schemas"]["SessionNextRetried"] | components["schemas"]["SessionNextCompactionStarted"] | components["schemas"]["SessionNextCompactionEnded"] | components["schemas"]["SessionNextRevertStaged"] | components["schemas"]["SessionNextRevertCleared"] | components["schemas"]["SessionNextRevertCommitted"];
+        SessionHistory: {
+            data: components["schemas"]["SessionDurableEvent"][];
+            hasMore: boolean;
+        };
+        SessionDurableEventStream: string;
         SessionMessagesResponse: {
             data: components["schemas"]["SessionMessage"][];
             cursor: {
@@ -5578,7 +5668,66 @@ export interface components {
             providerID: string;
             message: string;
         };
-        V2Event: components["schemas"]["V2EventModels-devRefreshed"] | components["schemas"]["V2EventIntegrationUpdated"] | components["schemas"]["V2EventIntegrationConnectionUpdated"] | components["schemas"]["V2EventCatalogUpdated"] | components["schemas"]["V2EventSessionCreated"] | components["schemas"]["V2EventSessionUpdated"] | components["schemas"]["V2EventSessionDeleted"] | components["schemas"]["V2EventMessageUpdated"] | components["schemas"]["V2EventMessageRemoved"] | components["schemas"]["V2EventMessagePartUpdated"] | components["schemas"]["V2EventMessagePartRemoved"] | components["schemas"]["V2EventSessionNextAgentSwitched"] | components["schemas"]["V2EventSessionNextModelSwitched"] | components["schemas"]["V2EventSessionNextMoved"] | components["schemas"]["V2EventSessionNextPrompted"] | components["schemas"]["V2EventSessionNextPromptAdmitted"] | components["schemas"]["V2EventSessionNextContextUpdated"] | components["schemas"]["V2EventSessionNextSynthetic"] | components["schemas"]["V2EventSessionNextShellStarted"] | components["schemas"]["V2EventSessionNextShellEnded"] | components["schemas"]["V2EventSessionNextStepStarted"] | components["schemas"]["V2EventSessionNextStepEnded"] | components["schemas"]["V2EventSessionNextStepFailed"] | components["schemas"]["V2EventSessionNextTextStarted"] | components["schemas"]["V2EventSessionNextTextDelta"] | components["schemas"]["V2EventSessionNextTextEnded"] | components["schemas"]["V2EventSessionNextReasoningStarted"] | components["schemas"]["V2EventSessionNextReasoningDelta"] | components["schemas"]["V2EventSessionNextReasoningEnded"] | components["schemas"]["V2EventSessionNextToolInputStarted"] | components["schemas"]["V2EventSessionNextToolInputDelta"] | components["schemas"]["V2EventSessionNextToolInputEnded"] | components["schemas"]["V2EventSessionNextToolCalled"] | components["schemas"]["V2EventSessionNextToolProgress"] | components["schemas"]["V2EventSessionNextToolSuccess"] | components["schemas"]["V2EventSessionNextToolFailed"] | components["schemas"]["V2EventSessionNextRetried"] | components["schemas"]["V2EventSessionNextCompactionStarted"] | components["schemas"]["V2EventSessionNextCompactionDelta"] | components["schemas"]["V2EventSessionNextCompactionEnded"] | components["schemas"]["V2EventSessionNextRevertStaged"] | components["schemas"]["V2EventSessionNextRevertCleared"] | components["schemas"]["V2EventSessionNextRevertCommitted"] | components["schemas"]["V2EventMessagePartDelta"] | components["schemas"]["V2EventSessionDiff"] | components["schemas"]["V2EventSessionError"] | components["schemas"]["V2EventInstallationUpdated"] | components["schemas"]["V2EventInstallationUpdate-available"] | components["schemas"]["V2EventFileEdited"] | components["schemas"]["V2EventReferenceUpdated"] | components["schemas"]["V2EventPermissionV2Asked"] | components["schemas"]["V2EventPermissionV2Replied"] | components["schemas"]["V2EventPluginAdded"] | components["schemas"]["V2EventProjectDirectoriesUpdated"] | components["schemas"]["V2EventFileWatcherUpdated"] | components["schemas"]["V2EventPtyCreated"] | components["schemas"]["V2EventPtyUpdated"] | components["schemas"]["V2EventPtyExited"] | components["schemas"]["V2EventPtyDeleted"] | components["schemas"]["V2EventQuestionV2Asked"] | components["schemas"]["V2EventQuestionV2Replied"] | components["schemas"]["V2EventQuestionV2Rejected"] | components["schemas"]["V2EventTodoUpdated"] | components["schemas"]["V2EventLspUpdated"] | components["schemas"]["V2EventPermissionAsked"] | components["schemas"]["V2EventPermissionReplied"] | components["schemas"]["V2EventTuiPromptAppend"] | components["schemas"]["V2EventTuiCommandExecute"] | components["schemas"]["V2EventTuiToastShow"] | components["schemas"]["V2EventTuiSessionSelect"] | components["schemas"]["V2EventMcpToolsChanged"] | components["schemas"]["V2EventMcpBrowserOpenFailed"] | components["schemas"]["V2EventCommandExecuted"] | components["schemas"]["V2EventProjectUpdated"] | components["schemas"]["V2EventSessionStatus"] | components["schemas"]["V2EventSessionIdle"] | components["schemas"]["V2EventQuestionAsked"] | components["schemas"]["V2EventQuestionReplied"] | components["schemas"]["V2EventQuestionRejected"] | components["schemas"]["V2EventSessionCompacted"] | components["schemas"]["V2EventVcsBranchUpdated"] | components["schemas"]["V2EventWorkspaceReady"] | components["schemas"]["V2EventWorkspaceFailed"] | components["schemas"]["V2EventWorkspaceStatus"] | components["schemas"]["V2EventWorktreeReady"] | components["schemas"]["V2EventWorktreeFailed"] | components["schemas"]["V2EventServerConnected"] | components["schemas"]["V2EventGlobalDisposed"];
+        OutputFormat1: {
+            /** @enum {string} */
+            type: "text";
+        } | {
+            /** @enum {string} */
+            type: "json_schema";
+            schema: components["schemas"]["JSONSchema"];
+            retryCount?: number;
+        };
+        "session.status": {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.status";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+                status: components["schemas"]["SessionStatus"];
+            };
+        };
+        "question.replied": {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "question.replied";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+                requestID: string;
+                answers: components["schemas"]["QuestionAnswer"][];
+            };
+        };
+        "question.rejected": {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "question.rejected";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+                requestID: string;
+            };
+        };
+        V2Event: components["schemas"]["Models-devRefreshed"] | components["schemas"]["IntegrationUpdated"] | components["schemas"]["IntegrationConnectionUpdated"] | components["schemas"]["CatalogUpdated"] | components["schemas"]["SessionCreated"] | components["schemas"]["SessionUpdated"] | components["schemas"]["SessionDeleted"] | components["schemas"]["MessageUpdated"] | components["schemas"]["MessageRemoved"] | components["schemas"]["MessagePartUpdated"] | components["schemas"]["MessagePartRemoved"] | components["schemas"]["SessionNextAgentSwitched"] | components["schemas"]["SessionNextModelSwitched"] | components["schemas"]["SessionNextMoved"] | components["schemas"]["SessionNextPrompted"] | components["schemas"]["SessionNextPromptAdmitted"] | components["schemas"]["SessionNextContextUpdated"] | components["schemas"]["SessionNextSynthetic"] | components["schemas"]["SessionNextShellStarted"] | components["schemas"]["SessionNextShellEnded"] | components["schemas"]["SessionNextStepStarted"] | components["schemas"]["SessionNextStepEnded"] | components["schemas"]["SessionNextStepFailed"] | components["schemas"]["SessionNextTextStarted"] | components["schemas"]["SessionNextTextDelta"] | components["schemas"]["SessionNextTextEnded"] | components["schemas"]["SessionNextReasoningStarted"] | components["schemas"]["SessionNextReasoningDelta"] | components["schemas"]["SessionNextReasoningEnded"] | components["schemas"]["SessionNextToolInputStarted"] | components["schemas"]["SessionNextToolInputDelta"] | components["schemas"]["SessionNextToolInputEnded"] | components["schemas"]["SessionNextToolCalled"] | components["schemas"]["SessionNextToolProgress"] | components["schemas"]["SessionNextToolSuccess"] | components["schemas"]["SessionNextToolFailed"] | components["schemas"]["SessionNextRetried"] | components["schemas"]["SessionNextCompactionStarted"] | components["schemas"]["SessionNextCompactionDelta"] | components["schemas"]["SessionNextCompactionEnded"] | components["schemas"]["SessionNextRevertStaged"] | components["schemas"]["SessionNextRevertCleared"] | components["schemas"]["SessionNextRevertCommitted"] | components["schemas"]["MessagePartDelta"] | components["schemas"]["SessionDiff"] | components["schemas"]["SessionError"] | components["schemas"]["InstallationUpdated"] | components["schemas"]["InstallationUpdate-available"] | components["schemas"]["FileEdited"] | components["schemas"]["ReferenceUpdated"] | components["schemas"]["PermissionV2Asked"] | components["schemas"]["PermissionV2Replied"] | components["schemas"]["PluginAdded"] | components["schemas"]["ProjectDirectoriesUpdated"] | components["schemas"]["FileWatcherUpdated"] | components["schemas"]["PtyCreated"] | components["schemas"]["PtyUpdated"] | components["schemas"]["PtyExited"] | components["schemas"]["PtyDeleted"] | components["schemas"]["QuestionV2Asked"] | components["schemas"]["QuestionV2Replied"] | components["schemas"]["QuestionV2Rejected"] | components["schemas"]["TodoUpdated"] | components["schemas"]["LspUpdated"] | components["schemas"]["PermissionAsked"] | components["schemas"]["PermissionReplied"] | components["schemas"]["TuiPromptAppend"] | components["schemas"]["TuiCommandExecute"] | components["schemas"]["TuiToastShow"] | components["schemas"]["TuiSessionSelect"] | components["schemas"]["McpToolsChanged"] | components["schemas"]["McpBrowserOpenFailed"] | components["schemas"]["CommandExecuted"] | components["schemas"]["ProjectUpdated"] | components["schemas"]["session.status"] | components["schemas"]["SessionIdle"] | components["schemas"]["QuestionAsked"] | components["schemas"]["question.replied"] | components["schemas"]["question.rejected"] | components["schemas"]["SessionCompacted"] | components["schemas"]["VcsBranchUpdated"] | components["schemas"]["WorkspaceReady"] | components["schemas"]["WorkspaceFailed"] | components["schemas"]["WorkspaceStatus"] | components["schemas"]["WorktreeReady"] | components["schemas"]["WorktreeFailed"] | components["schemas"]["ServerConnected"] | components["schemas"]["GlobalDisposed"];
+        V2EventStream: string;
         ForbiddenError: {
             /** @enum {string} */
             _tag: "ForbiddenError";
@@ -5646,6 +5795,11 @@ export interface components {
         MoveSessionDestination: {
             directory: string;
         };
+        ModelRef: {
+            id: string;
+            providerID: string;
+            variant?: string;
+        };
         LocationRef: {
             directory: string;
             workspaceID?: string;
@@ -5671,6 +5825,9 @@ export interface components {
             type: "unknown";
             message: string;
         };
+        LLMProviderMetadata: {
+            [key: string]: Record<string, never>;
+        };
         ToolTextContent: {
             /** @enum {string} */
             type: "text";
@@ -5683,6 +5840,7 @@ export interface components {
             mime: string;
             name?: string;
         };
+        LLMToolContent: components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"];
         SessionNextRetry_error: {
             message: string;
             statusCode?: number;
@@ -5702,6 +5860,13 @@ export interface components {
             additions: number;
             deletions: number;
             patch: string;
+        };
+        RevertState: {
+            messageID: string;
+            partID?: string;
+            snapshot?: string;
+            diff?: string;
+            files?: components["schemas"]["FileDiff"][];
         };
         PermissionV2Source: {
             /** @enum {string} */
@@ -5732,6 +5897,22 @@ export interface components {
             callID: string;
         };
         QuestionV2Answer: string[];
+        /** @enum {string} */
+        ProjectVcs: "git";
+        ProjectIcon: {
+            url?: string;
+            override?: string;
+            color?: string;
+        };
+        ProjectCommands: {
+            /** @description Startup script to run when creating a new workspace (worktree) */
+            start?: string;
+        };
+        ProjectTime: {
+            created: number;
+            updated: number;
+            initialized?: number;
+        };
         EventServerInstanceDisposed: {
             id: string;
             /** @enum {string} */
@@ -5886,11 +6067,7 @@ export interface components {
                     timestamp: number;
                     sessionID: string;
                     messageID: string;
-                    model: {
-                        id: string;
-                        providerID: string;
-                        variant?: string;
-                    };
+                    model: components["schemas"]["ModelRef"];
                 };
             };
         };
@@ -6040,11 +6217,7 @@ export interface components {
                     sessionID: string;
                     assistantMessageID: string;
                     agent: string;
-                    model: {
-                        id: string;
-                        providerID: string;
-                        variant?: string;
-                    };
+                    model: components["schemas"]["ModelRef"];
                     snapshot?: string;
                 };
             };
@@ -6149,9 +6322,7 @@ export interface components {
                     sessionID: string;
                     assistantMessageID: string;
                     reasoningID: string;
-                    providerMetadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    providerMetadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             };
         };
@@ -6171,9 +6342,7 @@ export interface components {
                     assistantMessageID: string;
                     reasoningID: string;
                     text: string;
-                    providerMetadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    providerMetadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             };
         };
@@ -6234,9 +6403,7 @@ export interface components {
                     input: Record<string, never>;
                     provider: {
                         executed: boolean;
-                        metadata?: {
-                            [key: string]: Record<string, never>;
-                        };
+                        metadata?: components["schemas"]["LLMProviderMetadata"];
                     };
                 };
             };
@@ -6257,7 +6424,7 @@ export interface components {
                     assistantMessageID: string;
                     callID: string;
                     structured: Record<string, never>;
-                    content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+                    content: components["schemas"]["LLMToolContent"][];
                 };
             };
         };
@@ -6277,14 +6444,12 @@ export interface components {
                     assistantMessageID: string;
                     callID: string;
                     structured: Record<string, never>;
-                    content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+                    content: components["schemas"]["LLMToolContent"][];
                     outputPaths?: string[];
                     result?: unknown;
                     provider: {
                         executed: boolean;
-                        metadata?: {
-                            [key: string]: Record<string, never>;
-                        };
+                        metadata?: components["schemas"]["LLMProviderMetadata"];
                     };
                 };
             };
@@ -6308,9 +6473,7 @@ export interface components {
                     result?: unknown;
                     provider: {
                         executed: boolean;
-                        metadata?: {
-                            [key: string]: Record<string, never>;
-                        };
+                        metadata?: components["schemas"]["LLMProviderMetadata"];
                     };
                 };
             };
@@ -6386,13 +6549,7 @@ export interface components {
                 data: {
                     timestamp: number;
                     sessionID: string;
-                    revert: {
-                        messageID: string;
-                        partID?: string;
-                        snapshot?: string;
-                        diff?: string;
-                        files?: components["schemas"]["FileDiff"][];
-                    };
+                    revert: components["schemas"]["RevertState"];
                 };
             };
         };
@@ -6452,6 +6609,15 @@ export interface components {
             directory: string;
             strategy?: string;
         }[];
+        PtyTicketConnectToken: {
+            ticket: string;
+            expires_in: number;
+        };
+        WorkspaceEventConnectionStatus: {
+            workspaceID: string;
+            /** @enum {string} */
+            status: "connected" | "connecting" | "disconnected" | "error";
+        };
         LocationInfo: {
             directory: string;
             workspaceID?: string;
@@ -6460,6 +6626,13 @@ export interface components {
                 directory: string;
             };
         };
+        ProviderRequest: {
+            headers: {
+                [key: string]: string;
+            };
+            body: Record<string, never>;
+        };
+        AgentColor: string | ("primary" | "secondary" | "accent" | "success" | "warning" | "error" | "info");
         /** @enum {string} */
         PermissionV2Effect: "allow" | "deny" | "ask";
         PermissionV2Rule: {
@@ -6470,23 +6643,14 @@ export interface components {
         PermissionV2Ruleset: components["schemas"]["PermissionV2Rule"][];
         AgentV2Info: {
             id: string;
-            model?: {
-                id: string;
-                providerID: string;
-                variant?: string;
-            };
-            request: {
-                headers: {
-                    [key: string]: string;
-                };
-                body: Record<string, never>;
-            };
+            model?: components["schemas"]["ModelRef"];
+            request: components["schemas"]["ProviderRequest"];
             system?: string;
             description?: string;
             /** @enum {string} */
             mode: "subagent" | "primary" | "all";
             hidden: boolean;
-            color?: string | ("primary" | "secondary" | "accent" | "success" | "warning" | "error" | "info");
+            color?: components["schemas"]["AgentColor"];
             steps?: number;
             permissions: components["schemas"]["PermissionV2Ruleset"];
         };
@@ -6495,11 +6659,7 @@ export interface components {
             parentID?: string;
             projectID: string;
             agent?: string;
-            model?: {
-                id: string;
-                providerID: string;
-                variant?: string;
-            };
+            model?: components["schemas"]["ModelRef"];
             cost: number;
             tokens: {
                 input: number;
@@ -6518,13 +6678,13 @@ export interface components {
             title: string;
             location: components["schemas"]["LocationRef"];
             subpath?: string;
-            revert?: {
-                messageID: string;
-                partID?: string;
-                snapshot?: string;
-                diff?: string;
-                files?: components["schemas"]["FileDiff"][];
-            };
+            revert?: components["schemas"]["RevertState"];
+        };
+        PromptInputFileAttachment: {
+            uri: string;
+            name?: string;
+            description?: string;
+            source?: components["schemas"]["PromptSource"];
         };
         SessionInputAdmitted: {
             admittedSeq: number;
@@ -6554,11 +6714,7 @@ export interface components {
             };
             /** @enum {string} */
             type: "model-switched";
-            model: {
-                id: string;
-                providerID: string;
-                variant?: string;
-            };
+            model: components["schemas"]["ModelRef"];
         };
         SessionMessageUser: {
             id: string;
@@ -6617,8 +6773,10 @@ export interface components {
             type: "reasoning";
             id: string;
             text: string;
-            providerMetadata?: {
-                [key: string]: Record<string, never>;
+            providerMetadata?: components["schemas"]["LLMProviderMetadata"];
+            time?: {
+                created: number;
+                completed?: number;
             };
         };
         SessionMessageToolStatePending: {
@@ -6631,14 +6789,14 @@ export interface components {
             status: "running";
             input: Record<string, never>;
             structured: Record<string, never>;
-            content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+            content: components["schemas"]["LLMToolContent"][];
         };
         SessionMessageToolStateCompleted: {
             /** @enum {string} */
             status: "completed";
             input: Record<string, never>;
             attachments?: components["schemas"]["PromptFileAttachment"][];
-            content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+            content: components["schemas"]["LLMToolContent"][];
             outputPaths?: string[];
             structured: Record<string, never>;
             result?: unknown;
@@ -6647,7 +6805,7 @@ export interface components {
             /** @enum {string} */
             status: "error";
             input: Record<string, never>;
-            content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+            content: components["schemas"]["LLMToolContent"][];
             structured: Record<string, never>;
             error: components["schemas"]["SessionErrorUnknown"];
             result?: unknown;
@@ -6659,12 +6817,8 @@ export interface components {
             name: string;
             provider?: {
                 executed: boolean;
-                metadata?: {
-                    [key: string]: Record<string, never>;
-                };
-                resultMetadata?: {
-                    [key: string]: Record<string, never>;
-                };
+                metadata?: components["schemas"]["LLMProviderMetadata"];
+                resultMetadata?: components["schemas"]["LLMProviderMetadata"];
             };
             state: components["schemas"]["SessionMessageToolStatePending"] | components["schemas"]["SessionMessageToolStateRunning"] | components["schemas"]["SessionMessageToolStateCompleted"] | components["schemas"]["SessionMessageToolStateError"];
             time: {
@@ -6684,11 +6838,7 @@ export interface components {
             /** @enum {string} */
             type: "assistant";
             agent: string;
-            model: {
-                id: string;
-                providerID: string;
-                variant?: string;
-            };
+            model: components["schemas"]["ModelRef"];
             content: (components["schemas"]["SessionMessageAssistantText"] | components["schemas"]["SessionMessageAssistantReasoning"] | components["schemas"]["SessionMessageAssistantTool"])[];
             snapshot?: {
                 start?: string;
@@ -6722,30 +6872,596 @@ export interface components {
             };
         };
         SessionMessage: components["schemas"]["SessionMessageAgentSwitched"] | components["schemas"]["SessionMessageModelSwitched"] | components["schemas"]["SessionMessageUser"] | components["schemas"]["SessionMessageSynthetic"] | components["schemas"]["SessionMessageSystem"] | components["schemas"]["SessionMessageShell"] | components["schemas"]["SessionMessageAssistant"] | components["schemas"]["SessionMessageCompaction"];
+        SessionNextAgentSwitched: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.agent.switched";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                agent: string;
+            };
+        };
+        SessionNextModelSwitched: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.model.switched";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                model: components["schemas"]["ModelRef"];
+            };
+        };
+        SessionNextMoved: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.moved";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                location: components["schemas"]["LocationRef"];
+                subdirectory?: string;
+            };
+        };
+        SessionNextPrompted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.prompted";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                prompt: components["schemas"]["Prompt"];
+                /** @enum {string} */
+                delivery: "steer" | "queue";
+            };
+        };
+        SessionNextPromptAdmitted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.prompt.admitted";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                prompt: components["schemas"]["Prompt"];
+                /** @enum {string} */
+                delivery: "steer" | "queue";
+            };
+        };
+        SessionNextContextUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.context.updated";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                text: string;
+            };
+        };
+        SessionNextSynthetic: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.synthetic";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                text: string;
+            };
+        };
+        SessionNextShellStarted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.shell.started";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                callID: string;
+                command: string;
+            };
+        };
+        SessionNextShellEnded: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.shell.ended";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                callID: string;
+                output: string;
+            };
+        };
+        SessionNextStepStarted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.step.started";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                agent: string;
+                model: components["schemas"]["ModelRef"];
+                snapshot?: string;
+            };
+        };
+        SessionNextStepEnded: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.step.ended";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                finish: string;
+                cost: number;
+                tokens: {
+                    input: number;
+                    output: number;
+                    reasoning: number;
+                    cache: {
+                        read: number;
+                        write: number;
+                    };
+                };
+                snapshot?: string;
+                files?: string[];
+            };
+        };
+        SessionNextStepFailed: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.step.failed";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                error: components["schemas"]["SessionErrorUnknown"];
+            };
+        };
+        SessionNextTextStarted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.text.started";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                textID: string;
+            };
+        };
+        SessionNextTextEnded: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.text.ended";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                textID: string;
+                text: string;
+            };
+        };
+        SessionNextToolInputStarted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.tool.input.started";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                callID: string;
+                name: string;
+            };
+        };
+        SessionNextToolInputEnded: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.tool.input.ended";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                callID: string;
+                text: string;
+            };
+        };
+        SessionNextToolCalled: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.tool.called";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                callID: string;
+                tool: string;
+                input: Record<string, never>;
+                provider: {
+                    executed: boolean;
+                    metadata?: components["schemas"]["LLMProviderMetadata"];
+                };
+            };
+        };
+        SessionNextToolProgress: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.tool.progress";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                callID: string;
+                structured: Record<string, never>;
+                content: components["schemas"]["LLMToolContent"][];
+            };
+        };
+        SessionNextToolSuccess: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.tool.success";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                callID: string;
+                structured: Record<string, never>;
+                content: components["schemas"]["LLMToolContent"][];
+                outputPaths?: string[];
+                result?: unknown;
+                provider: {
+                    executed: boolean;
+                    metadata?: components["schemas"]["LLMProviderMetadata"];
+                };
+            };
+        };
+        SessionNextToolFailed: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.tool.failed";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                callID: string;
+                error: components["schemas"]["SessionErrorUnknown"];
+                result?: unknown;
+                provider: {
+                    executed: boolean;
+                    metadata?: components["schemas"]["LLMProviderMetadata"];
+                };
+            };
+        };
+        SessionNextReasoningStarted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.reasoning.started";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                reasoningID: string;
+                providerMetadata?: components["schemas"]["LLMProviderMetadata"];
+            };
+        };
+        SessionNextReasoningEnded: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.reasoning.ended";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                assistantMessageID: string;
+                reasoningID: string;
+                text: string;
+                providerMetadata?: components["schemas"]["LLMProviderMetadata"];
+            };
+        };
+        SessionNextRetried: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.retried";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                attempt: number;
+                error: components["schemas"]["SessionNextRetry_error"];
+            };
+        };
+        SessionNextCompactionStarted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.compaction.started";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                /** @enum {string} */
+                reason: "auto" | "manual";
+            };
+        };
+        SessionNextCompactionEnded: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.compaction.ended";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+                /** @enum {string} */
+                reason: "auto" | "manual";
+                text: string;
+                recent: string;
+            };
+        };
+        SessionNextRevertStaged: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.revert.staged";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                revert: components["schemas"]["RevertState"];
+            };
+        };
+        SessionNextRevertCleared: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.revert.cleared";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+            };
+        };
+        SessionNextRevertCommitted: {
+            id: string;
+            metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.next.revert.committed";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
+            data: {
+                timestamp: number;
+                sessionID: string;
+                messageID: string;
+            };
+        };
+        ModelApi: {
+            id: string;
+            /** @enum {string} */
+            type: "aisdk";
+            package: string;
+            url?: string;
+            settings?: Record<string, never>;
+        } | {
+            id: string;
+            /** @enum {string} */
+            type: "native";
+            url?: string;
+            settings: Record<string, never>;
+        };
+        ModelCapabilities: {
+            tools: boolean;
+            input: string[];
+            output: string[];
+        };
+        ModelCost: {
+            tier?: {
+                /** @enum {string} */
+                type: "context";
+                size: number;
+            };
+            input: number;
+            output: number;
+            cache: {
+                read: number;
+                write: number;
+            };
+        };
         ModelV2Info: {
             id: string;
             providerID: string;
             family?: string;
             name: string;
-            api: {
-                id: string;
-                /** @enum {string} */
-                type: "aisdk";
-                package: string;
-                url?: string;
-                settings?: Record<string, never>;
-            } | {
-                id: string;
-                /** @enum {string} */
-                type: "native";
-                url?: string;
-                settings: Record<string, never>;
-            };
-            capabilities: {
-                tools: boolean;
-                input: string[];
-                output: string[];
-            };
+            api: components["schemas"]["ModelApi"];
+            capabilities: components["schemas"]["ModelCapabilities"];
             request: {
                 headers: {
                     [key: string]: string;
@@ -6763,19 +7479,7 @@ export interface components {
             time: {
                 released: number;
             };
-            cost: {
-                tier?: {
-                    /** @enum {string} */
-                    type: "context";
-                    size: number;
-                };
-                input: number;
-                output: number;
-                cache: {
-                    read: number;
-                    write: number;
-                };
-            }[];
+            cost: components["schemas"]["ModelCost"][];
             /** @enum {string} */
             status: "alpha" | "beta" | "deprecated" | "active";
             enabled: boolean;
@@ -6785,29 +7489,27 @@ export interface components {
                 output: number;
             };
         };
+        ProviderAISDK: {
+            /** @enum {string} */
+            type: "aisdk";
+            package: string;
+            url?: string;
+            settings?: Record<string, never>;
+        };
+        ProviderNative: {
+            /** @enum {string} */
+            type: "native";
+            url?: string;
+            settings: Record<string, never>;
+        };
+        ProviderApi: components["schemas"]["ProviderAISDK"] | components["schemas"]["ProviderNative"];
         ProviderV2Info: {
             id: string;
             integrationID?: string;
             name: string;
             disabled?: boolean;
-            api: {
-                /** @enum {string} */
-                type: "aisdk";
-                package: string;
-                url?: string;
-                settings?: Record<string, never>;
-            } | {
-                /** @enum {string} */
-                type: "native";
-                url?: string;
-                settings: Record<string, never>;
-            };
-            request: {
-                headers: {
-                    [key: string]: string;
-                };
-                body: Record<string, never>;
-            };
+            api: components["schemas"]["ProviderApi"];
+            request: components["schemas"]["ProviderRequest"];
         };
         IntegrationWhen: {
             key: string;
@@ -6881,6 +7583,36 @@ export interface components {
                 expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
             };
         };
+        IntegrationAttemptStatus: {
+            /** @enum {string} */
+            status: "pending";
+            time: {
+                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+            };
+        } | {
+            /** @enum {string} */
+            status: "complete";
+            time: {
+                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+            };
+        } | {
+            /** @enum {string} */
+            status: "failed";
+            message: string;
+            time: {
+                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+            };
+        } | {
+            /** @enum {string} */
+            status: "expired";
+            time: {
+                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
+            };
+        };
         PermissionV2Request: {
             id: string;
             sessionID: string;
@@ -6906,11 +7638,7 @@ export interface components {
             template: string;
             description?: string;
             agent?: string;
-            model?: {
-                id: string;
-                providerID: string;
-                variant?: string;
-            };
+            model?: components["schemas"]["ModelRef"];
             subtask?: boolean;
         };
         SkillV2Info: {
@@ -6920,446 +7648,185 @@ export interface components {
             location: string;
             content: string;
         };
-        "V2EventModels-devRefreshed": {
+        "Models-devRefreshed": {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "models-dev.refreshed";
-            data: Record<string, never>;
-        };
-        V2EventIntegrationUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: Record<string, never>;
+        };
+        IntegrationUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "integration.updated";
-            data: Record<string, never>;
-        };
-        V2EventIntegrationConnectionUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: Record<string, never>;
+        };
+        IntegrationConnectionUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "integration.connection.updated";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 integrationID: string;
             };
         };
-        V2EventCatalogUpdated: {
+        CatalogUpdated: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "catalog.updated";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: Record<string, never>;
         };
-        V2EventSessionCreated: {
+        SessionCreated: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.created";
-            data: {
-                sessionID: string;
-                info: components["schemas"]["Session"];
-            };
-        };
-        V2EventSessionUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+                info: components["schemas"]["Session"];
+            };
+        };
+        SessionUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "session.updated";
-            data: {
-                sessionID: string;
-                info: components["schemas"]["Session"];
-            };
-        };
-        V2EventSessionDeleted: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+                info: components["schemas"]["Session"];
+            };
+        };
+        SessionDeleted: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "session.deleted";
-            data: {
-                sessionID: string;
-                info: components["schemas"]["Session"];
-            };
-        };
-        V2EventMessageUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+                info: components["schemas"]["Session"];
+            };
+        };
+        MessageUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "message.updated";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 sessionID: string;
                 info: components["schemas"]["Message"];
             };
         };
-        V2EventMessageRemoved: {
+        MessageRemoved: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "message.removed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "message.removed";
             data: {
                 sessionID: string;
                 messageID: string;
             };
         };
-        V2EventMessagePartUpdated: {
+        MessagePartUpdated: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "message.part.updated";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "message.part.updated";
             data: {
                 sessionID: string;
                 part: components["schemas"]["Part"];
                 time: number;
             };
         };
-        V2EventMessagePartRemoved: {
+        MessagePartRemoved: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "message.part.removed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "message.part.removed";
             data: {
                 sessionID: string;
                 messageID: string;
                 partID: string;
             };
         };
-        V2EventSessionNextAgentSwitched: {
+        SessionNextTextDelta: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.agent.switched";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                agent: string;
-            };
-        };
-        V2EventSessionNextModelSwitched: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.model.switched";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                model: {
-                    id: string;
-                    providerID: string;
-                    variant?: string;
-                };
-            };
-        };
-        V2EventSessionNextMoved: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.moved";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                location: components["schemas"]["LocationRef"];
-                subdirectory?: string;
-            };
-        };
-        V2EventSessionNextPrompted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.prompted";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                prompt: components["schemas"]["Prompt"];
-                /** @enum {string} */
-                delivery: "steer" | "queue";
-            };
-        };
-        V2EventSessionNextPromptAdmitted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.prompt.admitted";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                prompt: components["schemas"]["Prompt"];
-                /** @enum {string} */
-                delivery: "steer" | "queue";
-            };
-        };
-        V2EventSessionNextContextUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.context.updated";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                text: string;
-            };
-        };
-        V2EventSessionNextSynthetic: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.synthetic";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                text: string;
-            };
-        };
-        V2EventSessionNextShellStarted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.shell.started";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                callID: string;
-                command: string;
-            };
-        };
-        V2EventSessionNextShellEnded: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.shell.ended";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                callID: string;
-                output: string;
-            };
-        };
-        V2EventSessionNextStepStarted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.step.started";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                agent: string;
-                model: {
-                    id: string;
-                    providerID: string;
-                    variant?: string;
-                };
-                snapshot?: string;
-            };
-        };
-        V2EventSessionNextStepEnded: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.step.ended";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                finish: string;
-                cost: number;
-                tokens: {
-                    input: number;
-                    output: number;
-                    reasoning: number;
-                    cache: {
-                        read: number;
-                        write: number;
-                    };
-                };
-                snapshot?: string;
-                files?: string[];
-            };
-        };
-        V2EventSessionNextStepFailed: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.step.failed";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                error: components["schemas"]["SessionErrorUnknown"];
-            };
-        };
-        V2EventSessionNextTextStarted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.text.started";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                textID: string;
-            };
-        };
-        V2EventSessionNextTextDelta: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.next.text.delta";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 timestamp: number;
                 sessionID: string;
@@ -7368,57 +7835,17 @@ export interface components {
                 delta: string;
             };
         };
-        V2EventSessionNextTextEnded: {
+        SessionNextReasoningDelta: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.text.ended";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                textID: string;
-                text: string;
-            };
-        };
-        V2EventSessionNextReasoningStarted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.reasoning.started";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                reasoningID: string;
-                providerMetadata?: {
-                    [key: string]: Record<string, never>;
-                };
-            };
-        };
-        V2EventSessionNextReasoningDelta: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.next.reasoning.delta";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 timestamp: number;
                 sessionID: string;
@@ -7427,58 +7854,17 @@ export interface components {
                 delta: string;
             };
         };
-        V2EventSessionNextReasoningEnded: {
+        SessionNextToolInputDelta: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.reasoning.ended";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                reasoningID: string;
-                text: string;
-                providerMetadata?: {
-                    [key: string]: Record<string, never>;
-                };
-            };
-        };
-        V2EventSessionNextToolInputStarted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.tool.input.started";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                callID: string;
-                name: string;
-            };
-        };
-        V2EventSessionNextToolInputDelta: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.next.tool.input.delta";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 timestamp: number;
                 sessionID: string;
@@ -7487,173 +7873,17 @@ export interface components {
                 delta: string;
             };
         };
-        V2EventSessionNextToolInputEnded: {
+        SessionNextCompactionDelta: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.tool.input.ended";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                callID: string;
-                text: string;
-            };
-        };
-        V2EventSessionNextToolCalled: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.tool.called";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                callID: string;
-                tool: string;
-                input: Record<string, never>;
-                provider: {
-                    executed: boolean;
-                    metadata?: {
-                        [key: string]: Record<string, never>;
-                    };
-                };
-            };
-        };
-        V2EventSessionNextToolProgress: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.tool.progress";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                callID: string;
-                structured: Record<string, never>;
-                content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
-            };
-        };
-        V2EventSessionNextToolSuccess: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.tool.success";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                callID: string;
-                structured: Record<string, never>;
-                content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
-                outputPaths?: string[];
-                result?: unknown;
-                provider: {
-                    executed: boolean;
-                    metadata?: {
-                        [key: string]: Record<string, never>;
-                    };
-                };
-            };
-        };
-        V2EventSessionNextToolFailed: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.tool.failed";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                assistantMessageID: string;
-                callID: string;
-                error: components["schemas"]["SessionErrorUnknown"];
-                result?: unknown;
-                provider: {
-                    executed: boolean;
-                    metadata?: {
-                        [key: string]: Record<string, never>;
-                    };
-                };
-            };
-        };
-        V2EventSessionNextRetried: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.retried";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                attempt: number;
-                error: components["schemas"]["SessionNextRetry_error"];
-            };
-        };
-        V2EventSessionNextCompactionStarted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.compaction.started";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                /** @enum {string} */
-                reason: "auto" | "manual";
-            };
-        };
-        V2EventSessionNextCompactionDelta: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.next.compaction.delta";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 timestamp: number;
                 sessionID: string;
@@ -7661,94 +7891,17 @@ export interface components {
                 text: string;
             };
         };
-        V2EventSessionNextCompactionEnded: {
+        MessagePartDelta: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.compaction.ended";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-                /** @enum {string} */
-                reason: "auto" | "manual";
-                text: string;
-                recent: string;
-            };
-        };
-        V2EventSessionNextRevertStaged: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.revert.staged";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                revert: {
-                    messageID: string;
-                    partID?: string;
-                    snapshot?: string;
-                    diff?: string;
-                    files?: components["schemas"]["FileDiff"][];
-                };
-            };
-        };
-        V2EventSessionNextRevertCleared: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.revert.cleared";
-            data: {
-                timestamp: number;
-                sessionID: string;
-            };
-        };
-        V2EventSessionNextRevertCommitted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.next.revert.committed";
-            data: {
-                timestamp: number;
-                sessionID: string;
-                messageID: string;
-            };
-        };
-        V2EventMessagePartDelta: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "message.part.delta";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 sessionID: string;
                 messageID: string;
@@ -7757,107 +7910,107 @@ export interface components {
                 delta: string;
             };
         };
-        V2EventSessionDiff: {
+        SessionDiff: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.diff";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.diff";
             data: {
                 sessionID: string;
                 diff: components["schemas"]["SnapshotFileDiff"][];
             };
         };
-        V2EventSessionError: {
+        SessionError: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "session.error";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.error";
             data: {
                 sessionID?: string;
                 error?: components["schemas"]["ProviderAuthError"] | components["schemas"]["UnknownError"] | components["schemas"]["MessageOutputLengthError"] | components["schemas"]["MessageAbortedError"] | components["schemas"]["StructuredOutputError"] | components["schemas"]["ContextOverflowError"] | components["schemas"]["ContentFilterError"] | components["schemas"]["APIError"];
             };
         };
-        V2EventInstallationUpdated: {
+        InstallationUpdated: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "installation.updated";
-            data: {
-                version: string;
-            };
-        };
-        "V2EventInstallationUpdate-available": {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                version: string;
+            };
+        };
+        "InstallationUpdate-available": {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "installation.update-available";
-            data: {
-                version: string;
-            };
-        };
-        V2EventFileEdited: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                version: string;
+            };
+        };
+        FileEdited: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "file.edited";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 file: string;
             };
         };
-        V2EventReferenceUpdated: {
+        ReferenceUpdated: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "reference.updated";
-            data: Record<string, never>;
-        };
-        V2EventPermissionV2Asked: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: Record<string, never>;
+        };
+        PermissionV2Asked: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "permission.v2.asked";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 id: string;
                 sessionID: string;
@@ -7868,142 +8021,142 @@ export interface components {
                 source?: components["schemas"]["PermissionV2Source"];
             };
         };
-        V2EventPermissionV2Replied: {
+        PermissionV2Replied: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "permission.v2.replied";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "permission.v2.replied";
             data: {
                 sessionID: string;
                 requestID: string;
                 reply: components["schemas"]["PermissionV2Reply"];
             };
         };
-        V2EventPluginAdded: {
+        PluginAdded: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "plugin.added";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "plugin.added";
             data: {
                 id: string;
             };
         };
-        V2EventProjectDirectoriesUpdated: {
+        ProjectDirectoriesUpdated: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "project.directories.updated";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "project.directories.updated";
             data: {
                 projectID: string;
             };
         };
-        V2EventFileWatcherUpdated: {
+        FileWatcherUpdated: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "file.watcher.updated";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "file.watcher.updated";
             data: {
                 file: string;
                 /** @enum {string} */
                 event: "add" | "change" | "unlink";
             };
         };
-        V2EventPtyCreated: {
+        PtyCreated: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "pty.created";
-            data: {
-                info: components["schemas"]["Pty"];
-            };
-        };
-        V2EventPtyUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                info: components["schemas"]["Pty"];
+            };
+        };
+        PtyUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "pty.updated";
-            data: {
-                info: components["schemas"]["Pty"];
-            };
-        };
-        V2EventPtyExited: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                info: components["schemas"]["Pty"];
+            };
+        };
+        PtyExited: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "pty.exited";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 id: string;
                 exitCode: number;
             };
         };
-        V2EventPtyDeleted: {
+        PtyDeleted: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "pty.deleted";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "pty.deleted";
             data: {
                 id: string;
             };
         };
-        V2EventQuestionV2Asked: {
+        QuestionV2Asked: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "question.v2.asked";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "question.v2.asked";
             data: {
                 id: string;
                 sessionID: string;
@@ -8012,79 +8165,79 @@ export interface components {
                 tool?: components["schemas"]["QuestionV2Tool"];
             };
         };
-        V2EventQuestionV2Replied: {
+        QuestionV2Replied: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "question.v2.replied";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "question.v2.replied";
             data: {
                 sessionID: string;
                 requestID: string;
                 answers: components["schemas"]["QuestionV2Answer"][];
             };
         };
-        V2EventQuestionV2Rejected: {
+        QuestionV2Rejected: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "question.v2.rejected";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "question.v2.rejected";
             data: {
                 sessionID: string;
                 requestID: string;
             };
         };
-        V2EventTodoUpdated: {
+        TodoUpdated: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "todo.updated";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "todo.updated";
             data: {
                 sessionID: string;
                 todos: components["schemas"]["Todo"][];
             };
         };
-        V2EventLspUpdated: {
+        LspUpdated: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "lsp.updated";
-            data: Record<string, never>;
-        };
-        V2EventPermissionAsked: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: Record<string, never>;
+        };
+        PermissionAsked: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "permission.asked";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 id: string;
                 sessionID: string;
@@ -8098,17 +8251,17 @@ export interface components {
                 };
             };
         };
-        V2EventPermissionReplied: {
+        PermissionReplied: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "permission.replied";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "permission.replied";
             data: {
                 sessionID: string;
                 requestID: string;
@@ -8116,47 +8269,47 @@ export interface components {
                 reply: "once" | "always" | "reject";
             };
         };
-        V2EventTuiPromptAppend: {
+        TuiPromptAppend: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "tui.prompt.append";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "tui.prompt.append";
             data: {
                 text: string;
             };
         };
-        V2EventTuiCommandExecute: {
+        TuiCommandExecute: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "tui.command.execute";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "tui.command.execute";
             data: {
                 command: ("session.list" | "session.new" | "session.share" | "session.interrupt" | "session.compact" | "session.page.up" | "session.page.down" | "session.line.up" | "session.line.down" | "session.half.page.up" | "session.half.page.down" | "session.first" | "session.last" | "prompt.clear" | "prompt.submit" | "agent.cycle") | string;
             };
         };
-        V2EventTuiToastShow: {
+        TuiToastShow: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "tui.toast.show";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "tui.toast.show";
             data: {
                 title?: string;
                 message: string;
@@ -8165,64 +8318,64 @@ export interface components {
                 duration?: number;
             };
         };
-        V2EventTuiSessionSelect: {
+        TuiSessionSelect: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "tui.session.select";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "tui.session.select";
             data: {
                 /** @description Session ID to navigate to */
                 sessionID: string;
             };
         };
-        V2EventMcpToolsChanged: {
+        McpToolsChanged: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "mcp.tools.changed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "mcp.tools.changed";
             data: {
                 server: string;
             };
         };
-        V2EventMcpBrowserOpenFailed: {
+        McpBrowserOpenFailed: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "mcp.browser.open.failed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "mcp.browser.open.failed";
             data: {
                 mcpName: string;
                 url: string;
             };
         };
-        V2EventCommandExecuted: {
+        CommandExecuted: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "command.executed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "command.executed";
             data: {
                 name: string;
                 sessionID: string;
@@ -8230,82 +8383,54 @@ export interface components {
                 messageID: string;
             };
         };
-        V2EventProjectUpdated: {
+        ProjectUpdated: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "project.updated";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "project.updated";
             data: {
                 id: string;
                 worktree: string;
-                /** @enum {string} */
-                vcs?: "git";
+                vcs?: components["schemas"]["ProjectVcs"];
                 name?: string;
-                icon?: {
-                    url?: string;
-                    override?: string;
-                    color?: string;
-                };
-                commands?: {
-                    /** @description Startup script to run when creating a new workspace (worktree) */
-                    start?: string;
-                };
-                time: {
-                    created: number;
-                    updated: number;
-                    initialized?: number;
-                };
+                icon?: components["schemas"]["ProjectIcon"];
+                commands?: components["schemas"]["ProjectCommands"];
+                time: components["schemas"]["ProjectTime"];
                 sandboxes: string[];
             };
         };
-        V2EventSessionStatus: {
+        SessionIdle: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "session.status";
-            data: {
-                sessionID: string;
-                status: components["schemas"]["SessionStatus"];
-            };
-        };
-        V2EventSessionIdle: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.idle";
-            data: {
-                sessionID: string;
-            };
-        };
-        V2EventQuestionAsked: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+            };
+        };
+        QuestionAsked: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "question.asked";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 id: string;
                 sessionID: string;
@@ -8314,171 +8439,138 @@ export interface components {
                 tool?: components["schemas"]["QuestionTool"];
             };
         };
-        V2EventQuestionReplied: {
+        SessionCompacted: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "question.replied";
-            data: {
-                sessionID: string;
-                requestID: string;
-                answers: components["schemas"]["QuestionAnswer"][];
-            };
-        };
-        V2EventQuestionRejected: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "question.rejected";
-            data: {
-                sessionID: string;
-                requestID: string;
-            };
-        };
-        V2EventSessionCompacted: {
-            id: string;
-            metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "session.compacted";
-            data: {
-                sessionID: string;
-            };
-        };
-        V2EventVcsBranchUpdated: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: {
+                sessionID: string;
+            };
+        };
+        VcsBranchUpdated: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "vcs.branch.updated";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: {
                 branch?: string;
             };
         };
-        V2EventWorkspaceReady: {
+        WorkspaceReady: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "workspace.ready";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "workspace.ready";
             data: {
                 name: string;
             };
         };
-        V2EventWorkspaceFailed: {
+        WorkspaceFailed: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "workspace.failed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "workspace.failed";
             data: {
                 message: string;
             };
         };
-        V2EventWorkspaceStatus: {
+        WorkspaceStatus: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "workspace.status";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "workspace.status";
             data: {
                 workspaceID: string;
                 /** @enum {string} */
                 status: "connected" | "connecting" | "disconnected" | "error";
             };
         };
-        V2EventWorktreeReady: {
+        WorktreeReady: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "worktree.ready";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "worktree.ready";
             data: {
                 name: string;
                 branch?: string;
             };
         };
-        V2EventWorktreeFailed: {
+        WorktreeFailed: {
             id: string;
             metadata?: Record<string, never>;
+            /** @enum {string} */
+            type: "worktree.failed";
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
-            /** @enum {string} */
-            type: "worktree.failed";
             data: {
                 message: string;
             };
         };
-        V2EventServerConnected: {
+        ServerConnected: {
             id: string;
             metadata?: Record<string, never>;
-            durable?: {
-                aggregateID: string;
-                seq: number;
-                version: number;
-            };
-            location?: components["schemas"]["LocationRef"];
             /** @enum {string} */
             type: "server.connected";
-            data: Record<string, never>;
-        };
-        V2EventGlobalDisposed: {
-            id: string;
-            metadata?: Record<string, never>;
             durable?: {
                 aggregateID: string;
                 seq: number;
                 version: number;
             };
             location?: components["schemas"]["LocationRef"];
+            data: Record<string, never>;
+        };
+        GlobalDisposed: {
+            id: string;
+            metadata?: Record<string, never>;
             /** @enum {string} */
             type: "global.disposed";
+            durable?: {
+                aggregateID: string;
+                seq: number;
+                version: number;
+            };
+            location?: components["schemas"]["LocationRef"];
             data: Record<string, never>;
         };
         QuestionV2Request: {
@@ -8507,12 +8599,13 @@ export interface components {
             description?: string;
             hidden?: boolean;
         };
+        ReferenceSource: components["schemas"]["ReferenceLocalSource"] | components["schemas"]["ReferenceGitSource"];
         ReferenceInfo: {
             name: string;
             path: string;
             description?: string;
             hidden?: boolean;
-            source: components["schemas"]["ReferenceLocalSource"] | components["schemas"]["ReferenceGitSource"];
+            source: components["schemas"]["ReferenceSource"];
         };
         ProjectCopyCopy: {
             directory: string;
@@ -8627,11 +8720,7 @@ export interface components {
                 timestamp: number;
                 sessionID: string;
                 messageID: string;
-                model: {
-                    id: string;
-                    providerID: string;
-                    variant?: string;
-                };
+                model: components["schemas"]["ModelRef"];
             };
         };
         EventSessionNextMoved: {
@@ -8725,11 +8814,7 @@ export interface components {
                 sessionID: string;
                 assistantMessageID: string;
                 agent: string;
-                model: {
-                    id: string;
-                    providerID: string;
-                    variant?: string;
-                };
+                model: components["schemas"]["ModelRef"];
                 snapshot?: string;
             };
         };
@@ -8811,9 +8896,7 @@ export interface components {
                 sessionID: string;
                 assistantMessageID: string;
                 reasoningID: string;
-                providerMetadata?: {
-                    [key: string]: Record<string, never>;
-                };
+                providerMetadata?: components["schemas"]["LLMProviderMetadata"];
             };
         };
         EventSessionNextReasoningDelta: {
@@ -8838,9 +8921,7 @@ export interface components {
                 assistantMessageID: string;
                 reasoningID: string;
                 text: string;
-                providerMetadata?: {
-                    [key: string]: Record<string, never>;
-                };
+                providerMetadata?: components["schemas"]["LLMProviderMetadata"];
             };
         };
         EventSessionNextToolInputStarted: {
@@ -8892,9 +8973,7 @@ export interface components {
                 input: Record<string, never>;
                 provider: {
                     executed: boolean;
-                    metadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    metadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             };
         };
@@ -8908,7 +8987,7 @@ export interface components {
                 assistantMessageID: string;
                 callID: string;
                 structured: Record<string, never>;
-                content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+                content: components["schemas"]["LLMToolContent"][];
             };
         };
         EventSessionNextToolSuccess: {
@@ -8921,14 +9000,12 @@ export interface components {
                 assistantMessageID: string;
                 callID: string;
                 structured: Record<string, never>;
-                content: (components["schemas"]["ToolTextContent"] | components["schemas"]["ToolFileContent"])[];
+                content: components["schemas"]["LLMToolContent"][];
                 outputPaths?: string[];
                 result?: unknown;
                 provider: {
                     executed: boolean;
-                    metadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    metadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             };
         };
@@ -8945,9 +9022,7 @@ export interface components {
                 result?: unknown;
                 provider: {
                     executed: boolean;
-                    metadata?: {
-                        [key: string]: Record<string, never>;
-                    };
+                    metadata?: components["schemas"]["LLMProviderMetadata"];
                 };
             };
         };
@@ -9006,13 +9081,7 @@ export interface components {
             properties: {
                 timestamp: number;
                 sessionID: string;
-                revert: {
-                    messageID: string;
-                    partID?: string;
-                    snapshot?: string;
-                    diff?: string;
-                    files?: components["schemas"]["FileDiff"][];
-                };
+                revert: components["schemas"]["RevertState"];
             };
         };
         EventSessionNextRevertCleared: {
@@ -9286,23 +9355,11 @@ export interface components {
             properties: {
                 id: string;
                 worktree: string;
-                /** @enum {string} */
-                vcs?: "git";
+                vcs?: components["schemas"]["ProjectVcs"];
                 name?: string;
-                icon?: {
-                    url?: string;
-                    override?: string;
-                    color?: string;
-                };
-                commands?: {
-                    /** @description Startup script to run when creating a new workspace (worktree) */
-                    start?: string;
-                };
-                time: {
-                    created: number;
-                    updated: number;
-                    initialized?: number;
-                };
+                icon?: components["schemas"]["ProjectIcon"];
+                commands?: components["schemas"]["ProjectCommands"];
+                time: components["schemas"]["ProjectTime"];
                 sandboxes: string[];
             };
         };
@@ -11482,15 +11539,8 @@ export interface operations {
             content: {
                 "application/json": {
                     name?: string;
-                    icon?: {
-                        url?: string;
-                        override?: string;
-                        color?: string;
-                    };
-                    commands?: {
-                        /** @description Startup script to run when creating a new workspace (worktree) */
-                        start?: string;
-                    };
+                    icon?: components["schemas"]["ProjectIcon"];
+                    commands?: components["schemas"]["ProjectCommands"];
                 };
             };
         };
@@ -11871,10 +11921,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        ticket: string;
-                        expires_in: number;
-                    };
+                    "application/json": components["schemas"]["PtyTicketConnectToken"];
                 };
             };
             /** @description Bad request */
@@ -14389,11 +14436,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        workspaceID: string;
-                        /** @enum {string} */
-                        status: "connected" | "connecting" | "disconnected" | "error";
-                    }[];
+                    "application/json": components["schemas"]["WorkspaceEventConnectionStatus"][];
                 };
             };
             /** @description Bad request */
@@ -14677,11 +14720,7 @@ export interface operations {
                 "application/json": {
                     id?: string;
                     agent?: string;
-                    model?: {
-                        id: string;
-                        providerID: string;
-                        variant?: string;
-                    };
+                    model?: components["schemas"]["ModelRef"];
                     location?: components["schemas"]["LocationRef"];
                 };
             };
@@ -14695,6 +14734,48 @@ export interface operations {
                 content: {
                     "application/json": {
                         data: components["schemas"]["SessionV2Info"];
+                    };
+                };
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+        };
+    };
+    "v2.session.active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            [key: string]: components["schemas"]["SessionActive"];
+                        };
                     };
                 };
             };
@@ -14834,11 +14915,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    model: {
-                        id: string;
-                        providerID: string;
-                        variant?: string;
-                    };
+                    model: components["schemas"]["ModelRef"];
                 };
             };
         };
@@ -14892,7 +14969,7 @@ export interface operations {
             content: {
                 "application/json": {
                     id?: string;
-                    prompt: components["schemas"]["Prompt"];
+                    prompt: components["schemas"]["PromptInput"];
                     /** @enum {string} */
                     delivery?: "steer" | "queue";
                     resume?: boolean;
@@ -15086,13 +15163,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        data: {
-                            messageID: string;
-                            partID?: string;
-                            snapshot?: string;
-                            diff?: string;
-                            files?: components["schemas"]["FileDiff"][];
-                        };
+                        data: components["schemas"]["RevertState"];
                     };
                 };
             };
@@ -15293,6 +15364,212 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnknownError1"];
+                };
+            };
+        };
+    };
+    "v2.session.history": {
+        parameters: {
+            query?: {
+                limit?: string;
+                after?: string;
+            };
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SessionHistory */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionHistory"];
+                };
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description SessionNotFoundError */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
+                };
+            };
+        };
+    };
+    "v2.session.events": {
+        parameters: {
+            query?: {
+                after?: string;
+            };
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": {
+                        id: string;
+                        event: string;
+                        data: components["schemas"]["SessionDurableEventStream"];
+                    };
+                };
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description SessionNotFoundError */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
+                };
+            };
+        };
+    };
+    "v2.session.interrupt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description <No Content> */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description SessionNotFoundError */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
+                };
+            };
+        };
+    };
+    "v2.session.message": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+                messageID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["SessionMessage"];
+                    };
+                };
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description SessionNotFoundError | MessageNotFoundError */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageNotFoundError"] | components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
                 };
             };
         };
@@ -15761,36 +16038,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         location: components["schemas"]["LocationInfo"];
-                        data: {
-                            /** @enum {string} */
-                            status: "pending";
-                            time: {
-                                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                            };
-                        } | {
-                            /** @enum {string} */
-                            status: "complete";
-                            time: {
-                                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                            };
-                        } | {
-                            /** @enum {string} */
-                            status: "failed";
-                            message: string;
-                            time: {
-                                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                            };
-                        } | {
-                            /** @enum {string} */
-                            status: "expired";
-                            time: {
-                                created: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                                expires: number | "NaN" | "Infinity" | "-Infinity" | ("Infinity" | "-Infinity" | "NaN");
-                            };
-                        };
+                        data: components["schemas"]["IntegrationAttemptStatus"];
                     };
                 };
             };
@@ -16171,6 +16419,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
+                };
+            };
+        };
+    };
+    "v2.session.permission.create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id?: string;
+                    action: string;
+                    resources: string[];
+                    save?: string[];
+                    metadata?: Record<string, never>;
+                    source?: components["schemas"]["PermissionV2Source"];
+                    agent?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            effect: components["schemas"]["PermissionV2Effect"];
+                        };
+                    };
+                };
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description SessionNotFoundError */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
+                };
+            };
+        };
+    };
+    "v2.session.permission.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+                requestID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PermissionV2Request"];
+                    };
+                };
+            };
+            /** @description InvalidRequestError */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvalidRequestError"];
+                };
+            };
+            /** @description UnauthorizedError */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnauthorizedError"];
+                };
+            };
+            /** @description SessionNotFoundError | PermissionNotFoundError */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionNotFoundError"] | components["schemas"]["SessionNotFoundError"] | components["schemas"]["SessionNotFoundError"];
                 };
             };
         };
@@ -16803,10 +17169,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         location: components["schemas"]["LocationInfo"];
-                        data: {
-                            ticket: string;
-                            expires_in: number;
-                        };
+                        data: components["schemas"]["PtyTicketConnectToken"];
                     };
                 };
             };

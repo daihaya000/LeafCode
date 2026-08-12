@@ -80,3 +80,85 @@ WebUI は **どちらか一方ではなく両方を使っているハイブリ�
   未確定で、切り替え先の実装も存在しないため、現時点では消費者のいない
   死にコードになる。v2 GA 時に、`/api/health` への probe ではなく既存の
   `HealthDto.opencode.version` を使ったバージョン判定として実装するのが安い。
+
+---
+
+## Phase A 調査結果 (2026-08-12)
+
+### エンジン更新
+
+| 項目 | 旧 | 新 |
+|------|----|----|
+| `docs/opencode/VERSION` | `1.17.11` | `1.18.14` |
+| `docs/opencode/openapi.json` | 1.17.11 仕様 | 1.18.14 仕様（稼働 host の `GET /doc` から取得） |
+| `opencode-schema.d.ts` | 旧型 | `npm run gen:types` で再生成済み |
+
+検証:
+- `npx tsc --noEmit` … 成功（v1 パスは openapi.json に残存のため `satisfies` 通過）
+- `npx vitest run opencode-events.test.ts opencode-schema-freshness.test.ts` … 10/10 合格
+
+### v2 API サーフェスの全体像
+
+1.18.14 は v1（111 パス）と v2（51 パス）を併存公開している。完全移行には v1 専用で v2 等価物のない操作をどう扱うかが鍵。
+
+### `/session/status` の v2 等価物
+
+**特定済み:** `GET /api/session/active`
+
+- v1 `GET /session/status` — `directory` / `workspace` クエリで絞り込み可能な `sessionID -> SessionStatus` マップ
+- v2 `GET /api/session/active` — アクティブセッション一覧。`SessionV2Info` 配列を返す
+- **形状差**: v1 は `Record<sessionID, SessionStatus>`、v2 は `{ data: SessionV2Info[] }`。`SessionV2Info` は `Session` とほぼ同じだが `summary` フィールド（additions/deletions/files/diffs）を持たない
+- **移行対応**: BFF の `GET /api/session/status` プロキシを `SessionV2Info[]` → `Record<sessionID, SessionStatus>` 形状変換レイヤー経由にする。`summary` は別途 `GET /api/session/{id}` または差分 API で補完する設計が必要
+
+### `PATCH /session/{id}` に代わる権限ルール書き込み API
+
+**特定済み。v2 に PATCH 等価物は存在しない。** 以下の組み合わせで代替する:
+
+| v1 操作 | v2 代替 | 備考 |
+|--------|---------|------|
+| `PATCH /session/{id}` body `permission: PermissionRuleset` | **該当 API なし** | セッション単位の ruleset 一括書き込みは v2 に廃止 |
+| 同上（代替） | `POST /api/session/{id}/permission` | 単一 permission request 作成。`action` / `resources` / `save` を指定し `effect: "allow" / "deny" / "ask"` を受け取る |
+| 保存済み権限の一覧 | `GET /api/permission/saved` | `PermissionSavedInfo[]`。`projectID` クエリでプロジェクト絞り込み |
+| 保存済み権限の削除 | `DELETE /api/permission/saved/{id}` | |
+| 保存済み権限の作成（POST/PUT） | **該当 API なし** | `POST /api/session/{id}/permission` の `save` フィールド経由で間接保存のみ |
+
+**移行対応（設計必要）:**
+
+1. `opencode-access-mode.ts` / `opencode-skill-permission.ts` / `opencode-task-permission.ts` の `PATCH /session/{id}` は、セッション作成時に ruleset を一括注入する用途。v2 では:
+   - `POST /api/session` でセッション作成後
+   - `POST /api/session/{id}/permission` を ruleset の各ルールごとに呼び出す（N 回コール）
+   - または `save` を指定して `PermissionSaved` へ永続化
+2. レジストリ経由の v2 ビルダーを新設し、既存テストの `assertSafeOpenCodeSessionId` 厳格検証契約を v2 ビルダー経由に載せ替える
+3. **形状互換性レイヤー**を BFF に設ける検討: クライアントは `PermissionRuleset` 形状のまま BFFへ送り、BFF が各ルールを `POST /api/session/{id}/permission` へ展開する。これによりクライアント側コード変更を最小化
+
+### v1 専用で v2 に等価物のない全パス（1.18.14 時点）
+
+完全移行前に個別対応が必要:
+
+| v1 パス | 用途 | v2 等価 | 対応方針 |
+|---------|------|---------|----------|
+| `GET /session/{id}/todo` | セッション todo | なし | SSE `todo.updated` イベントで代替、または v2 に追加されるまで v1 残存 |
+| `GET /session/{id}/diff` | 作業差分 | なし | `GET /api/session/{id}/context` がトランスクリプトを返すが diff ではない。BFF で `git diff` を実行し代替 |
+| `POST /session/{id}/command` | slash コマンド | なし | v2 に追加されるまで v1 残存 |
+| `POST /session/{id}/abort` | 中断 | `POST /api/session/{id}/interrupt` | 名称変更。セマンティクス差は要確認 |
+| `GET /session/{id}/children` | 子セッション一覧 | なし | `GET /api/session/active` を `parentID` でクライアント側フィルタ |
+| `POST /session/{id}/summarize` | 要約 | なし | |
+| `POST /session/{id}/fork` | 分岐 | なし | |
+| `POST/DELETE /session/{id}/share` | 共有リンク | なし | |
+| `POST /session/{id}/init` | 初期化 | なし | BFF の `isBlockedOpencodeWrite` でブロック対象 |
+| `POST /session/{id}/shell` | シェル | なし | ブロック対象 |
+| `POST /session/{id}/revert` | リバート | `POST /api/session/{id}/revert/{stage,commit,clear}` | 3 エンドポイントに分割 |
+| `POST /session/{id}/unrevert` | リバート取消 | なし | |
+| `POST /session/{id}/permissions/{permissionID}` | 権限応答 | `POST /api/session/{id}/permission/{requestID}/reply` | レジストリ済み |
+| `DELETE/PATCH /session/{id}/message/{msgID}/part/{partID}` | 部分編集 | なし | |
+| `POST /session/{id}/prompt_async` | 非同期プロンプト | `POST /api/session/{id}/prompt` | body 形状が大きく異なる（v1: `{parts, model, agent, ...}` → v2: `{prompt: PromptInput, id, delivery, resume}`）。BFF 形状変換レイヤー必須 |
+
+### 結論
+
+1. **完全 v2 移行はブロッカーあり**: todo / diff / command / children / fork / share / init / summarize / part編集 に v2 等価物がない。1.18.14 時点では v2 は完全スーパーセットではない
+2. **段階移行を推奨**:
+   - Phase B: レジストリで v2 等価物が存在する操作（session/prompt/permission/question/abort→interrupt/revert）を切替
+   - 残存 v1 操作は v1 パスのまま維持し、v2 に追加された時点で切替
+3. **`PATCH /session/{id}` 代替**は `POST /api/session/{id}/permission` への N 回展開（または `save` 経由）で実装。BFF 形状変換レイヤーでクライアント非互換を吸収
+4. **`/session/status` 代替**は `/api/session/active` + BFF 形状変換で対応。`summary` 補完は別途検討
+5. 次の OpenCode バージョンアップで v2 が完全スーパーセットになるまで、v1+v2 ハイブリッド運用を継続
