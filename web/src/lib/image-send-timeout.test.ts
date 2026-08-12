@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   IMAGE_ANALYSIS_SEND_TIMEOUT_MS,
@@ -10,6 +13,8 @@ import {
   VISION_ANALYSIS_TIMEOUT_MIN_MS,
   clampVisionAnalysisTimeoutMs,
 } from "./image-send-timeout";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 describe("image-send timeout budget", () => {
   it("covers the settings VL maximum plus setup slack", () => {
@@ -30,9 +35,27 @@ describe("image-send timeout budget", () => {
   });
 
   it("keeps the route maxDuration above the client image-send budget", () => {
+    expect(IMAGE_SEND_ROUTE_MAX_DURATION_SEC).toBe(
+      Math.ceil(IMAGE_ANALYSIS_SEND_TIMEOUT_MS / 1000) + 10,
+    );
     expect(IMAGE_SEND_ROUTE_MAX_DURATION_SEC * 1000).toBeGreaterThan(
       IMAGE_ANALYSIS_SEND_TIMEOUT_MS,
     );
+  });
+
+  it("exports maxDuration as a numeric literal in Next.js route modules", () => {
+    const expected = `export const maxDuration = ${IMAGE_SEND_ROUTE_MAX_DURATION_SEC};`;
+    const routes = [
+      join(here, "../app/api/opencode/[...path]/route.ts"),
+      join(here, "../app/api/tasks/route.ts"),
+    ];
+    for (const file of routes) {
+      const source = readFileSync(file, "utf8");
+      expect(source, file).toContain(expected);
+      expect(source, file).not.toMatch(
+        /export const maxDuration = IMAGE_SEND_ROUTE_MAX_DURATION_SEC/,
+      );
+    }
   });
 
   it("clamps vision analysis timeouts to the settings range", () => {

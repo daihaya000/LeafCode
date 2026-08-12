@@ -355,5 +355,8 @@ exit /b 0
 
 :pause_if_interactive
 if "%OPENCODE_WEBUI_NONINTERACTIVE%"=="1" exit /b 0
+rem next build overwrites the console title; restore it so a failed launch
+rem does not look like a stray "next-build" window waiting on pause.
+title OpenCode WebUI
 pause
 exit /b 0

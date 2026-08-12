@@ -31,10 +31,7 @@ import {
 } from "@/lib/slash-command";
 import { listTasks } from "@/lib/task-service";
 import { requireAuthorized } from "@/lib/api-guard";
-import {
-  IMAGE_SEND_ROUTE_MAX_DURATION_SEC,
-  SESSION_PROMPT_ASYNC_TIMEOUT_MS,
-} from "@/lib/image-send-timeout";
+import { SESSION_PROMPT_ASYNC_TIMEOUT_MS } from "@/lib/image-send-timeout";
 import {
   analyzeNativeImages,
   isQwenNativeVisionAvailable,
@@ -49,7 +46,9 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = IMAGE_SEND_ROUTE_MAX_DURATION_SEC;
+// Numeric literal required: Next.js rejects imported segment config.
+// Keep in sync with IMAGE_SEND_ROUTE_MAX_DURATION_SEC.
+export const maxDuration = 640;
 
 /**
  * Resume timeouts stored on the hang watch for this task's first turn. They

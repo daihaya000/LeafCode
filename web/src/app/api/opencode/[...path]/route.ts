@@ -203,11 +203,12 @@ async function injectCollaborationContext(
 }
 
 import { requireAuthorized } from "@/lib/api-guard";
-import { IMAGE_SEND_ROUTE_MAX_DURATION_SEC } from "@/lib/image-send-timeout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = IMAGE_SEND_ROUTE_MAX_DURATION_SEC;
+// Numeric literal required: Next.js rejects imported segment config.
+// Keep in sync with IMAGE_SEND_ROUTE_MAX_DURATION_SEC.
+export const maxDuration = 640;
 
 const HOP_BY_HOP = new Set([
   "connection",

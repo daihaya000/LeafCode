@@ -523,6 +523,9 @@ test("start-webui.bat runs the production WebUI guard without --stop and skips t
   assert.doesNotMatch(source, /set "NODE_PATH=/);
   // The guard already ran here; build-web.mjs must not repeat it.
   assert.match(source, /call node scripts\\build-web\.mjs --skip-guard/);
+  // next build overwrites the console title; pause must restore it so a
+  // failed launch is still labelled OpenCode WebUI rather than next-build.
+  assert.match(source, /:pause_if_interactive[\s\S]*title OpenCode WebUI[\s\S]*\bpause\b/);
 });
 
 test("start-webui.bat returns documented failures without reaching the host tail", { skip: !isWindows }, () => {

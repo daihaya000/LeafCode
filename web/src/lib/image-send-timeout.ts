@@ -44,9 +44,14 @@ export const NEW_TASK_SEND_TIMEOUT_MS = 295_000;
 export const IMAGE_ANALYSIS_SEND_TIMEOUT_MS =
   VISION_ANALYSIS_TIMEOUT_MAX_MS + IMAGE_SEND_SETUP_SLACK_MS;
 
-/** Next.js `maxDuration` (seconds) so VL + setup is not killed mid-analysis. */
-export const IMAGE_SEND_ROUTE_MAX_DURATION_SEC =
-  Math.ceil(IMAGE_ANALYSIS_SEND_TIMEOUT_MS / 1000) + 10;
+/**
+ * Next.js route `maxDuration` in seconds. Must be a numeric literal in each
+ * `route.ts` (`export const maxDuration = 640`) because Next.js rejects
+ * imported or computed segment config and fails the production build with
+ * "Invalid segment configuration export".
+ * Value = ceil((VL max + setup slack) / 1000) + 10.
+ */
+export const IMAGE_SEND_ROUTE_MAX_DURATION_SEC = 640;
 
 export function clampVisionAnalysisTimeoutMs(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
