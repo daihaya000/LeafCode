@@ -28,6 +28,31 @@
 - Dialog の `onSwitch={() => void onSwitch()}` は親 refresh 完了を待たない（今回対象外）
 
 ---
+# 作業ログ: /loop 1m バグハント — ensureSessionIds を BFS より先に PATCH
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: session.created の子は `/children` 列挙を待たず edit:ask が載る
+- 実際: `setSessionEditPermission` が親 PATCH → 子孫 BFS 完了後に ensure を当てており、列挙中は既定 allow のまま無承認書き込み可能
+
+## 根本原因
+- `opencode-access-mode.ts` の ensure 適用順が BFS 後回し
+
+## 修正
+- 親と ensureSessionIds を先に並列 PATCHし、その後 BFS で未カバー子孫を埋める
+
+## 回帰防止
+- `PATCHes ensureSessionIds before waiting on /children BFS`
+
+## 検証
+- vitest opencode-access-mode + access-mode route 24 PASS / eslint OK
+
+## 残存リスク
+- route の `isSessionUnderRoots` 検証 RTT、ensure 失敗でも 200→pending clear は未着手
+
+---
 # 作業ログ: /loop 1m バグハント — TaskView 非表示時の子 edit 天井欠落
 
 ## 日付

@@ -172,6 +172,33 @@ describe("setSessionEditPermission", () => {
       expect.arrayContaining(["/session/ses_parent", "/session/ses_child"]),
     );
   });
+
+  it("PATCHes ensureSessionIds before waiting on /children BFS", async () => {
+    const order: string[] = [];
+    ocServer.mockImplementation(async (_directory: string, path: string, init?: unknown) => {
+      if (String(path).endsWith("/children")) {
+        order.push("children");
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return [{ id: "ses_listed" }];
+      }
+      if (init && typeof init === "object") {
+        order.push(String(path));
+      }
+      return undefined;
+    });
+
+    await setSessionEditPermission("C:\\worktree", "ses_parent", "ask", [
+      "ses_child",
+    ]);
+
+    const childIdx = order.indexOf("/session/ses_child");
+    const childrenIdx = order.indexOf("children");
+    const listedIdx = order.indexOf("/session/ses_listed");
+    expect(childIdx).toBeGreaterThanOrEqual(0);
+    expect(childrenIdx).toBeGreaterThanOrEqual(0);
+    expect(childIdx).toBeLessThan(childrenIdx);
+    expect(listedIdx).toBeGreaterThan(childrenIdx);
+  });
 });
 
 describe("shouldSyncAccessCeilingForSessionCreated", () => {

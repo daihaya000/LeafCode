@@ -170,8 +170,10 @@ export async function isSessionUnderRoots(
  * parent UI still said 確認する.
  *
  * `ensureSessionIds` PATCHes sessions that `session.created` already revealed
- * even when `/children` still returns empty (listing lag). Callers must have
- * already verified those ids belong under this parent tree.
+ * even when `/children` still returns empty (listing lag). Those ids are
+ * patched **before** the descendant BFS so a brand-new subagent cannot write
+ * under OpenCode's default allow while `/children` walks the tree. Callers
+ * must have already verified those ids belong under this parent tree.
  */
 export async function setSessionEditPermission(
   directory: string,
@@ -183,19 +185,29 @@ export async function setSessionEditPermission(
   if (!id || id.length > 256) {
     throw new OcError("invalid session", 400);
   }
-  await patchSessionEditPermission(directory, id, mode);
-  const descendants = await listDescendantSessionIds(directory, id);
   const ensured = [
     ...new Set(
       ensureSessionIds
         .map((value) => value.trim())
         .filter((value) => value && value !== id && value.length <= 256),
     ),
-  ].filter((value) => !descendants.includes(value));
-  const targets = [...descendants, ...ensured];
-  if (targets.length === 0) return;
+  ];
+  // Parent + session.created children first. Listing `/children` can take
+  // many serial RTTs (depth up to MAX_SESSION_DESCENDANT_DEPTH); delaying
+  // ensure ids until after that walk reopens the default-allow write window.
+  await Promise.allSettled([
+    patchSessionEditPermission(directory, id, mode),
+    ...ensured.map((childId) =>
+      patchSessionEditPermission(directory, childId, mode),
+    ),
+  ]);
+  const descendants = await listDescendantSessionIds(directory, id);
+  const remaining = descendants.filter(
+    (childId) => childId !== id && !ensured.includes(childId),
+  );
+  if (remaining.length === 0) return;
   await Promise.allSettled(
-    targets.map((childId) => patchSessionEditPermission(directory, childId, mode)),
+    remaining.map((childId) => patchSessionEditPermission(directory, childId, mode)),
   );
 }
 
