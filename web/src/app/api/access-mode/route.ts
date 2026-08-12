@@ -168,7 +168,10 @@ export async function POST(req: NextRequest) {
       body.mode,
       verifiedEnsure,
     );
-    return NextResponse.json({ mode: body.mode });
+    return NextResponse.json({
+      mode: body.mode,
+      appliedEnsureSessionIds: verifiedEnsure,
+    });
   } catch (err) {
     return failure(err);
   }

@@ -179,6 +179,10 @@ describe("POST /api/access-mode", () => {
       "ask",
       ["ses_child"],
     );
+    await expect(response.json()).resolves.toEqual({
+      mode: "ask",
+      appliedEnsureSessionIds: ["ses_child"],
+    });
   });
 
   it("ignores ensureSessionIds that are not under a bound parent", async () => {
@@ -205,6 +209,10 @@ describe("POST /api/access-mode", () => {
       "ask",
       [],
     );
+    await expect(response.json()).resolves.toEqual({
+      mode: "ask",
+      appliedEnsureSessionIds: [],
+    });
   });
 
   it("returns 404 when the task has no bound session", async () => {

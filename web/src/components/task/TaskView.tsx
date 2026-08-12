@@ -1261,20 +1261,40 @@ export function TaskView({
   const descendantAccessSync = stream.descendantAccessSync;
   const pendingDescendantSessionIds = stream.pendingDescendantSessionIds;
   const clearPendingDescendants = stream.clearPendingDescendants;
+  const [accessEnsureRetry, setAccessEnsureRetry] = useState(0);
   useEffect(() => {
     if (!task?.id || !task.sessionId) return;
     if (task.executionMode === "workflow") return;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const ensureSessionIds = pendingDescendantSessionIds ?? [];
-    void sendJson("POST", "/api/access-mode", {
-      taskId: task.id,
-      sessionId: task.sessionId,
-      mode: accessMode,
-      ...(ensureSessionIds.length > 0 ? { ensureSessionIds } : {}),
-    })
-      .then(() => {
+    void sendJson<{ mode?: string; appliedEnsureSessionIds?: unknown }>(
+      "POST",
+      "/api/access-mode",
+      {
+        taskId: task.id,
+        sessionId: task.sessionId,
+        mode: accessMode,
+        ...(ensureSessionIds.length > 0 ? { ensureSessionIds } : {}),
+      },
+    )
+      .then((body) => {
         if (cancelled || ensureSessionIds.length === 0) return;
-        clearPendingDescendants?.();
+        // Only drop ids the server actually verified+PATCHed. A 200 with an
+        // empty applied list used to clear pending forever while the child
+        // still had OpenCode's default allow (parentID lag).
+        const applied = Array.isArray(body?.appliedEnsureSessionIds)
+          ? body.appliedEnsureSessionIds.filter(
+              (id): id is string => typeof id === "string" && id.length > 0,
+            )
+          : ensureSessionIds;
+        if (applied.length > 0) clearPendingDescendants?.(applied);
+        const remaining = ensureSessionIds.filter((id) => !applied.includes(id));
+        if (remaining.length > 0 && accessEnsureRetry < 5) {
+          retryTimer = setTimeout(() => {
+            if (!cancelled) setAccessEnsureRetry((n) => n + 1);
+          }, 400 * (accessEnsureRetry + 1));
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -1286,6 +1306,7 @@ export function TaskView({
       });
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [
     task?.id,
@@ -1295,7 +1316,12 @@ export function TaskView({
     descendantAccessSync,
     pendingDescendantSessionIds,
     clearPendingDescendants,
+    accessEnsureRetry,
   ]);
+
+  useEffect(() => {
+    setAccessEnsureRetry(0);
+  }, [task?.id, task?.sessionId]);
 
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.

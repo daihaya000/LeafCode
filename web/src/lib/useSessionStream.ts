@@ -99,7 +99,7 @@ export type StreamAction =
   | { kind: "mutationStarted"; startedAt: number }
   | { kind: "mutationElapsed"; elapsedMs: number }
   | { kind: "descendantSessionCreated"; sessionID: string }
-  | { kind: "clearPendingDescendants" };
+  | { kind: "clearPendingDescendants"; sessionIDs?: string[] };
 
 /** Default timeout for prompt/abort mutations so a hung engine cannot freeze the composer. */
 export const SESSION_MUTATION_TIMEOUT_MS = 60_000;
@@ -775,8 +775,19 @@ export function sessionStreamReducer(
         pendingDescendantSessionIds: nextPending,
       };
     }
-    case "clearPendingDescendants":
+    case "clearPendingDescendants": {
+      const drop = action.sessionIDs;
+      if (drop && drop.length > 0) {
+        const remove = new Set(drop);
+        return {
+          ...state,
+          pendingDescendantSessionIds: (
+            state.pendingDescendantSessionIds ?? []
+          ).filter((id) => !remove.has(id)),
+        };
+      }
       return { ...state, pendingDescendantSessionIds: [] };
+    }
     default:
       return state;
   }
@@ -2252,8 +2263,8 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     [directory],
   );
 
-  const clearPendingDescendants = useCallback(() => {
-    dispatch({ kind: "clearPendingDescendants" });
+  const clearPendingDescendants = useCallback((sessionIDs?: string[]) => {
+    dispatch({ kind: "clearPendingDescendants", sessionIDs });
   }, []);
 
   // Effects reset the reducer after a scope change. Gate the render as well so

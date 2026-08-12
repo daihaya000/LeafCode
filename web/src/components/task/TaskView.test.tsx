@@ -806,7 +806,32 @@ describe("TaskView", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(clearPendingDescendants).toHaveBeenCalled();
+    expect(clearPendingDescendants).toHaveBeenCalledWith(["ses_child"]);
+  });
+
+  it("keeps pending ensure ids when the server applied none", async () => {
+    const clearPendingDescendants = vi.fn();
+    sendJson.mockResolvedValue({ mode: "ask", appliedEnsureSessionIds: [] });
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      descendantAccessSync: 1,
+      pendingDescendantSessionIds: ["ses_child"],
+      clearPendingDescendants,
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+      taskId: "ws1",
+      sessionId: "sess1",
+      mode: "ask",
+      ensureSessionIds: ["ses_child"],
+    });
+    expect(clearPendingDescendants).not.toHaveBeenCalled();
   });
 
   it("hydrates フルアクセス before the first engine sync so ask cannot win the race", async () => {
