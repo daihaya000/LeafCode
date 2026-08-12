@@ -27,6 +27,25 @@
 
 **2026-08-13 ラウンドの総括**: Composer / ゴールループ / メッセージ / 設定画面の UI/UX を 50 ターンで網羅的に調査し、**新規バグ 10 件（BU-1〜10）** を BUG.md に記録した（修正は行わない方針）。中優先度: BU-1（Workflow 中ループトグル無効）、BU-2（プロジェクト設定のタブ切替で draft 混線・誤保存リスク）。低優先度: BU-3〜10（数値入力クランプ、ハイライトミラー同期、ゴール JSON の過剰除去、スキルトークン句読点の非対称、成功通知の danger 表示、ループ開始ボタンの無効化非対称、分割ビューの重複 DOM id、メインタイムラインの画像未グループ化）。健全確認のため再調査防止メモを多数追記。コミットは全て BUG.md のみ（他エージェント差分は混入なし）。
 
+## 修正状況（2026-08-13 全 10 件対応）
+
+BU-1〜10 を優先度順に修正済み。各修正は `tsc --noEmit` / `eslint`（対象ファイル）で検証し、関連テストを実行してコミット。
+
+| ID | 修正内容 |
+|----|----------|
+| BU-1 | HomeView: Workflow 開始モードではループトグル/承認条件を非表示にし、Workflow 切替時に `goalLoopEnabled` を OFF 化（`startMode` onChange とトグル/`GoalLoopOptions` の表示条件） |
+| BU-2 | ProjectSettingsView: タブ別 draft（`draftByTab`）に分離し、agents/skills は初回訪問時のみ fetch。タブ往復での他タブ内容の誤表示・誤保存と未保存編集の喪失を防止 |
+| BU-3 | GoalLoopComposer: 最大ターン入力を string draft 化し、クリア→再入力を可能に。blur/Enter で clamp 確定（テスト更新＋新テスト追加） |
+| BU-4 | Composer: ハイライトミラーのスクロール同期を `useLayoutEffect` 化し `hasHighlight` を deps に追加。非同期ロード後の初回出現でも同期 |
+| BU-5 | PartView: `stripGoalLoopJson` プロパティを追加し、ゴール JSON 除去をループタスク（`goalLoop !== null`）限定に（テスト追加） |
+| BU-6 | `findSkillTokens`: 末尾句読点を `TOKEN_CHARS` でトリムし、送信済みメッセージのハイライトと一致（テスト追加） |
+| BU-7 | ProfilesSettings: `actionSuccess` を追加し、連携適用の成功通知を success 表示に分離（適用済み時も通知）。各アクション開始時にリセット |
+| BU-8 | TaskView: ループ開始ボタンの disabled 条件に `attachments.length > 0` を追加（HomeView と一致） |
+| BU-9 | Composer/SlashSuggestMenu/AgentSuggestMenu/GoalLoopPanel/SessionActions: 固定 DOM id を `useId()` 化（分割ビューでの重複・`aria-controls` 曖昧さを解消。テスト更新） |
+| BU-10 | TaskView: メインタイムラインのパーツ描画を `groupImagePartsForRender` でグループ化（NestedAgentPanel と統一。テスト追加） |
+
+検証: 各修正で `npx tsc --noEmit`（web）成功 / `npx eslint`（対象ファイル）警告 0 / 関連 vitest（Composer 8・GoalLoopComposer 10・PartView 20・slash-command 18・ProfilesSettings 11・TaskView 139・メニュー/ループ/revert 69 等）全 PASS。
+
 ## 修正状況（2026-08-12 全件対応）
 
 以下の全 13 件を修正済み。検証: `tsc --noEmit` / `eslint .`（既存警告 1 件のみ）/
