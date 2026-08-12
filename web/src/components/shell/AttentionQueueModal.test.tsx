@@ -3,8 +3,9 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { AttentionQueueModal } from "./AttentionQueueModal";
 import type { AttentionItem } from "@/lib/attention";
 
-const { attentionState, mockOcJson, mockApiError } = vi.hoisted(() => {
+const { attentionState, mockOcJson, mockSendJson, mockApiError } = vi.hoisted(() => {
   const mockOcJson = vi.fn();
+  const mockSendJson = vi.fn();
   const mockApiError = class ApiError extends Error {
     status: number;
     constructor(status: number, message: string) {
@@ -21,8 +22,10 @@ const { attentionState, mockOcJson, mockApiError } = vi.hoisted(() => {
       openNext: vi.fn(),
       remove: vi.fn(),
       resolveSessionTitle: vi.fn(() => null as string | null),
+      tasks: [] as { id: string; directory: string; sessionId: string | null }[],
     },
     mockOcJson,
+    mockSendJson,
     mockApiError,
   };
 });
@@ -34,6 +37,7 @@ vi.mock("./GlobalAttentionProvider", () => ({
 vi.mock("@/lib/client", () => ({
   apiUrl: (path: string) => `http://localhost${path}`,
   ocJson: mockOcJson,
+  sendJson: mockSendJson,
   ApiError: mockApiError,
 }));
 
@@ -91,8 +95,11 @@ describe("AttentionQueueModal", () => {
     attentionState.items = [];
     attentionState.actionableItems = [];
     attentionState.open = false;
+    attentionState.tasks = [];
     attentionState.resolveSessionTitle.mockReset();
     attentionState.resolveSessionTitle.mockReturnValue(null);
+    mockSendJson.mockReset();
+    mockSendJson.mockResolvedValue({});
   });
 
   function enqueue(...queue: AttentionItem[]) {
@@ -315,6 +322,9 @@ describe("AttentionQueueModal", () => {
     it("フルアクセス切替時、サブエージェント不許可なら残りの task 権限を reject する", async () => {
       localStorage.setItem("webui:subagent-permission", "deny");
       mockOcJson.mockResolvedValue({});
+      attentionState.tasks = [
+        { id: "task-1", directory: "/repo", sessionId: "ses_abc" },
+      ];
       const bashPerm = permissionItem();
       const taskPerm: AttentionItem = {
         kind: "permission",
@@ -358,12 +368,20 @@ describe("AttentionQueueModal", () => {
           body: { response: "reject" },
         }),
       );
+      expect(mockSendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+        taskId: "task-1",
+        sessionId: "ses_abc",
+        mode: "full",
+      });
       localStorage.removeItem("webui:subagent-permission");
     });
 
     it("フルアクセス切替時、スキル不許可なら残りの skill 権限を reject する", async () => {
       localStorage.setItem("webui:skill-permission", "deny");
       mockOcJson.mockResolvedValue({});
+      attentionState.tasks = [
+        { id: "task-1", directory: "/repo", sessionId: "ses_abc" },
+      ];
       const bashPerm = permissionItem();
       const skillPerm: AttentionItem = {
         kind: "permission",

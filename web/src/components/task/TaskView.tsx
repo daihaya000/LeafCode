@@ -686,12 +686,15 @@ export function TaskView({
   const [providerModelsMap, setProviderModelsMap] = useState<
     Record<string, ProviderModelMeta>
   >({});
-  const [accessMode, setAccessMode] = useState<AccessMode>("ask");
+  const [accessMode, setAccessMode] = useState<AccessMode>(() => readAccessMode());
+  const [accessModeSaving, setAccessModeSaving] = useState(false);
   const [subagentPermission, setSubagentPermission] =
-    useState<SubagentPermission>("allow");
+    useState<SubagentPermission>(() => readSubagentPermission());
   const [subagentPermissionSaving, setSubagentPermissionSaving] =
     useState(false);
-  const [skillPermission, setSkillPermission] = useState<SkillPermission>("allow");
+  const [skillPermission, setSkillPermission] = useState<SkillPermission>(
+    () => readSkillPermission(),
+  );
   const [skillPermissionSaving, setSkillPermissionSaving] = useState(false);
   const [autoRecord, setAutoRecord] = useState<AutoTaskRecord | null>(null);
   const [autoRetryNotice, setAutoRetryNotice] = useState<string | null>(null);
@@ -1118,7 +1121,6 @@ export function TaskView({
   }, [sideResizing]);
 
   useEffect(() => {
-    setAccessMode(readAccessMode());
     const onMode = (e: Event) => {
       const detail = (e as CustomEvent<AccessMode>).detail;
       if (detail === "ask" || detail === "full") setAccessMode(detail);
@@ -1128,7 +1130,6 @@ export function TaskView({
   }, []);
 
   useEffect(() => {
-    setSubagentPermission(readSubagentPermission());
     const onSubagent = (e: Event) => {
       const detail = (e as CustomEvent<SubagentPermission>).detail;
       if (detail === "allow" || detail === "deny") setSubagentPermission(detail);
@@ -1139,7 +1140,6 @@ export function TaskView({
   }, []);
 
   useEffect(() => {
-    setSkillPermission(readSkillPermission());
     const onSkill = (e: Event) => {
       const detail = (e as CustomEvent<SkillPermission>).detail;
       if (detail === "allow" || detail === "deny") setSkillPermission(detail);
@@ -1218,8 +1218,10 @@ export function TaskView({
   // カードなしで実行される（`permission.asked` が発行されない）。
   // 依存に accessMode を含めるので、AttentionQueueModal の
   // writeAccessMode("full") 経由の切替もイベント → state 更新で追従する。
+  // Workflow 実行中は node ごとの write deny が後勝ちで上書きされないよう同期しない。
   useEffect(() => {
     if (!task?.id || !task.sessionId) return;
+    if (task.executionMode === "workflow") return;
     let cancelled = false;
     void sendJson("POST", "/api/access-mode", {
       taskId: task.id,
@@ -1236,7 +1238,7 @@ export function TaskView({
     return () => {
       cancelled = true;
     };
-  }, [task?.id, task?.sessionId, accessMode]);
+  }, [task?.id, task?.sessionId, task?.executionMode, accessMode]);
 
   // Sync default model when changed in Settings while a task is open and the
   // user has not manually picked a different model in this composer.
@@ -1256,10 +1258,38 @@ export function TaskView({
     return () => window.removeEventListener(DEFAULT_MODEL_EVENT, onDefault);
   }, [modelOptions]);
 
-  const changeAccessMode = useCallback((mode: AccessMode) => {
-    setAccessMode(mode);
-    writeAccessMode(mode);
-  }, []);
+  const changeAccessMode = useCallback(
+    async (mode: AccessMode) => {
+      if (mode === accessMode || accessModeSaving || !task?.id) return;
+      if (task.executionMode === "workflow") {
+        setAccessMode(mode);
+        writeAccessMode(mode);
+        return;
+      }
+      setAccessModeSaving(true);
+      try {
+        if (task.sessionId) {
+          await sendJson("POST", "/api/access-mode", {
+            taskId: task.id,
+            sessionId: task.sessionId,
+            mode,
+          });
+        }
+        setAccessMode(mode);
+        writeAccessMode(mode);
+        setSendError(null);
+      } catch (err) {
+        setSendError(
+          err instanceof Error
+            ? `アクセスモードを適用できませんでした: ${err.message}`
+            : "アクセスモードを適用できませんでした。",
+        );
+      } finally {
+        setAccessModeSaving(false);
+      }
+    },
+    [accessMode, accessModeSaving, task?.executionMode, task?.id, task?.sessionId],
+  );
 
   const changeSubagentPermission = useCallback(
     async (mode: SubagentPermission) => {
@@ -1440,7 +1470,9 @@ export function TaskView({
   // - スキル不許可 かつ skill 権限 → 自動 reject（フルアクセスより優先）
   // - フルアクセス → 自動 approve（once）
   // task / skill 以外の権限は各設定の影響を受けない。
+  // 非アクティブ分割ペインは GlobalAttention に任せ、二重応答しない。
   useEffect(() => {
+    if (!shellActive) return;
     const fullAccess = accessMode === "full";
     if (
       !fullAccess &&
@@ -1488,6 +1520,7 @@ export function TaskView({
     autoReplyFailedIds,
     permissions,
     onReplyPermission,
+    shellActive,
   ]);
 
   useEffect(() => {
@@ -4615,7 +4648,8 @@ export function TaskView({
                     tone={resumeTarget?.reason === "silent" ? "neutral" : "danger"}
                   />
                 )}
-                {stream.permissions
+                {shellActive &&
+                  stream.permissions
                   .filter(
                     (p) =>
                       autoReplyFailedIds.has(p.id) ||
@@ -4631,21 +4665,23 @@ export function TaskView({
                       key={p.id}
                       request={p}
                       onReply={onReplyPermission}
-                      onEnableFullAccess={() => changeAccessMode("full")}
+                      onEnableFullAccess={() => void changeAccessMode("full")}
                     />
                   ))}
-                {accessMode === "full" &&
+                {shellActive &&
+                  accessMode === "full" &&
                   stream.permissions.some((p) => !autoReplyFailedIds.has(p.id)) && (
                   <p className="rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
                     フルアクセス: 権限要求を自動承認中…
                   </p>
                 )}
-                {accessMode === "full" && autoReplyFailedIds.size > 0 && (
+                {shellActive && accessMode === "full" && autoReplyFailedIds.size > 0 && (
                   <p className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">
                     自動承認に失敗した権限があります。下のカードから手動で応答してください。
                   </p>
                 )}
-                {stream.questions.map((q) => (
+                {shellActive &&
+                  stream.questions.map((q) => (
                   <QuestionCard
                     key={q.id}
                     request={q}
@@ -5009,8 +5045,8 @@ export function TaskView({
                     )}
                     <AccessModeSelect
                       value={accessMode}
-                      onChange={changeAccessMode}
-                      disabled={!task.sessionId || subagentPermissionSaving}
+                      onChange={(mode) => void changeAccessMode(mode)}
+                      disabled={!task.sessionId || accessModeSaving}
                       className="h-8 shrink-0"
                     />
                     <SkillPermissionSelect

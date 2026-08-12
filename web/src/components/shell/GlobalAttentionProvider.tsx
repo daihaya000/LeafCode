@@ -52,6 +52,7 @@ type GlobalAttentionContextValue = {
   openNext: () => void;
   remove: (requestId: string, sessionID?: string) => void;
   resolveSessionTitle: (item: AttentionItem) => string | null;
+  tasks: TaskSummary[];
 };
 
 const GlobalAttentionContext = createContext<GlobalAttentionContextValue | null>(null);
@@ -147,7 +148,7 @@ export function GlobalAttentionProvider({
   children: ReactNode;
   activeScope: AttentionScope | null;
 }) {
-  const { items, add, remove, reconcileDirectory, resolveSessionTitle, setTasks } =
+  const { items, add, remove, reconcileDirectory, resolveSessionTitle, setTasks, tasks } =
     useAttentionQueue(activeScope);
   const [open, setOpenState] = useState(false);
   const openRef = useRef(open);
@@ -580,6 +581,7 @@ export function GlobalAttentionProvider({
     openNext,
     remove,
     resolveSessionTitle,
+    tasks,
   };
 
   return (

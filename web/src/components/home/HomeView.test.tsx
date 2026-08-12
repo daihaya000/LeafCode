@@ -1084,6 +1084,17 @@ describe("HomeView subagent permission", () => {
 
     await waitFor(() => expect(select.value).toBe("deny"));
   });
+
+  it("updates the composer when the shared access mode changes elsewhere", async () => {
+    render(<HomeView />);
+    const access = (await screen.findByLabelText(
+      "アクセスモード",
+    )) as HTMLButtonElement;
+    expect(access.value).toBe("ask");
+
+    window.dispatchEvent(new CustomEvent("webui:access-mode", { detail: "full" }));
+    await waitFor(() => expect(access.value).toBe("full"));
+  });
 });
 
 describe("HomeView start mode", () => {

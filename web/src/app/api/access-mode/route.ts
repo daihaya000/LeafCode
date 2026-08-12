@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace, latestBindings, listSessionBindings } from "@/lib/db";
 import { OcError } from "@/lib/oc-server";
-import { setSessionEditPermission } from "@/lib/opencode-access-mode";
+import {
+  listChildSessionIds,
+  setSessionEditPermission,
+} from "@/lib/opencode-access-mode";
 import type { AccessMode } from "@/lib/access-mode";
 import { requireAuthorized } from "@/lib/api-guard";
 
@@ -75,13 +78,27 @@ export async function POST(req: NextRequest) {
     let sessionId: string | undefined;
     if (typeof body.sessionId === "string" && body.sessionId.trim()) {
       const requested = body.sessionId.trim();
-      const belongs = listSessionBindings(body.taskId).some(
-        (b) => b.opencode_session_id === requested,
-      );
-      if (!belongs) {
-        return NextResponse.json({ error: "task not found" }, { status: 404 });
+      const bindings = listSessionBindings(body.taskId);
+      const belongs = bindings.some((b) => b.opencode_session_id === requested);
+      if (belongs) {
+        sessionId = requested;
+      } else {
+        // Subagent sessions are not bound, but they still need the parent's
+        // 確認する / フルアクセス ceiling or child writes skip approval cards.
+        for (const binding of bindings) {
+          const children = await listChildSessionIds(
+            workspace.absolute_path,
+            binding.opencode_session_id,
+          );
+          if (children.includes(requested)) {
+            sessionId = requested;
+            break;
+          }
+        }
+        if (!sessionId) {
+          return NextResponse.json({ error: "task not found" }, { status: 404 });
+        }
       }
-      sessionId = requested;
     } else {
       sessionId = latestBindings().get(body.taskId)?.opencode_session_id;
     }

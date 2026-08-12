@@ -188,6 +188,40 @@ describe("GlobalAttentionProvider", () => {
     });
   });
 
+  it("auto-approves background permissions in フルアクセス", async () => {
+    localStorage.setItem("webui:access-mode", "full");
+    ocJsonMock.mockResolvedValue({});
+    try {
+      render(
+        <GlobalAttentionProvider activeScope={null}>
+          <TestConsumer onItems={() => undefined} />
+        </GlobalAttentionProvider>,
+      );
+      act(() => {
+        FakeEventSource.latest?.onmessage?.({
+          data: JSON.stringify({
+            type: "permission.asked",
+            directory: "/repo",
+            properties: {
+              id: "p1",
+              sessionID: "session-1",
+              permission: "bash",
+            },
+          }),
+        } as MessageEvent);
+      });
+      await waitFor(() =>
+        expect(ocJsonMock).toHaveBeenCalledWith(
+          expect.stringContaining("/permissions/p1"),
+          "/repo",
+          expect.objectContaining({ body: { response: "once" } }),
+        ),
+      );
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
   it("restores child session v2 permissions into the global queue", async () => {
     getJsonMock.mockResolvedValue({
       tasks: [{ directory: "/repo", sessionId: "parent", title: "root task" }],

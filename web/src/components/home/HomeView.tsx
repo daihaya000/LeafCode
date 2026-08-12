@@ -35,6 +35,7 @@ import {
 import {
   readSkillPermission,
   writeSkillPermission,
+  SKILL_PERMISSION_EVENT,
   type SkillPermission,
 } from "@/lib/skill-permission";
 import {
@@ -214,11 +215,13 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
   const [providerModelsMap, setProviderModelsMap] = useState<
     Record<string, ProviderModelMeta>
   >({});
-  const [accessMode, setAccessMode] = useState<AccessMode>("ask");
+  const [accessMode, setAccessMode] = useState<AccessMode>(() => readAccessMode());
   const [subagentPermission, setSubagentPermission] = useState<SubagentPermission>(
     () => readSubagentPermission(),
   );
-  const [skillPermission, setSkillPermission] = useState<SkillPermission>("allow");
+  const [skillPermission, setSkillPermission] = useState<SkillPermission>(
+    () => readSkillPermission(),
+  );
   const [baseBranch, setBaseBranch] = useState("");
   const [branchProjectId, setBranchProjectId] = useState("");
   const [defaultBranchLabel, setDefaultBranchLabel] = useState("master");
@@ -286,29 +289,36 @@ export function HomeView({ initialProjectId }: { initialProjectId?: string }) {
     setMentionDismissed(false);
   }, [atQuery?.query, atQuery?.start]);
 
+  // Settings, TaskView, and the attention modal can change shared preferences
+  // while Home remains mounted. Keep the values used by POST /api/tasks in
+  // sync; otherwise the UI may show フルアクセス / 禁止 while the stale
+  // request still sends ask / allow.
   useEffect(() => {
-    setAccessMode(readAccessMode());
-    setSubagentPermission(readSubagentPermission());
-    setSkillPermission(readSkillPermission());
-  }, []);
-
-  // Settings and another composer can change the shared preference while the
-  // Home composer remains mounted. Keep the value used by POST /api/tasks in
-  // sync; otherwise the UI may show "禁止" while the stale request still
-  // sends "allow" and the new session starts with task permission allowed.
-  useEffect(() => {
+    const onAccessMode = (event: Event) => {
+      const detail = (event as CustomEvent<AccessMode>).detail;
+      if (detail === "ask" || detail === "full") setAccessMode(detail);
+    };
     const onSubagentPermission = (event: Event) => {
       const detail = (event as CustomEvent<SubagentPermission>).detail;
       if (detail === "allow" || detail === "deny") {
         setSubagentPermission(detail);
       }
     };
+    const onSkillPermission = (event: Event) => {
+      const detail = (event as CustomEvent<SkillPermission>).detail;
+      if (detail === "allow" || detail === "deny") setSkillPermission(detail);
+    };
+    window.addEventListener("webui:access-mode", onAccessMode);
     window.addEventListener(SUBAGENT_PERMISSION_EVENT, onSubagentPermission);
-    return () =>
+    window.addEventListener(SKILL_PERMISSION_EVENT, onSkillPermission);
+    return () => {
+      window.removeEventListener("webui:access-mode", onAccessMode);
       window.removeEventListener(
         SUBAGENT_PERMISSION_EVENT,
         onSubagentPermission,
       );
+      window.removeEventListener(SKILL_PERMISSION_EVENT, onSkillPermission);
+    };
   }, []);
 
   // DB → localStorage migration so the default model set on another

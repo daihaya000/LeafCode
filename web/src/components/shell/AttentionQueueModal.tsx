@@ -11,7 +11,7 @@ import { HelpCircle, ShieldAlert, X } from "lucide-react";
 import { PermissionCard } from "@/components/task/PermissionCard";
 import { QuestionCard } from "@/components/task/QuestionCard";
 import { Button, cx } from "@/components/ui";
-import { ApiError, ocJson } from "@/lib/client";
+import { ApiError, ocJson, sendJson } from "@/lib/client";
 import { replyPath, rejectPath, type AttentionItem } from "@/lib/attention";
 import { writeAccessMode } from "@/lib/access-mode";
 import {
@@ -24,7 +24,7 @@ import { useGlobalAttention } from "./GlobalAttentionProvider";
 import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 export function AttentionQueueModal() {
-  const { items, actionableItems, open, setOpen, remove, resolveSessionTitle } =
+  const { items, actionableItems, open, setOpen, remove, resolveSessionTitle, tasks } =
     useGlobalAttention();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +158,7 @@ export function AttentionQueueModal() {
 
   // R36#2: full-access へ切替時、キュー内の権限を自動処理。
   // TaskView と同様、サブエージェント / スキル不許可の対象権限は reject を優先する。
+  // Home 上では TaskView の同期 effect が無いので、既知タスクへ直接 PATCH する。
   const enableFullAccess = useCallback(async (exclude?: AttentionItem) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -176,6 +177,27 @@ export function AttentionQueueModal() {
       if (mountedRef.current) setBusy(false);
       return;
     }
+    const engineTargets = new Map<string, string>();
+    for (const item of items) {
+      if (item.kind !== "permission") continue;
+      const exact = tasks.find(
+        (task) =>
+          task.directory === item.directory &&
+          task.sessionId === item.request.sessionID,
+      );
+      const byDirectory = tasks.find((task) => task.directory === item.directory);
+      const task = exact ?? byDirectory;
+      if (task?.id) engineTargets.set(item.request.sessionID, task.id);
+    }
+    await Promise.allSettled(
+      [...engineTargets.entries()].map(([sessionId, taskId]) =>
+        sendJson("POST", "/api/access-mode", {
+          taskId,
+          sessionId,
+          mode: "full",
+        }),
+      ),
+    );
     const permissionItems = items.filter(
       (item) =>
         item.kind === "permission" &&
@@ -208,7 +230,7 @@ export function AttentionQueueModal() {
     }
     busyRef.current = false;
     if (mountedRef.current) setBusy(false);
-  }, [items, remove]);
+  }, [items, remove, tasks]);
 
   const replyQuestion = useCallback(
     async (item: AttentionItem, answers: string[][]) => {

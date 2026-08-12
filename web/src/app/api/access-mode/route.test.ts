@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { getWorkspace, latestBindings, listSessionBindings, setSessionEditPermission } =
-  vi.hoisted(() => ({
-    getWorkspace: vi.fn(),
-    latestBindings: vi.fn(),
-    listSessionBindings: vi.fn(),
-    setSessionEditPermission: vi.fn(),
-  }));
+const {
+  getWorkspace,
+  latestBindings,
+  listSessionBindings,
+  setSessionEditPermission,
+  listChildSessionIds,
+} = vi.hoisted(() => ({
+  getWorkspace: vi.fn(),
+  latestBindings: vi.fn(),
+  listSessionBindings: vi.fn(),
+  setSessionEditPermission: vi.fn(),
+  listChildSessionIds: vi.fn(),
+}));
 
 vi.mock("@/lib/db", () => ({ getWorkspace, latestBindings, listSessionBindings }));
 vi.mock("@/lib/oc-server", () => ({
@@ -17,7 +23,10 @@ vi.mock("@/lib/oc-server", () => ({
     }
   },
 }));
-vi.mock("@/lib/opencode-access-mode", () => ({ setSessionEditPermission }));
+vi.mock("@/lib/opencode-access-mode", () => ({
+  setSessionEditPermission,
+  listChildSessionIds,
+}));
 
 import { POST } from "./route";
 
@@ -32,6 +41,7 @@ function request(body: unknown) {
 describe("POST /api/access-mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    listChildSessionIds.mockResolvedValue([]);
   });
 
   it("applies the edit ruleset to the task's live OpenCode session", async () => {
@@ -75,6 +85,7 @@ describe("POST /api/access-mode", () => {
   it("returns 404 when sessionId is not bound to the task", async () => {
     getWorkspace.mockReturnValue({ absolute_path: "C:\\worktree" });
     listSessionBindings.mockReturnValue([{ opencode_session_id: "ses_1" }]);
+    listChildSessionIds.mockResolvedValue([]);
 
     const response = await POST(
       request({ taskId: "task-1", sessionId: "ses_other", mode: "ask" }),
@@ -82,6 +93,27 @@ describe("POST /api/access-mode", () => {
 
     expect(response.status).toBe(404);
     expect(setSessionEditPermission).not.toHaveBeenCalled();
+  });
+
+  it("applies the ruleset to a child session of a bound parent", async () => {
+    getWorkspace.mockReturnValue({ absolute_path: "C:\\worktree" });
+    listSessionBindings.mockReturnValue([{ opencode_session_id: "ses_parent" }]);
+    listChildSessionIds.mockResolvedValue(["ses_child"]);
+    latestBindings.mockReturnValue(
+      new Map([["task-1", { opencode_session_id: "ses_parent" }]]),
+    );
+
+    const response = await POST(
+      request({ taskId: "task-1", sessionId: "ses_child", mode: "ask" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(listChildSessionIds).toHaveBeenCalledWith("C:\\worktree", "ses_parent");
+    expect(setSessionEditPermission).toHaveBeenCalledWith(
+      "C:\\worktree",
+      "ses_child",
+      "ask",
+    );
   });
 
   it("returns 404 when the task has no bound session", async () => {

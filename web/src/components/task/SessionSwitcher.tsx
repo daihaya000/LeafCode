@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Layers, Plus, RefreshCw, Star } from "lucide-react";
 import { Button, cx } from "@/components/ui";
 import { getJson, ocJson, sendJson } from "@/lib/client";
+import { readAccessMode } from "@/lib/access-mode";
+import { readSubagentPermission } from "@/lib/subagent-permission";
+import { readSkillPermission } from "@/lib/skill-permission";
 
 type SessionRow = {
   opencodeSessionId: string;
@@ -138,6 +141,33 @@ export function SessionSwitcher({
         body: { title: `Session ${sessions.length + 1}` },
       });
       await focusSession(session.id, `Session ${sessions.length + 1}`);
+      try {
+        await Promise.all([
+          sendJson("POST", "/api/access-mode", {
+            taskId: workspaceId,
+            sessionId: session.id,
+            mode: readAccessMode(),
+          }),
+          sendJson("POST", "/api/subagent-permission", {
+            taskId: workspaceId,
+            sessionId: session.id,
+            permission: readSubagentPermission(),
+          }),
+          sendJson("POST", "/api/skill-permission", {
+            taskId: workspaceId,
+            sessionId: session.id,
+            permission: readSkillPermission(),
+          }),
+        ]);
+      } catch (err) {
+        if (mountedRef.current && generation === workspaceGenerationRef.current) {
+          setCreateError(
+            err instanceof Error
+              ? err.message
+              : "権限を同期できませんでした",
+          );
+        }
+      }
       await refresh();
       if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
       onSwitch();

@@ -116,7 +116,27 @@ vi.mock("@/components/shell/TaskSplitContext", () => ({
   useTaskSplit: () => taskSplitState,
 }));
 
-vi.mock("@/components/AccessModeSelect", () => ({ AccessModeSelect: () => null }));
+vi.mock("@/components/AccessModeSelect", () => ({
+  AccessModeSelect: ({
+    value,
+    onChange,
+    disabled,
+  }: {
+    value: string;
+    onChange: (mode: "ask" | "full") => void;
+    disabled?: boolean;
+  }) => (
+    <button
+      type="button"
+      aria-label="アクセスモード"
+      data-value={value}
+      disabled={disabled}
+      onClick={() => onChange(value === "ask" ? "full" : "ask")}
+    >
+      {value === "full" ? "フルアクセス" : "確認する"}
+    </button>
+  ),
+}));
 vi.mock("@/components/SkillPermissionSelect", () => ({ SkillPermissionSelect: () => null }));
 vi.mock("@/components/SubagentPermissionSelect", () => ({ SubagentPermissionSelect: () => null }));
 vi.mock("@/components/IntelligenceSelect", () => ({
@@ -303,6 +323,9 @@ describe("TaskView", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.clearAllMocks();
+    localStorage.removeItem("webui:access-mode");
+    localStorage.removeItem("webui:subagent-permission");
+    localStorage.removeItem("webui:skill-permission");
     __clearTaskViewCachesForTest();
   });
 
@@ -721,6 +744,150 @@ describe("TaskView", () => {
       sessionId: "sess1",
       mode: "ask",
     });
+  });
+
+  it("hydrates フルアクセス before the first engine sync so ask cannot win the race", async () => {
+    localStorage.setItem("webui:access-mode", "full");
+    try {
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const accessCalls = sendJson.mock.calls.filter(
+        (call) => call[0] === "POST" && call[1] === "/api/access-mode",
+      );
+      expect(accessCalls.length).toBeGreaterThan(0);
+      expect(accessCalls[0]?.[2]).toEqual({
+        taskId: "ws1",
+        sessionId: "sess1",
+        mode: "full",
+      });
+      expect(accessCalls.every((call) => call[2]?.mode === "full")).toBe(true);
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
+  it("auto-approves pending permissions in フルアクセス", async () => {
+    localStorage.setItem("webui:access-mode", "full");
+    try {
+      const replyPermission = vi.fn().mockResolvedValue(undefined);
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        permissions: [
+          {
+            id: "perm-edit",
+            version: "v2",
+            sessionID: "sess1",
+            permission: "edit",
+            patterns: [],
+            receivedAt: 1,
+          },
+        ],
+        replyPermission,
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(replyPermission).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "perm-edit", permission: "edit" }),
+        "once",
+      );
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
+  it("does not auto-reply from an inactive split pane", async () => {
+    taskSplitState.splitActive = true;
+    taskSplitState.activeTaskId = "other-task";
+    localStorage.setItem("webui:access-mode", "full");
+    try {
+      const replyPermission = vi.fn().mockResolvedValue(undefined);
+      useSessionStream.mockReturnValue({
+        ...useSessionStream(),
+        permissions: [
+          {
+            id: "perm-edit",
+            version: "v2",
+            sessionID: "sess1",
+            permission: "edit",
+            patterns: [],
+            receivedAt: 1,
+          },
+        ],
+        replyPermission,
+      });
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(replyPermission).not.toHaveBeenCalled();
+    } finally {
+      localStorage.removeItem("webui:access-mode");
+    }
+  });
+
+  it("does not sync access mode during workflow so node write-deny stays last-match", async () => {
+    getJson.mockImplementation((path: string) => {
+      if (path === "/api/files/content") {
+        return Promise.resolve({ name: "plan.md", content: "計画本文" });
+      }
+      if (path === "/api/settings/sidepanel-width") {
+        return Promise.resolve({ value: null });
+      }
+      if (path === "/api/tasks/ws1/cost") {
+        return Promise.resolve({ cost: 0.2 });
+      }
+      return Promise.resolve({
+        task: { ...task(0.2), executionMode: "workflow" },
+      });
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      sendJson.mock.calls.some(
+        (call) => call[0] === "POST" && call[1] === "/api/access-mode",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps 確認する when applying フルアクセス to the engine fails", async () => {
+    sendJson.mockImplementation((_method: string, path: string, body?: { mode?: string }) => {
+      if (path === "/api/access-mode" && body?.mode === "full") {
+        return Promise.reject(new Error("engine down"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "アクセスモード" }));
+    expect(
+      await screen.findByText("アクセスモードを適用できませんでした: engine down"),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "アクセスモード" }).getAttribute("data-value")).toBe(
+      "ask",
+    );
+    expect(localStorage.getItem("webui:access-mode")).not.toBe("full");
   });
 
   it("auto-rejects skill permission when skill use is denied, leaving others manual", async () => {

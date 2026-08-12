@@ -229,6 +229,62 @@ describe("SessionSwitcher controlled snap-back", () => {
     expect(screen.queryByRole("option", { name: "Old" })).toBeNull();
   });
 
+  it("applies access mode before switching to a newly created session", async () => {
+    localStorage.setItem("webui:access-mode", "ask");
+    localStorage.setItem("webui:subagent-permission", "deny");
+    localStorage.setItem("webui:skill-permission", "allow");
+    getJson.mockResolvedValue({
+      sessions: [
+        { opencodeSessionId: "ses_1", title: "Session 1", updatedAt: "t1" },
+      ],
+    });
+    sendJson.mockResolvedValue({});
+    ocJson.mockResolvedValue({ id: "ses_new" });
+
+    const onSwitch = vi.fn();
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="ses_1"
+        onSwitch={onSwitch}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "セッションを追加" }));
+
+    await waitFor(() => expect(onSwitch).toHaveBeenCalled());
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+      taskId: "ws1",
+      sessionId: "ses_new",
+      mode: "ask",
+    });
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/subagent-permission", {
+      taskId: "ws1",
+      sessionId: "ses_new",
+      permission: "deny",
+    });
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/skill-permission", {
+      taskId: "ws1",
+      sessionId: "ses_new",
+      permission: "allow",
+    });
+    const bindOrder =
+      sendJson.mock.invocationCallOrder[
+        sendJson.mock.calls.findIndex((call) =>
+          String(call[1]).includes("/api/workspaces/ws1/sessions"),
+        )
+      ] ?? 0;
+    const accessOrder =
+      sendJson.mock.invocationCallOrder[
+        sendJson.mock.calls.findIndex((call) => call[1] === "/api/access-mode")
+      ] ?? 0;
+    expect(accessOrder).toBeGreaterThan(bindOrder);
+    localStorage.removeItem("webui:access-mode");
+    localStorage.removeItem("webui:subagent-permission");
+    localStorage.removeItem("webui:skill-permission");
+  });
+
   it("announces a session switch failure and restores the real selection", async () => {
     getJson.mockResolvedValue({
       sessions: [
