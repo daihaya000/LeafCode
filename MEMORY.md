@@ -1,4 +1,32 @@
-﻿# 作業ログ: /loop 1m バグハント tick — 高影響の新規なし
+﻿# 作業ログ: /loop 1m バグハント — TaskView 非表示時の子 edit 天井欠落
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 「確認する」中、ホーム等で TaskView が外れてもサブエージェントの edit は承認待ち
+- 実際: session.created → ensureSessionIds は TaskView 専用のため、非表示後に生まれた子は OpenCode 既定 allow のまま無承認書き込み
+
+## 根本原因
+- `useSessionStream` / TaskView effect のみが天井 PATCH を所有
+- GlobalAttention の global SSE は permission/question のみ解釈し session.created を無視
+
+## 修正
+- `parseGlobalSessionCreated` + GlobalAttention が既知タスク配下の session.created で `/api/access-mode` + ensureSessionIds を POST
+- 孫は knownDescendants 追跡で追従（workflow タスクは除外）
+
+## 回帰防止
+- GlobalAttention: 子 / 孫 / 無関係 parent の3ケース
+- attention: parseGlobalSessionCreated
+
+## 検証
+- vitest attention + GlobalAttentionProvider 32 PASS / eslint OK
+
+## 残存リスク
+- tasks 一覧取得前の極短窓で session.created が来ると取りこぼし（次の子 or TaskView 復帰で補完）
+
+---
+# 作業ログ: /loop 1m バグハント tick — 高影響の新規なし
 
 ## 日付
 2026-08-12
