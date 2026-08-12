@@ -554,3 +554,47 @@ type PermissionRule = {
 1. **同一セッションで v1 と v2 を混用しない**: セッション作成を v2 で行った場合、以降の操作も v2 で統一。v1 で作成したセッションは v1 で統一。これはエンジン内部のセッション状態管理世代が一致することを保証するため
 2. **SSE ストリームは混用可能**: `useSessionStream.ts` は既に v1+v2 イベントを同一ストリームで処理している。`/event` と `/api/event` は両方の世代のイベントを送出するため、移行期は現状 `/event` で両方受信し続ける
 3. **`/session/status` は当面 v1 維持**: `SessionStatus` マップの形状互換性が BFF で保証できないため、v2 `/api/session/active` への切替は別途検討
+
+---
+
+## Phase D 実装状況と設定タブ (2026-08-12)
+
+### 実装済み（Phase D）
+
+`web/src/lib/opencode-generation.ts` の `OPENCODE_API_GENERATION` 定数と
+`opencode-paths.ts` のアクティブセレクタ（`active*Path`）で、v2 移行対象操作の
+クライアント呼び出しを一元化した。詳細は git ログ（コミット `b2f7aa7`）参照。
+
+### 設定タブからの切替（本節）
+
+エンジンタブ（`SettingsView.tsx` の `engine`）に「API 世代」カードを追加し、
+v1 / v2 のラジオで切り替えられるようにした。
+
+| 層 | 実体 | 役割 |
+|----|------|------|
+| localStorage | `webui:opencode-api-generation` | ブラウザの同期ソース。`isV2ApiGeneration()` がリアルタイム参照するため切替が即時反映 |
+| サーバ settings 表 | `opencode-api-generation` | `/api/settings/opencode-api-generation` 経由の耐久コピー。他ブラウザで共有 |
+| デフォルト | `DEFAULT_OPENCODE_API_GENERATION = "v1"` | サーバ側（`window` なし）と未設定時の値 |
+
+設定 API は `web/src/app/api/settings/[key]/route.ts` の allowlist に
+`opencode-api-generation` を追加し、`isOpenCodeApiGeneration` で `v1`/`v2` のみ許可。
+
+### 既知の制約（要検討）
+
+1. **クライアントとサーバで世代がずれる**: `opencode-paths.ts` のアクティブ
+   セレクタはサーバ側（`goal-loop.ts` / `hang-watchdog.ts` 等の `ocServer`
+   呼び出し）でも使われるが、サーバには `window` がないため
+   `readOpenCodeApiGeneration()` は常にデフォルト（v1）を返す。ブラウザが v2 を
+   選んでもサーバ側の自動ループ等は v1 パスを使い続ける。
+   - BFF プロキシは `/session/*` と `/api/session/*` を透過転送するため、パス
+     差異は実行時 404 にはならないが、**同一セッションで v1/v2 が混ざる**。
+   - 解消策: サーバ側も settings 表を参照する（`getSetting("opencode-api-generation")`
+     を同期読込する専用モジュールを作り、`opencode-paths.ts` のセレクタを
+     サーバ向けに分岐）。または、クライアントがセッション作成時に世代を BFF へ
+     伝搬し、BFF がセッションごとに世代を固定する。
+2. **`/session/status` と todo/diff/command は v1 のまま**: これらは v2 等価物が
+   ないため、世代フラグに関係なく v1 パスを使う。v2 フラグ時も `/session/status`
+   で状態取得する。
+3. **revert の v2 は stage → commit 2 段階**: `SessionActions.revertMessage` は
+   v2 フラグ時に `POST /api/session/{id}/revert/stage` → `/commit` を連続呼び出し。
+   partID レベルの revert は v2 に等価物がないため v2 時は省略される。

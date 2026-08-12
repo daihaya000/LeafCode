@@ -12,6 +12,7 @@ import {
   MEMORY_ENABLED_SETTING_KEY,
   MEMORY_WRITE_APPROVAL_SETTING_KEY,
 } from "@/lib/memory-settings";
+import { OPENCODE_API_GENERATION_SETTING_KEY } from "@/lib/opencode-generation";
 
 function putReq(body: unknown, key = "default-model"): Request {
   return new Request(`http://localhost/api/settings/${key}`, {
@@ -178,6 +179,27 @@ describe("/api/settings/[key]", () => {
       const res = await PUT(putReq({ value: "520" }, "sidepanel-width") as never, ctx("sidepanel-width"));
       expect(res.status).toBe(200);
       expect(setSetting).toHaveBeenCalledWith("sidepanel-width", "520");
+    });
+
+    it("stores the opencode api generation setting", async () => {
+      const res = await PUT(
+        putReq({ value: "v2" }, OPENCODE_API_GENERATION_SETTING_KEY) as never,
+        ctx(OPENCODE_API_GENERATION_SETTING_KEY),
+      );
+      expect(res.status).toBe(200);
+      expect(setSetting).toHaveBeenCalledWith(
+        OPENCODE_API_GENERATION_SETTING_KEY,
+        "v2",
+      );
+    });
+
+    it("rejects an invalid opencode api generation value", async () => {
+      const res = await PUT(
+        putReq({ value: "v3" }, OPENCODE_API_GENERATION_SETTING_KEY) as never,
+        ctx(OPENCODE_API_GENERATION_SETTING_KEY),
+      );
+      expect(res.status).toBe(400);
+      expect(setSetting).not.toHaveBeenCalled();
     });
 
     it("stores and clears the memory write approval setting", async () => {

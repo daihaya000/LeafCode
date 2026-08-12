@@ -283,6 +283,35 @@ describe("SettingsView", () => {
     expect(screen.queryByTestId("host-log-panel")).toBeNull();
   });
 
+  it("switches the OpenCode API generation from the engine tab", async () => {
+    const settingsWrites: string[] = [];
+    mockFetch((input, init) => {
+      if (
+        String(input).includes("/api/settings/opencode-api-generation") &&
+        init?.method === "PUT"
+      ) {
+        settingsWrites.push(String(input));
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return undefined;
+    });
+
+    render(<SettingsView />);
+
+    await screen.findByText("接続状態");
+    const v2 = screen.getByRole("radio", { name: /v2（\/api\/\* 面）/ }) as HTMLInputElement;
+    expect(v2.checked).toBe(false);
+
+    fireEvent.click(v2);
+
+    expect((screen.getByRole("radio", { name: /v2（\/api\/\* 面）/ }) as HTMLInputElement).checked).toBe(true);
+    expect(window.localStorage.getItem("webui:opencode-api-generation")).toBe("v2");
+    // The durable server copy is written in the background.
+    await waitFor(() => {
+      expect(settingsWrites).toHaveLength(1);
+    });
+  });
+
   it("exposes the mobile-scrollable settings categories as a tablist", async () => {
     render(<SettingsView />);
 

@@ -22,6 +22,10 @@ import {
   MIN_TOKEN_SAVING_THRESHOLD,
 } from "@/lib/token-saving-settings";
 import { GENERATION_MODEL_SETTING_KEY } from "@/lib/generation-model";
+import {
+  isOpenCodeApiGeneration,
+  OPENCODE_API_GENERATION_SETTING_KEY,
+} from "@/lib/opencode-generation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +51,7 @@ const ALLOWED_KEYS = new Set<string>([
   TOKEN_SAVING_SETTING_KEY,
   TOKEN_SAVING_THRESHOLD_KEY,
   GENERATION_MODEL_SETTING_KEY,
+  OPENCODE_API_GENERATION_SETTING_KEY,
 ]);
 
 /** Auto toggles are stored as `"1"` (on) or `""` (unset / off). */
@@ -229,6 +234,13 @@ function normalizeSettingValue(
       archivedExpanded: obj.archivedExpanded,
     };
     return { ok: true, value: JSON.stringify(normalized) };
+  }
+
+  if (key === OPENCODE_API_GENERATION_SETTING_KEY) {
+    if (!isOpenCodeApiGeneration(value)) {
+      return { ok: false, error: "opencode-api-generation must be v1 or v2" };
+    }
+    return { ok: true, value };
   }
 
   return { ok: true, value };

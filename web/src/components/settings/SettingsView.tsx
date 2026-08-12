@@ -91,6 +91,15 @@ import {
   writeTokenSavingThreshold,
   type TokenSavingMode,
 } from "@/lib/token-saving-settings";
+import {
+  isOpenCodeApiGeneration,
+  readOpenCodeApiGeneration,
+  readOpenCodeApiGenerationFromServer,
+  subscribeOpenCodeApiGeneration,
+  syncOpenCodeApiGenerationToServer,
+  writeOpenCodeApiGeneration,
+  type OpenCodeApiGeneration,
+} from "@/lib/opencode-generation";
 
 type OrphanDto = {
   id: string;
@@ -300,6 +309,10 @@ export function SettingsView() {
   const [tokenSavingThreshold, setTokenSavingThreshold] = useState(() =>
     String(readTokenSavingThreshold()),
   );
+  const [apiGeneration, setApiGeneration] = useState<OpenCodeApiGeneration>(
+    () => readOpenCodeApiGeneration(),
+  );
+  const [apiGenerationBusy, setApiGenerationBusy] = useState(false);
   const [commitAuthorName, setCommitAuthorName] = useState("");
   const [commitAuthorEmail, setCommitAuthorEmail] = useState("");
   const [commitIdentityError, setCommitIdentityError] = useState<string | null>(null);
@@ -628,6 +641,27 @@ export function SettingsView() {
     [],
   );
 
+  useEffect(
+    () =>
+      subscribeOpenCodeApiGeneration(() =>
+        setApiGeneration(readOpenCodeApiGeneration()),
+      ),
+    [],
+  );
+
+  // Hydrate the durable server copy into localStorage so the browser follows
+  // the value another browser may have persisted (e.g. after a reinstall).
+  useEffect(() => {
+    let cancelled = false;
+    void readOpenCodeApiGenerationFromServer().then((fromServer) => {
+      if (cancelled || !isOpenCodeApiGeneration(fromServer)) return;
+      writeOpenCodeApiGeneration(fromServer);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const commitTokenSavingMode = (mode: TokenSavingMode) => {
     setTokenSavingMode(mode);
     writeTokenSavingMode(mode);
@@ -655,6 +689,16 @@ export function SettingsView() {
     writeHangTimeoutMs(milliseconds);
     setHangTimeoutMinutes(String(milliseconds / 60_000));
     void syncHangTimeoutToServer(milliseconds);
+  };
+
+  const changeApiGeneration = (generation: OpenCodeApiGeneration) => {
+    if (apiGenerationBusy || generation === apiGeneration) return;
+    setApiGenerationBusy(true);
+    setApiGeneration(generation);
+    writeOpenCodeApiGeneration(generation);
+    void syncOpenCodeApiGenerationToServer(generation).finally(() => {
+      setApiGenerationBusy(false);
+    });
   };
 
   // Commit author override: stored server-side because the commit API and the
@@ -1338,6 +1382,66 @@ export function SettingsView() {
                           </pre>
                         )}
                       </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 p-4 md:grid-cols-2">
+                  <div className="space-y-3 rounded-lg border border-border bg-bg/40 p-3">
+                    <div>
+                      <h3 className="text-xs font-semibold text-muted">API 世代</h3>
+                      <p className="mt-1 text-xs text-faint">
+                        WebUI が OpenCode エンジンを呼ぶ際に使う API 世代です。エンジンが v1 と v2
+                        （beta）を併存公開している間は切り替えて比較できます。切り替えはブラウザに
+                        即時反映され、サーバにも保存されます。
+                      </p>
+                    </div>
+                    <div role="radiogroup" aria-label="OpenCode API 世代" className="flex flex-col gap-2">
+                      <label className="flex items-start gap-3 text-sm text-muted">
+                        <input
+                          type="radio"
+                          name="api-generation"
+                          value="v1"
+                          checked={apiGeneration === "v1"}
+                          disabled={apiGenerationBusy}
+                          onChange={() => changeApiGeneration("v1")}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+                        />
+                        <span>
+                          <span className="block text-text">v1（フラット面）</span>
+                          <span className="mt-1 block text-xs text-faint">
+                            `/session`, `/permission`, `/question` など元々の API。
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 text-sm text-muted">
+                        <input
+                          type="radio"
+                          name="api-generation"
+                          value="v2"
+                          checked={apiGeneration === "v2"}
+                          disabled={apiGenerationBusy}
+                          onChange={() => changeApiGeneration("v2")}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+                        />
+                        <span>
+                          <span className="block text-text">v2（/api/* 面）</span>
+                          <span className="mt-1 block text-xs text-faint">
+                            {"/api/session, /api/session/{id}/prompt など次世代 API。"}
+                            セッション作成・prompt・interrupt・permission・question・revert・SSE が
+                            v2 パスへ切り替わります。
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                    {apiGenerationBusy && (
+                      <p
+                        className="text-xs text-muted"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        サーバへ保存中…
+                      </p>
                     )}
                   </div>
                 </div>
