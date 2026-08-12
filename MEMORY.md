@@ -1,4 +1,34 @@
-﻿# 作業ログ: /loop 1m バグハント — TaskView 非表示時の子 edit 天井欠落
+﻿# 作業ログ: /loop 1m バグハント — SessionSwitcher 既存切替の権限同期
+
+## 日付
+2026-08-12
+
+## 期待 / 実際
+- 期待: 既存セッション切替でも、新規作成と同様に access/subagent/skill が onSwitch（prompt 可能）より前にエンジンへ乗る
+- 実際: create だけ onSwitch 前に 3 API を await。既存切替は focusSession → onSwitch のみで、TaskView の fire-and-forget effect 後追いとなり、切替直後の最初の turn で OpenCode 既定 `{"*":"allow"}` のまま edit/write/apply_patch が無カードになり得た
+
+## 根本原因
+- `SessionSwitcher.tsx` の select onChange に権限同期がなく、create パスと非対称
+- TaskView の `task.sessionId` 依存 POST は prompt を待たない
+
+## 修正
+- `syncSessionPermissions` を抽出し、create と既存切替の両方で focus 後・onSwitch 前に await
+- 権限同期失敗時はエラー表示しつつ（create と同様）切替自体は続行
+
+## 回帰防止
+- `applies access mode before switching to an existing session`（bind → access → onSwitch の順序）
+- pending 二重切替テストは bind のみ hang、権限 POST は即 resolve
+
+## 検証
+- vitest SessionSwitcher 10 PASS
+- eslint 対象 2 ファイル OK
+
+## 残存リスク
+- 権限 PATCH 極短窓（session.created〜PATCH）、Host BUILD_ID 欠落時の初回ビルド待ち、画像送信の未再現不具合は未着手
+- Dialog の `onSwitch={() => void onSwitch()}` は親 refresh 完了を待たない（今回対象外）
+
+---
+# 作業ログ: /loop 1m バグハント — TaskView 非表示時の子 edit 天井欠落
 
 ## 日付
 2026-08-12

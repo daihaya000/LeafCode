@@ -129,6 +129,32 @@ export function SessionSwitcher({
     [sessions, workspaceId],
   );
 
+  // UI の access/subagent/skill をエンジンへ載せる。create も既存切替も
+  // onSwitch（= prompt 可能）より前に await しないと、OpenCode 既定の
+  // {"*":"allow"} のまま最初の apply_patch が無カードで走る。
+  const syncSessionPermissions = useCallback(
+    async (sessionId: string) => {
+      await Promise.all([
+        sendJson("POST", "/api/access-mode", {
+          taskId: workspaceId,
+          sessionId,
+          mode: readAccessMode(),
+        }),
+        sendJson("POST", "/api/subagent-permission", {
+          taskId: workspaceId,
+          sessionId,
+          permission: readSubagentPermission(),
+        }),
+        sendJson("POST", "/api/skill-permission", {
+          taskId: workspaceId,
+          sessionId,
+          permission: readSkillPermission(),
+        }),
+      ]);
+    },
+    [workspaceId],
+  );
+
   const create = async () => {
     if (busy || busyRef.current) return;
     const generation = workspaceGenerationRef.current;
@@ -142,23 +168,7 @@ export function SessionSwitcher({
       });
       await focusSession(session.id, `Session ${sessions.length + 1}`);
       try {
-        await Promise.all([
-          sendJson("POST", "/api/access-mode", {
-            taskId: workspaceId,
-            sessionId: session.id,
-            mode: readAccessMode(),
-          }),
-          sendJson("POST", "/api/subagent-permission", {
-            taskId: workspaceId,
-            sessionId: session.id,
-            permission: readSubagentPermission(),
-          }),
-          sendJson("POST", "/api/skill-permission", {
-            taskId: workspaceId,
-            sessionId: session.id,
-            permission: readSkillPermission(),
-          }),
-        ]);
+        await syncSessionPermissions(session.id);
       } catch (err) {
         if (mountedRef.current && generation === workspaceGenerationRef.current) {
           setCreateError(
@@ -258,6 +268,17 @@ export function SessionSwitcher({
           setBusy(true);
           try {
             await focusSession(id);
+            try {
+              await syncSessionPermissions(id);
+            } catch (err) {
+              if (mountedRef.current && generation === workspaceGenerationRef.current) {
+                setSwitchError(
+                  err instanceof Error
+                    ? err.message
+                    : "権限を同期できませんでした",
+                );
+              }
+            }
             if (!mountedRef.current || generation !== workspaceGenerationRef.current) return;
             onSwitch();
           } catch (err) {

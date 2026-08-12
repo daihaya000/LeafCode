@@ -88,9 +88,18 @@ describe("SessionSwitcher controlled snap-back", () => {
       ],
     });
     let resolveBind: (value: unknown) => void = () => {};
-    sendJson.mockImplementation(
-      () => new Promise((resolve) => { resolveBind = resolve; }),
-    );
+    let bindCalls = 0;
+    sendJson.mockImplementation((_method: string, path: string) => {
+      if (String(path).includes("/api/workspaces/") && String(path).endsWith("/sessions")) {
+        bindCalls += 1;
+        if (bindCalls === 1) {
+          return new Promise((resolve) => {
+            resolveBind = resolve;
+          });
+        }
+      }
+      return Promise.resolve({});
+    });
 
     render(
       <SessionSwitcher
@@ -104,7 +113,7 @@ describe("SessionSwitcher controlled snap-back", () => {
     fireEvent.change(select, { target: { value: "ses_2" } });
     fireEvent.change(select, { target: { value: "ses_3" } });
 
-    expect(sendJson).toHaveBeenCalledTimes(1);
+    expect(bindCalls).toBe(1);
     resolveBind({});
     await waitFor(() => expect((select as HTMLSelectElement).disabled).toBe(false));
   });
@@ -280,6 +289,64 @@ describe("SessionSwitcher controlled snap-back", () => {
         sendJson.mock.calls.findIndex((call) => call[1] === "/api/access-mode")
       ] ?? 0;
     expect(accessOrder).toBeGreaterThan(bindOrder);
+    localStorage.removeItem("webui:access-mode");
+    localStorage.removeItem("webui:subagent-permission");
+    localStorage.removeItem("webui:skill-permission");
+  });
+
+  it("applies access mode before switching to an existing session", async () => {
+    localStorage.setItem("webui:access-mode", "ask");
+    localStorage.setItem("webui:subagent-permission", "deny");
+    localStorage.setItem("webui:skill-permission", "deny");
+    getJson.mockResolvedValue({
+      sessions: [
+        { opencodeSessionId: "ses_1", title: "Session 1", updatedAt: "t1" },
+        { opencodeSessionId: "ses_2", title: "Session 2", updatedAt: "t2" },
+      ],
+    });
+    sendJson.mockResolvedValue({});
+
+    const onSwitch = vi.fn();
+    render(
+      <SessionSwitcher
+        workspaceId="ws1"
+        directory="/repo"
+        currentSessionId="ses_1"
+        onSwitch={onSwitch}
+      />,
+    );
+    const select = await screen.findByRole("combobox", { name: "セッション切替" });
+    fireEvent.change(select, { target: { value: "ses_2" } });
+
+    await waitFor(() => expect(onSwitch).toHaveBeenCalled());
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/access-mode", {
+      taskId: "ws1",
+      sessionId: "ses_2",
+      mode: "ask",
+    });
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/subagent-permission", {
+      taskId: "ws1",
+      sessionId: "ses_2",
+      permission: "deny",
+    });
+    expect(sendJson).toHaveBeenCalledWith("POST", "/api/skill-permission", {
+      taskId: "ws1",
+      sessionId: "ses_2",
+      permission: "deny",
+    });
+    const bindOrder =
+      sendJson.mock.invocationCallOrder[
+        sendJson.mock.calls.findIndex((call) =>
+          String(call[1]).includes("/api/workspaces/ws1/sessions"),
+        )
+      ] ?? 0;
+    const accessOrder =
+      sendJson.mock.invocationCallOrder[
+        sendJson.mock.calls.findIndex((call) => call[1] === "/api/access-mode")
+      ] ?? 0;
+    const onSwitchOrder = onSwitch.mock.invocationCallOrder[0] ?? 0;
+    expect(accessOrder).toBeGreaterThan(bindOrder);
+    expect(onSwitchOrder).toBeGreaterThan(accessOrder);
     localStorage.removeItem("webui:access-mode");
     localStorage.removeItem("webui:subagent-permission");
     localStorage.removeItem("webui:skill-permission");
