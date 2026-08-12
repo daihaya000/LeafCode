@@ -281,7 +281,7 @@ describe("PartView long-running tool display", () => {
     };
 
     render(<PartView part={part} role="assistant" onMarkHang={onMarkHang} />);
-    expect(screen.queryByRole("button", { name: "ハングと判定して停止" })).toBeNull();
+expect(screen.queryByRole("button", { name: "ハングと判定して停止" })).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(300_000);
@@ -289,5 +289,48 @@ describe("PartView long-running tool display", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "ハングと判定して停止" }));
     expect(onMarkHang).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PartView provider error part display", () => {
+  it("renders the provider error carried by a retry part", () => {
+    const part: Part = {
+      id: "p-retry",
+      messageID: "m-retry",
+      type: "retry",
+      error: {
+        name: "APIError",
+        data: { message: "insufficient_quota", statusCode: 429 },
+      },
+    };
+    render(<PartView part={part} role="assistant" />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("insufficient_quota");
+    expect(alert.textContent).toContain("429");
+  });
+
+  it("renders the legacy error part text", () => {
+    const part: Part = {
+      id: "p-err",
+      messageID: "m-err",
+      type: "error",
+      text: "provider auth failed",
+    };
+    render(<PartView part={part} role="assistant" />);
+
+    expect(screen.getByRole("alert").textContent).toContain("provider auth failed");
+  });
+
+  it("falls back to metadata message when the error payload has none", () => {
+    const part: Part = {
+      id: "p-err2",
+      messageID: "m-err2",
+      type: "retry",
+      metadata: { message: "model not found" },
+    };
+    render(<PartView part={part} role="assistant" />);
+
+    expect(screen.getByRole("alert").textContent).toContain("model not found");
   });
 });

@@ -38,6 +38,16 @@ export type Part = {
   files?: string[];
   name?: string;
   source?: unknown;
+  /** Provider/step failure carried by `retry` / legacy `error` parts. */
+  error?: {
+    name?: string;
+    data?: {
+      message?: string;
+      statusCode?: number;
+      isRetryable?: boolean;
+      responseBody?: string;
+    };
+  };
   time?: { start?: number; end?: number };
 };
 

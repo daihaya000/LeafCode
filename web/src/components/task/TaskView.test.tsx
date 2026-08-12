@@ -4264,5 +4264,28 @@ describe("TaskView voice input", () => {
 
       expect(screen.queryByTestId("turn-resume")).toBeNull();
     });
+
+    it("shows a provider error banner for a turn that rendered no parts", async () => {
+      taskStatus = "idle";
+      mountStream([
+        userPrompt,
+        {
+          info: {
+            id: "assistant-1",
+            role: "assistant",
+            error: { name: "APIError", data: { message: "invalid api key" } },
+            time: { created: 2 },
+          },
+          parts: [],
+        },
+      ]);
+      render(<TaskView taskId="ws1" />);
+      await flushTaskLoad();
+
+      // The turn produced no renderable part, but the provider error must
+      // still surface instead of being filtered out of the transcript.
+      expect(screen.getByText("invalid api key")).toBeTruthy();
+      expect(screen.queryByTestId("turn-resume")).toBeNull();
+    });
   });
 });

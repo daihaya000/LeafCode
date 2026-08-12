@@ -682,6 +682,31 @@ export const PartView = memo(function PartView({
           {part.name ?? "agent"}
         </span>
       );
+    case "retry":
+    case "error": {
+      // The engine reports provider failures as a `retry` part whose `error`
+      // carries the APIError detail; older engine generations used a plain
+      // `error` part with the text directly. Render both so the provider
+      // message is never silently dropped.
+      const rawError = part.error?.data?.message;
+      const detail = rawError
+        ? part.error?.data?.statusCode
+          ? `HTTP ${part.error.data.statusCode}: ${rawError}`
+          : rawError
+        : (part.metadata?.message as string | undefined) ||
+          part.text ||
+          "エラーが発生しました";
+      return (
+        <div
+          role="alert"
+          className="rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger"
+        >
+          <span className="min-w-0 whitespace-pre-wrap break-words">
+            {detail}
+          </span>
+        </div>
+      );
+    }
     default:
       return null;
   }

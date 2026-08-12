@@ -3793,16 +3793,23 @@ export function TaskView({
 
   const timeline = useMemo(
     () =>
-      stream.visibleMessages.filter((m) =>
-        m.parts.some(
-          (p) =>
-            (p.type === "text" && p.text?.trim()) ||
-            p.type === "tool" ||
-            p.type === "reasoning" ||
-            p.type === "file" ||
-            p.type === "patch" ||
-            p.type === "agent",
-        ),
+      stream.visibleMessages.filter(
+        (m) =>
+          // A turn that fails before producing any renderable part still has
+          // an `error` on the assistant message (or an error/retry part) — keep
+          // it so the failure banner below is actually rendered.
+          m.info.error ||
+          m.parts.some(
+            (p) =>
+              (p.type === "text" && p.text?.trim()) ||
+              p.type === "tool" ||
+              p.type === "reasoning" ||
+              p.type === "file" ||
+              p.type === "patch" ||
+              p.type === "agent" ||
+              p.type === "retry" ||
+              p.type === "error",
+          ),
       ),
     [stream.visibleMessages],
   );
