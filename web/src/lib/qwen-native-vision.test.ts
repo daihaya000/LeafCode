@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
     timeoutMs: 120_000,
   },
   ocServer: vi.fn(),
+  toolcallSupported: true,
 }));
 
 // Keep these unit tests independent from the developer's persisted settings.
@@ -31,9 +32,26 @@ const previousModel = process.env.OPENCODE_WEBUI_QWEN_MODEL;
 beforeEach(() => {
   __resetQwenNativeVisionCachesForTest();
   h.settings = { enabled: false, opencodeModel: "", timeoutMs: 120_000 };
+  h.toolcallSupported = true;
   h.ocServer.mockReset().mockImplementation(async (_dir: string | null, path: string) => {
     if (path === "/session") return { id: "session-1" };
     if (path === "/experimental/tool/ids") return ["bash", "read"];
+    if (path === "/provider") {
+      const sep = h.settings.opencodeModel.indexOf("::");
+      const pid = sep > 0 ? h.settings.opencodeModel.slice(0, sep) : "ollama";
+      const mid = sep > 0 ? h.settings.opencodeModel.slice(sep + 2) : "qwen2.5vl:7b";
+      return {
+        connected: [pid],
+        all: [
+          {
+            id: pid,
+            models: {
+              [mid]: { toolcall: h.toolcallSupported },
+            },
+          },
+        ],
+      };
+    }
     if (path.endsWith("/message")) {
       return { parts: [{ type: "text", text: "A dialog is open." }] };
     }
@@ -85,6 +103,8 @@ it("analyzes images with the selected OpenCode model in a throwaway session", as
     timeoutMs: 60_000,
     body: {
       model: { providerID: "ollama", modelID: "qwen2.5vl:7b" },
+      // agent: "build" is required for the engine to forward image parts.
+      agent: "build",
       // Tools are disabled so the analysis session cannot touch the workspace.
       tools: { bash: false, read: false },
     },
@@ -178,4 +198,46 @@ it("rewrites image parts into an untrusted analysis context", async () => {
 
 it("builds context for image-only prompts", () => {
   expect(nativeImageContext("", "Visible text")).toContain("Visible text");
+});
+
+it("omits tools when the model does not support tool calls", async () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "ollama::qwen2.5vl:7b",
+    timeoutMs: 60_000,
+  };
+  h.toolcallSupported = false;
+  __resetQwenNativeVisionCachesForTest();
+
+  await analyzeNativeImages("Describe", [
+    { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+  ]);
+
+  const messageCall = h.ocServer.mock.calls.find(([, path]) =>
+    String(path).endsWith("/message"),
+  );
+  const body = (messageCall?.[2] as { body: Record<string, unknown> }).body;
+  expect(body).not.toHaveProperty("tools");
+  expect(body.agent).toBe("build");
+});
+
+it("sends tools when the model supports tool calls", async () => {
+  h.settings = {
+    enabled: true,
+    opencodeModel: "opencode::mimo-v2.5-free",
+    timeoutMs: 60_000,
+  };
+  h.toolcallSupported = true;
+  __resetQwenNativeVisionCachesForTest();
+
+  await analyzeNativeImages("Describe", [
+    { dataUrl: "data:image/png;base64,AA==", mime: "image/png" },
+  ]);
+
+  const messageCall = h.ocServer.mock.calls.find(([, path]) =>
+    String(path).endsWith("/message"),
+  );
+  const body = (messageCall?.[2] as { body: Record<string, unknown> }).body;
+  expect(body).toHaveProperty("tools");
+  expect(body.agent).toBe("build");
 });

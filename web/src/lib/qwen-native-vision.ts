@@ -101,9 +101,59 @@ async function loadToolDisableMap(
   return tools;
 }
 
-/** Test helper — drops the process-local tool-id cache. */
+type ProviderModelCapabilities = {
+  toolcall?: boolean;
+};
+type ProviderResponse = {
+  all?: {
+    id?: string;
+    models?: Record<string, ProviderModelCapabilities>;
+  }[];
+  connected?: string[];
+};
+
+let toolcallCache:
+  | { at: number; directory: string | null; providerID: string; modelID: string; supported: boolean }
+  | null = null;
+const TOOLCALL_CACHE_TTL_MS = 5 * 60_000;
+
+async function modelSupportsToolcall(
+  directory: string | null,
+  providerID: string,
+  modelID: string,
+): Promise<boolean> {
+  const now = Date.now();
+  if (
+    toolcallCache &&
+    toolcallCache.directory === directory &&
+    toolcallCache.providerID === providerID &&
+    toolcallCache.modelID === modelID &&
+    now - toolcallCache.at < TOOLCALL_CACHE_TTL_MS
+  ) {
+    return toolcallCache.supported;
+  }
+  try {
+    const providers = await ocServer<ProviderResponse>(directory, "/provider");
+    const connected = providers.connected;
+    if (connected && !connected.includes(providerID)) {
+      toolcallCache = { at: now, directory, providerID, modelID, supported: false };
+      return false;
+    }
+    const caps = providers.all
+      ?.find((p) => p.id === providerID)
+      ?.models?.[modelID];
+    const supported = caps?.toolcall === true;
+    toolcallCache = { at: now, directory, providerID, modelID, supported };
+    return supported;
+  } catch {
+    return false;
+  }
+}
+
+/** Test helper — drops the process-local tool-id and toolcall caches. */
 export function __resetQwenNativeVisionCachesForTest(): void {
   toolDisableCache = null;
+  toolcallCache = null;
 }
 
 export async function analyzeNativeImages(
@@ -149,36 +199,47 @@ async function analyzeWithOpenCode(
   };
   let sessionId: string | undefined;
   try {
-    // Session create and tool-id lookup are independent; run them together so
-    // setup overhead is not stacked on every image send.
-    const [session, tools] = await Promise.all([
+    // Session create, tool-id lookup, and toolcall capability check are
+    // independent; run them together so setup overhead is not stacked on
+    // every image send.
+    const [session, tools, supportsTools] = await Promise.all([
       ocServer<{ id: string }>(directory, SESSION_LIST_PATH, {
         method: "POST",
         body: { title: "image-analysis" },
       }),
       loadToolDisableMap(directory),
+      modelSupportsToolcall(directory, model.providerID, model.modelID),
     ]);
     sessionId = session.id;
+    const body: Record<string, unknown> = {
+      model,
+      // OpenCode engine forwards image parts to the model only when an agent
+      // is explicitly named. Without this, the engine silently strips file
+      // parts and the model responds "no image attached".
+      agent: "build",
+      // Text first: some providers start decoding vision tokens sooner when
+      // the instruction is already in context before large media parts.
+      parts: [
+        { type: "text", text: analysisPrompt(prompt) },
+        ...images.map((image) => ({
+          type: "file",
+          mime: image.mime,
+          url: image.dataUrl,
+        })),
+      ],
+    };
+    // Tools are disabled so the analysis session cannot touch the workspace.
+    // However, some vision models (e.g. Ollama qwen2.5vl) reject the `tools`
+    // parameter entirely — even an empty object — with a 400 error. Only send
+    // `tools` when the model declares tool-call support.
+    if (supportsTools) body.tools = tools;
     const response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
       directory,
       sessionMessagePath(sessionId),
       {
         method: "POST",
         timeoutMs,
-        body: {
-          model,
-          tools,
-          // Text first: some providers start decoding vision tokens sooner when
-          // the instruction is already in context before large media parts.
-          parts: [
-            { type: "text", text: analysisPrompt(prompt) },
-            ...images.map((image) => ({
-              type: "file",
-              mime: image.mime,
-              url: image.dataUrl,
-            })),
-          ],
-        },
+        body,
       },
     );
     const text = (response.parts ?? [])
