@@ -2,8 +2,8 @@ import { bindSession, getDb, getWorkspace, type WorkflowNodeAttemptRow } from ".
 import { ocServer } from "./oc-server";
 import {
   SESSION_LIST_PATH,
-  sessionMessagePath,
-  sessionPromptAsyncPath,
+  activeSessionMessagePath,
+  activePromptPath,
 } from "./opencode-paths";
 import { applyWorkflowSessionPermissions } from "./opencode-task-permission";
 import { buildWorkflowPrompt } from "./workflow-prompt";
@@ -363,7 +363,7 @@ async function processRunningAttempt(attempt: WorkflowNodeAttemptRow): Promise<v
   try {
     messages = await ocServer<MessageWithParts[]>(
       workspace.absolute_path,
-      sessionMessagePath(attempt.opencode_session_id),
+      activeSessionMessagePath(attempt.opencode_session_id),
       { timeoutMs: 10_000 },
     );
   } catch {
@@ -521,7 +521,7 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
   try {
     const previousMessages = await ocServer<MessageWithParts[]>(
       workspace.absolute_path,
-      sessionMessagePath(attempt.opencode_session_id),
+      activeSessionMessagePath(attempt.opencode_session_id),
       { timeoutMs: 10_000 },
     );
     const lastMessageId = Array.isArray(previousMessages)
@@ -595,7 +595,7 @@ async function dispatchAttempt(attempt: WorkflowNodeAttemptRow): Promise<void> {
     );
     await ocServer(
       workspace.absolute_path,
-      sessionPromptAsyncPath(attempt.opencode_session_id),
+      activePromptPath(attempt.opencode_session_id),
       {
         method: "POST",
         body: sendBody,

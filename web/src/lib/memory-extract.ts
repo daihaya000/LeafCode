@@ -31,8 +31,8 @@ import { OcError, ocServer } from "./oc-server";
 import {
   SESSION_LIST_PATH,
   sessionPath,
-  sessionMessagePath,
-  sessionPromptAsyncPath,
+  activeSessionMessagePath,
+  activePromptPath,
 } from "./opencode-paths";
 import type { MessageWithParts } from "./types";
 
@@ -271,7 +271,7 @@ export async function runMemoryExtraction(input: {
   try {
     messages = await ocServer<MessageWithParts[]>(
       directory,
-      sessionMessagePath(input.sessionId),
+      activeSessionMessagePath(input.sessionId),
       { timeoutMs: 10_000 },
     );
   } catch {
@@ -344,7 +344,7 @@ export async function runMemoryExtraction(input: {
   try {
     try {
       const hints = listMemoryHintsForExtraction(input.workspaceId, transcript);
-      await ocServer(directory, sessionPromptAsyncPath(sessionID), {
+      await ocServer(directory, activePromptPath(sessionID), {
         method: "POST",
         body: {
           parts: [{ type: "text", text: buildExtractionPrompt(transcript, hints) }],
@@ -363,7 +363,7 @@ export async function runMemoryExtraction(input: {
     try {
       polled = await ocServer<MessageWithParts[]>(
         directory,
-        sessionMessagePath(sessionID),
+        activeSessionMessagePath(sessionID),
         { timeoutMs: 10_000 },
       );
     } catch {

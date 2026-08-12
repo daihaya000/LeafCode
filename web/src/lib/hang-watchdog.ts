@@ -25,8 +25,8 @@ import {
   PERMISSION_LIST_PATH,
   QUESTION_LIST_PATH,
   SESSION_STATUS_PATH,
-  sessionAbortPath,
-  sessionMessagePath,
+  activeInterruptPath,
+  activeSessionMessagePath,
   sessionPermissionListPathV2,
   sessionQuestionListPathV2,
 } from "./opencode-paths";
@@ -472,7 +472,7 @@ async function resolveHang(row: SessionHangWatchRow): Promise<void> {
   logWatchdog("hang detected — stopping the turn", row);
 
   try {
-    await ocServer(row.directory, sessionAbortPath(row.session_id), {
+    await ocServer(row.directory, activeInterruptPath(row.session_id), {
       method: "POST",
       timeoutMs: ABORT_TIMEOUT_MS,
     });
@@ -542,7 +542,7 @@ async function evaluateWatch(
     // briefly report idle between agent steps while a tool is still running.
     // Check the transcript before dropping the saved request in either case.
     try {
-      const raw = await ocServer<unknown>(row.directory, sessionMessagePath(row.session_id), {
+      const raw = await ocServer<unknown>(row.directory, activeSessionMessagePath(row.session_id), {
         timeoutMs: MESSAGES_TIMEOUT_MS,
       });
       messages = normalizeMessageList(raw);
@@ -572,7 +572,7 @@ async function evaluateWatch(
 
   if (messages === null) {
     try {
-      const raw = await ocServer<unknown>(row.directory, sessionMessagePath(row.session_id), {
+      const raw = await ocServer<unknown>(row.directory, activeSessionMessagePath(row.session_id), {
         timeoutMs: MESSAGES_TIMEOUT_MS,
       });
       messages = normalizeMessageList(raw);

@@ -352,3 +352,103 @@ export function sessionRevertCommitPathV2(sessionId: string): string {
 export function sessionRevertClearPathV2(sessionId: string): string {
   return `/api/session/${encodePathId(sessionId)}/revert/clear`;
 }
+
+// ---------------------------------------------------------------------------
+// Active selectors — the ONLY generation switch point (Phase D)
+//
+// These resolve v2-migration-target operations to the builder for the
+// generation selected by `OPENCODE_API_GENERATION` (see
+// `opencode-generation.ts`). v1-maintain operations (todo, diff, command,
+// children, session DELETE/PATCH, ...) keep their v1 builders and are NOT
+// routed through here, so the two generations never mix for one operation.
+// ---------------------------------------------------------------------------
+
+import { isV2ApiGeneration } from "./opencode-generation";
+
+/** GET a single session. (Session DELETE/PATCH stays v1 — no v2 equivalent.) */
+export function activeSessionGetPath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionPathV2(sessionId) : sessionPath(sessionId);
+}
+
+/** Transcript of a session. */
+export function activeSessionMessagePath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionMessagePathV2(sessionId)
+    : sessionMessagePath(sessionId);
+}
+
+/** Fire-and-forget prompt. */
+export function activePromptPath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionPromptPathV2(sessionId)
+    : sessionPromptAsyncPath(sessionId);
+}
+
+/** Cancel the in-flight turn (v2 renames abort → interrupt). */
+export function activeInterruptPath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionInterruptPathV2(sessionId)
+    : sessionAbortPath(sessionId);
+}
+
+/** Context compaction (client already uses the v2 path; kept for one place). */
+export function activeCompactPath(sessionId: string): string {
+  return sessionCompactPathV2(sessionId);
+}
+
+/** SSE event stream (global). */
+export function activeEventPath(): string {
+  return isV2ApiGeneration() ? EVENT_PATH_V2 : EVENT_PATH;
+}
+
+/** Pending permission requests across sessions. */
+export function activePermissionListPath(): string {
+  return isV2ApiGeneration() ? PERMISSION_REQUEST_PATH_V2 : PERMISSION_LIST_PATH;
+}
+
+/** Pending question requests across sessions. */
+export function activeQuestionListPath(): string {
+  return isV2ApiGeneration() ? QUESTION_REQUEST_PATH_V2 : QUESTION_LIST_PATH;
+}
+
+/** Reply to a permission request (follows the request's generation). */
+export function activePermissionReplyPath(
+  sessionId: string,
+  requestId: string,
+): string {
+  return isV2ApiGeneration() ? permissionReplyPathV2(sessionId, requestId)
+    : permissionReplyPathV1(sessionId, requestId);
+}
+
+/** Reply to a question (follows the request's generation). */
+export function activeQuestionReplyPath(
+  sessionId: string,
+  requestId: string,
+): string {
+  return isV2ApiGeneration() ? questionReplyPathV2(sessionId, requestId)
+    : questionReplyPathV1(requestId);
+}
+
+/** Reject a question (follows the request's generation). */
+export function activeQuestionRejectPath(
+  sessionId: string,
+  requestId: string,
+): string {
+  return isV2ApiGeneration() ? questionRejectPathV2(sessionId, requestId)
+    : questionRejectPathV1(requestId);
+}
+
+/** Stage a revert (v2 splits the v1 single revert into stage → commit). */
+export function activeRevertStagePath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionRevertStagePathV2(sessionId)
+    : `/session/${encodePathId(sessionId)}/revert`;
+}
+
+/** Commit a staged revert. v1 has no separate commit (the single call commits). */
+export function activeRevertCommitPath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionRevertCommitPathV2(sessionId)
+    : `/session/${encodePathId(sessionId)}/revert`;
+}
+
+/** Clear a staged revert (v1 has no equivalent; returns the v2 path). */
+export function activeRevertClearPath(sessionId: string): string {
+  return isV2ApiGeneration() ? sessionRevertClearPathV2(sessionId)
+    : `/session/${encodePathId(sessionId)}/unrevert`;
+}

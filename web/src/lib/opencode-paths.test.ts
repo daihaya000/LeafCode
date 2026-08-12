@@ -12,6 +12,19 @@ import {
   SESSION_LIST_PATH,
   SESSION_LIST_PATH_V2,
   SESSION_STATUS_PATH,
+  activeCompactPath,
+  activeEventPath,
+  activeInterruptPath,
+  activePermissionListPath,
+  activePermissionReplyPath,
+  activePromptPath,
+  activeQuestionListPath,
+  activeQuestionRejectPath,
+  activeQuestionReplyPath,
+  activeRevertClearPath,
+  activeRevertStagePath,
+  activeSessionGetPath,
+  activeSessionMessagePath,
   permissionReplyPathV1,
   permissionReplyPathV2,
   permissionSavedDeletePathV2,
@@ -253,5 +266,31 @@ describe("opencode-paths template registry", () => {
     for (const name of v1Maintain) {
       expect(OC_PATH_TEMPLATES).toHaveProperty(name);
     }
+  });
+});
+
+describe("active generation selectors", () => {
+  it("resolve to v1 builders while the generation flag is v1", () => {
+    // Default flag is "v1"; these pin the current (unmigrated) behaviour.
+    expect(activeSessionGetPath("ses_1")).toBe("/session/ses_1");
+    expect(activeSessionMessagePath("ses_1")).toBe("/session/ses_1/message");
+    expect(activePromptPath("ses_1")).toBe("/session/ses_1/prompt_async");
+    expect(activeInterruptPath("ses_1")).toBe("/session/ses_1/abort");
+    expect(activeEventPath()).toBe("/event");
+    expect(activePermissionListPath()).toBe("/permission");
+    expect(activeQuestionListPath()).toBe("/question");
+    expect(activePermissionReplyPath("ses_1", "perm_1")).toBe(
+      "/session/ses_1/permissions/perm_1",
+    );
+    expect(activeQuestionReplyPath("ses_1", "q_1")).toBe("/question/q_1/reply");
+    expect(activeQuestionRejectPath("ses_1", "q_1")).toBe(
+      "/question/q_1/reject",
+    );
+    expect(activeRevertStagePath("ses_1")).toBe("/session/ses_1/revert");
+    expect(activeRevertClearPath("ses_1")).toBe("/session/ses_1/unrevert");
+  });
+
+  it("compact always uses the v2 path (client has no v1 compact builder)", () => {
+    expect(activeCompactPath("ses_1")).toBe("/api/session/ses_1/compact");
   });
 });

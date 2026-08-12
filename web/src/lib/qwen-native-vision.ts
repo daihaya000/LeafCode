@@ -1,6 +1,6 @@
 import { IMAGE_SEND_SETUP_SLACK_MS } from "./image-send-timeout";
 import { OcError, ocServer } from "./oc-server";
-import { SESSION_LIST_PATH, sessionMessagePath, sessionPath } from "./opencode-paths";
+import { SESSION_LIST_PATH, activeSessionMessagePath, sessionPath } from "./opencode-paths";
 import { readQwenNativeSettings, QWEN_NATIVE_DEFAULTS } from "./profiles/settings";
 
 const DATA_URL_RE = /^data:([a-z0-9.+-]+\/([a-z0-9.+-]+));base64,([a-z0-9+/]+={0,2})$/i;
@@ -220,7 +220,7 @@ async function analyzeWithOpenCode(
     try {
       response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
         directory,
-        sessionMessagePath(sessionId),
+        activeSessionMessagePath(sessionId),
         {
           method: "POST",
           timeoutMs,
@@ -232,7 +232,7 @@ async function analyzeWithOpenCode(
       await lockAnalysisSessionPermissions(directory, sessionId);
       response = await ocServer<{ parts?: { type?: string; text?: string }[] }>(
         directory,
-        sessionMessagePath(sessionId),
+        activeSessionMessagePath(sessionId),
         {
           method: "POST",
           timeoutMs,

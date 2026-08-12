@@ -6,6 +6,13 @@ import { Button } from "@/components/ui";
 import type { ComposerAttachment } from "@/components/Composer";
 import { ocJson } from "@/lib/client";
 import { isImageFilePart } from "@/lib/message-parts";
+import { isV2ApiGeneration } from "@/lib/opencode-generation";
+import {
+  activeCompactPath,
+  activeRevertClearPath,
+  activeRevertCommitPath,
+  activeRevertStagePath,
+} from "@/lib/opencode-paths";
 import type { MessageWithParts } from "@/lib/types";
 
 export async function revertMessage(
@@ -14,16 +21,29 @@ export async function revertMessage(
   messageID: string,
   partID?: string,
 ) {
+  if (isV2ApiGeneration()) {
+    // v2 splits the v1 single revert into stage → commit. The stage body takes
+    // the message id; part-level revert has no v2 equivalent.
+    await ocJson(activeRevertStagePath(sessionId), directory, {
+      method: "POST",
+      body: { messageID },
+    });
+    await ocJson(activeRevertCommitPath(sessionId), directory, {
+      method: "POST",
+      body: {},
+    });
+    return;
+  }
   const body: Record<string, string> = { messageID };
   if (partID) body.partID = partID;
-  await ocJson(`/session/${sessionId}/revert`, directory, {
+  await ocJson(activeRevertStagePath(sessionId), directory, {
     method: "POST",
     body,
   });
 }
 
 export async function unrevertSession(directory: string, sessionId: string) {
-  await ocJson(`/session/${sessionId}/unrevert`, directory, {
+  await ocJson(activeRevertClearPath(sessionId), directory, {
     method: "POST",
     body: {},
   });
@@ -64,7 +84,7 @@ export async function compactSession(
   const deadline = Date.now() + 10_000;
   for (;;) {
     try {
-      await ocJson(`/api/session/${sessionId}/compact`, directory, {
+      await ocJson(activeCompactPath(sessionId), directory, {
         method: "POST",
         body: {},
       });

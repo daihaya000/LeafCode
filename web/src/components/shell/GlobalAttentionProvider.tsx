@@ -48,6 +48,7 @@ import {
   type SkillPermission,
 } from "@/lib/skill-permission";
 import { shouldSyncAccessCeilingForSessionCreated } from "@/lib/opencode-access-mode";
+import { activeEventPath } from "@/lib/opencode-paths";
 import { SESSION_MUTATION_TIMEOUT_MS } from "@/lib/useSessionStream";
 import { wasRecentlyReplied } from "@/lib/recently-replied";
 import type { QuestionInfo, TaskSummary } from "@/lib/types";
@@ -577,7 +578,7 @@ export function GlobalAttentionProvider({
         es.close();
       }
       connectStartedAt = Date.now();
-      es = new EventSource(apiUrl("/api/opencode/global/event"));
+      es = new EventSource(apiUrl(`/api/opencode${activeEventPath()}`));
       es.onmessage = (ev) => {
         markActivity();
         const resolved = isResolvedEvent(ev.data);

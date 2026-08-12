@@ -9,8 +9,8 @@ import { OcError, ocServer } from "./oc-server";
 import {
   SESSION_LIST_PATH,
   SESSION_STATUS_PATH,
-  sessionMessagePath,
-  sessionPath,
+  activeSessionMessagePath,
+  activeSessionGetPath,
 } from "./opencode-paths";
 import { estimateOpenAIApiCost, lookupModelPricing } from "./openai-pricing";
 import { readProviderModelState } from "./provider-model-state";
@@ -150,7 +150,7 @@ async function estimateSessionCostWithCache(
   try {
     messages = await ocServer<MessageWithParts[]>(
       directory,
-      sessionMessagePath(session.id),
+      activeSessionMessagePath(session.id),
       { timeoutMs: 1_500 },
     );
   } catch {
@@ -444,7 +444,7 @@ export async function getTaskCost(id: string): Promise<number | undefined> {
   try {
     session = await ocServer<SessionUsage>(
       ws.absolute_path,
-      sessionPath(binding.opencode_session_id),
+      activeSessionGetPath(binding.opencode_session_id),
       { timeoutMs: 1500 },
     );
   } catch {

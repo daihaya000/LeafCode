@@ -5,21 +5,22 @@ import { apiUrl, ApiError, ocJson, IMAGE_ANALYSIS_SEND_TIMEOUT_MS } from "./clie
 import type { IntelligenceVariant } from "./model-variants";
 import { dropRecentlyReplied, rememberReplied, wasRecentlyReplied } from "./recently-replied";
 import {
-  PERMISSION_LIST_PATH,
-  QUESTION_LIST_PATH,
   SESSION_STATUS_PATH,
+  activeEventPath,
+  activeInterruptPath,
+  activePermissionListPath,
+  activePromptPath,
+  activeQuestionListPath,
+  activeSessionGetPath,
+  activeSessionMessagePath,
   permissionReplyPathV1,
   permissionReplyPathV2,
   questionRejectPathV1,
   questionRejectPathV2,
   questionReplyPathV1,
   questionReplyPathV2,
-  sessionAbortPath,
   sessionCommandPath,
-  sessionMessagePath,
-  sessionPath,
   sessionPermissionListPathV2,
-  sessionPromptAsyncPath,
   sessionQuestionListPathV2,
   sessionTodoPath,
 } from "./opencode-paths";
@@ -925,7 +926,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
     if (!skipMessages) {
       try {
         const rows = await ocJson<MessageWithParts[]>(
-          sessionMessagePath(sid),
+          activeSessionMessagePath(sid),
           directory,
         );
         if (stale()) return;
@@ -1005,7 +1006,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
 
     try {
       const session = await ocJson<{ revert?: SessionRevert | null }>(
-        sessionPath(sid),
+        activeSessionGetPath(sid),
         directory,
       );
       if (stale()) return;
@@ -1062,7 +1063,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           receivedAt: Date.now(),
         };
       };
-      const v1raw = await ocJson<unknown>(PERMISSION_LIST_PATH, directory).catch(
+      const v1raw = await ocJson<unknown>(activePermissionListPath(), directory).catch(
         () => [],
       );
       let v2ok = false;
@@ -1131,7 +1132,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
           receivedAt: Date.now(),
         };
       };
-      const v1raw = await ocJson<unknown>(QUESTION_LIST_PATH, directory).catch(
+      const v1raw = await ocJson<unknown>(activeQuestionListPath(), directory).catch(
         () => [],
       );
       let v2ok = false;
@@ -1791,7 +1792,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         connection: isReconnect ? "reconnecting" : "connecting",
       });
       connectStartedAt = Date.now();
-      es = new EventSource(apiUrl("/api/opencode/event", { directory }));
+      es = new EventSource(apiUrl(`/api/opencode${activeEventPath()}`, { directory }));
 
       es.onopen = () => {
         markActivity();
@@ -1977,7 +1978,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         ? startMutationElapsed(startedAt)
         : () => {};
       try {
-        await ocJson(sessionPromptAsyncPath(sid), directory, {
+        await ocJson(activePromptPath(sid), directory, {
           method: "POST",
           body,
           timeoutMs: mutationTimeoutForSend(Boolean(opts?.files?.length)),
@@ -2139,7 +2140,7 @@ export function useSessionStream(directory: string | null, sessionId: string | n
         heldPreferRest = true;
       }
       try {
-        await ocJson(sessionAbortPath(sid), directory, {
+        await ocJson(activeInterruptPath(sid), directory, {
           method: "POST",
           timeoutMs: SESSION_MUTATION_TIMEOUT_MS,
         });

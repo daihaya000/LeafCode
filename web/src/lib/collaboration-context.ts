@@ -5,7 +5,7 @@ import {
   type SessionBindingRow,
 } from "./db";
 import { ocServer } from "./oc-server";
-import { SESSION_STATUS_PATH, sessionMessagePath } from "./opencode-paths";
+import { SESSION_STATUS_PATH, activeSessionMessagePath } from "./opencode-paths";
 import { extractSessionTouchedPaths } from "./session-touched-files";
 import type { MessageWithParts, SessionStatus } from "./types";
 
@@ -132,7 +132,7 @@ export async function collaborationContextFor(input: {
         try {
           messages = await ocServer<MessageWithParts[]>(
             input.directory,
-            sessionMessagePath(binding.opencode_session_id),
+            activeSessionMessagePath(binding.opencode_session_id),
             { timeoutMs: 3_000 },
           );
         } catch {
