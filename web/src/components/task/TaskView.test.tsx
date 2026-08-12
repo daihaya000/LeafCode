@@ -3801,6 +3801,61 @@ describe("TaskView voice input", () => {
     expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
   });
 
+  it("keeps following the latest message when growing content pushes the bottom away", async () => {
+    useSessionStream.mockReturnValue({
+      ...useSessionStream(),
+      loaded: true,
+      messages: [
+        {
+          info: { id: "m1", role: "user", time: { created: Date.now() } },
+          parts: [{ id: "p1", messageID: "m1", type: "text", text: "hi" }],
+        },
+        {
+          info: { id: "m2", role: "assistant", time: { created: Date.now() } },
+          parts: [{ id: "p2", messageID: "m2", type: "text", text: "hello" }],
+        },
+      ],
+      visibleMessages: [],
+      status: { type: "idle" },
+      permissions: [],
+      questions: [],
+    });
+    render(<TaskView taskId="ws1" />);
+    await flushTaskLoad();
+
+    const scroller = screen.getByTestId("message-scroller") as HTMLDivElement;
+    const setMetrics = (scrollHeight: number, scrollTop: number) => {
+      Object.defineProperty(scroller, "scrollHeight", {
+        configurable: true,
+        value: scrollHeight,
+      });
+      Object.defineProperty(scroller, "clientHeight", {
+        configurable: true,
+        value: 500,
+      });
+      Object.defineProperty(scroller, "scrollTop", {
+        configurable: true,
+        value: scrollTop,
+      });
+    };
+
+    setMetrics(1000, 500);
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+
+    // An error detail auto-expands: the content grows and the browser's scroll
+    // anchoring nudges scrollTop, so the viewport is no longer at the bottom
+    // even though the user never scrolled up. Follow mode must survive.
+    setMetrics(2000, 600);
+    fireEvent.scroll(scroller);
+    expect(screen.queryByLabelText("最新のメッセージへ")).toBeNull();
+
+    // A genuine upward scroll still stops following.
+    setMetrics(2000, 200);
+    fireEvent.scroll(scroller);
+    expect(screen.getByLabelText("最新のメッセージへ")).not.toBeNull();
+  });
+
   it("shows a scroll-to-first-message button when scrolled down and scrolls to top on click", async () => {
     useSessionStream.mockReturnValue({
       ...useSessionStream(),

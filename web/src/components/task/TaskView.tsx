@@ -745,6 +745,9 @@ export function TaskView({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
+  // Last observed scroller offset, used to tell a real upward user scroll from
+  // a bottom drifting away because content grew.
+  const lastScrollTopRef = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const composingRef = useRef(false);
@@ -2355,8 +2358,17 @@ export function TaskView({
     const el = scrollRef.current;
     if (!el) return;
     const atBottom = isAtBottom(el);
-    stickRef.current = atBottom;
-    setShowScrollButton(!atBottom);
+    const prevTop = lastScrollTopRef.current;
+    lastScrollTopRef.current = el.scrollTop;
+    // Unstick only on an explicit upward scroll. When content grows (an error
+    // detail auto-expanding, streaming text, images finishing layout) the bottom
+    // moves away while scrollTop stays put or is nudged forward by the browser's
+    // scroll anchoring. A purely position-based check would read that as "the
+    // user scrolled up" and drop follow mode for good, because the re-pin effect
+    // bails out once stickRef is false.
+    if (atBottom) stickRef.current = true;
+    else if (el.scrollTop < prevTop - 4) stickRef.current = false;
+    setShowScrollButton(!atBottom && !stickRef.current);
     setShowScrollTopButton(!isAtTop(el));
   }, [isAtBottom, isAtTop]);
 
@@ -2387,6 +2399,9 @@ export function TaskView({
     const scroller = scrollRef.current;
     const content = contentRef.current;
     if (!scroller || !content) return;
+    // A new task starts from a fresh scroll offset; a stale baseline would make
+    // the first scroll event look like an upward user scroll and unstick.
+    lastScrollTopRef.current = scroller.scrollTop;
     const pinned = () => {
       if (!stickRef.current) return;
       if (isAtBottom(scroller)) return;
